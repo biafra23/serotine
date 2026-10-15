@@ -14,6 +14,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -35,6 +36,9 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             implementation(libs.kotlinx.coroutines.core)
+            // The persistent account list: a JSON file, written atomically.
+            implementation(libs.kotlinx.io.core)
+            implementation(libs.kotlinx.serialization.json)
             // The key adapter (eth.serotine.data.keys): libsecp256k1 and the digests.
             implementation(libs.secp256k1.kmp)
             implementation(libs.kotlincrypto.sha2)

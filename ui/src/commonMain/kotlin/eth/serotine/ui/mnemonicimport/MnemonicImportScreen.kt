@@ -165,9 +165,9 @@ private fun EnteringContent(
             }
         }
         Text(
-            "Serotine derives the first account of these words (m/44'/60'/0'/0/0) and keeps nothing " +
-                "else: not the words, not the key. Until it can store keys, the account cannot send " +
-                "transactions; until it can store accounts, the account is gone when the app closes.",
+            "Serotine derives the first account of these words (m/44'/60'/0'/0/0) and keeps its " +
+                "address, not the words, not the key. Until it can store keys, the account cannot " +
+                "send transactions.",
             style = MaterialTheme.typography.bodySmall,
         )
         if (!captureBlocked) {

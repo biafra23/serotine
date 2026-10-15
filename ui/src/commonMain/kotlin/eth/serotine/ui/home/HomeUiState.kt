@@ -15,14 +15,29 @@ sealed interface HomeUiState {
     /** The account stream has not emitted yet. */
     data class Loading(override val network: String) : HomeUiState
 
-    /** The managed accounts, possibly none; one row per address (the list keys rows on it). */
-    data class Ready(override val network: String, val accounts: List<AccountItem>) : HomeUiState {
+    /**
+     * The managed accounts, possibly none; one row per address (the list keys rows on it).
+     * [notice] tells the user, display-ready, when the stored list was damaged and set aside,
+     * so these are only the accounts added since.
+     */
+    data class Ready(
+        override val network: String,
+        val accounts: List<AccountItem>,
+        val notice: String? = null,
+    ) : HomeUiState {
         init {
             require(accounts.distinctBy { it.address }.size == accounts.size) {
                 "duplicate addresses in the account list: the repository contract is one entry per address"
             }
         }
     }
+
+    /**
+     * The stored account list exists but cannot be shown, and nothing can be added to it
+     * until it can, for the reason [message] gives, display-ready. Not an empty list: the
+     * screen must neither show "no accounts" nor invite an add that would be refused.
+     */
+    data class ListUnavailable(override val network: String, val message: String) : HomeUiState
 }
 
 /** One account as the list shows it: display strings only, derived once from the domain model. */

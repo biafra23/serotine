@@ -50,9 +50,10 @@ Modules (Gradle):
   Pure Kotlin + coroutines' `Flow`; targets desktop JVM + iOS and deliberately
   NO Android target (Android consumers resolve its JVM variant, so nothing in it
   can ever import `android.*`).
-- **data** — the adapters behind the ports: `InMemoryAccountRepository` and the
-  key adapter's `MnemonicAccountDerivation` (`eth.serotine.data.keys`) today,
-  the Myotis engine adapter next. Targets Android + desktop + iOS; the Android
+- **data** — the adapters behind the ports: `FileAccountRepository` (the
+  account list, persisted as a JSON file; `InMemoryAccountRepository` for tests)
+  and the key adapter's `MnemonicAccountDerivation` (`eth.serotine.data.keys`)
+  today, the Myotis engine adapter next. Targets Android + desktop + iOS; the Android
   target is what will resolve the engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),

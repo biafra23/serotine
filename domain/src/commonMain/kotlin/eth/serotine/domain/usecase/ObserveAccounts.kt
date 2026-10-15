@@ -1,6 +1,6 @@
 package eth.serotine.domain.usecase
 
-import eth.serotine.domain.model.Account
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import kotlinx.coroutines.flow.Flow
 
@@ -11,5 +11,5 @@ import kotlinx.coroutines.flow.Flow
  * the UI.
  */
 class ObserveAccounts(private val accounts: AccountRepository) {
-    operator fun invoke(): Flow<List<Account>> = accounts.observeAccounts()
+    operator fun invoke(): Flow<AccountList> = accounts.observeAccounts()
 }
