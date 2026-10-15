@@ -62,14 +62,27 @@ class HomeScreenTest {
     }
 
     @Test
-    fun aNoticeIsShownAboveTheList() {
-        val notice = "Your saved account list cannot be read right now."
+    fun aSetAsideNoticeIsShownAboveTheList() {
+        val notice = "Your saved account list was damaged and has been set aside. Add your accounts again."
         rule.setContent {
             SerotineTheme { HomeScreen(HomeUiState.Ready("Sepolia", emptyList(), notice), onAddAccount = {}) }
         }
 
         rule.onNodeWithTag(HOME_NOTICE_TAG).assertTextEquals(notice)
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Add account").assertExists()
+    }
+
+    @Test
+    fun anUnavailableListIsExplainedWithoutInvitingAnAdd() {
+        val message = "Your saved account list cannot be read right now."
+        rule.setContent {
+            SerotineTheme { HomeScreen(HomeUiState.ListUnavailable("Sepolia", message), onAddAccount = {}) }
+        }
+
+        rule.onNodeWithTag(HOME_NOTICE_TAG).assertTextEquals(message)
+        rule.onNodeWithText("No accounts yet").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Add account").assertDoesNotExist()
     }
 
     @Test

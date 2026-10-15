@@ -17,8 +17,8 @@ sealed interface HomeUiState {
 
     /**
      * The managed accounts, possibly none; one row per address (the list keys rows on it).
-     * [notice] tells the user, display-ready, when the stored list is not what they see:
-     * set aside as damaged, saved by a newer app, or unreadable right now.
+     * [notice] tells the user, display-ready, when the stored list was damaged and set aside,
+     * so these are only the accounts added since.
      */
     data class Ready(
         override val network: String,
@@ -31,6 +31,13 @@ sealed interface HomeUiState {
             }
         }
     }
+
+    /**
+     * The stored account list exists but cannot be shown, and nothing can be added to it
+     * until it can, for the reason [message] gives, display-ready. Not an empty list: the
+     * screen must neither show "no accounts" nor invite an add that would be refused.
+     */
+    data class ListUnavailable(override val network: String, val message: String) : HomeUiState
 }
 
 /** One account as the list shows it: display strings only, derived once from the domain model. */

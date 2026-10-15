@@ -26,10 +26,9 @@ class HomeViewModel(observeAccounts: ObserveAccounts, network: Network) : ViewMo
                     list.accounts.map(AccountItem::from),
                     notice = if (list.damagedListSetAside) DAMAGED_SET_ASIDE else null,
                 )
-                is AccountList.Unreadable -> HomeUiState.Ready(
+                is AccountList.Unreadable -> HomeUiState.ListUnavailable(
                     network.displayName,
-                    emptyList(),
-                    notice = when (list.reason) {
+                    when (list.reason) {
                         AccountList.Reason.NEWER_FORMAT -> NEWER_FORMAT
                         AccountList.Reason.READ_FAILED -> READ_FAILED
                     },
@@ -51,6 +50,6 @@ class HomeViewModel(observeAccounts: ObserveAccounts, network: Network) : ViewMo
             "Your account list was saved by a newer version of Serotine. Update the app to see it."
         const val READ_FAILED =
             "Your saved account list cannot be read right now. Nothing has been changed, and no " +
-                "account can be added until it can be read."
+                "account can be added until it can be read. Serotine keeps trying."
     }
 }

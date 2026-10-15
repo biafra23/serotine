@@ -13,9 +13,10 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -27,6 +28,7 @@ import kotlinx.io.writeString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * [AccountRepository] kept in the file at [path], so the accounts survive a restart:
@@ -43,7 +45,10 @@ import kotlin.random.Random
  * Reading, which never destroys or hides the stored list:
  * - no file: an empty list;
  * - a newer format, or a file that cannot be read: [AccountList.Unreadable], the file
- *   untouched, and nothing can be added until it can be read;
+ *   untouched, and nothing can be added until it can be read. An unreadable list is read
+ *   again by every new subscriber, and every [RETRY_INTERVAL] while one stays subscribed,
+ *   so it recovers on its own once the file can be read (a lock released, a permission
+ *   fixed);
  * - a damaged file: set aside under a name of its own (`<file>.damaged-<random>`, never
  *   replacing an earlier one), then an empty list that says so
  *   ([AccountList.Loaded.damagedListSetAside]); if it cannot be set aside, Unreadable.
@@ -62,9 +67,21 @@ class FileAccountRepository(
     private val state = MutableStateFlow<AccountList?>(null)
     private val lock = Mutex()
 
-    override fun observeAccounts(): Flow<AccountList> = flow {
-        if (state.value == null) lock.withLock { if (state.value == null) state.value = load() }
-        emitAll(state.filterNotNull())
+    override fun observeAccounts(): Flow<AccountList> = channelFlow {
+        refreshIfNeeded()
+        launch {
+            while (true) {
+                delay(RETRY_INTERVAL)
+                refreshIfNeeded()
+            }
+        }
+        state.filterNotNull().collect { send(it) }
+    }
+
+    /** Reads the file when it has not been read yet, or when the last read found it unreadable. */
+    private suspend fun refreshIfNeeded() {
+        fun stale() = state.value.let { it == null || it is AccountList.Unreadable }
+        if (stale()) lock.withLock { if (stale()) state.value = load() }
     }
 
     override suspend fun add(account: Account): AccountAdd = lock.withLock {
@@ -176,6 +193,7 @@ class FileAccountRepository(
 
     private companion object {
         const val FORMAT_VERSION = 1
+        val RETRY_INTERVAL = 5.seconds
         val STRICT = Json
         val LENIENT = Json { ignoreUnknownKeys = true }
 

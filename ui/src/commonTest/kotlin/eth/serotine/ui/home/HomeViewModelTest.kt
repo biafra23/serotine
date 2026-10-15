@@ -62,8 +62,12 @@ class HomeViewModelTest {
         repository.list.value = AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT)
         runCurrent()
         assertEquals(
-            "Your account list was saved by a newer version of Serotine. Update the app to see it.",
-            (viewModel.uiState.value as HomeUiState.Ready).notice,
+            HomeUiState.ListUnavailable(
+                "Sepolia",
+                "Your account list was saved by a newer version of Serotine. Update the app to see it.",
+            ),
+            viewModel.uiState.value,
+            "its own state, not an empty list",
         )
 
         repository.list.value = AccountList.Loaded(emptyList(), damagedListSetAside = true)

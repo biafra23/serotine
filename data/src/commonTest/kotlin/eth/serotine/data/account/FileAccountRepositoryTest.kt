@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -148,6 +149,25 @@ class FileAccountRepositoryTest {
         assertEquals(AccountList.Unreadable(AccountList.Reason.READ_FAILED), repository.observeAccounts().first())
         assertEquals(AccountAdd.NotSaved, repository.add(eoa))
         assertTrue(SystemFileSystem.metadataOrNull(file)?.isDirectory == true)
+    }
+
+    @Test
+    fun anUnreadableListRecoversOnceTheFileCanBeRead() = runTest {
+        SystemFileSystem.createDirectories(file) // unreadable: a directory in the file's place
+        val repository = repository()
+        val seen = mutableListOf<AccountList>()
+        val collecting = launch { repository.observeAccounts().collect { seen += it } }
+        runCurrent()
+        assertEquals(AccountList.Unreadable(AccountList.Reason.READ_FAILED), seen.last())
+
+        // The obstacle goes away and a readable list appears: the next retry picks it up.
+        SystemFileSystem.delete(file)
+        repository().add(eoa)
+        advanceTimeBy(6_000)
+        runCurrent()
+
+        assertEquals(AccountList.Loaded(listOf(eoa)), seen.last())
+        collecting.cancel()
     }
 
     @Test

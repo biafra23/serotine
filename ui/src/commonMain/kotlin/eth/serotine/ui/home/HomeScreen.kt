@@ -35,7 +35,7 @@ import eth.serotine.ui.APP_VERSION
 /** Test tag of the account list, for UI tests. */
 const val HOME_ACCOUNT_LIST_TAG = "home-account-list"
 
-/** Test tag of the notice above the list when the stored list is not what is shown. */
+/** Test tag of the notice when the stored list is not what is shown: set aside, or unavailable. */
 const val HOME_NOTICE_TAG = "home-notice"
 
 /** Test tag of the badge naming the network the app works on, for UI tests. */
@@ -58,8 +58,11 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
     Scaffold(
         modifier = modifier,
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddAccount) {
-                Icon(Icons.Filled.Add, contentDescription = "Add account")
+            // No add to offer while the stored list cannot be read: it would be refused.
+            if (state !is HomeUiState.ListUnavailable) {
+                FloatingActionButton(onClick = onAddAccount) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add account")
+                }
             }
         },
         topBar = {
@@ -81,6 +84,13 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (state) {
                 is HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                is HomeUiState.ListUnavailable -> Text(
+                    state.message,
+                    Modifier.align(Alignment.Center).padding(24.dp).testTag(HOME_NOTICE_TAG),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
                 is HomeUiState.Ready -> Column(Modifier.fillMaxSize()) {
                     state.notice?.let { notice ->
                         Text(
