@@ -32,9 +32,10 @@ actual fun protectFromScreenCapture(): Boolean {
 /**
  * The protection a view is under, and how many composed callers hold it. Counted, because
  * two protected screens overlap during a navigation transition: the one leaving must not
- * lift the protection from the one arriving.
+ * lift the protection from the one arriving. And restored to exactly what was there before:
+ * a window that already carried FLAG_SECURE (a host-wide setting, say) keeps it.
  */
-private class Protection(val autofillBefore: Int) {
+private class Protection(val autofillBefore: Int, val secureBefore: Boolean) {
     var holders = 0
 }
 
@@ -43,8 +44,10 @@ private val protections = WeakHashMap<View, Protection>()
 
 private fun acquire(view: View, window: Window?) {
     val protection = protections.getOrPut(view) {
+        val secureBefore = window != null &&
+            window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        Protection(autofillBefore = view.importantForAutofill).also {
+        Protection(autofillBefore = view.importantForAutofill, secureBefore = secureBefore).also {
             view.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         }
     }
@@ -55,7 +58,7 @@ private fun release(view: View, window: Window?) {
     val protection = protections[view] ?: return
     if (--protection.holders > 0) return
     protections.remove(view)
-    window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    if (!protection.secureBefore) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     view.importantForAutofill = protection.autofillBefore
 }
 

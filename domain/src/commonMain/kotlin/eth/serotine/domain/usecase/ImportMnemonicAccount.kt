@@ -2,6 +2,7 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.repository.AccountDerivation
@@ -24,24 +25,22 @@ class ImportMnemonicAccount(
         when (val derived = derivation.deriveFirstAccount(mnemonic)) {
             is Derivation.Invalid -> MnemonicImport.Invalid(derived.problem)
             Derivation.Unavailable -> MnemonicImport.Unavailable
-            is Derivation.Derived -> {
-                val current = accounts.observeAccounts().first()
-                val existing = current.firstOrNull { it.address == derived.address }
-                if (existing != null) {
-                    MnemonicImport.AlreadyAdded(existing)
-                } else {
-                    val account = Account(derived.address, AccountKind.EOA, nextFreeLabel(current))
-                    if (accounts.add(account)) {
-                        MnemonicImport.Added(account)
-                    } else {
-                        // Added concurrently since the read above: report the entry that won.
-                        MnemonicImport.AlreadyAdded(
-                            accounts.observeAccounts().first().first { it.address == account.address },
-                        )
-                    }
-                }
-            }
+            is Derivation.Derived -> addOrFind(derived.address)
         }
+
+    /**
+     * The entry under [address]: the existing one, or a new one this call adds. Read and add
+     * are two steps, so another writer can get in between; then the next round reads again
+     * rather than assume what that writer left — an entry, or one already removed again.
+     */
+    private suspend fun addOrFind(address: Address): MnemonicImport {
+        while (true) {
+            val current = accounts.observeAccounts().first()
+            current.firstOrNull { it.address == address }?.let { return MnemonicImport.AlreadyAdded(it) }
+            val account = Account(address, AccountKind.EOA, nextFreeLabel(current))
+            if (accounts.add(account)) return MnemonicImport.Added(account)
+        }
+    }
 
     private fun nextFreeLabel(current: List<Account>): String {
         val taken = current.mapTo(HashSet()) { it.label }

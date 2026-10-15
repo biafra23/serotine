@@ -64,6 +64,18 @@ class ImportMnemonicAccountTest {
     }
 
     @Test
+    fun anEntryAddedAndRemovedBetweenReadAndAddIsReadAgainNotAssumed() = runTest {
+        val mnemonic = Mnemonic("raced words")
+        derivation.results[mnemonic] = Derivation.Derived(first)
+        // The first add loses to another writer, whose entry is gone again by the re-read.
+        repository.refuseNextAdd = true
+
+        val result = import(mnemonic)
+
+        assertEquals(MnemonicImport.Added(Account(first, AccountKind.EOA, "Account 1")), result)
+    }
+
+    @Test
     fun invalidWordsAddNothing() = runTest {
         val mnemonic = Mnemonic("not a mnemonic")
         derivation.results[mnemonic] = Derivation.Invalid(MnemonicProblem.Checksum)
@@ -94,10 +106,15 @@ class ImportMnemonicAccountTest {
 
     private class FakeAccountRepository : AccountRepository {
         val accounts = MutableStateFlow<List<Account>>(emptyList())
+        var refuseNextAdd = false
 
         override fun observeAccounts(): Flow<List<Account>> = accounts
 
         override suspend fun add(account: Account): Boolean {
+            if (refuseNextAdd) {
+                refuseNextAdd = false
+                return false
+            }
             var added = false
             accounts.update { current ->
                 added = current.none { it.address == account.address }
