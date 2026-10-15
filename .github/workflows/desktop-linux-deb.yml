@@ -1,0 +1,287 @@
+name: Desktop DEB (Linux)
+
+on:
+  # Deliberately NO pull_request trigger: Linux installers are release/main
+  # artifacts, not per-push PR feedback. The .deb result never changes a PR
+  # decision anyway (Build and Test compiles the same code), and an installer
+  # job per PR push would only queue ahead of the decision-relevant checks.
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  # Manual publish path: attach debs built from the CURRENT ref to an existing
+  # release. Dispatched on that same tag, the debs are named after it; dispatched
+  # from any other ref (a backfill), they are built from that ref and named after
+  # the version they report (see the publish job).
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: "Existing release tag to upload the debs to (e.g. v0.1.0). Dispatched on that same tag, the debs are named Serotine-<tag>-<arch>.deb; dispatched from any other ref (a backfill), they are built from that ref and named after the version they report, Serotine-v<version>-<arch>.deb. --clobber replaces only an identical name, so differently named debs already on the release stay."
+        required: true
+        type: string
+
+# Cancel a superseded run when new commits land on the same branch (both arch
+# jobs are cancelled/restarted together). The event name is part of the group
+# because the workflow_dispatch trigger SHARES REFS with push runs: without it a
+# republish dispatched on a tag ref would cancel that tag's in-flight push run
+# and leave the release with no debs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Linux .deb (${{ matrix.arch }})
+    # jpackage is host-OS-bound (a .deb can only be produced on Linux) and bundles a
+    # single-architecture jlink runtime, so one job per arch on a matching-arch runner:
+    #   x64   → ubuntu-latest (x86_64)
+    #   arm64 → ubuntu-24.04-arm (GitHub's arm64 runner)
+    # The arm64 runner is free for PUBLIC repositories only; a private repository
+    # would queue that leg forever. So the matrix carries the arm64 leg only while
+    # the repository is public — a conditional matrix, not a job-level `if`, which
+    # cannot see the matrix context.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ github.event.repository.private
+          && fromJSON('[{"arch":"x64","runner":"ubuntu-latest"}]')
+          || fromJSON('[{"arch":"x64","runner":"ubuntu-latest"},{"arch":"arm64","runner":"ubuntu-24.04-arm"}]') }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history: :ui stamps the app's on-screen version from the nearest
+          # v* tag, and `git describe` needs HEAD's history to REACH that tag.
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # Compose Desktop's packageDeb wraps jpackage (jlink'd JRE + app → .deb).
+      # Unsigned — released as Serotine-v<version>-<arch>.deb and installed via
+      # `sudo apt install ./Serotine-v<version>-<arch>.deb` or dpkg -i.
+      # Retry to ride out transient repo-resolution blips.
+      - name: Build Linux .deb (${{ matrix.arch }})
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew :desktop-app:packageDeb --stacktrace && exit 0
+            echo "::warning::DEB build attempt $attempt failed; retrying in 25s (transient dependency resolution?)"
+            sleep 25
+          done
+          echo "::error::DEB build failed after 3 attempts"
+          exit 1
+
+      # jpackage names the output serotine_<version>_<debarch>.deb; rename it to the
+      # arch-only artifact name Serotine-<arch>.deb (the publish job adds the tag for
+      # the release asset). Assert exactly one deb — zero or multiple should fail
+      # here, not silently ship an arbitrary pick.
+      - name: Tag .deb with architecture
+        run: |
+          set -eu
+          shopt -s nullglob
+          debs=(desktop-app/build/compose/binaries/main/deb/*.deb)
+          [ "${#debs[@]}" -eq 1 ] \
+            || { echo "::error::expected exactly 1 deb, found ${#debs[@]}: ${debs[*]}"; exit 1; }
+          mv "${debs[0]}" "desktop-app/build/compose/binaries/main/deb/Serotine-${{ matrix.arch }}.deb"
+
+      # Guard against a SILENTLY wrong-arch build: check the declared control-field
+      # architecture AND the actual ELF class of the bundled JVM, so a mislabelled
+      # package can't go green.
+      - name: Verify .deb architecture
+        run: |
+          set -eu
+          deb="desktop-app/build/compose/binaries/main/deb/Serotine-${{ matrix.arch }}.deb"
+          case "${{ matrix.arch }}" in
+            x64)   want_deb=amd64; want_elf="x86-64"  ;;
+            arm64) want_deb=arm64; want_elf="aarch64" ;;
+            *) echo "::error::unknown matrix.arch '${{ matrix.arch }}' — update this case block"; exit 1 ;;
+          esac
+          got=$(dpkg-deb --field "$deb" Architecture)
+          echo "control Architecture: $got (version: $(dpkg-deb --field "$deb" Version), maintainer: $(dpkg-deb --field "$deb" Maintainer))"
+          [ "$got" = "$want_deb" ] \
+            || { echo "::error::deb control arch mismatch: expected $want_deb, got $got"; exit 1; }
+          # Extract and inspect the bundled runtime — the control field only states
+          # intent; the ELF class proves what jlink actually emitted.
+          ex=$(mktemp -d)
+          dpkg-deb -x "$deb" "$ex"
+          jvm=$(find "$ex" -type f -name 'libjvm.so' | head -n1)
+          [ -n "$jvm" ] || { echo "::error::no libjvm.so found in the deb — bundle layout changed?"; exit 1; }
+          info=$(file -b "$jvm")
+          echo "bundled libjvm: $info"
+          echo "$info" | grep -q "$want_elf" \
+            || { echo "::error::ELF arch mismatch: expected $want_elf in: $info"; exit 1; }
+          echo "OK: ${{ matrix.arch }} deb is $want_deb/$want_elf"
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: serotine-desktop-deb-${{ matrix.arch }}-${{ github.sha }}
+          path: desktop-app/build/compose/binaries/main/deb/*.deb
+          if-no-files-found: error
+          retention-days: 30
+          # Artifacts are immutable per run; without this, "re-run all jobs" on a
+          # tag 409s in every build leg and the release job never runs.
+          overwrite: true
+
+  # Refuse to publish when the pushed tag disagrees with the version in the tree
+  # — the release is named after the tag, while the .deb's packageVersion comes
+  # from project.version. See release-version-guard.yml.
+  #
+  # Two dispatch shapes hide behind one event, and the guard compares the ref's
+  # tag to the ref's version:
+  #   - push of a `v*` tag                     → the right pair. Guard.
+  #   - dispatch, release-tag == the ref's tag → the right pair (plain republish). Guard.
+  #   - dispatch, release-tag != the ref       → the documented BACKFILL: assets
+  #     built from the dispatched ref are uploaded to a different, existing tag,
+  #     so ref-version and target-tag are EXPECTED to disagree. Skipped.
+  # On a push there is no `inputs` context; dereferencing a nonexistent property
+  # yields the EMPTY STRING, so the second disjunct is simply false and the first
+  # decides. Expression `==` is case-INSENSITIVE while git tags are not; the
+  # release job asserts that away in shell below.
+  version-guard:
+    name: Release version guard
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      && (github.event_name == 'push' || inputs.release-tag == github.ref_name)
+    uses: ./.github/workflows/release-version-guard.yml
+
+  # Attach the debs to the GitHub Release. Runs on `v*` tags (same race-tolerant
+  # create as the dmg/apk workflows) and on manual dispatch (uploads to the given
+  # existing tag). Runs ONCE after the matrix jobs.
+  release:
+    name: Publish debs to release
+    needs: [build, version-guard]
+    # This job's condition is BROADER than version-guard's (it also runs on
+    # workflow_dispatch), and a skipped `needs:` would otherwise skip it too —
+    # killing the manual publish path. So spell the dependency results out. A
+    # FAILED guard always blocks the upload; 'skipped' is accepted ONLY on
+    # workflow_dispatch, so a future mis-gate fails closed on a tag push.
+    if: >-
+      !cancelled()
+      && needs.build.result == 'success'
+      && (needs.version-guard.result == 'success'
+          || (needs.version-guard.result == 'skipped' && github.event_name == 'workflow_dispatch'))
+      && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      # gh release create/upload needs write access to Releases (repo contents).
+      contents: write
+    steps:
+      - name: Download deb artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: serotine-desktop-deb-*-${{ github.sha }}
+          path: deb
+          merge-multiple: true
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No checkout in this job — gh must be told the repo explicitly or it
+          # dies with "fatal: not a git repository".
+          GH_REPO: ${{ github.repository }}
+          # Through the ENVIRONMENT, never `${{ }}` inside the script: a `${{ }}`
+          # is pasted into the script text before bash parses it, so an input
+          # like `x"; curl … | sh; #` would execute.
+          RELEASE_TAG_INPUT: ${{ inputs.release-tag }}
+          GUARD_RESULT: ${{ needs.version-guard.result }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -eu
+          # Tag ref on push; explicit input on manual dispatch.
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="${RELEASE_TAG_INPUT}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          # The dispatch input is free text: validate the shape before passing it
+          # to gh, so a stray value (e.g. leading '-') can't be parsed as a flag.
+          printf '%s' "$tag" | grep -Eq '^v[A-Za-z0-9._-]+$' \
+            || { echo "::error::'$tag' is not a valid release tag (expected v<version>)"; exit 1; }
+          # When the version guard RAN, it validated GITHUB_REF_NAME — so its
+          # green verdict only covers an upload to that same tag. Assert that
+          # identity here, in shell, where the comparison is case-SENSITIVE like
+          # git itself (the expression that gates the guard is not).
+          if [ "${GUARD_RESULT}" = "success" ] && [ "$tag" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::the version guard validated '${GITHUB_REF_NAME}' but this job would publish to '$tag'; refusing to trade on a verdict that does not cover this tag (differs only by case?)"
+            exit 1
+          fi
+          # The arches this run built (the arm64 leg exists only in a public
+          # repository, see the build matrix). Fail loudly if one is missing
+          # rather than shipping a half release (e.g. one matrix job was cancelled).
+          if [ "${REPO_PRIVATE}" = "true" ]; then arches="x64"; else arches="x64 arm64"; fi
+          for arch in $arches; do
+            test -f "deb/Serotine-${arch}.deb" \
+              || { echo "::error::missing deb/Serotine-${arch}.deb"; exit 1; }
+          done
+          # Release assets carry the version, like the APKs — but a name may only
+          # claim the version the deb really is. When the version guard ran (a tag
+          # push, or a republish dispatched on that same tag), the tree these debs
+          # were built from is $tag's version: Serotine-<tag>-<arch>.deb. A
+          # BACKFILL (dispatched from another ref; guard skipped) builds that ref,
+          # not the tag, so its deb is named after the Version its own control file
+          # declares: Serotine-v<Version>-<arch>.deb. Renamed before the release is
+          # created, so a rename can never fail after the release exists.
+          debs=()
+          for arch in $arches; do
+            if [ "${GUARD_RESULT}" = "success" ]; then
+              namever="$tag"
+            else
+              built=$(dpkg-deb --field "deb/Serotine-${arch}.deb" Version)
+              printf '%s' "$built" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+                || { echo "::error::deb/Serotine-${arch}.deb declares Version '$built', not MAJOR.MINOR.PATCH; refusing to guess its name"; exit 1; }
+              namever="v$built"
+              echo "::notice::backfill onto $tag: the $arch deb is named after the version it was built as ($namever), not after the tag"
+            fi
+            mv "deb/Serotine-${arch}.deb" "deb/Serotine-${namever}-${arch}.deb"
+            debs+=("deb/Serotine-${namever}-${arch}.deb")
+          done
+          notes=$(mktemp)
+          cat > "$notes" <<'NOTES'
+          Pre-release build of the Serotine wallet apps.
+
+          **Android (`*-android.apk`)** — the Serotine app, signed with Serotine's own release key
+          (its certificate's SHA-256 is in `android-app/release-signing-cert.sha256` in the
+          repository). Install via "Install unknown apps" and switch that off again afterwards;
+          only ever install Serotine, and its updates, from this releases page.
+
+          **Android debug (`*-android-debug.apk`)** — a separate test app ("Serotine Debug", amber
+          icon, package `eth.serotine.debug`), signed with the publicly known debug key: anyone can
+          build an APK that installs over it as an update, so never keep an account you use in it.
+          It installs next to the release app.
+
+          **Desktop macOS (`Serotine-v<version>-<arch>.dmg`)** — unsigned; download the dmg matching
+          your Mac (arm64 for Apple Silicon, x64 for Intel). First launch:
+          right-click → Open to get past Gatekeeper (not notarized yet).
+
+          **Desktop Linux (`Serotine-v<version>-<arch>.deb`)** — install with
+          `sudo apt install ./Serotine-v<version>-<arch>.deb`.
+
+          **Desktop Windows (`Serotine-v<version>-x64.msi`)** — unsigned; per-user install, no
+          administrator rights needed. SmartScreen warns on the first run.
+          NOTES
+          # Create the release if it doesn't exist yet. The dmg/apk workflows may
+          # win this race for the same tag: if `create` fails, re-check with
+          # `view` — success there means another job already created it (fine),
+          # while a genuine failure still surfaces because `view` also fails.
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --prerelease \
+              --title "Serotine $tag" \
+              --notes-file "$notes" \
+              --target "${GITHUB_SHA}" \
+            || gh release view "$tag" >/dev/null 2>&1
+          fi
+          gh release upload "$tag" "${debs[@]}" --clobber

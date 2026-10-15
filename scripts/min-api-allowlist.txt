@@ -1,0 +1,29 @@
+# Reviewed third-party references to java.* APIs above minSdk 29 that remain in
+# the APK after desugaring (post-D8/desugar_jdk_libs ground truth). Consumed by
+# scripts/check_apk_min_api.py: `<referrer-class-prefix> <owner#member>` per
+# line, prefix-matched on the referring class, exact-matched on the target.
+#
+# A FIRST-PARTY (eth/serotine/*, io/myotis/*) violation NEVER belongs here — fix
+# the call instead (CLAUDE.md "minSdk 29 JDK-API budget"). Third-party entries
+# fall into three classes, noted per section:
+#   [guarded]  the library probes for the API at runtime and falls back;
+#   [dormant]  the code path is not wired/reachable in this app's configuration;
+#   [LIVE]     reachable on a normal run at an API level where the app still runs
+#              that code — a real crash there, tracked for an upstream fix.
+# Regenerate candidates by running the checker with --allowlist /dev/null.
+
+# desugar_jdk_libs' own j$ wrappers bridge to the platform Flow only on devices
+# that have it (API 30+) — self-guarded by construction. [guarded]
+# The RELEASE APK's scan reports these as stale: L8 shrinks the desugared
+# library to what the app uses in a release build, and nothing uses the Flow
+# wrappers. The DEBUG APK keeps the whole library and matches them — keep them.
+j$/ java/util/concurrent/Flow$Publisher#subscribe(Ljava/util/concurrent/Flow$Subscriber;)V
+j$/ java/util/concurrent/Flow$Subscriber#onComplete()V
+j$/ java/util/concurrent/Flow$Subscriber#onError(Ljava/lang/Throwable;)V
+j$/ java/util/concurrent/Flow$Subscriber#onNext(Ljava/lang/Object;)V
+j$/ java/util/concurrent/Flow$Subscriber#onSubscribe(Ljava/util/concurrent/Flow$Subscription;)V
+j$/ java/util/concurrent/Flow$Subscription#cancel()V
+j$/ java/util/concurrent/Flow$Subscription#request(J)V
+j$/ java/util/concurrent/Flow$Publisher#<class>
+j$/ java/util/concurrent/Flow$Subscriber#<class>
+j$/ java/util/concurrent/Flow$Subscription#<class>

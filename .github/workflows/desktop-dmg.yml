@@ -1,0 +1,288 @@
+name: Desktop DMG (macOS)
+
+on:
+  # Scope push to main + release tags so a branch push that also has an open PR
+  # doesn't build twice (the PR is covered by pull_request below). Tags still
+  # build the release .dmg.
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  # pull_request stays unscoped (any base branch) so every PR shows this
+  # workflow's checks — but the JOBS below skip a PR whose base is not main
+  # (CLAUDE.md, "Multi-PR plans"): a part PR of a multi-PR plan targets its
+  # feature branch, and a macOS runner leg per part costs more than it tells;
+  # the final feature → main PR builds everything. A part that needs a dmg can
+  # run this on demand from the Actions tab (workflow_dispatch): the same single
+  # arm64 leg a PR builds, not the two-leg main/tag matrix.
+  pull_request:
+  workflow_dispatch:
+
+# Cancel a superseded run when new commits land on the same branch/PR (each of
+# the arch jobs is cancelled/restarted together). The event is part of the
+# group because a dispatch shares refs with push runs: without it, a dispatch
+# on main cancels an in-flight merge-to-main run, and one on a v* tag cancels
+# that tag's run mid-release-upload.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Holds the builds until this PR's Claude review has finished, so the macOS
+  # jpackage legs do not build a commit the review might still ask to change. It
+  # passes straight through on every other event — see wait-for-claude-review.yml.
+  review-gate:
+    name: Review gate
+    # Everything below needs this job, so skipping it here skips the build legs
+    # too — and on a tag the release uploads. So an `if:` on this job MUST be
+    # true on every non-pull_request event; the only safe test is the PR's base
+    # branch, which is all this one does.
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    uses: ./.github/workflows/wait-for-claude-review.yml
+    permissions:
+      actions: read
+
+  build:
+    needs: review-gate
+    name: Build macOS .dmg (${{ matrix.arch }})
+    # jpackage bundles a single-architecture JRE and can't emit a universal binary, so one
+    # .dmg per arch. jpackage stamps the .app with the architecture of the JDK it runs under,
+    # NOT the host — so the Intel dmg is cross-built on Apple Silicon by running an x86_64
+    # JDK under Rosetta 2. BOTH jobs therefore run on macos-14 (Apple Silicon):
+    #   arm64 → native aarch64 JDK           (dmg runs on M-series Macs)
+    #   x64   → x86_64 JDK under Rosetta 2    (dmg runs on Intel Macs)
+    # Not the Intel macos-13 runner: GitHub is winding down Intel macOS capacity, so those
+    # jobs queue until the 24h cap. An arm64 .dmg will NOT launch on an Intel Mac, so users
+    # download the one matching their Mac.
+    strategy:
+      fail-fast: false
+      # PRs — and a dispatch, which stands in for the PR leg a part PR into a
+      # feature branch skips — build only the arm64 dmg (the arch developers
+      # actually run; proves jpackage end-to-end). The x64/Rosetta leg is a
+      # release/main artifact. Gated HERE via a conditional matrix, NOT a
+      # job-level `if`: the matrix context is unavailable in job-level if.
+      matrix:
+        include: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+          && fromJSON('[{"arch":"arm64","java-arch":"aarch64"}]')
+          || fromJSON('[{"arch":"arm64","java-arch":"aarch64"},{"arch":"x64","java-arch":"x64"}]') }}
+    runs-on: macos-14
+    permissions:
+      contents: read
+    env:
+      DMG_NAME: Serotine-${{ matrix.arch }}.dmg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history: :ui stamps the app's on-screen version from the nearest
+          # v* tag, and `git describe` needs HEAD's history to REACH that tag.
+          # KNOWN GAP on pull_request: the checkout is the ephemeral merge commit,
+          # so a PR-built artifact stamps a sha that resolves nowhere (see
+          # android-apk.yml).
+          fetch-depth: 0
+
+      # Rosetta 2 lets the x86_64 JDK (and the jlink/jpackage it drives) execute on the
+      # arm64 runner. Needed only for the cross-built x64 job. Tolerate ONLY the
+      # idempotent already-installed case; a genuine "Rosetta unavailable" must fail
+      # HERE, loudly, rather than later as a cryptic "bad CPU type in executable".
+      - name: Install Rosetta 2 (x64 cross-build)
+        if: matrix.arch == 'x64'
+        run: |
+          set -o pipefail
+          if ! softwareupdate --install-rosetta --agree-to-license 2>&1 | tee /tmp/rosetta.log; then
+            grep -qiE "already installed|already been installed" /tmp/rosetta.log \
+              || { echo "::error::Rosetta 2 install failed"; exit 1; }
+            echo "Rosetta 2 already installed — continuing."
+          fi
+
+      # Installs a JDK 21 of the requested architecture and points JAVA_HOME at it.
+      - name: Set up JDK 21 (${{ matrix.java-arch }})
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          architecture: ${{ matrix.java-arch }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # Compose Desktop's packageDmg wraps jpackage (bundles a jlink'd JRE + the app). The
+      # Gradle toolchain is pinned to EXACTLY the JDK setup-java just installed
+      # (auto-detect=false + installations.paths=$JAVA_HOME): the build's `javaHome =
+      # launcherFor(21)` then resolves to that arch's JDK, so jpackage emits a
+      # matching-arch dmg instead of picking a stray pre-installed aarch64 JDK.
+      # Unsigned — Gatekeeper needs a right-click → Open the first time; notarization
+      # (Apple Developer ID) is a follow-up. Retry to ride out transient repo-resolution blips.
+      - name: Build macOS .dmg (${{ matrix.arch }})
+        run: |
+          GRADLE_ARGS="-Porg.gradle.java.installations.auto-detect=false -Porg.gradle.java.installations.auto-download=false -Porg.gradle.java.installations.paths=$JAVA_HOME"
+          for attempt in 1 2 3; do
+            ./gradlew :desktop-app:packageDmg --stacktrace $GRADLE_ARGS && exit 0
+            echo "::warning::DMG build attempt $attempt failed; retrying in 25s (transient dependency resolution?)"
+            sleep 25
+          done
+          echo "::error::DMG build failed after 3 attempts"
+          exit 1
+
+      # The desktop UI tests on macOS too (ci.yml runs them on Linux only): skiko's
+      # macOS backend is a different code path. One leg is enough.
+      - name: Run the shared UI tests on macOS
+        if: matrix.arch == 'arm64'
+        run: |
+          GRADLE_ARGS="-Porg.gradle.java.installations.auto-detect=false -Porg.gradle.java.installations.auto-download=false -Porg.gradle.java.installations.paths=$JAVA_HOME"
+          ./gradlew :ui:desktopTest --stacktrace $GRADLE_ARGS
+
+      # Compose names both arches' output the same (Serotine-<packageVersion>.dmg);
+      # rename so the downloaded file itself states the architecture. Assert exactly
+      # one — two differently-versioned leftovers must not ship an arbitrary pick.
+      - name: Tag .dmg with architecture
+        run: |
+          set -eu
+          shopt -s nullglob
+          dmgs=(desktop-app/build/compose/binaries/main/dmg/*.dmg)
+          [ "${#dmgs[@]}" -eq 1 ] \
+            || { echo "::error::expected exactly 1 dmg, found ${#dmgs[@]}: ${dmgs[*]}"; exit 1; }
+          mv "${dmgs[0]}" "desktop-app/build/compose/binaries/main/dmg/$DMG_NAME"
+
+      # Guard against a SILENTLY wrong-arch build: a regression (runner-image change,
+      # Gradle re-enabling JDK auto-detect, a broken Rosetta) could ship an arm64 binary
+      # labelled Serotine-x64.dmg that won't launch on the Intel Macs it targets. Mount
+      # the dmg and assert the launcher's and the bundled JVM's Mach-O architecture.
+      - name: Verify .dmg architecture
+        run: |
+          set -eu
+          dmg="desktop-app/build/compose/binaries/main/dmg/$DMG_NAME"
+          mnt=$(mktemp -d)
+          # Detach the image on EVERY exit path, so a failed check never leaks a
+          # mounted volume for the rest of the job.
+          cleanup() { hdiutil detach "$mnt" >/dev/null 2>&1 || hdiutil detach "$mnt" -force >/dev/null 2>&1 || true; rmdir "$mnt" 2>/dev/null || true; }
+          trap cleanup EXIT
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          launcher=$(find "$mnt" -type f -path '*/Contents/MacOS/*' | head -n1)
+          [ -n "$launcher" ] || { echo "::error::no app launcher found under $dmg — bundle layout changed?"; exit 1; }
+          jvm=$(find "$mnt" -type f -name 'libjvm.dylib' | head -n1 || true)
+          [ -n "$jvm" ] || { echo "::error::no libjvm.dylib in the dmg — bundle layout changed?"; exit 1; }
+          case "${{ matrix.arch }}" in
+            x64)   want=x86_64 ;;
+            arm64) want=arm64  ;;
+          esac
+          for bin in "$launcher" "$jvm"; do
+            archs=$(lipo -archs "$bin")
+            echo "$bin -> [$archs]"
+            # jlink emits a single-arch runtime, so each must be exactly `want`.
+            echo "$archs" | tr ' ' '\n' | grep -qx "$want" \
+              || { echo "::error::arch mismatch: expected $want, got [$archs] for the ${{ matrix.arch }} dmg"; exit 1; }
+          done
+          app=$(find "$mnt" -maxdepth 1 -type d -name '*.app' | head -n1)
+          [ -n "$app" ] || { echo "::error::no .app bundle at the root of $dmg"; exit 1; }
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")
+          [ "$bundle_id" = "eth.serotine" ] \
+            || { echo "::error::bundle id is '$bundle_id', expected eth.serotine"; exit 1; }
+          echo "OK: ${{ matrix.arch }} dmg is $want, bundle $bundle_id"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: serotine-desktop-dmg-${{ matrix.arch }}-${{ github.sha }}
+          path: desktop-app/build/compose/binaries/main/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+          # Artifacts are immutable per run; without this, "re-run all jobs" on a
+          # tag 409s in every build leg and the release job never runs.
+          overwrite: true
+
+  # Refuse to publish when the pushed tag disagrees with the version in the tree
+  # — the release is named after the tag, while the .dmg's packageVersion comes
+  # from project.version (via the +1-major macOS rule). See release-version-guard.yml.
+  version-guard:
+    name: Release version guard
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/release-version-guard.yml
+
+  # Attach both arch dmgs to the GitHub Release for the pushed tag. Runs ONLY on
+  # `v*` tags, ONCE, after BOTH matrix build jobs finish. The other artifact
+  # workflows publish to the SAME release; the create step tolerates that race.
+  release:
+    name: Publish dmgs to release
+    # version-guard carries the same `if` as this job, so it is never merely
+    # skipped underneath it — on a tag push both run, otherwise both are skipped.
+    needs: [build, version-guard]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      # gh release create/upload needs write access to Releases (repo contents).
+      contents: write
+    steps:
+      - name: Download dmg artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: serotine-desktop-dmg-*-${{ github.sha }}
+          path: dmg
+          merge-multiple: true
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No checkout in this job — gh must be told the repo explicitly or it
+          # dies with "fatal: not a git repository".
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          # The tag goes into the asset file names below, so check its shape the
+          # way the deb and apk jobs do (`gh release upload` reads everything after
+          # a `#` in a path as the asset's label).
+          printf '%s' "$tag" | grep -Eq '^v[A-Za-z0-9._-]+$' \
+            || { echo "::error::'$tag' is not a valid release tag (expected v<version>)"; exit 1; }
+          # Fail loudly if either arch dmg is missing rather than shipping a
+          # half release (e.g. one matrix job was cancelled).
+          for arch in arm64 x64; do
+            test -f "dmg/Serotine-${arch}.dmg" \
+              || { echo "::error::missing dmg/Serotine-${arch}.dmg"; exit 1; }
+          done
+          # Release assets carry the version, like the APKs: Serotine-<tag>-<arch>.dmg.
+          # Renamed before the release is created, so a rename can never fail after
+          # the release exists.
+          for arch in arm64 x64; do
+            mv "dmg/Serotine-${arch}.dmg" "dmg/Serotine-${tag}-${arch}.dmg"
+          done
+          notes=$(mktemp)
+          cat > "$notes" <<'NOTES'
+          Pre-release build of the Serotine wallet apps.
+
+          **Android (`*-android.apk`)** — the Serotine app, signed with Serotine's own release key
+          (its certificate's SHA-256 is in `android-app/release-signing-cert.sha256` in the
+          repository). Install via "Install unknown apps" and switch that off again afterwards;
+          only ever install Serotine, and its updates, from this releases page.
+
+          **Android debug (`*-android-debug.apk`)** — a separate test app ("Serotine Debug", amber
+          icon, package `eth.serotine.debug`), signed with the publicly known debug key: anyone can
+          build an APK that installs over it as an update, so never keep an account you use in it.
+          It installs next to the release app.
+
+          **Desktop macOS (`Serotine-v<version>-<arch>.dmg`)** — unsigned; download the dmg matching
+          your Mac (arm64 for Apple Silicon, x64 for Intel). First launch:
+          right-click → Open to get past Gatekeeper (not notarized yet).
+
+          **Desktop Linux (`Serotine-v<version>-<arch>.deb`)** — install with
+          `sudo apt install ./Serotine-v<version>-<arch>.deb`.
+
+          **Desktop Windows (`Serotine-v<version>-x64.msi`)** — unsigned; per-user install, no
+          administrator rights needed. SmartScreen warns on the first run.
+          NOTES
+          # Create the release if it doesn't exist yet. Another workflow may win
+          # this race for the same tag: if `create` fails, re-check with `view` —
+          # success there means the other job already created it (fine), while a
+          # genuine failure still surfaces because `view` also fails.
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --prerelease \
+              --title "Serotine $tag" \
+              --notes-file "$notes" \
+              --target "${GITHUB_SHA}" \
+            || gh release view "$tag" >/dev/null 2>&1
+          fi
+          gh release upload "$tag" "dmg/Serotine-${tag}-arm64.dmg" "dmg/Serotine-${tag}-x64.dmg" --clobber
