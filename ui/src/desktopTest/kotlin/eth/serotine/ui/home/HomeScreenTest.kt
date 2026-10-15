@@ -2,7 +2,9 @@ package eth.serotine.ui.home
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -22,9 +24,14 @@ class HomeScreenTest {
     @get:Rule
     val rule = createComposeRule()
 
+    private val syncing = LightClientItem("Verifying sync committees · 1 of 4 periods · 3 peers", 0.25f, true)
+
+    private fun show(state: HomeUiState, onAddAccount: () -> Unit = {}) =
+        rule.setContent { SerotineTheme { HomeScreen(state, onAddAccount = onAddAccount) } }
+
     @Test
     fun emptyStateInvitesTheFirstAccount() {
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready("Sepolia", emptyList()), onAddAccount = {}) } }
+        show(HomeUiState.Ready("Sepolia", syncing, emptyList()))
 
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
         rule.onNodeWithTag(HOME_ACCOUNT_LIST_TAG).assertDoesNotExist()
@@ -33,21 +40,22 @@ class HomeScreenTest {
     @Test
     fun readyStateListsEveryAccount() {
         val accounts = listOf(
-            AccountItem("Daily", "0x" + "aa".repeat(20), AccountKind.EOA),
-            AccountItem("Treasury", "0x" + "bb".repeat(20), AccountKind.SAFE),
+            AccountItem("Daily", "0x" + "aa".repeat(20), AccountKind.EOA, "0.5 ETH", true),
+            AccountItem("Treasury", "0x" + "bb".repeat(20), AccountKind.SAFE, "Syncing…", false),
         )
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready("Sepolia", accounts), onAddAccount = {}) } }
+        show(HomeUiState.Ready("Sepolia", syncing, accounts))
 
         rule.onNodeWithTag(HOME_ACCOUNT_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithText("Daily").assertIsDisplayed()
         rule.onNodeWithText("Treasury").assertIsDisplayed()
-        rule.onNodeWithText("0xbbbb…bbbb").assertIsDisplayed()
-        rule.onNodeWithText("Safe").assertIsDisplayed()
+        rule.onNodeWithText("0xbbbb…bbbb · Safe").assertIsDisplayed()
+        rule.onNodeWithText("0.5 ETH").assertIsDisplayed()
+        rule.onNodeWithText("Syncing…").assertIsDisplayed()
     }
 
     @Test
     fun titleAndVersionAreOneMergedSemanticsNode() {
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Loading("Sepolia"), onAddAccount = {}) } }
+        show(HomeUiState.Loading("Sepolia", syncing))
 
         // Exactly one node carries BOTH strings — proof they merged rather than merely
         // both being on screen. The merged tree is what accessibility services read.
@@ -56,15 +64,23 @@ class HomeScreenTest {
 
     @Test
     fun theTopBarNamesTheNetworkFromItsState() {
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Loading("Sepolia"), onAddAccount = {}) } }
+        show(HomeUiState.Loading("Sepolia", syncing))
 
         rule.onNodeWithTag(HOME_NETWORK_TAG).assertTextEquals("Sepolia")
     }
 
     @Test
+    fun theStatusStripShowsWhatTheLightClientIsDoing() {
+        show(HomeUiState.Loading("Sepolia", syncing))
+
+        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods · 3 peers").assertIsDisplayed()
+        rule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.25f, 0f..1f))).assertExists()
+    }
+
+    @Test
     fun theFloatingActionButtonAsksToAddAnAccount() {
         var clicks = 0
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready("Sepolia", emptyList()), onAddAccount = { clicks++ }) } }
+        show(HomeUiState.Ready("Sepolia", syncing, emptyList()), onAddAccount = { clicks++ })
 
         rule.onNodeWithContentDescription("Add account").performClick()
 

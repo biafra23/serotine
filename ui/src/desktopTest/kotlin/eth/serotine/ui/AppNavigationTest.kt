@@ -22,13 +22,18 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.Derivation
+import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -69,6 +74,12 @@ class AppNavigationTest {
             override suspend fun deriveFirstAccount(mnemonic: Mnemonic): Derivation =
                 Derivation.Derived(Address.of("0x" + "ab".repeat(20)))
         },
+        nativeBalances = object : NativeBalances {
+            override fun observeBalance(address: Address): Flow<BalanceReading> = flowOf(BalanceReading.Syncing)
+        },
+        lightClient = object : LightClient {
+            override fun observeStatus(): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
+        },
         network = Network.SEPOLIA,
     )
 
@@ -96,7 +107,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).performClick()
         rule.waitUntil { rule.onAllNodesWithText("Account 1").fetchSemanticsNodes().isNotEmpty() }
 
-        rule.onNodeWithText("0xabab…abab").assertIsDisplayed()
+        rule.onNodeWithText("0xabab…abab · Account").assertIsDisplayed()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertDoesNotExist()
     }
 
