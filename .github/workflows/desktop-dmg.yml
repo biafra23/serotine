@@ -13,7 +13,8 @@ on:
   # feature branch, and a macOS runner leg per part costs more than it tells;
   # the final feature → main PR builds everything. A part that needs a dmg can
   # run this on demand from the Actions tab (workflow_dispatch): the same single
-  # arm64 leg a PR builds, not the two-leg main/tag matrix.
+  # arm64 leg a PR builds; dispatched on a v* tag it builds both legs and
+  # republishes them.
   pull_request:
   workflow_dispatch:
 
@@ -55,13 +56,15 @@ jobs:
     # download the one matching their Mac.
     strategy:
       fail-fast: false
-      # PRs — and a dispatch, which stands in for the PR leg a part PR into a
-      # feature branch skips — build only the arm64 dmg (the arch developers
-      # actually run; proves jpackage end-to-end). The x64/Rosetta leg is a
-      # release/main artifact. Gated HERE via a conditional matrix, NOT a
-      # job-level `if`: the matrix context is unavailable in job-level if.
+      # PRs — and a dispatch on a branch, which stands in for the PR leg a part
+      # PR into a feature branch skips — build only the arm64 dmg (the arch
+      # developers actually run; proves jpackage end-to-end). The x64/Rosetta
+      # leg is a release/main artifact, so a dispatch ON A TAG (the
+      # release-republish path, whose release job needs both dmgs) builds it
+      # too. Gated HERE via a conditional matrix, NOT a job-level `if`: the
+      # matrix context is unavailable in job-level if.
       matrix:
-        include: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+        include: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')))
           && fromJSON('[{"arch":"arm64","java-arch":"aarch64"}]')
           || fromJSON('[{"arch":"arm64","java-arch":"aarch64"},{"arch":"x64","java-arch":"x64"}]') }}
     runs-on: macos-14

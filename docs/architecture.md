@@ -32,7 +32,8 @@ listing the managed accounts — shows each rule in code.
 - `:domain` depends on nothing of ours and on no framework (coroutines' `Flow`
   is the one library in it). It has no Android target on purpose: Android
   consumers resolve its JVM variant, as they do kotlinx-coroutines, so nothing
-  in it can ever import `android.*`.
+  in it can ever import `android.*` (and that variant emits Java 17 class
+  files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`
   today; the Myotis engine adapter next) and owns every data source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a

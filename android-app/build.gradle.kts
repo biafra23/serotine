@@ -12,9 +12,10 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
-// Derived from the project version so a release sweep can't leave the app
-// reporting a stale version in Settings → Apps. 0.1.0-SNAPSHOT -> 0.1.0.
-val releaseVersion = project.version.toString().substringBefore('-')
+// The root build's release version (project.version minus -SNAPSHOT, the value
+// the tag guard compares against), so a release sweep can't leave the app
+// reporting a stale version in Settings → Apps.
+val releaseVersion = rootProject.extra["releaseVersion"] as String
 
 // versionCode is DERIVED too: the release guard does not check it, so as a
 // hand-bumped literal a forgotten bump would ship an APK that refuses to install

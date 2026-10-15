@@ -12,8 +12,14 @@ sealed interface HomeUiState {
     /** The account stream has not emitted yet. */
     data object Loading : HomeUiState
 
-    /** The managed accounts, possibly none. */
-    data class Ready(val accounts: List<AccountItem>) : HomeUiState
+    /** The managed accounts, possibly none; one row per address (the list keys rows on it). */
+    data class Ready(val accounts: List<AccountItem>) : HomeUiState {
+        init {
+            require(accounts.distinctBy { it.address }.size == accounts.size) {
+                "duplicate addresses in the account list: the repository contract is one entry per address"
+            }
+        }
+    }
 }
 
 /** One account as the list shows it: display strings only, derived once from the domain model. */

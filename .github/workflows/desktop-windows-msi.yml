@@ -125,7 +125,10 @@ jobs:
             sleep 25
           done
           [ -n "$built" ] || { echo "::error::MSI build failed after 3 attempts"; exit 1; }
-          version=$(./gradlew -q :printReleaseVersion "${GRADLE_ARGS[@]}" | tr -d '\r' | sed -n 's/^releaseVersion=//p')
+          # The marker anywhere in the output, as release-version-guard.yml reads it:
+          # even under -q a cold runner's wrapper download progress reaches stdout
+          # without a trailing newline, so it need not start a line.
+          version=$(./gradlew -q :printReleaseVersion "${GRADLE_ARGS[@]}" | tr -d '\r' | sed -n 's/.*releaseVersion=\([0-9][0-9.]*\).*/\1/p' | tail -n1)
           printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
             || { echo "::error::could not read the release version (got '$version')"; exit 1; }
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"

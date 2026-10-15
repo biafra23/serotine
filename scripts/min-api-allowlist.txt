@@ -17,6 +17,8 @@
 # The RELEASE APK's scan reports these as stale: L8 shrinks the desugared
 # library to what the app uses in a release build, and nothing uses the Flow
 # wrappers. The DEBUG APK keeps the whole library and matches them — keep them.
+# The checker's mass-staleness refusal tolerates a whole prefix group going
+# stale while another group still matches, which is exactly this case.
 j$/ java/util/concurrent/Flow$Publisher#subscribe(Ljava/util/concurrent/Flow$Subscriber;)V
 j$/ java/util/concurrent/Flow$Subscriber#onComplete()V
 j$/ java/util/concurrent/Flow$Subscriber#onError(Ljava/lang/Throwable;)V
@@ -27,3 +29,14 @@ j$/ java/util/concurrent/Flow$Subscription#request(J)V
 j$/ java/util/concurrent/Flow$Publisher#<class>
 j$/ java/util/concurrent/Flow$Subscriber#<class>
 j$/ java/util/concurrent/Flow$Subscription#<class>
+
+# kotlinx-coroutines / kotlinx-serialization (the latter via the multiplatform
+# lifecycle's SavedState): ClassValue-based caches instantiated only after an
+# availability probe — coroutines' ExceptionsConstructor picks WeakMapCtorCache
+# when ANDROID_DETECTED, serialization's Caching.kt probes Class.forName
+# ("java.lang.ClassValue") and falls back to a ConcurrentHashMap. [guarded]
+# (Inherited from Myotis's allowlist, same entries.)
+kotlin kotlinx/coroutines/internal/ClassValueCtorCache$cache$1#get(Ljava/lang/Class;)Ljava/lang/Object;
+kotlin kotlinx/serialization/internal/ClassValueReferences#get(Ljava/lang/Class;)Ljava/lang/Object;
+kotlin java/lang/ClassValue#<class>
+kotlin java/lang/ClassValue#<init>()V

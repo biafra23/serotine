@@ -475,9 +475,11 @@ discussion that produced this note.
   (`scripts/min-api-allowlist.txt` is for reviewed third-party residue).
 - **Java 17 class files for everything Android loads.** The Android target of
   every KMP module and `:android-app` compile to Java 17 (`jvmTarget 17` +
-  `compileOptions 17`); the toolchain that runs the compilers is Java 21, and
-  the desktop target may emit 21 class files. Only diverge when a transitive
-  forces it, and document the reason in the module's build file.
+  `compileOptions 17`), and so does `:domain`'s JVM target, because with no
+  Android target that variant is what the Android app dexes. The toolchain
+  that runs the compilers is Java 21; a JVM target nothing on Android consumes
+  may emit 21 class files. Only diverge when a transitive forces it, and
+  document the reason in the module's build file.
 - **Kotlin + Compose Multiplatform everywhere.** New code is Kotlin in
   `commonMain` unless it is a platform seam; public APIs in the shared modules
   use no Java-only types that would block Kotlin/Native (`CompletableFuture`,

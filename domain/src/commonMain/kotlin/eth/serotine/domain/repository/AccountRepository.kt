@@ -9,6 +9,10 @@ import kotlinx.coroutines.flow.Flow
  * cases that consume it.
  */
 interface AccountRepository {
-    /** Every managed account in display order, re-emitted on each change. Never fails. */
+    /**
+     * Every managed account in display order, re-emitted on each change. Each address
+     * appears at most once — an adapter that can receive the same address twice keeps the
+     * first — so consumers may key on it. Never fails.
+     */
     fun observeAccounts(): Flow<List<Account>>
 }

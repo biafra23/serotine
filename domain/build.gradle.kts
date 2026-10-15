@@ -9,8 +9,12 @@
 // target — Android consumers (:data, :ui, :android-app) resolve the JVM variant,
 // exactly as every Android app consumes kotlinx-coroutines — which keeps the
 // Android Gradle plugin, and with it any temptation to import android.*, out of
-// the domain. (Kotlin/Native builds the iOS targets on macOS only; elsewhere they
-// are disabled, see gradle.properties.)
+// the domain. That JVM variant is therefore what the Android app dexes and
+// ships, so it emits Java 17 class files (CLAUDE.md, "Platform & language
+// direction"), not the toolchain's 21. (Kotlin/Native builds the iOS targets on
+// macOS only; elsewhere they are disabled, see gradle.properties.)
+
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -19,7 +23,11 @@ plugins {
 kotlin {
     jvmToolchain(21)
 
-    jvm("desktop")
+    jvm("desktop") {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
     iosArm64()
     iosSimulatorArm64()
 

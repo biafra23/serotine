@@ -48,7 +48,9 @@ scan is sound only for APIs the database records — therefore the script
 REFUSES to run when the database cannot resolve a canary set of known
 post-29 APIs (an old SDK yields exit 2, never a vacuous OK), when dexdump
 fails or yields no refs, or when most of the allowlist goes stale at once
-(the signature of a dexdump output-format change).
+with no referrer prefix matching at all (the signature of a dexdump
+output-format change; a library one variant ships and another does not only
+empties its own prefix group).
 
 Usage:
   python3 scripts/check_apk_min_api.py --apk path/to/app.apk \
@@ -581,10 +583,19 @@ def main():
     stale = [i for i in range(len(allow)) if i not in used_allow]
     for i in stale:
         print(f"note: stale allowlist entry (no longer referenced): {allow[i][0]} {allow[i][1]}")
-    if allow and len(stale) > len(allow) // 2:
-        die(f"{len(stale)} of {len(allow)} allowlist entries are stale at once — "
-            f"that is the signature of a dexdump/api-versions format change, not "
-            f"of real cleanups; refusing to trust this scan")
+    # A dexdump/api-versions format change leaves EVERY entry unmatched. A
+    # library that one variant ships and another does not — desugar_jdk_libs'
+    # j$ wrappers, which L8 shrinks out of a release APK — leaves its own
+    # referrer-prefix group unmatched while the other groups still match. So
+    # the refusal needs both: most entries stale AND no referrer prefix with a
+    # single matched entry left. (Myotis's copy has only the first condition;
+    # its j$ entries were never a majority of its list.)
+    live_prefixes = {allow[i][0] for i in used_allow}
+    if allow and len(stale) > len(allow) // 2 and not live_prefixes:
+        die(f"{len(stale)} of {len(allow)} allowlist entries are stale at once, and no "
+            f"referrer prefix matched anything — that is the signature of a "
+            f"dexdump/api-versions format change, not of real cleanups; refusing to "
+            f"trust this scan")
 
     if new:
         print(f"\nFAIL: references to java/javax APIs above API {min_api} "

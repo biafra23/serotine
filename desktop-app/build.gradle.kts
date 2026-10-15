@@ -13,9 +13,10 @@ plugins {
 
 kotlin { jvmToolchain(21) }
 
-// Installer versions, DERIVED from the project version so a release sweep can't
-// leave an installer stamped with the previous release. 0.1.0-SNAPSHOT -> 0.1.0.
-val releaseVersion = project.version.toString().substringBefore('-')
+// Installer versions, DERIVED from the root build's release version (project.version
+// minus -SNAPSHOT, already shape-checked there and the value the tag guard compares
+// against) so a release sweep can't leave an installer stamped with the previous release.
+val releaseVersion = rootProject.extra["releaseVersion"] as String
 
 // jpackage REJECTS a major of 0 on macOS (--app-version must start above 0), so
 // the .dmg cannot carry the honest 0.x version. The rule: macOS MAJOR is always
@@ -24,9 +25,6 @@ val releaseVersion = project.version.toString().substringBefore('-')
 // for every bump, forever — which is what macOS needs to treat a new bundle as an
 // upgrade rather than a downgrade — and it has no cliff at the real 1.0.0.
 val macOsPackageVersion: String = releaseVersion.split('.').let { parts ->
-    require(parts.size == 3 && parts.all { it.toIntOrNull() != null }) {
-        "Unexpected project version '${project.version}': expected numeric MAJOR.MINOR.PATCH"
-    }
     "${parts[0].toInt() + 1}.${parts[1]}.${parts[2]}"
 }
 
