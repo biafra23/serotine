@@ -1,0 +1,46 @@
+# Toolchain pins. Kotlin and Compose MIRROR biafra23/myotis's
+# (gradle/libs.versions.toml there) on purpose: Serotine embeds the Myotis engine
+# library, and one known-good Kotlin/Compose stack shared by the two repositories
+# means the library's Kotlin metadata never runs ahead of the host's compiler.
+# Bump both together.
+[versions]
+# AGP 8.13 (with Gradle 8.14, gradle/wrapper): its R8 understands Kotlin 2.2
+# metadata. Myotis's AGP 8.7.3 does not — D8 prints a 200-line "error occurred
+# when parsing kotlin metadata" stack trace per dexed class — and Myotis already
+# runs 8.13.2's lint for the same reason (its gradle.properties). AGP 8.13 is the
+# last 8.x line; 9.x changes the KMP Android target to its own plugin, a
+# migration for both repositories at once.
+agp = "8.13.2"
+# Kotlin 2.2.21 is the floor for the iOS target on Xcode 26 (Myotis's reason to
+# pin it); Compose Multiplatform 1.9.x pairs with Kotlin 2.2.20+.
+kotlin = "2.2.21"
+compose-multiplatform = "1.9.3"
+# The multiplatform lifecycle (ViewModel + collectAsStateWithLifecycle). 2.9.6 is
+# the version Compose Multiplatform 1.9.3's own artifacts depend on — pin the
+# same so the two never resolve apart.
+lifecycle = "2.9.6"
+activity-compose = "1.9.3"
+kotlinx-coroutines = "1.10.2"
+# desugar_jdk_libs 2.1.5: the minSdk-29 JDK-API budget in CLAUDE.md was verified
+# against this release's config.
+desugar-jdk-libs = "2.1.5"
+
+[plugins]
+android-application    = { id = "com.android.application",                 version.ref = "agp" }
+android-library        = { id = "com.android.library",                     version.ref = "agp" }
+kotlin-android         = { id = "org.jetbrains.kotlin.android",            version.ref = "kotlin" }
+kotlin-jvm             = { id = "org.jetbrains.kotlin.jvm",                version.ref = "kotlin" }
+kotlin-multiplatform   = { id = "org.jetbrains.kotlin.multiplatform",      version.ref = "kotlin" }
+compose-compiler       = { id = "org.jetbrains.kotlin.plugin.compose",     version.ref = "kotlin" }
+compose-multiplatform  = { id = "org.jetbrains.compose",                   version.ref = "compose-multiplatform" }
+
+[libraries]
+kotlinx-coroutines-core    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core",    version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-swing   = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing",   version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test",    version.ref = "kotlinx-coroutines" }
+# org.jetbrains.androidx.*: JetBrains' multiplatform builds of the AndroidX lifecycle
+# artifacts (the androidx.* coordinates are Android-only).
+lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-runtime-compose   = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose",   version.ref = "lifecycle" }
+androidx-activity-compose  = { module = "androidx.activity:activity-compose",            version.ref = "activity-compose" }
+desugar-jdk-libs           = { module = "com.android.tools:desugar_jdk_libs",            version.ref = "desugar-jdk-libs" }

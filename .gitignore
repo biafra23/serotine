@@ -1,35 +1,56 @@
-# Gradle files
+# Gradle
 .gradle/
 build/
-.kotlin/
+!gradle/wrapper/gradle-wrapper.jar
 
-# Local configuration file (sdk path, etc)
+# Android — local SDK path, per-dev only
 local.properties
 
-# Log/OS Files
-*.log
+# Signing keys. The release key lives only in the android-release environment's
+# secrets (docs/android-release-signing.md); the debug keystore is committed on
+# purpose (android-app/build.gradle.kts) and un-ignored below.
+*.p12
+*.jks
+*.keystore
+!android-app/debug.keystore
+
+# Built app packages are workflow artifacts, never committed
+*.apk
+*.aab
+output-metadata.json
 
 # Android Studio generated files and folders
 captures/
 .externalNativeBuild/
 .cxx/
-*.aab
-*.apk
-output-metadata.json
-
-# IntelliJ
-*.iml
-.idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
-
-# Keystore files
-*.jks
-*.keystore
-
-# Google Services (e.g. APIs or Firebase)
-google-services.json
-
-# Android Profiling
 *.hprof
+
+# Compiled class files
+*.class
+
+# IntelliJ IDEA / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# macOS
+.DS_Store
+._*
+
+# Kotlin incremental-compile scratch + ad-hoc daemon logs
+.kotlin/
+*.log
+
+# Xcode (a future ios-app) — per-user state
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+__pycache__/

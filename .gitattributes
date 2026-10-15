@@ -1,0 +1,10 @@
+# One line-ending convention on every platform: the Windows packaging job
+# builds from a checkout whose ./gradlew must not end its shebang in \r, and a
+# release built on Windows should carry the same bytes as one built on Linux.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jar binary
+*.keystore binary
+*.icns binary
+*.ico binary
