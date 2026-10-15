@@ -124,11 +124,16 @@ The rules a reviewer holds the adapter against:
    never the foundation and never replaces rule 1.
 7. **The plaintext window is tiny.** The secp256k1 operations run in native
    code (libsecp256k1 through JNI on Android and the JVM, cinterop on iOS),
-   take the key as a byte array and zero it afterwards. The key and the
-   password never become a `String`, are never cached, never logged, never
-   cross a suspension point the UI owns. Garbage-collected runtimes can copy
-   memory; short exposure is the real mitigation, so the sign call is one
-   call, not a session.
+   take the key as a byte array and zero it afterwards. The key never
+   becomes a `String`, is never cached, never logged, never crosses a
+   suspension point the UI owns. The password is different: Compose text
+   input holds it as `String` state that cannot be zeroed, so the rule for it
+   is scoped to what the adapter controls. It is converted to bytes at the
+   port boundary, the bytes are zeroed after the KDF, and it is never
+   retained, logged or cached beyond the field's transient state, with the
+   field under rule 8's screen protections. Garbage-collected runtimes can
+   copy memory; short exposure is the real mitigation, so the sign call is
+   one call, not a session.
 8. **The ciphertext never leaves the device through a backup or a transfer.**
    Android: `android:allowBackup="false"` AND `android:dataExtractionRules`
    with both a `<cloud-backup>` and a `<device-transfer>` exclusion for the
@@ -239,14 +244,26 @@ one of:
 - **Device key plus a recovery module.** A Safe recovery module lets a
   designated recoverer rotate owners after a delay, so the user keeps a veto
   window.
-- **Two devices, threshold 1 or 2.** A second phone, the desktop app, or a
-  hardware wallet as co-owner. Threshold 2 removes the single-device risk and
-  makes recovery harder.
+- **Two devices, threshold 1.** A second phone, the desktop app, or a
+  hardware wallet as co-owner; either one rotates the other out.
+- **Threshold 2 only with a third owner or a recovery module.** Two owners at
+  threshold 2 is a brick the moment one device is lost: `swapOwner` is itself
+  a Safe transaction that needs threshold signatures, the remaining owner can
+  never reach two, and the lost device's key has no backup by design. So
+  threshold 2 removes the single-device risk only as 2-of-3, or as 2-of-2
+  with a recovery module alongside it.
 
 For an **EOA** none of this exists: the mnemonic is the only backup, which is
 the other reason an EOA key is a secp256k1 key from a mnemonic in the
 envelope. The mnemonic is shown once at creation, written down by the user,
-and re-entered only to restore on a new device. The **synced-passkey** tier
+and re-entered only to restore on a new device. Those two screens are the one
+sanctioned exception to the Trust rule that key material never enters a
+UiState, and the exception is as narrow as this: a dedicated seed UiState
+carries the words only while its screen is shown, the ViewModel clears it on
+leaving, it is never persisted, logged, snapshotted or part of a
+`toString()`, and the screen is under rule 8's protections. A reviewer holds
+those two screens to this paragraph and every other screen to the rule. The
+**synced-passkey** tier
 trades hardware isolation for a backup held by Apple or Google; it is listed
 above as the owner's open decision.
 

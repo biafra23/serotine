@@ -509,22 +509,27 @@ discussion that produced this note.
   key-store adapter and nowhere else: never in a UiState, a log line, a
   `toString()`, a crash report or any serialized form that leaves that adapter.
   Signing is a port that takes a request and returns a signature; the UI never
-  touches a key.
+  touches a key. The one exception is the seed display at creation and the
+  mnemonic entry at restore: the words pass through a dedicated, transient
+  UiState under the rules docs/keys-and-signing.md sets for those two screens,
+  and nowhere else.
 - **How keys are held — docs/keys-and-signing.md is the contract** (owner
   decisions, 2026-10-15); this is the summary a reviewer holds a diff against:
   - No platform holds secp256k1 in hardware, so an EOA key or a
-    mnemonic-derived owner key is a software key wrapped at rest, and BOTH
-    factors must be cryptographically necessary to unwrap it: the
-    Argon2id-stretched password AND a secret only this device's hardware key
-    store yields. A password that is merely checked, or a wrap that opens
-    without the hardware, is a finding, whatever it saves.
+    mnemonic-derived owner key is a software key wrapped at rest, and on the
+    always-present password path BOTH factors must be cryptographically
+    necessary to unwrap it: the Argon2id-stretched password AND a secret only
+    this device's hardware key store yields. A password that is merely
+    checked, or a wrap that opens without the hardware, is a finding,
+    whatever it saves.
   - Biometric unlock of that envelope is the user's opt-in (owner ruling,
     2026-10-15), bound to a key and never to the UI: a second hardware key
     with per-use Class 3 biometric authorization; disabling it deletes that
     key. Weak biometrics never qualify.
-  - The plaintext key exists only inside the signing call, in native code, as
-    a byte array zeroed afterwards. The ciphertext is excluded from cloud
-    backup AND device-to-device transfer.
+  - The plaintext key exists only inside the key-store adapter (creation,
+    import and the seed display included), and in signing only inside the
+    call, in native code, as a byte array zeroed afterwards. The ciphertext
+    is excluded from cloud backup AND device-to-device transfer.
   - A Safe may be owned by a hardware P-256 key directly, and such a key is
     never the sole owner of a Safe holding value: a recovery owner or a
     recovery module is part of creating the account. EOAs are secp256k1 only.
