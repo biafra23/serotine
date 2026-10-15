@@ -6,12 +6,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -29,19 +34,30 @@ import eth.serotine.ui.APP_VERSION
 /** Test tag of the account list, for UI tests. */
 const val HOME_ACCOUNT_LIST_TAG = "home-account-list"
 
+/** Test tag of the badge naming the network the app works on, for UI tests. */
+const val HOME_NETWORK_TAG = "home-network"
+
 /** Binds [HomeScreen] to its ViewModel: the only composable that knows the ViewModel exists. */
 @Composable
-fun HomeRoute(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
+fun HomeRoute(viewModel: HomeViewModel, onAddAccount: () -> Unit, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    HomeScreen(state = state, modifier = modifier)
+    HomeScreen(state = state, onAddAccount = onAddAccount, modifier = modifier)
 }
 
-/** The Home screen as a pure function of [state]; stateless, so a test can render any state directly. */
+/**
+ * The Home screen as a pure function of [state]; stateless, so a test can render any state
+ * directly. Its floating action button asks for [onAddAccount].
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(state: HomeUiState, modifier: Modifier = Modifier) {
+fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier,
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddAccount) {
+                Icon(Icons.Filled.Add, contentDescription = "Add account")
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -52,12 +68,15 @@ fun HomeScreen(state: HomeUiState, modifier: Modifier = Modifier) {
                         Text("v$APP_VERSION", style = MaterialTheme.typography.labelSmall)
                     }
                 },
+                // The one network the app works on, always in sight, so a testnet wallet
+                // is never mistaken for a mainnet one.
+                actions = { NetworkBadge(state.network, Modifier.padding(end = 12.dp)) },
             )
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (state) {
-                HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                is HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is HomeUiState.Ready ->
                     if (state.accounts.isEmpty()) {
                         NoAccounts(Modifier.align(Alignment.Center))
@@ -70,11 +89,26 @@ fun HomeScreen(state: HomeUiState, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun NetworkBadge(network: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+    ) {
+        Text(
+            network,
+            Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag(HOME_NETWORK_TAG),
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
 private fun NoAccounts(modifier: Modifier = Modifier) {
     Column(modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("No accounts yet", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Add an account or a Safe to get started.",
+            "Add an account from its seed phrase with the + button.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )

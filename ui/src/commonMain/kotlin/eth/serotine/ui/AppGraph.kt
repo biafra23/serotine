@@ -1,8 +1,12 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.ui.home.HomeViewModel
+import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 
 /**
  * The composition root's contract: everything the shared UI needs, handed in as the
@@ -15,6 +19,12 @@ import eth.serotine.ui.home.HomeViewModel
  */
 class AppGraph(
     private val accounts: AccountRepository,
+    private val accountDerivation: AccountDerivation,
+    /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
+    private val network: Network,
 ) {
-    fun homeViewModel(): HomeViewModel = HomeViewModel(ObserveAccounts(accounts))
+    fun homeViewModel(): HomeViewModel = HomeViewModel(ObserveAccounts(accounts), network)
+
+    fun mnemonicImportViewModel(): MnemonicImportViewModel =
+        MnemonicImportViewModel(ImportMnemonicAccount(accountDerivation, accounts))
 }

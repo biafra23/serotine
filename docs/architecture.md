@@ -2,8 +2,9 @@
 
 Serotine is laid out as a clean architecture with MVVM in the presentation
 layer. This page is the contract every change is held to (the reviewer reads
-it through CLAUDE.md); the skeleton's one vertical slice — the Home screen
-listing the managed accounts — shows each rule in code.
+it through CLAUDE.md); the skeleton's two vertical slices — the Home screen
+listing the managed accounts, and the seed-phrase screen that adds one — show
+each rule in code.
 
 ## The modules and the dependency rule
 
@@ -35,7 +36,8 @@ listing the managed accounts — shows each rule in code.
   in it can ever import `android.*` (and that variant emits Java 17 class
   files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`
-  today; the Myotis engine adapter next) and owns every data source.
+  and `AccountDerivation` today; the Myotis engine adapter next) and owns every
+  data source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
@@ -54,8 +56,9 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, later `engine`, `keys`, `safe`) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`; later `engine`, `safe`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
+| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture) |
 | `eth.serotine.ui.theme` | Material 3 theme |
 | `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
 
@@ -67,9 +70,18 @@ review finding, whatever it saves.
   immutable data class; its leaves are display-ready values (strings, enums),
   never a `Flow`, a repository or a platform type.
 - **One `<Feature>Route` binds the screen to its ViewModel** —
-  `collectAsStateWithLifecycle()` and nothing else. It is the only composable
-  that knows the ViewModel exists, which keeps every other screen renderable
-  in a test with a hand-made state.
+  `collectAsStateWithLifecycle()`, plus the glue between the screen's lifecycle
+  and its ViewModel: a state that ends the screen (an import that succeeded)
+  becomes its navigation callback, and a screen that stops being shown becomes
+  an intent (the seed screen drops its words); nothing else. It is the only
+  composable that knows the ViewModel exists, which keeps every other screen
+  renderable in a test with a hand-made state.
+- **Navigation is one `NavHost`, in `App`**, with a destination per screen. A
+  screen's ViewModel is created by `viewModel {}` inside its destination, so
+  the destination's back-stack entry owns it: it survives configuration
+  changes while the screen is on the back stack and is cleared when the
+  screen is popped. Routes say where the user wants to go through callbacks
+  (`onAddAccount`, `onBack`); only `App` holds the `NavController`.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference

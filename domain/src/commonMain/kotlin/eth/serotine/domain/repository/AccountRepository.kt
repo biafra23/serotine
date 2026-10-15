@@ -15,4 +15,10 @@ interface AccountRepository {
      * first — so consumers may key on it. Never fails.
      */
     fun observeAccounts(): Flow<List<Account>>
+
+    /**
+     * Appends [account] to the list and returns true; or, when its address is already
+     * managed, leaves the existing entry exactly as it is and returns false. Never fails.
+     */
+    suspend fun add(account: Account): Boolean
 }

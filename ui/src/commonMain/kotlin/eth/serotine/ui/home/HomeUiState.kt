@@ -9,11 +9,14 @@ import eth.serotine.domain.model.AccountKind
  * ViewModel testable without Compose.
  */
 sealed interface HomeUiState {
+    /** The display name of the one network the app works on, for the top bar. */
+    val network: String
+
     /** The account stream has not emitted yet. */
-    data object Loading : HomeUiState
+    data class Loading(override val network: String) : HomeUiState
 
     /** The managed accounts, possibly none; one row per address (the list keys rows on it). */
-    data class Ready(val accounts: List<AccountItem>) : HomeUiState {
+    data class Ready(override val network: String, val accounts: List<AccountItem>) : HomeUiState {
         init {
             require(accounts.distinctBy { it.address }.size == accounts.size) {
                 "duplicate addresses in the account list: the repository contract is one entry per address"

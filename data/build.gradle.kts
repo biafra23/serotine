@@ -1,6 +1,7 @@
 // :data — the adapters behind the domain's ports: repository implementations and the
-// data sources they read (today an in-memory account store; next the Myotis engine
-// behind an `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
+// data sources they read (today an in-memory account store and the key adapter that
+// derives an account from BIP-39 words; next the Myotis engine behind an
+// `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
 // :domain only; :ui never depends on this module — the hosts' composition roots wire
 // it in.
 //
@@ -34,10 +35,36 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             implementation(libs.kotlinx.coroutines.core)
+            // The key adapter (eth.serotine.data.keys): libsecp256k1 and the digests.
+            implementation(libs.secp256k1.kmp)
+            implementation(libs.kotlincrypto.sha2)
+            implementation(libs.kotlincrypto.sha3)
+            implementation(libs.kotlincrypto.hmac.sha2)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+        // libsecp256k1's JNI bindings, which secp256k1-kmp looks up by reflection at first
+        // use: the Android one (.so files for the four Android ABIs) on Android, the JVM one
+        // (darwin universal, linux x64 + aarch64, windows x64) on the desktop. The Android
+        // unit tests run on the build machine's JVM, where the Android binding's
+        // System.loadLibrary fails and its loader falls back to the JVM binding — so that
+        // classpath needs the JVM one too. The AAR ships no keep rules: whoever turns on R8
+        // for the app adds `-keep class fr.acinq.secp256k1.jni.** { *; }`, or the reflective
+        // lookup finds nothing and every derivation answers Unavailable, on release only.
+        androidMain.dependencies {
+            implementation(libs.secp256k1.kmp.jni.android)
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.secp256k1.kmp.jni.jvm)
+            }
+        }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.secp256k1.kmp.jni.jvm)
+            }
         }
     }
 }

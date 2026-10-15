@@ -168,6 +168,22 @@ cases, never a key, as CLAUDE.md's *Trust* section already requires. A port
 that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
+**What exists today** is the restore half's derivation, without the envelope:
+`AccountDerivation` in `:domain`, implemented by `MnemonicAccountDerivation`
+in `eth.serotine.data.keys`. It takes the restore screen's `Mnemonic`, checks
+it against the BIP-39 English wordlist and its checksum, and derives the
+first account, `m/44'/60'/0'/0/0` with the empty passphrase, on libsecp256k1
+through ACINQ's secp256k1-kmp (JNI on Android and the JVM, cinterop on iOS).
+The seed and the key exist inside that one call as byte arrays zeroed before
+it returns, and nothing is stored: the account it adds can sign nothing until
+the key-store port and the envelope above land. The restore screen's
+ViewModel drops the words when the screen stops being shown (the app goes to
+the background, the window is hidden) and when it leaves the back stack. The restore screen carries
+rule 8's protections through `protectFromScreenCapture()` in
+`eth.serotine.ui.platform`: `FLAG_SECURE` and an autofill exclusion on
+Android; on desktop, and on iOS until its host covers the window, the screen
+says that capture cannot be blocked.
+
 ## A Safe owned by a hardware P-256 key
 
 Safe has supported secp256r1 owners since Safe 1.3.0 through its passkey

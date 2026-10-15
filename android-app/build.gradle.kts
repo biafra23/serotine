@@ -81,6 +81,8 @@ android {
         // Signing here would put that key in the environment of the whole Gradle
         // build, third-party plugins and build scripts included.
         release {
+            // Turning this on needs a keep rule for libsecp256k1's reflectively loaded JNI
+            // binding first: see data/build.gradle.kts.
             isMinifyEnabled = false
         }
     }

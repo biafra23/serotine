@@ -155,6 +155,11 @@ kotlin {
                 // the multiplatform lifecycle, the MVVM seam of docs/architecture.md.
                 implementation(libs.lifecycle.viewmodel.compose)
                 implementation(libs.lifecycle.runtime.compose)
+                // One destination per screen; each back-stack entry is the
+                // ViewModelStoreOwner of its screen's ViewModel, so leaving a screen
+                // clears its ViewModel (the seed screen relies on that).
+                implementation(libs.navigation.compose)
+                implementation(libs.material.icons.core)
             }
         }
         commonTest.dependencies {

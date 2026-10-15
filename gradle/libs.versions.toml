@@ -24,6 +24,22 @@ kotlinx-coroutines = "1.10.2"
 # desugar_jdk_libs 2.1.5: the minSdk-29 JDK-API budget in CLAUDE.md was verified
 # against this release's config.
 desugar-jdk-libs = "2.1.5"
+# Multiplatform navigation: JetBrains' build of androidx.navigation. 2.9.2 is the
+# release built against Compose Multiplatform 1.9.3 and lifecycle 2.9.6, the two
+# pins above, so nothing in its graph resolves past them.
+navigation-compose = "2.9.2"
+# The Material icons stopped at 1.7.3 upstream; Compose Multiplatform 1.9.x still
+# consumes that release (material3 no longer brings it along).
+material-icons-core = "1.7.3"
+# ACINQ's Kotlin Multiplatform binding of bitcoin-core's libsecp256k1: JNI on
+# Android and the JVM, cinterop on iOS — the native secp256k1 that
+# docs/keys-and-signing.md (rule 7) requires. 0.22.0 is the last release built with
+# Kotlin 2.2.21, our pin; 0.23.0 moves its stdlib to 2.3.
+secp256k1-kmp = "0.22.0"
+# KotlinCrypto: pure-Kotlin multiplatform digests and MACs (Keccak-256 for
+# addresses, SHA-256 for the BIP-39 checksum, HMAC-SHA512 for BIP-39/BIP-32).
+# 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
+kotlincrypto = "0.8.0"
 
 [plugins]
 android-application    = { id = "com.android.application",                 version.ref = "agp" }
@@ -44,3 +60,12 @@ lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifec
 lifecycle-runtime-compose   = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose",   version.ref = "lifecycle" }
 androidx-activity-compose  = { module = "androidx.activity:activity-compose",            version.ref = "activity-compose" }
 desugar-jdk-libs           = { module = "com.android.tools:desugar_jdk_libs",            version.ref = "desugar-jdk-libs" }
+navigation-compose         = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
+material-icons-core        = { module = "org.jetbrains.compose.material:material-icons-core",   version.ref = "material-icons-core" }
+# The secp256k1 API, plus one JNI binding per JVM platform (see data/build.gradle.kts).
+secp256k1-kmp              = { module = "fr.acinq.secp256k1:secp256k1-kmp",             version.ref = "secp256k1-kmp" }
+secp256k1-kmp-jni-android  = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1-kmp" }
+secp256k1-kmp-jni-jvm      = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm",     version.ref = "secp256k1-kmp" }
+kotlincrypto-sha2          = { module = "org.kotlincrypto.hash:sha2",                   version.ref = "kotlincrypto" }
+kotlincrypto-sha3          = { module = "org.kotlincrypto.hash:sha3",                   version.ref = "kotlincrypto" }
+kotlincrypto-hmac-sha2     = { module = "org.kotlincrypto.macs:hmac-sha2",              version.ref = "kotlincrypto" }
