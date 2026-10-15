@@ -69,25 +69,34 @@ consumer developed against an unreleased engine, Myotis's
   is the process's one engine on Sepolia. Each composition root creates it with
   `MyotisNode.start(network, dataDir, dnsServers)`. Loading the native library,
   creating the engine and starting it all run on a background thread, so
-  nothing blocks a main thread. The desktop stops it when its window closes.
-  Android keeps it for the life of the process, with `AndroidDnsServers`
-  supplying the active network's resolvers; a foreground service comes with
-  background sync.
-- **Verified balances.** `VerifiedNativeBalances`, common code, drives the
-  `NativeBalances` port: it polls the light client's state and reads a balance
-  at exactly the verified head, again only when the head moves. A syncing
-  client, a stale anchor, an unproven read and a device without an engine are
-  readings the account list shows ("Syncing…", "Sync refused", "Not verified",
-  "No light client"), never a number from elsewhere. Why a node is down is
+  nothing blocks a main thread. The desktop stops it after its window closes.
+  Android pauses its networking 30 s after the app leaves the foreground and
+  resumes it when the app returns; `AndroidDnsServers` supplies the active
+  network's resolvers.
+- **Readiness, as Myotis reads it.** The adapters read `ChainHandle.status()`,
+  a snapshot that never blocks, the way Myotis's own readiness ladder does:
+  `SYNCING` is the checkpoint bootstrap; `CATCHING_UP` walks sync-committee
+  periods from `syncStartPeriod`; `SYNCED` serves reads only with a verified
+  head younger than 45 s and at least one peer serving state proofs.
+- **Verified balances.** `VerifiedNativeBalances`, common code, proves a
+  balance through `ChainHandle.requestAccount` whenever the verified head has
+  moved. It is accepted only with no `failReason` and a `verifyMethod`, and is
+  labelled with the block the proof anchors to: `VerifiedReads.getBalance`
+  answers a block number from the current head, so it cannot be labelled. While
+  reads cannot be verified, the row shows why ("Syncing…", "Sync refused", "Not
+  verified", "No light client"), never an older amount. Why a node is down is
   written to stderr, with the engine's own log when it refused to start.
 - **The light client's progress.** `EngineLightClient` drives the
-  `LightClient` port from `ChainHandle.beaconStatus()`, and Home shows it in a
-  strip under the top bar: starting, bootstrapping from the checkpoint,
-  verifying sync-committee periods (*n of m*, counted from the first period
-  seen after the bootstrap), collecting verified state roots, then "Verified at
-  block N". A stale anchor and a missing engine are shown there too. A cold
-  start on Sepolia, measured on a Mac: bootstrapped after 1 s, verified reads
-  after about 30 s.
+  `LightClient` port, and Home shows it in a strip under the top bar:
+  - starting;
+  - bootstrapping from the checkpoint;
+  - verifying sync-committee periods (*n of m*);
+  - waiting for a fresh head or for proof peers;
+  - "Verified at block N";
+  - asleep, a stale anchor, or no engine.
+
+  A cold start on Sepolia, measured on a Mac: bootstrapped after 1 s, verified
+  reads after about 20 to 30 s.
 - **Resolving the library before a Myotis tag publishes it.** In a Myotis
   checkout, `./gradlew -PpublishRelease publishToMavenLocal` puts the version
   the next tag publishes into `~/.m2`. Pass Serotine's builds an init script
