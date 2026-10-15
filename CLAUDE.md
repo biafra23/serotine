@@ -509,9 +509,49 @@ discussion that produced this note.
   key-store adapter and nowhere else: never in a UiState, a log line, a
   `toString()`, a crash report or any serialized form that leaves that adapter.
   Signing is a port that takes a request and returns a signature; the UI never
-  touches a key. (The detailed key-storage design — platform keystores, backup,
-  export — is a design decision for the owner before the first signing feature
-  lands; record it here when made.)
+  touches a key.
+- **Exceptions to that rule are a closed list.** Each is an owner ruling,
+  dated here, with its conditions in docs/keys-and-signing.md. A case not on
+  the list follows the rule, and adding one is the owner's decision, never a
+  PR author's. Today the list has one entry:
+  - *The mnemonic screens* (owner ruling, 2026-10-15): the backup words shown
+    at creation and the words typed at restore. They travel only as a
+    dedicated mnemonic type with a redacted `toString()`, along one path:
+    from the adapter through a use case and the ViewModel into the seed
+    UiState at creation, and back the same way at restore. Nothing on that
+    path stores, logs or caches them, and the UiState is cleared when its
+    screen is left. Everything the adapter derives from the words, the seed
+    and the keys, stays under the rule above.
+- **How keys are held — docs/keys-and-signing.md is the contract** (owner
+  decisions, 2026-10-15); this is the summary a reviewer holds a diff against:
+  - No platform holds secp256k1 in hardware, so an EOA key or a
+    mnemonic-derived owner key is a software key wrapped at rest, and on the
+    always-present password path BOTH factors must be cryptographically
+    necessary to unwrap it: the Argon2id-stretched password AND a secret only
+    this device's hardware key store yields. A password that is merely
+    checked, or a wrap that opens without the hardware, is a finding,
+    whatever it saves.
+  - Biometric unlock of that envelope is the user's opt-in (owner ruling,
+    2026-10-15), bound to a key and never to the UI: a second hardware key
+    with per-use Class 3 biometric authorization; disabling it deletes that
+    key. Weak biometrics never qualify.
+  - The plaintext key exists only inside the key-store adapter (creation and
+    import included; the mnemonic words leave it only under the listed
+    exception), and in signing only inside the call, in native code, as a
+    byte array zeroed afterwards. The ciphertext is excluded from cloud
+    backup AND device-to-device transfer.
+  - A Safe may be owned by a hardware P-256 key directly, and such a key is
+    never the sole owner of a Safe holding value: a recovery owner or a
+    recovery module is part of creating the account. EOAs are secp256k1 only.
+  - Key storage closes the theft path only: the hardware signs whatever digest
+    the app hands it. For a Safe holding value the app's own preview is never
+    the sole check; the policy lives on chain and in an independent co-signer,
+    as the doc sets out. No dApp browser runs in the signing process.
+  - Open — the owner decides, and it is recorded here when made: the
+    synced-passkey owner tier, external signers, threshold signing with
+    Myotis, the desktop policy without a hardware key store, and the dApp
+    connection protocol (WalletConnect is the candidate; its relay is a data
+    source, next section).
 
 ## Data sources
 
@@ -521,5 +561,7 @@ discussion that produced this note.
 - **Open decisions, each recorded here before its code lands**: the Safe{Wallet}
   multi-signer flow (the Safe Transaction Service is an off-chain HTTP API —
   what Serotine fetches from it, over what, and how an unverified answer is
-  shown), token lists and metadata, price data. Until decided, none of them is
-  wired in.
+  shown), the dApp connection protocol (WalletConnect's relay is an off-chain
+  service too, and a request that arrives through it is untrusted input,
+  decoded and shown as such), token lists and metadata, price data. Until
+  decided, none of them is wired in.

@@ -1,0 +1,373 @@
+# Keys and signing
+
+Serotine holds private keys; Myotis never does. This page is the design for
+how they are held, what the user chooses between, what a hardware-backed key
+can and cannot do for a wallet, and the recommendations that came out of the
+owner's key-storage discussion of 2026-10-15. **This page is the contract**
+for the key-store and signing adapters; the *Trust* section of CLAUDE.md is
+the summary a reviewer holds a diff against. Platform facts below were
+checked in October 2026 and carry their sources at the end; re-check them
+before relying on one in code.
+
+## What the platforms can hold
+
+| platform | hardware key store | curves and algorithms | binding a key to the user |
+|---|---|---|---|
+| Android (minSdk 29) | Keystore in the TEE; StrongBox on devices with a secure element | TEE: P-256/384/521, Curve25519 from API 33, RSA, AES, HMAC. StrongBox: P-256, RSA, AES, HMAC only | per-use or timed authorization, strong biometrics and/or device credential; invalidation on biometric re-enrollment |
+| iOS, iPadOS | Secure Enclave | P-256 only (ECDSA, ECDH); ML-KEM / ML-DSA from iOS 26 | current biometric set, passcode, application password; this-device-only accessibility classes |
+| macOS | Secure Enclave on Apple silicon and T2 Macs, same API | as iOS | as iOS |
+| Windows | TPM 2.0 through CNG's Platform Crypto Provider | RSA, ECDSA P-256/P-384 | Windows Hello |
+| Linux | TPM 2.0 through tpm2-tss where one exists; often nothing | per TPM | nothing an app can rely on |
+
+**No platform holds a secp256k1 key in hardware, and none exports a key it
+generated.** Android's secure key import only goes inward; the Secure Enclave
+has no import at all. Samsung's Blockchain Keystore does hold secp256k1 inside
+Knox, but it is Galaxy-only, partner-gated and last released in December 2023;
+it is not a basis for a cross-platform wallet. Two consequences follow:
+
+- An **EOA key**, and a Safe owner key derived from a mnemonic, is a software
+  key. The most the hardware can do for it is wrap it at rest and gate its
+  use. That is the envelope below, and there is no more secure way to hold a
+  secp256k1 key on these platforms; the security gains are in the details.
+- A **P-256 key born in the Secure Enclave or StrongBox can own a Safe
+  directly**, through Safe's WebAuthn signer contracts. For such an account
+  no secp256k1 key exists anywhere.
+
+## The account tiers
+
+| tier | key | backup | daily unlock | status |
+|---|---|---|---|---|
+| **Hardware-bound Safe owner** | P-256 in the Secure Enclave / StrongBox | none: it is a device credential | the OS's own gate, bound to the key and chosen at creation: current biometrics only, or biometrics or device credential. This tier has no password factor | decided (2026-10-15); the key's policy is under *A Safe owned by a hardware P-256 key*, and it needs a recovery owner, see *Backup and recovery* |
+| **Mnemonic key** | secp256k1 from a BIP-39 seed, in the envelope | the mnemonic, written down once at creation | password; biometrics if the user enables them | decided (2026-10-15); every EOA, and a Safe owner the user wants to be able to restore |
+| **Synced-passkey Safe owner** | P-256 passkey through the platform WebAuthn API | synced end-to-end encrypted by iCloud Keychain / Google Password Manager | biometrics | recommended as an option; owner's decision open |
+
+Which tier an account uses is the user's decision. The app explains the
+trade when the account is created and never downgrades a tier on its own.
+
+## The envelope: a secp256k1 key at rest
+
+```
+DEK          random 32 bytes; exists only in memory, only while unwrapping
+blob         AES-256-GCM(DEK, the secp256k1 key or the BIP-39 seed)
+
+password path (always present)
+  HW_pw      a hardware key with no user-auth requirement
+             (Android: an HMAC-SHA256 key in the Keystore, StrongBox when
+              available; iOS: a Secure Enclave P-256 key used through ECIES
+              or ECDH, the enclave has neither HMAC nor AES)
+  P          Argon2id(password, salt, params)
+  S_hw       Android: HMAC(HW_pw, P), computed per unlock, never stored
+             iOS:     random 32 bytes, stored wrapped by HW_pw
+  KEK_pw     HKDF( P || S_hw )
+  stored     AES-256-GCM(KEK_pw, DEK) with salt and params as its AAD;
+             the salt; the Argon2id parameters
+
+biometric path (optional, the user's choice)
+  HW_bio     a second hardware key that requires per-use strong-biometric
+             authorization
+  stored     wrap(HW_bio, DEK)
+  disable    delete HW_bio and this wrapped copy; the password path is untouched
+```
+
+The rules a reviewer holds the adapter against:
+
+1. **Both factors are necessary, cryptographically.** The password is mixed
+   into the key-encryption key, never merely checked. A password that is only
+   compared, with the hardware key doing the real decryption, is bypassed by
+   anything running inside the app's process that can call the key store. And
+   the hardware secret `S_hw` is mixed in too, so a blob copied without the
+   device is useless and cannot be brute-forced at all.
+2. **The password is stretched with Argon2id** (scrypt is the acceptable
+   fallback where no Argon2 is available), and the threat it answers is
+   precise. A blob copied without the device — a backup, a file-system dump —
+   cannot be attacked at all, because `S_hw` is missing. A compromise inside
+   the app's process can call `HW_pw`; on iOS that yields the static `S_hw`
+   once, and with the blob the password is then brute-forced *offline*, on
+   GPUs. Argon2id's memory-hardness is what makes that expensive, so its
+   parameters are chosen against that attacker, not for feel: the largest
+   memory the slowest supported phone tolerates, never below 64 MiB, and the
+   time that costs, up to about a second. On Android the hardware is made
+   necessary for every guess instead: `S_hw` is `HMAC(HW_pw, P)` with `HW_pw`
+   a Keystore HMAC key, so each guess needs a hardware round trip and the
+   search cannot leave the device. The Secure Enclave has no HMAC, so on iOS
+   the KDF carries the load; the enclave's own answer is the
+   application-password flag of rule 6. The salt and the Argon2id parameters
+   are stored next to the blob and bound as the additional authenticated data
+   of the AES-GCM wrap of `DEK`, and the floor is re-checked when unwrapping:
+   a parameter block below it is refused, not honoured, so tampering with it
+   cannot downgrade the KDF.
+3. **The envelope's biometric path binds to a key, not to the UI.** On
+   Android: a key with `setUserAuthenticationRequired(true)` and per-use authorization
+   (`setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` from API 30;
+   on API 29 the `-1` validity-duration form), `setInvalidatedByBiometricEnrollment(true)`,
+   `setUnlockedDeviceRequired(true)`, used only through a `BiometricPrompt`
+   with a `CryptoObject`. Class 3 (`BIOMETRIC_STRONG`) only; a device with
+   only weak biometrics gets no biometric path and is told why. On iOS:
+   `SecAccessControlCreateWithFlags(kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+   [.privateKeyUsage, .biometryCurrentSet])` on a Secure Enclave key.
+   `.userPresence` allows passcode fallback and is a different, weaker policy;
+   if offered, it is offered by name. This is the envelope's second key,
+   `HW_bio`; the hardware-bound Safe owner key has its own policy, below.
+4. **Each path has its own hardware key.** Enabling biometrics never weakens
+   the password path; disabling them is a deletion, not a flag.
+5. **Verify hardware backing on Android.** `KeyInfo.getSecurityLevel()` (API
+   31) or `isInsideSecureHardware()` before it, or the attestation chain.
+   Emulators and some devices give a software key store; the user is told,
+   and the app does not pretend otherwise. Prefer StrongBox
+   (`setIsStrongBoxBacked(true)`) and fall back to the TEE on
+   `StrongBoxUnavailableException`.
+6. **Apple's application-password flag** (`.applicationPassword`, fed through
+   `LAContext.setCredential`) is described by Apple as an additional
+   encryption mechanism inside the enclave, not an access constraint. Developer
+   reports show it misbehaving on Secure Enclave keys in some OS versions.
+   It may be added as a further layer after testing on current iOS; it is
+   never the foundation and never replaces rule 1.
+7. **The plaintext window is tiny.** The secp256k1 operations run in native
+   code (libsecp256k1 through JNI on Android and the JVM, cinterop on iOS),
+   take the key as a byte array and zero it afterwards. The key never
+   becomes a `String`, is never cached, never logged, never crosses a
+   suspension point the UI owns. The password is different: Compose text
+   input holds it as `String` state that cannot be zeroed, so the rule for it
+   is scoped to what the adapter controls. It is converted to bytes at the
+   port boundary, the bytes are zeroed after the KDF, and it is never
+   retained, logged or cached beyond the field's transient state, with the
+   field under rule 8's screen protections. Garbage-collected runtimes can
+   copy memory; short exposure is the real mitigation, so the sign call is
+   one call, not a session.
+8. **The ciphertext never leaves the device through a backup or a transfer.**
+   Android: `android:allowBackup="false"` AND `android:dataExtractionRules`
+   with both a `<cloud-backup>` and a `<device-transfer>` exclusion for the
+   key store's files — on Android 12 and higher `allowBackup="false"` alone
+   still lets a device-to-device migration copy them — plus
+   `fullBackupContent` for the API 29/30 path. The host's manifest today has
+   only `allowBackup="false"`; the key-store PR adds the rules. iOS: the
+   this-device-only keychain classes, which neither sync nor migrate, and the
+   blob in a file marked excluded from backup. Screens that show a seed or
+   take the password: `FLAG_SECURE` on Android; on iOS, where no API blocks a
+   screenshot, the window is covered when the app resigns active so the app
+   switcher's snapshot holds nothing, and `UIScreen.isCaptured` plus the
+   screenshot notification raise a warning; on desktop nothing comparable
+   exists and the seed screen says so.
+9. **Desktop stands on the password path alone where no hardware exists**
+   (recommended; the owner's decision is open, CLAUDE.md *Trust*).
+   macOS on Apple silicon or T2 uses the Secure Enclave as iOS does; Windows
+   wraps `S_hw` with a TPM key through CNG; Linux uses a TPM where present.
+   Without hardware, `S_hw` is absent, the blob is brute-forceable offline,
+   and the KDF cost goes up to compensate. The adapter reports which case the
+   user is in.
+
+### Where it lives in the architecture
+
+Per docs/architecture.md: the key store is a data source, so the adapter is
+`eth.serotine.data.keys`, with `expect`/`actual` for the platform seam in the
+smallest source set that needs it. It implements small ports in `:domain`,
+named for one concern each: a key-store port for the lifecycle (create,
+import a mnemonic, enable or disable the biometric path, delete) and a signer
+port for one thing, a signing request in and a signature out. `:ui` sees use
+cases, never a key, as CLAUDE.md's *Trust* section already requires. A port
+that can fail (locked, biometric invalidated, hardware missing) says so in
+its KDoc and returns it as a result the UI shows as state.
+
+## A Safe owned by a hardware P-256 key
+
+Safe has supported secp256r1 owners since Safe 1.3.0 through its passkey
+signer contracts (the `passkey` module of safe-modules): a signer proxy per
+key, forwarding to a singleton that verifies a WebAuthn-formatted signature
+over `authenticatorData || sha256(clientDataJSON)`. The singleton tries the
+secp256r1 precompile at `0x100` first and falls back to a Solidity verifier
+when the call returns empty, so one signer works on every chain Safe is
+deployed on and gets cheap by itself when a chain gains the precompile.
+
+Recommendations:
+
+- **Use a raw Secure Enclave / StrongBox key, not a platform passkey**, for
+  the hardware-bound tier. A raw key can sign an arbitrary digest
+  (`.ecdsaSignatureDigestX962SHA256`; `NONEwithECDSA` on Android), so the app
+  builds the WebAuthn envelope around it itself and the key stays
+  device-bound instead of synced. Verify the constructed envelope against the
+  signer contract's checks before shipping.
+- **The owner key's own policy.** It is created with `.privateKeyUsage`, the
+  passcode-set this-device-only accessibility class and, chosen by the user
+  at creation, either `.biometryCurrentSet` alone (a biometric re-enrollment
+  then invalidates it, which is what the recovery owner is for) or current
+  biometrics or the device passcode. On Android the same two choices go
+  through `setUserAuthenticationParameters` with per-use authorization and
+  `BIOMETRIC_STRONG`, optionally with `DEVICE_CREDENTIAL`, plus
+  `setUnlockedDeviceRequired(true)`. This tier has no password factor, so
+  the envelope's biometric opt-in and its "disabling deletes the key" rule do
+  not apply here: deleting this key removes the account's device owner, and
+  the UI treats it as exactly that.
+- **Expect gas to vary by chain.** With the precompile a verification costs
+  thousands of gas; the fallback costs roughly 200k to 400k.
+- **Such a key is never the sole owner of a Safe holding value.** See the
+  next section.
+
+### Where the secp256r1 precompile exists (checked October 2026)
+
+| chain | precompile at `0x100` | since | via |
+|---|---|---|---|
+| Ethereum mainnet | yes | 2025-12-03 | Fusaka, EIP-7951 |
+| Sepolia | yes | 2025-10-14 | Fusaka |
+| Hoodi | yes | 2025-10-28 | Fusaka |
+| Holesky | deprecated | | stopped finalizing 2025-10-27 |
+| Gnosis Chain | yes | 2026-04-14 | Gnosis Fusaka |
+| Chiado | assumed, not verified | | forks ahead of Gnosis mainnet as a rule |
+| OP Mainnet, Base, other OP Stack chains | yes | 2024-07-10 | Fjord, RIP-7212; repriced to EIP-7951's 6900 gas in Azul |
+| Arbitrum One and Nova | yes | 2024-09 | ArbOS 31 "Bianca" |
+| Polygon PoS | yes | 2024-03 | Napoli |
+| zkSync Era | yes | | `p256Verify` system contract at `0x100` |
+| Scroll | yes | 2025-04 | Euclid |
+| Linea | not verified | | |
+
+EIP-7951 and RIP-7212 share the address and the calldata layout. EIP-7951
+tightens input validation (a point-at-infinity check, modular comparison of
+`r`) and doubles the gas to 6900; the L2s that started on RIP-7212 are
+converging on it. A signer contract does not care which one it hits.
+
+## Backup and recovery
+
+A key generated inside the Secure Enclave or StrongBox never exists outside
+the chip. Device backups, iCloud Keychain and Android device-to-device
+transfer all skip it; a factory reset or wipe destroys it; a biometric
+re-enrollment makes it unusable under the current-set flags above. **Hardware
+isolation and backup are mutually exclusive on these platforms**: a hardware
+key is a device credential, not a secret the user can own.
+
+That is fine for a Safe, because a Safe needs owner rotation, not key backup:
+losing the device is recovered by another owner calling `swapOwner` to
+install the new device's key. So the account setup, not an extra step, is
+one of:
+
+- **Device key plus recovery key, threshold 1.** The hardware key signs daily.
+  A secp256k1 owner from a mnemonic the user wrote down exists for recovery
+  only and is, ideally, never stored on the phone at all.
+- **Device key plus a recovery module.** A Safe recovery module lets a
+  designated recoverer rotate owners after a delay, so the user keeps a veto
+  window.
+- **Two devices, threshold 1.** A second phone, the desktop app, or a
+  hardware wallet as co-owner; either one rotates the other out.
+- **Threshold 2 only with a third owner or a recovery module.** Two owners at
+  threshold 2 is a brick the moment one device is lost: `swapOwner` is itself
+  a Safe transaction that needs threshold signatures, the remaining owner can
+  never reach two, and the lost device's key has no backup by design. So
+  threshold 2 removes the single-device risk only as 2-of-3, or as 2-of-2
+  with a recovery module alongside it.
+
+For an **EOA** none of this exists: the mnemonic is the only backup, which is
+the other reason an EOA key is a secp256k1 key from a mnemonic in the
+envelope. The mnemonic is shown once at creation, written down by the user,
+and re-entered only to restore on a new device.
+
+Those two screens are an exception to the Trust rule that key material never
+leaves the key-store adapter: the one entry, today, in the closed list of
+exceptions in CLAUDE.md's *Trust* section (owner ruling, 2026-10-15). Its
+conditions, which a reviewer holds those two flows to:
+
+- **One type.** The words travel only as a dedicated mnemonic type whose
+  `toString()` is redacted, so every place they flow is a place that type
+  appears, and one search finds the whole path.
+- **One path.** At creation, from the adapter through a use case and the
+  ViewModel into a dedicated seed UiState; at restore, from the seed UiState
+  through the ViewModel and a use case into the adapter. No other port, use
+  case, ViewModel or screen sees the type.
+- **Transient.** The seed UiState exists only while its screen is shown and
+  the ViewModel clears it on leaving. Nothing on the path stores, logs,
+  caches, snapshots or serializes the words; the input field's own text
+  state is under the same limits as the password's in rule 7.
+- **Protected.** Both screens are under rule 8's screen protections.
+- **Narrow.** Everything the adapter derives from the words, the seed and the
+  keys, stays under the absolute rule and never comes back up.
+
+Every other screen and flow is held to the rule itself. A new exception is
+the owner's ruling, added to that list first.
+
+The **synced-passkey** tier trades hardware isolation for a backup held by
+Apple or Google; it is listed above as the owner's open decision.
+
+## What key storage does not do: signing intent
+
+A hardware key gives three things: the key cannot be extracted, it cannot be
+used without the device, and a human was present when it was used. It gives
+nothing about *what* was signed. The Secure Enclave and StrongBox sign
+whatever 32 bytes the app hands them; the biometric prompt proves the user
+approved a signing operation, not this transaction with these contents. A
+defective or compromised app can show one thing and sign another, and the
+hardware cannot tell.
+
+The only on-device fix would be a trusted display owned by the secure
+hardware, which hardware wallets with screens have and phones do not:
+
+- **Android Protected Confirmation** was built for exactly this. It shipped on
+  Pixel phones only; Google moved to deprecate it in 2024 for lack of
+  adoption, and the later partial revert does not make it something to build
+  on. Its signed format would not match Safe's signer either.
+- **iOS** exposes nothing comparable to third-party apps.
+
+So the deception path is closed *outside* the signing app, in this order of
+value:
+
+1. **Policy on chain, where the app cannot touch it.** A Safe transaction
+   guard or module enforcing spending limits, recipient allowlists, a delay
+   for large or unusual transactions, no `delegatecall`, and owner changes
+   only behind the delay. A defective app can then do only what the policy
+   permits, and anything beyond it enters a window where another device can
+   veto. This exists because a Safe is a contract; for an EOA the equivalent
+   is an EIP-7702 delegation to such an account, and the delegation itself is
+   still signed by the secp256k1 key.
+2. **An independent second view.** A threshold-2 Safe whose second signer runs
+   on a different device and decodes the transaction itself, from the chain
+   (or from the Safe Transaction Service once that data source is decided
+   under *Data sources* in CLAUDE.md), never from the description the first
+   device sent. A hardware wallet co-signer does this with its own screen.
+   Myotis can be that independent decoder for a desktop confirmation, as long
+   as it never trusts the phone's description of the transaction.
+3. **A smaller chance of the defect.** The signing path is one small,
+   separately reviewed module with no feature flags or remote configuration
+   on it. No dApp browser runs in the signing process; requests arrive
+   through a connection protocol that runs outside it. WalletConnect is the
+   candidate, and its relay is an off-chain service that goes under *Data
+   sources* in CLAUDE.md before it is wired in; what arrives through it is
+   untrusted input. Reproducible builds let others verify the binary. Calldata
+   decoding and transaction simulation protect against malicious dApps, which
+   is the common case, but not against the app itself.
+
+For a Safe holding value, the app's own preview is therefore never the sole
+check. Hardware keys close the theft path, Safe policies close most of the
+deception path, and nothing on a phone closes it completely.
+
+## Options considered and not taken, or deferred
+
+- **External signers** (Ledger over Bluetooth, Keystone over QR, Keycard and
+  Tangem over NFC) keep the secp256k1 key off the phone entirely and bring a
+  trusted screen. For a Safe wallet this is the natural top tier, and a
+  natural co-owner in the shapes above. Deferred: the owner decides when.
+- **Two-party threshold ECDSA with Myotis**, where neither the device share
+  nor the server share can sign alone. Real protocol complexity, an
+  availability dependency, and the device share still needs the envelope.
+  Deferred; the owner's decision.
+- **Deriving the secp256k1 key on demand from a hardware key** (an HMAC key on
+  Android, a fixed-peer ECDH on iOS) so that nothing is stored. The plaintext
+  still exists in the app at signing time, the password cannot be bound in,
+  and the key becomes unrecoverable with the device while a mnemonic backup
+  is needed anyway. No gain over the envelope; rejected.
+- **Samsung Blockchain Keystore.** Galaxy-only; rejected.
+
+## Sources
+
+- [Android Keystore system](https://developer.android.com/privacy-and-security/keystore?hl=en)
+- [Android: backup leaks, allowBackup and device-to-device transfer](https://developer.android.com/topic/security/risks/backup-leaks)
+- [Apple CryptoKit SecureEnclave](https://developer.apple.com/documentation/cryptokit/secureenclave.md)
+- [Apple SecAccessControl.h, the application-password flag](https://opensource.apple.com/source/Security/Security-58286.51.6/keychain/SecAccessControl.h.auto.html)
+- [Apple developer forum: application password with a Secure Enclave key](https://developer.apple.com/forums/thread/118746)
+- [Samsung Blockchain Keystore SDK](https://developer.samsung.com/blockchain/keystore)
+- [Safe passkeys](https://docs.safe.global/home/passkeys-safe)
+- [RIP-7212](https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md) and [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951)
+- [Fusaka mainnet announcement](https://blog.ethereum.org/2025/11/06/fusaka-mainnet-announcement)
+- [Fusaka testnet dates](https://status.quicknode.com/incidents/05cv4z7mkqns) and [Holesky deprecation, ACDT #59](https://ethereum-magicians.org/t/all-core-devs-testing-acdt-59-oct-27-2025/25914)
+- [Gnosis Chain Fusaka upgrade](https://status.quicknode.com/incidents/qzc59nbc51rb)
+- [Base Fjord](https://docs.base.org/upgrades/fjord/overview.md) and [Base precompiles, Azul repricing](https://docs.base.org/specifications/base-protocol/execution/precompiles.md)
+- [OP Stack Fjord](https://docs.optimism.io/op-stack/protocol/hardforks/fjord.md)
+- [ArbOS 31 Bianca](https://docs.arbitrum.io/run-arbitrum-node/arbos-releases/arbos31)
+- [zkSync Era precompiles](https://docs.zksync.io/zksync-protocol/differences/pre-compiles)
+- [Scroll Euclid](https://www.theblock.co/post/351601/ethereum-layer-2-scroll-euclid-upgrade-improves-network-throughput-security)
+- [Android Protected Confirmation: deprecation](https://gerrit.omnirom.org/plugins/gitiles/android_frameworks_base/+/3d9d17788fb713787bda740a335304d1b346e19b) and [its partial revert](https://gerrit.omnirom.org/plugins/gitiles/android_system_security/+/9535b1b44373844b239201b18c535829d6d52eba%5E%21)
