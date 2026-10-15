@@ -37,7 +37,7 @@ class EngineLightClientTest {
         step(running(phase = Phase.CATCHING_UP, start = 1450, current = 1451, target = 1454))
         step(running(phase = Phase.SYNCED, headAgeMs = Long.MAX_VALUE))
         step(running(phase = Phase.SYNCED, proofPeers = 0, head = 11_922_744))
-        step(running(phase = Phase.SYNCED, head = 11_922_744))
+        step(running(phase = Phase.SYNCED, head = 11_922_744, headTimestamp = 1_792_100_000))
 
         assertEquals(
             listOf(
@@ -46,8 +46,8 @@ class EngineLightClientTest {
                 // From the engine's own start period, not from whenever this subscriber came in.
                 LightClientStatus.CatchingUp(done = 1, total = 4),
                 LightClientStatus.WaitingForHead(headAgeSeconds = null),
-                LightClientStatus.WaitingForProofPeers(headBlock = 11_922_744),
-                LightClientStatus.Synced(headBlock = 11_922_744),
+                LightClientStatus.WaitingForProofPeers(headBlock = 11_922_744, headTimestamp = null),
+                LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = 1_792_100_000),
             ),
             seen,
         )
@@ -94,7 +94,7 @@ class EngineLightClientTest {
         advanceTimeBy(POLL)
         runCurrent()
 
-        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5)), seen)
+        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null)), seen)
         collecting.cancel()
     }
 

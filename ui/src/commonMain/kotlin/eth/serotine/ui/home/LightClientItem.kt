@@ -10,7 +10,8 @@ import eth.serotine.domain.repository.LightClientStatus
 data class LightClientItem(val text: String, val progress: Float?, val working: Boolean) {
 
     companion object {
-        fun from(status: LightClientStatus): LightClientItem = when (status) {
+        /** [status] as the strip shows it at [now] (unix seconds), which dates the head block. */
+        fun from(status: LightClientStatus, now: Long): LightClientItem = when (status) {
             LightClientStatus.Starting -> LightClientItem("Starting the light client…", null, true)
             is LightClientStatus.Bootstrapping -> LightClientItem(
                 if (status.lookingForServers) {
@@ -37,13 +38,18 @@ data class LightClientItem(val text: String, val progress: Float?, val working: 
                 true,
             )
             is LightClientStatus.WaitingForProofPeers -> LightClientItem(
-                "Synced to block ${grouped(status.headBlock)} · looking for peers that serve state proofs",
+                "Synced to block ${grouped(status.headBlock)}${since(status.headTimestamp, now)} · " +
+                    "looking for peers that serve state proofs",
                 null,
                 true,
             )
-            is LightClientStatus.Synced ->
-                LightClientItem("Verified at block ${grouped(status.headBlock)}", null, false)
-            LightClientStatus.Sleeping -> LightClientItem("Light client asleep while the app is in the background", null, false)
+            is LightClientStatus.Synced -> LightClientItem(
+                "Verified at block ${grouped(status.headBlock)}${since(status.headTimestamp, now)}",
+                null,
+                false,
+            )
+            LightClientStatus.Sleeping ->
+                LightClientItem("Light client asleep while the app is in the background", null, false)
             is LightClientStatus.StaleAnchor -> LightClientItem(
                 "Sync refused: the trust anchor is ${status.anchorAgePeriods} periods old" +
                     if (status.boundPeriods > 0) ", past the limit of ${status.boundPeriods}" else "",
@@ -52,6 +58,12 @@ data class LightClientItem(val text: String, val progress: Float?, val working: 
             )
             LightClientStatus.Unavailable -> LightClientItem("No light client on this device", null, false)
         }
+
+        /** " · 8 s ago" for a block produced at [timestamp], or nothing when its time is unknown. */
+        private fun since(timestamp: Long?, now: Long): String = timestamp?.let {
+            val seconds = now - it
+            if (seconds < 1) " · just now" else " · ${age(seconds)} ago"
+        } ?: ""
 
         private fun age(seconds: Long): String = when {
             seconds < 120 -> "$seconds s"

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -36,13 +37,15 @@ class HomeViewModelTest {
     private val repository = FakeAccountRepository()
     private val balances = FakeBalances()
     private val lightClient = FakeLightClient()
-    private val starting = LightClientItem.from(LightClientStatus.Starting)
+    private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
+    private var now = 1_792_100_000L
 
     private fun viewModel() = HomeViewModel(
         ObserveAccounts(repository),
         ObserveNativeBalance(balances),
         ObserveLightClient(lightClient),
         Network.SEPOLIA,
+        clock = { now },
     )
 
     private val treasury = Account(Address.of("0x" + "ab".repeat(20)), AccountKind.SAFE, "Treasury")
@@ -110,6 +113,20 @@ class HomeViewModelTest {
             LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true),
             viewModel.uiState.value.lightClient,
         )
+    }
+
+    @Test
+    fun theStripDatesTheHeadBlockAndKeepsItCurrent() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        lightClient.status.value = LightClientStatus.Synced(headBlock = 11_923_074, headTimestamp = now - 3)
+        runCurrent()
+        assertEquals("Verified at block 11,923,074 · 3 s ago", viewModel.uiState.value.lightClient.text)
+
+        now += 5
+        advanceTimeBy(1_001)
+        assertEquals("Verified at block 11,923,074 · 8 s ago", viewModel.uiState.value.lightClient.text)
     }
 
     @Test

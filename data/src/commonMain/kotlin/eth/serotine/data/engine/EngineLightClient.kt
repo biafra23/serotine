@@ -71,8 +71,9 @@ class EngineLightClient internal constructor(
             snapshot.headAgeMs > EngineSnapshot.FRESH_HEAD_MS -> LightClientStatus.WaitingForHead(
                 if (snapshot.headAgeMs == Long.MAX_VALUE) null else snapshot.headAgeMs / 1_000,
             )
-            snapshot.proofPeers == 0 -> LightClientStatus.WaitingForProofPeers(snapshot.headBlock)
-            else -> LightClientStatus.Synced(snapshot.headBlock)
+            snapshot.proofPeers == 0 ->
+                LightClientStatus.WaitingForProofPeers(snapshot.headBlock, snapshot.headTimestamp)
+            else -> LightClientStatus.Synced(snapshot.headBlock, snapshot.headTimestamp)
         }
     }
 }

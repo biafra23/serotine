@@ -41,6 +41,7 @@ internal sealed interface EngineSnapshot {
         val huntingLightClientServers: Boolean,
         val proofPeers: Int,
         val headBlock: Long,
+        val headTimestamp: Long?,
         val headAgeMs: Long,
         val wsBoundPeriods: Long,
     ) : EngineSnapshot {

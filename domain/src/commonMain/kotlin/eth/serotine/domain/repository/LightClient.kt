@@ -36,11 +36,17 @@ sealed interface LightClientStatus {
      */
     data class WaitingForHead(val headAgeSeconds: Long?) : LightClientStatus
 
-    /** Synced to [headBlock], but no connected peer serves the state proofs reads need. */
-    data class WaitingForProofPeers(val headBlock: Long) : LightClientStatus
+    /**
+     * Synced to [headBlock], but no connected peer serves the state proofs reads need.
+     * [headTimestamp] is when that block was produced (unix seconds), null when unknown.
+     */
+    data class WaitingForProofPeers(val headBlock: Long, val headTimestamp: Long?) : LightClientStatus
 
-    /** Serving verified reads at the fresh verified head [headBlock]. */
-    data class Synced(val headBlock: Long) : LightClientStatus
+    /**
+     * Serving verified reads at the fresh verified head [headBlock], produced at
+     * [headTimestamp] (unix seconds; null when unknown).
+     */
+    data class Synced(val headBlock: Long, val headTimestamp: Long?) : LightClientStatus
 
     /** Networking is off while the app is in the background; it resumes when the app returns. */
     data object Sleeping : LightClientStatus

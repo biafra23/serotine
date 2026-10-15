@@ -32,6 +32,9 @@ internal fun running(
     hunting: Boolean = false,
     proofPeers: Int = 2,
     head: Long = 100,
+    headTimestamp: Long? = null,
     headAgeMs: Long = 2_000,
     bound: Long = 13,
-) = EngineSnapshot.Running(phase, paused, start, current, target, hunting, proofPeers, head, headAgeMs, bound)
+) = EngineSnapshot.Running(
+    phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound,
+)

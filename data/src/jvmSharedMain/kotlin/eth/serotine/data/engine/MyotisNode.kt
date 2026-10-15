@@ -31,7 +31,14 @@ class MyotisNode private constructor() {
 
     private sealed interface State {
         data object Booting : State
-        class Running(val engine: MyotisEngine, val ports: DefaultEnginePorts, val handle: ChainHandle) : State {
+        class Running(
+            val engine: MyotisEngine,
+            val ports: DefaultEnginePorts,
+            val handle: ChainHandle,
+            /** The network's beacon genesis (unix seconds) and slot length, from the engine. */
+            val genesisTime: Long,
+            val secondsPerSlot: Int,
+        ) : State {
             fun stop() {
                 engine.shutdownAll()
                 ports.close()
@@ -124,7 +131,8 @@ class MyotisNode private constructor() {
             ports.close()
             throw e
         }
-        val running = State.Running(engine, ports, handle)
+        val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
+        val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
         val started = handle.start()
         val kept = synchronized(this) {
             val keep = started && state == State.Booting
@@ -138,12 +146,21 @@ class MyotisNode private constructor() {
 
     private inner class HandleChain : VerifiedChain {
         override fun snapshot(): EngineSnapshot {
-            val handle = when (val current = state) {
+            val running = when (val current = state) {
                 State.Booting -> return EngineSnapshot.Booting
                 State.Down -> return EngineSnapshot.Down
-                is State.Running -> current.handle
+                is State.Running -> current
             }
+            val handle = running.handle
             val status = handle.status() ?: return EngineSnapshot.Booting
+            // The head block's time from its slot, the consensus rule for an execution
+            // payload's timestamp (genesis + slot × seconds per slot): verified data only.
+            val slot = handle.beaconStatus()?.optimisticSlot() ?: 0
+            val headTimestamp = if (slot > 0 && running.genesisTime > 0 && running.secondsPerSlot > 0) {
+                running.genesisTime + slot * running.secondsPerSlot
+            } else {
+                null
+            }
             return EngineSnapshot.Running(
                 phase = when (status.beaconState()) {
                     BeaconState.SYNCING -> EngineSnapshot.Phase.SYNCING
@@ -159,6 +176,7 @@ class MyotisNode private constructor() {
                 huntingLightClientServers = status.lcHunting(),
                 proofPeers = status.snapServingPeers(),
                 headBlock = status.optimisticBlockNumber(),
+                headTimestamp = headTimestamp,
                 headAgeMs = status.verifiedHeadAgeMs(),
                 wsBoundPeriods = status.wsBoundPeriods(),
             )
