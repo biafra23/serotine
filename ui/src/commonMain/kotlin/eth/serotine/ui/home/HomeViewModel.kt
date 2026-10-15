@@ -19,8 +19,8 @@ import kotlinx.coroutines.flow.stateIn
 /**
  * The Home screen's ViewModel: turns the domain's account stream, each account's verified
  * balance and the light client's state into [HomeUiState], on the [network] the composition
- * root runs the app on. It holds no platform reference and exposes state only through [uiState]; user
- * intents, once the screen has any, become methods here that call use cases.
+ * root runs the app on. It holds no platform reference and exposes state only through
+ * [uiState]; user intents, once the screen has any, become methods here that call use cases.
  */
 class HomeViewModel(
     observeAccounts: ObserveAccounts,

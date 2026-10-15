@@ -12,18 +12,21 @@ import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
 import java.io.File
+import kotlin.system.exitProcess
 
 /**
  * The desktop composition root: starts the process's one Myotis engine
  * (docs/embedding-myotis.md), builds the [AppGraph] from this platform's adapters and opens
  * the one window on the shared [App]. The window provides the ViewModelStoreOwner the
- * navigation back stack keeps its screens' ViewModels in; closing it stops the engine.
+ * navigation back stack keeps its screens' ViewModels in. Closing it ends the application
+ * loop, and the engine is stopped after that, on the main thread: never on the Swing event
+ * thread, which a slow network shutdown would freeze.
  */
 fun main() {
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
     // background; without its host library on java.library.path, balances say so.
     val node = MyotisNode.start(Network.SEPOLIA, appDataDir().resolve("myotis"))
-    application {
+    application(exitProcessOnExit = false) {
         val graph = remember {
             AppGraph(
                 accounts = InMemoryAccountRepository(),
@@ -34,16 +37,15 @@ fun main() {
             )
         }
         Window(
-            onCloseRequest = {
-                node.shutdown()
-                exitApplication()
-            },
+            onCloseRequest = ::exitApplication,
             title = "Serotine",
             state = rememberWindowState(width = 480.dp, height = 760.dp),
         ) {
             App(graph)
         }
     }
+    node.shutdown()
+    exitProcess(0)
 }
 
 /** Where this OS keeps an application's own data: the engine's state goes below it. */
