@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder launcher mark: a rounded square on the adaptive-icon canvas (108dp; launchers
+     show the inner 72dp), with a notch cut from it. Replace with the Serotine logo when it exists. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,34 h28 a6,6 0 0 1 6,6 v28 a6,6 0 0 1 -6,6 h-28 a6,6 0 0 1 -6,-6 v-28 a6,6 0 0 1 6,-6 z" />
+    <path
+        android:fillColor="@color/ic_launcher_background"
+        android:pathData="M48,44 h12 v8 h-12 z M48,56 h12 v8 h-12 z" />
+</vector>

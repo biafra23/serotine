@@ -1,0 +1,617 @@
+#!/usr/bin/env python3
+"""Fail if the APK references java.*/javax.* APIs newer than minSdk.
+
+The dex files in a built APK are the post-desugaring ground truth: everything
+D8 backports or desugar_jdk_libs rewrites is already gone, so any remaining
+reference to a java.* / javax.* class, method, or field whose `since` in the
+SDK's api-versions.xml is above minSdk WILL throw NoClassDefFoundError /
+NoSuchMethod/FieldError the first time it executes on a device running that
+API level (Android 10/11 never get ART module updates, so there is no
+backport safety net there).
+
+Coverage that source-level checks miss:
+  * calls that reach a JDK method through a THIRD-PARTY SUBCLASS — e.g.
+    `snappyIn.readAllBytes()` where the receiver type is snappy's stream class:
+    the dex owner is the subclass, so the checker walks the app's own class
+    hierarchy (parsed from the same dexdump output) up into java.* and resolves
+    the member there;
+  * CLASS-level references — extends/implements of a java.* type, and
+    checkcast/instanceof/const-class/new-instance type refs — which crash at
+    class load/use even when no individual member is new; a member ref's OWNER
+    class is checked too (a since-34 class can inherit a since-1 member);
+  * everything in third-party bytecode, which no source lint ever sees;
+  * calls D8 moved into a shared SYNTHETIC class. In a release build D8 outlines
+    every call to an API above minSdk into a `$$ExternalSyntheticApiModelOutline<n>`
+    stub (backports and lambdas get `$$ExternalSynthetic…` classes too), and it
+    shares those classes across the whole app under the name of ONE context
+    class: Caffeine's findVarHandle sits in a stub named after Besu's evm.Code,
+    and a lambda D8 found identical in two libraries carries just one of their
+    names. Taken at face value the allowlist would no longer match, and a
+    first-party call could hide behind a third-party name. References made inside
+    such a class are charged to the classes behind it instead: a method's callers,
+    or for a lambda body every class that uses the lambda (through chains of
+    synthetics too); only a synthetic nothing reaches stays its own referrer.
+
+This is the enforcement for the "minSdk 29 JDK-API budget" rule in CLAUDE.md.
+Known third-party residue lives in the allowlist next to this script, each
+entry with its reviewed rationale. A first-party referrer (eth/serotine/*,
+io/myotis/*) can NEVER be allowlisted: entries with such a prefix are refused,
+and a first-party violation fails the gate even when an entry would match it.
+
+android.* framework APIs are deliberately OUT of scope: those are routinely
+guarded with Build.VERSION.SDK_INT checks that a bytecode scan cannot see —
+Android lint's NewApi check owns that side.
+
+Fail-closed design: a member this script cannot resolve in the database is
+skipped (api-versions.xml only records the platform's own surface), so the
+scan is sound only for APIs the database records — therefore the script
+REFUSES to run when the database cannot resolve a canary set of known
+post-29 APIs (an old SDK yields exit 2, never a vacuous OK), when dexdump
+fails or yields no refs, or when most of the allowlist goes stale at once
+with no referrer prefix matching at all (the signature of a dexdump
+output-format change; a library one variant ships and another does not only
+empties its own prefix group).
+
+Usage:
+  python3 scripts/check_apk_min_api.py --apk path/to/app.apk \
+      [--min-api N] [--allowlist scripts/min-api-allowlist.txt] [--sdk <dir>]
+
+--min-api defaults to the APK's own manifest minSdkVersion (via aapt), so the
+gate follows android-app/build.gradle.kts automatically; pass it explicitly
+only to scan for a different floor. --allowlist must exist if passed
+(/dev/null works for regenerating candidates); --sdk must be a directory.
+
+Needs: an Android SDK with a platforms/android-N/data/api-versions.xml new
+enough to know the canary APIs below, and build-tools (dexdump + aapt).
+Exit codes: 0 clean, 1 new violations, 2 environment/usage error.
+"""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
+from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
+from typing import NamedTuple
+
+# Referrers under these prefixes are first-party: never allowlistable. The
+# repo's own packages (eth.serotine.*) and the embedded Myotis engine library's
+# (io.myotis.*): a violation in the engine is fixed upstream in biafra23/myotis,
+# never allowlisted here.
+FIRST_PARTY_PREFIXES = ("eth/serotine/", "io/myotis/")
+
+# The database must resolve these, or the whole scan would be vacuously green
+# exactly where it matters (each is an API this repo's budget polices; the
+# last has no entry before the android-36.1 database).
+DB_CANARIES = [
+    ("java/util/HexFormat", "of()Ljava/util/HexFormat;", "method"),
+    ("java/lang/Math", "unsignedMultiplyHigh(JJ)J", "method"),
+    ("java/util/concurrent/CompletableFuture",
+     "orTimeout(JLjava/util/concurrent/TimeUnit;)Ljava/util/concurrent/CompletableFuture;", "method"),
+    ("java/nio/file/Files", "readString(Ljava/nio/file/Path;)Ljava/lang/String;", "method"),
+]
+
+
+def die(msg):
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def find_sdk(explicit):
+    if explicit is not None:
+        if not os.path.isdir(explicit):
+            die(f"--sdk is not a directory: {explicit}")
+        return explicit
+    candidates = [os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT")]
+    lp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "local.properties")
+    if os.path.exists(lp):
+        for line in open(lp):
+            if line.startswith("sdk.dir="):
+                candidates.append(line.split("=", 1)[1].strip())
+    for c in candidates:
+        if c and os.path.isdir(c):
+            return c
+    die("Android SDK not found (pass --sdk or set ANDROID_HOME)")
+
+
+def newest(dirpath, pattern):
+    if not os.path.isdir(dirpath):
+        return None
+    best, best_key = None, ()
+    for name in os.listdir(dirpath):
+        if re.fullmatch(pattern, name):
+            key = tuple(int(x) for x in re.findall(r"\d+", name))
+            if key > best_key:
+                best, best_key = name, key
+    return os.path.join(dirpath, best) if best else None
+
+
+def parse_level(s, default=None):
+    """api-versions levels are usually ints but minor releases exist ("36.1")."""
+    if s is None:
+        return default
+    return float(s) if "." in s else int(s)
+
+
+def fmt_level(lv):
+    return str(int(lv)) if float(lv).is_integer() else str(lv)
+
+
+class ApiClass(NamedTuple):
+    since: float
+    supers: list
+    methods: dict
+    fields: dict
+
+
+def parse_api_versions(xml):
+    classes = {}
+    for c in ET.parse(xml).getroot().iter("class"):
+        since = parse_level(c.get("since"), 1)
+        supers, methods, fields = [], {}, {}
+        for ch in c:
+            if ch.tag in ("extends", "implements"):
+                supers.append(ch.get("name"))
+            elif ch.tag == "method":
+                methods[ch.get("name")] = parse_level(ch.get("since"), since)
+            elif ch.tag == "field":
+                fields[ch.get("name")] = parse_level(ch.get("since"), since)
+        classes[c.get("name")] = ApiClass(since, supers, methods, fields)
+    return classes
+
+
+def load_api_versions(sdk):
+    """The OLDEST installed platform database that resolves every canary.
+
+    Oldest-passing, not newest-available: preview platforms (CI runners
+    preinstall them) reshuffle `since` data — the android-37 preview records
+    StringBuilder#getChars as since=37 where every stable database resolves it
+    to 1, which made the gate report phantom violations. Canary coverage sets
+    the floor (>= android-36.1); preferring the oldest passing database keeps
+    the choice pinned to stable releases and identical across machines."""
+    pdir = os.path.join(sdk, "platforms")
+    if not os.path.isdir(pdir):
+        die("no platforms/ directory in SDK")
+    plats = sorted(
+        (name for name in os.listdir(pdir) if re.fullmatch(r"android-\d+(\.\d+)?", name)),
+        key=lambda n: tuple(int(x) for x in re.findall(r"\d+", n)))
+    tried = []
+    for name in plats:
+        xml = os.path.join(pdir, name, "data", "api-versions.xml")
+        if not os.path.exists(xml):
+            continue
+        tried.append(name)
+        classes = parse_api_versions(xml)
+        if all(resolve_api(classes, o, m, k == "field") is not None
+               for o, m, k in DB_CANARIES):
+            return classes
+    die(f"no installed platform database resolves the canary APIs "
+        f"(tried: {', '.join(tried) or 'none'}) — this gate needs "
+        f"platforms;android-36.1 or newer stable (see DB_CANARIES in this script)")
+
+
+CLASS_RE = re.compile(r"Class descriptor\s*:\s*'L([\w/$\-]+);'")
+SUPER_RE = re.compile(r"Superclass\s*:\s*'L([\w/$\-]+);'")
+IFACE_RE = re.compile(r"^\s+#\d+\s+:\s+'L([\w/$\-]+);'")
+DEF_NAME_RE = re.compile(r"^\s+name\s+:\s+'([^']+)'")
+DEF_TYPE_RE = re.compile(r"^\s+type\s+:\s+'([^']+)'")
+MEMBER_RE = re.compile(r" L([\w/$\-]+);\.([\w$<>-]+):(\S+?)(?:;)?\s*//\s*(method|field)@")
+TYPE_RE = re.compile(r" \[*L([\w/$\-]+);\s*//\s*type@")
+# The header dexdump -d prints above each method's code:
+#   2ae0c4:            |[2ae0c4] com.example.Foo.bar:(Ljava/lang/Class;)Ljava/lang/Object;
+# (an instruction line has hex code units after the address, never "|[" there).
+METHOD_HDR_RE = re.compile(r"^[0-9a-f]+:\s+\|\[[0-9a-f]+\] \S+\.([\w$<>\-]+):(\(\S*)$")
+# D8's synthetic classes (API outlines, backports, lambdas, …); in release mode
+# they are shared app-wide under one context class's name — see the docstring.
+SYNTHETIC_RE = re.compile(r"\$\$ExternalSynthetic[A-Za-z]+\d+$")
+
+
+class DexModel:
+    def __init__(self):
+        self.supers = {}          # class -> [superclass + interfaces]
+        self.defined = defaultdict(set)   # class -> {"name:type", ...}
+        self.defined_names = defaultdict(set)  # class -> {field/method name, ...}
+        self.refs = set()         # (referrer, owner, member, kind); kind "class" => member ""
+        # References made INSIDE a D8 synthetic class, per method, charged to its
+        # callers by resolve_synthetics(): (class, method) -> {(owner, member, kind)}
+        self.synthetic_refs = defaultdict(set)
+        # (synthetic class, method) -> {(caller class, caller method)}
+        self.synthetic_callers = defaultdict(set)
+        self.method_headers = 0   # METHOD_HDR_RE matches; 0 = header format drift
+
+    def merge(self, other):
+        self.supers.update(other.supers)
+        for k, v in other.defined.items():
+            self.defined[k] |= v
+        for k, v in other.defined_names.items():
+            self.defined_names[k] |= v
+        self.refs |= other.refs
+        for k, v in other.synthetic_refs.items():
+            self.synthetic_refs[k] |= v
+        for k, v in other.synthetic_callers.items():
+            self.synthetic_callers[k] |= v
+        self.method_headers += other.method_headers
+
+    def resolve_synthetics(self):
+        """Charge each synthetic class's references to the real classes behind it.
+
+        Runs on the MERGED model: a stub and its callers may sit in different dex
+        files. A synthetic method's origins are its callers. A method nobody calls
+        by name (a lambda body, reached by interface dispatch) takes the classes
+        that use its class at all instead: new-instance, <init>, an INSTANCE sget.
+        Release-mode D8 shares lambdas across unrelated classes too, so the
+        lambda's own name proves nothing either. Chains of synthetics are followed
+        with a cycle guard; only a synthetic nothing reaches keeps itself as the
+        referrer, so an unresolved reference is still reported, never dropped.
+        """
+        users = defaultdict(set)   # synthetic class -> {(user class, user method | None)}
+        for referrer, owner, _member, _kind in self.refs:
+            if SYNTHETIC_RE.search(owner):
+                users[owner].add((referrer, None))
+        for (cls, method), refs in self.synthetic_refs.items():
+            for owner, _member, _kind in refs:
+                if owner != cls and SYNTHETIC_RE.search(owner):
+                    users[owner].add((cls, method))
+
+        def origins(site, chain):
+            """The non-synthetic classes behind `site`; `chain` = sites on the path."""
+            out = set()
+            for via in self.synthetic_callers.get(site) or users.get(site[0], ()):
+                if not SYNTHETIC_RE.search(via[0]):
+                    out.add(via[0])
+                elif via not in chain:
+                    out |= origins(via, chain | {via})
+            return out
+
+        for site, refs in self.synthetic_refs.items():
+            for referrer in origins(site, frozenset({site})) or {site[0]}:
+                for owner, member, kind in refs:
+                    self.refs.add((referrer, owner, member, kind))
+
+
+def parse_dexdump(dexdump, dex_path):
+    model = DexModel()
+    proc = subprocess.Popen([dexdump, "-d", dex_path], stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, errors="replace")
+    cur = "?"
+    cur_method = "?"
+    cur_synthetic = False
+    in_ifaces = False
+    pending_name = None
+
+    def add_ref(owner, member, kind):
+        if cur_synthetic:
+            model.synthetic_refs[cur, cur_method].add((owner, member, kind))
+        else:
+            model.refs.add((cur, owner, member, kind))
+
+    for line in proc.stdout:
+        # Hot path first: the overwhelming majority of lines are instructions,
+        # and only member/type refs among them matter.
+        if "//" in line and " L" in line:
+            m = MEMBER_RE.search(line)
+            if m:
+                owner, name, desc, kind = m.groups()
+                if kind == "method":
+                    # dexdump prints `.name:(args)ret // method@…`; the regex may
+                    # have eaten a trailing ';' of an object(-array) return type.
+                    ret = desc.split(")")[-1]
+                    member = name + desc + (";" if ret.lstrip("[").startswith("L") else "")
+                    if SYNTHETIC_RE.search(owner):
+                        model.synthetic_callers[owner, member].add((cur, cur_method))
+                else:
+                    member = name
+                add_ref(owner, member, kind)
+                continue
+            m = TYPE_RE.search(line)
+            if m:
+                add_ref(m.group(1), "", "class")
+                continue
+        if "|[" in line:
+            m = METHOD_HDR_RE.match(line)
+            if m:
+                # Same spelling as a call site's member above: name + full descriptor.
+                cur_method = m.group(1) + m.group(2)
+                model.method_headers += 1
+                continue
+        if "Class descriptor" in line:
+            m = CLASS_RE.search(line)
+            if m:
+                cur, in_ifaces, pending_name = m.group(1), False, None
+                cur_method, cur_synthetic = "?", bool(SYNTHETIC_RE.search(cur))
+                model.supers.setdefault(cur, [])
+                continue
+        # A synthetic class's own extends/implements is charged like its other
+        # references: as a type ref of site (cur, "?"), which no one calls by
+        # name, so it goes to the class's users (main() skips synthetics in its
+        # class-level loop). model.supers keeps it either way: java_ancestors
+        # walks it.
+        if "Superclass" in line:
+            m = SUPER_RE.search(line)
+            if m:
+                model.supers[cur] = [m.group(1)] + model.supers.get(cur, [])
+                if cur_synthetic:
+                    add_ref(m.group(1), "", "class")
+                continue
+        if "Interfaces" in line and "-" in line:
+            in_ifaces = True
+            continue
+        if in_ifaces:
+            m = IFACE_RE.match(line)
+            if m:
+                model.supers.setdefault(cur, []).append(m.group(1))
+                if cur_synthetic:
+                    add_ref(m.group(1), "", "class")
+                continue
+            in_ifaces = False
+        m = DEF_NAME_RE.match(line)
+        if m:
+            pending_name = m.group(1)
+            continue
+        m = DEF_TYPE_RE.match(line)
+        if m and pending_name is not None:
+            model.defined[cur].add(pending_name + ":" + m.group(1))
+            model.defined_names[cur].add(pending_name)
+            pending_name = None
+            continue
+    err = proc.stderr.read()
+    if proc.wait() != 0:
+        # RuntimeError, not die(): this runs in a pool worker, and SystemExit
+        # does not cross the process boundary cleanly — main() converts it.
+        raise RuntimeError(
+            f"dexdump failed on {os.path.basename(dex_path)}: "
+            f"{err.strip().splitlines()[-1] if err.strip() else 'exit ' + str(proc.returncode)}")
+    # No per-dex minimum-yield check: a small trailing multidex file can
+    # legitimately parse to almost nothing. Vacuity is judged on the MERGED
+    # model in main() (plus the mass-stale-allowlist refusal).
+    return model
+
+
+def resolve_api(classes, owner, member, is_field):
+    """Walk the api-versions hierarchy; lowest `since` declaring `member`, or None."""
+    best, stack, seen = None, [owner], set()
+    while stack:
+        cn = stack.pop()
+        if cn in seen:
+            continue
+        seen.add(cn)
+        info = classes.get(cn)
+        if not info:
+            continue
+        s = (info.fields if is_field else info.methods).get(member)
+        if s is not None:
+            best = s if best is None else min(best, s)
+        stack.extend(info.supers)
+    return best
+
+
+def member_defined(model, cn, member, sig, is_method):
+    if is_method:
+        return sig in model.defined.get(cn, ())
+    return member in model.defined_names.get(cn, ())
+
+
+def java_ancestors(model, owner, member, kind):
+    """For a non-java owner: java/javax ancestors reachable WITHOUT passing a
+    class that defines the member itself (an in-app definition handles the call)."""
+    is_method = kind == "method"
+    sig = member.replace("(", ":(", 1) if is_method else None
+    if member_defined(model, owner, member, sig, is_method):
+        return []
+    out, stack, seen = [], list(model.supers.get(owner, [])), {owner}
+    while stack:
+        cn = stack.pop()
+        if cn in seen:
+            continue
+        seen.add(cn)
+        if cn.startswith("java/") or cn.startswith("javax/"):
+            out.append(cn)
+            continue
+        if member_defined(model, cn, member, sig, is_method):
+            continue  # overridden inside the app — the call resolves there
+        stack.extend(model.supers.get(cn, []))
+    return out
+
+
+def load_allowlist(path):
+    if not path:
+        return []
+    if not os.path.exists(path):
+        die(f"--allowlist file does not exist: {path} (use /dev/null to run bare)")
+    entries = []
+    for lineno, raw in enumerate(open(path), 1):
+        # Full-line comments only: targets themselves contain '#'
+        # (owner#member), so inline comments are not supported.
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            die(f"malformed allowlist line {lineno} (want '<referrer-prefix> "
+                f"<owner#member>'): {line!r}")
+        prefix, target = parts[0], parts[1].strip()
+        # Historical entries carried a ' (inherited from X)' suffix; the named
+        # ancestor is a traversal accident of the toolchain, so matching
+        # ignores it (it still appears in failure output as a diagnostic).
+        target = target.split(" (inherited from ", 1)[0]
+        if prefix.startswith(FIRST_PARTY_PREFIXES):
+            die(f"allowlist line {lineno} has a FIRST-PARTY prefix ({prefix}) — "
+                f"first-party violations must be fixed, never allowlisted")
+        entries.append((prefix, target))
+    return entries
+
+
+def apk_min_sdk(aapt, apk):
+    if not aapt or not os.path.exists(aapt):
+        die("no build-tools/*/aapt in SDK (needed to read the APK's minSdkVersion; "
+            "or pass --min-api explicitly)")
+    out = subprocess.run([aapt, "dump", "badging", apk], capture_output=True, text=True)
+    m = re.search(r"sdkVersion:'(\d+)'", out.stdout)
+    if out.returncode != 0 or not m:
+        die(f"could not read minSdkVersion from {apk} via aapt "
+            f"(pass --min-api explicitly): {out.stderr.strip()[:200]}")
+    return int(m.group(1))
+
+
+def _parse_one(dexdump_and_path):
+    return parse_dexdump(*dexdump_and_path)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--apk", required=True)
+    ap.add_argument("--min-api", type=int, default=None,
+                    help="default: the APK manifest's own minSdkVersion")
+    ap.add_argument("--allowlist", default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                        "min-api-allowlist.txt"))
+    ap.add_argument("--sdk")
+    args = ap.parse_args()
+
+    sdk = find_sdk(args.sdk)
+    bt = newest(os.path.join(sdk, "build-tools"), r"\d+\.\d+\.\d+(-rc\d+)?")
+    dexdump = bt and os.path.join(bt, "dexdump")
+    if not dexdump or not os.path.exists(dexdump):
+        die("no build-tools/*/dexdump in SDK")
+    classes = load_api_versions(sdk)
+    allow = load_allowlist(args.allowlist)
+    min_api = args.min_api if args.min_api is not None \
+        else apk_min_sdk(os.path.join(bt, "aapt"), args.apk)
+
+    model = DexModel()
+    with tempfile.TemporaryDirectory() as tmp:
+        with zipfile.ZipFile(args.apk) as z:
+            dexes = [n for n in z.namelist() if re.fullmatch(r"classes\d*\.dex", n)]
+            if not dexes:
+                die(f"no classes*.dex in {args.apk}")
+            paths = [z.extract(n, tmp) for n in dexes]
+            # Dex files are independent (multidex partitions classes), so
+            # disassembly — the dominant cost — parallelizes cleanly.
+            try:
+                with ProcessPoolExecutor() as pool:
+                    for part in pool.map(_parse_one, [(dexdump, p) for p in paths]):
+                        model.merge(part)
+            except RuntimeError as e:
+                die(str(e))
+    if not model.refs or not model.supers:
+        die("dexdump produced no usable output for any dex in the APK — "
+            "output format drift? (the gate refuses to pass vacuously)")
+    if not model.method_headers:
+        # Without them no synthetic stub can be traced to its callers, and every
+        # outlined call would be charged to whatever class lends the stub its name.
+        die("dexdump printed no method headers the gate can parse (METHOD_HDR_RE) — "
+            "output format drift? (synthetic classes could not be attributed)")
+    model.resolve_synthetics()
+
+    def class_since(cn):
+        info = classes.get(cn)
+        return info.since if info else None
+
+    violations = {}
+
+    def record(referrer, target, since):
+        violations[(referrer, target)] = max(since, violations.get((referrer, target), 0))
+
+    # Class-level: extends/implements of java.* types crash at class load.
+    # Synthetic classes' supertypes went through resolve_synthetics instead.
+    for cls, supers in model.supers.items():
+        if SYNTHETIC_RE.search(cls):
+            continue
+        for sup in supers:
+            if sup.startswith(("java/", "javax/")):
+                s = class_since(sup)
+                if s is not None and s > min_api:
+                    record(cls, f"{sup}#<class>", s)
+
+    resolve_cache = {}
+    anc_cache = {}
+    for referrer, owner, member, kind in model.refs:
+        if kind == "class":
+            if owner.startswith(("java/", "javax/")):
+                s = class_since(owner)
+                if s is not None and s > min_api:
+                    record(referrer, f"{owner}#<class>", s)
+            continue
+        is_field = kind == "field"
+        if owner.startswith(("java/", "javax/")):
+            key = (owner, member, kind)
+            if key not in resolve_cache:
+                since = resolve_api(classes, owner, member, is_field)
+                # Loading the owner class is a precondition of any member
+                # access: a new class's inherited old member still crashes.
+                cs = class_since(owner)
+                if cs is not None and cs > min_api:
+                    since = max(since or 0, cs)
+                resolve_cache[key] = since
+            since = resolve_cache[key]
+            if since is not None and since > min_api:
+                record(referrer, f"{owner}#{member}", since)
+        else:
+            # A subclass-owned ref may still bind to an inherited JDK member.
+            key = (owner, member, kind)
+            if key not in anc_cache:
+                hit = None
+                for anc in java_ancestors(model, owner, member, kind):
+                    since = resolve_api(classes, anc, member, is_field)
+                    if since is not None and since > min_api:
+                        hit = (anc, since)
+                        break
+                anc_cache[key] = hit
+            if anc_cache[key]:
+                anc, since = anc_cache[key]
+                record(referrer, f"{owner}#{member} (inherited from {anc})", since)
+
+    def match_key(target):
+        return target.split(" (inherited from ", 1)[0]
+
+    used_allow = set()
+    new = defaultdict(list)
+    for (ref, target), since in sorted(violations.items()):
+        if not ref.startswith(FIRST_PARTY_PREFIXES):
+            for i, (prefix, atarget) in enumerate(allow):
+                if ref.startswith(prefix) and match_key(target) == atarget:
+                    used_allow.add(i)
+                    break
+            else:
+                new[target, since].append(ref)
+        else:
+            new[target, since].append(ref)
+
+    stale = [i for i in range(len(allow)) if i not in used_allow]
+    for i in stale:
+        print(f"note: stale allowlist entry (no longer referenced): {allow[i][0]} {allow[i][1]}")
+    # A dexdump/api-versions format change leaves EVERY entry unmatched. A
+    # library that one variant ships and another does not — desugar_jdk_libs'
+    # j$ wrappers, which L8 shrinks out of a release APK — leaves its own
+    # referrer-prefix group unmatched while the other groups still match. So
+    # the refusal needs both: most entries stale AND no referrer prefix with a
+    # single matched entry left. (Myotis's copy has only the first condition;
+    # its j$ entries were never a majority of its list.)
+    live_prefixes = {allow[i][0] for i in used_allow}
+    if allow and len(stale) > len(allow) // 2 and not live_prefixes:
+        die(f"{len(stale)} of {len(allow)} allowlist entries are stale at once, and no "
+            f"referrer prefix matched anything — that is the signature of a "
+            f"dexdump/api-versions format change, not of real cleanups; refusing to "
+            f"trust this scan")
+
+    if new:
+        print(f"\nFAIL: references to java/javax APIs above API {min_api} "
+              f"that neither D8 backports nor desugar_jdk_libs cover:\n")
+        for (target, since), refs in sorted(new.items()):
+            print(f"  API {fmt_level(since)}: {target}")
+            for ref in sorted(refs):
+                print(f"      referenced from {ref}")
+        print(f"\nThese crash at runtime on devices below that API level (minSdk is "
+              f"{min_api}). Fix the call (see the minSdk API budget in CLAUDE.md "
+              f"— core Futures/Hex/BigIntegers, Paths.get, manual stream drains), or, "
+              f"for a reviewed third-party case, add an entry to {args.allowlist}.")
+        sys.exit(1)
+    print(f"OK: no unexpected java/javax references above API {min_api} "
+          f"({len(violations)} allowlisted third-party refs)")
+
+
+if __name__ == "__main__":
+    main()
