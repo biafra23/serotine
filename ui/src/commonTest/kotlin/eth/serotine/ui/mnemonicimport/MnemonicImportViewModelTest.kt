@@ -11,6 +11,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.repository.AccountDerivation
+import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.Derivation
 import eth.serotine.domain.usecase.ImportMnemonicAccount
@@ -220,13 +221,13 @@ class MnemonicImportViewModelTest {
 
         override fun observeAccounts(): Flow<List<Account>> = accounts
 
-        override suspend fun add(account: Account): Boolean {
+        override suspend fun add(account: Account): AccountAdd {
             var added = false
             accounts.update { current ->
                 added = current.none { it.address == account.address }
                 if (added) current + account else current
             }
-            return added
+            return if (added) AccountAdd.Added else AccountAdd.AlreadyPresent
         }
     }
 }

@@ -21,6 +21,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountDerivation
+import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.Derivation
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
@@ -60,9 +61,9 @@ class AppNavigationTest {
         accounts = object : AccountRepository {
             override fun observeAccounts(): Flow<List<Account>> = accounts
 
-            override suspend fun add(account: Account): Boolean {
+            override suspend fun add(account: Account): AccountAdd {
                 accounts.update { it + account }
-                return true
+                return AccountAdd.Added
             }
         },
         accountDerivation = object : AccountDerivation {

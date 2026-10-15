@@ -36,6 +36,12 @@ material-icons-core = "1.7.3"
 # docs/keys-and-signing.md (rule 7) requires. 0.22.0 is the last release built with
 # Kotlin 2.2.21, our pin; 0.23.0 moves its stdlib to 2.3.
 secp256k1-kmp = "0.22.0"
+# The persistent account list (eth.serotine.data.account): multiplatform file I/O and
+# JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0 are the last releases built
+# for Kotlin 2.2 (the next ones need a 2.3 stdlib); the serialization compiler plugin
+# is Kotlin's own, at the Kotlin pin.
+kotlinx-io = "0.8.2"
+kotlinx-serialization = "1.9.0"
 # KotlinCrypto: pure-Kotlin multiplatform digests and MACs (Keccak-256 for
 # addresses, SHA-256 for the BIP-39 checksum, HMAC-SHA512 for BIP-39/BIP-32).
 # 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
@@ -49,11 +55,14 @@ kotlin-jvm             = { id = "org.jetbrains.kotlin.jvm",                versi
 kotlin-multiplatform   = { id = "org.jetbrains.kotlin.multiplatform",      version.ref = "kotlin" }
 compose-compiler       = { id = "org.jetbrains.kotlin.plugin.compose",     version.ref = "kotlin" }
 compose-multiplatform  = { id = "org.jetbrains.compose",                   version.ref = "compose-multiplatform" }
+kotlin-serialization   = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
 [libraries]
 kotlinx-coroutines-core    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core",    version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing   = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing",   version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test",    version.ref = "kotlinx-coroutines" }
+kotlinx-io-core            = { module = "org.jetbrains.kotlinx:kotlinx-io-core",            version.ref = "kotlinx-io" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 # org.jetbrains.androidx.*: JetBrains' multiplatform builds of the AndroidX lifecycle
 # artifacts (the androidx.* coordinates are Android-only).
 lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }

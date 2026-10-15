@@ -65,6 +65,10 @@ class MnemonicImportViewModel(private val importMnemonicAccount: ImportMnemonicA
                     importing = false,
                     error = "The account could not be derived on this device.",
                 )
+                MnemonicImport.NotSaved -> current.copy(
+                    importing = false,
+                    error = "The account could not be saved on this device. Nothing was added.",
+                )
             }
         }
     }

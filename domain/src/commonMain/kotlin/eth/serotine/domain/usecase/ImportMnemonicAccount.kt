@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
+import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.Derivation
@@ -38,7 +39,11 @@ class ImportMnemonicAccount(
             val current = accounts.observeAccounts().first()
             current.firstOrNull { it.address == address }?.let { return MnemonicImport.AlreadyAdded(it) }
             val account = Account(address, AccountKind.EOA, nextFreeLabel(current))
-            if (accounts.add(account)) return MnemonicImport.Added(account)
+            when (accounts.add(account)) {
+                AccountAdd.Added -> return MnemonicImport.Added(account)
+                AccountAdd.NotSaved -> return MnemonicImport.NotSaved
+                AccountAdd.AlreadyPresent -> Unit // lost a race: read again
+            }
         }
     }
 
@@ -62,4 +67,7 @@ sealed interface MnemonicImport {
 
     /** The key adapter cannot run on this device; nothing changed. */
     data object Unavailable : MnemonicImport
+
+    /** The account was derived, but the account list could not be stored; nothing changed. */
+    data object NotSaved : MnemonicImport
 }

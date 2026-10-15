@@ -3,12 +3,11 @@ package eth.serotine.data.account
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.repository.AccountAdd
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class InMemoryAccountRepositoryTest {
 
@@ -20,7 +19,7 @@ class InMemoryAccountRepositoryTest {
         val repository = InMemoryAccountRepository(listOf(eoa))
         assertEquals(listOf(eoa), repository.observeAccounts().first())
 
-        assertTrue(repository.add(safe))
+        assertEquals(AccountAdd.Added, repository.add(safe))
         assertEquals(listOf(eoa, safe), repository.observeAccounts().first())
     }
 
@@ -34,8 +33,8 @@ class InMemoryAccountRepositoryTest {
     @Test
     fun addingAnAddressTwiceKeepsTheFirstEntry() = runTest {
         val repository = InMemoryAccountRepository()
-        assertTrue(repository.add(eoa))
-        assertFalse(repository.add(eoa.copy(label = "Renamed")))
+        assertEquals(AccountAdd.Added, repository.add(eoa))
+        assertEquals(AccountAdd.AlreadyPresent, repository.add(eoa.copy(label = "Renamed")))
 
         assertEquals(listOf(eoa), repository.observeAccounts().first())
     }

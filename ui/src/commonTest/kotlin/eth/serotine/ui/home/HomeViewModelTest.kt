@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.usecase.ObserveAccounts
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,6 @@ class HomeViewModelTest {
     private class FakeAccountRepository : AccountRepository {
         val accounts = MutableStateFlow<List<Account>>(emptyList())
         override fun observeAccounts(): Flow<List<Account>> = accounts
-        override suspend fun add(account: Account): Boolean = error("not used by this test")
+        override suspend fun add(account: Account): AccountAdd = error("not used by this test")
     }
 }

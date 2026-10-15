@@ -3,6 +3,7 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,6 @@ class ObserveAccountsTest {
     private class FakeAccountRepository : AccountRepository {
         val accounts = MutableStateFlow<List<Account>>(emptyList())
         override fun observeAccounts(): Flow<List<Account>> = accounts
-        override suspend fun add(account: Account): Boolean = error("not used by this test")
+        override suspend fun add(account: Account): AccountAdd = error("not used by this test")
     }
 }

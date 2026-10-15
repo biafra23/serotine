@@ -1,7 +1,7 @@
 package eth.serotine.android
 
 import android.app.Application
-import eth.serotine.data.account.InMemoryAccountRepository
+import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.keys.MnemonicAccountDerivation
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.AppGraph
@@ -14,7 +14,9 @@ class SerotineApplication : Application() {
 
     val graph: AppGraph by lazy {
         AppGraph(
-            accounts = InMemoryAccountRepository(),
+            // The account list in the app's private files (excluded from backup by the
+            // manifest's allowBackup="false"); addresses and labels only, no keys.
+            accounts = FileAccountRepository(filesDir.resolve("accounts.json").path),
             accountDerivation = MnemonicAccountDerivation(),
             network = Network.SEPOLIA,
         )
