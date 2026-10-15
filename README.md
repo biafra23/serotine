@@ -37,8 +37,10 @@ modules build on macOS only and are skipped elsewhere.
 | `desktop-app` | the desktop JVM host and the jpackage configuration for the three installers |
 
 The dependency rule, the MVVM contract and how to add a feature:
-[docs/architecture.md](docs/architecture.md). The rules every change goes
-through (review, PR, CI, release): [CLAUDE.md](CLAUDE.md).
+[docs/architecture.md](docs/architecture.md). How keys are held, what the
+user chooses between, and what a hardware key can and cannot guarantee:
+[docs/keys-and-signing.md](docs/keys-and-signing.md). The rules every change
+goes through (review, PR, CI, release): [CLAUDE.md](CLAUDE.md).
 
 ## Releases
 
