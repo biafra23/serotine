@@ -33,8 +33,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.platform.protectFromScreenCapture
+import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the seed-phrase field, for UI tests. */
 const val MNEMONIC_FIELD_TAG = "mnemonic-field"
@@ -43,8 +46,9 @@ const val MNEMONIC_FIELD_TAG = "mnemonic-field"
 const val MNEMONIC_IMPORT_BUTTON_TAG = "mnemonic-import-button"
 
 /**
- * Binds [MnemonicImportScreen] to its ViewModel, and reports a finished import through
- * [onImported] so the caller can close the screen.
+ * Binds [MnemonicImportScreen] to its ViewModel, reports a finished import through
+ * [onImported] so the caller can close the screen, and tells the ViewModel when the screen
+ * stops being shown, so it drops the words.
  */
 @Composable
 fun MnemonicImportRoute(
@@ -53,7 +57,11 @@ fun MnemonicImportRoute(
     onImported: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Main.immediate: an edit reaches the field in the same frame it was typed. A collector
+    // that resumes a frame later hands the field a stale value, which loses keystrokes and
+    // moves the cursor while someone types fast.
+    val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     MnemonicImportScreen(
         state = state,
         onPhraseChange = viewModel::onPhraseChange,
@@ -96,7 +104,7 @@ fun MnemonicImportScreen(
         },
     ) { padding ->
         when (state) {
-            is MnemonicImportUiState.Entering -> Entering(
+            is MnemonicImportUiState.Entering -> EnteringContent(
                 state = state,
                 captureBlocked = captureBlocked,
                 onPhraseChange = onPhraseChange,
@@ -111,7 +119,7 @@ fun MnemonicImportScreen(
 }
 
 @Composable
-private fun Entering(
+private fun EnteringContent(
     state: MnemonicImportUiState.Entering,
     captureBlocked: Boolean,
     onPhraseChange: (String) -> Unit,

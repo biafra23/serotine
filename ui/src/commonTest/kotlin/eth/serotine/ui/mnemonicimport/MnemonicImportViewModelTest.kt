@@ -132,6 +132,59 @@ class MnemonicImportViewModelTest {
     }
 
     @Test
+    fun aFaultInTheKeyAdapterIsAnErrorNotAHang() = runTest {
+        derivation.next = CompletableDeferred<Derivation>().apply {
+            completeExceptionally(IllegalStateException("could not load the native library"))
+        }
+        viewModel.onPhraseChange(twelveWords)
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertFalse(entering().importing)
+        assertEquals("The account could not be derived on this device.", entering().error)
+        assertTrue(entering().canImport, "the user can try again")
+    }
+
+    @Test
+    fun aDeviceTheKeyAdapterCannotRunOnIsAnError() = runTest {
+        derivation.next = CompletableDeferred(Derivation.Unavailable)
+        viewModel.onPhraseChange(twelveWords)
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals("The account could not be derived on this device.", entering().error)
+        assertEquals(twelveWords, entering().phrase.text)
+    }
+
+    @Test
+    fun hidingTheScreenDropsTheWords() {
+        viewModel.onPhraseChange(twelveWords)
+
+        viewModel.onHidden()
+
+        assertEquals("", entering().phrase.text)
+    }
+
+    @Test
+    fun hidingTheScreenAbandonsARunningAttemptAndItsWords() = runTest {
+        val pending = CompletableDeferred<Derivation>()
+        derivation.next = pending
+        viewModel.onPhraseChange(twelveWords)
+        viewModel.onImport()
+        runCurrent()
+
+        viewModel.onHidden()
+        pending.complete(Derivation.Invalid(MnemonicProblem.Checksum))
+        runCurrent()
+
+        assertEquals("", entering().phrase.text, "a late answer must not bring the words back")
+        assertFalse(entering().importing)
+        assertNull(entering().error)
+    }
+
+    @Test
     fun aWordCountBip39DoesNotDefineIsNotSubmitted() = runTest {
         viewModel.onPhraseChange("only three words")
 

@@ -24,7 +24,9 @@ interface AccountDerivation {
      * account it names cannot sign until a key store holds its key
      * (docs/keys-and-signing.md, *The envelope*).
      *
-     * Never fails other than as [Derivation.Invalid]; runs off the caller's thread.
+     * Never throws: words that are not a mnemonic come back as [Derivation.Invalid], and a
+     * device the adapter cannot run on (its native library did not load) as
+     * [Derivation.Unavailable]. Runs off the caller's thread.
      */
     suspend fun deriveFirstAccount(mnemonic: Mnemonic): Derivation
 }
@@ -37,4 +39,7 @@ sealed interface Derivation {
 
     /** The words are not a BIP-39 mnemonic, for the reason [problem] gives. */
     data class Invalid(val problem: MnemonicProblem) : Derivation
+
+    /** The key adapter cannot run on this device, so nothing was derived. */
+    data object Unavailable : Derivation
 }

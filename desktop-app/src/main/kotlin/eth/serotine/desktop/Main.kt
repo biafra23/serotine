@@ -7,6 +7,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.InMemoryAccountRepository
 import eth.serotine.data.keys.MnemonicAccountDerivation
+import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
 
@@ -20,6 +21,7 @@ fun main() = application {
         AppGraph(
             accounts = InMemoryAccountRepository(),
             accountDerivation = MnemonicAccountDerivation(),
+            network = Network.SEPOLIA,
         )
     }
     Window(

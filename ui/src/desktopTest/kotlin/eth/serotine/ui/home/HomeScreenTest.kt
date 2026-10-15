@@ -24,7 +24,7 @@ class HomeScreenTest {
 
     @Test
     fun emptyStateInvitesTheFirstAccount() {
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready(emptyList()), onAddAccount = {}) } }
+        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready("Sepolia", emptyList()), onAddAccount = {}) } }
 
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
         rule.onNodeWithTag(HOME_ACCOUNT_LIST_TAG).assertDoesNotExist()
@@ -36,7 +36,7 @@ class HomeScreenTest {
             AccountItem("Daily", "0x" + "aa".repeat(20), AccountKind.EOA),
             AccountItem("Treasury", "0x" + "bb".repeat(20), AccountKind.SAFE),
         )
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready(accounts), onAddAccount = {}) } }
+        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready("Sepolia", accounts), onAddAccount = {}) } }
 
         rule.onNodeWithTag(HOME_ACCOUNT_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithText("Daily").assertIsDisplayed()
@@ -47,7 +47,7 @@ class HomeScreenTest {
 
     @Test
     fun titleAndVersionAreOneMergedSemanticsNode() {
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Loading, onAddAccount = {}) } }
+        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Loading("Sepolia"), onAddAccount = {}) } }
 
         // Exactly one node carries BOTH strings — proof they merged rather than merely
         // both being on screen. The merged tree is what accessibility services read.
@@ -55,8 +55,8 @@ class HomeScreenTest {
     }
 
     @Test
-    fun theTopBarNamesTheOneNetworkTheAppUses() {
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Loading, onAddAccount = {}) } }
+    fun theTopBarNamesTheNetworkFromItsState() {
+        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Loading("Sepolia"), onAddAccount = {}) } }
 
         rule.onNodeWithTag(HOME_NETWORK_TAG).assertTextEquals("Sepolia")
     }
@@ -64,7 +64,7 @@ class HomeScreenTest {
     @Test
     fun theFloatingActionButtonAsksToAddAnAccount() {
         var clicks = 0
-        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready(emptyList()), onAddAccount = { clicks++ }) } }
+        rule.setContent { SerotineTheme { HomeScreen(HomeUiState.Ready("Sepolia", emptyList()), onAddAccount = { clicks++ }) } }
 
         rule.onNodeWithContentDescription("Add account").performClick()
 

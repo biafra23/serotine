@@ -176,7 +176,9 @@ first account, `m/44'/60'/0'/0/0` with the empty passphrase, on libsecp256k1
 through ACINQ's secp256k1-kmp (JNI on Android and the JVM, cinterop on iOS).
 The seed and the key exist inside that one call as byte arrays zeroed before
 it returns, and nothing is stored: the account it adds can sign nothing until
-the key-store port and the envelope above land. The restore screen carries
+the key-store port and the envelope above land. The restore screen's
+ViewModel drops the words when the screen stops being shown (the app goes to
+the background, the window is hidden) and when it leaves the back stack. The restore screen carries
 rule 8's protections through `protectFromScreenCapture()` in
 `eth.serotine.ui.platform`: `FLAG_SECURE` and an autofill exclusion on
 Android; on desktop, and on iOS until its host covers the window, the screen

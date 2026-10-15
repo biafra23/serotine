@@ -11,9 +11,10 @@ import kotlinx.coroutines.flow.first
 
 /**
  * Adds the first account of a BIP-39 mnemonic to the wallet: the "add account from a seed
- * phrase" capability. The account is an [AccountKind.EOA] named "Account N", the first
- * such name not yet taken. One of the two use cases the [Mnemonic] passes through
- * (CLAUDE.md, *Trust*): it hands the words to the key adapter and keeps nothing of them.
+ * phrase" capability. The account is an [AccountKind.EOA] named "Account N": N is one more
+ * than the number of accounts, raised past any such name already taken. One of the two use
+ * cases the [Mnemonic] passes through (CLAUDE.md, *Trust*): it hands the words to the key
+ * adapter and keeps nothing of them.
  */
 class ImportMnemonicAccount(
     private val derivation: AccountDerivation,
@@ -22,6 +23,7 @@ class ImportMnemonicAccount(
     suspend operator fun invoke(mnemonic: Mnemonic): MnemonicImport =
         when (val derived = derivation.deriveFirstAccount(mnemonic)) {
             is Derivation.Invalid -> MnemonicImport.Invalid(derived.problem)
+            Derivation.Unavailable -> MnemonicImport.Unavailable
             is Derivation.Derived -> {
                 val current = accounts.observeAccounts().first()
                 val existing = current.firstOrNull { it.address == derived.address }
@@ -58,4 +60,7 @@ sealed interface MnemonicImport {
 
     /** The words are not a BIP-39 mnemonic, for the reason [problem] gives; nothing changed. */
     data class Invalid(val problem: MnemonicProblem) : MnemonicImport
+
+    /** The key adapter cannot run on this device; nothing changed. */
+    data object Unavailable : MnemonicImport
 }

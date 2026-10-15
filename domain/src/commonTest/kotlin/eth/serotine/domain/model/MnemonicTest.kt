@@ -17,6 +17,13 @@ class MnemonicTest {
     }
 
     @Test
+    fun pastedNoBreakAndOtherUnicodeSpacesSeparateWords() {
+        val pasted = Mnemonic("abandon\u00a0about\u2009zoo\u3000vote")
+
+        assertEquals(listOf("abandon", "about", "zoo", "vote"), pasted.words)
+    }
+
+    @Test
     fun blankTextHasNoWords() {
         assertEquals(emptyList(), Mnemonic.EMPTY.words)
         assertEquals(emptyList(), Mnemonic(" \n ").words)

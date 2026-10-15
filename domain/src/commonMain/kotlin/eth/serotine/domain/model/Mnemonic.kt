@@ -16,14 +16,17 @@ package eth.serotine.domain.model
  */
 class Mnemonic(val text: String) {
 
-    /** The words of [text]: lower-cased and split on any run of whitespace. */
+    /**
+     * The words of [text]: lower-cased and split on any run of whitespace or Unicode space
+     * separator (the no-break spaces that text pasted from a web page or a PDF carries).
+     */
     val words: List<String>
         get() = text.lowercase().split(WHITESPACE).filter { it.isNotEmpty() }
 
     override fun toString(): String = "Mnemonic(redacted)"
 
     companion object {
-        private val WHITESPACE = Regex("\\s+")
+        private val WHITESPACE = Regex("[\\s\\p{Z}]+")
 
         /** Nothing typed yet. */
         val EMPTY: Mnemonic = Mnemonic("")

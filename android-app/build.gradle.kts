@@ -81,6 +81,8 @@ android {
         // Signing here would put that key in the environment of the whole Gradle
         // build, third-party plugins and build scripts included.
         release {
+            // Turning this on needs a keep rule for libsecp256k1's reflectively loaded JNI
+            // binding first: see data/build.gradle.kts.
             isMinifyEnabled = false
         }
     }
@@ -116,9 +118,5 @@ dependencies {
     implementation(compose.runtime)
     implementation(compose.ui)
     implementation(libs.androidx.activity.compose)
-    // libsecp256k1's Android JNI binding (.so files for the four Android ABIs) for :data's
-    // key adapter. Declared here, not in :data, because it must stay off every host-JVM
-    // classpath — the reason is in data/build.gradle.kts.
-    implementation(libs.secp256k1.kmp.jni.android)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }

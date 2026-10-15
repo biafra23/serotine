@@ -19,9 +19,8 @@ sealed interface MnemonicImportUiState {
         val error: String? = null,
     ) : MnemonicImportUiState {
 
-        /** The number of words, counted as the key adapter will. */
-        val wordCount: Int
-            get() = phrase.words.size
+        /** The number of words, counted as the key adapter will; once per state, not per read. */
+        val wordCount: Int = phrase.words.size
 
         /** True for a word count BIP-39 defines, while no attempt runs. */
         val canImport: Boolean

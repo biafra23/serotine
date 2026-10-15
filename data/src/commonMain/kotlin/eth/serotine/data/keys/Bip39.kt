@@ -7,8 +7,9 @@ import org.kotlincrypto.macs.hmac.sha2.HmacSHA512
 
 /**
  * BIP-39 over the English wordlist: checking words, and stretching them into a seed.
- * Every secret intermediate is a byte array zeroed before it is dropped
- * (docs/keys-and-signing.md, rule 7); the seed it returns is the caller's to zero.
+ * Every secret intermediate this object creates is a byte array zeroed before it is
+ * dropped (docs/keys-and-signing.md, rule 7); the seed it returns is the caller's to zero.
+ * The words themselves arrive as Strings, which nothing can zero.
  */
 internal object Bip39 {
 
@@ -60,7 +61,7 @@ internal object Bip39 {
      */
     fun seed(words: List<String>, passphrase: String = ""): ByteArray {
         require(passphrase.all { it.code < 0x80 }) { "only an ASCII passphrase is supported" }
-        val password = words.joinToString(" ").encodeToByteArray()
+        val password = sentence(words)
         val mac = HmacSHA512(password)
         var u = ByteArray(0)
         try {
@@ -81,6 +82,21 @@ internal object Bip39 {
             password.fill(0)
             mac.clearKey()
         }
+    }
+
+    /**
+     * The mnemonic sentence, the words joined by single spaces, as UTF-8 written straight
+     * into one byte array: no intermediate String of the whole phrase. The words passed
+     * [problemWith], so each is ASCII and a char is its byte.
+     */
+    private fun sentence(words: List<String>): ByteArray {
+        val bytes = ByteArray(words.sumOf { it.length } + words.size - 1)
+        var at = 0
+        for ((i, word) in words.withIndex()) {
+            if (i > 0) bytes[at++] = ' '.code.toByte()
+            for (c in word) bytes[at++] = c.code.toByte()
+        }
+        return bytes
     }
 
     /** Bit [bit] of the words' bit string, most significant first. */

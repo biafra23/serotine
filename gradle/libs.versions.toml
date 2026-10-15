@@ -62,10 +62,7 @@ androidx-activity-compose  = { module = "androidx.activity:activity-compose",   
 desugar-jdk-libs           = { module = "com.android.tools:desugar_jdk_libs",            version.ref = "desugar-jdk-libs" }
 navigation-compose         = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 material-icons-core        = { module = "org.jetbrains.compose.material:material-icons-core",   version.ref = "material-icons-core" }
-# The secp256k1 API, plus one JNI binding per JVM platform. The bindings are found
-# reflectively, Android's first, and a failed Android load is not caught: so the
-# Android binding goes into the Android APP only, never onto a host-JVM test
-# classpath (see data/build.gradle.kts).
+# The secp256k1 API, plus one JNI binding per JVM platform (see data/build.gradle.kts).
 secp256k1-kmp              = { module = "fr.acinq.secp256k1:secp256k1-kmp",             version.ref = "secp256k1-kmp" }
 secp256k1-kmp-jni-android  = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1-kmp" }
 secp256k1-kmp-jni-jvm      = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm",     version.ref = "secp256k1-kmp" }

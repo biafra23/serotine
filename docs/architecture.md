@@ -70,10 +70,12 @@ review finding, whatever it saves.
   immutable data class; its leaves are display-ready values (strings, enums),
   never a `Flow`, a repository or a platform type.
 - **One `<Feature>Route` binds the screen to its ViewModel** —
-  `collectAsStateWithLifecycle()`, and turning a state that ends the screen
-  (an import that succeeded) into its navigation callback; nothing else. It is
-  the only composable that knows the ViewModel exists, which keeps every other
-  screen renderable in a test with a hand-made state.
+  `collectAsStateWithLifecycle()`, plus the glue between the screen's lifecycle
+  and its ViewModel: a state that ends the screen (an import that succeeded)
+  becomes its navigation callback, and a screen that stops being shown becomes
+  an intent (the seed screen drops its words); nothing else. It is the only
+  composable that knows the ViewModel exists, which keeps every other screen
+  renderable in a test with a hand-made state.
 - **Navigation is one `NavHost`, in `App`**, with a destination per screen. A
   screen's ViewModel is created by `viewModel {}` inside its destination, so
   the destination's back-stack entry owns it: it survives configuration

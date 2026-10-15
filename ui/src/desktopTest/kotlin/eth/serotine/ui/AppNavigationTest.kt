@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.Derivation
@@ -68,6 +69,7 @@ class AppNavigationTest {
             override suspend fun deriveFirstAccount(mnemonic: Mnemonic): Derivation =
                 Derivation.Derived(Address.of("0x" + "ab".repeat(20)))
         },
+        network = Network.SEPOLIA,
     )
 
     /** What the window (desktop) or the activity (Android) provides the [App] with. */

@@ -29,7 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountKind
-import eth.serotine.domain.model.Network
 import eth.serotine.ui.APP_VERSION
 
 /** Test tag of the account list, for UI tests. */
@@ -71,13 +70,13 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
                 },
                 // The one network the app works on, always in sight, so a testnet wallet
                 // is never mistaken for a mainnet one.
-                actions = { NetworkBadge(Network.SEPOLIA, Modifier.padding(end = 12.dp)) },
+                actions = { NetworkBadge(state.network, Modifier.padding(end = 12.dp)) },
             )
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (state) {
-                HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                is HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is HomeUiState.Ready ->
                     if (state.accounts.isEmpty()) {
                         NoAccounts(Modifier.align(Alignment.Center))
@@ -90,14 +89,14 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
 }
 
 @Composable
-private fun NetworkBadge(network: Network, modifier: Modifier = Modifier) {
+private fun NetworkBadge(network: String, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.tertiaryContainer,
     ) {
         Text(
-            network.displayName,
+            network,
             Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag(HOME_NETWORK_TAG),
             style = MaterialTheme.typography.labelMedium,
         )

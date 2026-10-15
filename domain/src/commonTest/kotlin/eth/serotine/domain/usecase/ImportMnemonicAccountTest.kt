@@ -72,6 +72,15 @@ class ImportMnemonicAccountTest {
         assertEquals(emptyList(), repository.accounts.value)
     }
 
+    @Test
+    fun aDeviceTheAdapterCannotRunOnAddsNothing() = runTest {
+        val mnemonic = Mnemonic("any words")
+        derivation.results[mnemonic] = Derivation.Unavailable
+
+        assertEquals(MnemonicImport.Unavailable, import(mnemonic))
+        assertEquals(emptyList(), repository.accounts.value)
+    }
+
     private class FakeDerivation : AccountDerivation {
         // Keyed by identity, which is Mnemonic's equality.
         val results = mutableMapOf<Mnemonic, Derivation>()

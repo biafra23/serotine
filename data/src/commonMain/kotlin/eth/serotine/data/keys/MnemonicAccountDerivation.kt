@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.Derivation
 import fr.acinq.secp256k1.Secp256k1
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,6 +19,9 @@ import org.kotlincrypto.hash.sha3.Keccak256
  * (docs/keys-and-signing.md, *The envelope*).
  *
  * The 2048 PBKDF2 rounds and the curve work run on [dispatcher], never the caller's thread.
+ * When libsecp256k1 cannot be loaded here (the JNI binding fails its first use with an
+ * `Error`, every later one with another), the answer is [Derivation.Unavailable], as the
+ * port promises, never an exception.
  */
 class MnemonicAccountDerivation(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -27,6 +31,19 @@ class MnemonicAccountDerivation(
         val words = mnemonic.words
         val problem = Bip39.problemWith(words)
         if (problem != null) return@withContext Derivation.Invalid(problem)
+        try {
+            Derivation.Derived(firstAddress(words))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Throwable, not Exception: a JNI binding that cannot load fails with
+            // ExceptionInInitializerError, then NoClassDefFoundError. Nothing of the key path
+            // is kept or shown; the caller learns only that this device cannot derive.
+            Derivation.Unavailable
+        }
+    }
+
+    private fun firstAddress(words: List<String>): Address {
         val seed = Bip39.seed(words)
         val key = try {
             Bip32.derive(seed, FIRST_ETHEREUM_ACCOUNT)
@@ -34,7 +51,7 @@ class MnemonicAccountDerivation(
             seed.fill(0)
         }
         try {
-            Derivation.Derived(addressOf(key))
+            return addressOf(key)
         } finally {
             key.fill(0)
         }
