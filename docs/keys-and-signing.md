@@ -150,7 +150,7 @@ The rules a reviewer holds the adapter against:
    screenshot notification raise a warning; on desktop nothing comparable
    exists and the seed screen says so.
 9. **Desktop stands on the password path alone where no hardware exists**
-   (recommended; the owner's decision is open, CLAUDE.md *Trust*).
+   (the owner's ruling of 2026-10-15, CLAUDE.md *Trust*).
    macOS on Apple silicon or T2 uses the Secure Enclave as iOS does; Windows
    wraps `S_hw` with a TPM key through CNG; Linux uses a TPM where present.
    Without hardware, `S_hw` is absent, the blob is brute-forceable offline,
@@ -169,22 +169,47 @@ cases, never a key, as CLAUDE.md's *Trust* section already requires. A port
 that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
-**What exists today** is the restore half's derivation, without the envelope:
-`AccountDerivation` in `:domain`, implemented by `MnemonicAccountDerivation`
-in `eth.serotine.data.keys`. It takes the restore screen's `Mnemonic`, checks
-it against the BIP-39 English wordlist and its checksum, and derives the
-first account, `m/44'/60'/0'/0/0` with the empty passphrase, on libsecp256k1
-through ACINQ's secp256k1-kmp (JNI on Android and the JVM, cinterop on iOS).
-The seed and the key exist inside that one call as byte arrays zeroed before
-it returns, and nothing secret is stored: the account list keeps the address
-(`FileAccountRepository`), and the account can sign nothing until the
-key-store port and the envelope above land. The restore screen's
-ViewModel drops the words when the screen stops being shown (the app goes to
-the background, the window is hidden) and when it leaves the back stack. The restore screen carries
-rule 8's protections through `protectFromScreenCapture()` in
-`eth.serotine.ui.platform`: `FLAG_SECURE` and an autofill exclusion on
-Android; on desktop, and on iOS until its host covers the window, the screen
-says that capture cannot be blocked.
+**What exists today** (`feature/persistence`, part 2): the key-store port
+`KeyStore` in `:domain`, implemented by `EnvelopeKeyStore` in
+`eth.serotine.data.keys`.
+
+- **Import.** `importMnemonic(mnemonic, password)` checks the restore
+  screen's words against the BIP-39 English wordlist and their checksum. It
+  derives the first account, `m/44'/60'/0'/0/0` with the empty passphrase, on
+  libsecp256k1 (ACINQ's secp256k1-kmp).
+- **Storage.** The BIP-39 seed goes into the envelope above, one file per
+  account (`<address>.seed`, JSON, written through an fsync and an atomic
+  move) under the app's private storage. That storage is kept out of backups
+  and device transfers.
+- **The password.** The first import sets the wallet password. Every later
+  import must give the same one, which is checked by opening a stored
+  envelope; it is never compared.
+- **Argon2id** is libsodium's `crypto_pwhash`, through a byte-array JNA
+  mapping of its own (`Sodium`). The bindings' String API would truncate a
+  non-ASCII password and could not zero it. The mapping is checked against
+  libsodium's known answers.
+- **Costs.** With a hardware secret: 64 MiB and three passes. Password-only:
+  256 MiB and four passes. Opening re-checks the 64 MiB, two-pass floor.
+- **AES-256-GCM** comes from the JDK.
+- **The hardware secret.** On Android it is `AndroidKeystoreSecret`, an
+  HMAC-SHA256 key in StrongBox, or in the TEE when there is none. The
+  Keystore reports where the key lives (rule 5), and the screen says which
+  case applies: hardware, or a software key store on an emulator.
+- **Desktop** stands on the password alone for now. The Mac Secure Enclave
+  and iOS are part 3; on iOS the key store reports itself unavailable until
+  then.
+- **What never leaves a call.** The seed, the keys and the password's bytes
+  exist only inside one call and are zeroed before it returns. The words and
+  the password reach the adapter along the mnemonic exception's one path, and
+  the restore screen's ViewModel drops both when the screen stops being
+  shown.
+- **Screen protections.** The restore screen carries rule 8's protections
+  through `protectFromScreenCapture()` in `eth.serotine.ui.platform`:
+  `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
+  until its host covers the window, the screen says that capture cannot be
+  blocked.
+- **No consumer yet.** Nothing opens an envelope except to check the
+  password: signing is the next consumer.
 
 ## A Safe owned by a hardware P-256 key
 

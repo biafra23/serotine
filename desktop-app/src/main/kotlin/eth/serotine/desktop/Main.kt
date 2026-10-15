@@ -6,7 +6,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
-import eth.serotine.data.keys.MnemonicAccountDerivation
+import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
@@ -21,7 +21,9 @@ fun main() = application {
     val graph = remember {
         AppGraph(
             accounts = FileAccountRepository(appDataDir().resolve("accounts.json").path),
-            accountDerivation = MnemonicAccountDerivation(),
+            // The password alone where there is no hardware key store (the owner's
+            // ruling of 2026-10-15); the Mac Secure Enclave comes with part 3.
+            keys = EnvelopeKeyStore(appDataDir().resolve("keys").path, hardware = null),
             network = Network.SEPOLIA,
         )
     }

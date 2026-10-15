@@ -33,6 +33,13 @@ android {
         targetSdk = 35
         versionCode = derivedVersionCode
         versionName = releaseVersion
+        // The four ABIs Android devices run today, the ones the native libraries ship for.
+        // JNA's AAR also carries stubs for armeabi and MIPS, which Android dropped long ago;
+        // this keeps them out of the APK. (Which of the four to ship is the owner's APK-size
+        // call: the engine library, once in, has only arm64-v8a and x86_64.)
+        ndk {
+            abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
     }
 
     compileOptions {
@@ -88,6 +95,12 @@ android {
     }
 
     packaging {
+        // JNA's native stub arrives with the libsodium bindings' JNA AAR and, once the engine
+        // library is in, with its AAR too: the same JNA version (both pinned to 5.18.1), so
+        // either copy will do.
+        jniLibs {
+            pickFirsts += "**/libjnidispatch.so"
+        }
         resources {
             excludes += setOf(
                 "META-INF/LICENSE*",

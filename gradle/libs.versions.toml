@@ -42,6 +42,16 @@ secp256k1-kmp = "0.22.0"
 # is Kotlin's own, at the Kotlin pin.
 kotlinx-io = "0.8.2"
 kotlinx-serialization = "1.9.0"
+# The key envelope's Argon2id (docs/keys-and-signing.md, rule 2), from libsodium (the
+# owner's choice, 2026-10-16). The bindings ship libsodium for Android (an AAR), the
+# desktop JVM (macOS universal, Linux x64/arm64, Windows x64) and iOS; the envelope
+# calls crypto_pwhash through its own byte-array JNA mapping instead of the bindings'
+# String API (eth.serotine.data.keys.Sodium explains why). Built against Kotlin 1.9.23.
+libsodium = "0.9.5"
+# JNA, which libsodium is reached through on Android and the JVM: compiled against only
+# (the bindings bring it at runtime, as the JNA AAR on Android). 5.18.1 is exactly the
+# version the Myotis engine library pins with a strict constraint: the two move together.
+jna = "5.18.1"
 # KotlinCrypto: pure-Kotlin multiplatform digests and MACs (Keccak-256 for
 # addresses, SHA-256 for the BIP-39 checksum, HMAC-SHA512 for BIP-39/BIP-32).
 # 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
@@ -75,6 +85,8 @@ material-icons-core        = { module = "org.jetbrains.compose.material:material
 secp256k1-kmp              = { module = "fr.acinq.secp256k1:secp256k1-kmp",             version.ref = "secp256k1-kmp" }
 secp256k1-kmp-jni-android  = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1-kmp" }
 secp256k1-kmp-jni-jvm      = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm",     version.ref = "secp256k1-kmp" }
+libsodium-bindings         = { module = "com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings", version.ref = "libsodium" }
+jna                        = { module = "net.java.dev.jna:jna",                         version.ref = "jna" }
 kotlincrypto-sha2          = { module = "org.kotlincrypto.hash:sha2",                   version.ref = "kotlincrypto" }
 kotlincrypto-sha3          = { module = "org.kotlincrypto.hash:sha3",                   version.ref = "kotlincrypto" }
 kotlincrypto-hmac-sha2     = { module = "org.kotlincrypto.macs:hmac-sha2",              version.ref = "kotlincrypto" }

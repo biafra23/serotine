@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.WalletPassword
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -24,6 +25,8 @@ class MnemonicImportScreenTest {
     private val twelveWords = "one two three four five six seven eight nine ten eleven twelve"
 
     private val typed = mutableListOf<String>()
+    private val passwords = mutableListOf<String>()
+    private val repeats = mutableListOf<String>()
     private var imports = 0
     private var backs = 0
 
@@ -32,6 +35,8 @@ class MnemonicImportScreenTest {
             MnemonicImportScreen(
                 state = state,
                 onPhraseChange = { typed += it },
+                onPasswordChange = { passwords += it },
+                onRepeatChange = { repeats += it },
                 onImport = { imports++ },
                 onBack = { backs++ },
             )
@@ -48,7 +53,13 @@ class MnemonicImportScreenTest {
 
     @Test
     fun aFullPhraseCanBeSubmitted() {
-        show(MnemonicImportUiState.Entering(Mnemonic(twelveWords)))
+        show(
+            MnemonicImportUiState.Entering(
+                Mnemonic(twelveWords),
+                password = WalletPassword("correct horse"),
+                settingPassword = false,
+            ),
+        )
 
         rule.onNodeWithText("12 words").assertIsDisplayed()
         rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).assertIsEnabled().performClick()
@@ -78,6 +89,29 @@ class MnemonicImportScreenTest {
         show(MnemonicImportUiState.Entering(Mnemonic.EMPTY))
 
         rule.onNodeWithText("cannot be blocked", substring = true).assertExists()
+    }
+
+    @Test
+    fun aNewPasswordIsAskedForTwiceAndAnExistingOneOnce() {
+        show(MnemonicImportUiState.Entering(Mnemonic(twelveWords), settingPassword = true))
+        rule.onNodeWithText("New wallet password").assertExists()
+        rule.onNodeWithTag(MNEMONIC_REPEAT_TAG).assertExists()
+        rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).assertIsNotEnabled()
+
+        rule.onNodeWithTag(MNEMONIC_PASSWORD_TAG).performTextInput("correct horse")
+        rule.onNodeWithTag(MNEMONIC_REPEAT_TAG).performTextInput("correct horse")
+        // The screen is stateless here, so a field may also report its unchanged value: what
+        // matters is that each field reported what was typed into it.
+        assertEquals("correct horse", passwords.first())
+        assertEquals("correct horse", repeats.first())
+    }
+
+    @Test
+    fun noPasswordFieldUntilTheKeyStoreHasAnswered() {
+        show(MnemonicImportUiState.Entering(Mnemonic(twelveWords)))
+
+        rule.onNodeWithTag(MNEMONIC_PASSWORD_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).assertIsNotEnabled()
     }
 
     @Test

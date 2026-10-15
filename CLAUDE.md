@@ -52,8 +52,9 @@ Modules (Gradle):
   can ever import `android.*`).
 - **data** — the adapters behind the ports: `FileAccountRepository` (the
   account list, persisted as a JSON file; `InMemoryAccountRepository` for tests)
-  and the key adapter's `MnemonicAccountDerivation` (`eth.serotine.data.keys`)
-  today, the Myotis engine adapter next. Targets Android + desktop + iOS; the Android
+  and the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
+  seeds in envelopes, docs/keys-and-signing.md) today, the Myotis engine
+  adapter next. Targets Android + desktop + iOS; the Android
   target is what will resolve the engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
@@ -550,11 +551,15 @@ discussion that produced this note.
     the app hands it. For a Safe holding value the app's own preview is never
     the sole check; the policy lives on chain and in an independent co-signer,
     as the doc sets out. No dApp browser runs in the signing process.
+  - What an imported mnemonic's envelope holds: its BIP-39 seed, so further
+    accounts can be derived without the words (owner ruling, 2026-10-15).
+  - A desktop without a hardware key store stands on the password path alone,
+    with Argon2id run harder, and the app tells the user so; a Mac with a
+    Secure Enclave uses it as iOS does (owner ruling, 2026-10-15).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with
-    Myotis, the desktop policy without a hardware key store, and the dApp
-    connection protocol (WalletConnect is the candidate; its relay is a data
-    source, next section).
+    Myotis, and the dApp connection protocol (WalletConnect is the candidate;
+    its relay is a data source, next section).
 
 ## Data sources
 

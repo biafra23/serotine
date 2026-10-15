@@ -1,8 +1,9 @@
 package eth.serotine.ui
 
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.ui.home.HomeViewModel
@@ -19,12 +20,13 @@ import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
  */
 class AppGraph(
     private val accounts: AccountRepository,
-    private val accountDerivation: AccountDerivation,
+    /** Where imported seeds are kept: the key adapter's store, behind its port. */
+    private val keys: KeyStore,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
     fun homeViewModel(): HomeViewModel = HomeViewModel(ObserveAccounts(accounts), network)
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
-        MnemonicImportViewModel(ImportMnemonicAccount(accountDerivation, accounts))
+        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts), DescribeKeyStore(keys))
 }

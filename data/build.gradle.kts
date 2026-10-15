@@ -60,7 +60,24 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.secp256k1.kmp.jni.android)
         }
+        // The key envelope's platform half (eth.serotine.data.keys): libsodium's Argon2id
+        // through JNA, AES-256-GCM and durable file writes from the JDK. Android and the
+        // desktop share it, as both run on a JVM; iOS gets its own half with the iOS host.
+        val jvmSharedMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                // For the libsodium binaries it ships (its Kotlin API is not used), and for
+                // JNA at runtime: the jar on the desktop, the AAR (classes and the native
+                // stubs for all four ABIs) on Android.
+                implementation(libs.libsodium.bindings)
+                // JNA's API to compile against only: a jar at runtime would duplicate the
+                // AAR's classes on Android.
+                compileOnly(libs.jna)
+            }
+        }
+        androidMain.get().dependsOn(jvmSharedMain)
         val desktopMain by getting {
+            dependsOn(jvmSharedMain)
             dependencies {
                 implementation(libs.secp256k1.kmp.jni.jvm)
             }
