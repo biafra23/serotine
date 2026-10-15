@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The UI is Compose and draws its own Material3 TopAppBar. The platform DayNight theme
+      ships a native ActionBar, which would render the app label as a redundant second bar
+      above the Compose one; disable it so the top is a single bar. The DeviceDefault
+      baseline stays only for the window / system-bar colours — all in-app styling comes
+      from MaterialTheme in Compose.
+    -->
+    <style name="Theme.Serotine" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

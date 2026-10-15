@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The DEBUG app's launcher icon background: amber, so it is never mistaken for the release app. -->
+    <color name="ic_launcher_background">#FFB300</color>
+</resources>
