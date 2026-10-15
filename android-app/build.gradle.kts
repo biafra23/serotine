@@ -116,5 +116,9 @@ dependencies {
     implementation(compose.runtime)
     implementation(compose.ui)
     implementation(libs.androidx.activity.compose)
+    // libsecp256k1's Android JNI binding (.so files for the four Android ABIs) for :data's
+    // key adapter. Declared here, not in :data, because it must stay off every host-JVM
+    // classpath — the reason is in data/build.gradle.kts.
+    implementation(libs.secp256k1.kmp.jni.android)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }

@@ -61,5 +61,6 @@ class HomeViewModelTest {
     private class FakeAccountRepository : AccountRepository {
         val accounts = MutableStateFlow<List<Account>>(emptyList())
         override fun observeAccounts(): Flow<List<Account>> = accounts
+        override suspend fun add(account: Account): Boolean = error("not used by this test")
     }
 }

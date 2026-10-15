@@ -5,10 +5,12 @@ A Compose Multiplatform wallet for Ethereum accounts (EOAs) and
 [Myotis](https://github.com/biafra23/myotis) engine: every chain read is
 verified against Ethereum's sync committee by a light client running inside
 the app, with no RPC provider in the loop. Android and desktop (Linux, macOS,
-Windows) today; iOS next.
+Windows) today; iOS next. For now the app works on the Sepolia testnet only.
 
 **Status: skeleton.** The module graph, the MVVM/clean-architecture seams, the
-tests and the release workflows are in place; the wallet features and the
+tests and the release workflows are in place. The first screen lists the
+accounts and adds one from its seed phrase (its first account, not yet
+stored: no key storage, no persistence); the other wallet features and the
 Myotis engine integration come next (docs/embedding-myotis.md).
 
 ## Build & run
@@ -31,7 +33,7 @@ modules build on macOS only and are skipped elsewhere.
 | module | role |
 |---|---|
 | `domain` | entities, value objects, ports (repository interfaces) and use cases — pure Kotlin |
-| `data` | the adapters behind the ports: today an in-memory account store, next the Myotis engine |
+| `data` | the adapters behind the ports: today an in-memory account store and BIP-39/BIP-32 account derivation, next the Myotis engine |
 | `ui` | the shared Compose Multiplatform UI: screens, ViewModels, UI state, `AppGraph` |
 | `android-app` | the Android host (package `eth.serotine`; the debug build is `eth.serotine.debug`) |
 | `desktop-app` | the desktop JVM host and the jpackage configuration for the three installers |

@@ -21,10 +21,14 @@ class InMemoryAccountRepository(initial: List<Account> = emptyList()) : AccountR
 
     override fun observeAccounts(): Flow<List<Account>> = accounts.asStateFlow()
 
-    /** Appends [account]; an account already present (same address) is left where it is. */
-    fun add(account: Account) {
+    override suspend fun add(account: Account): Boolean {
+        var added = false
         accounts.update { current ->
-            if (current.any { it.address == account.address }) current else current + account
+            // Recomputed on every retry of update's compare-and-set, so it describes the
+            // list that was actually written.
+            added = current.none { it.address == account.address }
+            if (added) current + account else current
         }
+        return added
     }
 }

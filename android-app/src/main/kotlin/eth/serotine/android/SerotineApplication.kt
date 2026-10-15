@@ -2,6 +2,7 @@ package eth.serotine.android
 
 import android.app.Application
 import eth.serotine.data.account.InMemoryAccountRepository
+import eth.serotine.data.keys.MnemonicAccountDerivation
 import eth.serotine.ui.AppGraph
 
 /**
@@ -13,6 +14,7 @@ class SerotineApplication : Application() {
     val graph: AppGraph by lazy {
         AppGraph(
             accounts = InMemoryAccountRepository(),
+            accountDerivation = MnemonicAccountDerivation(),
         )
     }
 }

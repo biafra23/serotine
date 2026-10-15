@@ -50,14 +50,16 @@ Modules (Gradle):
   Pure Kotlin + coroutines' `Flow`; targets desktop JVM + iOS and deliberately
   NO Android target (Android consumers resolve its JVM variant, so nothing in it
   can ever import `android.*`).
-- **data** — the adapters behind the ports: `InMemoryAccountRepository` today,
+- **data** — the adapters behind the ports: `InMemoryAccountRepository` and the
+  key adapter's `MnemonicAccountDerivation` (`eth.serotine.data.keys`) today,
   the Myotis engine adapter next. Targets Android + desktop + iOS; the Android
   target is what will resolve the engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
-  `<Feature>ViewModel`, `<Feature>UiState`; the theme; and `AppGraph`, the
-  composition root's contract (ports in, ViewModel factories out). Depends on
-  `:domain` only.
+  `<Feature>ViewModel`, `<Feature>UiState`; the theme; `App` with the one
+  `NavHost` (a destination per screen, whose back-stack entry owns the
+  screen's ViewModel); and `AppGraph`, the composition root's contract (ports
+  in, ViewModel factories out). Depends on `:domain` only.
 - **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
@@ -558,6 +560,13 @@ discussion that produced this note.
 - The only source of chain data is the embedded Myotis engine (devp2p/libp2p
   inside it). Calling a node over HTTP may be used for debugging only and is
   never a production path (the Myotis rule, carried over).
+- **Sepolia only, for now** (owner ruling, 2026-10-15). The app works on
+  Sepolia (chain id 11155111) and no other network, in every build type: the
+  composition roots start the Myotis engine for `sepolia` alone, every chain
+  read and every transaction targets that chain, and the UI names it on
+  screen. Code takes the network from `eth.serotine.domain.model.Network`,
+  whose only value is `SEPOLIA`; adding a network, mainnet included, is the
+  owner's decision and is recorded here first.
 - **Open decisions, each recorded here before its code lands**: the Safe{Wallet}
   multi-signer flow (the Safe Transaction Service is an off-chain HTTP API —
   what Serotine fetches from it, over what, and how an unverified answer is

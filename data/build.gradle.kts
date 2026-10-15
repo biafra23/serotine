@@ -1,6 +1,7 @@
 // :data — the adapters behind the domain's ports: repository implementations and the
-// data sources they read (today an in-memory account store; next the Myotis engine
-// behind an `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
+// data sources they read (today an in-memory account store and the key adapter that
+// derives an account from BIP-39 words; next the Myotis engine behind an
+// `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
 // :domain only; :ui never depends on this module — the hosts' composition roots wire
 // it in.
 //
@@ -34,10 +35,31 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             implementation(libs.kotlinx.coroutines.core)
+            // The key adapter (eth.serotine.data.keys): libsecp256k1 and the digests.
+            implementation(libs.secp256k1.kmp)
+            implementation(libs.kotlincrypto.sha2)
+            implementation(libs.kotlincrypto.sha3)
+            implementation(libs.kotlincrypto.hmac.sha2)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+        // libsecp256k1's JNI binding. secp256k1-kmp looks its bindings up reflectively,
+        // Android's first, and only a MISSING class falls through to the next: an Android
+        // binding on a host-JVM classpath fails to load its .so and takes the whole lookup
+        // down. So the Android binding is :android-app's (the APK is where the .so files
+        // belong anyway), and every host-JVM classpath here gets the JVM one — the desktop
+        // runtime and the Android unit tests, which run on the build machine's JVM.
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.secp256k1.kmp.jni.jvm)
+            }
+        }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.secp256k1.kmp.jni.jvm)
+            }
         }
     }
 }

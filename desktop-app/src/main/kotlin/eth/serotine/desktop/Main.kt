@@ -6,18 +6,20 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.InMemoryAccountRepository
+import eth.serotine.data.keys.MnemonicAccountDerivation
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
 
 /**
  * The desktop composition root: builds the [AppGraph] from this platform's adapters and
  * opens the one window on the shared [App]. The window provides the ViewModelStoreOwner
- * the ViewModels are scoped to.
+ * the navigation back stack keeps its screens' ViewModels in.
  */
 fun main() = application {
     val graph = remember {
         AppGraph(
             accounts = InMemoryAccountRepository(),
+            accountDerivation = MnemonicAccountDerivation(),
         )
     }
     Window(
