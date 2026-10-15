@@ -23,6 +23,13 @@ class InMemoryAccountRepositoryTest {
     }
 
     @Test
+    fun duplicateAddressesInTheInitialAccountsKeepTheFirstEntry() = runTest {
+        val repository = InMemoryAccountRepository(listOf(eoa, eoa.copy(label = "Renamed"), safe))
+
+        assertEquals(listOf(eoa, safe), repository.observeAccounts().first())
+    }
+
+    @Test
     fun addingAnAddressTwiceKeepsTheFirstEntry() = runTest {
         val repository = InMemoryAccountRepository()
         repository.add(eoa)

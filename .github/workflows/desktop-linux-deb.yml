@@ -277,6 +277,15 @@ jobs:
           # `view` — success there means another job already created it (fine),
           # while a genuine failure still surfaces because `view` also fails.
           if ! gh release view "$tag" >/dev/null 2>&1; then
+            # Only a guarded v* tag push may CREATE a release. A manual dispatch
+            # adds to one that exists: its input is free text that only passed a
+            # shape check, and on a backfill the version guard did not run, so
+            # `gh release create --target` here would mint a NEW tag at this
+            # commit and publish a release whose tag matches nothing verified.
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              echo "::error::no release '$tag' exists — the manual path only uploads to an existing release; push the tag to create one"
+              exit 1
+            fi
             gh release create "$tag" \
               --prerelease \
               --title "Serotine $tag" \

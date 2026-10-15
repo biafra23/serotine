@@ -11,10 +11,13 @@ import kotlinx.coroutines.flow.update
  * The accounts of this process, held in memory. The first adapter behind
  * [AccountRepository]: enough to drive the Home screen and the hosts' composition roots
  * until a persistent store exists. Safe to call from any thread.
+ *
+ * The port's one-entry-per-address contract holds for [initial] too: a duplicate address
+ * in it keeps the first entry, as [add] does.
  */
 class InMemoryAccountRepository(initial: List<Account> = emptyList()) : AccountRepository {
 
-    private val accounts = MutableStateFlow(initial)
+    private val accounts = MutableStateFlow(initial.distinctBy { it.address })
 
     override fun observeAccounts(): Flow<List<Account>> = accounts.asStateFlow()
 
