@@ -1,15 +1,16 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BalanceReading.Reason
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -23,117 +24,106 @@ class VerifiedNativeBalancesTest {
     private val address = Address.of("0x" + "ab".repeat(20))
     private val chain = FakeChain()
 
-    @Test
-    fun followsTheLightClientFromSyncingToAVerifiedBalance() = runTest {
-        val balances = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL)
-        val seen = mutableListOf<BalanceReading>()
-        val collecting = launch { balances.observeBalance(address).collect { seen += it } }
+    private fun TestScope.balances() = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL)
 
+    private fun TestScope.step(snapshot: EngineSnapshot) {
+        chain.snapshot = snapshot
+        advanceTimeBy(POLL)
+        runCurrent()
+    }
+
+    @Test
+    fun aBalanceIsLabelledWithTheBlockItsProofAnchorsTo() = runTest {
+        val seen = mutableListOf<BalanceReading>()
+        val collecting = launch { balances().observeBalance(address).collect { seen += it } }
         runCurrent()
         assertEquals(listOf<BalanceReading>(BalanceReading.Syncing), seen)
 
-        chain.status = ChainStatus.Synced(headBlock = 100)
-        chain.balances[100L] = "1500000000000000000"
-        advanceTimeBy(POLL)
-        runCurrent()
+        // The head moved on to 101 while the proof was fetched; the proof says 101, and so
+        // does the reading.
+        chain.proofs[address] = ProvenBalance("1500000000000000000", blockNumber = 101)
+        step(running(head = 100))
 
-        assertEquals(BalanceReading.Verified(Wei.of("1500000000000000000"), blockNumber = 100), seen.last())
-        assertEquals(listOf(address to 100L), chain.reads, "read at the verified head itself")
+        assertEquals(BalanceReading.Verified(Wei.of("1500000000000000000"), blockNumber = 101), seen.last())
         collecting.cancel()
     }
 
     @Test
-    fun readsAgainOnlyWhenTheHeadMoves() = runTest {
-        chain.status = ChainStatus.Synced(headBlock = 7)
-        chain.balances[7L] = "1"
-        chain.balances[8L] = "2"
-        val balances = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL)
+    fun provesAgainOnlyWhenTheHeadMoves() = runTest {
+        chain.snapshot = running(head = 7)
+        chain.proofs[address] = ProvenBalance("1", 7)
         val seen = mutableListOf<BalanceReading>()
-        val collecting = launch { balances.observeBalance(address).collect { seen += it } }
-
+        val collecting = launch { balances().observeBalance(address).collect { seen += it } }
         runCurrent()
-        advanceTimeBy(POLL * 3)
-        runCurrent()
-        assertEquals(1, chain.reads.size, "same head, no new read")
+        repeat(3) { step(running(head = 7)) }
+        assertEquals(1, chain.proofRequests.size, "same head, no new proof")
 
-        chain.status = ChainStatus.Synced(headBlock = 8)
-        advanceTimeBy(POLL)
-        runCurrent()
+        chain.proofs[address] = ProvenBalance("2", 8)
+        step(running(head = 8))
 
-        assertEquals(listOf(7L, 8L), chain.reads.map { it.second })
+        assertEquals(2, chain.proofRequests.size)
         assertEquals(
-            listOf<BalanceReading>(
-                BalanceReading.Verified(Wei.of("1"), 7),
-                BalanceReading.Verified(Wei.of("2"), 8),
-            ),
+            listOf<BalanceReading>(BalanceReading.Verified(Wei.of("1"), 7), BalanceReading.Verified(Wei.of("2"), 8)),
             seen,
-            "equal readings are not repeated",
         )
         collecting.cancel()
     }
 
     @Test
-    fun anUnprovableBalanceIsSaidSoAndRetried() = runTest {
-        chain.status = ChainStatus.Synced(headBlock = 5)
-        val balances = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL)
-        val seen = mutableListOf<BalanceReading>()
-        val collecting = launch { balances.observeBalance(address).collect { seen += it } }
+    fun aSecondSubscriberOnTheSameHeadReusesTheProof() = runTest {
+        chain.snapshot = running(head = 9)
+        chain.proofs[address] = ProvenBalance("5", 9)
+        val balances = balances()
 
-        runCurrent()
-        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), seen.last())
-
-        chain.balances[5L] = "42"
-        advanceTimeBy(POLL)
-        runCurrent()
-
-        assertEquals(BalanceReading.Verified(Wei.of("42"), 5), seen.last())
-        collecting.cancel()
+        assertEquals(BalanceReading.Verified(Wei.of("5"), 9), balances.observeBalance(address).first())
+        assertEquals(BalanceReading.Verified(Wei.of("5"), 9), balances.observeBalance(address).first())
+        assertEquals(1, chain.proofRequests.size)
     }
 
     @Test
-    fun theLightClientsRefusalsAreReadingsNotFailures() = runTest {
-        val balances = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL)
+    fun noAmountIsShownWhileReadsCannotBeVerified() = runTest {
+        chain.proofs[address] = ProvenBalance("5", 9)
+        val balances = balances()
+        val unverifiable = listOf(
+            running(phase = Phase.CATCHING_UP),
+            running(paused = true),
+            running(headAgeMs = 60_000), // a stalled head
+            running(headAgeMs = Long.MAX_VALUE), // no verified head yet
+            running(proofPeers = 0), // nobody serves state proofs
+        )
 
-        chain.status = ChainStatus.StaleAnchor
+        for (snapshot in unverifiable) {
+            chain.snapshot = snapshot
+            assertEquals(BalanceReading.Syncing, balances.observeBalance(address).first(), "$snapshot")
+        }
+        assertEquals(emptyList(), chain.proofRequests)
+    }
+
+    @Test
+    fun aStaleAnchorAndAFailedProofAreSaidSo() = runTest {
+        val balances = balances()
+
+        chain.snapshot = running(phase = Phase.STALE_ANCHOR)
         assertEquals(BalanceReading.Unavailable(Reason.STALE_ANCHOR), balances.observeBalance(address).first())
 
-        chain.status = ChainStatus.Down
-        assertEquals(BalanceReading.Unavailable(Reason.NO_ENGINE), balances.observeBalance(address).first())
-
-        chain.status = ChainStatus.Synced(headBlock = 1)
-        chain.failure = IllegalStateException("engine gone")
+        chain.snapshot = running(head = 3) // no proof for the address: the engine could not prove it
         assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), balances.observeBalance(address).first())
 
-        chain.failure = null
-        chain.balances[1L] = "not a number"
+        chain.proofs[address] = ProvenBalance("not a number", 3)
         assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), balances.observeBalance(address).first())
     }
 
     @Test
-    fun aDeviceWithoutAnEngineSaysSoOnce() = runTest {
-        val balances = VerifiedNativeBalances(null, StandardTestDispatcher(testScheduler), POLL)
-
+    fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
+        chain.snapshot = EngineSnapshot.Down
         assertEquals(
             listOf<BalanceReading>(BalanceReading.Unavailable(Reason.NO_ENGINE)),
-            balances.observeBalance(address).take(1).toList(),
+            balances().observeBalance(address).toList(),
         )
-    }
-
-    private class FakeChain : VerifiedChain {
-        var status: ChainStatus = ChainStatus.Syncing
-        val balances = mutableMapOf<Long, String>()
-        val reads = mutableListOf<Pair<Address, Long>>()
-        var failure: Exception? = null
-
-        override fun status(): ChainStatus = status
-
-        override fun beacon(): BeaconSnapshot = error("not used by these tests")
-
-        override fun balanceWei(address: Address, blockNumber: Long): String? {
-            failure?.let { throw it }
-            reads += address to blockNumber
-            return balances[blockNumber]
-        }
+        assertEquals(
+            listOf<BalanceReading>(BalanceReading.Unavailable(Reason.NO_ENGINE)),
+            VerifiedNativeBalances(null, StandardTestDispatcher(testScheduler), POLL).observeBalance(address).toList(),
+        )
     }
 
     private companion object {

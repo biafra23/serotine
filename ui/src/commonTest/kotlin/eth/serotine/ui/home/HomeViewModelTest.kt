@@ -16,7 +16,10 @@ import eth.serotine.domain.usecase.ObserveNativeBalance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -100,13 +103,27 @@ class HomeViewModelTest {
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
 
-        lightClient.status.value = LightClientStatus.Syncing(done = 1, total = 4, peers = 3)
+        lightClient.status.value = LightClientStatus.CatchingUp(done = 1, total = 4)
         runCurrent()
 
         assertEquals(
-            LightClientItem("Verifying sync committees · 1 of 4 periods · 3 peers", 0.25f, true),
+            LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true),
             viewModel.uiState.value.lightClient,
         )
+    }
+
+    @Test
+    fun aRowShowsUpAtOnceAndSaysItIsCheckingUntilItsFirstReading() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts.value = listOf(treasury)
+        balances.silent += treasury.address
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val row = (viewModel.uiState.value as HomeUiState.Ready).accounts.single()
+        assertEquals("Checking…", row.balance)
+        assertEquals(false, row.balanceVerified)
     }
 
     @Test
@@ -133,7 +150,13 @@ class HomeViewModelTest {
 
     private class FakeBalances : NativeBalances {
         private val readings = mutableMapOf<Address, MutableStateFlow<BalanceReading>>()
+
+        /** Addresses whose balance stream has not emitted yet. */
+        val silent = mutableSetOf<Address>()
+
         fun of(address: Address) = readings.getOrPut(address) { MutableStateFlow(BalanceReading.Syncing) }
-        override fun observeBalance(address: Address): Flow<BalanceReading> = of(address)
+
+        override fun observeBalance(address: Address): Flow<BalanceReading> =
+            if (address in silent) emptyFlow<BalanceReading>().onStart { awaitCancellation() } else of(address)
     }
 }

@@ -1,5 +1,6 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
@@ -13,78 +14,22 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration
 
 /**
- * What the engine adapters need from a verified light client. Its calls block (they cross
- * into the engine), so they run on the adapters' dispatcher, never a caller's thread.
- */
-internal interface VerifiedChain {
-
-    /** The light client's state right now, as far as reads are concerned. */
-    fun status(): ChainStatus
-
-    /** The light client's progress right now, for the user to watch. */
-    fun beacon(): BeaconSnapshot
-
-    /**
-     * The balance of [address] in decimal wei at block [blockNumber], proven against the
-     * light client's verified state; null when the engine cannot prove it.
-     */
-    fun balanceWei(address: Address, blockNumber: Long): String?
-}
-
-/**
- * The light client's progress as the engine reports it (`ChainHandle.beaconStatus()`), or
- * why there is none.
- */
-internal sealed interface BeaconSnapshot {
-
-    /** The engine is still starting. */
-    data object Booting : BeaconSnapshot
-
-    /** There is no engine, or it failed to start. */
-    data object Down : BeaconSnapshot
-
-    /** The engine's report; see `io.myotis.api.BeaconStatus` for each field. */
-    data class Running(
-        val phase: Phase,
-        val bootstrapped: Boolean,
-        val currentPeriod: Long,
-        val targetPeriod: Long,
-        val servingPeers: Int,
-        val knownStateRoots: Int,
-        val fillThreshold: Int,
-        val headBlock: Long?,
-        val wsBoundPeriods: Long,
-    ) : BeaconSnapshot
-
-    /** `io.myotis.api.BeaconState`. */
-    enum class Phase { STARTING, SYNCING, CATCHING_UP, SYNCED, STALE_ANCHOR }
-}
-
-/** The light client's state, as far as reads are concerned. */
-internal sealed interface ChainStatus {
-
-    /** Not started, syncing or catching up: no verified head to read at. */
-    data object Syncing : ChainStatus
-
-    /** Sync refused: the trust anchor is older than the weak-subjectivity bound. */
-    data object StaleAnchor : ChainStatus
-
-    /** The engine failed to start, so there is no light client to read from. */
-    data object Down : ChainStatus
-
-    /** Synced, with [headBlock] the verified execution head. */
-    data class Synced(val headBlock: Long) : ChainStatus
-}
-
-/**
- * [NativeBalances] over a verified light client: each subscriber polls the client's state
- * every [pollInterval] and reads the balance again only when the verified head has moved,
- * at exactly that head. A device without a client ([chain] null) answers
- * [Reason.NO_ENGINE] once. Whatever the engine throws becomes [Reason.UNPROVEN]: the port
- * never fails, and no answer from anywhere else stands in.
+ * [NativeBalances] over a verified light client. Each subscriber polls the engine's state
+ * every [pollInterval]; while the client can serve verified reads it proves the balance
+ * again whenever the verified head has moved, and labels each reading with the block its
+ * proof anchors to. Whenever reads cannot be verified (syncing, asleep, a stale head, no
+ * peer serving proofs) the reading says so instead of keeping an old amount on screen.
+ *
+ * The last proof per address is shared by all subscribers, so a screen that re-subscribes
+ * on the same head shows it at once instead of fetching it again. A device without an
+ * engine ([chain] null) and an engine that is down answer [Reason.NO_ENGINE] once and stop.
+ * Whatever the engine throws becomes [Reason.UNPROVEN]: the port never fails, and no answer
+ * from anywhere else stands in.
  */
 class VerifiedNativeBalances internal constructor(
     private val chain: VerifiedChain?,
@@ -92,35 +37,44 @@ class VerifiedNativeBalances internal constructor(
     private val pollInterval: Duration,
 ) : NativeBalances {
 
+    /** The last proof per address, with the head it was fetched at. */
+    private val proofs = mutableMapOf<Address, Pair<Long, BalanceReading.Verified>>()
+    private val proofsLock = Mutex()
+
     override fun observeBalance(address: Address): Flow<BalanceReading> {
         val chain = chain ?: return flowOf(BalanceReading.Unavailable(Reason.NO_ENGINE))
         return flow {
-            var verified: BalanceReading.Verified? = null
             while (true) {
-                val reading = try {
-                    when (val status = chain.status()) {
-                        ChainStatus.Syncing -> BalanceReading.Syncing
-                        ChainStatus.StaleAnchor -> BalanceReading.Unavailable(Reason.STALE_ANCHOR)
-                        ChainStatus.Down -> BalanceReading.Unavailable(Reason.NO_ENGINE)
-                        is ChainStatus.Synced ->
-                            verified?.takeIf { it.blockNumber == status.headBlock }
-                                ?: read(chain, address, status.headBlock)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    // Throwable: engine calls cross JNA, where a broken native library fails
-                    // with an Error (UnsatisfiedLinkError), not an Exception.
-                    BalanceReading.Unavailable(Reason.UNPROVEN)
+                val snapshot = chain.snapshot()
+                if (snapshot == EngineSnapshot.Down) {
+                    emit(BalanceReading.Unavailable(Reason.NO_ENGINE))
+                    return@flow
                 }
-                if (reading is BalanceReading.Verified) verified = reading
-                emit(reading)
+                emit(readingAt(chain, address, snapshot))
                 delay(pollInterval)
             }
         }.distinctUntilChanged().flowOn(dispatcher)
     }
 
-    private fun read(chain: VerifiedChain, address: Address, head: Long): BalanceReading =
-        chain.balanceWei(address, head)?.let(Wei::parse)?.let { BalanceReading.Verified(it, head) }
-            ?: BalanceReading.Unavailable(Reason.UNPROVEN)
+    private suspend fun readingAt(chain: VerifiedChain, address: Address, snapshot: EngineSnapshot): BalanceReading {
+        if (snapshot !is EngineSnapshot.Running) return BalanceReading.Syncing
+        if (snapshot.phase == Phase.STALE_ANCHOR) return BalanceReading.Unavailable(Reason.STALE_ANCHOR)
+        val head = snapshot.readableHead ?: return BalanceReading.Syncing
+        proofsLock.withLock { proofs[address] }?.let { (provenAtHead, reading) ->
+            if (provenAtHead == head) return reading
+        }
+        val proven = try {
+            chain.proveBalance(address)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Throwable: engine calls cross JNA, where a broken native library fails with an
+            // Error (UnsatisfiedLinkError), not an Exception.
+            null
+        }
+        val wei = proven?.let { Wei.parse(it.wei) } ?: return BalanceReading.Unavailable(Reason.UNPROVEN)
+        val reading = BalanceReading.Verified(wei, proven.blockNumber)
+        proofsLock.withLock { proofs[address] = head to reading }
+        return reading
+    }
 }

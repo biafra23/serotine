@@ -24,7 +24,7 @@ class HomeScreenTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private val syncing = LightClientItem("Verifying sync committees · 1 of 4 periods · 3 peers", 0.25f, true)
+    private val syncing = LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true)
 
     private fun show(state: HomeUiState, onAddAccount: () -> Unit = {}) =
         rule.setContent { SerotineTheme { HomeScreen(state, onAddAccount = onAddAccount) } }
@@ -73,7 +73,7 @@ class HomeScreenTest {
     fun theStatusStripShowsWhatTheLightClientIsDoing() {
         show(HomeUiState.Loading("Sepolia", syncing))
 
-        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods · 3 peers").assertIsDisplayed()
+        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
         rule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.25f, 0f..1f))).assertExists()
     }
 

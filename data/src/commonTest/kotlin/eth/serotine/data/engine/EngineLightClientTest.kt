@@ -1,12 +1,13 @@
 package eth.serotine.data.engine
 
-import eth.serotine.data.engine.BeaconSnapshot.Phase
-import eth.serotine.domain.model.Address
+import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.repository.LightClientStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -19,41 +20,33 @@ class EngineLightClientTest {
 
     private val chain = FakeChain()
 
-    private fun running(
-        phase: Phase,
-        bootstrapped: Boolean = true,
-        current: Long = 0,
-        target: Long = 0,
-        roots: Int = 0,
-        head: Long? = null,
-    ) = BeaconSnapshot.Running(phase, bootstrapped, current, target, 2, roots, 64, head, 13)
+    private fun TestScope.client() = EngineLightClient(chain, StandardTestDispatcher(testScheduler), POLL)
 
     @Test
-    fun followsAColdStartFromBootToSynced() = runTest {
-        val client = EngineLightClient(chain, StandardTestDispatcher(testScheduler), POLL)
+    fun followsAColdStartTheWayMyotisReadsIt() = runTest {
         val seen = mutableListOf<LightClientStatus>()
-        val collecting = launch { client.observeStatus().collect { seen += it } }
-
-        suspend fun step(snapshot: BeaconSnapshot) {
-            chain.beacon = snapshot
+        val collecting = launch { client().observeStatus().collect { seen += it } }
+        fun step(snapshot: EngineSnapshot) {
+            chain.snapshot = snapshot
             advanceTimeBy(POLL)
             runCurrent()
         }
         runCurrent()
-        step(running(Phase.STARTING, bootstrapped = false))
-        step(running(Phase.SYNCING, current = 1450, target = 1454))
-        step(running(Phase.SYNCING, current = 1452, target = 1454))
-        step(running(Phase.CATCHING_UP, current = 1454, target = 1454, roots = 16))
-        step(running(Phase.SYNCED, current = 1454, target = 1454, roots = 64, head = 11_922_744))
+        step(running(phase = Phase.STARTING))
+        step(running(phase = Phase.SYNCING, hunting = true))
+        step(running(phase = Phase.CATCHING_UP, start = 1450, current = 1451, target = 1454))
+        step(running(phase = Phase.SYNCED, headAgeMs = Long.MAX_VALUE))
+        step(running(phase = Phase.SYNCED, proofPeers = 0, head = 11_922_744))
+        step(running(phase = Phase.SYNCED, head = 11_922_744))
 
         assertEquals(
             listOf(
                 LightClientStatus.Starting,
-                LightClientStatus.Bootstrapping(peers = 2),
-                // Progress counts from the first period seen after the bootstrap.
-                LightClientStatus.Syncing(done = 0, total = 4, peers = 2),
-                LightClientStatus.Syncing(done = 2, total = 4, peers = 2),
-                LightClientStatus.CatchingUp(known = 16, needed = 64),
+                LightClientStatus.Bootstrapping(lookingForServers = true),
+                // From the engine's own start period, not from whenever this subscriber came in.
+                LightClientStatus.CatchingUp(done = 1, total = 4),
+                LightClientStatus.WaitingForHead(headAgeSeconds = null),
+                LightClientStatus.WaitingForProofPeers(headBlock = 11_922_744),
                 LightClientStatus.Synced(headBlock = 11_922_744),
             ),
             seen,
@@ -62,53 +55,47 @@ class EngineLightClientTest {
     }
 
     @Test
-    fun aStaleAnchorAndADeadEngineAreStatesToo() = runTest {
-        val client = EngineLightClient(chain, StandardTestDispatcher(testScheduler), POLL)
+    fun aStalledHeadSleepAndAStaleAnchorAreStatesToo() = runTest {
+        chain.snapshot = running(headAgeMs = 150_000)
+        assertEquals(LightClientStatus.WaitingForHead(headAgeSeconds = 150), client().observeStatus().first())
 
-        chain.beacon = running(Phase.STALE_ANCHOR, current = 1400, target = 1420)
+        chain.snapshot = running(paused = true)
+        assertEquals(LightClientStatus.Sleeping, client().observeStatus().first())
+
+        chain.snapshot = running(phase = Phase.STALE_ANCHOR, current = 1400, target = 1420)
         assertEquals(
             LightClientStatus.StaleAnchor(anchorAgePeriods = 20, boundPeriods = 13),
-            client.observeStatus().first(),
+            client().observeStatus().first(),
         )
 
-        chain.beacon = BeaconSnapshot.Down
-        assertEquals(LightClientStatus.Unavailable, client.observeStatus().first())
+        chain.snapshot = running(phase = Phase.CATCHING_UP, start = -1, current = 5, target = 9)
+        assertEquals(LightClientStatus.CatchingUp(done = 0, total = 0), client().observeStatus().first())
+    }
 
+    @Test
+    fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
+        chain.snapshot = EngineSnapshot.Down
+        assertEquals(listOf<LightClientStatus>(LightClientStatus.Unavailable), client().observeStatus().toList())
         assertEquals(
-            LightClientStatus.Unavailable,
-            EngineLightClient(null, StandardTestDispatcher(testScheduler), POLL).observeStatus().first(),
+            listOf<LightClientStatus>(LightClientStatus.Unavailable),
+            EngineLightClient(null, StandardTestDispatcher(testScheduler), POLL).observeStatus().toList(),
         )
     }
 
     @Test
     fun aFailedPollIsSkippedNotReported() = runTest {
-        val client = EngineLightClient(chain, StandardTestDispatcher(testScheduler), POLL)
         val seen = mutableListOf<LightClientStatus>()
         chain.failure = IllegalStateException("engine busy")
-        val collecting = launch { client.observeStatus().collect { seen += it } }
+        val collecting = launch { client().observeStatus().collect { seen += it } }
         runCurrent()
 
         chain.failure = null
-        chain.beacon = running(Phase.SYNCED, head = 5)
+        chain.snapshot = running(head = 5)
         advanceTimeBy(POLL)
         runCurrent()
 
         assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5)), seen)
         collecting.cancel()
-    }
-
-    private class FakeChain : VerifiedChain {
-        var beacon: BeaconSnapshot = BeaconSnapshot.Booting
-        var failure: Exception? = null
-
-        override fun status(): ChainStatus = error("not used by these tests")
-
-        override fun beacon(): BeaconSnapshot {
-            failure?.let { throw it }
-            return beacon
-        }
-
-        override fun balanceWei(address: Address, blockNumber: Long): String? = error("not used by these tests")
     }
 
     private companion object {

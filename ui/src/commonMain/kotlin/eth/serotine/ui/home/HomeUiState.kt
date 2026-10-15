@@ -37,7 +37,8 @@ sealed interface HomeUiState {
 /**
  * One account as the list shows it: display strings only, derived once from the domain
  * model. [balance] is a verified amount ("0.5 ETH") when [balanceVerified], and otherwise
- * says why there is none ("Syncing…", "Not verified"): never a number from anywhere else.
+ * says why there is none ("Checking…", "Syncing…", "Not verified"): never a number from
+ * anywhere else.
  */
 data class AccountItem(
     val label: String,
@@ -51,11 +52,12 @@ data class AccountItem(
         get() = address.take(6) + "…" + address.takeLast(4)
 
     companion object {
-        fun from(account: Account, balance: BalanceReading, network: Network): AccountItem = AccountItem(
+        /** [account] with its [balance], or with none read yet ([balance] null). */
+        fun from(account: Account, balance: BalanceReading?, network: Network): AccountItem = AccountItem(
             label = account.label,
             address = account.address.hex,
             kind = account.kind,
-            balance = balanceText(balance, network),
+            balance = balance?.let { balanceText(it, network) } ?: "Checking…",
             balanceVerified = balance is BalanceReading.Verified,
         )
     }

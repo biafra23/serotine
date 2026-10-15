@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * The port for the embedded light client's own state: how far it is from serving verified
- * reads, for the user to see while it starts. :data implements it over the Myotis engine
+ * reads, for the user to see. :data implements it over the Myotis engine
  * (`eth.serotine.data.engine`), on the one network the app works on.
  */
 interface LightClient {
@@ -19,30 +19,35 @@ sealed interface LightClientStatus {
     data object Starting : LightClientStatus
 
     /**
-     * Looking for peers to bootstrap from the trusted checkpoint; [peers] served
-     * light-client data in the last minute.
+     * Bootstrapping from the trusted checkpoint; [lookingForServers] while no peer serving
+     * light-client data has been found.
      */
-    data class Bootstrapping(val peers: Int) : LightClientStatus
+    data class Bootstrapping(val lookingForServers: Boolean) : LightClientStatus
 
     /**
      * Verifying the sync-committee handovers from the checkpoint to today: [done] of [total]
-     * periods (about 27 hours of chain each) so far; [peers] served light-client data in the
-     * last minute. [total] is 0 while the distance is not known yet.
+     * periods (about 27 hours of chain each). [total] is 0 while the distance is unknown.
      */
-    data class Syncing(val done: Long, val total: Long, val peers: Int) : LightClientStatus
+    data class CatchingUp(val done: Long, val total: Long) : LightClientStatus
 
     /**
-     * Synced to the head, collecting the beacon-attested state roots reads are verified
-     * against: [known] of the [needed] before the first verified read.
+     * Synced, but without a fresh verified head to read at: none built yet ([headAgeSeconds]
+     * null), or the last one is [headAgeSeconds] old.
      */
-    data class CatchingUp(val known: Int, val needed: Int) : LightClientStatus
+    data class WaitingForHead(val headAgeSeconds: Long?) : LightClientStatus
 
-    /** Serving verified reads, at the verified execution head [headBlock]. */
+    /** Synced to [headBlock], but no connected peer serves the state proofs reads need. */
+    data class WaitingForProofPeers(val headBlock: Long) : LightClientStatus
+
+    /** Serving verified reads at the fresh verified head [headBlock]. */
     data class Synced(val headBlock: Long) : LightClientStatus
+
+    /** Networking is off while the app is in the background; it resumes when the app returns. */
+    data object Sleeping : LightClientStatus
 
     /**
      * Sync refused: the trust anchor is [anchorAgePeriods] sync-committee periods old, past
-     * the [boundPeriods] weak-subjectivity bound. Nothing is verified until the user decides.
+     * the [boundPeriods] weak-subjectivity bound (0 when the engine does not say).
      */
     data class StaleAnchor(val anchorAgePeriods: Long, val boundPeriods: Long) : LightClientStatus
 

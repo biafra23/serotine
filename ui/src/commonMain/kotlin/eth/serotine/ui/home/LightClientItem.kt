@@ -13,44 +13,51 @@ data class LightClientItem(val text: String, val progress: Float?, val working: 
         fun from(status: LightClientStatus): LightClientItem = when (status) {
             LightClientStatus.Starting -> LightClientItem("Starting the light client…", null, true)
             is LightClientStatus.Bootstrapping -> LightClientItem(
-                "Bootstrapping from the trusted checkpoint · ${peers(status.peers)}",
+                if (status.lookingForServers) {
+                    "Bootstrapping from the trusted checkpoint · looking for light-client servers"
+                } else {
+                    "Bootstrapping from the trusted checkpoint"
+                },
                 null,
                 true,
             )
-            is LightClientStatus.Syncing -> LightClientItem(
-                if (status.total > 0) {
-                    "Verifying sync committees · ${status.done} of ${status.total} periods · ${peers(status.peers)}"
-                } else {
-                    "Verifying sync committees · ${peers(status.peers)}"
-                },
-                fraction(status.done, status.total),
+            is LightClientStatus.CatchingUp -> when {
+                status.total <= 0 -> LightClientItem("Verifying sync committees", null, true)
+                status.done >= status.total -> LightClientItem("Finishing sync", null, true)
+                else -> LightClientItem(
+                    "Verifying sync committees · ${status.done} of ${status.total} periods",
+                    status.done.toFloat() / status.total,
+                    true,
+                )
+            }
+            is LightClientStatus.WaitingForHead -> LightClientItem(
+                status.headAgeSeconds?.let { "Synced · the verified head is ${age(it)} old, waiting for a fresh one" }
+                    ?: "Synced · waiting for the first verified head",
+                null,
                 true,
             )
-            is LightClientStatus.CatchingUp -> LightClientItem(
-                // The engine reports its threshold as 0 until it knows it.
-                if (status.needed > 0) {
-                    "Collecting verified state roots · ${status.known} of ${status.needed}"
-                } else {
-                    "Collecting verified state roots"
-                },
-                fraction(status.known.toLong(), status.needed.toLong()),
+            is LightClientStatus.WaitingForProofPeers -> LightClientItem(
+                "Synced to block ${grouped(status.headBlock)} · looking for peers that serve state proofs",
+                null,
                 true,
             )
             is LightClientStatus.Synced ->
                 LightClientItem("Verified at block ${grouped(status.headBlock)}", null, false)
+            LightClientStatus.Sleeping -> LightClientItem("Light client asleep while the app is in the background", null, false)
             is LightClientStatus.StaleAnchor -> LightClientItem(
-                "Sync refused: the trust anchor is ${status.anchorAgePeriods} periods old, " +
-                    "past the limit of ${status.boundPeriods}",
+                "Sync refused: the trust anchor is ${status.anchorAgePeriods} periods old" +
+                    if (status.boundPeriods > 0) ", past the limit of ${status.boundPeriods}" else "",
                 null,
                 false,
             )
             LightClientStatus.Unavailable -> LightClientItem("No light client on this device", null, false)
         }
 
-        private fun peers(count: Int): String = if (count == 1) "1 peer" else "$count peers"
-
-        private fun fraction(done: Long, total: Long): Float? =
-            if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
+        private fun age(seconds: Long): String = when {
+            seconds < 120 -> "$seconds s"
+            seconds < 7_200 -> "${seconds / 60} min"
+            else -> "${seconds / 3_600} h"
+        }
 
         /** 11922744 → "11,922,744". */
         private fun grouped(number: Long): String =

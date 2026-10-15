@@ -1,6 +1,10 @@
 package eth.serotine.android
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import eth.serotine.data.account.InMemoryAccountRepository
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
@@ -15,12 +19,14 @@ import eth.serotine.ui.AppGraph
  */
 class SerotineApplication : Application() {
 
+    // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background
+    // and keeps its state under the app's private files; on an ABI the engine library does
+    // not ship (it has arm64-v8a and x86_64), balances say so.
+    private val node: MyotisNode by lazy {
+        MyotisNode.start(Network.SEPOLIA, filesDir.resolve("myotis"), AndroidDnsServers(this))
+    }
+
     val graph: AppGraph by lazy {
-        // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
-        // background and keeps its state under the app's private files; on an ABI the
-        // engine library does not ship (it has arm64-v8a and x86_64), balances say so. It
-        // runs as long as the process: a foreground service comes with background sync.
-        val node = MyotisNode.start(Network.SEPOLIA, filesDir.resolve("myotis"), AndroidDnsServers(this))
         AppGraph(
             accounts = InMemoryAccountRepository(),
             accountDerivation = MnemonicAccountDerivation(),
@@ -28,5 +34,43 @@ class SerotineApplication : Application() {
             lightClient = node.lightClient,
             network = Network.SEPOLIA,
         )
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        registerActivityLifecycleCallbacks(PauseInBackground())
+    }
+
+    /**
+     * Turns the engine's networking off once no activity has been visible for
+     * [PAUSE_DELAY_MS], and back on when one is again: a backgrounded wallet keeps no sockets
+     * or timers open. The delay keeps a rotation or a quick app switch from pausing at all.
+     * A foreground service comes with background sync.
+     */
+    private inner class PauseInBackground : ActivityLifecycleCallbacks {
+        private var visible = 0
+        private val handler = Handler(Looper.getMainLooper())
+        private val pause = Runnable { node.pause() }
+
+        override fun onActivityStarted(activity: Activity) {
+            if (visible++ == 0) {
+                handler.removeCallbacks(pause)
+                node.resume()
+            }
+        }
+
+        override fun onActivityStopped(activity: Activity) {
+            if (--visible == 0) handler.postDelayed(pause, PAUSE_DELAY_MS)
+        }
+
+        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+        override fun onActivityResumed(activity: Activity) = Unit
+        override fun onActivityPaused(activity: Activity) = Unit
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+        override fun onActivityDestroyed(activity: Activity) = Unit
+    }
+
+    private companion object {
+        const val PAUSE_DELAY_MS = 30_000L
     }
 }

@@ -2,27 +2,30 @@ package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.NativeBalances
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
+import io.myotis.api.LifecycleState
 import io.myotis.api.MyotisEngine
-import io.myotis.api.SyncState
 import io.myotis.api.ports.DnsServers
 import io.myotis.engine.Myotis
 import io.myotis.engine.ports.DefaultEnginePorts
 import kotlinx.coroutines.Dispatchers
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import kotlin.concurrent.thread
 import kotlin.time.Duration.Companion.seconds
 
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances] to the AppGraph, and owns it for the life
- * of the process, calling [shutdown] on exit. Only `io.myotis.api` and the library's default
- * ports are used; nothing below them.
+ * creates it with [start], hands [nativeBalances] and [lightClient] to the AppGraph, and owns
+ * it for the life of the process: [pause] and [resume] it around the app being in the
+ * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
+ * used; nothing below them.
  */
 class MyotisNode private constructor() {
 
@@ -40,17 +43,44 @@ class MyotisNode private constructor() {
     @Volatile
     private var state: State = State.Booting
 
+    @Volatile
+    private var bootThread: Thread? = null
+
+    /** Runs pause and resume, which block while the engine tears down or warms up networking. */
+    private val control = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "myotis-control").apply { isDaemon = true }
+    }
+
     private val chain = HandleChain()
 
     /** Native-currency balances, verified by this node's light client. */
     val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL)
 
-    /** This node's light client, for the user to watch while it starts. */
+    /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
 
     /**
-     * Stops the chain and the engine and releases the files they hold; idempotent. Never
-     * waits for a boot in progress: a boot that finishes after this stops its own engine.
+     * Turns the engine's networking off, keeping its state, for while the app is in the
+     * background. Returns at once; the pause runs on a background thread.
+     */
+    fun pause() = onControlThread { it.pause() }
+
+    /** Turns networking back on after [pause]; a warm start. Returns at once. */
+    fun resume() = onControlThread { it.resume() }
+
+    private fun onControlThread(action: (ChainHandle) -> Unit) {
+        try {
+            control.execute { (state as? State.Running)?.handle?.let(action) }
+        } catch (e: RejectedExecutionException) {
+            // Shut down already: nothing left to pause or resume.
+        }
+    }
+
+    /**
+     * Stops the chain and the engine and releases the files they hold; idempotent. A boot
+     * still in progress stops its own engine when it finishes; this waits for that, up to
+     * [SHUTDOWN_WAIT_MS], so a process that exits right after does not cut it off mid-start.
+     * Blocks: never call it on a UI thread.
      */
     fun shutdown() {
         val running = synchronized(this) {
@@ -59,6 +89,8 @@ class MyotisNode private constructor() {
             current as? State.Running
         }
         running?.stop()
+        bootThread?.takeIf { it.isAlive && it != Thread.currentThread() }?.join(SHUTDOWN_WAIT_MS)
+        control.shutdown()
     }
 
     private fun boot(network: Network, dataDir: File, dnsServers: DnsServers?) {
@@ -83,8 +115,17 @@ class MyotisNode private constructor() {
             true, // strict state freshness
             dataDir.path,
         )
-        val running = State.Running(engine, ports, engine.create(config, ports.ports()))
-        val started = running.handle.start()
+        val handle = try {
+            engine.create(config, ports.ports())
+        } catch (e: Throwable) {
+            // An engine that refuses the config (an anchor mismatch, a bad data directory)
+            // still holds the ports' cache writers: release them before giving up.
+            engine.shutdownAll()
+            ports.close()
+            throw e
+        }
+        val running = State.Running(engine, ports, handle)
+        val started = handle.start()
         val kept = synchronized(this) {
             val keep = started && state == State.Booting
             if (state == State.Booting) state = if (keep) running else State.Down
@@ -96,51 +137,43 @@ class MyotisNode private constructor() {
     }
 
     private inner class HandleChain : VerifiedChain {
-        override fun status(): ChainStatus {
+        override fun snapshot(): EngineSnapshot {
             val handle = when (val current = state) {
-                State.Booting -> return ChainStatus.Syncing
-                State.Down -> return ChainStatus.Down
+                State.Booting -> return EngineSnapshot.Booting
+                State.Down -> return EngineSnapshot.Down
                 is State.Running -> current.handle
             }
-            val reads = handle.reads() ?: return ChainStatus.Syncing
-            return when (reads.syncState()) {
-                SyncState.SYNCED -> reads.headBlockNumber()?.let(ChainStatus::Synced) ?: ChainStatus.Syncing
-                SyncState.STALE_ANCHOR -> ChainStatus.StaleAnchor
-                SyncState.SYNCING, SyncState.CATCHING_UP, null -> ChainStatus.Syncing
-            }
-        }
-
-        override fun beacon(): BeaconSnapshot {
-            val handle = when (val current = state) {
-                State.Booting -> return BeaconSnapshot.Booting
-                State.Down -> return BeaconSnapshot.Down
-                is State.Running -> current.handle
-            }
-            val beacon = handle.beaconStatus() ?: return BeaconSnapshot.Booting
-            return BeaconSnapshot.Running(
-                phase = when (beacon.state()) {
-                    BeaconState.SYNCING -> BeaconSnapshot.Phase.SYNCING
-                    BeaconState.CATCHING_UP -> BeaconSnapshot.Phase.CATCHING_UP
-                    BeaconState.SYNCED -> BeaconSnapshot.Phase.SYNCED
-                    BeaconState.STALE_ANCHOR -> BeaconSnapshot.Phase.STALE_ANCHOR
-                    BeaconState.STARTING, null -> BeaconSnapshot.Phase.STARTING
+            val status = handle.status() ?: return EngineSnapshot.Booting
+            return EngineSnapshot.Running(
+                phase = when (status.beaconState()) {
+                    BeaconState.SYNCING -> EngineSnapshot.Phase.SYNCING
+                    BeaconState.CATCHING_UP -> EngineSnapshot.Phase.CATCHING_UP
+                    BeaconState.SYNCED -> EngineSnapshot.Phase.SYNCED
+                    BeaconState.STALE_ANCHOR -> EngineSnapshot.Phase.STALE_ANCHOR
+                    BeaconState.STARTING, null -> EngineSnapshot.Phase.STARTING
                 },
-                bootstrapped = beacon.bootstrapped(),
-                currentPeriod = beacon.currentPeriod(),
-                targetPeriod = beacon.targetPeriod(),
-                servingPeers = beacon.servedPeersLastMinute(),
-                knownStateRoots = beacon.knownStateRoots(),
-                fillThreshold = beacon.fillThreshold(),
-                // The head reads are verified at, the one balances are labelled with.
-                headBlock = handle.reads()?.takeIf { it.syncState() == SyncState.SYNCED }?.headBlockNumber(),
-                wsBoundPeriods = beacon.wsBoundPeriods(),
+                paused = status.lifecycle() == LifecycleState.PAUSED,
+                syncStartPeriod = status.syncStartPeriod(),
+                syncCurrentPeriod = status.syncCurrentPeriod(),
+                syncTargetPeriod = status.syncTargetPeriod(),
+                huntingLightClientServers = status.lcHunting(),
+                proofPeers = status.snapServingPeers(),
+                headBlock = status.optimisticBlockNumber(),
+                headAgeMs = status.verifiedHeadAgeMs(),
+                wsBoundPeriods = status.wsBoundPeriods(),
             )
         }
 
-        // At the head's own number, not "latest": the head may move between the status read
-        // and this one, and the reading is labelled with the block it was proven at.
-        override fun balanceWei(address: Address, blockNumber: Long): String? =
-            (state as? State.Running)?.handle?.reads()?.getBalance(address.toBytes(), "0x" + blockNumber.toString(16))
+        // requestAccount, not VerifiedReads.getBalance: it returns the verdict and the block
+        // the proof anchors to, so a reading is labelled with where it was proven. (A block
+        // number passed to getBalance is answered from the current head anyway.)
+        override fun proveBalance(address: Address): ProvenBalance? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val result = handle.requestAccount(address.hex)
+            if (result.failReason() != null || result.verifyMethod() == null) return null
+            // A proven absence is a proven zero.
+            return ProvenBalance(if (result.exists()) result.balanceWei() ?: return null else "0", result.blockNumber())
+        }
     }
 
     companion object {
@@ -151,6 +184,9 @@ class MyotisNode private constructor() {
 
         /** Engine log lines a failed start reports. */
         private const val ENGINE_LOG_LINES = 40
+
+        /** How long [shutdown] waits for a boot in progress to stop its own engine. */
+        private const val SHUTDOWN_WAIT_MS = 15_000L
 
         /** Snap peers the engine keeps for state proofs; the library guide's mobile setting. */
         private const val TARGET_SNAP_PEERS = 3
@@ -164,16 +200,17 @@ class MyotisNode private constructor() {
          *
          * A device without an engine — an Android ABI the library does not ship, a desktop
          * without the host library on `java.library.path` — or one whose engine fails to
-         * start gets a node whose balances say so ([eth.serotine.domain.repository.BalanceReading.Reason.NO_ENGINE]).
+         * start gets a node whose balances and light client say so.
          */
         fun start(network: Network, dataDir: File, dnsServers: (() -> List<String>)? = null): MyotisNode {
             val node = MyotisNode()
-            thread(name = "myotis-boot", isDaemon = true) {
+            node.bootThread = thread(name = "myotis-boot", isDaemon = true) {
                 try {
                     node.boot(network, dataDir, dnsServers?.let { servers -> DnsServers { servers() } })
                 } catch (e: Throwable) {
                     // A native library that loads but cannot run (a missing symbol, an ABI
-                    // mismatch) fails here with an Error: no engine, said as such.
+                    // mismatch) fails with an Error, a refused config with an exception: no
+                    // engine, said as such.
                     report("the engine failed to boot: $e")
                     node.shutdown()
                 }
@@ -194,6 +231,3 @@ private fun report(why: String) = System.err.println("Serotine: no light client:
 private fun Network.engineName(): String = when (this) {
     Network.SEPOLIA -> "sepolia"
 }
-
-private fun Address.toBytes(): ByteArray =
-    ByteArray(20) { i -> hex.substring(2 + 2 * i, 4 + 2 * i).toInt(16).toByte() }
