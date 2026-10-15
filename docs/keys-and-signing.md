@@ -256,16 +256,33 @@ one of:
 For an **EOA** none of this exists: the mnemonic is the only backup, which is
 the other reason an EOA key is a secp256k1 key from a mnemonic in the
 envelope. The mnemonic is shown once at creation, written down by the user,
-and re-entered only to restore on a new device. Those two screens are the one
-sanctioned exception to the Trust rule that key material never enters a
-UiState, and the exception is as narrow as this: a dedicated seed UiState
-carries the words only while its screen is shown, the ViewModel clears it on
-leaving, it is never persisted, logged, snapshotted or part of a
-`toString()`, and the screen is under rule 8's protections. A reviewer holds
-those two screens to this paragraph and every other screen to the rule. The
-**synced-passkey** tier
-trades hardware isolation for a backup held by Apple or Google; it is listed
-above as the owner's open decision.
+and re-entered only to restore on a new device.
+
+Those two screens are an exception to the Trust rule that key material never
+leaves the key-store adapter: the one entry, today, in the closed list of
+exceptions in CLAUDE.md's *Trust* section (owner ruling, 2026-10-15). Its
+conditions, which a reviewer holds those two flows to:
+
+- **One type.** The words travel only as a dedicated mnemonic type whose
+  `toString()` is redacted, so every place they flow is a place that type
+  appears, and one search finds the whole path.
+- **One path.** At creation, from the adapter through a use case and the
+  ViewModel into a dedicated seed UiState; at restore, from the seed UiState
+  through the ViewModel and a use case into the adapter. No other port, use
+  case, ViewModel or screen sees the type.
+- **Transient.** The seed UiState exists only while its screen is shown and
+  the ViewModel clears it on leaving. Nothing on the path stores, logs,
+  caches, snapshots or serializes the words; the input field's own text
+  state is under the same limits as the password's in rule 7.
+- **Protected.** Both screens are under rule 8's screen protections.
+- **Narrow.** Everything the adapter derives from the words, the seed and the
+  keys, stays under the absolute rule and never comes back up.
+
+Every other screen and flow is held to the rule itself. A new exception is
+the owner's ruling, added to that list first.
+
+The **synced-passkey** tier trades hardware isolation for a backup held by
+Apple or Google; it is listed above as the owner's open decision.
 
 ## What key storage does not do: signing intent
 

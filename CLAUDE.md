@@ -509,10 +509,19 @@ discussion that produced this note.
   key-store adapter and nowhere else: never in a UiState, a log line, a
   `toString()`, a crash report or any serialized form that leaves that adapter.
   Signing is a port that takes a request and returns a signature; the UI never
-  touches a key. The one exception is the seed display at creation and the
-  mnemonic entry at restore: the words pass through a dedicated, transient
-  UiState under the rules docs/keys-and-signing.md sets for those two screens,
-  and nowhere else.
+  touches a key.
+- **Exceptions to that rule are a closed list.** Each is an owner ruling,
+  dated here, with its conditions in docs/keys-and-signing.md. A case not on
+  the list follows the rule, and adding one is the owner's decision, never a
+  PR author's. Today the list has one entry:
+  - *The mnemonic screens* (owner ruling, 2026-10-15): the backup words shown
+    at creation and the words typed at restore. They travel only as a
+    dedicated mnemonic type with a redacted `toString()`, along one path:
+    from the adapter through a use case and the ViewModel into the seed
+    UiState at creation, and back the same way at restore. Nothing on that
+    path stores, logs or caches them, and the UiState is cleared when its
+    screen is left. Everything the adapter derives from the words, the seed
+    and the keys, stays under the rule above.
 - **How keys are held — docs/keys-and-signing.md is the contract** (owner
   decisions, 2026-10-15); this is the summary a reviewer holds a diff against:
   - No platform holds secp256k1 in hardware, so an EOA key or a
@@ -526,10 +535,11 @@ discussion that produced this note.
     2026-10-15), bound to a key and never to the UI: a second hardware key
     with per-use Class 3 biometric authorization; disabling it deletes that
     key. Weak biometrics never qualify.
-  - The plaintext key exists only inside the key-store adapter (creation,
-    import and the seed display included), and in signing only inside the
-    call, in native code, as a byte array zeroed afterwards. The ciphertext
-    is excluded from cloud backup AND device-to-device transfer.
+  - The plaintext key exists only inside the key-store adapter (creation and
+    import included; the mnemonic words leave it only under the listed
+    exception), and in signing only inside the call, in native code, as a
+    byte array zeroed afterwards. The ciphertext is excluded from cloud
+    backup AND device-to-device transfer.
   - A Safe may be owned by a hardware P-256 key directly, and such a key is
     never the sole owner of a Safe holding value: a recovery owner or a
     recovery module is part of creating the account. EOAs are secp256k1 only.
