@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountList
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -17,17 +18,17 @@ class InMemoryAccountRepositoryTest {
     @Test
     fun startsWithTheInitialAccountsAndEmitsAdditions() = runTest {
         val repository = InMemoryAccountRepository(listOf(eoa))
-        assertEquals(listOf(eoa), repository.observeAccounts().first())
+        assertEquals(AccountList.Loaded(listOf(eoa)), repository.observeAccounts().first())
 
         assertEquals(AccountAdd.Added, repository.add(safe))
-        assertEquals(listOf(eoa, safe), repository.observeAccounts().first())
+        assertEquals(AccountList.Loaded(listOf(eoa, safe)), repository.observeAccounts().first())
     }
 
     @Test
     fun duplicateAddressesInTheInitialAccountsKeepTheFirstEntry() = runTest {
         val repository = InMemoryAccountRepository(listOf(eoa, eoa.copy(label = "Renamed"), safe))
 
-        assertEquals(listOf(eoa, safe), repository.observeAccounts().first())
+        assertEquals(AccountList.Loaded(listOf(eoa, safe)), repository.observeAccounts().first())
     }
 
     @Test
@@ -36,6 +37,6 @@ class InMemoryAccountRepositoryTest {
         assertEquals(AccountAdd.Added, repository.add(eoa))
         assertEquals(AccountAdd.AlreadyPresent, repository.add(eoa.copy(label = "Renamed")))
 
-        assertEquals(listOf(eoa), repository.observeAccounts().first())
+        assertEquals(AccountList.Loaded(listOf(eoa)), repository.observeAccounts().first())
     }
 }

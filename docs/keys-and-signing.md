@@ -139,8 +139,9 @@ The rules a reviewer holds the adapter against:
    with both a `<cloud-backup>` and a `<device-transfer>` exclusion for the
    key store's files — on Android 12 and higher `allowBackup="false"` alone
    still lets a device-to-device migration copy them — plus
-   `fullBackupContent` for the API 29/30 path. The host's manifest today has
-   only `allowBackup="false"`; the key-store PR adds the rules. iOS: the
+   `fullBackupContent` for the API 29/30 path. The host's manifest has all
+   three (`res/xml/data_extraction_rules.xml`, `backup_rules.xml`), excluding
+   the whole app's data. iOS: the
    this-device-only keychain classes, which neither sync nor migrate, and the
    blob in a file marked excluded from backup. Screens that show a seed or
    take the password: `FLAG_SECURE` on Android; on iOS, where no API blocks a

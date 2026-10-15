@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountDerivation
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.Derivation
 import kotlinx.coroutines.flow.first
@@ -36,7 +37,10 @@ class ImportMnemonicAccount(
      */
     private suspend fun addOrFind(address: Address): MnemonicImport {
         while (true) {
-            val current = accounts.observeAccounts().first()
+            val current = when (val list = accounts.observeAccounts().first()) {
+                is AccountList.Loaded -> list.accounts
+                is AccountList.Unreadable -> return MnemonicImport.NotSaved
+            }
             current.firstOrNull { it.address == address }?.let { return MnemonicImport.AlreadyAdded(it) }
             val account = Account(address, AccountKind.EOA, nextFreeLabel(current))
             when (accounts.add(account)) {
@@ -68,6 +72,6 @@ sealed interface MnemonicImport {
     /** The key adapter cannot run on this device; nothing changed. */
     data object Unavailable : MnemonicImport
 
-    /** The account was derived, but the account list could not be stored; nothing changed. */
+    /** The account was derived, but the account list could not be stored or read; nothing changed. */
     data object NotSaved : MnemonicImport
 }

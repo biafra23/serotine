@@ -22,6 +22,7 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.Derivation
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
@@ -30,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -59,7 +61,7 @@ class AppNavigationTest {
     private val accounts = MutableStateFlow<List<Account>>(emptyList())
     private val graph = AppGraph(
         accounts = object : AccountRepository {
-            override fun observeAccounts(): Flow<List<Account>> = accounts
+            override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
 
             override suspend fun add(account: Account): AccountAdd {
                 accounts.update { it + account }

@@ -14,8 +14,8 @@ class SerotineApplication : Application() {
 
     val graph: AppGraph by lazy {
         AppGraph(
-            // The account list in the app's private files (excluded from backup by the
-            // manifest's allowBackup="false"); addresses and labels only, no keys.
+            // The account list in the app's private files, which the manifest keeps out of
+            // backups and device transfers; addresses and labels only, no keys.
             accounts = FileAccountRepository(filesDir.resolve("accounts.json").path),
             accountDerivation = MnemonicAccountDerivation(),
             network = Network.SEPOLIA,

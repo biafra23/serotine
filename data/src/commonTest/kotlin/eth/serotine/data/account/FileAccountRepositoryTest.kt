@@ -4,9 +4,13 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountList
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
@@ -21,6 +25,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FileAccountRepositoryTest {
 
     private val directory = Path(SystemTemporaryDirectory, "serotine-accounts-${Random.nextLong().toULong()}")
@@ -29,19 +34,33 @@ class FileAccountRepositoryTest {
     private val eoa = Account(Address.of("0x" + "aa".repeat(20)), AccountKind.EOA, "Account 1")
     private val safe = Account(Address.of("0x" + "bb".repeat(20)), AccountKind.SAFE, "Treasury")
 
-    private fun TestScope.repository() = FileAccountRepository(file.toString(), StandardTestDispatcher(testScheduler))
+    private fun TestScope.repository(at: Path = file) =
+        FileAccountRepository(at.toString(), StandardTestDispatcher(testScheduler))
+
+    private fun put(path: Path, text: String) {
+        SystemFileSystem.createDirectories(directory)
+        SystemFileSystem.sink(path).buffered().use { it.writeString(text) }
+    }
+
+    private fun text(path: Path) = SystemFileSystem.source(path).buffered().use { it.readString() }
+
+    private fun setAside(): List<Path> =
+        SystemFileSystem.list(directory).filter { it.name.startsWith("accounts.json.damaged-") }
 
     @AfterTest
     fun cleanUp() {
-        for (name in listOf("accounts.json", "accounts.json.tmp", "accounts.json.unreadable")) {
-            Path(directory, name).let { if (SystemFileSystem.exists(it)) SystemFileSystem.delete(it) }
+        fun delete(path: Path) {
+            if (SystemFileSystem.metadataOrNull(path)?.isDirectory == true) {
+                SystemFileSystem.list(path).forEach(::delete)
+            }
+            SystemFileSystem.delete(path, mustExist = false)
         }
-        if (SystemFileSystem.exists(directory)) SystemFileSystem.delete(directory)
+        delete(directory)
     }
 
     @Test
     fun startsEmptyWithoutAFile() = runTest {
-        assertEquals(emptyList(), repository().observeAccounts().first())
+        assertEquals(AccountList.Loaded(emptyList()), repository().observeAccounts().first())
         assertFalse(SystemFileSystem.exists(file), "reading creates nothing")
     }
 
@@ -51,8 +70,19 @@ class FileAccountRepositoryTest {
         assertEquals(AccountAdd.Added, first.add(eoa))
         assertEquals(AccountAdd.Added, first.add(safe))
 
-        assertEquals(listOf(eoa, safe), repository().observeAccounts().first(), "a new instance reads the file")
-        assertFalse(SystemFileSystem.exists(Path("$file.tmp")), "the temporary file was moved into place")
+        assertEquals(AccountList.Loaded(listOf(eoa, safe)), repository().observeAccounts().first())
+        assertEquals(listOf("accounts.json"), SystemFileSystem.list(directory).map { it.name }, "no temporary left")
+    }
+
+    @Test
+    fun theFileIsVersionedAndHoldsAddressesKindsAndLabelsOnly() = runTest {
+        repository().add(eoa)
+
+        assertEquals(
+            """{"version":1,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
+                """"kind":"EOA","label":"Account 1"}]}""",
+            text(file),
+        )
     }
 
     @Test
@@ -61,51 +91,85 @@ class FileAccountRepositoryTest {
         repository.add(eoa)
 
         assertEquals(AccountAdd.AlreadyPresent, repository.add(eoa.copy(label = "Renamed")))
-        assertEquals(listOf(eoa), repository().observeAccounts().first())
+        assertEquals(AccountList.Loaded(listOf(eoa)), repository().observeAccounts().first())
     }
 
     @Test
-    fun theFileHoldsAddressesKindsAndLabelsOnly() = runTest {
-        repository().add(eoa)
+    fun aLiveSubscriberSeesAdditions() = runTest {
+        val repository = repository()
+        val seen = mutableListOf<AccountList>()
+        val collecting = launch { repository.observeAccounts().collect { seen += it } }
+        runCurrent()
 
-        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        repository.add(eoa)
+        runCurrent()
+
+        assertEquals(listOf<AccountList>(AccountList.Loaded(emptyList()), AccountList.Loaded(listOf(eoa))), seen)
+        collecting.cancel()
+    }
+
+    @Test
+    fun aDamagedFileIsSetAsideIntactAndSaidSo() = runTest {
+        put(file, """{"version":1,"accounts":[{"address":"0x12""")
+        put(Path("$file.damaged-earlier"), "an earlier one")
+
+        val repository = repository()
+        assertEquals(AccountList.Loaded(emptyList(), damagedListSetAside = true), repository.observeAccounts().first())
+        val aside = setAside()
+        assertEquals(2, aside.size, "the earlier set-aside file is not replaced")
+        assertTrue(aside.any { text(it) == """{"version":1,"accounts":[{"address":"0x12""" }, "content kept as it was")
+
+        assertEquals(AccountAdd.Added, repository.add(eoa))
         assertEquals(
-            """{"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","kind":"EOA","label":"Account 1"}]}""",
-            text,
+            AccountList.Loaded(listOf(eoa), damagedListSetAside = true),
+            repository.observeAccounts().first(),
+            "the user still hears about the set-aside list",
         )
     }
 
     @Test
-    fun anUnreadableFileIsMovedAsideNotOverwritten() = runTest {
-        SystemFileSystem.createDirectories(directory)
-        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"accounts":[{"address":"0x12"""") }
-
+    fun aNewerFormatIsLeftUntouchedAndNothingIsAdded() = runTest {
+        val newer = """{"version":2,"accounts":[],"wallets":[]}"""
+        put(file, newer)
         val repository = repository()
-        assertEquals(emptyList(), repository.observeAccounts().first())
-        assertTrue(SystemFileSystem.exists(Path("$file.unreadable")), "the old file is kept for inspection")
 
-        assertEquals(AccountAdd.Added, repository.add(eoa))
-        assertEquals(listOf(eoa), repository().observeAccounts().first())
+        assertEquals(AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT), repository.observeAccounts().first())
+        assertEquals(AccountAdd.NotSaved, repository.add(eoa))
+        assertEquals(newer, text(file))
+        assertEquals(emptyList(), setAside())
+    }
+
+    @Test
+    fun aFileThatCannotBeReadIsLeftAloneAndNothingIsAdded() = runTest {
+        // A directory where the file should be: it exists, but reading it fails.
+        SystemFileSystem.createDirectories(file)
+        val repository = repository()
+
+        assertEquals(AccountList.Unreadable(AccountList.Reason.READ_FAILED), repository.observeAccounts().first())
+        assertEquals(AccountAdd.NotSaved, repository.add(eoa))
+        assertTrue(SystemFileSystem.metadataOrNull(file)?.isDirectory == true)
     }
 
     @Test
     fun aListThatCannotBeStoredChangesNothing() = runTest {
         // A plain file where the directory should be: nothing can be written below it.
-        SystemFileSystem.sink(directory).buffered().use { it.writeString("in the way") }
-        val repository = FileAccountRepository(Path(directory, "accounts.json").toString(), StandardTestDispatcher(testScheduler))
+        put(Path(directory, "blocker"), "in the way")
+        val repository = repository(Path(Path(directory, "blocker"), "accounts.json"))
 
         assertEquals(AccountAdd.NotSaved, repository.add(eoa))
-        assertEquals(emptyList(), repository.observeAccounts().first())
+        assertEquals(AccountList.Loaded(emptyList()), repository.observeAccounts().first())
     }
 
     @Test
-    fun aSubscriberSeesAdditions() = runTest {
-        val repository = repository()
-        repository.add(eoa)
-        val observed = repository.observeAccounts()
+    fun anAddReadsTheFileAgainSoAnotherWritersAccountIsKept() = runTest {
+        val mine = repository()
+        mine.add(eoa)
+        // Another process adds an account behind this instance's back.
+        repository().add(safe)
 
-        repository.add(safe)
+        mine.add(Account(Address.of("0x" + "cc".repeat(20)), AccountKind.EOA, "Account 3"))
 
-        assertEquals(listOf(eoa, safe), observed.first())
+        val stored = (repository().observeAccounts().first() as AccountList.Loaded).accounts
+        assertEquals(listOf("Account 1", "Treasury", "Account 3"), stored.map { it.label })
     }
 }

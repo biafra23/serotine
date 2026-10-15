@@ -4,11 +4,13 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -24,19 +26,30 @@ import kotlinx.io.readString
 import kotlinx.io.writeString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.random.Random
 
 /**
- * [AccountRepository] kept in the file at [path], so the accounts survive a restart: addresses, kinds
- * and labels, never key material. The list is one JSON document, rewritten whole on every
- * change into a temporary file that is then moved over [file] in one step: a crash during
- * a write leaves the previous list, never part of one. [path] is a plain string, so no
- * file-system library type leaves this module. (The platforms' file APIs here
- * offer no fsync, so a power loss in the same moment can still lose the newest change.)
+ * [AccountRepository] kept in the file at [path], so the accounts survive a restart:
+ * addresses, kinds and labels, never key material. [path] is a plain string, so no
+ * file-system library type leaves this module.
  *
- * The file is read once, on [dispatcher], when the accounts are first observed or added.
- * A file that cannot be parsed is moved aside to `<file>.unreadable` and the list starts
- * empty, said on standard output: re-importing an account recovers it, while a silent overwrite would
- * not leave the old file for anyone to look at.
+ * Writing: the whole list, as one versioned JSON document, into a temporary file of its own
+ * that is then moved over the file in one step. A crash during a write leaves the previous
+ * list. A power loss in that moment can do worse: kotlinx-io exposes no fsync, so the
+ * rename can reach the disk before the data, and the next start then finds a damaged file
+ * (below). Each add reads the file again first, so a second process writing the same file
+ * (a second desktop instance) can lose a change only within that one add.
+ *
+ * Reading, which never destroys or hides the stored list:
+ * - no file: an empty list;
+ * - a newer format, or a file that cannot be read: [AccountList.Unreadable], the file
+ *   untouched, and nothing can be added until it can be read;
+ * - a damaged file: set aside under a name of its own (`<file>.damaged-<random>`, never
+ *   replacing an earlier one), then an empty list that says so
+ *   ([AccountList.Loaded.damagedListSetAside]); if it cannot be set aside, Unreadable.
+ *
+ * File work runs on [dispatcher], never the caller's thread. Problems are reported on
+ * standard output by type only: an exception message could quote the file's addresses.
  */
 class FileAccountRepository(
     path: String,
@@ -46,78 +59,125 @@ class FileAccountRepository(
     private val file = Path(path)
 
     /** Null until the file has been read. */
-    private val accounts = MutableStateFlow<List<Account>?>(null)
+    private val state = MutableStateFlow<AccountList?>(null)
     private val lock = Mutex()
 
-    override fun observeAccounts(): Flow<List<Account>> = flow {
-        loaded()
-        emitAll(accounts.filterNotNull())
+    override fun observeAccounts(): Flow<AccountList> = flow {
+        if (state.value == null) lock.withLock { if (state.value == null) state.value = load() }
+        emitAll(state.filterNotNull())
     }
 
     override suspend fun add(account: Account): AccountAdd = lock.withLock {
-        val current = loadedLocked()
-        if (current.any { it.address == account.address }) return AccountAdd.AlreadyPresent
-        val next = current + account
-        // The file first, then the list everyone observes: a failed write changes nothing.
-        if (!write(next)) return AccountAdd.NotSaved
-        accounts.value = next
-        AccountAdd.Added
+        val current = when (val read = load()) {
+            is AccountList.Unreadable -> {
+                state.value = read
+                return AccountAdd.NotSaved
+            }
+            // A notice that the stored list was set aside outlives later reads of the new file.
+            is AccountList.Loaded -> read.copy(damagedListSetAside = read.damagedListSetAside || setAsideBefore())
+        }
+        state.value = current
+        if (current.accounts.any { it.address == account.address }) return AccountAdd.AlreadyPresent
+        val next = current.copy(accounts = current.accounts + account)
+        // Not cancellable: a write that completes must also be what everyone observes, or a
+        // caller cancelled mid-move would leave the file and the observed list apart.
+        withContext(NonCancellable) {
+            if (write(next.accounts)) {
+                state.value = next
+                AccountAdd.Added
+            } else {
+                AccountAdd.NotSaved
+            }
+        }
     }
 
-    private suspend fun loaded(): List<Account> = accounts.value ?: lock.withLock { loadedLocked() }
+    private fun setAsideBefore(): Boolean = (state.value as? AccountList.Loaded)?.damagedListSetAside == true
 
-    private suspend fun loadedLocked(): List<Account> =
-        accounts.value ?: read().distinctBy { it.address }.also { accounts.value = it }
-
-    private suspend fun read(): List<Account> = withContext(dispatcher) {
-        if (!SystemFileSystem.exists(file)) return@withContext emptyList()
-        try {
-            val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-            JSON.decodeFromString<StoredAccounts>(text).accounts.map { it.toAccount() }
+    private suspend fun load(): AccountList = withContext(dispatcher) {
+        if (!SystemFileSystem.exists(file)) return@withContext AccountList.Loaded(emptyList())
+        val text = try {
+            SystemFileSystem.source(file).buffered().use { it.readString() }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val aside = Path("$file.unreadable")
-            report("the account list in $file is unreadable ($e); moved to $aside, starting empty")
-            try {
-                SystemFileSystem.atomicMove(file, aside)
-            } catch (moveFailure: Exception) {
-                report("could not move it aside either ($moveFailure)")
-            }
-            emptyList()
+            report("could not read the account list at $file (${e::class.simpleName})")
+            return@withContext AccountList.Unreadable(AccountList.Reason.READ_FAILED)
+        }
+        val version = try {
+            LENIENT.decodeFromString(StoredVersion.serializer(), text).version
+        } catch (e: Exception) {
+            null // not even a JSON object: damaged
+        }
+        if (version != null && version > FORMAT_VERSION) {
+            return@withContext AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT)
+        }
+        val accounts = try {
+            STRICT.decodeFromString(StoredAccounts.serializer(), text).accounts.map { it.toAccount() }
+        } catch (e: Exception) {
+            null
+        }
+        if (accounts != null) return@withContext AccountList.Loaded(accounts.distinctBy { it.address })
+        setAside()
+    }
+
+    /** Moves a damaged file out of the way, keeping it; Unreadable when that fails. */
+    private fun setAside(): AccountList {
+        var aside: Path
+        do {
+            aside = Path("$file.damaged-${Random.nextLong().toULong().toString(16)}")
+        } while (SystemFileSystem.exists(aside))
+        return try {
+            SystemFileSystem.atomicMove(file, aside)
+            report("the account list at $file was damaged; set aside as $aside")
+            AccountList.Loaded(emptyList(), damagedListSetAside = true)
+        } catch (e: Exception) {
+            report("the account list at $file is damaged and could not be set aside (${e::class.simpleName})")
+            AccountList.Unreadable(AccountList.Reason.READ_FAILED)
         }
     }
 
     private suspend fun write(accounts: List<Account>): Boolean = withContext(dispatcher) {
-        val temporary = Path("$file.tmp")
+        val temporary = Path("$file.${Random.nextLong().toULong().toString(16)}.tmp")
         try {
             file.parent?.let { SystemFileSystem.createDirectories(it) }
-            val text = JSON.encodeToString(StoredAccounts.serializer(), StoredAccounts(accounts.map(::StoredAccount)))
+            val text = STRICT.encodeToString(
+                StoredAccounts.serializer(),
+                StoredAccounts(FORMAT_VERSION, accounts.map(::StoredAccount)),
+            )
             SystemFileSystem.sink(temporary).buffered().use { it.writeString(text) }
             SystemFileSystem.atomicMove(temporary, file)
             true
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Exception) {
-            report("could not save the account list to $file ($e)")
+            report("could not save the account list to $file (${e::class.simpleName})")
+            try {
+                if (SystemFileSystem.exists(temporary)) SystemFileSystem.delete(temporary)
+            } catch (cleanup: Exception) {
+                // Nothing more to do: a stray temporary file is harmless.
+            }
             false
         }
     }
 
-    /** The file's layout. [version] is there so a later layout can tell an old file apart. */
+    /** The file's layout. [version] comes first and is always written. */
     @Serializable
-    private class StoredAccounts(val accounts: List<StoredAccount>, val version: Int = 1)
+    private class StoredAccounts(val version: Int, val accounts: List<StoredAccount>)
 
     @Serializable
     private class StoredAccount(val address: String, val kind: String, val label: String) {
         constructor(account: Account) : this(account.address.hex, account.kind.name, account.label)
 
-        /** Throws on anything [Account] would not accept: the whole file is then unreadable. */
+        /** Throws on anything [Account] would not accept: the whole file is then damaged. */
         fun toAccount(): Account = Account(Address.of(address), AccountKind.valueOf(kind), label)
     }
 
+    /** Just the version, read leniently, to tell a newer format from a damaged file. */
+    @Serializable
+    private class StoredVersion(val version: Int = FORMAT_VERSION)
+
     private companion object {
-        val JSON = Json { ignoreUnknownKeys = false }
+        const val FORMAT_VERSION = 1
+        val STRICT = Json
+        val LENIENT = Json { ignoreUnknownKeys = true }
 
         fun report(what: String) = println("Serotine: $what")
     }

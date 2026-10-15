@@ -15,8 +15,16 @@ sealed interface HomeUiState {
     /** The account stream has not emitted yet. */
     data class Loading(override val network: String) : HomeUiState
 
-    /** The managed accounts, possibly none; one row per address (the list keys rows on it). */
-    data class Ready(override val network: String, val accounts: List<AccountItem>) : HomeUiState {
+    /**
+     * The managed accounts, possibly none; one row per address (the list keys rows on it).
+     * [notice] tells the user, display-ready, when the stored list is not what they see:
+     * set aside as damaged, saved by a newer app, or unreadable right now.
+     */
+    data class Ready(
+        override val network: String,
+        val accounts: List<AccountItem>,
+        val notice: String? = null,
+    ) : HomeUiState {
         init {
             require(accounts.distinctBy { it.address }.size == accounts.size) {
                 "duplicate addresses in the account list: the repository contract is one entry per address"

@@ -12,6 +12,7 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.Derivation
 import eth.serotine.domain.usecase.ImportMnemonicAccount
@@ -22,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -186,6 +188,19 @@ class MnemonicImportViewModelTest {
     }
 
     @Test
+    fun aFailedSaveIsSaidAndTheWordsStay() = runTest {
+        repository.failSaves = true
+        derivation.next = CompletableDeferred(Derivation.Derived(address))
+        viewModel.onPhraseChange(twelveWords)
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals("The account could not be saved on this device. Nothing was added.", entering().error)
+        assertEquals(twelveWords, entering().phrase.text)
+    }
+
+    @Test
     fun aWordCountBip39DoesNotDefineIsNotSubmitted() = runTest {
         viewModel.onPhraseChange("only three words")
 
@@ -219,9 +234,12 @@ class MnemonicImportViewModelTest {
     private class FakeAccountRepository : AccountRepository {
         val accounts = MutableStateFlow<List<Account>>(emptyList())
 
-        override fun observeAccounts(): Flow<List<Account>> = accounts
+        override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
+
+        var failSaves = false
 
         override suspend fun add(account: Account): AccountAdd {
+            if (failSaves) return AccountAdd.NotSaved
             var added = false
             accounts.update { current ->
                 added = current.none { it.address == account.address }

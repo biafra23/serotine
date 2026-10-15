@@ -3,6 +3,7 @@ package eth.serotine.ui.home
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,9 @@ import eth.serotine.ui.APP_VERSION
 
 /** Test tag of the account list, for UI tests. */
 const val HOME_ACCOUNT_LIST_TAG = "home-account-list"
+
+/** Test tag of the notice above the list when the stored list is not what is shown. */
+const val HOME_NOTICE_TAG = "home-notice"
 
 /** Test tag of the badge naming the network the app works on, for UI tests. */
 const val HOME_NETWORK_TAG = "home-network"
@@ -77,12 +81,23 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (state) {
                 is HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                is HomeUiState.Ready ->
-                    if (state.accounts.isEmpty()) {
-                        NoAccounts(Modifier.align(Alignment.Center))
-                    } else {
-                        AccountList(state.accounts)
+                is HomeUiState.Ready -> Column(Modifier.fillMaxSize()) {
+                    state.notice?.let { notice ->
+                        Text(
+                            notice,
+                            Modifier.padding(16.dp).testTag(HOME_NOTICE_TAG),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        if (state.accounts.isEmpty()) {
+                            NoAccounts(Modifier.align(Alignment.Center))
+                        } else {
+                            AccountList(state.accounts)
+                        }
+                    }
+                }
             }
         }
     }
