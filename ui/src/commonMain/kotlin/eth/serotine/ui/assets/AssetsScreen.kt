@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.LightClientItem
@@ -246,7 +247,10 @@ private fun AccountRow(account: AccountItem) {
                 ControlBadge(account.control)
             }
         },
-        supportingContent = { Text(account.shortAddress) },
+        // Until a Safe's threshold overlay can be drawn, the kind says it is one.
+        supportingContent = {
+            Text(if (account.kind == AccountKind.SAFE) "${account.shortAddress} · Safe" else account.shortAddress)
+        },
         trailingContent = {
             Text(
                 account.balance,

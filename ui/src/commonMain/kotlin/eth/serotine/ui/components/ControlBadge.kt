@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountKind
 
 /** What the user can do with an account (docs/wallet-ux.md, *Control is a badge*). */
 enum class Control(val label: String) {
@@ -23,10 +24,15 @@ enum class Control(val label: String) {
     ;
 
     companion object {
-        /** The control an EOA held as [custody] gives. */
-        fun of(custody: AccountCustody): Control = when (custody) {
-            AccountCustody.InKeyStore -> FULL_CONTROL
-            AccountCustody.Watched -> WATCH_ONLY
+        /**
+         * The control an account of [kind] held as [custody] gives. A Safe's depends on its
+         * owners and threshold, which nothing reads yet: until then it is shown as watch-only,
+         * never as more than is known.
+         */
+        fun of(kind: AccountKind, custody: AccountCustody): Control = when {
+            kind == AccountKind.SAFE -> WATCH_ONLY
+            custody == AccountCustody.InKeyStore -> FULL_CONTROL
+            else -> WATCH_ONLY
         }
     }
 }

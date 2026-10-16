@@ -9,6 +9,7 @@ import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
@@ -66,10 +67,11 @@ class AssetsViewModel(
                                 // A row from the start, "Checking…" until its first reading: an
                                 // account just added, or a screen just back, never waits for
                                 // every proof.
+                                val address = Eip55.format(account.address)
                                 observeNativeBalance(account.address)
                                     .map<BalanceReading, BalanceReading?> { it }
                                     .onStart { emit(null) }
-                                    .map { AccountItem.from(account, it, network) }
+                                    .map { AccountItem.from(account, it, network, address) }
                             },
                         ) { items -> Rows.Shown(items.toList(), notice) }
                     }

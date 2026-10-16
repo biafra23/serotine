@@ -33,6 +33,7 @@ class Eip55Test {
             assertEquals(AddressInput.Valid(address), Eip55.parse(text))
             assertEquals(AddressInput.Valid(address), Eip55.parse(text.lowercase()))
             assertEquals(AddressInput.Valid(address), Eip55.parse("0x" + text.drop(2).uppercase()))
+            assertEquals(AddressInput.Valid(address), Eip55.parse(text.uppercase()), "0X too")
             assertEquals(AddressInput.Valid(address), Eip55.parse("  $text\n"))
         }
     }

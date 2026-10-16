@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.ControlBadge
@@ -170,7 +171,8 @@ private fun Details(state: AccountDetailUiState.Ready, onReceive: () -> Unit, on
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(shortAddress(state.address), style = MaterialTheme.typography.bodyMedium)
+                    val kind = if (state.kind == AccountKind.SAFE) " · Safe" else ""
+                    Text(shortAddress(state.address) + kind, style = MaterialTheme.typography.bodyMedium)
                     IconButton(onClick = { onCopy(state.address) }, Modifier.size(32.dp)) {
                         Icon(
                             SerotineIcons.ContentCopy,

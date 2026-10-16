@@ -35,13 +35,16 @@ class AccountDetailViewModel(
         .map<BalanceReading, BalanceReading?> { it }
         .onStart { emit(null) }
 
+    // The checksum once, not on every balance reading.
+    private val display = Eip55.format(address)
+
     val uiState: StateFlow<AccountDetailUiState> = combine(observeAccount(address), balance) { lookup, reading ->
         when (lookup) {
             is AccountLookup.Found -> AccountDetailUiState.Ready(
                 label = lookup.account.label,
-                address = Eip55.format(lookup.account.address),
+                address = display,
                 kind = lookup.account.kind,
-                control = Control.of(lookup.account.custody),
+                control = Control.of(lookup.account.kind, lookup.account.custody),
                 balance = reading?.let { balanceText(it, network) } ?: "Checking…",
                 balanceVerified = reading is BalanceReading.Verified,
                 balanceNote = (reading as? BalanceReading.Verified)?.let {

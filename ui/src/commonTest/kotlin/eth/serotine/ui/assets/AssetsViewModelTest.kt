@@ -64,7 +64,7 @@ class AssetsViewModelTest {
             "Treasury",
             Eip55.format(treasury.address),
             AccountKind.SAFE,
-            Control.FULL_CONTROL,
+            Control.WATCH_ONLY,
             balance,
             verified,
         )
@@ -231,6 +231,16 @@ class AssetsViewModelTest {
         assertEquals("0xd8dA…6045", item.shortAddress)
         assertEquals("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", item.address)
         assertEquals(Control.FULL_CONTROL, item.control)
+    }
+
+    @Test
+    fun aSafeIsNeverShownWithMoreControlThanIsKnown() {
+        val item = AccountItem.from(
+            Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Family", AccountCustody.InKeyStore),
+            null,
+            Network.SEPOLIA,
+        )
+        assertEquals(Control.WATCH_ONLY, item.control)
     }
 
     @Test

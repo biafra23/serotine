@@ -29,7 +29,8 @@ object Eip55 {
      * when its checksum holds.
      */
     fun parse(text: String): AddressInput {
-        val trimmed = text.trim()
+        // An all-caps copy upper-cases the prefix too.
+        val trimmed = text.trim().let { if (it.startsWith("0X")) "0x" + it.drop(2) else it }
         val address = Address.parse(trimmed) ?: return AddressInput.NotAnAddress
         val digits = trimmed.drop(2)
         val singleCase = digits == digits.lowercase() || digits == digits.uppercase()

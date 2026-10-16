@@ -74,12 +74,20 @@ data class AccountItem(
         get() = shortAddress(address)
 
     companion object {
-        /** [account] with its [balance], or with none read yet ([balance] null). */
-        fun from(account: Account, balance: BalanceReading?, network: Network): AccountItem = AccountItem(
+        /**
+         * [account] with its [balance], or with none read yet ([balance] null); [address] is
+         * its EIP-55 form, which a caller that re-renders the row per balance computes once.
+         */
+        fun from(
+            account: Account,
+            balance: BalanceReading?,
+            network: Network,
+            address: String = Eip55.format(account.address),
+        ): AccountItem = AccountItem(
             label = account.label,
-            address = Eip55.format(account.address),
+            address = address,
             kind = account.kind,
-            control = Control.of(account.custody),
+            control = Control.of(account.kind, account.custody),
             balance = balance?.let { balanceText(it, network) } ?: "Checking…",
             balanceVerified = balance is BalanceReading.Verified,
         )
