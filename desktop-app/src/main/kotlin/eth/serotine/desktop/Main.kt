@@ -8,6 +8,7 @@ import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.desktopHardwareSecret
+import eth.serotine.data.keys.desktopPasswordOnlyProtection
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
@@ -72,8 +73,9 @@ private fun openWallet(dataDir: File) {
             AppGraph(
                 accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
                 // A Mac's Secure Enclave where the wallet uses it or can start to, the
-                // password alone otherwise (the owner's rulings of 2026-10-15 and -16).
-                keys = EnvelopeKeyStore(keys.path, hardware),
+                // password alone otherwise, and on Windows and Linux saying that their TPM is
+                // not used yet (the owner's rulings of 2026-10-15 and -16).
+                keys = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection()),
                 network = Network.SEPOLIA,
             )
         }

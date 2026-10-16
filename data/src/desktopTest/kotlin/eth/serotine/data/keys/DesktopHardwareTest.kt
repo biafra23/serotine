@@ -1,5 +1,6 @@
 package eth.serotine.data.keys
 
+import eth.serotine.domain.repository.KeyProtection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.fail
@@ -18,6 +19,12 @@ class DesktopHardwareTest {
     fun aWalletOnTheEnclaveStaysOnItEvenWhenItFails() {
         assertEquals(DesktopFactor.SECURE_ENCLAVE, chooseDesktopFactor(true, emptySet(), never))
         assertEquals(DesktopFactor.SECURE_ENCLAVE, chooseDesktopFactor(false, setOf(MacSecureEnclaveSecret.TAG), never))
+    }
+
+    @Test
+    fun windowsAndLinuxSayTheirTpmIsNotUsedYet() {
+        assertEquals(KeyProtection.PASSWORD_ONLY_TPM_NOT_USED, passwordOnlyProtection(onMac = false))
+        assertEquals(KeyProtection.PASSWORD_ONLY, passwordOnlyProtection(onMac = true))
     }
 
     @Test

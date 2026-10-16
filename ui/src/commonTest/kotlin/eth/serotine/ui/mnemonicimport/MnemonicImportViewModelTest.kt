@@ -310,6 +310,14 @@ class MnemonicImportViewModelTest {
     }
 
     @Test
+    fun aComputerWhoseTpmIsNotUsedYetIsToldSo() {
+        keys.description = { KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY_TPM_NOT_USED) }
+
+        val protection = assertIs<PasswordStep.New>(entering().step).protection
+        assertTrue("does not use this computer's TPM yet" in protection, protection)
+    }
+
+    @Test
     fun theDeviceProtectionIsSaid() {
         assertTrue(assertIs<PasswordStep.Existing>(entering().step).protection.contains("secure hardware"))
     }

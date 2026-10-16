@@ -52,6 +52,13 @@ enum class KeyProtection {
 
     /** The password alone, stretched harder: Serotine uses no hardware key store on this computer. */
     PASSWORD_ONLY,
+
+    /**
+     * The password alone, stretched harder, on a computer whose TPM Serotine does not use yet:
+     * Windows and Linux, until their TPM path is built (the owner's ruling of 2026-10-16). The
+     * user is told so, a TPM present or not.
+     */
+    PASSWORD_ONLY_TPM_NOT_USED,
 }
 
 /** The outcome of [KeyStore.importMnemonic]. */

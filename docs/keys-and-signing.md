@@ -154,6 +154,9 @@ The rules a reviewer holds the adapter against:
    macOS on Apple silicon or T2 uses the Secure Enclave as iOS does, signed
    or not (the owner's decision of 2026-10-16); Windows
    wraps `S_hw` with a TPM key through CNG; Linux uses a TPM where present.
+   That TPM path is not built yet: until it is, Windows and Linux stand on
+   the password alone, a TPM present or not, and the app tells the user it
+   does not use the TPM yet (the owner's ruling of 2026-10-16).
    Without hardware, `S_hw` is absent, the blob is brute-forceable offline,
    and the KDF cost goes up to compensate. The adapter reports which case the
    user is in.
@@ -261,8 +264,10 @@ its KDoc and returns it as a result the UI shows as state.
   - A wallet begun on the password alone stays so.
   - Only a wallet without envelopes asks whether the enclave works.
   - Macs without an enclave, Windows and Linux stand on the password alone.
-    Rule 9's TPM path for Windows and Linux is not built: until it is, those
-    computers are password-only too, and say so.
+    Rule 9's TPM path for Windows and Linux is not built. Until it is, those
+    computers are password-only, and the seed screen says that Serotine does
+    not use the computer's TPM yet (`KeyProtection.PASSWORD_ONLY_TPM_NOT_USED`,
+    the owner's ruling of 2026-10-16).
 - **One Serotine runs per user** on the desktop.
   - The host holds an exclusive lock on a file in its data directory, so a
     second instance does not write the account list or the envelopes. It

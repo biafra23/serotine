@@ -154,6 +154,31 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun aComputerWhoseTpmIsNotUsedYetSaysSo() = runTest {
+        // Windows and Linux, for now (the owner's ruling of 2026-10-16).
+        val store = EnvelopeKeyStore(
+            directory.path,
+            hardware = null,
+            StandardTestDispatcher(testScheduler),
+            withoutHardware = KeyProtection.PASSWORD_ONLY_TPM_NOT_USED,
+        )
+
+        assertEquals(
+            KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY_TPM_NOT_USED),
+            store.describe(),
+        )
+        assertEquals(
+            KeyImport.Stored(hardhatAddress, KeyProtection.PASSWORD_ONLY_TPM_NOT_USED),
+            store.importMnemonic(hardhat, password),
+        )
+        val sealed = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(4L to 256L * 1024 * 1024, sealed.opsLimit to sealed.memLimitBytes, "the password-only cost")
+        assertFailsWith<IllegalArgumentException>("a hardware kind is no password-only protection") {
+            EnvelopeKeyStore(directory.path, hardware = null, withoutHardware = KeyProtection.HARDWARE)
+        }
+    }
+
+    @Test
     fun aStoredSecretTheHardwareUnwrapsGetsTheFullCostToo() = runTest {
         // The Secure Enclave's kind: in hardware, but one unwrap and the search can leave the device.
         store(FakeHardware(everyGuessNeedsDevice = false)).importMnemonic(hardhat, password)

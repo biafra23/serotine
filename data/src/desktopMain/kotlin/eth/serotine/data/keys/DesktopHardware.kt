@@ -45,6 +45,16 @@ private class UnknownFactor(private val reason: String) : HardwareSecret {
     override fun mix(input: ByteArray): ByteArray = error(reason)
 }
 
+/**
+ * What the desktop key store reports when [desktopHardwareSecret] gives it no secret: on a Mac,
+ * that Serotine uses no hardware key store there; on Windows and Linux, that it does not use the
+ * computer's TPM yet, since rule 9's TPM path is not built (the owner's ruling of 2026-10-16).
+ */
+fun desktopPasswordOnlyProtection(): KeyProtection = passwordOnlyProtection(onMac = MacSecurity.onMac)
+
+internal fun passwordOnlyProtection(onMac: Boolean): KeyProtection =
+    if (onMac) KeyProtection.PASSWORD_ONLY else KeyProtection.PASSWORD_ONLY_TPM_NOT_USED
+
 internal enum class DesktopFactor { SECURE_ENCLAVE, PASSWORD_ONLY }
 
 /** [desktopHardwareSecret]'s rule, on its inputs: [enclaveUsable] is asked only for a wallet without envelopes. */

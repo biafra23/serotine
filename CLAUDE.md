@@ -535,7 +535,8 @@ discussion that produced this note.
     necessary to unwrap it: the Argon2id-stretched password AND a secret only
     this device's hardware key store yields. A password that is merely
     checked, or a wrap that opens without the hardware, is a finding,
-    whatever it saves.
+    whatever it saves — apart from the desktop cases the dated rulings below
+    put on the password path alone.
   - Biometric unlock of that envelope is the user's opt-in (owner ruling,
     2026-10-15), bound to a key and never to the UI: a second hardware key
     with per-use Class 3 biometric authorization; disabling it deletes that
@@ -561,6 +562,10 @@ discussion that produced this note.
     Mac but not to the app, and binding it to the app takes a different
     design, the key in a signed app's keychain access group. iOS's envelope
     waits for the iOS app (owner ruling, 2026-10-16).
+  - Windows and Linux stand on the password path alone for now, a TPM
+    present or not: rule 9's TPM path comes later, and until then the app
+    tells the user that it does not use the TPM yet (owner ruling,
+    2026-10-16).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with
     Myotis, and the dApp connection protocol (WalletConnect is the candidate;

@@ -23,7 +23,9 @@ import kotlinx.serialization.json.Json
 /**
  * [KeyStore] in the key adapter: each imported seed sealed in its own envelope ([Envelope]),
  * one file per account (`<address>.seed`) under [directory]. [hardware] is this device's
- * hardware secret, or null on a computer without one. Argon2id runs at the lighter cost only
+ * hardware secret, or null on a computer without one; [withoutHardware] is then what the key
+ * store reports, [KeyProtection.PASSWORD_ONLY] or, on a computer whose TPM is not used yet,
+ * [KeyProtection.PASSWORD_ONLY_TPM_NOT_USED]. Argon2id runs at the lighter cost only
  * when that secret really lives in secure hardware and every guess needs it; otherwise (a
  * software key store, a stored secret the hardware unwraps, none) the envelope must hold up
  * against an offline attack on the password alone (rules 2 and 9).
@@ -39,11 +41,16 @@ class EnvelopeKeyStore(
     private val directory: String,
     private val hardware: HardwareSecret?,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val withoutHardware: KeyProtection = KeyProtection.PASSWORD_ONLY,
 ) : KeyStore {
+
+    init {
+        require(withoutHardware in PASSWORD_ONLY_KINDS) { "without hardware the protection is password-only" }
+    }
 
     private val lock = Mutex()
 
-    private fun protection(): KeyProtection = hardware?.protection ?: KeyProtection.PASSWORD_ONLY
+    private fun protection(): KeyProtection = hardware?.protection ?: withoutHardware
 
     override suspend fun describe(): KeyStoreDescription = withContext(dispatcher) {
         try {
@@ -230,6 +237,8 @@ class EnvelopeKeyStore(
         val PASSWORD_ONLY_COST = Envelope.Cost(opsLimit = 4, memLimitBytes = 256L * 1024 * 1024)
 
         const val SEED_SUFFIX = ".seed"
+
+        val PASSWORD_ONLY_KINDS = setOf(KeyProtection.PASSWORD_ONLY, KeyProtection.PASSWORD_ONLY_TPM_NOT_USED)
 
         /**
          * How many envelopes a password is checked against: the account's own and two more, so
