@@ -60,32 +60,48 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.secp256k1.kmp.jni.android)
         }
-        // The key envelope's platform half (eth.serotine.data.keys): libsodium's Argon2id
-        // through JNA, AES-256-GCM and durable file writes from the JDK. Android and the
-        // desktop share it, as both run on a JVM; iOS gets its own half with the iOS host.
+        // The JVM half shared by Android and the desktop. It holds two adapters:
+        // - the key envelope's platform half (eth.serotine.data.keys): libsodium's Argon2id
+        //   through JNA, AES-256-GCM and durable file writes from the JDK; iOS gets its own
+        //   half with the iOS host;
+        // - the Myotis engine adapter (eth.serotine.data.engine). The engine library exists
+        //   for the two JVM targets (its AAR for Android, its jar for the desktop), so the
+        //   glue over io.myotis.api lives here, as in Myotis's own :myotis-engine; what it
+        //   drives (VerifiedNativeBalances) is common code with common tests. iOS reaches
+        //   the engine through its C ABI, with the iOS host.
         val jvmSharedMain by creating {
             dependsOn(commonMain.get())
             dependencies {
+                // The engine to compile against here; each target brings it at runtime (below),
+                // because the two take JNA from different places.
+                compileOnly(libs.myotis.engine)
                 // For the libsodium binaries it ships (its Kotlin API is not used), and for
-                // JNA at runtime: the jar on the desktop, the AAR (classes and the native
-                // stubs for all four ABIs) on Android.
-                // Without the resource loader (and its slf4j): only the bindings' own Kotlin API
-                // uses it, and nothing calls that API.
+                // JNA at runtime: the jar on the desktop, the AAR on Android (its classes and
+                // the native stub for all four Android ABIs). Without the resource loader (and
+                // its slf4j): only the bindings' own Kotlin API uses it, and nothing calls it.
                 implementation(libs.libsodium.bindings.get().toString()) {
                     exclude(group = "com.goterl", module = "resource-loader")
                 }
-                // JNA's API to compile against only: a jar at runtime would duplicate the
-                // AAR's classes on Android.
+                // JNA's API to compile against only (both pinned to 5.18.1).
                 compileOnly(libs.jna)
             }
         }
         androidMain.get().dependsOn(jvmSharedMain)
+        androidMain.dependencies {
+            // Without its JNA jar: the bindings' JNA AAR carries the same classes, and a jar
+            // beside it duplicates them. The AAR's stubs also cover the 32-bit ABIs, which the
+            // key store runs on and the engine does not.
+            implementation(libs.myotis.engine.get().toString()) {
+                exclude(group = "net.java.dev.jna", module = "jna")
+            }
+        }
         // The desktop also holds the Mac's Secure Enclave secret, which calls
         // Security.framework through the same JNA.
         val desktopMain by getting {
             dependsOn(jvmSharedMain)
             dependencies {
                 implementation(libs.secp256k1.kmp.jni.jvm)
+                implementation(libs.myotis.engine)
             }
         }
         val androidUnitTest by getting {
@@ -105,5 +121,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// The engine's real-network test (MyotisNodeSepoliaTest) runs only with
+// -PmyotisLibraryDir=<dir with the host library>; without it, it is skipped.
+providers.gradleProperty("myotisLibraryDir").orNull?.let { dir ->
+    tasks.matching { it.name == "desktopTest" }.configureEach {
+        (this as Test).systemProperty("java.library.path", dir)
+        systemProperty("serotine.myotisLibraryDir", dir)
     }
 }

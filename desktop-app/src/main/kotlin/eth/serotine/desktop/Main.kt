@@ -6,6 +6,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
@@ -22,10 +23,14 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 /**
- * The desktop composition root: builds the [AppGraph] from this platform's adapters and
- * opens the one window on the shared [App]. The window provides the ViewModelStoreOwner
- * the navigation back stack keeps its screens' ViewModels in. One instance per user: a
- * second one finds the [InstanceLock] taken, says so and ends.
+ * The desktop composition root: starts the process's one Myotis engine
+ * (docs/embedding-myotis.md), builds the [AppGraph] from this platform's adapters and opens
+ * the one window on the shared [App]. The window provides the ViewModelStoreOwner the
+ * navigation back stack keeps its screens' ViewModels in. Closing it ends the application
+ * loop, and the engine is stopped after that, on the main thread: never on the Swing event
+ * thread, which a slow network shutdown would freeze. One instance per user: a second one
+ * finds the [InstanceLock] taken, says so and ends, so two never write the account list, the
+ * keys or the engine's state at once.
  */
 fun main() {
     val dataDir = appDataDir()
@@ -68,7 +73,10 @@ private fun openWallet(dataDir: File) {
     excludeFromBackups(keys)
     // Before the window: on a Mac with no wallet yet this asks the Secure Enclave once.
     val hardware = desktopHardwareSecret(keys.path)
-    application {
+    // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
+    // background; without its host library on java.library.path, balances say so.
+    val node = MyotisNode.start(Network.SEPOLIA, dataDir.resolve("myotis"))
+    application(exitProcessOnExit = false) {
         val graph = remember {
             AppGraph(
                 accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
@@ -76,6 +84,8 @@ private fun openWallet(dataDir: File) {
                 // password alone otherwise, and on Windows and Linux saying that their TPM is
                 // not used yet (the owner's rulings of 2026-10-15 and -16).
                 keys = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection()),
+                nativeBalances = node.nativeBalances,
+                lightClient = node.lightClient,
                 network = Network.SEPOLIA,
             )
         }
@@ -87,6 +97,8 @@ private fun openWallet(dataDir: File) {
             App(graph)
         }
     }
+    node.shutdown()
+    exitProcess(0)
 }
 
 /**
@@ -127,7 +139,10 @@ private fun excludeFromBackups(directory: File) {
     }
 }
 
-/** Where this OS keeps an application's own data: the account list, the keys and the instance lock. */
+/**
+ * Where this OS keeps an application's own data: the account list, the keys, the engine's
+ * state and the instance lock.
+ */
 private fun appDataDir(): File {
     val os = System.getProperty("os.name").lowercase()
     val home = File(System.getProperty("user.home"))

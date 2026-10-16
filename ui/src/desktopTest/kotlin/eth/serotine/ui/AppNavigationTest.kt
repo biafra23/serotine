@@ -24,10 +24,14 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
@@ -36,6 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -79,6 +84,12 @@ class AppNavigationTest {
             override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport =
                 KeyImport.Stored(Address.of("0x" + "ab".repeat(20)), KeyProtection.HARDWARE)
         },
+        nativeBalances = object : NativeBalances {
+            override fun observeBalance(address: Address): Flow<BalanceReading> = flowOf(BalanceReading.Syncing)
+        },
+        lightClient = object : LightClient {
+            override fun observeStatus(): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
+        },
         network = Network.SEPOLIA,
     )
 
@@ -109,7 +120,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).performClick()
         rule.waitUntil { rule.onAllNodesWithText("Account 1").fetchSemanticsNodes().isNotEmpty() }
 
-        rule.onNodeWithText("0xabab…abab").assertIsDisplayed()
+        rule.onNodeWithText("0xabab…abab · Account").assertIsDisplayed()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertDoesNotExist()
     }
 

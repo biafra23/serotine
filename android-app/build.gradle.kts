@@ -98,9 +98,10 @@ android {
     }
 
     packaging {
-        // JNA's native stub arrives with the libsodium bindings' JNA AAR and, once the engine
-        // library is in, with its AAR too: the same JNA version (both pinned to 5.18.1), so
-        // either copy will do.
+        // JNA's native stub arrives with the libsodium bindings' JNA AAR and with the engine
+        // library's AAR too (for arm64-v8a and x86_64): the same JNA version, both pinned to
+        // 5.18.1, so either copy will do. JNA's classes come from the AAR alone: :data drops
+        // the engine's JNA jar on Android.
         jniLibs {
             pickFirsts += "**/libjnidispatch.so"
         }

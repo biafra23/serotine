@@ -40,6 +40,17 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+// The Myotis engine's host library (libmyotis_engine.{dylib,so,dll}) is not inside its jar
+// (docs/embedding-myotis.md), and no Myotis release asset carries it yet. Until the
+// installers stage it, `-PmyotisLibraryDir=<dir>` points `:desktop-app:run` at one built
+// from Myotis (`./gradlew cargoBuildHost` there: rust/target/release); without it the app
+// runs with no light client and its balances say so. Only the run task gets it, so a local
+// packaging never bakes a developer's path into an installer.
+val myotisLibraryDir: Provider<String> = providers.gradleProperty("myotisLibraryDir")
+tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
+    myotisLibraryDir.orNull?.let { jvmArgs("-Djava.library.path=$it") }
+}
+
 compose.desktop {
     application {
         mainClass = "eth.serotine.desktop.MainKt"

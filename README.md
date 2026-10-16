@@ -9,11 +9,12 @@ Windows) today; iOS next. For now the app works on the Sepolia testnet only.
 
 **Status: skeleton.** The module graph, the MVVM/clean-architecture seams, the
 tests and the release workflows are in place. The first screen lists the
-accounts, kept across restarts, and adds one from its seed phrase: its first
-account, the seed stored encrypted under the wallet password and, where the
-device has one, a key in its secure hardware (the Android Keystore, a Mac's
-Secure Enclave; docs/keys-and-signing.md). Signing and the Myotis engine
-integration come next (docs/embedding-myotis.md).
+accounts with their native balances, verified by the embedded Myotis light
+client (docs/embedding-myotis.md) and kept across restarts, and adds an account
+from its seed phrase: its first account, the seed stored encrypted under the
+wallet password and, where the device has one, a key in its secure hardware
+(the Android Keystore, a Mac's Secure Enclave; docs/keys-and-signing.md).
+Signing comes next.
 
 ## Build & run
 
