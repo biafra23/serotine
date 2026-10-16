@@ -10,23 +10,42 @@ import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
+import java.awt.GraphicsEnvironment
 import java.io.File
+import javax.swing.JOptionPane
 import kotlin.concurrent.thread
 
 /**
  * The desktop composition root: builds the [AppGraph] from this platform's adapters and
  * opens the one window on the shared [App]. The window provides the ViewModelStoreOwner
- * the navigation back stack keeps its screens' ViewModels in.
+ * the navigation back stack keeps its screens' ViewModels in. One instance per user: a
+ * second one finds the [InstanceLock] taken, says so and ends.
  */
 fun main() {
-    val keys = appDataDir().resolve("keys")
+    val dataDir = appDataDir()
+    val instance = InstanceLock.acquire(dataDir.resolve("serotine.lock"))
+    if (instance == null) {
+        val message = "Serotine is already running."
+        System.err.println(message)
+        if (!GraphicsEnvironment.isHeadless()) {
+            JOptionPane.showMessageDialog(null, message, "Serotine", JOptionPane.INFORMATION_MESSAGE)
+        }
+        return
+    }
+    // use: holds the lock, and keeps it reachable, until the application ends.
+    instance.use { openWallet(dataDir) }
+}
+
+private fun openWallet(dataDir: File) {
+    val keys = dataDir.resolve("keys")
     excludeFromBackups(keys)
     application {
         val graph = remember {
             AppGraph(
-                accounts = FileAccountRepository(appDataDir().resolve("accounts.json").path),
+                accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
                 // The password alone where there is no hardware key store (the owner's
-                // ruling of 2026-10-15); the Mac Secure Enclave comes with part 3.
+                // ruling of 2026-10-15). A Mac's Secure Enclave waits for a signed app: it
+                // gives keys only to an app with a keychain-access-group entitlement.
                 keys = EnvelopeKeyStore(keys.path, hardware = null),
                 network = Network.SEPOLIA,
             )
@@ -65,7 +84,7 @@ private fun excludeFromBackups(directory: File) {
     }
 }
 
-/** Where this OS keeps an application's own data: the account list goes below it. */
+/** Where this OS keeps an application's own data: the account list, the keys and the instance lock. */
 private fun appDataDir(): File {
     val os = System.getProperty("os.name").lowercase()
     val home = File(System.getProperty("user.home"))

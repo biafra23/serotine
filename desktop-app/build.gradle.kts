@@ -36,6 +36,8 @@ dependencies {
     // Dispatchers.Main on the desktop JVM is the Swing event thread; the ViewModels'
     // viewModelScope needs it on the runtime classpath.
     implementation(libs.kotlinx.coroutines.swing)
+
+    testImplementation(kotlin("test"))
 }
 
 compose.desktop {

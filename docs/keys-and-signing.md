@@ -151,7 +151,8 @@ The rules a reviewer holds the adapter against:
    exists and the seed screen says so.
 9. **Desktop stands on the password path alone where no hardware exists**
    (the owner's ruling of 2026-10-15, CLAUDE.md *Trust*).
-   macOS on Apple silicon or T2 uses the Secure Enclave as iOS does; Windows
+   macOS on Apple silicon or T2 uses the Secure Enclave as iOS does, once the
+   desktop app is signed (the owner's decision of 2026-10-16); Windows
    wraps `S_hw` with a TPM key through CNG; Linux uses a TPM where present.
    Without hardware, `S_hw` is absent, the blob is brute-forceable offline,
    and the KDF cost goes up to compensate. The adapter reports which case the
@@ -221,9 +222,17 @@ its KDoc and returns it as a result the UI shows as state.
   failing. The Keystore reports where the key lives (rule 5), and the screen
   says which case applies: hardware, or a software key store on an emulator.
   A key store that fails is shown as such, and nothing can be added.
-- **Desktop** stands on the password alone for now. The Mac Secure Enclave
-  and iOS are part 3; on iOS the key store reports itself unavailable until
-  then.
+- **Desktop** stands on the password alone for now.
+  - A Mac's Secure Enclave waits until the desktop app is signed (owner's
+    decision, 2026-10-16). Security.framework gives Secure Enclave keys only
+    to an app with a keychain-access-group entitlement, which takes a Team ID
+    and, for Developer ID distribution, a provisioning profile.
+  - One Serotine runs per user. The desktop host holds an exclusive lock on
+    a file in its data directory, so two instances never write the account
+    list or the envelopes at once. A second instance says so and ends, and
+    the OS drops the lock when the holder dies.
+- **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
+  Until then the key store reports itself unavailable there.
 - **What never leaves a call.**
   - The seed, the keys and the password's bytes exist only inside one call,
     in byte arrays and native buffers this code zeroes before it returns.
@@ -243,9 +252,6 @@ its KDoc and returns it as a result the UI shows as state.
     one except to check the password.
   - A way back when no envelope opens any more (a lost Keystore key, a
     forgotten password) comes with the wallet's reset and recovery flows.
-  - Two desktop instances on one data directory are not guarded against
-    yet. That guard covers the account list and the engine too, and comes
-    with part 3.
 
 ## A Safe owned by a hardware P-256 key
 
