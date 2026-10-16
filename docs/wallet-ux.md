@@ -125,9 +125,13 @@ Safe transaction) is a destination that covers the bar until it ends.
    with its block.
 10. **Watch address**
     - An address or ENS name, and a name for the account.
-    - A detection card built from verified code and storage: an EOA; a Safe
-      (version, `t of n`, the owners' blockies, enabled modules and a guard
-      if any); or another contract.
+    - A detection card built from verified code and storage: an EOA; an EOA
+      with an EIP-7702 delegation (its code is the designator `0xef0100` ++
+      an address), shown as "EOA, delegated to ‹address›" with that
+      address's blockie, because the delegate's code can act for the
+      account, and badged like any EOA by whether its key is held here; a
+      Safe (version, `t of n`, the owners' blockies, enabled modules and a
+      guard if any); or another contract.
     - The control badge the account will get (owners held here count).
 11. **Import recovery phrase**: today's seed screen, with the account's name,
     the wallet password (on the first key) and the biometric opt-in.
@@ -176,21 +180,30 @@ Safe transaction) is a destination that covers the bar until it ends.
 The ruling (CLAUDE.md, *Data sources*, 2026-10-16): Chainlink aggregators
 read through the light client. Applied:
 
-- **A feed table per network**: price id → aggregator address, the currency
-  it quotes in, its decimals and its heartbeat, pinned in code from
-  Chainlink's feed directory. A token names its price id; a token without
-  one has no price.
-- **A price is a verified call** of `latestRoundData()` at the verified head.
-  A non-positive answer is no price. An `updatedAt` older than the feed's
-  heartbeat, measured against the verified head's block timestamp and never
-  the device's clock, is stale: shown with its age and left out of totals,
-  like no price.
+- **A feed table per network**: price id → feed address, the currency it
+  quotes in, its decimals and its heartbeat, pinned in code from Chainlink's
+  feed directory. A token names its price id; a token without one has no
+  price. The pins say what is expected; the contract is the source of truth.
+- **A price is a verified call** of `latestRoundData()` and `decimals()`
+  together, at the verified head (one Multicall3 call where it can be). The
+  feed address is a proxy whose aggregator Chainlink can swap, and
+  `decimals()` answers from the aggregator, so it is read every time: one
+  that differs from the pinned value is no price, and the screen that would
+  show the price says why. A non-positive answer is no price. An
+  `updatedAt` older than the feed's heartbeat, measured against the verified
+  head's block timestamp and never the device's clock, is stale: shown with
+  its age and left out of totals, like no price.
 - **Every price goes through USD.** A feed quoted in another currency is
   converted with that currency's own USD feed first (an X/ETH answer through
   ETH/USD). A display currency other than USD divides the USD value by its
   own USD rate (EUR/USD, GBP/USD, CHF/USD, JPY/USD; for ETH and BTC, ETH/USD
   and BTC/USD). A currency whose feed is not pinned on the network is not
   offered.
+- **A converted price is only as good as its worst feed.** Every feed on the
+  path (the token's, a conversion feed, the display currency's) passes the
+  same checks; one that fails makes the price no price, and the oldest
+  `updatedAt` on the path is the age shown and the one the stale rule
+  applies to, totals included.
 - **Totals add only priced holdings**, and say how many assets they left out.
 - **On Sepolia every fiat value says "testnet prices"**: Chainlink's Sepolia
   feeds are testnet feeds, and Sepolia's tokens have no market value of
