@@ -7,11 +7,20 @@ docs/keys-and-signing.md (how a key is held and used). The rules here apply
 CLAUDE.md's *Trust* and *Data sources* sections to the screens; where this
 page and CLAUDE.md disagree, CLAUDE.md wins and this page is fixed.
 
+The mockups below (source: `wallet-ux-screens.html`, which opens in a
+browser) draw the 20 screens with their numbers. They are a sketch: the
+blockies are real, the QR code, amounts and addresses are not, the account
+rows abbreviate the control badges, and the token rows show monograms where
+a built-in token gets its bundled icon. Where a mockup and this text differ,
+the text wins.
+
+![The 20 screens, numbered as below](wallet-ux-screens.png)
+
 ## Rules every screen follows
 
 - **Sepolia only, and named.** The app works on Sepolia alone (owner ruling,
-  2026-10-15), so there is no network picker or chain chip; the screens that
-  matter for it say "Sepolia" (Assets, Receive, Send review, Settings). Every
+  2026-10-15), so there is no network picker; a plain label says "Sepolia" on
+  the screens that matter for it (Assets, Receive, Send review, Settings). Every
   table this page mentions (tokens, price feeds, Safe singletons) is keyed by
   `Network`, so another network is a data addition once the owner allows it.
 - **Verified, or not available.** Every chain value comes from the embedded
