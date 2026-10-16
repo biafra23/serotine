@@ -7,10 +7,16 @@ sealed interface RemoveAccountUiState {
     data object Loading : RemoveAccountUiState
 
     /**
-     * The question, for the account [label]: [keyed] when its key is on this device and goes
-     * with it, which the dialog says before anything is removed; [removing] while it is.
+     * The question, for the account [label] at the EIP-55 [address], shown in full because
+     * labels can repeat: [keyed] when its key is on this device and goes with it, which the
+     * dialog says before anything is removed; [removing] while it is.
      */
-    data class Confirm(val label: String, val keyed: Boolean, val removing: Boolean = false) : RemoveAccountUiState
+    data class Confirm(
+        val label: String,
+        val address: String,
+        val keyed: Boolean,
+        val removing: Boolean = false,
+    ) : RemoveAccountUiState
 
     /** What the user must know about how it went, display-ready, before the dialog closes. */
     data class Notice(val message: String) : RemoveAccountUiState

@@ -8,6 +8,7 @@ import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountRemoval
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.RemoveAccount
+import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +30,7 @@ class RemoveAccountViewModel(
             state.value = when (val lookup = observeAccount(address).first()) {
                 is AccountLookup.Found -> RemoveAccountUiState.Confirm(
                     label = lookup.account.label,
+                    address = Eip55.format(lookup.account.address),
                     keyed = lookup.account.custody == AccountCustody.InKeyStore,
                 )
                 AccountLookup.NotInList -> RemoveAccountUiState.Gone
@@ -48,8 +50,9 @@ class RemoveAccountViewModel(
                 AccountRemoval.Removed -> RemoveAccountUiState.Done
                 AccountRemoval.NotFound -> RemoveAccountUiState.Gone
                 AccountRemoval.RemovedKeyKept -> RemoveAccountUiState.Notice(
-                    "${confirm.label} is removed, but its key could not be deleted from this device. " +
-                        "Importing its recovery phrase again brings the account back.",
+                    "${confirm.label} is removed, but its key could not be deleted from this device, so " +
+                        "the wallet password stays the one you set. Importing its recovery phrase again " +
+                        "brings the account back.",
                 )
                 AccountRemoval.NotSaved ->
                     RemoveAccountUiState.Notice("${confirm.label} could not be removed. Nothing has changed.")

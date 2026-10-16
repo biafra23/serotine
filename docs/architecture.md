@@ -85,9 +85,10 @@ review finding, whatever it saves.
   (`onAddAccount`, `onBack`); only `App` holds the `NavController`.
 - **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
-  Each tab is a nested graph with its own back stack: switching tabs saves
-  and restores it (`saveState`/`restoreState`), and re-selecting the current
-  tab returns to its start. A route's arguments are identifiers only
+  Each tab is a nested graph. Settings opens over the Assets tab's stack and
+  closes back down to it, so switching tabs keeps the user's place in Assets
+  with no stack saved aside to go stale; re-selecting the current tab returns
+  to its start. A route's arguments are identifiers only
   (`account/{address}`), never an object: the destination's ViewModel loads
   what it shows through its use cases. The bar shows on the tabs' screens; a
   flow that ends in a key operation or a transaction (import, create, send,

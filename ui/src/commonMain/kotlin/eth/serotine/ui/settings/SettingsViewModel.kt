@@ -27,7 +27,8 @@ class SettingsViewModel(
         .map { SettingsUiState(network.displayName, it, APP_VERSION) }
         .stateIn(
             viewModelScope,
-            SharingStarted.WhileSubscribed(5_000),
+            // A tab back after the timeout must not show an old head as current.
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
             SettingsUiState(network.displayName, LightClientItem.from(LightClientStatus.Starting, 0), APP_VERSION),
         )
 }

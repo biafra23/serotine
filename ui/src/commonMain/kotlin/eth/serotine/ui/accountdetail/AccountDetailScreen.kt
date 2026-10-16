@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -36,25 +37,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
-import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
 /** Test tag of the account's balance, for UI tests. */
 const val ACCOUNT_BALANCE_TAG = "account-balance"
 
+/** Test tag of the account's full address, for UI tests. */
+const val ACCOUNT_ADDRESS_TAG = "account-address"
+
 /**
  * Binds [AccountDetailScreen] to its ViewModel. An account that leaves the wallet while the
- * screen is shown (removed from here or elsewhere) ends the screen through [onGone].
+ * screen is shown (removed from here or elsewhere) ends the screen through [onGone] — once
+ * the screen is the one in front: under the remove dialog it waits, so the dialog can say
+ * how the removal went before both close.
  */
 @Composable
 fun AccountDetailRoute(
@@ -68,8 +77,12 @@ fun AccountDetailRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
-    LaunchedEffect(state is AccountDetailUiState.Gone) {
-        if (state is AccountDetailUiState.Gone) gone()
+    // A dialog destination over this one holds it at STARTED; it is RESUMED when in front.
+    val inFront = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
+        .isAtLeast(Lifecycle.State.RESUMED)
+    val leave = state is AccountDetailUiState.Gone && inFront
+    LaunchedEffect(leave) {
+        if (leave) gone()
     }
     AccountDetailScreen(
         state = state,
@@ -171,17 +184,23 @@ private fun Details(state: AccountDetailUiState.Ready, onReceive: () -> Unit, on
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val kind = if (state.kind == AccountKind.SAFE) " · Safe" else ""
-                    Text(shortAddress(state.address) + kind, style = MaterialTheme.typography.bodyMedium)
-                    IconButton(onClick = { onCopy(state.address) }, Modifier.size(32.dp)) {
-                        Icon(
-                            SerotineIcons.ContentCopy,
-                            contentDescription = "Copy address",
-                            Modifier.size(16.dp),
-                        )
-                    }
                     ControlBadge(state.control)
+                    if (state.kind == AccountKind.SAFE) Text("Safe", style = MaterialTheme.typography.labelMedium)
                 }
+            }
+        }
+        // In full, as docs/wallet-ux.md's screen 4 has it, with Copy beside it.
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            SelectionContainer(Modifier.weight(1f)) {
+                Text(
+                    state.address,
+                    Modifier.testTag(ACCOUNT_ADDRESS_TAG),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            IconButton(onClick = { onCopy(state.address) }) {
+                Icon(SerotineIcons.ContentCopy, contentDescription = "Copy address", Modifier.size(18.dp))
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

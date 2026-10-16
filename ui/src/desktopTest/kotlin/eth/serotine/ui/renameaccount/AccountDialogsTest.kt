@@ -17,10 +17,26 @@ import kotlin.test.assertEquals
 /** Renders the stateless rename and remove dialogs headless. */
 class AccountDialogsTest {
 
+    private companion object {
+        const val DAILY = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2"
+    }
+
     @get:Rule
     val rule = createComposeRule()
 
     private val events = mutableListOf<String>()
+
+    @Test
+    fun aRemovalUnderWayCannotBeWalkedAwayFrom() {
+        rule.setContent {
+            SerotineTheme {
+                RemoveAccountDialog(RemoveAccountUiState.Confirm("Daily", DAILY, keyed = true, removing = true), {}, {})
+            }
+        }
+
+        rule.onNodeWithText("Cancel").assertIsNotEnabled()
+        rule.onNodeWithText("Remove").assertIsNotEnabled()
+    }
 
     @Test
     fun renameShowsTheNameAndItsError() {
@@ -59,7 +75,7 @@ class AccountDialogsTest {
         rule.setContent {
             SerotineTheme {
                 RemoveAccountDialog(
-                    RemoveAccountUiState.Confirm("Daily", keyed = true),
+                    RemoveAccountUiState.Confirm("Daily", DAILY, keyed = true),
                     onRemove = { events += "remove" },
                     onCancel = { events += "cancel" },
                 )
@@ -67,6 +83,7 @@ class AccountDialogsTest {
         }
 
         rule.onNodeWithText("Remove Daily?").assertIsDisplayed()
+        rule.onNodeWithText(DAILY).assertIsDisplayed()
         rule.onNodeWithText("Only its recovery phrase brings this account back", substring = true).assertIsDisplayed()
         rule.onNodeWithText("Remove").performClick()
 
@@ -76,7 +93,7 @@ class AccountDialogsTest {
     @Test
     fun removingAWatchedAccountSaysItCanBeWatchedAgain() {
         rule.setContent {
-            SerotineTheme { RemoveAccountDialog(RemoveAccountUiState.Confirm("Savings", keyed = false), {}, {}) }
+            SerotineTheme { RemoveAccountDialog(RemoveAccountUiState.Confirm("Savings", DAILY, keyed = false), {}, {}) }
         }
 
         rule.onNodeWithText("You can watch it again at any time", substring = true).assertIsDisplayed()

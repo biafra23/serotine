@@ -9,6 +9,9 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.KeyDeletion
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_BALANCE_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
@@ -84,6 +87,8 @@ class AppNavigationTest {
 
     private val accounts = MutableStateFlow<List<Account>>(emptyList())
     private val deletedKeys = mutableListOf<Address>()
+    private var failKeyDeletes = false
+    private val navController = mutableListOf<NavHostController>()
     private val graph = AppGraph(
         accounts = object : AccountRepository {
             override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
@@ -111,7 +116,7 @@ class AppNavigationTest {
 
             override suspend fun delete(address: Address): KeyDeletion {
                 deletedKeys += address
-                return KeyDeletion.Deleted
+                return if (failKeyDeletes) KeyDeletion.Failed else KeyDeletion.Deleted
             }
         },
         nativeBalances = object : NativeBalances {
@@ -138,7 +143,9 @@ class AppNavigationTest {
 
     private fun showApp() = rule.setContent {
         CompositionLocalProvider(LocalLifecycleOwner provides host, LocalViewModelStoreOwner provides host) {
-            App(graph)
+            val controller = rememberNavController()
+            if (navController.isEmpty()) navController += controller
+            App(graph, controller)
         }
     }
 
@@ -195,7 +202,7 @@ class AppNavigationTest {
         showApp()
 
         rule.onNodeWithText("Daily").performClick()
-        rule.onNodeWithText("0x8f3A…91c2").assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
         rule.onNodeWithText("Receive").performClick()
 
         rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertTextEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
@@ -233,6 +240,44 @@ class AppNavigationTest {
 
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(listOf(daily.address), deletedKeys)
+        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aKeyThatCouldNotBeDeletedIsSaidBeforeTheDetailScreenCloses() {
+        accounts.value = listOf(daily)
+        failKeyDeletes = true
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Remove").performClick()
+        rule.onNodeWithText("Remove").performClick()
+
+        rule.waitUntil {
+            rule.onAllNodesWithText("could not be deleted", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("OK").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun theBackKeyLeavesSettingsForTheAssetsScreenAndAScreenLeftNeverComesBack() {
+        accounts.value = listOf(daily)
+        showApp()
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Settings").performClick()
+        // The system's back, twice: from Settings to the account, from the account to the list.
+        rule.runOnIdle { navController.single().popBackStack() }
+        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertIsDisplayed()
+        rule.runOnIdle { navController.single().popBackStack() }
+        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithText("Assets").performClick()
+
+        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
     }
 }

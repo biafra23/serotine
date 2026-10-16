@@ -82,6 +82,17 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun aKeyThatCannotBeDeletedIsReportedAndStaysStored() = runTest {
+        val store = store()
+        // What the file system refuses to delete: a non-empty directory under the envelope's name.
+        envelopeOf(hardhatAddress).mkdirs()
+        envelopeOf(hardhatAddress).resolve("in-the-way").writeText("x")
+
+        assertEquals(KeyDeletion.Failed, store.delete(hardhatAddress))
+        assertTrue(envelopeOf(hardhatAddress).exists())
+    }
+
+    @Test
     fun laterImportsMustUseTheSamePassword() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)

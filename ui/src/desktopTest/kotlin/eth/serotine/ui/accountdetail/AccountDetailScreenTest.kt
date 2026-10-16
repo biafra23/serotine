@@ -50,7 +50,7 @@ class AccountDetailScreenTest {
 
         rule.onNodeWithText("Daily").assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertTextEquals("1.5 ETH")
-        rule.onNodeWithText("0x8f3A…91c2").assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals(ready.address)
         rule.onNodeWithText("Watch-only").assertIsDisplayed()
         rule.onNodeWithText("Verified at block 9,412,118").assertIsDisplayed()
     }

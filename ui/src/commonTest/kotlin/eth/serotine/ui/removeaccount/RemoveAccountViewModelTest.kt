@@ -8,6 +8,7 @@ import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeKeys
+import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -37,8 +38,14 @@ class RemoveAccountViewModelTest {
     fun asksFirstSayingWhetherAKeyGoesWithTheAccount() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
 
-        assertEquals(RemoveAccountUiState.Confirm("Daily", keyed = true), viewModel(daily.address).uiState.value)
-        assertEquals(RemoveAccountUiState.Confirm("Savings", keyed = false), viewModel(savings.address).uiState.value)
+        assertEquals(
+            RemoveAccountUiState.Confirm("Daily", Eip55.format(daily.address), keyed = true),
+            viewModel(daily.address).uiState.value,
+        )
+        assertEquals(
+            RemoveAccountUiState.Confirm("Savings", Eip55.format(savings.address), keyed = false),
+            viewModel(savings.address).uiState.value,
+        )
         assertEquals(emptyList(), keys.deleted, "asking removes nothing")
     }
 
@@ -64,8 +71,9 @@ class RemoveAccountViewModelTest {
 
         assertEquals(
             RemoveAccountUiState.Notice(
-                "Daily is removed, but its key could not be deleted from this device. " +
-                    "Importing its recovery phrase again brings the account back.",
+                "Daily is removed, but its key could not be deleted from this device, so " +
+                    "the wallet password stays the one you set. Importing its recovery phrase again " +
+                    "brings the account back.",
             ),
             viewModel.uiState.value,
         )

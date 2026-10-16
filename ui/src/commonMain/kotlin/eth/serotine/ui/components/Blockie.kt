@@ -38,8 +38,8 @@ fun Blockie(address: String, modifier: Modifier = Modifier, size: Dp = 40.dp) {
 
 /**
  * A colour as the reference computes it: [hue] in whole degrees, [saturation] and
- * [lightness] in percent. The reference can produce more than 100 % for either, which CSS
- * (where it is drawn) clamps; so does [toColor].
+ * [lightness] in percent, both below 100 by the generator's construction. [toColor] clamps
+ * them anyway, as CSS would, so a colour can never make [Color.hsl] throw.
  */
 data class Hsl(val hue: Int, val saturation: Double, val lightness: Double) {
     fun toColor(): Color = Color.hsl(
@@ -85,7 +85,8 @@ class BlockiePattern private constructor(
  * The reference's xorshift generator, with JavaScript's integer semantics kept exactly:
  * seeding mixes the seed's UTF-16 code units into four 32-bit words as `(w << 5) - w + c`
  * (the shift on the word truncated to 32 bits, the subtraction on its full value), and
- * [next] returns the unsigned word over 2^31, so in [0, 2).
+ * [next] returns the word as unsigned over 2^31. Its sign bit is always clear (each
+ * operand of the final XOR has its own sign bit cancelled), so that is in [0, 1).
  */
 private class Xorshift(seed: String) {
     private val words = IntArray(4)

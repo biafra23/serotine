@@ -207,7 +207,10 @@ its KDoc and returns it as a result the UI shows as state.
   It asks for no password: it takes nothing from someone who could clear the
   app's data anyway. It is a plain file delete, so the ciphertext may stay on
   the storage until the blocks are reused. With the last envelope the wallet
-  password goes too, and the next import sets a new one.
+  password goes too, and the next import sets a new one. (Proposed with part 2
+  of `feature/wallet-ux`: whether deleting a key needs the password first is
+  the owner's ruling, recorded in CLAUDE.md, before that branch reaches
+  `main`.)
 - **The password.**
   - The first import sets the wallet password: at least eight characters,
     refused by the adapter otherwise. Every later import must give the same

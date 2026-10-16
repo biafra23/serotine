@@ -67,7 +67,7 @@ the text wins.
 
 The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
 `NavigationRail` on a wide desktop window. Each tab is a nested graph of the
-one `NavHost` with its own back stack (docs/architecture.md). The light
+one `NavHost`, and switching tabs keeps the user's place (docs/architecture.md). The light
 client's status strip stays at the top of Assets. A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
 Safe transaction) is a destination that covers the bar until it ends.

@@ -25,7 +25,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -55,38 +54,41 @@ import eth.serotine.ui.theme.SerotineTheme
  * a flow that ends in a key operation covers the bar.
  */
 @Composable
-fun App(graph: AppGraph) {
+fun App(graph: AppGraph) = App(graph, rememberNavController())
+
+/** [App] with the [navController] a test drives. */
+@Composable
+internal fun App(graph: AppGraph, navController: NavHostController) {
     SerotineTheme {
-        val navController = rememberNavController()
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
             Tab.entries.firstOrNull { it.graph == destination.route }
         }
         val select: (Tab) -> Unit = { tab -> navController.select(tab, current = selected) }
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            if (maxWidth >= WIDE_WINDOW) {
-                Row(Modifier.fillMaxSize()) {
-                    if (selected != null) {
-                        NavigationRail {
-                            Tab.entries.forEach { tab ->
-                                NavigationRailItem(
-                                    selected = tab == selected,
-                                    onClick = { select(tab) },
-                                    icon = { Icon(tab.icon, contentDescription = null) },
-                                    label = { Text(tab.label) },
-                                )
-                            }
+            val wide = maxWidth >= WIDE_WINDOW
+            // One layout for both widths, so the NavHost stays where it is in the composition
+            // when the window crosses WIDE_WINDOW: only the bar or the rail comes and goes.
+            Row(Modifier.fillMaxSize()) {
+                if (wide && selected != null) {
+                    NavigationRail {
+                        Tab.entries.forEach { tab ->
+                            NavigationRailItem(
+                                selected = tab == selected,
+                                onClick = { select(tab) },
+                                icon = { Icon(tab.icon, contentDescription = null) },
+                                label = { Text(tab.label) },
+                            )
                         }
                     }
-                    Destinations(graph, navController, Modifier.weight(1f))
                 }
-            } else {
                 Scaffold(
+                    modifier = Modifier.weight(1f),
                     // The screens' own scaffolds take the system insets; this one only makes
                     // room for the bar, which takes the navigation bar's.
                     contentWindowInsets = WindowInsets(0.dp),
                     bottomBar = {
-                        if (selected != null) {
+                        if (!wide && selected != null) {
                             NavigationBar {
                                 Tab.entries.forEach { tab ->
                                     NavigationBarItem(
@@ -114,18 +116,17 @@ private enum class Tab(val label: String, val icon: ImageVector, val graph: Stri
 }
 
 /**
- * Shows [tab]: the current one again returns to its start; another one comes back with the
- * back stack it was left with, and the tab left keeps its own.
+ * Shows [tab]. The current one again returns to its start. Settings opens over the Assets
+ * tab's stack, which stays as the user left it, and Assets closes Settings back down to it
+ * — as the back key does. No stack is saved aside, so none can come back after the user has
+ * left it by another way (saveState/restoreState would bring back an account screen left by
+ * the back key from Settings).
  */
 private fun NavController.select(tab: Tab, current: Tab?) {
-    if (tab == current) {
-        popBackStack(tab.start, inclusive = false)
-        return
-    }
-    navigate(tab.graph) {
-        popUpTo(graph.findStartDestination().route ?: Destination.ASSETS) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
+    when {
+        tab == current -> popBackStack(tab.start, inclusive = false)
+        tab == Tab.ASSETS -> popBackStack(Tab.SETTINGS.graph, inclusive = true)
+        else -> navigate(tab.graph) { launchSingleTop = true }
     }
 }
 
@@ -199,9 +200,12 @@ private fun NavController.open(action: AccountAction) {
         is AccountAction.Remove -> Destination.REMOVE
         is AccountAction.Copy -> return
     }
+    // A second tap while the first one's screen is opening: one screen, the first one asked
+    // for. (Not launchSingleTop: that would reuse the entry, and its address, for another one.)
+    if (currentDestination?.route == "$route/{$ADDRESS}") return
     // The route carries the address in lower case: an identifier, never display text.
     val address = Address.parse(action.address) ?: return
-    navigate("$route/${address.hex}") { launchSingleTop = true }
+    navigate("$route/${address.hex}")
 }
 
 /**

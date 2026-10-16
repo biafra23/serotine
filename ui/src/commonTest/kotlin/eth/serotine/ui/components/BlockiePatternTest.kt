@@ -2,6 +2,7 @@ package eth.serotine.ui.components
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The blockie port against the reference: each vector is what ethereum/blockies' own
@@ -68,7 +69,20 @@ class BlockiePatternTest {
     }
 
     @Test
-    fun aColourPastOneHundredPercentIsClampedAsCssDoes() {
+    fun theGeneratorStaysWithinTheColourRanges() {
+        repeat(2_000) { i ->
+            val pattern = BlockiePattern.of("0x" + i.toString(16).padStart(40, '0'))
+            listOf(pattern.color, pattern.background, pattern.spot).forEach { hsl ->
+                assertTrue(
+                    hsl.hue in 0 until 360 && hsl.saturation in 40.0..100.0 && hsl.lightness in 0.0..100.0,
+                    "$hsl out of range",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun aColourOutOfRangeIsClampedAsCssWould() {
         val color = Hsl(200, 130.0, 160.0).toColor()
         assertEquals(Hsl(200, 100.0, 100.0).toColor(), color)
     }

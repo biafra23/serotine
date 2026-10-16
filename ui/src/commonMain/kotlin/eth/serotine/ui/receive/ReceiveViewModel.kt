@@ -34,5 +34,9 @@ class ReceiveViewModel(address: Address, observeAccount: ObserveAccount, network
                     ReceiveUiState.Unavailable("Your account list cannot be read right now. Serotine keeps trying.")
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReceiveUiState.Loading)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            ReceiveUiState.Loading,
+        )
 }
