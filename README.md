@@ -9,9 +9,10 @@ Windows) today; iOS next. For now the app works on the Sepolia testnet only.
 
 **Status: skeleton.** The module graph, the MVVM/clean-architecture seams, the
 tests and the release workflows are in place. The first screen lists the
-accounts and adds one from its seed phrase (its first account, not yet
-stored: no key storage, no persistence); the other wallet features and the
-Myotis engine integration come next (docs/embedding-myotis.md).
+accounts with their native balances, verified by the embedded Myotis light
+client (docs/embedding-myotis.md), and adds an account from its seed phrase
+(its first account, not yet stored: no key storage, no persistence). The
+other wallet features come next.
 
 ## Build & run
 

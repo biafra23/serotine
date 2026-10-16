@@ -56,7 +56,20 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.secp256k1.kmp.jni.android)
         }
+        // The Myotis engine adapter (eth.serotine.data.engine). The engine library exists
+        // for the two JVM targets — its AAR for Android, its jar for the desktop — so the
+        // glue over io.myotis.api lives in a source set those two share, as in Myotis's own
+        // :myotis-engine; what it drives (VerifiedNativeBalances) is common code with
+        // common tests. iOS reaches the engine through its C ABI, with the iOS host.
+        val jvmSharedMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.myotis.engine)
+            }
+        }
+        androidMain.get().dependsOn(jvmSharedMain)
         val desktopMain by getting {
+            dependsOn(jvmSharedMain)
             dependencies {
                 implementation(libs.secp256k1.kmp.jni.jvm)
             }
@@ -78,5 +91,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// The engine's real-network test (MyotisNodeSepoliaTest) runs only with
+// -PmyotisLibraryDir=<dir with the host library>; without it, it is skipped.
+providers.gradleProperty("myotisLibraryDir").orNull?.let { dir ->
+    tasks.matching { it.name == "desktopTest" }.configureEach {
+        (this as Test).systemProperty("java.library.path", dir)
+        systemProperty("serotine.myotisLibraryDir", dir)
     }
 }

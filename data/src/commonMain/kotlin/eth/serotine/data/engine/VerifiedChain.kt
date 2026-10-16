@@ -1,0 +1,67 @@
+package eth.serotine.data.engine
+
+import eth.serotine.domain.model.Address
+
+/**
+ * What the engine adapters need from a verified light client: a [snapshot] of its state,
+ * which never blocks, and [proveBalance], which does (it fetches a proof from a peer) and so
+ * runs on the adapters' dispatcher, never a caller's thread.
+ */
+internal interface VerifiedChain {
+
+    /** The engine's state right now (`ChainHandle.status()`). Never blocks. */
+    fun snapshot(): EngineSnapshot
+
+    /**
+     * The balance of [address], proven against the light client's beacon-attested state;
+     * null when the engine could not prove it. Blocks, bounded by the engine (about 90 s).
+     */
+    fun proveBalance(address: Address): ProvenBalance?
+}
+
+/** A balance in decimal wei, proven at [blockNumber], the block the proof anchors to. */
+internal data class ProvenBalance(val wei: String, val blockNumber: Long)
+
+/** The engine's state, or why there is none. */
+internal sealed interface EngineSnapshot {
+
+    /** The engine is still starting. */
+    data object Booting : EngineSnapshot
+
+    /** There is no engine, or it failed to start; this is final. */
+    data object Down : EngineSnapshot
+
+    /** The engine's report; see `io.myotis.api.StatusSnapshot` for each field. */
+    data class Running(
+        val phase: Phase,
+        val paused: Boolean,
+        val syncStartPeriod: Long,
+        val syncCurrentPeriod: Long,
+        val syncTargetPeriod: Long,
+        val huntingLightClientServers: Boolean,
+        val proofPeers: Int,
+        val headBlock: Long,
+        val headTimestamp: Long?,
+        val headAgeMs: Long,
+        val wsBoundPeriods: Long,
+    ) : EngineSnapshot {
+
+        /**
+         * The head reads can be verified at, or null when none can: synced, awake, with a
+         * verified head younger than [FRESH_HEAD_MS], and a peer that serves state proofs.
+         * The same gate Myotis's own readiness ladder applies (its `READY_HEAD_WARM_MS`).
+         */
+        val readableHead: Long?
+            get() = headBlock.takeIf {
+                phase == Phase.SYNCED && !paused && headAgeMs <= FRESH_HEAD_MS && proofPeers > 0 && it > 0
+            }
+    }
+
+    /** `io.myotis.api.BeaconState`. */
+    enum class Phase { STARTING, SYNCING, CATCHING_UP, SYNCED, STALE_ANCHOR }
+
+    companion object {
+        /** A verified head older than this is stale: reads wait for a fresh one. */
+        const val FRESH_HEAD_MS = 45_000L
+    }
+}
