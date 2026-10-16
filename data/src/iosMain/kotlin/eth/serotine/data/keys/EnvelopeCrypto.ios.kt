@@ -28,7 +28,7 @@ internal actual object EnvelopeCrypto {
 
     actual fun createPrivateDirectory(path: String): Unit = unsupported()
 
-    actual fun writeDurably(path: String, bytes: ByteArray): Unit = unsupported()
+    actual fun writeDurably(path: String, bytes: ByteArray, replace: Boolean): Unit = unsupported()
 
     private fun unsupported(): Nothing = throw UnsupportedOperationException("the key envelope is not on iOS yet")
 }

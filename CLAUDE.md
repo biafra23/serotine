@@ -557,8 +557,9 @@ discussion that produced this note.
   - A desktop without a hardware key store stands on the password path alone,
     with Argon2id run harder, and the app tells the user so; a Mac with a
     Secure Enclave uses it as iOS does (owner ruling, 2026-10-15), the app
-    signed or not: unsigned, its key is bound to the Mac though not yet to
-    the app, which signing adds (owner ruling, 2026-10-16). iOS's envelope
+    signed or not (owner ruling, 2026-10-16): its key is then bound to the
+    Mac but not to the app, and binding it to the app takes a different
+    design, the key in a signed app's keychain access group. iOS's envelope
     waits for the iOS app (owner ruling, 2026-10-16).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with

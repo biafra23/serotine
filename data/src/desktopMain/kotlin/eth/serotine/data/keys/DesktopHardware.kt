@@ -1,5 +1,6 @@
 package eth.serotine.data.keys
 
+import eth.serotine.domain.repository.KeyProtection
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -18,13 +19,27 @@ import kotlinx.serialization.json.Json
  */
 fun desktopHardwareSecret(keysDirectory: String): HardwareSecret? {
     if (!MacSecurity.onMac) return null
-    val stateFile = Path(keysDirectory, MacSecureEnclaveSecret.STATE_FILE_NAME)
-    val factor = chooseDesktopFactor(
-        enclaveStateExists = SystemFileSystem.exists(stateFile),
-        envelopeTags = envelopeTags(keysDirectory),
-        enclaveUsable = MacSecureEnclaveSecret::usable,
-    )
-    return if (factor == DesktopFactor.SECURE_ENCLAVE) MacSecureEnclaveSecret(stateFile.toString()) else null
+    return try {
+        val stateFile = Path(keysDirectory, MacSecureEnclaveSecret.STATE_FILE_NAME)
+        val factor = chooseDesktopFactor(
+            enclaveStateExists = SystemFileSystem.exists(stateFile),
+            envelopeTags = envelopeTagsIn(keysDirectory),
+            enclaveUsable = MacSecureEnclaveSecret::usable,
+        )
+        if (factor == DesktopFactor.SECURE_ENCLAVE) MacSecureEnclaveSecret(stateFile.toString()) else null
+    } catch (e: Throwable) {
+        // Not knowing the wallet's factor is no reason to guess one: the key store reports
+        // itself unavailable, and the window still opens.
+        UnknownFactor("the desktop's hardware factor cannot be determined (${e::class.simpleName})")
+    }
+}
+
+/** The factor that could not be determined: every use fails, so the key store is unavailable. */
+private class UnknownFactor(private val reason: String) : HardwareSecret {
+    override val tag: String = "unknown"
+    override val protection: KeyProtection get() = error(reason)
+    override val everyGuessNeedsDevice: Boolean = false
+    override fun mix(input: ByteArray): ByteArray = error(reason)
 }
 
 internal enum class DesktopFactor { SECURE_ENCLAVE, PASSWORD_ONLY }
@@ -42,7 +57,7 @@ internal fun chooseDesktopFactor(
 }
 
 /** The hardware tags of the envelopes in [directory] that can be read; the others say nothing. */
-private fun envelopeTags(directory: String): Set<String> {
+internal fun envelopeTagsIn(directory: String): Set<String> {
     val dir = Path(directory)
     if (!SystemFileSystem.exists(dir)) return emptySet()
     return SystemFileSystem.list(dir).filter { it.name.endsWith(".seed") }.mapNotNullTo(HashSet()) { file ->

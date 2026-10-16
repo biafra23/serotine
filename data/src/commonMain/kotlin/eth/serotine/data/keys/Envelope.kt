@@ -182,9 +182,12 @@ internal object Envelope {
 
     private fun kek(password: ByteArray, salt: ByteArray, ops: Long, mem: Long, hardware: HardwareSecret?): ByteArray {
         val p = EnvelopeCrypto.argon2id(password, salt, ops, mem, 32)
-        val sHw = hardware?.mix(p)
-        val ikm = if (sHw == null) p.copyOf() else p + sHw
+        var sHw: ByteArray? = null
+        var ikm = ByteArray(0)
         try {
+            // Inside the try: a hardware secret that fails must not leave P unzeroed.
+            sHw = hardware?.mix(p)
+            ikm = if (sHw == null) p.copyOf() else p + sHw
             return Hkdf.sha256(ikm, salt, KEK_INFO, 32)
         } finally {
             p.fill(0)

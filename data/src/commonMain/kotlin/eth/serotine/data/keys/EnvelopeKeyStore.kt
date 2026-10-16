@@ -174,7 +174,11 @@ class EnvelopeKeyStore(
         null
     }
 
-    /** Deletes what a crashed write left behind: only this class writes here, and it holds the lock. */
+    /**
+     * Deletes what a crashed write left behind. Every write here (the envelopes, and the
+     * hardware secret's own state during [Envelope.seal] or [Envelope.verify]) happens under
+     * this class's lock, which the caller holds.
+     */
     private fun sweepTemporaries() {
         val dir = Path(directory)
         if (!SystemFileSystem.exists(dir)) return
@@ -202,7 +206,6 @@ class EnvelopeKeyStore(
          * memory, four passes.
          */
         val PASSWORD_ONLY_COST = Envelope.Cost(opsLimit = 4, memLimitBytes = 256L * 1024 * 1024)
-
 
         const val SEED_SUFFIX = ".seed"
 

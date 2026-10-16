@@ -45,9 +45,10 @@ internal expect object EnvelopeCrypto {
      * Writes [bytes] to [path] so that a crash or a power loss leaves either the old file or
      * the complete new one: a temporary file readable by this user alone, flushed to the
      * disk, then moved over [path], and the directory entry flushed where the platform
-     * allows. The temporary file's name ends in [TEMPORARY_SUFFIX].
+     * allows. The temporary file's name ends in [TEMPORARY_SUFFIX]. With [replace] false an
+     * existing [path] is never replaced: the write fails instead.
      */
-    fun writeDurably(path: String, bytes: ByteArray)
+    fun writeDurably(path: String, bytes: ByteArray, replace: Boolean = true)
 }
 
 /** The name ending of [EnvelopeCrypto.writeDurably]'s temporary files; one left behind is a crashed write. */

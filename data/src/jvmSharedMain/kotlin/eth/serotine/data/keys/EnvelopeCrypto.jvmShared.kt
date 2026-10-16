@@ -98,7 +98,7 @@ internal actual object EnvelopeCrypto {
         if (posix) Files.setPosixFilePermissions(directory, OWNER_ONLY_DIRECTORY)
     }
 
-    actual fun writeDurably(path: String, bytes: ByteArray) {
+    actual fun writeDurably(path: String, bytes: ByteArray, replace: Boolean) {
         val target = File(path)
         val temporary = File(target.parentFile, "${target.name}.${randomBytes(6).toHex()}$TEMPORARY_SUFFIX")
         try {
@@ -110,12 +110,20 @@ internal actual object EnvelopeCrypto {
                 out.flush()
                 out.fd.sync() // the data is on the disk before the name points at it
             }
-            Files.move(
-                Paths.get(temporary.path),
-                Paths.get(target.path),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
+            if (replace) {
+                Files.move(
+                    Paths.get(temporary.path),
+                    Paths.get(target.path),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } else {
+                // Not ATOMIC_MOVE, which is rename(2) on POSIX and replaces whatever is there:
+                // without it the JDK refuses an existing target, then renames. The callers hold
+                // the key store's lock, and the desktop runs one instance, so nothing gets in
+                // between.
+                Files.move(Paths.get(temporary.path), Paths.get(target.path))
+            }
             syncDirectory(target.parentFile)
         } finally {
             temporary.delete()

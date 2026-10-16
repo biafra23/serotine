@@ -31,9 +31,12 @@ fun main() {
     val instance = try {
         InstanceLock.acquire(dataDir.resolve("serotine.lock"))
     } catch (e: IOException) {
-        tellAndExit("Serotine cannot use its data directory $dataDir: ${e.message ?: e::class.simpleName}")
+        tellAndExit(
+            "Serotine cannot use its data directory $dataDir: ${e.message ?: e::class.simpleName}",
+            JOptionPane.ERROR_MESSAGE,
+        )
     }
-    if (instance == null) tellAndExit("Serotine is already running.")
+    if (instance == null) tellAndExit("Serotine is already running.", JOptionPane.INFORMATION_MESSAGE)
     try {
         openWallet(dataDir)
     } finally {
@@ -43,13 +46,14 @@ fun main() {
     }
 }
 
-/** Says [message] (a dialog where there is a screen, stderr always) and ends the process with status 1. */
-private fun tellAndExit(message: String): Nothing {
+/**
+ * Says [message] (a dialog of [kind], a [JOptionPane] message type, where there is a screen;
+ * stderr always) and ends the process with status 1.
+ */
+private fun tellAndExit(message: String, kind: Int): Nothing {
     System.err.println(message)
     if (!GraphicsEnvironment.isHeadless()) {
-        SwingUtilities.invokeAndWait {
-            JOptionPane.showMessageDialog(null, message, "Serotine", JOptionPane.INFORMATION_MESSAGE)
-        }
+        SwingUtilities.invokeAndWait { JOptionPane.showMessageDialog(null, message, "Serotine", kind) }
     }
     exitProcess(1)
 }

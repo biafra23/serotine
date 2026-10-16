@@ -235,9 +235,18 @@ its KDoc and returns it as a result the UI shows as state.
     build step. The handle is the key's token object id (`"toid"`), the same
     blob CryptoKit's `dataRepresentation` is, though the SDK does not name
     the attribute.
-  - The app is not code-signed yet, so the handle is bound to the Mac but
-    not to the app: another program running as the same user could use it.
-    Signing adds that binding.
+  - The handle carries no caller identity, so it is bound to the Mac but not
+    to the app. Any program running as the same user can read the state file
+    and use the enclave with it, with no permission prompt. Signing alone
+    does not change that. Binding the key to the app means keeping it in the
+    app's keychain access group, which takes a signed app with a
+    provisioning profile, and is a different design.
+  - The state file is made once, for a wallet with no envelope on the
+    enclave yet, and never replaced. If it is lost while such envelopes
+    exist, the key store reports itself unavailable instead of sealing under
+    a new secret. A broken enclave or a damaged state shows as unavailable
+    before any attempt, since describing the key store unwraps the secret
+    once.
   - The tests run against the real enclave on a Mac and are skipped
     elsewhere.
 - **The desktop's factor sticks to the wallet** (`desktopHardwareSecret`).

@@ -74,9 +74,13 @@ class InstanceLockTest {
     /** Asks another JVM to take the lock: what a second Serotine would see. */
     private fun probe(crash: Boolean = false): String {
         val java = File(System.getProperty("java.home"), "bin/java").path
-        val classPath = System.getProperty("java.class.path")
+        // Through an argument file: a long class path overruns Windows' command-line limit.
+        val arguments = File.createTempFile("probe", ".args", directory).apply {
+            writeText("-cp \"${System.getProperty("java.class.path").replace("\\", "\\\\")}\"")
+        }
         val output = File.createTempFile("probe", ".txt", directory)
-        val process = ProcessBuilder(java, "-cp", classPath, LockProbe::class.java.name, file.path, crash.toString())
+        val probe = LockProbe::class.java.name
+        val process = ProcessBuilder(java, "@${arguments.path}", probe, file.path, crash.toString())
             .redirectErrorStream(true)
             .redirectOutput(output)
             .start()

@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.domain.repository.KeyStoreDescription
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -19,12 +20,18 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /** Runs on a Mac whose Secure Enclave this process can use; skipped everywhere else (CI's Linux, Intel Macs). */
 class MacSecureEnclaveSecretTest {
 
     private val directory: File = Files.createTempDirectory("serotine-enclave").toFile()
     private val stateFile = directory.resolve(MacSecureEnclaveSecret.STATE_FILE_NAME)
+
+    private val hardhat = Mnemonic("test test test test test test test test test test test junk")
+    private val abandon = Mnemonic(List(11) { "abandon" }.joinToString(" ") + " about")
+    private val password = WalletPassword("correct horse battery")
 
     private fun enclave() = MacSecureEnclaveSecret(stateFile.path)
 
@@ -50,8 +57,6 @@ class MacSecureEnclaveSecretTest {
     @Test
     fun anEnvelopeOnTheEnclaveNeedsItsStateToOpen() = runTest {
         val store = EnvelopeKeyStore(directory.path, enclave(), StandardTestDispatcher(testScheduler))
-        val hardhat = Mnemonic("test test test test test test test test test test test junk")
-        val password = WalletPassword("correct horse battery")
         val address = Address.of("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
 
         assertEquals(KeyImport.Stored(address, KeyProtection.HARDWARE), store.importMnemonic(hardhat, password))
@@ -63,12 +68,19 @@ class MacSecureEnclaveSecretTest {
         val opened = Envelope.open(sealed, password.text.encodeToByteArray(), MacSecureEnclaveSecret(stateFile.path))
         assertIs<Envelope.Opened.Seed>(opened)
 
-        // Without its state, a new enclave secret is made, and it does not open the envelope.
+    }
+
+    @Test
+    fun aLostStateMakesTheKeyStoreUnavailableAndIsNotMadeAgain() = runTest {
+        val store = EnvelopeKeyStore(directory.path, enclave(), StandardTestDispatcher(testScheduler))
+        store.importMnemonic(hardhat, password)
+
         stateFile.delete()
-        assertEquals(
-            Envelope.Opened.WrongPassword,
-            Envelope.open(sealed, password.text.encodeToByteArray(), MacSecureEnclaveSecret(stateFile.path)),
-        )
+
+        // Not "wrong password" under a new secret: the secret the envelope needs is gone.
+        assertEquals(KeyStoreDescription.Unavailable, store.describe())
+        assertEquals(KeyImport.Unavailable, store.importMnemonic(abandon, password))
+        assertFalse(stateFile.exists(), "no new secret beside envelopes sealed with the old one")
     }
 
     @Test
@@ -76,8 +88,32 @@ class MacSecureEnclaveSecretTest {
         stateFile.writeText("""{"version":1,"key":"00","secret":"00"}""")
         val store = EnvelopeKeyStore(directory.path, enclave(), StandardTestDispatcher(testScheduler))
 
-        val abandon = Mnemonic(List(11) { "abandon" }.joinToString(" ") + " about")
+        // Said before any attempt: no Argon2id run to find out.
+        assertEquals(KeyStoreDescription.Unavailable, store.describe())
+        assertEquals(KeyImport.Unavailable, store.importMnemonic(abandon, password))
+    }
 
-        assertEquals(KeyImport.Unavailable, store.importMnemonic(abandon, WalletPassword("long enough")))
+    @Test
+    fun theDesktopFactorFollowsTheWalletOnDisk() = runTest {
+        // No wallet yet, a working enclave: the enclave.
+        assertIs<MacSecureEnclaveSecret>(desktopHardwareSecret(directory.path))
+
+        // A wallet begun on the password alone stays so.
+        EnvelopeKeyStore(directory.path, hardware = null, StandardTestDispatcher(testScheduler))
+            .importMnemonic(hardhat, password)
+        assertNull(desktopHardwareSecret(directory.path))
+    }
+
+    @Test
+    fun aWalletOnTheEnclaveWhoseStateIsGoneIsUnavailableNotPasswordOnly() = runTest {
+        val store = EnvelopeKeyStore(directory.path, enclave(), StandardTestDispatcher(testScheduler))
+        store.importMnemonic(hardhat, password)
+        stateFile.delete()
+
+        val hardware = assertNotNull(desktopHardwareSecret(directory.path), "never quietly password-only")
+        assertEquals(
+            KeyStoreDescription.Unavailable,
+            EnvelopeKeyStore(directory.path, hardware, StandardTestDispatcher(testScheduler)).describe(),
+        )
     }
 }

@@ -12,11 +12,13 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -200,6 +202,17 @@ class EnvelopeKeyStoreTest {
         store().importMnemonic(hardhat, password)
 
         assertEquals(listOf("${hardhatAddress.hex}.seed"), directory.list()!!.toList())
+    }
+
+    @Test
+    fun aCreateOnlyWriteNeverReplacesAFile() {
+        val file = directory.resolve("state.json").apply { writeText("first") }
+
+        assertFailsWith<FileAlreadyExistsException> {
+            EnvelopeCrypto.writeDurably(file.path, "second".encodeToByteArray(), replace = false)
+        }
+        assertEquals("first", file.readText())
+        assertEquals(listOf("state.json"), directory.list()!!.toList(), "no temporary left behind")
     }
 
     @Test

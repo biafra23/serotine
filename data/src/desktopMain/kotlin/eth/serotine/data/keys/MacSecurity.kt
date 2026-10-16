@@ -15,8 +15,9 @@ import com.sun.jna.ptr.PointerByReference
  * The enclave key's handle is read and restored through its token object id, the attribute
  * `"toid"`. The SDK does not name it, but it is what CryptoKit's own
  * `SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation:)` stands on. If a macOS
- * release changed it, [MacSecureEnclaveSecret.usable] would say no and a new wallet would
- * stay password-only.
+ * release changed it, [MacSecureEnclaveSecret.usable] would say no, so a new wallet would
+ * stay password-only, and a wallet already on the enclave would find its key store
+ * unavailable until the handle could be read again.
  */
 internal class MacSecurity private constructor() {
 
@@ -37,6 +38,8 @@ internal class MacSecurity private constructor() {
         fun CFDataGetLength(data: Pointer): Long
         fun CFDataGetBytePtr(data: Pointer): Pointer?
         fun CFErrorGetCode(error: Pointer): Long
+        fun CFGetTypeID(cf: Pointer): Long
+        fun CFDataGetTypeID(): Long
         fun CFRelease(cf: Pointer)
     }
 
@@ -88,20 +91,18 @@ internal class MacSecurity private constructor() {
      * not permanent, so no keychain item and no keychain entitlement, and with no user-authentication
      * requirement (the envelope's `HW_pw`). The caller releases it.
      */
-    fun createEnclaveKey(): Pointer {
-        val bits = number(256)
-        val privateAttributes = dictionary(isPermanent to falseValue)
-        val parameters = dictionary(
-            keyType to ecKeyType,
-            keySizeInBits to bits,
-            tokenId to secureEnclave,
-            privateKeyAttributes to privateAttributes,
+    fun createEnclaveKey(): Pointer = owning { own ->
+        val bits = own(number(256))
+        val privateAttributes = own(dictionary(isPermanent to falseValue))
+        val parameters = own(
+            dictionary(
+                keyType to ecKeyType,
+                keySizeInBits to bits,
+                tokenId to secureEnclave,
+                privateKeyAttributes to privateAttributes,
+            ),
         )
-        try {
-            return call("SecKeyCreateRandomKey") { error -> sec.SecKeyCreateRandomKey(parameters, error) }
-        } finally {
-            release(parameters, privateAttributes, bits)
-        }
+        call("SecKeyCreateRandomKey") { error -> sec.SecKeyCreateRandomKey(parameters, error) }
     }
 
     /** The enclave's encrypted handle to [key]: useless anywhere but in this Mac's Secure Enclave. */
@@ -111,47 +112,43 @@ internal class MacSecurity private constructor() {
             val handle = checkNotNull(cf.CFDictionaryGetValue(attributes, tokenObjectId)) {
                 "the key has no token object id"
             }
-            return bytesOf(handle) // owned by the attributes dictionary
+            check(cf.CFGetTypeID(handle) == cf.CFDataGetTypeID()) { "the key's token object id is not data" }
+            return bytesOf(handle) // owned by the attributes dictionary, so copied before it goes
         } finally {
             release(attributes)
         }
     }
 
     /** The enclave key [handle] ([tokenObjectIdOf]) refers to. The caller releases it. */
-    fun restoreEnclaveKey(handle: ByteArray): Pointer {
-        val data = data(handle)
-        val attributes = dictionary(
-            keyType to ecKeyType,
-            keyClass to privateKeyClass,
-            tokenId to secureEnclave,
-            tokenObjectId to data,
+    fun restoreEnclaveKey(handle: ByteArray): Pointer = owning { own ->
+        val data = own(data(handle))
+        val attributes = own(
+            dictionary(
+                keyType to ecKeyType,
+                keyClass to privateKeyClass,
+                tokenId to secureEnclave,
+                tokenObjectId to data,
+            ),
         )
-        try {
-            return call("SecKeyCreateWithData") { error -> sec.SecKeyCreateWithData(data, attributes, error) }
-        } finally {
-            release(attributes, data)
-        }
+        call("SecKeyCreateWithData") { error -> sec.SecKeyCreateWithData(data, attributes, error) }
     }
 
     /**
      * [plaintext] encrypted to [privateKey]'s public half with ECIES (X9.63 KDF, AES-GCM); the
      * plaintext copies are zeroed.
      */
-    fun eciesEncrypt(privateKey: Pointer, plaintext: ByteArray): ByteArray {
-        val publicKey = checkNotNull(sec.SecKeyCopyPublicKey(privateKey)) { "SecKeyCopyPublicKey failed" }
-        val input = data(plaintext)
+    fun eciesEncrypt(privateKey: Pointer, plaintext: ByteArray): ByteArray = owning { own ->
+        val publicKey = own(checkNotNull(sec.SecKeyCopyPublicKey(privateKey)) { "SecKeyCopyPublicKey failed" })
+        val input = own(data(plaintext))
         try {
-            val output = call("SecKeyCreateEncryptedData") { error ->
-                sec.SecKeyCreateEncryptedData(publicKey, ecies, input, error)
-            }
-            try {
-                return bytesOf(output)
-            } finally {
-                release(output)
-            }
+            val output = own(
+                call("SecKeyCreateEncryptedData") { error ->
+                    sec.SecKeyCreateEncryptedData(publicKey, ecies, input, error)
+                },
+            )
+            bytesOf(output)
         } finally {
             zero(input)
-            release(input, publicKey)
         }
     }
 
@@ -177,6 +174,19 @@ internal class MacSecurity private constructor() {
     }
 
     fun release(vararg objects: Pointer) = objects.forEach(cf::CFRelease)
+
+    /**
+     * Runs [block], releasing every CF object it hands to `own` when it ends, however it ends:
+     * no failure path leaks one. What [block] returns is not released.
+     */
+    private fun <T> owning(block: (own: (Pointer) -> Pointer) -> T): T {
+        val owned = mutableListOf<Pointer>()
+        try {
+            return block { cfObject -> cfObject.also(owned::add) }
+        } finally {
+            owned.asReversed().forEach(cf::CFRelease)
+        }
+    }
 
     private fun call(name: String, block: (PointerByReference) -> Pointer?): Pointer {
         val error = PointerByReference()
@@ -218,7 +228,11 @@ internal class MacSecurity private constructor() {
         return cf.CFDataGetBytePtr(data)?.getByteArray(0, length) ?: ByteArray(0)
     }
 
-    /** Overwrites [data]'s bytes before it is released: CF frees its buffers without zeroing them. */
+    /**
+     * Overwrites [data]'s bytes before it is released: CF frees its buffers without zeroing
+     * them. The CFData is immutable by contract; writing through its byte pointer is what
+     * this file does anyway, as the only way to reach that copy.
+     */
     private fun zero(data: Pointer) {
         cf.CFDataGetBytePtr(data)?.clear(cf.CFDataGetLength(data))
     }
