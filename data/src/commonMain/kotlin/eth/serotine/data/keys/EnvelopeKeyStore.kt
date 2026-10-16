@@ -48,7 +48,9 @@ class EnvelopeKeyStore(
     override suspend fun describe(): KeyStoreDescription = withContext(dispatcher) {
         try {
             if (!EnvelopeCrypto.available()) return@withContext KeyStoreDescription.Unavailable
-            KeyStoreDescription.Ready(passwordSet = envelopes().isNotEmpty(), protection = protection())
+            // The hardware first: when it fails, that is the one thing worth reporting.
+            val protection = protection()
+            KeyStoreDescription.Ready(passwordSet = envelopes().isNotEmpty(), protection = protection)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {

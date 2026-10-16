@@ -29,8 +29,10 @@ fun desktopHardwareSecret(keysDirectory: String): HardwareSecret? {
         if (factor == DesktopFactor.SECURE_ENCLAVE) MacSecureEnclaveSecret(stateFile.toString()) else null
     } catch (e: Throwable) {
         // Not knowing the wallet's factor is no reason to guess one: the key store reports
-        // itself unavailable, and the window still opens.
-        UnknownFactor("the desktop's hardware factor cannot be determined (${e::class.simpleName})")
+        // itself unavailable, and the window still opens. Said here, where the cause is known.
+        val reason = "the desktop's hardware factor cannot be determined (${e.message ?: e::class.simpleName})"
+        println("Serotine: $reason")
+        UnknownFactor(reason)
     }
 }
 

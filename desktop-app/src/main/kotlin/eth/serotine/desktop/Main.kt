@@ -53,7 +53,11 @@ fun main() {
 private fun tellAndExit(message: String, kind: Int): Nothing {
     System.err.println(message)
     if (!GraphicsEnvironment.isHeadless()) {
-        SwingUtilities.invokeAndWait { JOptionPane.showMessageDialog(null, message, "Serotine", kind) }
+        try {
+            SwingUtilities.invokeAndWait { JOptionPane.showMessageDialog(null, message, "Serotine", kind) }
+        } catch (e: Throwable) {
+            // No usable window server after all: stderr has the message, and the exit below stands.
+        }
     }
     exitProcess(1)
 }
