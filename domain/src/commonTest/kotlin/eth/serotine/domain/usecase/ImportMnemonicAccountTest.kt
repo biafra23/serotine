@@ -5,15 +5,22 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
-import eth.serotine.domain.repository.AccountDerivation
+import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
-import eth.serotine.domain.repository.Derivation
+import eth.serotine.domain.repository.KeyImport
+import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.KeyStoreDescription
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,21 +31,23 @@ class ImportMnemonicAccountTest {
     private val first = Address.of("0x" + "11".repeat(20))
     private val second = Address.of("0x" + "22".repeat(20))
 
-    private val derivation = FakeDerivation()
+    private val keys = FakeKeyStore()
+    private val password = WalletPassword("correct horse")
     private val repository = FakeAccountRepository()
-    private val import = ImportMnemonicAccount(derivation, repository)
+    private val import = ImportMnemonicAccount(keys, repository)
 
     @Test
     fun addsTheDerivedAddressAsAnEoaNamedAfterItsPosition() = runTest {
         val mnemonic = Mnemonic("first words")
-        derivation.results[mnemonic] = Derivation.Derived(first)
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
-        val result = import(mnemonic)
+        val result = import(mnemonic, password)
 
         val expected = Account(first, AccountKind.EOA, "Account 1")
-        assertEquals(MnemonicImport.Added(expected), result)
+        assertEquals(MnemonicImport.Added(expected, KeyProtection.HARDWARE), result)
         assertEquals(listOf(expected), repository.accounts.value)
-        assertSame(mnemonic, derivation.received.single(), "the words reach the port unchanged")
+        assertSame(mnemonic, keys.received.single().first, "the words reach the key store unchanged")
+        assertSame(password, keys.received.single().second, "and so does the password")
     }
 
     @Test
@@ -48,11 +57,14 @@ class ImportMnemonicAccountTest {
             Account(Address.of("0x" + "bb".repeat(20)), AccountKind.EOA, "Account 3"),
         )
         val mnemonic = Mnemonic("second words")
-        derivation.results[mnemonic] = Derivation.Derived(second)
+        keys.results[mnemonic] = KeyImport.Stored(second, KeyProtection.HARDWARE)
 
-        val result = import(mnemonic)
+        val result = import(mnemonic, password)
 
-        assertEquals(MnemonicImport.Added(Account(second, AccountKind.EOA, "Account 4")), result)
+        assertEquals(
+            MnemonicImport.Added(Account(second, AccountKind.EOA, "Account 4"), KeyProtection.HARDWARE),
+            result,
+        )
     }
 
     @Test
@@ -60,63 +72,113 @@ class ImportMnemonicAccountTest {
         val existing = Account(first, AccountKind.EOA, "Daily")
         repository.accounts.value = listOf(existing)
         val mnemonic = Mnemonic("first words again")
-        derivation.results[mnemonic] = Derivation.Derived(first)
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
-        assertEquals(MnemonicImport.AlreadyAdded(existing), import(mnemonic))
+        assertEquals(MnemonicImport.AlreadyAdded(existing), import(mnemonic, password))
         assertEquals(listOf(existing), repository.accounts.value)
     }
 
     @Test
     fun anEntryAddedAndRemovedBetweenReadAndAddIsReadAgainNotAssumed() = runTest {
         val mnemonic = Mnemonic("raced words")
-        derivation.results[mnemonic] = Derivation.Derived(first)
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
         // The first add loses to another writer, whose entry is gone again by the re-read.
         repository.refuseNextAdd = true
 
-        val result = import(mnemonic)
+        val result = import(mnemonic, password)
 
-        assertEquals(MnemonicImport.Added(Account(first, AccountKind.EOA, "Account 1")), result)
+        assertEquals(MnemonicImport.Added(Account(first, AccountKind.EOA, "Account 1"), KeyProtection.HARDWARE), result)
     }
 
     @Test
-    fun anUnreadableListOrAFailedSaveIsNotSaved() = runTest {
+    fun anUnreadableListOrAFailedSaveSaysTheKeyIsStoredButTheListIsNot() = runTest {
         val mnemonic = Mnemonic("first words")
-        derivation.results[mnemonic] = Derivation.Derived(first)
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
         repository.unreadable = true
-        assertEquals(MnemonicImport.NotSaved, import(mnemonic))
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password))
 
         repository.unreadable = false
         repository.failSaves = true
-        assertEquals(MnemonicImport.NotSaved, import(mnemonic))
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password))
         assertEquals(emptyList(), repository.accounts.value)
+
+        // The key is stored, so the same words again finish the job.
+        repository.failSaves = false
+        assertEquals(
+            MnemonicImport.Added(Account(first, AccountKind.EOA, "Account 1"), KeyProtection.HARDWARE),
+            import(mnemonic, password),
+        )
+    }
+
+    @Test
+    fun aCancelledCallerDoesNotCutTheImportInHalf() = runTest {
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+        keys.delayMillis = 1_000 // Argon2id takes a while
+
+        val caller = launch { import(mnemonic, password) }
+        advanceTimeBy(500)
+        caller.cancel() // the screen is left mid-import
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(Account(first, AccountKind.EOA, "Account 1")),
+            repository.accounts.value,
+            "the key was stored, so its account is added too",
+        )
+    }
+
+    @Test
+    fun aTooShortFirstPasswordIsRefused() = runTest {
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.PasswordTooShort
+
+        assertEquals(MnemonicImport.PasswordTooShort, import(mnemonic, WalletPassword("short")))
+        assertEquals(emptyList(), repository.accounts.value)
+    }
+
+    @Test
+    fun aWrongPasswordOrAnUnwrittenEnvelopeAddsNoAccount() = runTest {
+        val mnemonic = Mnemonic("first words")
+
+        keys.results[mnemonic] = KeyImport.WrongPassword
+        assertEquals(MnemonicImport.WrongPassword, import(mnemonic, password))
+
+        keys.results[mnemonic] = KeyImport.NotSaved
+        assertEquals(MnemonicImport.KeyNotSaved, import(mnemonic, password))
+        assertEquals(emptyList(), repository.accounts.value, "no account without its stored key")
     }
 
     @Test
     fun invalidWordsAddNothing() = runTest {
         val mnemonic = Mnemonic("not a mnemonic")
-        derivation.results[mnemonic] = Derivation.Invalid(MnemonicProblem.Checksum)
+        keys.results[mnemonic] = KeyImport.Invalid(MnemonicProblem.Checksum)
 
-        assertEquals(MnemonicImport.Invalid(MnemonicProblem.Checksum), import(mnemonic))
+        assertEquals(MnemonicImport.Invalid(MnemonicProblem.Checksum), import(mnemonic, password))
         assertEquals(emptyList(), repository.accounts.value)
     }
 
     @Test
     fun aDeviceTheAdapterCannotRunOnAddsNothing() = runTest {
         val mnemonic = Mnemonic("any words")
-        derivation.results[mnemonic] = Derivation.Unavailable
+        keys.results[mnemonic] = KeyImport.Unavailable
 
-        assertEquals(MnemonicImport.Unavailable, import(mnemonic))
+        assertEquals(MnemonicImport.Unavailable, import(mnemonic, password))
         assertEquals(emptyList(), repository.accounts.value)
     }
 
-    private class FakeDerivation : AccountDerivation {
+    private class FakeKeyStore : KeyStore {
         // Keyed by identity, which is Mnemonic's equality.
-        val results = mutableMapOf<Mnemonic, Derivation>()
-        val received = mutableListOf<Mnemonic>()
+        val results = mutableMapOf<Mnemonic, KeyImport>()
+        val received = mutableListOf<Pair<Mnemonic, WalletPassword>>()
+        var delayMillis = 0L
 
-        override suspend fun deriveFirstAccount(mnemonic: Mnemonic): Derivation {
-            received += mnemonic
+        override suspend fun describe() = KeyStoreDescription.Ready(received.isNotEmpty(), KeyProtection.HARDWARE)
+
+        override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport {
+            received += mnemonic to password
+            delay(delayMillis)
             return results.getValue(mnemonic)
         }
     }

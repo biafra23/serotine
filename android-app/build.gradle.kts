@@ -33,6 +33,13 @@ android {
         targetSdk = 35
         versionCode = derivedVersionCode
         versionName = releaseVersion
+        // The four ABIs Android devices run today, the ones the native libraries ship for.
+        // JNA's AAR also carries stubs for armeabi and MIPS, which Android dropped long ago;
+        // this keeps them out of the APK. (Which of the four to ship is the owner's APK-size
+        // call: the engine library, once in, has only arm64-v8a and x86_64.)
+        ndk {
+            abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
     }
 
     compileOptions {
@@ -81,13 +88,22 @@ android {
         // Signing here would put that key in the environment of the whole Gradle
         // build, third-party plugins and build scripts included.
         release {
-            // Turning this on needs a keep rule for libsecp256k1's reflectively loaded JNI
-            // binding first: see data/build.gradle.kts.
+            // Turning this on needs keep rules first: for libsecp256k1's reflectively loaded
+            // JNI binding (see data/build.gradle.kts), and for JNA, whose AAR ships none —
+            // `-keep class com.sun.jna.** { *; }` plus the envelope's own mapping,
+            // `-keep class eth.serotine.data.keys.Sodium$* { *; }`. Without them the key
+            // store reports itself unavailable in a minified build.
             isMinifyEnabled = false
         }
     }
 
     packaging {
+        // JNA's native stub arrives with the libsodium bindings' JNA AAR and, once the engine
+        // library is in, with its AAR too: the same JNA version (both pinned to 5.18.1), so
+        // either copy will do.
+        jniLibs {
+            pickFirsts += "**/libjnidispatch.so"
+        }
         resources {
             excludes += setOf(
                 "META-INF/LICENSE*",
