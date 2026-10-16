@@ -9,8 +9,10 @@ internal class FakeChain : VerifiedChain {
     val proofs = mutableMapOf<Address, ProvenBalance>()
     val proofRequests = mutableListOf<Address>()
     var failure: Throwable? = null
+    var snapshots = 0
 
     override fun snapshot(): EngineSnapshot {
+        snapshots++
         failure?.let { throw it }
         return snapshot
     }

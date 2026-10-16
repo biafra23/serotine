@@ -6,9 +6,10 @@ import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BalanceReading.Reason
 import eth.serotine.domain.repository.NativeBalances
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
@@ -47,9 +48,10 @@ class VerifiedNativeBalances internal constructor(
             while (true) {
                 val snapshot = try {
                     chain.snapshot()
-                } catch (e: CancellationException) {
-                    throw e
                 } catch (e: Throwable) {
+                    // A cancellation of this poll ends it; anything else, a CancellationException
+                    // the engine's own code throws included, is an engine failure.
+                    currentCoroutineContext().ensureActive()
                     // Throwable, as for proofs: the engine's state crosses JNA too. This poll's
                     // reading says it is not verified, never an amount kept from before.
                     emit(BalanceReading.Unavailable(Reason.UNPROVEN))
@@ -75,9 +77,8 @@ class VerifiedNativeBalances internal constructor(
         }
         val proven = try {
             chain.proveBalance(address)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Throwable) {
+            currentCoroutineContext().ensureActive() // as for the snapshot
             // Throwable: engine calls cross JNA, where a broken native library fails with an
             // Error (UnsatisfiedLinkError), not an Exception.
             null
