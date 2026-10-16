@@ -51,11 +51,13 @@ Modules (Gradle):
   NO Android target (Android consumers resolve its JVM variant, so nothing in it
   can ever import `android.*`).
 - **data** — the adapters behind the ports: `FileAccountRepository` (the
-  account list, persisted as a JSON file; `InMemoryAccountRepository` for tests)
-  and the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
-  seeds in envelopes, docs/keys-and-signing.md) today, the Myotis engine
-  adapter next. Targets Android + desktop + iOS; the Android
-  target is what will resolve the engine's AAR.
+  account list, persisted as a JSON file; `InMemoryAccountRepository` for tests),
+  the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
+  seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
+  (`eth.serotine.data.engine`: `MyotisNode`, verified native balances), whose
+  glue over `io.myotis.api` lives in a `jvmSharedMain` source set the Android
+  and desktop targets share. Targets Android + desktop + iOS; the Android
+  target is what resolves the engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
   `<Feature>ViewModel`, `<Feature>UiState`; the theme; `App` with the one

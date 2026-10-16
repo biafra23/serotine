@@ -6,6 +6,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
@@ -22,10 +23,14 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 /**
- * The desktop composition root: builds the [AppGraph] from this platform's adapters and
- * opens the one window on the shared [App]. The window provides the ViewModelStoreOwner
- * the navigation back stack keeps its screens' ViewModels in. One instance per user: a
- * second one finds the [InstanceLock] taken, says so and ends.
+ * The desktop composition root: starts the process's one Myotis engine
+ * (docs/embedding-myotis.md), builds the [AppGraph] from this platform's adapters and opens
+ * the one window on the shared [App]. The window provides the ViewModelStoreOwner the
+ * navigation back stack keeps its screens' ViewModels in. Closing it ends the application
+ * loop, and the engine is stopped after that, on the main thread: never on the Swing event
+ * thread, which a slow network shutdown would freeze. One instance per user: a second one
+ * finds the [InstanceLock] taken, says so and ends, so two never write the account list, the
+ * keys or the engine's state at once.
  */
 fun main() {
     val dataDir = appDataDir()
@@ -37,12 +42,14 @@ fun main() {
             JOptionPane.ERROR_MESSAGE,
         )
     }
-    if (instance == null) tellAndExit("Serotine is already running.", JOptionPane.INFORMATION_MESSAGE)
+    if (instance == null) {
+        tellAndExit("Serotine is already running, or still closing.", JOptionPane.INFORMATION_MESSAGE)
+    }
     try {
         openWallet(dataDir)
     } finally {
-        // Never released by hand: the lock ends with the process, which application() ends
-        // itself; until then it must stay reachable, or the garbage collector would close it.
+        // Never released by hand: the lock ends with the process, which openWallet() ends;
+        // until then it must stay reachable, or the garbage collector would close it.
         Reference.reachabilityFence(instance)
     }
 }
@@ -68,7 +75,10 @@ private fun openWallet(dataDir: File) {
     excludeFromBackups(keys)
     // Before the window: on a Mac with no wallet yet this asks the Secure Enclave once.
     val hardware = desktopHardwareSecret(keys.path)
-    application {
+    // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
+    // background; without its host library on java.library.path, balances say so.
+    val node = MyotisNode.start(Network.SEPOLIA, dataDir.resolve("myotis"))
+    application(exitProcessOnExit = false) {
         val graph = remember {
             AppGraph(
                 accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
@@ -76,6 +86,8 @@ private fun openWallet(dataDir: File) {
                 // password alone otherwise, and on Windows and Linux saying that their TPM is
                 // not used yet (the owner's rulings of 2026-10-15 and -16).
                 keys = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection()),
+                nativeBalances = node.nativeBalances,
+                lightClient = node.lightClient,
                 network = Network.SEPOLIA,
             )
         }
@@ -87,7 +99,22 @@ private fun openWallet(dataDir: File) {
             App(graph)
         }
     }
+    // The engine's network shutdown can be slow, and this process holds the instance lock
+    // until it exits: bounded, so a closed window never leaves a process without one that
+    // refuses the next launch for long. exitProcess in finally, so a shutdown that throws
+    // still ends the process.
+    try {
+        thread(name = "myotis-shutdown", isDaemon = true) { node.shutdown() }.join(ENGINE_SHUTDOWN_WAIT_MS)
+    } finally {
+        exitProcess(0)
+    }
 }
+
+/**
+ * How long a closing app waits for the engine to stop before it exits anyway: past the 15 s
+ * MyotisNode.shutdown() itself gives a boot in progress, so that boot is not cut off mid-start.
+ */
+private const val ENGINE_SHUTDOWN_WAIT_MS = 20_000L
 
 /**
  * Keeps [directory], the key store's envelopes, out of backups (docs/keys-and-signing.md,
@@ -127,7 +154,10 @@ private fun excludeFromBackups(directory: File) {
     }
 }
 
-/** Where this OS keeps an application's own data: the account list, the keys and the instance lock. */
+/**
+ * Where this OS keeps an application's own data: the account list, the keys, the engine's
+ * state and the instance lock.
+ */
 private fun appDataDir(): File {
     val os = System.getProperty("os.name").lowercase()
     val home = File(System.getProperty("user.home"))

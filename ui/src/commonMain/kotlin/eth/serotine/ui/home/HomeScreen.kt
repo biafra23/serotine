@@ -1,6 +1,7 @@
 package eth.serotine.ui.home
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -37,6 +39,9 @@ const val HOME_ACCOUNT_LIST_TAG = "home-account-list"
 
 /** Test tag of the notice when the stored list is not what is shown: set aside, or unavailable. */
 const val HOME_NOTICE_TAG = "home-notice"
+
+/** Test tag of the light client's status strip, for UI tests. */
+const val HOME_LIGHT_CLIENT_TAG = "home-light-client"
 
 /** Test tag of the badge naming the network the app works on, for UI tests. */
 const val HOME_NETWORK_TAG = "home-network"
@@ -81,35 +86,61 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            when (state) {
-                is HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                is HomeUiState.ListUnavailable -> Text(
-                    state.message,
-                    Modifier.align(Alignment.Center).padding(24.dp).testTag(HOME_NOTICE_TAG),
-                    style = MaterialTheme.typography.bodyLarge,
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            LightClientStrip(state.lightClient)
+            (state as? HomeUiState.Ready)?.notice?.let { notice ->
+                Text(
+                    notice,
+                    Modifier.padding(16.dp).testTag(HOME_NOTICE_TAG),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center,
                 )
-                is HomeUiState.Ready -> Column(Modifier.fillMaxSize()) {
-                    state.notice?.let { notice ->
-                        Text(
-                            notice,
-                            Modifier.padding(16.dp).testTag(HOME_NOTICE_TAG),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        if (state.accounts.isEmpty()) {
-                            NoAccounts(Modifier.align(Alignment.Center))
-                        } else {
-                            AccountList(state.accounts)
-                        }
-                    }
-                }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                Rows(state)
             }
         }
+    }
+}
+
+/** What the light client is doing, until and after it serves verified reads. */
+@Composable
+private fun LightClientStrip(item: LightClientItem, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().testTag(HOME_LIGHT_CLIENT_TAG)) {
+        Text(
+            item.text,
+            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        when {
+            item.progress != null -> LinearProgressIndicator(
+                progress = { item.progress },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            item.working -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            else -> HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.Rows(state: HomeUiState) {
+    when (state) {
+        is HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+        is HomeUiState.ListUnavailable -> Text(
+            state.message,
+            Modifier.align(Alignment.Center).padding(24.dp).testTag(HOME_NOTICE_TAG),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center,
+        )
+        is HomeUiState.Ready ->
+            if (state.accounts.isEmpty()) {
+                NoAccounts(Modifier.align(Alignment.Center))
+            } else {
+                AccountList(state.accounts)
+            }
     }
 }
 
@@ -146,8 +177,18 @@ private fun AccountList(accounts: List<AccountItem>, modifier: Modifier = Modifi
         items(accounts, key = { it.address }) { account ->
             ListItem(
                 headlineContent = { Text(account.label) },
-                supportingContent = { Text(account.shortAddress) },
-                trailingContent = { Text(account.kind.displayName) },
+                supportingContent = { Text("${account.shortAddress} · ${account.kind.displayName}") },
+                trailingContent = {
+                    Text(
+                        account.balance,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (account.balanceVerified) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                },
             )
             HorizontalDivider()
         }

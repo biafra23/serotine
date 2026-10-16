@@ -9,11 +9,12 @@ Windows) today; iOS next. For now the app works on the Sepolia testnet only.
 
 **Status: skeleton.** The module graph, the MVVM/clean-architecture seams, the
 tests and the release workflows are in place. The first screen lists the
-accounts, kept across restarts, and adds one from its seed phrase: its first
-account, the seed stored encrypted under the wallet password and, where the
-device has one, a key in its secure hardware (the Android Keystore, a Mac's
-Secure Enclave; docs/keys-and-signing.md). Signing and the Myotis engine
-integration come next (docs/embedding-myotis.md).
+accounts, kept across restarts, with their native balances verified by the
+embedded Myotis light client (docs/embedding-myotis.md), and adds an account
+from its seed phrase: its first account, the seed stored encrypted under the
+wallet password and, where the device has one, a key in its secure hardware
+(the Android Keystore, a Mac's Secure Enclave; docs/keys-and-signing.md).
+Signing comes next.
 
 ## Build & run
 
@@ -35,7 +36,7 @@ modules build on macOS only and are skipped elsewhere.
 | module | role |
 |---|---|
 | `domain` | entities, value objects, ports (repository interfaces) and use cases — pure Kotlin |
-| `data` | the adapters behind the ports: today the account list in a file and the key store for imported seeds, next the Myotis engine |
+| `data` | the adapters behind the ports: the account list in a file, the key store for imported seeds, and the Myotis engine adapter |
 | `ui` | the shared Compose Multiplatform UI: screens, ViewModels, UI state, `AppGraph` |
 | `android-app` | the Android host (package `eth.serotine`; the debug build is `eth.serotine.debug`) |
 | `desktop-app` | the desktop JVM host and the jpackage configuration for the three installers |

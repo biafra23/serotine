@@ -18,7 +18,9 @@ it, which is when the coordinates below resolve.
 
 Its whole third-party graph is JNA, slf4j and minimal-json; JNA is pinned
 strictly to the native stub the AAR carries, so never force another JNA
-version. Entry point: `io.myotis.engine.Myotis` (`isAvailable()`,
+version. On Android, Serotine takes JNA's classes from the libsodium bindings'
+JNA AAR instead of the engine's jar (the two would duplicate them), and the app
+re-states the strict pin as a constraint (`android-app/build.gradle.kts`). Entry point: `io.myotis.engine.Myotis` (`isAvailable()`,
 `newEngine()`, `defaultPorts(...)`); the consumer guide is
 `docs/android-library.md` in the Myotis repository.
 
@@ -62,6 +64,66 @@ consumer developed against an unreleased engine, Myotis's
   workflows.
 - **iOS** consumes the engine's plain C ABI, as Myotis's `:app-ios` does;
   that is the iOS part of the plan, not this page.
+
+## What exists today
+
+- **`MyotisNode`** (`eth.serotine.data.engine`, in `:data`'s `jvmSharedMain`)
+  is the process's one engine on Sepolia. Each composition root creates it with
+  `MyotisNode.start(network, dataDir, dnsServers)`. Loading the native library,
+  creating the engine and starting it all run on a background thread, so
+  nothing blocks a main thread. The desktop stops it after its window closes.
+  Android pauses its networking 30 s after the app leaves the foreground and
+  resumes it when the app returns; `AndroidDnsServers` supplies the active
+  network's resolvers.
+- **Readiness, as Myotis reads it.** The adapters read `ChainHandle.status()`,
+  a snapshot that never blocks, the way Myotis's own readiness ladder does:
+  `SYNCING` is the checkpoint bootstrap; `CATCHING_UP` walks sync-committee
+  periods from `syncStartPeriod`; `SYNCED` serves reads only with a verified
+  head younger than 45 s and at least one peer serving state proofs.
+- **Verified balances.** `VerifiedNativeBalances`, common code, proves a
+  balance through `ChainHandle.requestAccount` whenever the verified head has
+  moved. It is accepted only with no `failReason` and a `verifyMethod`, and is
+  labelled with the block the proof anchors to: `VerifiedReads.getBalance`
+  answers a block number from the current head, so it cannot be labelled. While
+  reads cannot be verified, the row shows why ("Syncing…", "Sync refused", "Not
+  verified", "No light client"), never an older amount. Why a node is down is
+  written to stderr, with the engine's own log when it refused to start.
+- **The light client's progress.** `EngineLightClient` drives the
+  `LightClient` port, and Home shows it in a strip under the top bar:
+  - starting;
+  - bootstrapping from the checkpoint;
+  - verifying sync-committee periods (*n of m*);
+  - waiting for a fresh head or for proof peers;
+  - "Verified at block N";
+  - asleep, a stale anchor, or no engine.
+
+  A cold start on Sepolia, measured on a Mac: bootstrapped after 1 s, verified
+  reads after about 20 to 30 s.
+- **Resolving the library before a Myotis tag publishes it.** In a Myotis
+  checkout, `./gradlew -PpublishRelease publishToMavenLocal` puts the version
+  the next tag publishes into `~/.m2`. Pass Serotine's builds an init script
+  that adds `mavenLocal()` filtered to `eth.myotis`, with `-I`; the repository
+  itself never names `mavenLocal()`:
+
+  ```kotlin
+  // myotis-local.init.gradle.kts, kept outside the repository
+  settingsEvaluated {
+      dependencyResolutionManagement.repositories.mavenLocal {
+          content { includeGroup("eth.myotis") }
+      }
+  }
+  ```
+- **Desktop, until the installers stage the host library.**
+  `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` puts a locally built
+  `libmyotis_engine.{dylib,so,dll}` on `java.library.path` (Myotis:
+  `./gradlew cargoBuildHost`, then `rust/target/release`). The same property
+  runs `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
+- **Android 10 and INTERNET.** An install that gains INTERNET on an update,
+  rather than having it from the first install, can keep getting `EPERM` from
+  netd's eBPF socket filter until it is reinstalled or the device reboots. The
+  engine then reports "listen failed" and the list says "No light client". No
+  released Serotine was ever without the permission, so this is a development
+  trap, not a user path.
 
 ## What the engine's rules mean for a wallet
 
