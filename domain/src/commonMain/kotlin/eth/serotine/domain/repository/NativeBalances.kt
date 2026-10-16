@@ -46,7 +46,10 @@ sealed interface BalanceReading {
          */
         STALE_ANCHOR,
 
-        /** The light client is synced but could not prove this balance (no peer served the proof). */
+        /**
+         * No verified balance could be had this time: the light client is synced but no peer
+         * served the proof, or the engine's state could not be read at all.
+         */
         UNPROVEN,
     }
 }

@@ -100,9 +100,7 @@ class MyotisNode private constructor() {
                 } catch (e: Throwable) {
                     // Throwable: the call crosses JNA. Uncaught on this thread it would end the
                     // process; the engine keeps its last networking state instead.
-                    System.err.println(
-                        "Serotine: the engine's networking could not be switched (${e::class.simpleName})",
-                    )
+                    System.err.println("Serotine: the engine's networking could not be switched: $e")
                 }
             }
         } catch (e: RejectedExecutionException) {
@@ -165,6 +163,9 @@ class MyotisNode private constructor() {
             val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
             val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
             val started = handle.start()
+            // The engine says why only in its own log, which is drained, not printed: drained
+            // before anything stops the engine, so the refusal comes first, ahead of shutdown noise.
+            val refusal = if (started) null else Myotis.drainLogs(ENGINE_LOG_LINES)
             val kept = synchronized(this) {
                 val keep = started && state == State.Booting
                 if (state == State.Booting) state = if (keep) running else State.Down
@@ -176,8 +177,7 @@ class MyotisNode private constructor() {
             // resume the host asks for from here on queues there too, so the last one asked for
             // is the state the engine ends in.
             if (kept) onControlThread { if (pauseWanted) it.pause() }
-            // The engine says why only in its own log, which is drained, not printed.
-            if (!started) report("the engine refused to start $name:\n" + Myotis.drainLogs(ENGINE_LOG_LINES))
+            refusal?.let { report("the engine refused to start $name:\n$it") }
         } catch (e: Throwable) {
             if (owned) releaseAfter(e, engine, ports)
             throw e
