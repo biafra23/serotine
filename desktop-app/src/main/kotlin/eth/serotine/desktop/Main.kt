@@ -89,13 +89,27 @@ private fun openWallet(dataDir: File) {
 
 /**
  * Keeps [directory], the key store's envelopes, out of backups (docs/keys-and-signing.md,
- * rule 8) where this OS backs application data up on its own: Time Machine on macOS, told
- * through its sticky exclusion, which needs no administrator rights and moves with the
- * directory. Windows' File History and the usual Linux tools leave application data out
- * unless the user adds it. Best effort, off the main thread; a failure is reported.
+ * rule 8) where this OS backs application data up on its own. On macOS that is Time Machine,
+ * told through its sticky exclusion, which needs no administrator rights and moves with the
+ * directory. On Linux it is GNOME's Backups (Déjà Dup), whose default takes the whole home
+ * directory and skips a directory holding a `.deja-dup-ignore` file. Windows' File History
+ * leaves application data out unless the user adds it. Best effort, off the main thread; a
+ * failure is reported.
  */
 private fun excludeFromBackups(directory: File) {
-    if ("mac" !in System.getProperty("os.name").lowercase()) return
+    val os = System.getProperty("os.name").orEmpty().lowercase()
+    if ("linux" in os) {
+        thread(isDaemon = true, name = "serotine-backup-exclusion") {
+            try {
+                directory.mkdirs()
+                directory.resolve(".deja-dup-ignore").createNewFile()
+            } catch (e: Exception) {
+                println("Serotine: could not mark $directory for Déjà Dup (${e::class.simpleName})")
+            }
+        }
+        return
+    }
+    if ("mac" !in os) return
     thread(isDaemon = true, name = "serotine-backup-exclusion") {
         try {
             directory.mkdirs()

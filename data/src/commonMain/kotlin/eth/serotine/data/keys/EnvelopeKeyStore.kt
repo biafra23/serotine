@@ -48,9 +48,13 @@ class EnvelopeKeyStore(
     override suspend fun describe(): KeyStoreDescription = withContext(dispatcher) {
         try {
             if (!EnvelopeCrypto.available()) return@withContext KeyStoreDescription.Unavailable
-            // The hardware first: when it fails, that is the one thing worth reporting.
+            // The hardware first: when it fails, that is the one thing worth reporting. And
+            // whether its key exists before anything could create it (protection may).
+            val provisioned = hardware?.isProvisioned() ?: true
+            val envelopes = envelopes()
+            if (hardwareKeyLost(provisioned, envelopes)) return@withContext KeyStoreDescription.Unavailable
             val protection = protection()
-            KeyStoreDescription.Ready(passwordSet = envelopes().isNotEmpty(), protection = protection)
+            KeyStoreDescription.Ready(passwordSet = envelopes.isNotEmpty(), protection = protection)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -84,15 +88,20 @@ class EnvelopeKeyStore(
         }
 
     private suspend fun import(words: List<String>, longEnough: Boolean, password: ByteArray): KeyImport {
-        val protection = protection()
+        val provisioned = hardware?.isProvisioned() ?: true
         sweepTemporaries()
+        val envelopes = envelopes()
+        if (hardwareKeyLost(provisioned, envelopes)) return KeyImport.Unavailable
+        val protection = protection()
         val seed = Bip39.seed(words)
         try {
             val account = firstAddressOf(seed)
             val address = account.hex
             // A password is set once a seed is stored, and this must be the same one. Its
-            // own envelope is asked first, so an import that is already done stays cheap.
-            val stored = envelopes().sortedBy { if (it.address == address) 0 else 1 }
+            // own envelope is asked first, so an import that is already done stays cheap; and
+            // at most MAX_PASSWORD_CHECKS are asked, so a mistyped password costs that many
+            // Argon2id runs, not one per account.
+            val stored = envelopes.sortedBy { if (it.address == address) 0 else 1 }.take(MAX_PASSWORD_CHECKS)
             var alreadyStored = false
             var verified = false
             // One envelope's GCM tag cannot tell a wrong password from damage to that file, so
@@ -144,6 +153,17 @@ class EnvelopeKeyStore(
     private fun cost(protection: KeyProtection): Envelope.Cost {
         val everyGuessInHardware = protection == KeyProtection.HARDWARE && hardware?.everyGuessNeedsDevice == true
         return if (everyGuessInHardware) HARDWARE_COST else PASSWORD_ONLY_COST
+    }
+
+    /**
+     * Envelopes sealed with this device's kind of hardware secret exist, but its key does not:
+     * lost (an OS upgrade, a cleared key store, a deleted enclave state). The envelopes cannot
+     * be opened any more, and a new key must not be made beside them.
+     */
+    private fun hardwareKeyLost(provisioned: Boolean, envelopes: List<Stored>): Boolean {
+        if (provisioned || envelopes.isEmpty()) return false
+        report("the hardware key the envelopes were sealed with is gone")
+        return true
     }
 
     private class Stored(val address: String, val sealed: SealedSeed)
@@ -210,6 +230,12 @@ class EnvelopeKeyStore(
         val PASSWORD_ONLY_COST = Envelope.Cost(opsLimit = 4, memLimitBytes = 256L * 1024 * 1024)
 
         const val SEED_SUFFIX = ".seed"
+
+        /**
+         * How many envelopes a password is checked against: the account's own and two more, so
+         * up to two damaged but well-formed envelopes do not lock the right password out.
+         */
+        const val MAX_PASSWORD_CHECKS = 3
 
         fun report(what: String) = println("Serotine: $what")
     }

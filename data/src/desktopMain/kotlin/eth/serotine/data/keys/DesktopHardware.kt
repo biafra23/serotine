@@ -41,6 +41,7 @@ private class UnknownFactor(private val reason: String) : HardwareSecret {
     override val tag: String = "unknown"
     override val protection: KeyProtection get() = error(reason)
     override val everyGuessNeedsDevice: Boolean = false
+    override fun isProvisioned(): Boolean = error(reason)
     override fun mix(input: ByteArray): ByteArray = error(reason)
 }
 

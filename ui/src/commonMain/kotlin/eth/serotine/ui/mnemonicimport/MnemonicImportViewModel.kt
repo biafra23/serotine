@@ -154,8 +154,8 @@ class MnemonicImportViewModel(
                 "The seed is stored encrypted under your wallet password and this device's key store, " +
                     "which is not in secure hardware here (an emulator, or a device without it)."
             KeyProtection.PASSWORD_ONLY ->
-                "The seed is stored encrypted under your wallet password alone: this computer has no " +
-                    "hardware key store Serotine can use. Choose a strong password."
+                "The seed is stored encrypted under your wallet password alone: Serotine uses no hardware " +
+                    "key store on this computer. Choose a strong password."
         }
 
     private val MnemonicProblem.message: String

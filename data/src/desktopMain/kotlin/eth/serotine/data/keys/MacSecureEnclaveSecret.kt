@@ -50,6 +50,8 @@ class MacSecureEnclaveSecret(private val stateFile: String) : HardwareSecret {
 
     override val everyGuessNeedsDevice: Boolean = false
 
+    override fun isProvisioned(): Boolean = SystemFileSystem.exists(Path(stateFile))
+
     /** `S_hw`, whatever [input] is: decrypted by the enclave, or made and stored on a wallet's first use. */
     @Synchronized
     override fun mix(input: ByteArray): ByteArray {

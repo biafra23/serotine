@@ -27,6 +27,15 @@ interface HardwareSecret {
      */
     val everyGuessNeedsDevice: Boolean
 
+    /**
+     * Whether this device's hardware key, the one [mix] uses, exists already, answered without
+     * creating it. False before a wallet's first seal, and when the key was lost since: the key
+     * store tells the two apart by whether envelopes with this [tag] exist, and refuses to let
+     * [mix] make a new key beside them (their secret is gone, and a new one would only answer
+     * "wrong password").
+     */
+    fun isProvisioned(): Boolean
+
     /** The secret for [input] (the stretched password), on this device only: the same input, the same output. */
     fun mix(input: ByteArray): ByteArray
 }

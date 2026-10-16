@@ -124,7 +124,7 @@ internal actual object EnvelopeCrypto {
                 // between.
                 Files.move(Paths.get(temporary.path), Paths.get(target.path))
             }
-            syncDirectory(target.parentFile)
+            syncDirectory(target.absoluteFile.parentFile)
         } finally {
             temporary.delete()
         }

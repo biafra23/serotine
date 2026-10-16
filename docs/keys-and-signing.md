@@ -170,7 +170,7 @@ cases, never a key, as CLAUDE.md's *Trust* section already requires. A port
 that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
-**What exists today** (`feature/persistence`): the key-store port
+**What exists today**: the key-store port
 `KeyStore` in `:domain`, implemented by `EnvelopeKeyStore` in
 `eth.serotine.data.keys`.
 
@@ -186,18 +186,23 @@ its KDoc and returns it as a result the UI shows as state.
     directory. A temporary file a crash left behind is deleted on the next
     import.
   - Android keeps the directory out of backups and device transfers (rule 8).
-    On macOS the desktop host excludes it from Time Machine; Windows and the
-    usual Linux tools leave application data out unless the user adds it.
-  - A file that cannot be read, that names another device's hardware secret,
-    that has parameters outside the floor and ceiling, or that is not under
-    its own address's name, is reported and passed over, never trusted. A
+    On macOS the desktop host excludes it from Time Machine. On Linux it
+    marks it for GNOME's Backups (Déjà Dup), whose default takes the whole
+    home directory, with a `.deja-dup-ignore` file. Windows' File History
+    leaves application data out unless the user adds it. Other backup tools
+    the user configures may still take it.
+  - A file that cannot be read, that names another kind of hardware secret
+    than this device's, that has parameters outside the floor and ceiling, or
+    that is not under its own address's name, is reported and passed over,
+    never trusted. (The tag names the kind, not the device: another phone's
+    envelope passes this check and then fails as a wrong password.) A
     damaged envelope of the account being imported is sealed again.
 - **The password.**
   - The first import sets the wallet password: at least eight characters,
     refused by the adapter otherwise. Every later import must give the same
     one, which is checked by unwrapping a stored envelope's DEK, never by a
-    comparison. The account's own envelope is tried first, and the seed
-    stays sealed during the check. A GCM tag cannot tell a wrong password
+    comparison. The account's own envelope is tried first, at most three
+    are tried in all, and the seed stays sealed during the check. A GCM tag cannot tell a wrong password
     from a damaged file, so one envelope's refusal does not end the check
     while another may open. The password is wrong only when none opens and
     one refused it, and then nothing is sealed.
@@ -256,6 +261,8 @@ its KDoc and returns it as a result the UI shows as state.
   - A wallet begun on the password alone stays so.
   - Only a wallet without envelopes asks whether the enclave works.
   - Macs without an enclave, Windows and Linux stand on the password alone.
+    Rule 9's TPM path for Windows and Linux is not built: until it is, those
+    computers are password-only too, and say so.
 - **One Serotine runs per user** on the desktop.
   - The host holds an exclusive lock on a file in its data directory, so a
     second instance does not write the account list or the envelopes. It
@@ -264,6 +271,13 @@ its KDoc and returns it as a result the UI shows as state.
     file while Serotine runs defeats the guard.
   - On Windows the data directory is `%LOCALAPPDATA%\eth.serotine`, apart
     from the directory the per-user installer owns.
+- **A lost hardware key is said, not guessed around.** The key store asks the
+  hardware secret whether its key exists before anything could create one.
+  When envelopes sealed with that kind of secret exist but the key does not,
+  the key store reports itself unavailable instead of making a new key, whose
+  secret would only answer "wrong password". This covers a Keystore key lost
+  in an OS upgrade or a cleared key store, and a deleted enclave state. The
+  way back is the reset and recovery flows.
 - **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
   Until then the key store reports itself unavailable there.
 - **What never leaves a call.**

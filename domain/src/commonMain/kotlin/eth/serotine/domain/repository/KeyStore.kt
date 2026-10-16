@@ -50,7 +50,7 @@ enum class KeyProtection {
     /** The password and a key-store secret that is not in secure hardware (an emulator, some devices). */
     SOFTWARE_KEY_STORE,
 
-    /** The password alone, stretched harder: no hardware key store on this computer. */
+    /** The password alone, stretched harder: Serotine uses no hardware key store on this computer. */
     PASSWORD_ONLY,
 }
 

@@ -8,9 +8,16 @@ internal class FakeHardware(
     private val key: Byte = 42,
     private val claims: () -> KeyProtection = { KeyProtection.HARDWARE },
     override val everyGuessNeedsDevice: Boolean = true,
+    private val provisioned: () -> Boolean = { true },
+    private val mixed: () -> Unit = {},
 ) : HardwareSecret {
+    override fun isProvisioned(): Boolean = provisioned()
+
     override val protection: KeyProtection
         get() = claims()
 
-    override fun mix(input: ByteArray) = ByteArray(32) { (input[it % input.size].toInt() xor key.toInt()).toByte() }
+    override fun mix(input: ByteArray): ByteArray {
+        mixed()
+        return ByteArray(32) { (input[it % input.size].toInt() xor key.toInt()).toByte() }
+    }
 }

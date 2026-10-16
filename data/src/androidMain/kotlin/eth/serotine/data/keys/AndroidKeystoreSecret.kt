@@ -31,6 +31,8 @@ class AndroidKeystoreSecret(private val alias: String = "serotine.envelope.passw
 
     override val protection: KeyProtection by lazy { protectionOf(key()) }
 
+    override fun isProvisioned(): Boolean = KeyStore.getInstance(KEYSTORE).apply { load(null) }.containsAlias(alias)
+
     override fun mix(input: ByteArray): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(key())
@@ -63,8 +65,10 @@ class AndroidKeystoreSecret(private val alias: String = "serotine.envelope.passw
     private fun protectionOf(key: SecretKey): KeyProtection {
         val info = SecretKeyFactory.getInstance(key.algorithm, KEYSTORE).getKeySpec(key, KeyInfo::class.java) as KeyInfo
         val inHardware = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // UNKNOWN_SECURE: in secure hardware, at a level the platform does not name.
             info.securityLevel == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT ||
-                info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX
+                info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX ||
+                info.securityLevel == KeyProperties.SECURITY_LEVEL_UNKNOWN_SECURE
         } else {
             @Suppress("DEPRECATION")
             info.isInsideSecureHardware

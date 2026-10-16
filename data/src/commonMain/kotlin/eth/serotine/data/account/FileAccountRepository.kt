@@ -39,8 +39,9 @@ import kotlin.time.Duration.Companion.seconds
  * that is then moved over the file in one step. A crash during a write leaves the previous
  * list. A power loss in that moment can do worse: kotlinx-io exposes no fsync, so the
  * rename can reach the disk before the data, and the next start then finds a damaged file
- * (below). Each add reads the file again first, so a second process writing the same file
- * (a second desktop instance) can lose a change only within that one add.
+ * (below). Each add reads the file again first. One process writes the file: Android runs
+ * one, and the desktop host holds a per-user instance lock; were a second one to write it,
+ * it could lose a change only within that one add.
  *
  * Reading, which never destroys or hides the stored list:
  * - no file: an empty list;

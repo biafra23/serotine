@@ -111,6 +111,47 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun aLostHardwareKeyMakesTheKeyStoreUnavailableNotAWrongPassword() = runTest {
+        store(FakeHardware()).importMnemonic(hardhat, password)
+        // The Keystore key is gone (an OS upgrade, a cleared key store); the envelope stays.
+        var provisioned = false
+        val lost = store(FakeHardware(provisioned = { provisioned }))
+
+        assertEquals(KeyStoreDescription.Unavailable, lost.describe())
+        assertEquals(KeyImport.Unavailable, lost.importMnemonic(abandon, password))
+        assertEquals(listOf("${hardhatAddress.hex}.seed"), directory.list()!!.toList(), "nothing sealed beside it")
+
+        provisioned = true
+        assertEquals(KeyStoreDescription.Ready(passwordSet = true, KeyProtection.HARDWARE), lost.describe())
+    }
+
+    @Test
+    fun aNewWalletNeedsNoHardwareKeyYet() = runTest {
+        val store = store(FakeHardware(provisioned = { false }))
+
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.HARDWARE), store.describe())
+    }
+
+    @Test
+    fun aMistypedPasswordIsCheckedAgainstAtMostThreeEnvelopes() = runTest {
+        var mixes = 0
+        val hardware = FakeHardware(mixed = { mixes++ })
+        val store = store(hardware)
+        val phrases = listOf(
+            hardhat,
+            abandon,
+            Mnemonic("legal winner thank year wave sausage worth useful legal winner thank yellow"),
+            Mnemonic("letter advice cage absurd amount doctor acoustic avoid letter advice cage above"),
+            Mnemonic("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"),
+        )
+        phrases.dropLast(1).forEach { assertIs<KeyImport.Stored>(store.importMnemonic(it, password)) }
+        mixes = 0
+
+        assertEquals(KeyImport.WrongPassword, store.importMnemonic(phrases.last(), WalletPassword("mistyped password")))
+        assertEquals(3, mixes, "one Argon2id run per envelope asked, and no more than three")
+    }
+
+    @Test
     fun aStoredSecretTheHardwareUnwrapsGetsTheFullCostToo() = runTest {
         // The Secure Enclave's kind: in hardware, but one unwrap and the search can leave the device.
         store(FakeHardware(everyGuessNeedsDevice = false)).importMnemonic(hardhat, password)

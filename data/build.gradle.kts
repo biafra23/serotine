@@ -1,7 +1,7 @@
 // :data — the adapters behind the domain's ports: repository implementations and the
-// data sources they read (today an in-memory account store and the key adapter that
-// derives an account from BIP-39 words; next the Myotis engine behind an
-// `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
+// data sources they read (today the account list kept in a file and the key store that
+// seals imported seeds in envelopes, docs/keys-and-signing.md; next the Myotis engine
+// behind an `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
 // :domain only; :ui never depends on this module — the hosts' composition roots wire
 // it in.
 //
@@ -69,7 +69,11 @@ kotlin {
                 // For the libsodium binaries it ships (its Kotlin API is not used), and for
                 // JNA at runtime: the jar on the desktop, the AAR (classes and the native
                 // stubs for all four ABIs) on Android.
-                implementation(libs.libsodium.bindings)
+                // Without the resource loader (and its slf4j): only the bindings' own Kotlin API
+                // uses it, and nothing calls that API.
+                implementation(libs.libsodium.bindings.get().toString()) {
+                    exclude(group = "com.goterl", module = "resource-loader")
+                }
                 // JNA's API to compile against only: a jar at runtime would duplicate the
                 // AAR's classes on Android.
                 compileOnly(libs.jna)

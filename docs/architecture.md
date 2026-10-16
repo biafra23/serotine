@@ -36,8 +36,8 @@ each rule in code.
   in it can ever import `android.*` (and that variant emits Java 17 class
   files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`
-  and `AccountDerivation` today; the Myotis engine adapter next) and owns every
-  data source.
+  and `KeyStore` today; the Myotis engine adapter next) and owns every data
+  source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
