@@ -127,6 +127,17 @@ kotlin {
     }
 }
 
+// :ui's debug variant carries Compose's ui-tooling, which Android Studio needs to render
+// the screens' previews, and Gradle would hand it on to this app's debug build. Kept out:
+// its PreviewActivity is exported and runs whatever composable an intent names, which no
+// other app on the device may do in a wallet, a debug one included. Out of every runtime
+// classpath, so a build type added later that falls back to :ui's debug variant ships
+// without it too; nothing in this app runs it.
+configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
+    exclude(group = "org.jetbrains.compose.ui", module = "ui-tooling")
+    exclude(group = "androidx.compose.ui", module = "ui-tooling")
+}
+
 dependencies {
     implementation(project(":ui"))
     implementation(project(":data"))

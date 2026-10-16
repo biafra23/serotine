@@ -160,6 +160,9 @@ kotlin {
                 // clears its ViewModel (the seed screen relies on that).
                 implementation(libs.navigation.compose)
                 implementation(libs.material.icons.core)
+                // The multiplatform @Preview every screen's previews carry; Android Studio
+                // renders it on the Android target (see ui-tooling below).
+                implementation(compose.components.uiToolingPreview)
             }
         }
         commonTest.dependencies {
@@ -175,6 +178,12 @@ kotlin {
             }
         }
     }
+}
+
+// What Android Studio's preview pane renders with, in the debug variant only. The Android
+// app keeps it out of its APKs (android-app/build.gradle.kts).
+dependencies {
+    debugImplementation(compose.uiTooling)
 }
 
 android {
