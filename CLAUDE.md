@@ -585,10 +585,33 @@ discussion that produced this note.
   screen. Code takes the network from `eth.serotine.domain.model.Network`,
   whose only value is `SEPOLIA`; adding a network, mainnet included, is the
   owner's decision and is recorded here first.
-- **Open decisions, each recorded here before its code lands**: the Safe{Wallet}
-  multi-signer flow (the Safe Transaction Service is an off-chain HTTP API —
-  what Serotine fetches from it, over what, and how an unverified answer is
-  shown), the dApp connection protocol (WalletConnect's relay is an off-chain
-  service too, and a request that arrives through it is untrusted input,
-  decoded and shown as such), token lists and metadata, price data. Until
-  decided, none of them is wired in.
+- **Prices come from Chainlink aggregators, read through the light client**
+  (owner ruling, 2026-10-16). A price is a verified `eth_call` of a pinned
+  aggregator's `latestRoundData()` and `decimals()`, on-chain state like any
+  other; there is no HTTP price API. On Sepolia these are Chainlink's Sepolia
+  feeds, and every fiat value says "testnet prices". A token without a feed
+  shows "no price" and is left out of every total. Prices are display-only:
+  an amount is entered, reviewed and signed in token units, never derived
+  from a price. The light client proves what the aggregator says, not that
+  the oracles are right, which is why a price never reaches a signature.
+- **The token list is built in** (owner ruling, 2026-10-16): a pinned list of
+  popular tokens per `Network`, each with its address, symbol, name, decimals
+  and a bundled icon, every entry checked against the contract's own
+  `symbol()` and `decimals()` when it is listed. The user adds
+  more by address in Settings; the metadata is then read from the contract
+  and shown as the contract's claim, with a monogram icon. No remote token
+  list and no icon CDN (one would learn which tokens the user holds).
+- **Safe co-signing uses no off-chain service** (owner ruling, 2026-10-16). A
+  signing request moves between devices as a QR code or as text, carrying the
+  raw `SafeTx` fields and the signatures collected so far, never a
+  description of them. The co-signer decodes it itself and checks it against
+  the chain: the Safe (verified as a Safe), its nonce and owners, and the
+  `SafeTx` hash recomputed locally; a signer that is not a current owner is
+  refused. An owner may approve on chain with `approveHash` instead, and once
+  the threshold is met any owner executes it. The Safe Transaction Service
+  stays unwired.
+- docs/wallet-ux.md applies these three rulings to the screens.
+- **Open decisions, each recorded here before its code lands**: the dApp
+  connection protocol (WalletConnect's relay is an off-chain service, and a
+  request that arrives through it is untrusted input, decoded and shown as
+  such). Until decided, it is not wired in.

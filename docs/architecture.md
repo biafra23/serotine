@@ -56,8 +56,9 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`; later `safe`) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`; later `tokens`, `prices`, `safe`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
+| `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture) |
 | `eth.serotine.ui.theme` | Material 3 theme |
 | `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
@@ -82,6 +83,16 @@ review finding, whatever it saves.
   changes while the screen is on the back stack and is cleared when the
   screen is popped. Routes say where the user wants to go through callbacks
   (`onAddAccount`, `onBack`); only `App` holds the `NavController`.
+- **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
+  a `NavigationRail` on a wide desktop window — around that one `NavHost`.
+  Each tab is a nested graph with its own back stack: switching tabs saves
+  and restores it (`saveState`/`restoreState`), and re-selecting the current
+  tab returns to its start. A route's arguments are identifiers only
+  (`account/{address}`), never an object: the destination's ViewModel loads
+  what it shows through its use cases. The bar shows on the tabs' screens; a
+  flow that ends in a key operation or a transaction (import, create, send,
+  a Safe transaction) is a destination of its own that covers it. The screens
+  themselves are docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference

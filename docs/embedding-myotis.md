@@ -135,8 +135,9 @@ consumer developed against an unreleased engine, Myotis's
 - **A parameter that can change the answer is applied or refused**, never
   accepted and ignored — the Myotis rule, and the reason a port's contract
   spells out what each argument does.
-- **Not everything a wallet needs is chain data.** Safe{Wallet} multi-signer
-  flows (proposing a transaction to co-signers) and token metadata are
-  off-chain services. Each one is a separate decision for the owner — what is
-  fetched, over what, and how its answer is trusted or shown as untrusted —
-  recorded in CLAUDE.md under *Data sources* before the code lands.
+- **Not everything a wallet needs is chain data**, and what is not is a
+  separate decision for the owner — what is fetched, over what, and how its
+  answer is trusted or shown as untrusted — recorded in CLAUDE.md under *Data
+  sources* before the code lands. Prices, the token list and Safe
+  co-signing are decided there (2026-10-16), each without an off-chain
+  service; the dApp connection protocol is still open.
