@@ -151,7 +151,8 @@ The rules a reviewer holds the adapter against:
    exists and the seed screen says so.
 9. **Desktop stands on the password path alone where no hardware exists**
    (the owner's ruling of 2026-10-15, CLAUDE.md *Trust*).
-   macOS on Apple silicon or T2 uses the Secure Enclave as iOS does; Windows
+   macOS on Apple silicon or T2 uses the Secure Enclave as iOS does, signed
+   or not (the owner's decision of 2026-10-16); Windows
    wraps `S_hw` with a TPM key through CNG; Linux uses a TPM where present.
    Without hardware, `S_hw` is absent, the blob is brute-forceable offline,
    and the KDF cost goes up to compensate. The adapter reports which case the
@@ -169,7 +170,7 @@ cases, never a key, as CLAUDE.md's *Trust* section already requires. A port
 that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
-**What exists today** (`feature/persistence`, part 2): the key-store port
+**What exists today** (`feature/persistence`): the key-store port
 `KeyStore` in `:domain`, implemented by `EnvelopeKeyStore` in
 `eth.serotine.data.keys`.
 
@@ -207,12 +208,13 @@ its KDoc and returns it as a result the UI shows as state.
   bindings' String API would truncate a non-ASCII password and could not zero
   it. The mapping is checked against libsodium's known answers.
 - **Costs.**
-  - With a hardware secret that really lives in secure hardware: 64 MiB and
-    three passes.
-  - With a software key store, as on an emulator, or with the password
-    alone: 256 MiB and four passes. Copying the device's storage yields a
-    software key store's key, so such an envelope must hold up offline like
-    a password-only one.
+  - When every guess needs secure hardware (Android's Keystore HMAC): 64 MiB
+    and three passes.
+  - Otherwise 256 MiB and four passes. That covers a software key store, as
+    on an emulator, whose key a copy of the device's storage yields. It
+    covers the Mac's Secure Enclave, whose secret is unwrapped once and is
+    then the same for every guess. And it covers the password alone. Each
+    must hold up offline like a password-only envelope.
   - Opening checks the 64 MiB, two-pass floor and a 256 MiB, four-pass
     ceiling.
 - **AES-256-GCM** comes from the JDK.
@@ -221,9 +223,49 @@ its KDoc and returns it as a result the UI shows as state.
   failing. The Keystore reports where the key lives (rule 5), and the screen
   says which case applies: hardware, or a software key store on an emulator.
   A key store that fails is shown as such, and nothing can be added.
-- **Desktop** stands on the password alone for now. The Mac Secure Enclave
-  and iOS are part 3; on iOS the key store reports itself unavailable until
-  then.
+- **A Mac with a Secure Enclave** uses `MacSecureEnclaveSecret`, built as the
+  iOS design above (owner's decision, 2026-10-16).
+  - The key and the secret: `HW_pw` is a P-256 key made in the enclave, not
+    permanent, with no user-authentication requirement. `S_hw` is 32 random
+    bytes encrypted to it with ECIES.
+  - The state file: `secure-enclave.json` beside the envelopes holds the key
+    as the enclave's own encrypted handle, plus the encrypted `S_hw`.
+    Neither is any use off this Mac.
+  - The calls are Security.framework's C API through JNA, with no native
+    build step. The handle is the key's token object id (`"toid"`), the same
+    blob CryptoKit's `dataRepresentation` is, though the SDK does not name
+    the attribute.
+  - The handle carries no caller identity, so it is bound to the Mac but not
+    to the app. Any program running as the same user can read the state file
+    and use the enclave with it, with no permission prompt. Signing alone
+    does not change that. Binding the key to the app means keeping it in the
+    app's keychain access group, which takes a signed app with a
+    provisioning profile, and is a different design.
+  - The state file is made once, for a wallet with no envelope on the
+    enclave yet, and never replaced. If it is lost while such envelopes
+    exist, the key store reports itself unavailable instead of sealing under
+    a new secret. A broken enclave or a damaged state shows as unavailable
+    before any attempt, since describing the key store unwraps the secret
+    once.
+  - The tests run against the real enclave on a Mac and are skipped
+    elsewhere.
+- **The desktop's factor sticks to the wallet** (`desktopHardwareSecret`).
+  - A wallet with enclave state or enclave envelopes keeps using the
+    enclave. One that fails later makes the key store unavailable, never
+    quietly password-only.
+  - A wallet begun on the password alone stays so.
+  - Only a wallet without envelopes asks whether the enclave works.
+  - Macs without an enclave, Windows and Linux stand on the password alone.
+- **One Serotine runs per user** on the desktop.
+  - The host holds an exclusive lock on a file in its data directory, so a
+    second instance does not write the account list or the envelopes. It
+    says so and ends.
+  - The OS drops the lock when the holder dies. A user who deletes the lock
+    file while Serotine runs defeats the guard.
+  - On Windows the data directory is `%LOCALAPPDATA%\eth.serotine`, apart
+    from the directory the per-user installer owns.
+- **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
+  Until then the key store reports itself unavailable there.
 - **What never leaves a call.**
   - The seed, the keys and the password's bytes exist only inside one call,
     in byte arrays and native buffers this code zeroes before it returns.
@@ -243,9 +285,6 @@ its KDoc and returns it as a result the UI shows as state.
     one except to check the password.
   - A way back when no envelope opens any more (a lost Keystore key, a
     forgotten password) comes with the wallet's reset and recovery flows.
-  - Two desktop instances on one data directory are not guarded against
-    yet. That guard covers the account list and the engine too, and comes
-    with part 3.
 
 ## A Safe owned by a hardware P-256 key
 

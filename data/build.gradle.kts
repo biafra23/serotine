@@ -76,6 +76,8 @@ kotlin {
             }
         }
         androidMain.get().dependsOn(jvmSharedMain)
+        // The desktop also holds the Mac's Secure Enclave secret, which calls
+        // Security.framework through the same JNA.
         val desktopMain by getting {
             dependsOn(jvmSharedMain)
             dependencies {

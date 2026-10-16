@@ -65,7 +65,8 @@ Modules (Gradle):
 - **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
-  adapters and renders `App`.
+  adapters and renders `App`. The desktop one runs once per user: it holds an
+  `InstanceLock` on its data directory for the process's lifetime.
 
 **The dependency rule: arrows point inward only.** `:domain` depends on nothing
 of ours; `:ui` and `:data` depend on `:domain`; the hosts depend on `:ui` and
@@ -555,7 +556,11 @@ discussion that produced this note.
     accounts can be derived without the words (owner ruling, 2026-10-15).
   - A desktop without a hardware key store stands on the password path alone,
     with Argon2id run harder, and the app tells the user so; a Mac with a
-    Secure Enclave uses it as iOS does (owner ruling, 2026-10-15).
+    Secure Enclave uses it as iOS does (owner ruling, 2026-10-15), the app
+    signed or not (owner ruling, 2026-10-16): its key is then bound to the
+    Mac but not to the app, and binding it to the app takes a different
+    design, the key in a signed app's keychain access group. iOS's envelope
+    waits for the iOS app (owner ruling, 2026-10-16).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with
     Myotis, and the dApp connection protocol (WalletConnect is the candidate;

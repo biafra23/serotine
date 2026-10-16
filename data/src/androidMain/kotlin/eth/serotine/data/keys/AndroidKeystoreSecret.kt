@@ -26,6 +26,9 @@ class AndroidKeystoreSecret(private val alias: String = "serotine.envelope.passw
 
     override val tag: String = "android-keystore-hmac-sha256-v1"
 
+    /** The HMAC runs inside the Keystore for every input. */
+    override val everyGuessNeedsDevice: Boolean = true
+
     override val protection: KeyProtection by lazy { protectionOf(key()) }
 
     override fun mix(input: ByteArray): ByteArray {

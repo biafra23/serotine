@@ -12,11 +12,13 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -109,6 +111,15 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun aStoredSecretTheHardwareUnwrapsGetsTheFullCostToo() = runTest {
+        // The Secure Enclave's kind: in hardware, but one unwrap and the search can leave the device.
+        store(FakeHardware(everyGuessNeedsDevice = false)).importMnemonic(hardhat, password)
+
+        val sealed = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(4L to 256L * 1024 * 1024, sealed.opsLimit to sealed.memLimitBytes)
+    }
+
+    @Test
     fun filesThatCannotBeReadOrOpenedHereArePassedOver() = runTest {
         directory.resolve("0x" + "aa".repeat(20) + ".seed").writeText("{ not an envelope")
         val foreign = Envelope.seal(
@@ -191,6 +202,17 @@ class EnvelopeKeyStoreTest {
         store().importMnemonic(hardhat, password)
 
         assertEquals(listOf("${hardhatAddress.hex}.seed"), directory.list()!!.toList())
+    }
+
+    @Test
+    fun aCreateOnlyWriteNeverReplacesAFile() {
+        val file = directory.resolve("state.json").apply { writeText("first") }
+
+        assertFailsWith<FileAlreadyExistsException> {
+            EnvelopeCrypto.writeDurably(file.path, "second".encodeToByteArray(), replace = false)
+        }
+        assertEquals("first", file.readText())
+        assertEquals(listOf("state.json"), directory.list()!!.toList(), "no temporary left behind")
     }
 
     @Test

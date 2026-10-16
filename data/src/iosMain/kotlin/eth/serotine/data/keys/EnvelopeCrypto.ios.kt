@@ -2,8 +2,8 @@ package eth.serotine.data.keys
 
 /**
  * Not yet on iOS: its envelope (the Secure Enclave, libsodium through cinterop, CryptoKit's
- * AES-GCM) comes with the iOS host, part 3 of feature/persistence. Until then the key store
- * reports itself unavailable there and stores nothing.
+ * AES-GCM) comes with the iOS app (the owner's decision of 2026-10-16). Until then the key
+ * store reports itself unavailable there and stores nothing.
  */
 internal actual object EnvelopeCrypto {
     actual fun available(): Boolean = false
@@ -28,7 +28,7 @@ internal actual object EnvelopeCrypto {
 
     actual fun createPrivateDirectory(path: String): Unit = unsupported()
 
-    actual fun writeDurably(path: String, bytes: ByteArray): Unit = unsupported()
+    actual fun writeDurably(path: String, bytes: ByteArray, replace: Boolean): Unit = unsupported()
 
     private fun unsupported(): Nothing = throw UnsupportedOperationException("the key envelope is not on iOS yet")
 }
