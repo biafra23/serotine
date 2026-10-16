@@ -1,7 +1,7 @@
 // :data — the adapters behind the domain's ports: repository implementations and the
-// data sources they read (today an in-memory account store and the key adapter that
-// derives an account from BIP-39 words; next the Myotis engine behind an
-// `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
+// data sources they read: the account list kept in a file, the key store that seals
+// imported seeds in envelopes (docs/keys-and-signing.md), and the Myotis engine behind an
+// `io.myotis.api` adapter (docs/embedding-myotis.md). Depends on
 // :domain only; :ui never depends on this module — the hosts' composition roots wire
 // it in.
 //
@@ -14,6 +14,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -35,6 +36,9 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             implementation(libs.kotlinx.coroutines.core)
+            // The persistent account list: a JSON file, written atomically.
+            implementation(libs.kotlinx.io.core)
+            implementation(libs.kotlinx.serialization.json)
             // The key adapter (eth.serotine.data.keys): libsecp256k1 and the digests.
             implementation(libs.secp256k1.kmp)
             implementation(libs.kotlincrypto.sha2)
@@ -56,22 +60,48 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.secp256k1.kmp.jni.android)
         }
-        // The Myotis engine adapter (eth.serotine.data.engine). The engine library exists
-        // for the two JVM targets — its AAR for Android, its jar for the desktop — so the
-        // glue over io.myotis.api lives in a source set those two share, as in Myotis's own
-        // :myotis-engine; what it drives (VerifiedNativeBalances) is common code with
-        // common tests. iOS reaches the engine through its C ABI, with the iOS host.
+        // The JVM half shared by Android and the desktop. It holds two adapters:
+        // - the key envelope's platform half (eth.serotine.data.keys): libsodium's Argon2id
+        //   through JNA, AES-256-GCM and durable file writes from the JDK; iOS gets its own
+        //   half with the iOS host;
+        // - the Myotis engine adapter (eth.serotine.data.engine). The engine library exists
+        //   for the two JVM targets (its AAR for Android, its jar for the desktop), so the
+        //   glue over io.myotis.api lives here, as in Myotis's own :myotis-engine; what it
+        //   drives (VerifiedNativeBalances) is common code with common tests. iOS reaches
+        //   the engine through its C ABI, with the iOS host.
         val jvmSharedMain by creating {
             dependsOn(commonMain.get())
             dependencies {
-                implementation(libs.myotis.engine)
+                // The engine to compile against here; each target brings it at runtime (below),
+                // because the two take JNA from different places.
+                compileOnly(libs.myotis.engine)
+                // For the libsodium binaries it ships (its Kotlin API is not used), and for
+                // JNA at runtime: the jar on the desktop, the AAR on Android (its classes and
+                // the native stub for all four Android ABIs). Without the resource loader (and
+                // its slf4j): only the bindings' own Kotlin API uses it, and nothing calls it.
+                implementation(libs.libsodium.bindings.get().toString()) {
+                    exclude(group = "com.goterl", module = "resource-loader")
+                }
+                // JNA's API to compile against only (both pinned to 5.18.1).
+                compileOnly(libs.jna)
             }
         }
         androidMain.get().dependsOn(jvmSharedMain)
+        androidMain.dependencies {
+            // Without its JNA jar: the bindings' JNA AAR carries the same classes, and a jar
+            // beside it duplicates them. The AAR's stubs also cover the 32-bit ABIs, which the
+            // key store runs on and the engine does not.
+            implementation(libs.myotis.engine.get().toString()) {
+                exclude(group = "net.java.dev.jna", module = "jna")
+            }
+        }
+        // The desktop also holds the Mac's Secure Enclave secret, which calls
+        // Security.framework through the same JNA.
         val desktopMain by getting {
             dependsOn(jvmSharedMain)
             dependencies {
                 implementation(libs.secp256k1.kmp.jni.jvm)
+                implementation(libs.myotis.engine)
             }
         }
         val androidUnitTest by getting {

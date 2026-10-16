@@ -36,6 +36,22 @@ material-icons-core = "1.7.3"
 # docs/keys-and-signing.md (rule 7) requires. 0.22.0 is the last release built with
 # Kotlin 2.2.21, our pin; 0.23.0 moves its stdlib to 2.3.
 secp256k1-kmp = "0.22.0"
+# The persistent account list (eth.serotine.data.account): multiplatform file I/O and
+# JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0 are the last releases built
+# for Kotlin 2.2 (the next ones need a 2.3 stdlib); the serialization compiler plugin
+# is Kotlin's own, at the Kotlin pin.
+kotlinx-io = "0.8.2"
+kotlinx-serialization = "1.9.0"
+# The key envelope's Argon2id (docs/keys-and-signing.md, rule 2), from libsodium (the
+# owner's choice, 2026-10-16). The bindings ship libsodium for Android (an AAR), the
+# desktop JVM (macOS universal, Linux x64/arm64, Windows x64) and iOS; the envelope
+# calls crypto_pwhash through its own byte-array JNA mapping instead of the bindings'
+# String API (eth.serotine.data.keys.Sodium explains why). Built against Kotlin 1.9.23.
+libsodium = "0.9.5"
+# JNA, which libsodium is reached through on Android and the JVM: compiled against only
+# (the bindings bring it at runtime, as the JNA AAR on Android). 5.18.1 is exactly the
+# version the Myotis engine library pins with a strict constraint: the two move together.
+jna = "5.18.1"
 # The embedded Myotis engine (docs/embedding-myotis.md). Its artifacts come from the
 # filtered `maven-repo` repository in settings.gradle.kts once a Myotis v* tag has
 # published them; 0.1.16 is the version the first tag after Myotis #654 publishes. Until
@@ -55,11 +71,14 @@ kotlin-jvm             = { id = "org.jetbrains.kotlin.jvm",                versi
 kotlin-multiplatform   = { id = "org.jetbrains.kotlin.multiplatform",      version.ref = "kotlin" }
 compose-compiler       = { id = "org.jetbrains.kotlin.plugin.compose",     version.ref = "kotlin" }
 compose-multiplatform  = { id = "org.jetbrains.compose",                   version.ref = "compose-multiplatform" }
+kotlin-serialization   = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
 [libraries]
 kotlinx-coroutines-core    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core",    version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing   = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing",   version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test",    version.ref = "kotlinx-coroutines" }
+kotlinx-io-core            = { module = "org.jetbrains.kotlinx:kotlinx-io-core",            version.ref = "kotlinx-io" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 # org.jetbrains.androidx.*: JetBrains' multiplatform builds of the AndroidX lifecycle
 # artifacts (the androidx.* coordinates are Android-only).
 lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
@@ -72,6 +91,8 @@ material-icons-core        = { module = "org.jetbrains.compose.material:material
 secp256k1-kmp              = { module = "fr.acinq.secp256k1:secp256k1-kmp",             version.ref = "secp256k1-kmp" }
 secp256k1-kmp-jni-android  = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1-kmp" }
 secp256k1-kmp-jni-jvm      = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm",     version.ref = "secp256k1-kmp" }
+libsodium-bindings         = { module = "com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings", version.ref = "libsodium" }
+jna                        = { module = "net.java.dev.jna:jna",                         version.ref = "jna" }
 myotis-engine              = { module = "eth.myotis:myotis-engine",                     version.ref = "myotis" }
 kotlincrypto-sha2          = { module = "org.kotlincrypto.hash:sha2",                   version.ref = "kotlincrypto" }
 kotlincrypto-sha3          = { module = "org.kotlincrypto.hash:sha3",                   version.ref = "kotlincrypto" }

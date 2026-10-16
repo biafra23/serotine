@@ -1,10 +1,11 @@
 package eth.serotine.ui
 
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.repository.AccountDerivation
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveLightClient
@@ -23,7 +24,8 @@ import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
  */
 class AppGraph(
     private val accounts: AccountRepository,
-    private val accountDerivation: AccountDerivation,
+    /** Where imported seeds are kept: the key adapter's store, behind its port. */
+    private val keys: KeyStore,
     /** Balances verified by the embedded light client of [network]. */
     private val nativeBalances: NativeBalances,
     /** That light client's own state. */
@@ -40,5 +42,5 @@ class AppGraph(
         )
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
-        MnemonicImportViewModel(ImportMnemonicAccount(accountDerivation, accounts))
+        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts), DescribeKeyStore(keys))
 }

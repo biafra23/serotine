@@ -70,6 +70,26 @@ class HomeScreenTest {
     }
 
     @Test
+    fun aSetAsideNoticeIsShownAboveTheList() {
+        val notice = "Your saved account list was damaged and has been set aside. Add your accounts again."
+        show(HomeUiState.Ready("Sepolia", syncing, emptyList(), notice))
+
+        rule.onNodeWithTag(HOME_NOTICE_TAG).assertTextEquals(notice)
+        rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Add account").assertExists()
+    }
+
+    @Test
+    fun anUnavailableListIsExplainedWithoutInvitingAnAdd() {
+        val message = "Your saved account list cannot be read right now."
+        show(HomeUiState.ListUnavailable("Sepolia", syncing, message))
+
+        rule.onNodeWithTag(HOME_NOTICE_TAG).assertTextEquals(message)
+        rule.onNodeWithText("No accounts yet").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Add account").assertDoesNotExist()
+    }
+
+    @Test
     fun theStatusStripShowsWhatTheLightClientIsDoing() {
         show(HomeUiState.Loading("Sepolia", syncing))
 

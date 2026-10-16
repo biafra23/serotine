@@ -50,12 +50,14 @@ Modules (Gradle):
   Pure Kotlin + coroutines' `Flow`; targets desktop JVM + iOS and deliberately
   NO Android target (Android consumers resolve its JVM variant, so nothing in it
   can ever import `android.*`).
-- **data** — the adapters behind the ports: `InMemoryAccountRepository`, the
-  key adapter's `MnemonicAccountDerivation` (`eth.serotine.data.keys`), and the
-  Myotis engine adapter (`eth.serotine.data.engine`: `MyotisNode`, verified
-  native balances), whose glue over `io.myotis.api` lives in a `jvmSharedMain`
-  source set the Android and desktop targets share. Targets Android + desktop + iOS; the Android
-  target is what will resolve the engine's AAR.
+- **data** — the adapters behind the ports: `FileAccountRepository` (the
+  account list, persisted as a JSON file; `InMemoryAccountRepository` for tests),
+  the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
+  seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
+  (`eth.serotine.data.engine`: `MyotisNode`, verified native balances), whose
+  glue over `io.myotis.api` lives in a `jvmSharedMain` source set the Android
+  and desktop targets share. Targets Android + desktop + iOS; the Android
+  target is what resolves the engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
   `<Feature>ViewModel`, `<Feature>UiState`; the theme; `App` with the one
@@ -65,7 +67,8 @@ Modules (Gradle):
 - **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
-  adapters and renders `App`.
+  adapters and renders `App`. The desktop one runs once per user: it holds an
+  `InstanceLock` on its data directory for the process's lifetime.
 
 **The dependency rule: arrows point inward only.** `:domain` depends on nothing
 of ours; `:ui` and `:data` depend on `:domain`; the hosts depend on `:ui` and
@@ -534,7 +537,8 @@ discussion that produced this note.
     necessary to unwrap it: the Argon2id-stretched password AND a secret only
     this device's hardware key store yields. A password that is merely
     checked, or a wrap that opens without the hardware, is a finding,
-    whatever it saves.
+    whatever it saves — apart from the desktop cases the dated rulings below
+    put on the password path alone.
   - Biometric unlock of that envelope is the user's opt-in (owner ruling,
     2026-10-15), bound to a key and never to the UI: a second hardware key
     with per-use Class 3 biometric authorization; disabling it deletes that
@@ -551,11 +555,23 @@ discussion that produced this note.
     the app hands it. For a Safe holding value the app's own preview is never
     the sole check; the policy lives on chain and in an independent co-signer,
     as the doc sets out. No dApp browser runs in the signing process.
+  - What an imported mnemonic's envelope holds: its BIP-39 seed, so further
+    accounts can be derived without the words (owner ruling, 2026-10-15).
+  - A desktop without a hardware key store stands on the password path alone,
+    with Argon2id run harder, and the app tells the user so; a Mac with a
+    Secure Enclave uses it as iOS does (owner ruling, 2026-10-15), the app
+    signed or not (owner ruling, 2026-10-16): its key is then bound to the
+    Mac but not to the app, and binding it to the app takes a different
+    design, the key in a signed app's keychain access group. iOS's envelope
+    waits for the iOS app (owner ruling, 2026-10-16).
+  - Windows and Linux stand on the password path alone for now, a TPM
+    present or not: rule 9's TPM path comes later, and until then the app
+    tells the user that it does not use the TPM yet (owner ruling,
+    2026-10-16).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with
-    Myotis, the desktop policy without a hardware key store, and the dApp
-    connection protocol (WalletConnect is the candidate; its relay is a data
-    source, next section).
+    Myotis, and the dApp connection protocol (WalletConnect is the candidate;
+    its relay is a data source, next section).
 
 ## Data sources
 

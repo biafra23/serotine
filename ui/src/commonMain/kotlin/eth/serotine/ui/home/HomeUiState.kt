@@ -20,11 +20,16 @@ sealed interface HomeUiState {
     /** The account stream has not emitted yet. */
     data class Loading(override val network: String, override val lightClient: LightClientItem) : HomeUiState
 
-    /** The managed accounts, possibly none; one row per address (the list keys rows on it). */
+    /**
+     * The managed accounts, possibly none; one row per address (the list keys rows on it).
+     * [notice] tells the user, display-ready, when the stored list was damaged and set aside,
+     * so these are only the accounts added since.
+     */
     data class Ready(
         override val network: String,
         override val lightClient: LightClientItem,
         val accounts: List<AccountItem>,
+        val notice: String? = null,
     ) : HomeUiState {
         init {
             require(accounts.distinctBy { it.address }.size == accounts.size) {
@@ -32,6 +37,17 @@ sealed interface HomeUiState {
             }
         }
     }
+
+    /**
+     * The stored account list exists but cannot be shown, and nothing can be added to it
+     * until it can, for the reason [message] gives, display-ready. Not an empty list: the
+     * screen must neither show "no accounts" nor invite an add that would be refused.
+     */
+    data class ListUnavailable(
+        override val network: String,
+        override val lightClient: LightClientItem,
+        val message: String,
+    ) : HomeUiState
 }
 
 /**

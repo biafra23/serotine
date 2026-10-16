@@ -5,10 +5,11 @@ import android.app.Application
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import eth.serotine.data.account.InMemoryAccountRepository
+import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
-import eth.serotine.data.keys.MnemonicAccountDerivation
+import eth.serotine.data.keys.AndroidKeystoreSecret
+import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.AppGraph
 
@@ -28,8 +29,12 @@ class SerotineApplication : Application() {
 
     val graph: AppGraph by lazy {
         AppGraph(
-            accounts = InMemoryAccountRepository(),
-            accountDerivation = MnemonicAccountDerivation(),
+            // The account list in the app's private files, which the manifest keeps out of
+            // backups and device transfers; addresses and labels only, no keys.
+            accounts = FileAccountRepository(filesDir.resolve("accounts.json").path),
+            // Imported seeds in envelopes under the app's private files, the hardware factor
+            // a Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers.
+            keys = EnvelopeKeyStore(filesDir.resolve("keys").path, AndroidKeystoreSecret()),
             nativeBalances = node.nativeBalances,
             lightClient = node.lightClient,
             network = Network.SEPOLIA,

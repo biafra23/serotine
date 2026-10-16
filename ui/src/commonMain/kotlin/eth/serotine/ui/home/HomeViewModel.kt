@@ -3,6 +3,7 @@ package eth.serotine.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -38,22 +39,42 @@ class HomeViewModel(
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
+    /** What the account list gives the screen: rows (with any notice), or why there are none. */
+    private sealed interface Rows {
+        data class Shown(val items: List<AccountItem>, val notice: String?) : Rows
+        data class Unavailable(val message: String) : Rows
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val rows = observeAccounts()
-        .flatMapLatest { accounts ->
-            if (accounts.isEmpty()) {
-                flowOf(emptyList())
-            } else {
-                combine(
-                    accounts.map { account ->
-                        // A row from the start, "Checking…" until its first reading: an account
-                        // just added, or a screen just back, never waits for every proof.
-                        observeNativeBalance(account.address)
-                            .map<BalanceReading, BalanceReading?> { it }
-                            .onStart { emit(null) }
-                            .map { AccountItem.from(account, it, network) }
-                    },
-                ) { items -> items.toList() }
+        .flatMapLatest { list ->
+            when (list) {
+                is AccountList.Unreadable -> flowOf(
+                    Rows.Unavailable(
+                        when (list.reason) {
+                            AccountList.Reason.NEWER_FORMAT -> NEWER_FORMAT
+                            AccountList.Reason.READ_FAILED -> READ_FAILED
+                        },
+                    ),
+                )
+                is AccountList.Loaded -> {
+                    val notice = if (list.damagedListSetAside) DAMAGED_SET_ASIDE else null
+                    if (list.accounts.isEmpty()) {
+                        flowOf(Rows.Shown(emptyList(), notice))
+                    } else {
+                        combine(
+                            list.accounts.map { account ->
+                                // A row from the start, "Checking…" until its first reading: an
+                                // account just added, or a screen just back, never waits for
+                                // every proof.
+                                observeNativeBalance(account.address)
+                                    .map<BalanceReading, BalanceReading?> { it }
+                                    .onStart { emit(null) }
+                                    .map { AccountItem.from(account, it, network) }
+                            },
+                        ) { items -> Rows.Shown(items.toList(), notice) }
+                    }
+                }
             }
         }
 
@@ -66,8 +87,11 @@ class HomeViewModel(
         ticks.map { LightClientItem.from(status, clock()) }
     }
 
-    val uiState: StateFlow<HomeUiState> = combine(rows, strip) { items, lightClient ->
-        HomeUiState.Ready(network.displayName, lightClient, items)
+    val uiState: StateFlow<HomeUiState> = combine(rows, strip) { rows, lightClient ->
+        when (rows) {
+            is Rows.Shown -> HomeUiState.Ready(network.displayName, lightClient, rows.items, rows.notice)
+            is Rows.Unavailable -> HomeUiState.ListUnavailable(network.displayName, lightClient, rows.message)
+        }
     }
         .stateIn(
             scope = viewModelScope,
@@ -80,6 +104,16 @@ class HomeViewModel(
                 LightClientItem.from(LightClientStatus.Starting, now = 0),
             ),
         )
+
+    private companion object {
+        const val DAMAGED_SET_ASIDE =
+            "Your saved account list was damaged and has been set aside. Add your accounts again."
+        const val NEWER_FORMAT =
+            "Your account list was saved by a newer version of Serotine. Update the app to see it."
+        const val READ_FAILED =
+            "Your saved account list cannot be read right now. Nothing has been changed, and no " +
+                "account can be added until it can be read. Serotine keeps trying."
+    }
 }
 
 private val everySecond = flow {

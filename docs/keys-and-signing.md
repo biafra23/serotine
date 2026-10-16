@@ -139,8 +139,9 @@ The rules a reviewer holds the adapter against:
    with both a `<cloud-backup>` and a `<device-transfer>` exclusion for the
    key store's files — on Android 12 and higher `allowBackup="false"` alone
    still lets a device-to-device migration copy them — plus
-   `fullBackupContent` for the API 29/30 path. The host's manifest today has
-   only `allowBackup="false"`; the key-store PR adds the rules. iOS: the
+   `fullBackupContent` for the API 29/30 path. The host's manifest has all
+   three (`res/xml/data_extraction_rules.xml`, `backup_rules.xml`), excluding
+   the whole app's data. iOS: the
    this-device-only keychain classes, which neither sync nor migrate, and the
    blob in a file marked excluded from backup. Screens that show a seed or
    take the password: `FLAG_SECURE` on Android; on iOS, where no API blocks a
@@ -149,9 +150,13 @@ The rules a reviewer holds the adapter against:
    screenshot notification raise a warning; on desktop nothing comparable
    exists and the seed screen says so.
 9. **Desktop stands on the password path alone where no hardware exists**
-   (recommended; the owner's decision is open, CLAUDE.md *Trust*).
-   macOS on Apple silicon or T2 uses the Secure Enclave as iOS does; Windows
+   (the owner's ruling of 2026-10-15, CLAUDE.md *Trust*).
+   macOS on Apple silicon or T2 uses the Secure Enclave as iOS does, signed
+   or not (the owner's decision of 2026-10-16); Windows
    wraps `S_hw` with a TPM key through CNG; Linux uses a TPM where present.
+   That TPM path is not built yet: until it is, Windows and Linux stand on
+   the password alone, a TPM present or not, and the app tells the user it
+   does not use the TPM yet (the owner's ruling of 2026-10-16).
    Without hardware, `S_hw` is absent, the blob is brute-forceable offline,
    and the KDF cost goes up to compensate. The adapter reports which case the
    user is in.
@@ -168,21 +173,137 @@ cases, never a key, as CLAUDE.md's *Trust* section already requires. A port
 that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
-**What exists today** is the restore half's derivation, without the envelope:
-`AccountDerivation` in `:domain`, implemented by `MnemonicAccountDerivation`
-in `eth.serotine.data.keys`. It takes the restore screen's `Mnemonic`, checks
-it against the BIP-39 English wordlist and its checksum, and derives the
-first account, `m/44'/60'/0'/0/0` with the empty passphrase, on libsecp256k1
-through ACINQ's secp256k1-kmp (JNI on Android and the JVM, cinterop on iOS).
-The seed and the key exist inside that one call as byte arrays zeroed before
-it returns, and nothing is stored: the account it adds can sign nothing until
-the key-store port and the envelope above land. The restore screen's
-ViewModel drops the words when the screen stops being shown (the app goes to
-the background, the window is hidden) and when it leaves the back stack. The restore screen carries
-rule 8's protections through `protectFromScreenCapture()` in
-`eth.serotine.ui.platform`: `FLAG_SECURE` and an autofill exclusion on
-Android; on desktop, and on iOS until its host covers the window, the screen
-says that capture cannot be blocked.
+**What exists today**: the key-store port
+`KeyStore` in `:domain`, implemented by `EnvelopeKeyStore` in
+`eth.serotine.data.keys`.
+
+- **Import.** `importMnemonic(mnemonic, password)` checks the restore
+  screen's words against the BIP-39 English wordlist and their checksum. It
+  derives the first account, `m/44'/60'/0'/0/0` with the empty passphrase, on
+  libsecp256k1 (ACINQ's secp256k1-kmp). The use case stores the key and then
+  adds the account as one step that a cancelled caller cannot cut in half.
+- **Storage.** The BIP-39 seed goes into the envelope above, one file per
+  account (`<address>.seed`, JSON) in a directory of the app's own.
+  - Writes go through a temporary file readable by this user alone, an
+    fsync, an atomic move and, where the platform allows, an fsync of the
+    directory. A temporary file a crash left behind is deleted on the next
+    import.
+  - Android keeps the directory out of backups and device transfers (rule 8).
+    On macOS the desktop host excludes it from Time Machine. On Linux it
+    marks it for GNOME's Backups (Déjà Dup), whose default takes the whole
+    home directory, with a `.deja-dup-ignore` file. Windows' File History
+    leaves application data out unless the user adds it. Other backup tools
+    the user configures may still take it.
+  - A file that cannot be read, that names another kind of hardware secret
+    than this device's, that has parameters outside the floor and ceiling, or
+    that is not under its own address's name, is reported and passed over,
+    never trusted. (The tag names the kind, not the device: another phone's
+    envelope passes this check and then fails as a wrong password.) A
+    damaged envelope of the account being imported is sealed again.
+- **The password.**
+  - The first import sets the wallet password: at least eight characters,
+    refused by the adapter otherwise. Every later import must give the same
+    one, which is checked by unwrapping a stored envelope's DEK, never by a
+    comparison. The account's own envelope is tried first, at most three
+    are tried in all, and the seed stays sealed during the check. A GCM tag cannot tell a wrong password
+    from a damaged file, so one envelope's refusal does not end the check
+    while another may open. The password is wrong only when none opens and
+    one refused it, and then nothing is sealed.
+  - It is stretched from its NFKC form, so the same password typed on
+    keyboards that compose characters differently opens the same envelopes.
+- **Argon2id** is libsodium's `crypto_pwhash`, through a JNA mapping of its
+  own (`Sodium`) over native buffers that are zeroed after the call. The
+  bindings' String API would truncate a non-ASCII password and could not zero
+  it. The mapping is checked against libsodium's known answers.
+- **Costs.**
+  - When every guess needs secure hardware (Android's Keystore HMAC): 64 MiB
+    and three passes.
+  - Otherwise 256 MiB and four passes. That covers a software key store, as
+    on an emulator, whose key a copy of the device's storage yields. It
+    covers the Mac's Secure Enclave, whose secret is unwrapped once and is
+    then the same for every guess. And it covers the password alone. Each
+    must hold up offline like a password-only envelope.
+  - Opening checks the 64 MiB, two-pass floor and a 256 MiB, four-pass
+    ceiling.
+- **AES-256-GCM** comes from the JDK.
+- **The hardware secret.** On Android it is `AndroidKeystoreSecret`, an
+  HMAC-SHA256 key in StrongBox, or in the TEE when StrongBox is missing or
+  failing. The Keystore reports where the key lives (rule 5), and the screen
+  says which case applies: hardware, or a software key store on an emulator.
+  A key store that fails is shown as such, and nothing can be added.
+- **A Mac with a Secure Enclave** uses `MacSecureEnclaveSecret`, built as the
+  iOS design above (owner's decision, 2026-10-16).
+  - The key and the secret: `HW_pw` is a P-256 key made in the enclave, not
+    permanent, with no user-authentication requirement. `S_hw` is 32 random
+    bytes encrypted to it with ECIES.
+  - The state file: `secure-enclave.json` beside the envelopes holds the key
+    as the enclave's own encrypted handle, plus the encrypted `S_hw`.
+    Neither is any use off this Mac.
+  - The calls are Security.framework's C API through JNA, with no native
+    build step. The handle is the key's token object id (`"toid"`), the same
+    blob CryptoKit's `dataRepresentation` is, though the SDK does not name
+    the attribute.
+  - The handle carries no caller identity, so it is bound to the Mac but not
+    to the app. Any program running as the same user can read the state file
+    and use the enclave with it, with no permission prompt. Signing alone
+    does not change that. Binding the key to the app means keeping it in the
+    app's keychain access group, which takes a signed app with a
+    provisioning profile, and is a different design.
+  - The state file is made once, for a wallet with no envelope on the
+    enclave yet, and never replaced. If it is lost while such envelopes
+    exist, the key store reports itself unavailable instead of sealing under
+    a new secret. A broken enclave or a damaged state shows as unavailable
+    before any attempt, since describing the key store unwraps the secret
+    once.
+  - The tests run against the real enclave on a Mac and are skipped
+    elsewhere.
+- **The desktop's factor sticks to the wallet** (`desktopHardwareSecret`).
+  - A wallet with enclave state or enclave envelopes keeps using the
+    enclave. One that fails later makes the key store unavailable, never
+    quietly password-only.
+  - A wallet begun on the password alone stays so.
+  - Only a wallet without envelopes asks whether the enclave works.
+  - Macs without an enclave, Windows and Linux stand on the password alone.
+    Rule 9's TPM path for Windows and Linux is not built. Until it is, those
+    computers are password-only, and the seed screen says that Serotine does
+    not use the computer's TPM yet (`KeyProtection.PASSWORD_ONLY_TPM_NOT_USED`,
+    the owner's ruling of 2026-10-16).
+- **One Serotine runs per user** on the desktop.
+  - The host holds an exclusive lock on a file in its data directory, so a
+    second instance does not write the account list or the envelopes. It
+    says so and ends.
+  - The OS drops the lock when the holder dies. A user who deletes the lock
+    file while Serotine runs defeats the guard.
+  - On Windows the data directory is `%LOCALAPPDATA%\eth.serotine`, apart
+    from the directory the per-user installer owns.
+- **A lost hardware key is said, not guessed around.** The key store asks the
+  hardware secret whether its key exists before anything could create one.
+  When envelopes sealed with that kind of secret exist but the key does not,
+  the key store reports itself unavailable instead of making a new key, whose
+  secret would only answer "wrong password". This covers a Keystore key lost
+  in an OS upgrade or a cleared key store, and a deleted enclave state. The
+  way back is the reset and recovery flows.
+- **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
+  Until then the key store reports itself unavailable there.
+- **What never leaves a call.**
+  - The seed, the keys and the password's bytes exist only inside one call,
+    in byte arrays and native buffers this code zeroes before it returns.
+  - The JDK's AES keeps its own copy of a key until the garbage collector
+    takes it: the GC caveat of rule 7.
+  - The words and the password reach the adapter along the mnemonic
+    exception's one path. The restore screen's ViewModel drops both from its
+    state when the screen stops being shown; an import already running
+    finishes without them.
+- **Screen protections.** The restore screen carries rule 8's protections
+  through `protectFromScreenCapture()` in `eth.serotine.ui.platform`:
+  `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
+  until its host covers the window, the screen says that capture cannot be
+  blocked.
+- **Not yet.**
+  - Signing is the next consumer of the envelope. Until then nothing opens
+    one except to check the password.
+  - A way back when no envelope opens any more (a lost Keystore key, a
+    forgotten password) comes with the wallet's reset and recovery flows.
 
 ## A Safe owned by a hardware P-256 key
 

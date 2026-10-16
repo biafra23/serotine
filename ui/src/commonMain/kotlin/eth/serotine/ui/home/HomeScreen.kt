@@ -37,6 +37,9 @@ import eth.serotine.ui.APP_VERSION
 /** Test tag of the account list, for UI tests. */
 const val HOME_ACCOUNT_LIST_TAG = "home-account-list"
 
+/** Test tag of the notice when the stored list is not what is shown: set aside, or unavailable. */
+const val HOME_NOTICE_TAG = "home-notice"
+
 /** Test tag of the light client's status strip, for UI tests. */
 const val HOME_LIGHT_CLIENT_TAG = "home-light-client"
 
@@ -60,8 +63,11 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
     Scaffold(
         modifier = modifier,
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddAccount) {
-                Icon(Icons.Filled.Add, contentDescription = "Add account")
+            // No add to offer while the stored list cannot be read: it would be refused.
+            if (state !is HomeUiState.ListUnavailable) {
+                FloatingActionButton(onClick = onAddAccount) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add account")
+                }
             }
         },
         topBar = {
@@ -82,6 +88,14 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             LightClientStrip(state.lightClient)
+            (state as? HomeUiState.Ready)?.notice?.let { notice ->
+                Text(
+                    notice,
+                    Modifier.padding(16.dp).testTag(HOME_NOTICE_TAG),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Rows(state)
             }
@@ -114,6 +128,13 @@ private fun LightClientStrip(item: LightClientItem, modifier: Modifier = Modifie
 private fun BoxScope.Rows(state: HomeUiState) {
     when (state) {
         is HomeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+        is HomeUiState.ListUnavailable -> Text(
+            state.message,
+            Modifier.align(Alignment.Center).padding(24.dp).testTag(HOME_NOTICE_TAG),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center,
+        )
         is HomeUiState.Ready ->
             if (state.accounts.isEmpty()) {
                 NoAccounts(Modifier.align(Alignment.Center))

@@ -5,6 +5,8 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.LightClient
@@ -67,7 +69,7 @@ class HomeViewModelTest {
         runCurrent()
         assertEquals(HomeUiState.Ready("Sepolia", starting, emptyList()), viewModel.uiState.value)
 
-        repository.accounts.value = listOf(treasury)
+        repository.accounts = listOf(treasury)
         runCurrent()
         assertEquals(
             HomeUiState.Ready(
@@ -89,7 +91,7 @@ class HomeViewModelTest {
     @Test
     fun eachRowFollowsItsOwnAccountsBalance() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        repository.accounts.value = listOf(treasury, daily)
+        repository.accounts = listOf(treasury, daily)
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
 
@@ -132,7 +134,7 @@ class HomeViewModelTest {
     @Test
     fun aRowShowsUpAtOnceAndSaysItIsCheckingUntilItsFirstReading() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        repository.accounts.value = listOf(treasury)
+        repository.accounts = listOf(treasury)
         balances.silent += treasury.address
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -141,6 +143,61 @@ class HomeViewModelTest {
         val row = (viewModel.uiState.value as HomeUiState.Ready).accounts.single()
         assertEquals("Checking…", row.balance)
         assertEquals(false, row.balanceVerified)
+    }
+
+    @Test
+    fun aStoredListThatIsNotWhatIsShownIsSaidSo() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+
+        repository.list.value = AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT)
+        runCurrent()
+        assertEquals(
+            HomeUiState.ListUnavailable(
+                "Sepolia",
+                starting,
+                "Your account list was saved by a newer version of Serotine. Update the app to see it.",
+            ),
+            viewModel.uiState.value,
+            "its own state, not an empty list",
+        )
+
+        repository.list.value = AccountList.Loaded(emptyList(), damagedListSetAside = true)
+        runCurrent()
+        assertEquals(
+            "Your saved account list was damaged and has been set aside. Add your accounts again.",
+            (viewModel.uiState.value as HomeUiState.Ready).notice,
+        )
+
+        // Accounts added since the list was set aside: the notice stays, beside their balances.
+        repository.list.value = AccountList.Loaded(listOf(treasury), damagedListSetAside = true)
+        balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 9)
+        runCurrent()
+        val ready = viewModel.uiState.value as HomeUiState.Ready
+        assertEquals(
+            "Your saved account list was damaged and has been set aside. Add your accounts again.",
+            ready.notice,
+        )
+        assertEquals(listOf("1 ETH"), ready.accounts.map { it.balance })
+    }
+
+    @Test
+    fun aListThatBecomesReadableAgainShowsItsRowsWithBalances() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.list.value = AccountList.Unreadable(AccountList.Reason.READ_FAILED)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals(HomeUiState.ListUnavailable::class, viewModel.uiState.value::class)
+
+        balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("2500000000000000000"), 9)
+        repository.list.value = AccountList.Loaded(listOf(treasury))
+        runCurrent()
+
+        val ready = viewModel.uiState.value as HomeUiState.Ready
+        assertEquals(listOf("2.5 ETH"), ready.accounts.map { it.balance })
+        assertEquals(null, ready.notice)
     }
 
     @Test
@@ -155,9 +212,14 @@ class HomeViewModelTest {
     }
 
     private class FakeAccountRepository : AccountRepository {
-        val accounts = MutableStateFlow<List<Account>>(emptyList())
-        override fun observeAccounts(): Flow<List<Account>> = accounts
-        override suspend fun add(account: Account): Boolean = error("not used by this test")
+        val list = MutableStateFlow<AccountList>(AccountList.Loaded(emptyList()))
+        var accounts: List<Account>
+            get() = (list.value as AccountList.Loaded).accounts
+            set(value) {
+                list.value = AccountList.Loaded(value)
+            }
+        override fun observeAccounts(): Flow<AccountList> = list
+        override suspend fun add(account: Account): AccountAdd = error("not used by this test")
     }
 
     private class FakeLightClient : LightClient {

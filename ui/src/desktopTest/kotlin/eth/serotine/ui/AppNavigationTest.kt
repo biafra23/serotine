@@ -20,20 +20,28 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.repository.AccountDerivation
+import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BalanceReading
-import eth.serotine.domain.repository.Derivation
+import eth.serotine.domain.repository.KeyImport
+import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
+import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
+import eth.serotine.ui.mnemonicimport.MNEMONIC_REPEAT_TAG
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -63,16 +71,18 @@ class AppNavigationTest {
     private val accounts = MutableStateFlow<List<Account>>(emptyList())
     private val graph = AppGraph(
         accounts = object : AccountRepository {
-            override fun observeAccounts(): Flow<List<Account>> = accounts
+            override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
 
-            override suspend fun add(account: Account): Boolean {
+            override suspend fun add(account: Account): AccountAdd {
                 accounts.update { it + account }
-                return true
+                return AccountAdd.Added
             }
         },
-        accountDerivation = object : AccountDerivation {
-            override suspend fun deriveFirstAccount(mnemonic: Mnemonic): Derivation =
-                Derivation.Derived(Address.of("0x" + "ab".repeat(20)))
+        keys = object : KeyStore {
+            override suspend fun describe() = KeyStoreDescription.Ready(passwordSet = false, KeyProtection.HARDWARE)
+
+            override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport =
+                KeyImport.Stored(Address.of("0x" + "ab".repeat(20)), KeyProtection.HARDWARE)
         },
         nativeBalances = object : NativeBalances {
             override fun observeBalance(address: Address): Flow<BalanceReading> = flowOf(BalanceReading.Syncing)
@@ -104,6 +114,9 @@ class AppNavigationTest {
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).performTextInput(
             "one two three four five six seven eight nine ten eleven twelve",
         )
+        // The first import sets the wallet password.
+        rule.onNodeWithTag(MNEMONIC_PASSWORD_TAG).performTextInput("correct horse")
+        rule.onNodeWithTag(MNEMONIC_REPEAT_TAG).performTextInput("correct horse")
         rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).performClick()
         rule.waitUntil { rule.onAllNodesWithText("Account 1").fetchSemanticsNodes().isNotEmpty() }
 

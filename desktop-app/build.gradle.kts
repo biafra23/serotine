@@ -36,6 +36,8 @@ dependencies {
     // Dispatchers.Main on the desktop JVM is the Swing event thread; the ViewModels'
     // viewModelScope needs it on the runtime classpath.
     implementation(libs.kotlinx.coroutines.swing)
+
+    testImplementation(kotlin("test"))
 }
 
 // The Myotis engine's host library (libmyotis_engine.{dylib,so,dll}) is not inside its jar
