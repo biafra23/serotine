@@ -42,12 +42,14 @@ fun main() {
             JOptionPane.ERROR_MESSAGE,
         )
     }
-    if (instance == null) tellAndExit("Serotine is already running.", JOptionPane.INFORMATION_MESSAGE)
+    if (instance == null) {
+        tellAndExit("Serotine is already running, or still closing.", JOptionPane.INFORMATION_MESSAGE)
+    }
     try {
         openWallet(dataDir)
     } finally {
-        // Never released by hand: the lock ends with the process, which application() ends
-        // itself; until then it must stay reachable, or the garbage collector would close it.
+        // Never released by hand: the lock ends with the process, which openWallet() ends;
+        // until then it must stay reachable, or the garbage collector would close it.
         Reference.reachabilityFence(instance)
     }
 }
@@ -97,9 +99,22 @@ private fun openWallet(dataDir: File) {
             App(graph)
         }
     }
-    node.shutdown()
-    exitProcess(0)
+    // The engine's network shutdown can be slow, and this process holds the instance lock
+    // until it exits: bounded, so a closed window never leaves a process without one that
+    // refuses the next launch for long. exitProcess in finally, so a shutdown that throws
+    // still ends the process.
+    try {
+        thread(name = "myotis-shutdown", isDaemon = true) { node.shutdown() }.join(ENGINE_SHUTDOWN_WAIT_MS)
+    } finally {
+        exitProcess(0)
+    }
 }
+
+/**
+ * How long a closing app waits for the engine to stop before it exits anyway: past the 15 s
+ * MyotisNode.shutdown() itself gives a boot in progress, so that boot is not cut off mid-start.
+ */
+private const val ENGINE_SHUTDOWN_WAIT_MS = 20_000L
 
 /**
  * Keeps [directory], the key store's envelopes, out of backups (docs/keys-and-signing.md,

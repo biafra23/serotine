@@ -36,7 +36,7 @@ android {
         // The four ABIs Android devices run today, the ones the native libraries ship for.
         // JNA's AAR also carries stubs for armeabi and MIPS, which Android dropped long ago;
         // this keeps them out of the APK. (Which of the four to ship is the owner's APK-size
-        // call: the engine library, once in, has only arm64-v8a and x86_64.)
+        // call: the engine library has only arm64-v8a and x86_64, the key store runs on all four.)
         ndk {
             abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
         }
@@ -91,8 +91,9 @@ android {
             // Turning this on needs keep rules first: for libsecp256k1's reflectively loaded
             // JNI binding (see data/build.gradle.kts), and for JNA, whose AAR ships none —
             // `-keep class com.sun.jna.** { *; }` plus the envelope's own mapping,
-            // `-keep class eth.serotine.data.keys.Sodium$* { *; }`. Without them the key
-            // store reports itself unavailable in a minified build.
+            // `-keep class eth.serotine.data.keys.Sodium$* { *; }`; and for the engine, whose
+            // AAR ships no rules either, `-keep class io.myotis.** { *; }`. Without them the key
+            // store and the light client report themselves unavailable in a minified build.
             isMinifyEnabled = false
         }
     }
@@ -136,4 +137,12 @@ dependencies {
     implementation(compose.ui)
     implementation(libs.androidx.activity.compose)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+    constraints {
+        // JNA's classes come from the libsodium bindings' AAR here (:data drops the engine's
+        // JNA jar on Android, which took the engine's own strict pin with it), and the native
+        // stub may come from either AAR: both must stay the engine's JNA, or a pickFirst stub
+        // pairs with classes of another version and fails at run time only. Strict, so any
+        // library that wants another JNA fails the build instead.
+        implementation(libs.jna) { version { strictly(libs.versions.jna.get()) } }
+    }
 }

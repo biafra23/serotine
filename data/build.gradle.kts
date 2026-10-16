@@ -1,7 +1,7 @@
 // :data — the adapters behind the domain's ports: repository implementations and the
-// data sources they read (today the account list kept in a file and the key store that
-// seals imported seeds in envelopes, docs/keys-and-signing.md; next the Myotis engine
-// behind an `io.myotis.api` adapter, see docs/embedding-myotis.md). Depends on
+// data sources they read: the account list kept in a file, the key store that seals
+// imported seeds in envelopes (docs/keys-and-signing.md), and the Myotis engine behind an
+// `io.myotis.api` adapter (docs/embedding-myotis.md). Depends on
 // :domain only; :ui never depends on this module — the hosts' composition roots wire
 // it in.
 //

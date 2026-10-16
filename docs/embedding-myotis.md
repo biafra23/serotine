@@ -18,7 +18,9 @@ it, which is when the coordinates below resolve.
 
 Its whole third-party graph is JNA, slf4j and minimal-json; JNA is pinned
 strictly to the native stub the AAR carries, so never force another JNA
-version. Entry point: `io.myotis.engine.Myotis` (`isAvailable()`,
+version. On Android, Serotine takes JNA's classes from the libsodium bindings'
+JNA AAR instead of the engine's jar (the two would duplicate them), and the app
+re-states the strict pin as a constraint (`android-app/build.gradle.kts`). Entry point: `io.myotis.engine.Myotis` (`isAvailable()`,
 `newEngine()`, `defaultPorts(...)`); the consumer guide is
 `docs/android-library.md` in the Myotis repository.
 

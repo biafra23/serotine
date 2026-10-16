@@ -169,6 +169,35 @@ class HomeViewModelTest {
             "Your saved account list was damaged and has been set aside. Add your accounts again.",
             (viewModel.uiState.value as HomeUiState.Ready).notice,
         )
+
+        // Accounts added since the list was set aside: the notice stays, beside their balances.
+        repository.list.value = AccountList.Loaded(listOf(treasury), damagedListSetAside = true)
+        balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 9)
+        runCurrent()
+        val ready = viewModel.uiState.value as HomeUiState.Ready
+        assertEquals(
+            "Your saved account list was damaged and has been set aside. Add your accounts again.",
+            ready.notice,
+        )
+        assertEquals(listOf("1 ETH"), ready.accounts.map { it.balance })
+    }
+
+    @Test
+    fun aListThatBecomesReadableAgainShowsItsRowsWithBalances() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.list.value = AccountList.Unreadable(AccountList.Reason.READ_FAILED)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals(HomeUiState.ListUnavailable::class, viewModel.uiState.value::class)
+
+        balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("2500000000000000000"), 9)
+        repository.list.value = AccountList.Loaded(listOf(treasury))
+        runCurrent()
+
+        val ready = viewModel.uiState.value as HomeUiState.Ready
+        assertEquals(listOf("2.5 ETH"), ready.accounts.map { it.balance })
+        assertEquals(null, ready.notice)
     }
 
     @Test
