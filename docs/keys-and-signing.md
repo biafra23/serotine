@@ -452,10 +452,12 @@ value:
    is an EIP-7702 delegation to such an account, and the delegation itself is
    still signed by the secp256k1 key.
 2. **An independent second view.** A threshold-2 Safe whose second signer runs
-   on a different device and decodes the transaction itself, from the chain
-   (or from the Safe Transaction Service once that data source is decided
-   under *Data sources* in CLAUDE.md), never from the description the first
-   device sent. A hardware wallet co-signer does this with its own screen.
+   on a different device and decodes the transaction itself, never from the
+   description the first device sent. The request reaches it as a QR code or
+   as text with no off-chain service in between (owner ruling, 2026-10-16,
+   under *Data sources* in CLAUDE.md): it carries the raw `SafeTx` fields,
+   which the co-signer decodes, hashes and checks against the Safe's
+   verified state. A hardware wallet co-signer does this with its own screen.
    Myotis can be that independent decoder for a desktop confirmation, as long
    as it never trusts the phone's description of the transaction.
 3. **A smaller chance of the defect.** The signing path is one small,
