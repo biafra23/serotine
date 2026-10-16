@@ -3,9 +3,10 @@ package eth.serotine.data.engine
 import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
@@ -34,9 +35,10 @@ class EngineLightClient internal constructor(
             while (true) {
                 val snapshot = try {
                     chain.snapshot()
-                } catch (e: CancellationException) {
-                    throw e
                 } catch (e: Throwable) {
+                    // A cancellation of this poll ends it; anything else, a CancellationException
+                    // the engine's own code throws included, is a failed poll, skipped.
+                    currentCoroutineContext().ensureActive()
                     null
                 }
                 if (snapshot == EngineSnapshot.Down) {
