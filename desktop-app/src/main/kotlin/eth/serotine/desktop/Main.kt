@@ -7,13 +7,18 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
 import java.awt.GraphicsEnvironment
 import java.io.File
+import java.io.IOException
+import java.lang.ref.Reference
 import javax.swing.JOptionPane
+import javax.swing.SwingUtilities
 import kotlin.concurrent.thread
+import kotlin.system.exitProcess
 
 /**
  * The desktop composition root: builds the [AppGraph] from this platform's adapters and
@@ -23,30 +28,44 @@ import kotlin.concurrent.thread
  */
 fun main() {
     val dataDir = appDataDir()
-    val instance = InstanceLock.acquire(dataDir.resolve("serotine.lock"))
-    if (instance == null) {
-        val message = "Serotine is already running."
-        System.err.println(message)
-        if (!GraphicsEnvironment.isHeadless()) {
+    val instance = try {
+        InstanceLock.acquire(dataDir.resolve("serotine.lock"))
+    } catch (e: IOException) {
+        tellAndExit("Serotine cannot use its data directory $dataDir: ${e.message ?: e::class.simpleName}")
+    }
+    if (instance == null) tellAndExit("Serotine is already running.")
+    try {
+        openWallet(dataDir)
+    } finally {
+        // Never released by hand: the lock ends with the process, which application() ends
+        // itself; until then it must stay reachable, or the garbage collector would close it.
+        Reference.reachabilityFence(instance)
+    }
+}
+
+/** Says [message] (a dialog where there is a screen, stderr always) and ends the process with status 1. */
+private fun tellAndExit(message: String): Nothing {
+    System.err.println(message)
+    if (!GraphicsEnvironment.isHeadless()) {
+        SwingUtilities.invokeAndWait {
             JOptionPane.showMessageDialog(null, message, "Serotine", JOptionPane.INFORMATION_MESSAGE)
         }
-        return
     }
-    // use: holds the lock, and keeps it reachable, until the application ends.
-    instance.use { openWallet(dataDir) }
+    exitProcess(1)
 }
 
 private fun openWallet(dataDir: File) {
     val keys = dataDir.resolve("keys")
     excludeFromBackups(keys)
+    // Before the window: on a Mac with no wallet yet this asks the Secure Enclave once.
+    val hardware = desktopHardwareSecret(keys.path)
     application {
         val graph = remember {
             AppGraph(
                 accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
-                // The password alone where there is no hardware key store (the owner's
-                // ruling of 2026-10-15). A Mac's Secure Enclave waits for a signed app: it
-                // gives keys only to an app with a keychain-access-group entitlement.
-                keys = EnvelopeKeyStore(keys.path, hardware = null),
+                // A Mac's Secure Enclave where the wallet uses it or can start to, the
+                // password alone otherwise (the owner's rulings of 2026-10-15 and -16).
+                keys = EnvelopeKeyStore(keys.path, hardware),
                 network = Network.SEPOLIA,
             )
         }
@@ -90,7 +109,10 @@ private fun appDataDir(): File {
     val home = File(System.getProperty("user.home"))
     return when {
         "mac" in os -> home.resolve("Library/Application Support/Serotine")
-        "win" in os -> (System.getenv("LOCALAPPDATA")?.let(::File) ?: home.resolve("AppData/Local")).resolve("Serotine")
+        // Not %LOCALAPPDATA%\Serotine: the per-user msi installs the app there, and the keys
+        // must not share a directory an uninstaller, an upgrade or a user cleaning up owns.
+        "win" in os -> (System.getenv("LOCALAPPDATA")?.let(::File) ?: home.resolve("AppData/Local"))
+            .resolve("eth.serotine")
         else -> (System.getenv("XDG_DATA_HOME")?.let(::File) ?: home.resolve(".local/share")).resolve("serotine")
     }
 }

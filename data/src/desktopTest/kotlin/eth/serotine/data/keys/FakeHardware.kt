@@ -7,6 +7,7 @@ internal class FakeHardware(
     override val tag: String = "fake-hw-v1",
     private val key: Byte = 42,
     private val claims: () -> KeyProtection = { KeyProtection.HARDWARE },
+    override val everyGuessNeedsDevice: Boolean = true,
 ) : HardwareSecret {
     override val protection: KeyProtection
         get() = claims()

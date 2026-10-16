@@ -556,10 +556,10 @@ discussion that produced this note.
     accounts can be derived without the words (owner ruling, 2026-10-15).
   - A desktop without a hardware key store stands on the password path alone,
     with Argon2id run harder, and the app tells the user so; a Mac with a
-    Secure Enclave uses it as iOS does (owner ruling, 2026-10-15). That waits
-    until the desktop app is signed, since the Secure Enclave serves only
-    entitled apps; iOS's envelope waits for the iOS app (owner rulings,
-    2026-10-16).
+    Secure Enclave uses it as iOS does (owner ruling, 2026-10-15), the app
+    signed or not: unsigned, its key is bound to the Mac though not yet to
+    the app, which signing adds (owner ruling, 2026-10-16). iOS's envelope
+    waits for the iOS app (owner ruling, 2026-10-16).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with
     Myotis, and the dApp connection protocol (WalletConnect is the candidate;

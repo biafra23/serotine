@@ -1,11 +1,13 @@
 package eth.serotine.desktop
 
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -17,6 +19,7 @@ class InstanceLockTest {
 
     @AfterTest
     fun cleanUp() {
+        directory.setWritable(true)
         directory.deleteRecursively()
     }
 
@@ -25,10 +28,18 @@ class InstanceLockTest {
         val first = assertNotNull(InstanceLock.acquire(file), "the data directory is created too")
 
         assertEquals("held", probe(), "another process")
-        assertNull(InstanceLock.acquire(file), "this process again")
-
         first.close()
         assertEquals("acquired", probe(), "free once the first one ends")
+    }
+
+    @Test
+    fun askingAgainInTheSameProcessKeepsTheLock() {
+        val first = assertNotNull(InstanceLock.acquire(file))
+
+        assertNull(InstanceLock.acquire(file), "this process holds it")
+        // On macOS and Linux, closing a second descriptor of the file would have dropped the lock.
+        assertEquals("held", probe(), "still held for everyone else")
+        first.close()
     }
 
     @Test
@@ -38,19 +49,43 @@ class InstanceLockTest {
         assertEquals("acquired", probe(crash = true))
         assertTrue(file.exists())
 
-        assertNotNull(InstanceLock.acquire(file)).close()
+        // Windows releases a dead process's locks "depending on available system resources".
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        var lock = InstanceLock.acquire(file)
+        while (lock == null && System.nanoTime() < deadline) {
+            Thread.sleep(100)
+            lock = InstanceLock.acquire(file)
+        }
+        assertNotNull(lock).close()
+    }
+
+    @Test
+    fun aDataDirectoryThatCannotBeCreatedIsAnErrorNotARefusal() {
+        val readOnly = directory.resolve("read-only").apply { mkdirs() }
+        if (!readOnly.setWritable(false) || readOnly.canWrite()) return // running as root: nothing to test
+
+        try {
+            assertFailsWith<IOException> { InstanceLock.acquire(readOnly.resolve("data/serotine.lock")) }
+        } finally {
+            readOnly.setWritable(true)
+        }
     }
 
     /** Asks another JVM to take the lock: what a second Serotine would see. */
     private fun probe(crash: Boolean = false): String {
         val java = File(System.getProperty("java.home"), "bin/java").path
         val classPath = System.getProperty("java.class.path")
+        val output = File.createTempFile("probe", ".txt", directory)
         val process = ProcessBuilder(java, "-cp", classPath, LockProbe::class.java.name, file.path, crash.toString())
             .redirectErrorStream(true)
+            .redirectOutput(output)
             .start()
-        val output = process.inputStream.bufferedReader().readText().trim()
-        assertTrue(process.waitFor(60, TimeUnit.SECONDS), "the probe finishes")
-        return output
+        try {
+            assertTrue(process.waitFor(60, TimeUnit.SECONDS), "the probe finishes")
+            return output.readText().trim()
+        } finally {
+            process.destroyForcibly()
+        }
     }
 }
 

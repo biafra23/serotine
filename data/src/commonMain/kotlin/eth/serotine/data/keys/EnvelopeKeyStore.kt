@@ -24,8 +24,9 @@ import kotlinx.serialization.json.Json
  * [KeyStore] in the key adapter: each imported seed sealed in its own envelope ([Envelope]),
  * one file per account (`<address>.seed`) under [directory]. [hardware] is this device's
  * hardware secret, or null on a computer without one. Argon2id runs at the lighter cost only
- * when that secret really lives in secure hardware; a software key store or none, and the
- * envelope must hold up against an offline attack on the password alone (rules 2 and 9).
+ * when that secret really lives in secure hardware and every guess needs it; otherwise (a
+ * software key store, a stored secret the hardware unwraps, none) the envelope must hold up
+ * against an offline attack on the password alone (rules 2 and 9).
  *
  * The seed, the keys and the password's bytes exist only inside a call, as byte arrays this
  * code zeroes before it returns. Files are written durably and readable by this user alone
@@ -116,7 +117,7 @@ class EnvelopeKeyStore(
             if (!verified && !longEnough) return KeyImport.PasswordTooShort
             if (!alreadyStored) {
                 // Also over a file of this name that cannot be opened: its seed is at hand.
-                val sealed = Envelope.seal(seed, address, password, hardware, costFor(protection))
+                val sealed = Envelope.seal(seed, address, password, hardware, cost(protection))
                 val written = withContext(NonCancellable) {
                     try {
                         EnvelopeCrypto.createPrivateDirectory(directory)
@@ -135,6 +136,12 @@ class EnvelopeKeyStore(
         } finally {
             seed.fill(0)
         }
+    }
+
+    /** The lighter cost only where every guess really needs the device's secure hardware. */
+    private fun cost(protection: KeyProtection): Envelope.Cost {
+        val everyGuessInHardware = protection == KeyProtection.HARDWARE && hardware?.everyGuessNeedsDevice == true
+        return if (everyGuessInHardware) HARDWARE_COST else PASSWORD_ONLY_COST
     }
 
     private class Stored(val address: String, val sealed: SealedSeed)
@@ -196,9 +203,6 @@ class EnvelopeKeyStore(
          */
         val PASSWORD_ONLY_COST = Envelope.Cost(opsLimit = 4, memLimitBytes = 256L * 1024 * 1024)
 
-        /** The lighter cost only where every guess really needs the device's secure hardware. */
-        fun costFor(protection: KeyProtection): Envelope.Cost =
-            if (protection == KeyProtection.HARDWARE) HARDWARE_COST else PASSWORD_ONLY_COST
 
         const val SEED_SUFFIX = ".seed"
 

@@ -109,6 +109,15 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun aStoredSecretTheHardwareUnwrapsGetsTheFullCostToo() = runTest {
+        // The Secure Enclave's kind: in hardware, but one unwrap and the search can leave the device.
+        store(FakeHardware(everyGuessNeedsDevice = false)).importMnemonic(hardhat, password)
+
+        val sealed = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(4L to 256L * 1024 * 1024, sealed.opsLimit to sealed.memLimitBytes)
+    }
+
+    @Test
     fun filesThatCannotBeReadOrOpenedHereArePassedOver() = runTest {
         directory.resolve("0x" + "aa".repeat(20) + ".seed").writeText("{ not an envelope")
         val foreign = Envelope.seal(
