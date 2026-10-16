@@ -59,20 +59,28 @@ internal object Sodium {
 
     private fun libraryName(): String {
         if (isAndroid()) return "sodium"
-        val os = System.getProperty("os.name").lowercase()
-        val arch = System.getProperty("os.arch").lowercase()
-        val resource = when {
-            "mac" in os -> "libdynamic-macos.dylib"
-            "win" in os -> "libdynamic-msvc-x86-64-libsodium.dll"
-            arch == "aarch64" || arch == "arm64" -> "libdynamic-linux-arm64-libsodium.so"
-            else -> "libdynamic-linux-x86-64-libsodium.so"
-        }
-        val stream = Sodium::class.java.classLoader.getResourceAsStream(resource)
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        val arch = System.getProperty("os.arch").orEmpty().lowercase()
+        val resource = desktopResource(os, arch)
+        val stream = Sodium::class.java.classLoader?.getResourceAsStream(resource)
             ?: error("no libsodium for $os/$arch")
         val file = File.createTempFile("serotine-libsodium", resource.substringAfterLast('.').let { ".$it" })
         file.deleteOnExit()
         stream.use { input -> file.outputStream().use { input.copyTo(it) } }
         return file.absolutePath
+    }
+
+    /**
+     * The name of the libsodium binary the bindings' jar ships for [os] and [arch] (both lower
+     * case, as the JVM reports them): a universal dylib for macOS, x64 for Windows, x64 and
+     * arm64 for Linux. Windows on ARM gets the x64 name, which an arm64 JVM cannot load, so the
+     * key store is unavailable there rather than wrong.
+     */
+    internal fun desktopResource(os: String, arch: String): String = when {
+        "mac" in os -> "libdynamic-macos.dylib"
+        "win" in os -> "libdynamic-msvc-x86-64-libsodium.dll"
+        arch == "aarch64" || arch == "arm64" -> "libdynamic-linux-arm64-libsodium.so"
+        else -> "libdynamic-linux-x86-64-libsodium.so"
     }
 
     private fun isAndroid(): Boolean =

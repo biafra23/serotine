@@ -2,6 +2,7 @@ package eth.serotine.desktop
 
 import java.io.File
 import java.io.IOException
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -61,8 +62,11 @@ class InstanceLockTest {
 
     @Test
     fun aDataDirectoryThatCannotBeCreatedIsAnErrorNotARefusal() {
+        // A read-only directory needs POSIX permissions (Windows' read-only flag does not stop
+        // creating files in it) and a user they bind (not root).
+        if ("posix" !in FileSystems.getDefault().supportedFileAttributeViews()) return
         val readOnly = directory.resolve("read-only").apply { mkdirs() }
-        if (!readOnly.setWritable(false) || readOnly.canWrite()) return // running as root: nothing to test
+        if (!readOnly.setWritable(false) || readOnly.canWrite()) return
 
         try {
             assertFailsWith<IOException> { InstanceLock.acquire(readOnly.resolve("data/serotine.lock")) }

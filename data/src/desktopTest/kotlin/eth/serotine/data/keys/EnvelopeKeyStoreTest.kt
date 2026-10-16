@@ -11,8 +11,10 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import org.junit.Assume.assumeTrue
 import java.io.File
 import java.nio.file.FileAlreadyExistsException
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.AfterTest
@@ -258,6 +260,8 @@ class EnvelopeKeyStoreTest {
 
     @Test
     fun theDirectoryAndTheEnvelopesAreThisUsersAlone() = runTest {
+        // Owner permissions exist where the file system has them (not on Windows), as in EnvelopeCrypto.
+        assumeTrue("no POSIX permissions here", "posix" in FileSystems.getDefault().supportedFileAttributeViews())
         store().importMnemonic(hardhat, password)
 
         assertEquals("rwx------", PosixFilePermissions.toString(Files.getPosixFilePermissions(directory.toPath())))
