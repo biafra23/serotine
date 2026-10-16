@@ -6,14 +6,17 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
@@ -117,7 +120,10 @@ class MnemonicImportViewModelTest {
 
         assertEquals(Imported("Account 1"), viewModel.uiState.value)
         assertEquals(twelveWords, keys.received.single().text)
-        assertEquals(listOf(Account(address, AccountKind.EOA, "Account 1")), repository.accounts.value)
+        assertEquals(
+            listOf(Account(address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
+            repository.accounts.value,
+        )
     }
 
     @Test
@@ -139,7 +145,7 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun anAccountAlreadyInTheWalletIsAnError() = runTest {
-        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Daily"))
+        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Daily", AccountCustody.InKeyStore))
         keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
         typeWordsAndPassword()
 
@@ -213,7 +219,10 @@ class MnemonicImportViewModelTest {
 
         // Half an import would leave a stored key without its account.
         assertEquals(Imported("Account 1"), viewModel.uiState.value)
-        assertEquals(listOf(Account(address, AccountKind.EOA, "Account 1")), repository.accounts.value)
+        assertEquals(
+            listOf(Account(address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
+            repository.accounts.value,
+        )
     }
 
     @Test
@@ -373,6 +382,8 @@ class MnemonicImportViewModelTest {
             received += mnemonic
             return next.await().also { if (it is KeyImport.Stored) passwordSet = true }
         }
+
+        override suspend fun delete(address: Address): KeyDeletion = error("not used by this test")
     }
 
     private class FakeAccountRepository : AccountRepository {
@@ -391,5 +402,9 @@ class MnemonicImportViewModelTest {
             }
             return if (added) AccountAdd.Added else AccountAdd.AlreadyPresent
         }
+
+        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+
+        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
     }
 }

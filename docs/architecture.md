@@ -2,9 +2,9 @@
 
 Serotine is laid out as a clean architecture with MVVM in the presentation
 layer. This page is the contract every change is held to (the reviewer reads
-it through CLAUDE.md); the skeleton's two vertical slices — the Home screen
-listing the managed accounts, and the seed-phrase screen that adds one — show
-each rule in code.
+it through CLAUDE.md); the Assets tab listing the managed accounts, an
+account's own screens, and the recovery-phrase screen that adds one show each
+rule in code.
 
 ## The modules and the dependency rule
 
@@ -58,15 +58,15 @@ review finding, whatever it saves.
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
 | `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`; later `tokens`, `prices`, `safe`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
-| `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu); no ViewModel, no use case |
-| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture) |
+| `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu) and the display helpers they share (EIP-55, amounts, the light client's line); no ViewModel, no use case |
+| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, the clipboard, the share sheet) |
 | `eth.serotine.ui.theme` | Material 3 theme |
 | `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
 
 ## MVVM, the contract
 
-- **A screen is a pure function of its UiState.** `HomeScreen(state)` renders
-  any `HomeUiState` and holds no state of its own beyond transient UI details
+- **A screen is a pure function of its UiState.** `AssetsScreen(state)` renders
+  any `AssetsUiState` and holds no state of its own beyond transient UI details
   (scroll position, an expanded row). A UiState is a sealed interface or an
   immutable data class; its leaves are display-ready values (strings, enums),
   never a `Flow`, a repository or a platform type.

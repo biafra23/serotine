@@ -1,9 +1,11 @@
 package eth.serotine.data.account
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -32,8 +34,12 @@ class FileAccountRepositoryTest {
     private val directory = Path(SystemTemporaryDirectory, "serotine-accounts-${Random.nextLong().toULong()}")
     private val file = Path(directory, "accounts.json")
 
-    private val eoa = Account(Address.of("0x" + "aa".repeat(20)), AccountKind.EOA, "Account 1")
-    private val safe = Account(Address.of("0x" + "bb".repeat(20)), AccountKind.SAFE, "Treasury")
+    private val eoa =
+        Account(Address.of("0x" + "aa".repeat(20)), AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)
+    private val safe =
+        Account(Address.of("0x" + "bb".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
+    private val watched =
+        Account(Address.of("0x" + "dd".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched)
 
     private fun TestScope.repository(at: Path = file) =
         FileAccountRepository(at.toString(), StandardTestDispatcher(testScheduler))
@@ -76,14 +82,73 @@ class FileAccountRepositoryTest {
     }
 
     @Test
-    fun theFileIsVersionedAndHoldsAddressesKindsAndLabelsOnly() = runTest {
+    fun theFileIsVersionedAndHoldsAddressesKindsLabelsAndCustodyOnly() = runTest {
         repository().add(eoa)
+        repository().add(watched)
 
         assertEquals(
-            """{"version":1,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
-                """"kind":"EOA","label":"Account 1"}]}""",
+            """{"version":2,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
+                """"kind":"EOA","label":"Account 1","custody":"key-store"},""" +
+                """{"address":"0xdddddddddddddddddddddddddddddddddddddddd",""" +
+                """"kind":"EOA","label":"Savings","custody":"watched"}]}""",
             text(file),
         )
+        assertEquals(AccountList.Loaded(listOf(eoa, watched)), repository().observeAccounts().first())
+    }
+
+    @Test
+    fun aFormatOneFileReadsAsAccountsInTheKeyStoreAndIsWrittenAsFormatTwo() = runTest {
+        // Format 1 knew no custody: every account in it came from a recovery phrase.
+        put(
+            file,
+            """{"version":1,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
+                """"kind":"EOA","label":"Account 1"}]}""",
+        )
+        val repository = repository()
+
+        assertEquals(AccountList.Loaded(listOf(eoa)), repository.observeAccounts().first())
+        assertEquals(AccountAdd.Added, repository.add(watched))
+        assertTrue(text(file).startsWith("""{"version":2,"""))
+        assertEquals(AccountList.Loaded(listOf(eoa, watched)), repository().observeAccounts().first())
+    }
+
+    @Test
+    fun aFormatTwoEntryWithoutCustodyIsDamage() = runTest {
+        put(
+            file,
+            """{"version":2,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
+                """"kind":"EOA","label":"Account 1"}]}""",
+        )
+
+        assertEquals(
+            AccountList.Loaded(emptyList(), damagedListSetAside = true),
+            repository().observeAccounts().first(),
+        )
+        assertEquals(1, setAside().size)
+    }
+
+    @Test
+    fun renameAndRemoveChangeOneEntryAndSurviveARestart() = runTest {
+        val repository = repository()
+        repository.add(eoa)
+        repository.add(safe)
+
+        assertEquals(AccountChange.Changed, repository.rename(eoa.address, "Spending"))
+        assertEquals(AccountChange.Changed, repository.remove(safe.address))
+
+        assertEquals(AccountList.Loaded(listOf(eoa.copy(label = "Spending"))), repository().observeAccounts().first())
+        assertEquals(AccountList.Loaded(listOf(eoa.copy(label = "Spending"))), repository.observeAccounts().first())
+    }
+
+    @Test
+    fun renameAndRemoveOfAnAddressNotInTheListChangeNothing() = runTest {
+        val repository = repository()
+        repository.add(eoa)
+        val before = text(file)
+
+        assertEquals(AccountChange.NotFound, repository.rename(safe.address, "Treasury"))
+        assertEquals(AccountChange.NotFound, repository.remove(safe.address))
+        assertEquals(before, text(file))
     }
 
     @Test
@@ -130,12 +195,13 @@ class FileAccountRepositoryTest {
 
     @Test
     fun aNewerFormatIsLeftUntouchedAndNothingIsAdded() = runTest {
-        val newer = """{"version":2,"accounts":[],"wallets":[]}"""
+        val newer = """{"version":3,"accounts":[],"wallets":[]}"""
         put(file, newer)
         val repository = repository()
 
         assertEquals(AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT), repository.observeAccounts().first())
         assertEquals(AccountAdd.NotSaved, repository.add(eoa))
+        assertEquals(AccountChange.NotSaved, repository.remove(eoa.address))
         assertEquals(newer, text(file))
         assertEquals(emptyList(), setAside())
     }
@@ -187,7 +253,7 @@ class FileAccountRepositoryTest {
         // Another process adds an account behind this instance's back.
         repository().add(safe)
 
-        mine.add(Account(Address.of("0x" + "cc".repeat(20)), AccountKind.EOA, "Account 3"))
+        mine.add(Account(Address.of("0x" + "cc".repeat(20)), AccountKind.EOA, "Account 3", AccountCustody.InKeyStore))
 
         val stored = (repository().observeAccounts().first() as AccountList.Loaded).accounts
         assertEquals(listOf("Account 1", "Treasury", "Account 3"), stored.map { it.label })

@@ -1,14 +1,17 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
@@ -36,6 +39,9 @@ class ImportMnemonicAccountTest {
     private val repository = FakeAccountRepository()
     private val import = ImportMnemonicAccount(keys, repository)
 
+    private fun keyed(address: Address, label: String) =
+        Account(address, AccountKind.EOA, label, AccountCustody.InKeyStore)
+
     @Test
     fun addsTheDerivedAddressAsAnEoaNamedAfterItsPosition() = runTest {
         val mnemonic = Mnemonic("first words")
@@ -43,7 +49,7 @@ class ImportMnemonicAccountTest {
 
         val result = import(mnemonic, password)
 
-        val expected = Account(first, AccountKind.EOA, "Account 1")
+        val expected = Account(first, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)
         assertEquals(MnemonicImport.Added(expected, KeyProtection.HARDWARE), result)
         assertEquals(listOf(expected), repository.accounts.value)
         assertSame(mnemonic, keys.received.single().first, "the words reach the key store unchanged")
@@ -53,8 +59,8 @@ class ImportMnemonicAccountTest {
     @Test
     fun theNextAccountTakesTheFirstFreeName() = runTest {
         repository.accounts.value = listOf(
-            Account(Address.of("0x" + "aa".repeat(20)), AccountKind.SAFE, "Treasury"),
-            Account(Address.of("0x" + "bb".repeat(20)), AccountKind.EOA, "Account 3"),
+            Account(Address.of("0x" + "aa".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore),
+            Account(Address.of("0x" + "bb".repeat(20)), AccountKind.EOA, "Account 3", AccountCustody.InKeyStore),
         )
         val mnemonic = Mnemonic("second words")
         keys.results[mnemonic] = KeyImport.Stored(second, KeyProtection.HARDWARE)
@@ -62,14 +68,14 @@ class ImportMnemonicAccountTest {
         val result = import(mnemonic, password)
 
         assertEquals(
-            MnemonicImport.Added(Account(second, AccountKind.EOA, "Account 4"), KeyProtection.HARDWARE),
+            MnemonicImport.Added(keyed(second, "Account 4"), KeyProtection.HARDWARE),
             result,
         )
     }
 
     @Test
     fun anAddressAlreadyInTheWalletIsReportedAndLeftAlone() = runTest {
-        val existing = Account(first, AccountKind.EOA, "Daily")
+        val existing = Account(first, AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
         repository.accounts.value = listOf(existing)
         val mnemonic = Mnemonic("first words again")
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
@@ -87,7 +93,7 @@ class ImportMnemonicAccountTest {
 
         val result = import(mnemonic, password)
 
-        assertEquals(MnemonicImport.Added(Account(first, AccountKind.EOA, "Account 1"), KeyProtection.HARDWARE), result)
+        assertEquals(MnemonicImport.Added(keyed(first, "Account 1"), KeyProtection.HARDWARE), result)
     }
 
     @Test
@@ -106,7 +112,7 @@ class ImportMnemonicAccountTest {
         // The key is stored, so the same words again finish the job.
         repository.failSaves = false
         assertEquals(
-            MnemonicImport.Added(Account(first, AccountKind.EOA, "Account 1"), KeyProtection.HARDWARE),
+            MnemonicImport.Added(keyed(first, "Account 1"), KeyProtection.HARDWARE),
             import(mnemonic, password),
         )
     }
@@ -123,7 +129,7 @@ class ImportMnemonicAccountTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Account(first, AccountKind.EOA, "Account 1")),
+            listOf(Account(first, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
             repository.accounts.value,
             "the key was stored, so its account is added too",
         )
@@ -181,6 +187,8 @@ class ImportMnemonicAccountTest {
             delay(delayMillis)
             return results.getValue(mnemonic)
         }
+
+        override suspend fun delete(address: Address): KeyDeletion = error("not used by this test")
     }
 
     private class FakeAccountRepository : AccountRepository {
@@ -206,5 +214,9 @@ class ImportMnemonicAccountTest {
             }
             return if (added) AccountAdd.Added else AccountAdd.AlreadyPresent
         }
+
+        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+
+        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
     }
 }

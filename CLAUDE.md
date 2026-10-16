@@ -60,10 +60,12 @@ Modules (Gradle):
   target is what resolves the engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
-  `<Feature>ViewModel`, `<Feature>UiState`; the theme; `App` with the one
-  `NavHost` (a destination per screen, whose back-stack entry owns the
-  screen's ViewModel); and `AppGraph`, the composition root's contract (ports
-  in, ViewModel factories out). Depends on `:domain` only.
+  `<Feature>ViewModel`, `<Feature>UiState`; `components` for what several
+  screens draw (blockies, the QR code, EIP-55); the theme; `App` with the one
+  `NavHost` under the Assets | Settings bar (a destination per screen, whose
+  back-stack entry owns the screen's ViewModel); and `AppGraph`, the
+  composition root's contract (ports in, ViewModel factories out). Depends on
+  `:domain` only.
 - **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s

@@ -1,4 +1,4 @@
-package eth.serotine.ui.home
+package eth.serotine.ui.components
 
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
@@ -33,3 +33,6 @@ internal fun balanceText(reading: BalanceReading, network: Network): String = wh
         BalanceReading.Reason.UNPROVEN -> "Not verified"
     }
 }
+
+/** 11922744 → "11,922,744": a block number as the screens show it. */
+internal fun grouped(number: Long): String = number.toString().reversed().chunked(3).joinToString(",").reversed()

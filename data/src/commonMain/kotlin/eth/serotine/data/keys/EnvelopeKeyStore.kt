@@ -1,7 +1,9 @@
 package eth.serotine.data.keys
 
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
@@ -93,6 +95,23 @@ class EnvelopeKeyStore(
                 }
             }
         }
+
+    // A plain delete: the file system may keep the bytes until it reuses the blocks, which
+    // leaves ciphertext that still needs the password and, on a device with one, the
+    // hardware secret.
+    override suspend fun delete(address: Address): KeyDeletion = lock.withLock {
+        withContext(dispatcher + NonCancellable) {
+            val file = Path(directory, "${address.hex}$SEED_SUFFIX")
+            try {
+                if (!SystemFileSystem.exists(file)) return@withContext KeyDeletion.NotFound
+                SystemFileSystem.delete(file)
+                KeyDeletion.Deleted
+            } catch (e: Exception) {
+                report("could not delete the envelope of ${address.hex} (${e::class.simpleName})")
+                KeyDeletion.Failed
+            }
+        }
+    }
 
     private suspend fun import(words: List<String>, longEnough: Boolean, password: ByteArray): KeyImport {
         val provisioned = hardware?.isProvisioned() ?: true
