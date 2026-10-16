@@ -3,16 +3,18 @@ package eth.serotine.data.keys
 import com.sun.jna.IntegerType
 import com.sun.jna.Library
 import com.sun.jna.Native
+import com.sun.jna.Pointer
 import java.io.File
 
 /**
- * libsodium's `crypto_pwhash`, mapped with byte arrays. The bindings' own API takes the
+ * libsodium's `crypto_pwhash`, mapped with native buffers. The bindings' own API takes the
  * password as a String and passes its UTF-16 length as the byte count, while JNA encodes
  * the String to UTF-8: a non-ASCII password would be hashed only up to that many bytes,
  * and its bytes could not be zeroed. So the envelope maps the two functions it needs
  * itself, over the same libsodium binaries the bindings ship: on Android the APK's
  * `libsodium.so`, on the desktop the library for this OS and architecture, copied out of
- * the bindings' jar once per process.
+ * the bindings' jar once per process. The buffers are the caller's, so it can zero them
+ * ([EnvelopeCrypto.argon2id]).
  */
 internal object Sodium {
 
@@ -23,11 +25,11 @@ internal object Sodium {
         fun crypto_pwhash_alg_argon2id13(): Int
 
         fun crypto_pwhash(
-            out: ByteArray,
+            out: Pointer,
             outlen: Long, // unsigned long long
-            passwd: ByteArray,
+            passwd: Pointer,
             passwdlen: Long, // unsigned long long
-            salt: ByteArray,
+            salt: Pointer,
             opslimit: Long, // unsigned long long
             memlimit: SizeT,
             alg: Int,

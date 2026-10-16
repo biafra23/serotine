@@ -57,7 +57,7 @@ class MnemonicImportScreenTest {
             MnemonicImportUiState.Entering(
                 Mnemonic(twelveWords),
                 password = WalletPassword("correct horse"),
-                settingPassword = false,
+                step = PasswordStep.Existing(protection = "Kept in hardware."),
             ),
         )
 
@@ -93,7 +93,7 @@ class MnemonicImportScreenTest {
 
     @Test
     fun aNewPasswordIsAskedForTwiceAndAnExistingOneOnce() {
-        show(MnemonicImportUiState.Entering(Mnemonic(twelveWords), settingPassword = true))
+        show(MnemonicImportUiState.Entering(Mnemonic(twelveWords), step = PasswordStep.New(protection = "")))
         rule.onNodeWithText("New wallet password").assertExists()
         rule.onNodeWithTag(MNEMONIC_REPEAT_TAG).assertExists()
         rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).assertIsNotEnabled()
@@ -112,6 +112,43 @@ class MnemonicImportScreenTest {
 
         rule.onNodeWithTag(MNEMONIC_PASSWORD_TAG).assertDoesNotExist()
         rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).assertIsNotEnabled()
+    }
+
+    @Test
+    fun aKeyStoreThatDoesNotWorkHereIsSaidAndNothingCanBeAdded() {
+        show(
+            MnemonicImportUiState.Entering(
+                Mnemonic(twelveWords),
+                password = WalletPassword("correct horse"),
+                step = PasswordStep.Unavailable,
+            ),
+        )
+
+        rule.onNodeWithText("The key store does not work on this device", substring = true).assertIsDisplayed()
+        rule.onNodeWithTag(MNEMONIC_PASSWORD_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).assertIsNotEnabled()
+    }
+
+    @Test
+    fun aWrongPasswordIsShownAtThePasswordNotAtTheWords() {
+        show(
+            MnemonicImportUiState.Entering(
+                Mnemonic(twelveWords),
+                password = WalletPassword("correct horse"),
+                step = PasswordStep.Existing(protection = ""),
+                passwordError = "That is not the wallet password.",
+            ),
+        )
+
+        rule.onNodeWithText("That is not the wallet password.").assertIsDisplayed()
+        rule.onNodeWithText("12 words").assertIsDisplayed() // the words' own line is unchanged
+    }
+
+    @Test
+    fun theProtectionIsSaid() {
+        show(MnemonicImportUiState.Entering(Mnemonic.EMPTY, step = PasswordStep.Existing("Kept in hardware.")))
+
+        rule.onNodeWithText("Kept in hardware.", substring = true).assertExists()
     }
 
     @Test

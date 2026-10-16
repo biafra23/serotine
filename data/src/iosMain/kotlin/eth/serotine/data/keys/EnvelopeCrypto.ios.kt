@@ -10,6 +10,8 @@ internal actual object EnvelopeCrypto {
 
     actual fun randomBytes(size: Int): ByteArray = unsupported()
 
+    actual fun passwordBytes(text: String): ByteArray = unsupported()
+
     actual fun argon2id(
         password: ByteArray,
         salt: ByteArray,
@@ -23,6 +25,8 @@ internal actual object EnvelopeCrypto {
 
     actual fun aesGcmOpen(key: ByteArray, nonce: ByteArray, ciphertext: ByteArray, aad: ByteArray): ByteArray? =
         unsupported()
+
+    actual fun createPrivateDirectory(path: String): Unit = unsupported()
 
     actual fun writeDurably(path: String, bytes: ByteArray): Unit = unsupported()
 

@@ -6,15 +6,19 @@ import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.domain.repository.KeyStoreDescription
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class EnvelopeKeyStoreTest {
@@ -24,8 +28,17 @@ class EnvelopeKeyStoreTest {
     private val abandon = Mnemonic(List(11) { "abandon" }.joinToString(" ") + " about")
     private val password = WalletPassword("correct horse battery")
 
-    private fun TestScope.store() =
-        EnvelopeKeyStore(directory.path, hardware = null, StandardTestDispatcher(testScheduler))
+    private val hardhatAddress = Address.of("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+    private val abandonAddress = Address.of("0x9858EfFD232B4033E47d90003D41EC34EcaEda94")
+
+    private fun TestScope.store(hardware: HardwareSecret? = null) =
+        EnvelopeKeyStore(directory.path, hardware, StandardTestDispatcher(testScheduler))
+
+    private fun passwordOnly(address: Address) = KeyImport.Stored(address, KeyProtection.PASSWORD_ONLY)
+
+    private fun envelopeOf(address: Address): File = directory.resolve("${address.hex}.seed")
+
+    private fun sealedIn(file: File): SealedSeed = Json.decodeFromString(SealedSeed.serializer(), file.readText())
 
     @AfterTest
     fun cleanUp() {
@@ -35,13 +48,10 @@ class EnvelopeKeyStoreTest {
     @Test
     fun storesTheSeedAndNamesTheFirstAccountOtherWalletsShow() = runTest {
         val store = store()
-        assertFalse(store.hasPassword())
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
 
-        assertEquals(
-            KeyImport.Stored(Address.of("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"), KeyProtection.PASSWORD_ONLY),
-            store.importMnemonic(hardhat, password),
-        )
-        assertTrue(store.hasPassword())
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        assertEquals(KeyStoreDescription.Ready(passwordSet = true, KeyProtection.PASSWORD_ONLY), store.describe())
         assertEquals(
             listOf("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266.seed"),
             directory.list()!!.toList(),
@@ -55,18 +65,24 @@ class EnvelopeKeyStoreTest {
         store.importMnemonic(hardhat, password)
 
         assertEquals(KeyImport.WrongPassword, store.importMnemonic(abandon, WalletPassword("something else")))
+        assertEquals(KeyImport.WrongPassword, store.importMnemonic(abandon, WalletPassword("short")))
         assertEquals(1, directory.list()!!.size, "nothing stored on a wrong password")
-        assertEquals(
-            KeyImport.Stored(Address.of("0x9858EfFD232B4033E47d90003D41EC34EcaEda94"), KeyProtection.PASSWORD_ONLY),
-            store.importMnemonic(abandon, password),
-        )
+        assertEquals(passwordOnly(abandonAddress), store.importMnemonic(abandon, password))
+    }
+
+    @Test
+    fun aTooShortFirstPasswordIsRefused() = runTest {
+        val store = store()
+
+        assertEquals(KeyImport.PasswordTooShort, store.importMnemonic(hardhat, WalletPassword("short")))
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
     }
 
     @Test
     fun theStoredEnvelopeOpensWithThePasswordAndHoldsTheSeed() = runTest {
         store().importMnemonic(hardhat, password)
         val file = directory.listFiles()!!.single()
-        val sealed = kotlinx.serialization.json.Json.decodeFromString(SealedSeed.serializer(), file.readText())
+        val sealed = sealedIn(file)
 
         val opened = Envelope.open(sealed, password.text.encodeToByteArray(), null) as Envelope.Opened.Seed
         assertEquals(Bip39.seed(hardhat.words).toHex(), opened.bytes.toHex())
@@ -78,6 +94,115 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun theLighterCostIsOnlyForAKeyInSecureHardware() = runTest {
+        store(FakeHardware(claims = { KeyProtection.HARDWARE })).importMnemonic(hardhat, password)
+        val inHardware = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(3L to 64L * 1024 * 1024, inHardware.opsLimit to inHardware.memLimitBytes)
+
+        // An emulator's software key store: a copy of the device's storage yields its key.
+        assertEquals(
+            KeyImport.Stored(abandonAddress, KeyProtection.SOFTWARE_KEY_STORE),
+            store(FakeHardware(claims = { KeyProtection.SOFTWARE_KEY_STORE })).importMnemonic(abandon, password),
+        )
+        val inSoftware = sealedIn(envelopeOf(abandonAddress))
+        assertEquals(4L to 256L * 1024 * 1024, inSoftware.opsLimit to inSoftware.memLimitBytes)
+    }
+
+    @Test
+    fun filesThatCannotBeReadOrOpenedHereArePassedOver() = runTest {
+        directory.resolve("0x" + "aa".repeat(20) + ".seed").writeText("{ not an envelope")
+        val foreign = Envelope.seal(
+            ByteArray(64),
+            "0x" + "bb".repeat(20),
+            "correct horse battery".encodeToByteArray(),
+            FakeHardware(), // another device's secret: this store has none
+            Envelope.Cost(opsLimit = 2, memLimitBytes = Envelope.MIN_MEMORY_BYTES),
+        )
+        directory.resolve("0x" + "bb".repeat(20) + ".seed")
+            .writeText(Json.encodeToString(SealedSeed.serializer(), foreign))
+        val store = store()
+
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        // The one envelope this device can open decides the password from now on.
+        assertEquals(KeyImport.WrongPassword, store.importMnemonic(abandon, WalletPassword("another password")))
+    }
+
+    @Test
+    fun anEnvelopeUnderAnotherAccountsNameIsNotTrusted() = runTest {
+        val store = store()
+        store.importMnemonic(abandon, password)
+        // abandon's envelope, renamed to hardhat's: it opens, but it is not hardhat's seed.
+        envelopeOf(abandonAddress).copyTo(envelopeOf(hardhatAddress))
+
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatAddress)).address, "sealed again, for hardhat")
+    }
+
+    @Test
+    fun aDamagedEnvelopeIsSealedAgainOnTheNextImportOfItsWords() = runTest {
+        val store = store()
+        store.importMnemonic(abandon, password)
+        store.importMnemonic(hardhat, password)
+        envelopeOf(hardhatAddress).writeText("damaged")
+
+        assertEquals(KeyImport.WrongPassword, store.importMnemonic(hardhat, WalletPassword("another password")))
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        val opened = Envelope.open(sealedIn(envelopeOf(hardhatAddress)), password.text.encodeToByteArray(), null)
+        assertIs<Envelope.Opened.Seed>(opened)
+    }
+
+    @Test
+    fun anImportAlreadyDoneWritesNothing() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        val before = envelopeOf(hardhatAddress).readText()
+
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        assertEquals(before, envelopeOf(hardhatAddress).readText())
+    }
+
+    @Test
+    fun aCrashedWritesTemporaryIsSweptAway() = runTest {
+        directory.resolve("0x" + "cc".repeat(20) + ".seed.0123456789ab.tmp").writeText("half an envelope")
+
+        store().importMnemonic(hardhat, password)
+
+        assertEquals(listOf("${hardhatAddress.hex}.seed"), directory.list()!!.toList())
+    }
+
+    @Test
+    fun theDirectoryAndTheEnvelopesAreThisUsersAlone() = runTest {
+        store().importMnemonic(hardhat, password)
+
+        assertEquals("rwx------", PosixFilePermissions.toString(Files.getPosixFilePermissions(directory.toPath())))
+        assertEquals(
+            "rw-------",
+            PosixFilePermissions.toString(Files.getPosixFilePermissions(envelopeOf(hardhatAddress).toPath())),
+        )
+    }
+
+    @Test
+    fun aFailingHardwareKeyStoreIsUnavailableNotACrash() = runTest {
+        val store = store(FakeHardware(claims = { throw IllegalStateException("the secure element is gone") }))
+
+        assertEquals(KeyStoreDescription.Unavailable, store.describe())
+        assertEquals(KeyImport.Unavailable, store.importMnemonic(hardhat, password))
+        assertTrue(directory.list()!!.isEmpty(), "nothing written")
+    }
+
+    @Test
+    fun theSamePasswordComposedDifferentlyIsTheSamePassword() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, WalletPassword("pässwort und mehr")) // "ä" as one code point
+
+        assertEquals(
+            passwordOnly(abandonAddress),
+            store.importMnemonic(abandon, WalletPassword("pässwort und mehr")), // "a" + combining diaeresis
+        )
+    }
+
+    @Test
     fun wordsThatAreNotAMnemonicAreRefusedAndNothingIsStored() = runTest {
         val store = store()
 
@@ -85,6 +210,6 @@ class EnvelopeKeyStoreTest {
             KeyImport.Invalid(MnemonicProblem.Checksum),
             store.importMnemonic(Mnemonic(List(12) { "test" }.joinToString(" ")), password),
         )
-        assertFalse(store.hasPassword())
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
     }
 }

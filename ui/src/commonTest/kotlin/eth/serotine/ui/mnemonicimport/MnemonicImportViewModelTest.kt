@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
@@ -188,7 +189,27 @@ class MnemonicImportViewModelTest {
     }
 
     @Test
-    fun hidingTheScreenAbandonsARunningAttemptAndItsWords() = runTest {
+    fun hidingTheScreenDropsTheWordsButFinishesARunningAttempt() = runTest {
+        val pending = CompletableDeferred<KeyImport>()
+        keys.next = pending
+        typeWordsAndPassword()
+        viewModel.onImport()
+        runCurrent()
+
+        viewModel.onHidden()
+        assertEquals("", entering().phrase.text)
+        assertEquals("", entering().password.text)
+        assertTrue(entering().importing, "still running, without the words")
+        pending.complete(KeyImport.Stored(address, KeyProtection.HARDWARE))
+        runCurrent()
+
+        // Half an import would leave a stored key without its account.
+        assertEquals(Imported("Account 1"), viewModel.uiState.value)
+        assertEquals(listOf(Account(address, AccountKind.EOA, "Account 1")), repository.accounts.value)
+    }
+
+    @Test
+    fun aLateRefusalAfterHidingDoesNotBringTheWordsBack() = runTest {
         val pending = CompletableDeferred<KeyImport>()
         keys.next = pending
         typeWordsAndPassword()
@@ -199,22 +220,48 @@ class MnemonicImportViewModelTest {
         pending.complete(KeyImport.Invalid(MnemonicProblem.Checksum))
         runCurrent()
 
-        assertEquals("", entering().phrase.text, "a late answer must not bring the words back")
+        assertEquals("", entering().phrase.text)
+        assertEquals("", entering().password.text)
         assertFalse(entering().importing)
-        assertNull(entering().error)
     }
 
     @Test
-    fun aFailedSaveIsSaidAndTheWordsStay() = runTest {
+    fun aKeyStoredWithoutItsListEntryIsSaidAndThePasswordIsNowTheWallets() = runTest {
+        keys.passwordSet = false
         repository.failSaves = true
         keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
-        typeWordsAndPassword()
+        viewModel.onPhraseChange(twelveWords)
+        viewModel.onPasswordChange(password)
+        viewModel.onRepeatChange(password)
 
         viewModel.onImport()
         runCurrent()
 
-        assertEquals("The account could not be saved on this device. Nothing was added.", entering().error)
+        assertEquals(
+            "The key is stored, but the account list could not be saved. Add the same words again to finish.",
+            entering().error,
+        )
         assertEquals(twelveWords, entering().phrase.text)
+        assertIs<PasswordStep.Existing>(entering().step, "the key store is asked again: a password is set now")
+        assertTrue(entering().canImport, "the same words and password finish the job")
+    }
+
+    @Test
+    fun aKeyStoreThatDoesNotWorkHereIsSaidAndNothingCanBeAdded() {
+        keys.description = { KeyStoreDescription.Unavailable }
+        typeWordsAndPassword()
+
+        assertEquals(PasswordStep.Unavailable, entering().step)
+        assertFalse(entering().canImport)
+    }
+
+    @Test
+    fun aKeyStoreThatThrowsWhileDescribingIsUnavailableNotACrash() {
+        keys.description = { throw IllegalStateException("the secure element is gone") }
+        typeWordsAndPassword()
+
+        assertEquals(PasswordStep.Unavailable, entering().step)
+        assertFalse(entering().canImport)
     }
 
     @Test
@@ -240,7 +287,7 @@ class MnemonicImportViewModelTest {
     fun theFirstImportSetsThePasswordTypedTwice() {
         keys.passwordSet = false
         viewModel.onPhraseChange(twelveWords)
-        assertEquals(true, entering().settingPassword)
+        assertIs<PasswordStep.New>(entering().step)
 
         viewModel.onPasswordChange("short")
         assertEquals("At least 8 characters", entering().passwordHint)
@@ -256,7 +303,7 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun theDeviceProtectionIsSaid() {
-        assertTrue(entering().protection!!.contains("secure hardware"))
+        assertTrue(assertIs<PasswordStep.Existing>(entering().step).protection.contains("secure hardware"))
     }
 
     @Test
@@ -267,8 +314,23 @@ class MnemonicImportViewModelTest {
         viewModel.onImport()
         runCurrent()
 
-        assertEquals("That is not the wallet password.", entering().error)
+        assertEquals("That is not the wallet password.", entering().passwordHint, "said at the password")
+        assertNull(entering().error)
         assertEquals(emptyList(), repository.accounts.value)
+
+        viewModel.onPasswordChange("$password!")
+        assertNull(entering().passwordHint, "editing clears it")
+    }
+
+    @Test
+    fun aTooShortPasswordIsSaidAtThePassword() = runTest {
+        keys.next = CompletableDeferred(KeyImport.PasswordTooShort)
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals("A wallet password has at least 8 characters.", entering().passwordHint)
     }
 
     @Test
@@ -278,7 +340,7 @@ class MnemonicImportViewModelTest {
         viewModel.onHidden()
 
         assertEquals("", entering().password.text)
-        assertEquals(false, entering().settingPassword, "what the key store said is kept")
+        assertIs<PasswordStep.Existing>(entering().step, "what the key store said is kept")
     }
 
     private fun entering(): Entering = assertIs<Entering>(viewModel.uiState.value)
@@ -287,14 +349,13 @@ class MnemonicImportViewModelTest {
         var next = CompletableDeferred<KeyImport>()
         val received = mutableListOf<Mnemonic>()
         var passwordSet = true
+        var description: () -> KeyStoreDescription = { KeyStoreDescription.Ready(passwordSet, KeyProtection.HARDWARE) }
 
-        override suspend fun protection() = KeyProtection.HARDWARE
-
-        override suspend fun hasPassword() = passwordSet
+        override suspend fun describe() = description()
 
         override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport {
             received += mnemonic
-            return next.await()
+            return next.await().also { if (it is KeyImport.Stored) passwordSet = true }
         }
     }
 

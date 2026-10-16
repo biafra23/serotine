@@ -4,9 +4,9 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
-import android.security.keystore.StrongBoxUnavailableException
 import eth.serotine.domain.repository.KeyProtection
 import java.security.KeyStore
+import java.security.ProviderException
 import javax.crypto.KeyGenerator
 import javax.crypto.Mac
 import javax.crypto.SecretKey
@@ -40,7 +40,9 @@ class AndroidKeystoreSecret(private val alias: String = "serotine.envelope.passw
         (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
         return try {
             generate(strongBox = true)
-        } catch (e: StrongBoxUnavailableException) {
+        } catch (e: ProviderException) {
+            // StrongBoxUnavailableException is one; a secure element that is present but
+            // failing throws a plain ProviderException. Either way the TEE holds the key.
             generate(strongBox = false)
         }
     }

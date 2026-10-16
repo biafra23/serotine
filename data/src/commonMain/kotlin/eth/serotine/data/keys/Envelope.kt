@@ -15,9 +15,10 @@ import kotlinx.serialization.Serializable
  * ```
  *
  * Both factors are necessary (rule 1): the password is mixed into the KEK, never compared.
- * The salt and the Argon2id parameters are bound as the DEK wrap's additional data and the
- * floor is checked again when opening (rule 2), so a parameter block edited downwards is
- * refused, not honoured. Every secret intermediate is zeroed before it is dropped.
+ * The salt and the Argon2id parameters are bound as the DEK wrap's additional data and
+ * checked against a floor and a ceiling when opening (rule 2), so a parameter block edited
+ * downwards is refused, not honoured, and one edited upwards cannot hang the device. Every
+ * secret intermediate this code holds is zeroed before it is dropped.
  */
 internal object Envelope {
 
@@ -27,21 +28,36 @@ internal object Envelope {
     const val MIN_MEMORY_BYTES = 64L * 1024 * 1024
     const val MIN_OPS = 2L
 
+    /**
+     * The Argon2id ceiling: the costliest parameters this code writes (the password-only
+     * ones). A stored block above it is damaged, and running it could hang the import or
+     * exhaust a phone's memory, so it is refused.
+     */
+    const val MAX_MEMORY_BYTES = 256L * 1024 * 1024
+    const val MAX_OPS = 4L
+
+    /** libsodium's `crypto_pwhash_SALTBYTES`. */
+    const val SALT_BYTES = 16
+
+    private const val NONCE_BYTES = 12
+
     /** Argon2id parameters, as chosen for a device. */
     class Cost(val opsLimit: Long, val memLimitBytes: Long) {
         init {
-            require(opsLimit >= MIN_OPS && memLimitBytes >= MIN_MEMORY_BYTES) { "below the Argon2id floor" }
+            require(opsLimit in MIN_OPS..MAX_OPS && memLimitBytes in MIN_MEMORY_BYTES..MAX_MEMORY_BYTES) {
+                "outside the Argon2id floor and ceiling"
+            }
         }
     }
 
     fun seal(seed: ByteArray, address: String, password: ByteArray, hardware: HardwareSecret?, cost: Cost): SealedSeed {
-        val salt = EnvelopeCrypto.randomBytes(16)
+        val salt = EnvelopeCrypto.randomBytes(SALT_BYTES)
         val hardwareTag = hardware?.tag ?: NO_HARDWARE
         val kek = kek(password, salt, cost.opsLimit, cost.memLimitBytes, hardware)
         val dek = EnvelopeCrypto.randomBytes(32)
         try {
-            val dekNonce = EnvelopeCrypto.randomBytes(12)
-            val seedNonce = EnvelopeCrypto.randomBytes(12)
+            val dekNonce = EnvelopeCrypto.randomBytes(NONCE_BYTES)
+            val seedNonce = EnvelopeCrypto.randomBytes(NONCE_BYTES)
             return SealedSeed(
                 version = VERSION,
                 address = address,
@@ -66,19 +82,81 @@ internal object Envelope {
     }
 
     /**
+     * Whether [sealed] is an envelope this code may try to open with [hardware], judged
+     * without the password: this version, this device's hardware tag, parameters within the
+     * floor and the ceiling, a well-formed salt and nonces, and — when [address] is given —
+     * that address, the one its file is named after.
+     */
+    fun canOpen(sealed: SealedSeed, hardware: HardwareSecret?, address: String? = null): Boolean =
+        sealed.version == VERSION &&
+            sealed.hardware == (hardware?.tag ?: NO_HARDWARE) &&
+            sealed.opsLimit in MIN_OPS..MAX_OPS &&
+            sealed.memLimitBytes in MIN_MEMORY_BYTES..MAX_MEMORY_BYTES &&
+            (address == null || sealed.address == address) &&
+            hexOfLength(sealed.salt, SALT_BYTES) &&
+            hexOfLength(sealed.dekNonce, NONCE_BYTES) &&
+            hexOfLength(sealed.seedNonce, NONCE_BYTES)
+
+    /**
+     * Whether [password] (with [hardware]) opens [sealed], checked by unwrapping its DEK and
+     * nothing more: the seed stays sealed. [Opened.Refused] when [canOpen] says no or the
+     * data is damaged.
+     */
+    fun verify(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Opened {
+        val dek = when (val unwrapped = unwrapDek(sealed, password, hardware)) {
+            is Unwrapped.Dek -> unwrapped.bytes
+            Unwrapped.WrongPassword -> return Opened.WrongPassword
+            Unwrapped.Refused -> return Opened.Refused
+        }
+        dek.fill(0)
+        return Opened.Verified
+    }
+
+    /**
      * The seed, or [Opened.WrongPassword] when the KEK does not open the DEK, or
-     * [Opened.Refused] for an envelope this code must not open (another version, a
-     * parameter block below the floor, another hardware secret, damaged data).
+     * [Opened.Refused] for an envelope this code must not open ([canOpen]) or whose data is
+     * damaged.
      */
     fun open(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Opened {
-        if (sealed.version != VERSION) return Opened.Refused
-        if (sealed.opsLimit < MIN_OPS || sealed.memLimitBytes < MIN_MEMORY_BYTES) return Opened.Refused
-        if (sealed.hardware != (hardware?.tag ?: NO_HARDWARE)) return Opened.Refused
-        val salt = try {
-            sealed.salt.fromHex()
+        val dek = when (val unwrapped = unwrapDek(sealed, password, hardware)) {
+            is Unwrapped.Dek -> unwrapped.bytes
+            Unwrapped.WrongPassword -> return Opened.WrongPassword
+            Unwrapped.Refused -> return Opened.Refused
+        }
+        try {
+            val seed = EnvelopeCrypto.aesGcmOpen(
+                dek,
+                sealed.seedNonce.fromHex(),
+                sealed.seed.fromHex(),
+                seedAad(sealed.address),
+            ) ?: return Opened.Refused
+            return Opened.Seed(seed)
         } catch (e: IllegalArgumentException) {
             return Opened.Refused
+        } finally {
+            dek.fill(0)
         }
+    }
+
+    sealed interface Opened {
+        /** The seed; the caller zeroes it. */
+        class Seed(val bytes: ByteArray) : Opened
+
+        /** The password opens the envelope ([verify]). */
+        data object Verified : Opened
+        data object WrongPassword : Opened
+        data object Refused : Opened
+    }
+
+    private sealed interface Unwrapped {
+        class Dek(val bytes: ByteArray) : Unwrapped
+        data object WrongPassword : Unwrapped
+        data object Refused : Unwrapped
+    }
+
+    private fun unwrapDek(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Unwrapped {
+        if (!canOpen(sealed, hardware)) return Unwrapped.Refused
+        val salt = sealed.salt.fromHex()
         val kek = kek(password, salt, sealed.opsLimit, sealed.memLimitBytes, hardware)
         try {
             val dek = EnvelopeCrypto.aesGcmOpen(
@@ -86,32 +164,21 @@ internal object Envelope {
                 sealed.dekNonce.fromHex(),
                 sealed.dek.fromHex(),
                 dekAad(sealed.address, sealed.hardware, salt, sealed.opsLimit, sealed.memLimitBytes),
-            ) ?: return Opened.WrongPassword
-            try {
-                val seed = EnvelopeCrypto.aesGcmOpen(
-                    dek,
-                    sealed.seedNonce.fromHex(),
-                    sealed.seed.fromHex(),
-                    seedAad(sealed.address),
-                )
-                    ?: return Opened.Refused
-                return Opened.Seed(seed)
-            } finally {
+            ) ?: return Unwrapped.WrongPassword
+            if (dek.size != 32) {
                 dek.fill(0)
+                return Unwrapped.Refused
             }
+            return Unwrapped.Dek(dek)
         } catch (e: IllegalArgumentException) {
-            return Opened.Refused
+            return Unwrapped.Refused
         } finally {
             kek.fill(0)
         }
     }
 
-    sealed interface Opened {
-        /** The seed; the caller zeroes it. */
-        class Seed(val bytes: ByteArray) : Opened
-        data object WrongPassword : Opened
-        data object Refused : Opened
-    }
+    private fun hexOfLength(hex: String, bytes: Int): Boolean =
+        hex.length == bytes * 2 && hex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
     private fun kek(password: ByteArray, salt: ByteArray, ops: Long, mem: Long, hardware: HardwareSecret?): ByteArray {
         val p = EnvelopeCrypto.argon2id(password, salt, ops, mem, 32)

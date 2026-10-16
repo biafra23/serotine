@@ -88,8 +88,11 @@ android {
         // Signing here would put that key in the environment of the whole Gradle
         // build, third-party plugins and build scripts included.
         release {
-            // Turning this on needs a keep rule for libsecp256k1's reflectively loaded JNI
-            // binding first: see data/build.gradle.kts.
+            // Turning this on needs keep rules first: for libsecp256k1's reflectively loaded
+            // JNI binding (see data/build.gradle.kts), and for JNA, whose AAR ships none —
+            // `-keep class com.sun.jna.** { *; }` plus the envelope's own mapping,
+            // `-keep class eth.serotine.data.keys.Sodium$* { *; }`. Without them the key
+            // store reports itself unavailable in a minified build.
             isMinifyEnabled = false
         }
     }

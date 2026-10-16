@@ -27,6 +27,7 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
@@ -73,9 +74,7 @@ class AppNavigationTest {
             }
         },
         keys = object : KeyStore {
-            override suspend fun protection() = KeyProtection.HARDWARE
-
-            override suspend fun hasPassword() = false
+            override suspend fun describe() = KeyStoreDescription.Ready(passwordSet = false, KeyProtection.HARDWARE)
 
             override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport =
                 KeyImport.Stored(Address.of("0x" + "ab".repeat(20)), KeyProtection.HARDWARE)

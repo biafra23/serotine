@@ -12,12 +12,16 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 /**
  * Adds the first account of a BIP-39 mnemonic to the wallet, its seed stored under the
  * wallet password: the "add account from a seed phrase" capability. The key store first,
- * then the account list, so an account never appears whose key was not stored. The account
+ * then the account list, so an account never appears whose key was not stored; and the two
+ * as one step that a cancelled caller does not cut in half, since a stored key whose
+ * account was never added would set the wallet password behind the user's back. The account
  * is an [AccountKind.EOA] named "Account N": N is one more than the number of accounts,
  * raised past any such name already taken. One of the two use cases the [Mnemonic] passes
  * through (CLAUDE.md, *Trust*): it hands the words and the [WalletPassword] to the key store
@@ -28,12 +32,15 @@ class ImportMnemonicAccount(
     private val accounts: AccountRepository,
 ) {
     suspend operator fun invoke(mnemonic: Mnemonic, password: WalletPassword): MnemonicImport =
-        when (val stored = keys.importMnemonic(mnemonic, password)) {
-            is KeyImport.Invalid -> MnemonicImport.Invalid(stored.problem)
-            KeyImport.WrongPassword -> MnemonicImport.WrongPassword
-            KeyImport.Unavailable -> MnemonicImport.Unavailable
-            KeyImport.NotSaved -> MnemonicImport.NotSaved
-            is KeyImport.Stored -> addOrFind(stored.address, stored.protection)
+        withContext(NonCancellable) {
+            when (val stored = keys.importMnemonic(mnemonic, password)) {
+                is KeyImport.Invalid -> MnemonicImport.Invalid(stored.problem)
+                KeyImport.WrongPassword -> MnemonicImport.WrongPassword
+                KeyImport.PasswordTooShort -> MnemonicImport.PasswordTooShort
+                KeyImport.Unavailable -> MnemonicImport.Unavailable
+                KeyImport.NotSaved -> MnemonicImport.KeyNotSaved
+                is KeyImport.Stored -> addOrFind(stored.address, stored.protection)
+            }
         }
 
     /**
@@ -45,13 +52,13 @@ class ImportMnemonicAccount(
         while (true) {
             val current = when (val list = accounts.observeAccounts().first()) {
                 is AccountList.Loaded -> list.accounts
-                is AccountList.Unreadable -> return MnemonicImport.NotSaved
+                is AccountList.Unreadable -> return MnemonicImport.ListNotSaved
             }
             current.firstOrNull { it.address == address }?.let { return MnemonicImport.AlreadyAdded(it) }
             val account = Account(address, AccountKind.EOA, nextFreeLabel(current))
             when (accounts.add(account)) {
                 AccountAdd.Added -> return MnemonicImport.Added(account, protection)
-                AccountAdd.NotSaved -> return MnemonicImport.NotSaved
+                AccountAdd.NotSaved -> return MnemonicImport.ListNotSaved
                 AccountAdd.AlreadyPresent -> Unit // lost a race: read again
             }
         }
@@ -81,9 +88,19 @@ sealed interface MnemonicImport {
     /** A wallet password is set, and this is not it; nothing changed. */
     data object WrongPassword : MnemonicImport
 
+    /** This import would set the wallet password, and it is too short; nothing changed. */
+    data object PasswordTooShort : MnemonicImport
+
     /** The key store cannot run on this device; nothing changed. */
     data object Unavailable : MnemonicImport
 
-    /** The seed or the account list could not be stored; nothing was added. */
-    data object NotSaved : MnemonicImport
+    /** The seed could not be stored; nothing changed. */
+    data object KeyNotSaved : MnemonicImport
+
+    /**
+     * The seed is stored (and with it the wallet password, if this import set it), but the
+     * account list could not be read or saved, so the account is not in it. Importing the
+     * same words again adds it.
+     */
+    data object ListNotSaved : MnemonicImport
 }

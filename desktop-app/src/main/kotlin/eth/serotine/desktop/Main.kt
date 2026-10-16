@@ -11,28 +11,57 @@ import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
 import java.io.File
+import kotlin.concurrent.thread
 
 /**
  * The desktop composition root: builds the [AppGraph] from this platform's adapters and
  * opens the one window on the shared [App]. The window provides the ViewModelStoreOwner
  * the navigation back stack keeps its screens' ViewModels in.
  */
-fun main() = application {
-    val graph = remember {
-        AppGraph(
-            accounts = FileAccountRepository(appDataDir().resolve("accounts.json").path),
-            // The password alone where there is no hardware key store (the owner's
-            // ruling of 2026-10-15); the Mac Secure Enclave comes with part 3.
-            keys = EnvelopeKeyStore(appDataDir().resolve("keys").path, hardware = null),
-            network = Network.SEPOLIA,
-        )
+fun main() {
+    val keys = appDataDir().resolve("keys")
+    excludeFromBackups(keys)
+    application {
+        val graph = remember {
+            AppGraph(
+                accounts = FileAccountRepository(appDataDir().resolve("accounts.json").path),
+                // The password alone where there is no hardware key store (the owner's
+                // ruling of 2026-10-15); the Mac Secure Enclave comes with part 3.
+                keys = EnvelopeKeyStore(keys.path, hardware = null),
+                network = Network.SEPOLIA,
+            )
+        }
+        Window(
+            onCloseRequest = ::exitApplication,
+            title = "Serotine",
+            state = rememberWindowState(width = 480.dp, height = 760.dp),
+        ) {
+            App(graph)
+        }
     }
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = "Serotine",
-        state = rememberWindowState(width = 480.dp, height = 760.dp),
-    ) {
-        App(graph)
+}
+
+/**
+ * Keeps [directory], the key store's envelopes, out of backups (docs/keys-and-signing.md,
+ * rule 8) where this OS backs application data up on its own: Time Machine on macOS, told
+ * through its sticky exclusion, which needs no administrator rights and moves with the
+ * directory. Windows' File History and the usual Linux tools leave application data out
+ * unless the user adds it. Best effort, off the main thread; a failure is reported.
+ */
+private fun excludeFromBackups(directory: File) {
+    if ("mac" !in System.getProperty("os.name").lowercase()) return
+    thread(isDaemon = true, name = "serotine-backup-exclusion") {
+        try {
+            directory.mkdirs()
+            val process = ProcessBuilder("/usr/bin/tmutil", "addexclusion", directory.path)
+                .redirectErrorStream(true)
+                .start()
+            process.inputStream.use { it.readBytes() }
+            val exit = process.waitFor()
+            if (exit != 0) println("Serotine: Time Machine did not exclude $directory (exit $exit)")
+        } catch (e: Exception) {
+            println("Serotine: Time Machine did not exclude $directory (${e::class.simpleName})")
+        }
     }
 }
 

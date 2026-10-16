@@ -167,42 +167,20 @@ private fun EnteringContent(
             minLines = 3,
         )
         // The password fields appear once the key store has said which one is wanted.
-        state.settingPassword?.let { setting ->
-            OutlinedTextField(
-                value = state.password.text,
-                onValueChange = onPasswordChange,
-                modifier = Modifier.fillMaxWidth().testTag(MNEMONIC_PASSWORD_TAG),
-                enabled = !state.importing,
-                label = { Text(if (setting) "New wallet password" else "Wallet password") },
-                supportingText = (state.passwordHint ?: if (setting) "Protects every key this wallet stores" else null)
-                    ?.let { hint -> { Text(hint) } },
-                isError = state.passwordHint != null,
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Password,
-                    imeAction = if (setting) ImeAction.Next else ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = { onImport() }),
+        when (val step = state.step) {
+            PasswordStep.Checking -> Unit
+            PasswordStep.Unavailable -> Text(
+                "The key store does not work on this device, so no account can be added here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
             )
-            if (setting) {
-                OutlinedTextField(
-                    value = state.repeat.text,
-                    onValueChange = onRepeatChange,
-                    modifier = Modifier.fillMaxWidth().testTag(MNEMONIC_REPEAT_TAG),
-                    enabled = !state.importing,
-                    label = { Text("Repeat the password") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(
-                        autoCorrectEnabled = false,
-                        keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done,
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { onImport() }),
-                )
-            }
+            is PasswordStep.New, is PasswordStep.Existing -> PasswordFields(
+                state = state,
+                setting = step is PasswordStep.New,
+                onPasswordChange = onPasswordChange,
+                onRepeatChange = onRepeatChange,
+                onImport = onImport,
+            )
         }
         Button(
             onClick = onImport,
@@ -217,7 +195,7 @@ private fun EnteringContent(
         }
         Text(
             "Serotine adds the first account of these words (m/44'/60'/0'/0/0). " +
-                (state.protection ?: "") + " It cannot send transactions yet.",
+                state.step.protection.orEmpty() + " It cannot send transactions yet.",
             style = MaterialTheme.typography.bodySmall,
         )
         if (!captureBlocked) {
@@ -230,6 +208,58 @@ private fun EnteringContent(
         }
     }
 }
+
+@Composable
+private fun PasswordFields(
+    state: MnemonicImportUiState.Entering,
+    setting: Boolean,
+    onPasswordChange: (String) -> Unit,
+    onRepeatChange: (String) -> Unit,
+    onImport: () -> Unit,
+) {
+    OutlinedTextField(
+        value = state.password.text,
+        onValueChange = onPasswordChange,
+        modifier = Modifier.fillMaxWidth().testTag(MNEMONIC_PASSWORD_TAG),
+        enabled = !state.importing,
+        label = { Text(if (setting) "New wallet password" else "Wallet password") },
+        supportingText = (state.passwordHint ?: if (setting) "Protects every key this wallet stores" else null)
+            ?.let { hint -> { Text(hint) } },
+        isError = state.passwordHint != null,
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            autoCorrectEnabled = false,
+            keyboardType = KeyboardType.Password,
+            imeAction = if (setting) ImeAction.Next else ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { onImport() }),
+    )
+    if (setting) {
+        OutlinedTextField(
+            value = state.repeat.text,
+            onValueChange = onRepeatChange,
+            modifier = Modifier.fillMaxWidth().testTag(MNEMONIC_REPEAT_TAG),
+            enabled = !state.importing,
+            label = { Text("Repeat the password") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { onImport() }),
+        )
+    }
+}
+
+private val PasswordStep.protection: String?
+    get() = when (this) {
+        is PasswordStep.New -> protection
+        is PasswordStep.Existing -> protection
+        PasswordStep.Checking, PasswordStep.Unavailable -> null
+    }
 
 private fun wordCountLabel(count: Int): String = when (count) {
     0 -> "No words yet"

@@ -2,6 +2,7 @@ package eth.serotine.data.keys
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -93,8 +94,17 @@ class SodiumArgon2idTest {
         fun hash(password: String) = EnvelopeCrypto.argon2id(
             password.encodeToByteArray(), ByteArray(16), 2, 64L * 1024 * 1024, 32,
         ).toHex()
-        // The bindings' String API would hash only the first 8 of these 9 UTF-8 bytes.
-        assertNotEquals(hash("pässwor"), hash("pässword"))
+        // 8 chars, 9 UTF-8 bytes: the bindings' String API would hash only the first 8
+        // bytes of each, the same for both.
         assertNotEquals(hash("pässword"), hash("pässworx"))
+    }
+
+    @Test
+    fun theSaltIsLibsodiumsLengthOrRefused() {
+        for (salt in listOf(ByteArray(0), ByteArray(8), ByteArray(17))) {
+            assertFailsWith<IllegalArgumentException> {
+                EnvelopeCrypto.argon2id(ByteArray(8), salt, 2, 64L * 1024 * 1024, 32)
+            }
+        }
     }
 }

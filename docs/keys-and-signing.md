@@ -176,40 +176,73 @@ its KDoc and returns it as a result the UI shows as state.
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
   derives the first account, `m/44'/60'/0'/0/0` with the empty passphrase, on
-  libsecp256k1 (ACINQ's secp256k1-kmp).
+  libsecp256k1 (ACINQ's secp256k1-kmp). The use case stores the key and then
+  adds the account as one step that a cancelled caller cannot cut in half.
 - **Storage.** The BIP-39 seed goes into the envelope above, one file per
-  account (`<address>.seed`, JSON, written through an fsync and an atomic
-  move) under the app's private storage. That storage is kept out of backups
-  and device transfers.
-- **The password.** The first import sets the wallet password. Every later
-  import must give the same one, which is checked by opening a stored
-  envelope; it is never compared.
-- **Argon2id** is libsodium's `crypto_pwhash`, through a byte-array JNA
-  mapping of its own (`Sodium`). The bindings' String API would truncate a
-  non-ASCII password and could not zero it. The mapping is checked against
-  libsodium's known answers.
-- **Costs.** With a hardware secret: 64 MiB and three passes. Password-only:
-  256 MiB and four passes. Opening re-checks the 64 MiB, two-pass floor.
+  account (`<address>.seed`, JSON) in a directory of the app's own.
+  - Writes go through a temporary file readable by this user alone, an
+    fsync, an atomic move and, where the platform allows, an fsync of the
+    directory. A temporary file a crash left behind is deleted on the next
+    import.
+  - Android keeps the directory out of backups and device transfers (rule 8).
+    On macOS the desktop host excludes it from Time Machine; Windows and the
+    usual Linux tools leave application data out unless the user adds it.
+  - A file that cannot be read, that names another device's hardware secret,
+    that has parameters outside the floor and ceiling, or that is not under
+    its own address's name, is reported and passed over, never trusted. A
+    damaged envelope of the account being imported is sealed again.
+- **The password.**
+  - The first import sets the wallet password: at least eight characters,
+    refused by the adapter otherwise. Every later import must give the same
+    one, which is checked by unwrapping a stored envelope's DEK, never by a
+    comparison. The account's own envelope is tried first, and the seed
+    stays sealed during the check.
+  - It is stretched from its NFKC form, so the same password typed on
+    keyboards that compose characters differently opens the same envelopes.
+- **Argon2id** is libsodium's `crypto_pwhash`, through a JNA mapping of its
+  own (`Sodium`) over native buffers that are zeroed after the call. The
+  bindings' String API would truncate a non-ASCII password and could not zero
+  it. The mapping is checked against libsodium's known answers.
+- **Costs.**
+  - With a hardware secret that really lives in secure hardware: 64 MiB and
+    three passes.
+  - With a software key store, as on an emulator, or with the password
+    alone: 256 MiB and four passes. Copying the device's storage yields a
+    software key store's key, so such an envelope must hold up offline like
+    a password-only one.
+  - Opening checks the 64 MiB, two-pass floor and a 256 MiB, four-pass
+    ceiling.
 - **AES-256-GCM** comes from the JDK.
 - **The hardware secret.** On Android it is `AndroidKeystoreSecret`, an
-  HMAC-SHA256 key in StrongBox, or in the TEE when there is none. The
-  Keystore reports where the key lives (rule 5), and the screen says which
-  case applies: hardware, or a software key store on an emulator.
+  HMAC-SHA256 key in StrongBox, or in the TEE when StrongBox is missing or
+  failing. The Keystore reports where the key lives (rule 5), and the screen
+  says which case applies: hardware, or a software key store on an emulator.
+  A key store that fails is shown as such, and nothing can be added.
 - **Desktop** stands on the password alone for now. The Mac Secure Enclave
   and iOS are part 3; on iOS the key store reports itself unavailable until
   then.
-- **What never leaves a call.** The seed, the keys and the password's bytes
-  exist only inside one call and are zeroed before it returns. The words and
-  the password reach the adapter along the mnemonic exception's one path, and
-  the restore screen's ViewModel drops both when the screen stops being
-  shown.
+- **What never leaves a call.**
+  - The seed, the keys and the password's bytes exist only inside one call,
+    in byte arrays and native buffers this code zeroes before it returns.
+  - The JDK's AES keeps its own copy of a key until the garbage collector
+    takes it: the GC caveat of rule 7.
+  - The words and the password reach the adapter along the mnemonic
+    exception's one path. The restore screen's ViewModel drops both from its
+    state when the screen stops being shown; an import already running
+    finishes without them.
 - **Screen protections.** The restore screen carries rule 8's protections
   through `protectFromScreenCapture()` in `eth.serotine.ui.platform`:
   `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
   until its host covers the window, the screen says that capture cannot be
   blocked.
-- **No consumer yet.** Nothing opens an envelope except to check the
-  password: signing is the next consumer.
+- **Not yet.**
+  - Signing is the next consumer of the envelope. Until then nothing opens
+    one except to check the password.
+  - A way back when no envelope opens any more (a lost Keystore key, a
+    forgotten password) comes with the wallet's reset and recovery flows.
+  - Two desktop instances on one data directory are not guarded against
+    yet. That guard covers the account list and the engine too, and comes
+    with part 3.
 
 ## A Safe owned by a hardware P-256 key
 

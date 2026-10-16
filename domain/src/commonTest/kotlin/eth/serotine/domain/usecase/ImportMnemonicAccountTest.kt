@@ -12,10 +12,15 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.KeyStoreDescription
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -86,16 +91,50 @@ class ImportMnemonicAccountTest {
     }
 
     @Test
-    fun anUnreadableListOrAFailedSaveIsNotSaved() = runTest {
+    fun anUnreadableListOrAFailedSaveSaysTheKeyIsStoredButTheListIsNot() = runTest {
         val mnemonic = Mnemonic("first words")
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
         repository.unreadable = true
-        assertEquals(MnemonicImport.NotSaved, import(mnemonic, password))
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password))
 
         repository.unreadable = false
         repository.failSaves = true
-        assertEquals(MnemonicImport.NotSaved, import(mnemonic, password))
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password))
+        assertEquals(emptyList(), repository.accounts.value)
+
+        // The key is stored, so the same words again finish the job.
+        repository.failSaves = false
+        assertEquals(
+            MnemonicImport.Added(Account(first, AccountKind.EOA, "Account 1"), KeyProtection.HARDWARE),
+            import(mnemonic, password),
+        )
+    }
+
+    @Test
+    fun aCancelledCallerDoesNotCutTheImportInHalf() = runTest {
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+        keys.delayMillis = 1_000 // Argon2id takes a while
+
+        val caller = launch { import(mnemonic, password) }
+        advanceTimeBy(500)
+        caller.cancel() // the screen is left mid-import
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(Account(first, AccountKind.EOA, "Account 1")),
+            repository.accounts.value,
+            "the key was stored, so its account is added too",
+        )
+    }
+
+    @Test
+    fun aTooShortFirstPasswordIsRefused() = runTest {
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.PasswordTooShort
+
+        assertEquals(MnemonicImport.PasswordTooShort, import(mnemonic, WalletPassword("short")))
         assertEquals(emptyList(), repository.accounts.value)
     }
 
@@ -107,7 +146,7 @@ class ImportMnemonicAccountTest {
         assertEquals(MnemonicImport.WrongPassword, import(mnemonic, password))
 
         keys.results[mnemonic] = KeyImport.NotSaved
-        assertEquals(MnemonicImport.NotSaved, import(mnemonic, password))
+        assertEquals(MnemonicImport.KeyNotSaved, import(mnemonic, password))
         assertEquals(emptyList(), repository.accounts.value, "no account without its stored key")
     }
 
@@ -133,13 +172,13 @@ class ImportMnemonicAccountTest {
         // Keyed by identity, which is Mnemonic's equality.
         val results = mutableMapOf<Mnemonic, KeyImport>()
         val received = mutableListOf<Pair<Mnemonic, WalletPassword>>()
+        var delayMillis = 0L
 
-        override suspend fun protection() = KeyProtection.HARDWARE
-
-        override suspend fun hasPassword() = received.isNotEmpty()
+        override suspend fun describe() = KeyStoreDescription.Ready(received.isNotEmpty(), KeyProtection.HARDWARE)
 
         override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport {
             received += mnemonic to password
+            delay(delayMillis)
             return results.getValue(mnemonic)
         }
     }
