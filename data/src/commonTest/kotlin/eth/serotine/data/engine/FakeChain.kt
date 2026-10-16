@@ -8,7 +8,7 @@ internal class FakeChain : VerifiedChain {
     var snapshot: EngineSnapshot = EngineSnapshot.Booting
     val proofs = mutableMapOf<Address, ProvenBalance>()
     val proofRequests = mutableListOf<Address>()
-    var failure: Exception? = null
+    var failure: Throwable? = null
 
     override fun snapshot(): EngineSnapshot {
         failure?.let { throw it }

@@ -53,6 +53,13 @@ class MyotisNode private constructor() {
     @Volatile
     private var bootThread: Thread? = null
 
+    /**
+     * Whether the host last asked for networking off. A pause can come before the boot has
+     * finished (the app backgrounded right after launch); the boot applies it then.
+     */
+    @Volatile
+    private var pauseWanted = false
+
     /** Runs pause and resume, which block while the engine tears down or warms up networking. */
     private val control = Executors.newSingleThreadExecutor { task ->
         Thread(task, "myotis-control").apply { isDaemon = true }
@@ -70,10 +77,16 @@ class MyotisNode private constructor() {
      * Turns the engine's networking off, keeping its state, for while the app is in the
      * background. Returns at once; the pause runs on a background thread.
      */
-    fun pause() = onControlThread { it.pause() }
+    fun pause() {
+        pauseWanted = true
+        onControlThread { it.pause() }
+    }
 
     /** Turns networking back on after [pause]; a warm start. Returns at once. */
-    fun resume() = onControlThread { it.resume() }
+    fun resume() {
+        pauseWanted = false
+        onControlThread { it.resume() }
+    }
 
     private fun onControlThread(action: (ChainHandle) -> Unit) {
         try {
@@ -131,17 +144,33 @@ class MyotisNode private constructor() {
             ports.close()
             throw e
         }
-        val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
-        val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
-        val started = handle.start()
-        val kept = synchronized(this) {
-            val keep = started && state == State.Booting
-            if (state == State.Booting) state = if (keep) running else State.Down
-            keep
+        // From here until the running state is published, this boot owns the engine: whatever
+        // fails (a native start that throws rather than answering false, reading the network's
+        // timing, draining the log) releases it, since shutdown() finds nothing to stop yet.
+        var owned = true
+        try {
+            val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
+            val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
+            val started = handle.start()
+            val kept = synchronized(this) {
+                val keep = started && state == State.Booting
+                if (state == State.Booting) state = if (keep) running else State.Down
+                keep
+            }
+            owned = false
+            if (!kept) running.stop()
+            // A pause asked for during the boot, read on the control thread: a resume that
+            // comes in between runs before it there and has cleared the wish.
+            if (kept) onControlThread { if (pauseWanted) it.pause() }
+            // The engine says why only in its own log, which is drained, not printed.
+            if (!started) report("the engine refused to start $name:\n" + Myotis.drainLogs(ENGINE_LOG_LINES))
+        } catch (e: Throwable) {
+            if (owned) {
+                engine.shutdownAll()
+                ports.close()
+            }
+            throw e
         }
-        // The engine says why only in its own log, which is drained, not printed.
-        if (!started) report("the engine refused to start $name:\n" + Myotis.drainLogs(ENGINE_LOG_LINES))
-        if (!kept) running.stop()
     }
 
     private inner class HandleChain : VerifiedChain {

@@ -45,7 +45,17 @@ class VerifiedNativeBalances internal constructor(
         val chain = chain ?: return flowOf(BalanceReading.Unavailable(Reason.NO_ENGINE))
         return flow {
             while (true) {
-                val snapshot = chain.snapshot()
+                val snapshot = try {
+                    chain.snapshot()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // Throwable, as for proofs: the engine's state crosses JNA too. This poll's
+                    // reading says it is not verified, never an amount kept from before.
+                    emit(BalanceReading.Unavailable(Reason.UNPROVEN))
+                    delay(pollInterval)
+                    continue
+                }
                 if (snapshot == EngineSnapshot.Down) {
                     emit(BalanceReading.Unavailable(Reason.NO_ENGINE))
                     return@flow

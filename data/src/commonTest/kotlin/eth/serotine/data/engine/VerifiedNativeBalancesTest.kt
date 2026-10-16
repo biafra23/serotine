@@ -114,6 +114,27 @@ class VerifiedNativeBalancesTest {
     }
 
     @Test
+    fun anEngineStateThatFailsToReadIsNotVerifiedAndThePollGoesOn() = runTest {
+        chain.snapshot = running(head = 5)
+        chain.proofs[address] = ProvenBalance("2", 5)
+        val seen = mutableListOf<BalanceReading>()
+        val collecting = launch { balances().observeBalance(address).collect { seen += it } }
+        runCurrent()
+        assertEquals(BalanceReading.Verified(Wei.of("2"), 5), seen.last())
+
+        // The engine's state crosses JNA: a broken native library fails with an Error.
+        chain.failure = Error("native library broken")
+        step(running(head = 6))
+        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), seen.last(), "not the old amount")
+
+        chain.failure = null
+        chain.proofs[address] = ProvenBalance("3", 6)
+        step(running(head = 6))
+        assertEquals(BalanceReading.Verified(Wei.of("3"), 6), seen.last(), "still polling")
+        collecting.cancel()
+    }
+
+    @Test
     fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
         chain.snapshot = EngineSnapshot.Down
         assertEquals(
