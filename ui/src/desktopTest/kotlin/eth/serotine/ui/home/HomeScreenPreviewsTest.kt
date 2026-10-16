@@ -7,13 +7,5 @@ import kotlin.test.Test
 class HomeScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(
-        { HomeAccountsPreview() },
-        { HomeAccountsDarkPreview() },
-        { HomeCatchingUpPreview() },
-        { HomeNoAccountsPreview() },
-        { HomeLoadingPreview() },
-        { HomeListSetAsidePreview() },
-        { HomeListUnavailablePreview() },
-    )
+    fun everyPreviewRenders() = renderEach(homeScreenPreviews)
 }

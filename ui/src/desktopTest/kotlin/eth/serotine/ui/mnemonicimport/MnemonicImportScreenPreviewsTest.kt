@@ -7,15 +7,5 @@ import kotlin.test.Test
 class MnemonicImportScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(
-        { MnemonicImportCheckingPreview() },
-        { MnemonicImportNewPasswordPreview() },
-        { MnemonicImportNewPasswordDarkPreview() },
-        { MnemonicImportPasswordHintPreview() },
-        { MnemonicImportWrongPasswordPreview() },
-        { MnemonicImportInvalidWordsPreview() },
-        { MnemonicImportImportingPreview() },
-        { MnemonicImportKeyStoreUnavailablePreview() },
-        { MnemonicImportImportedPreview() },
-    )
+    fun everyPreviewRenders() = renderEach(mnemonicImportScreenPreviews)
 }

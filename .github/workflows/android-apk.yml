@@ -116,6 +116,30 @@ jobs:
             python3 scripts/check_apk_min_api.py --apk "$apk"
           done
 
+      # Compose's ui-tooling, which renders :ui's previews in Android Studio, declares an
+      # EXPORTED PreviewActivity that runs whatever composable an intent names.
+      # android-app/build.gradle.kts keeps it out of every APK; this catches anything
+      # that brings it back (a Compose bump that re-arranges artifacts, a dependency on
+      # ui-tooling-android) from the merged manifest, the APK's ground truth. Fail-closed:
+      # a dump without the app's own activity is refused rather than passed.
+      - name: Verify no Compose preview tooling in the APKs
+        run: |
+          set -euo pipefail
+          # Numbered stable releases only (not rc builds or a `current` symlink).
+          build_tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ \
+            | grep -E '/[0-9]+\.[0-9]+\.[0-9]+/$' | sort -V | tail -n1)
+          for variant in debug release; do
+            apk=$(ls android-app/build/outputs/apk/$variant/*.apk | head -n1)
+            manifest=$("${build_tools}aapt2" dump xmltree --file AndroidManifest.xml "$apk")
+            grep -qF '"eth.serotine.android.MainActivity"' <<<"$manifest" \
+              || { echo "::error::could not read the $variant APK's manifest (no MainActivity in the aapt2 dump)"; exit 1; }
+            if grep -F 'androidx.compose.ui.tooling' <<<"$manifest"; then
+              echo "::error::the $variant APK declares Compose preview tooling (ui-tooling's exported PreviewActivity); see android-app/build.gradle.kts"
+              exit 1
+            fi
+            echo "ok: $variant APK declares no Compose preview tooling"
+          done
+
       - name: Upload the debug APK
         uses: actions/upload-artifact@v4
         with:

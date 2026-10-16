@@ -8,7 +8,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 // The Home screen in Android Studio's preview pane, one preview per state it draws
 // differently. Built from display-ready values, as the screen tests are, never from the
-// ViewModel; HomeScreenPreviewsTest renders each one.
+// ViewModel. HomeScreenPreviewsTest renders each one in homeScreenPreviews, at the end.
 
 private val network = Network.SEPOLIA.displayName
 
@@ -31,15 +31,15 @@ private fun HomePreview(state: HomeUiState, darkTheme: Boolean = false) {
 
 @Preview
 @Composable
-internal fun HomeAccountsPreview() = HomePreview(withAccounts)
+private fun HomeAccountsPreview() = HomePreview(withAccounts)
 
 @Preview
 @Composable
-internal fun HomeAccountsDarkPreview() = HomePreview(withAccounts, darkTheme = true)
+private fun HomeAccountsDarkPreview() = HomePreview(withAccounts, darkTheme = true)
 
 @Preview
 @Composable
-internal fun HomeCatchingUpPreview() = HomePreview(
+private fun HomeCatchingUpPreview() = HomePreview(
     HomeUiState.Ready(
         network,
         LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true),
@@ -49,7 +49,7 @@ internal fun HomeCatchingUpPreview() = HomePreview(
 
 @Preview
 @Composable
-internal fun HomeNoAccountsPreview() = HomePreview(
+private fun HomeNoAccountsPreview() = HomePreview(
     HomeUiState.Ready(
         network,
         LightClientItem("Bootstrapping from the trusted checkpoint · looking for light-client servers", null, true),
@@ -59,12 +59,12 @@ internal fun HomeNoAccountsPreview() = HomePreview(
 
 @Preview
 @Composable
-internal fun HomeLoadingPreview() =
+private fun HomeLoadingPreview() =
     HomePreview(HomeUiState.Loading(network, LightClientItem("Starting the light client…", null, true)))
 
 @Preview
 @Composable
-internal fun HomeListSetAsidePreview() = HomePreview(
+private fun HomeListSetAsidePreview() = HomePreview(
     HomeUiState.Ready(
         network,
         synced,
@@ -75,11 +75,22 @@ internal fun HomeListSetAsidePreview() = HomePreview(
 
 @Preview
 @Composable
-internal fun HomeListUnavailablePreview() = HomePreview(
+private fun HomeListUnavailablePreview() = HomePreview(
     HomeUiState.ListUnavailable(
         network,
         synced,
         "Your saved account list cannot be read right now. Nothing has been changed, and no account can be " +
             "added until it can be read. Serotine keeps trying.",
     ),
+)
+
+/** Every preview above, which HomeScreenPreviewsTest renders: a new preview goes in here too. */
+internal val homeScreenPreviews: List<@Composable () -> Unit> = listOf(
+    { HomeAccountsPreview() },
+    { HomeAccountsDarkPreview() },
+    { HomeCatchingUpPreview() },
+    { HomeNoAccountsPreview() },
+    { HomeLoadingPreview() },
+    { HomeListSetAsidePreview() },
+    { HomeListUnavailablePreview() },
 )

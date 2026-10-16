@@ -132,10 +132,13 @@ kotlin {
 // its PreviewActivity is exported and runs whatever composable an intent names, which no
 // other app on the device may do in a wallet, a debug one included. Out of every runtime
 // classpath, so a build type added later that falls back to :ui's debug variant ships
-// without it too; nothing in this app runs it.
+// without it too; nothing in this app runs it. The -android artifact is what androidx's
+// ui-tooling redirects to on Android, named too so a direct dependency on it is cut as
+// well. The APK workflow checks the built manifests for it (android-apk.yml).
 configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
     exclude(group = "org.jetbrains.compose.ui", module = "ui-tooling")
     exclude(group = "androidx.compose.ui", module = "ui-tooling")
+    exclude(group = "androidx.compose.ui", module = "ui-tooling-android")
 }
 
 dependencies {
