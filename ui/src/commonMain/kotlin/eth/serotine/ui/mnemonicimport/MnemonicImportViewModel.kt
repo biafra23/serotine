@@ -132,7 +132,12 @@ class MnemonicImportViewModel(
         MnemonicImport.WrongPassword -> copy(passwordError = "That is not the wallet password.")
         MnemonicImport.PasswordTooShort ->
             copy(passwordError = "A wallet password has at least ${WalletPassword.MIN_LENGTH} characters.")
-        MnemonicImport.Unavailable -> copy(error = "The key store does not work on this device. Nothing was added.")
+        // After describe() said the key store works, a failure here is most likely passing
+        // (memory for Argon2id, a Keystore hiccup): said so, not as a verdict on the device.
+        MnemonicImport.Unavailable -> copy(
+            error = "The key store failed. Nothing was added. Try again; if it keeps failing, this device " +
+                "cannot store the key.",
+        )
         MnemonicImport.KeyNotSaved -> copy(error = "The key could not be stored on this device. Nothing was added.")
         MnemonicImport.ListNotSaved -> copy(
             error = "The key is stored, but the account list could not be saved. Add the same words again " +

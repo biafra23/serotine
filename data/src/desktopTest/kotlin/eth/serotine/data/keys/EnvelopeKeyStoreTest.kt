@@ -153,6 +153,28 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun anEnvelopeDamagedPastParsingDoesNotLockOutTheRightPassword() = runTest {
+        val store = store()
+        store.importMnemonic(abandon, password)
+        store.importMnemonic(hardhat, password)
+        // A flipped digit in the wrapped DEK: still well-formed, so only the tag notices.
+        val damaged = sealedIn(envelopeOf(hardhatAddress)).let { sealed ->
+            val flipped = (if (sealed.dek[0] == '0') '1' else '0') + sealed.dek.drop(1)
+            SealedSeed(
+                sealed.version, sealed.address, sealed.hardware, sealed.salt, sealed.opsLimit, sealed.memLimitBytes,
+                sealed.dekNonce, flipped, sealed.seedNonce, sealed.seed,
+            )
+        }
+        envelopeOf(hardhatAddress).writeText(Json.encodeToString(SealedSeed.serializer(), damaged))
+
+        assertEquals(KeyImport.WrongPassword, store.importMnemonic(hardhat, WalletPassword("another password")))
+        // Its own envelope refuses, abandon's opens: the password is right, the file is damaged.
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        val opened = Envelope.open(sealedIn(envelopeOf(hardhatAddress)), password.text.encodeToByteArray(), null)
+        assertIs<Envelope.Opened.Seed>(opened, "sealed again")
+    }
+
+    @Test
     fun anImportAlreadyDoneWritesNothing() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)

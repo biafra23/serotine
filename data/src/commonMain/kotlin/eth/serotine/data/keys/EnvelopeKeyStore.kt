@@ -92,6 +92,10 @@ class EnvelopeKeyStore(
             val stored = envelopes().sortedBy { if (it.address == address) 0 else 1 }
             var alreadyStored = false
             var verified = false
+            // One envelope's GCM tag cannot tell a wrong password from damage to that file, so
+            // a refusal does not end the search: another envelope may still open. The extra
+            // Argon2id runs happen only when the password is wrong or a file is damaged.
+            val refused = mutableListOf<String>()
             for (envelope in stored) {
                 when (Envelope.verify(envelope.sealed, password, hardware)) {
                     Envelope.Opened.Verified -> {
@@ -99,11 +103,16 @@ class EnvelopeKeyStore(
                         alreadyStored = envelope.address == address
                         break
                     }
-                    Envelope.Opened.WrongPassword -> return KeyImport.WrongPassword
+                    Envelope.Opened.WrongPassword -> refused += envelope.address
                     // Damaged past what canOpen sees: passed over like an unreadable file.
                     else -> report("the envelope of ${envelope.address} cannot be opened")
                 }
             }
+            // Every envelope is under the one wallet password: none opened and one refused it,
+            // so it is wrong. Sealing anyway would put the wallet under two passwords.
+            if (!verified && refused.isNotEmpty()) return KeyImport.WrongPassword
+            // One opened, so those that refused the same password are damaged.
+            refused.forEach { report("the envelope of $it does not open under the wallet password") }
             if (!verified && !longEnough) return KeyImport.PasswordTooShort
             if (!alreadyStored) {
                 // Also over a file of this name that cannot be opened: its seed is at hand.

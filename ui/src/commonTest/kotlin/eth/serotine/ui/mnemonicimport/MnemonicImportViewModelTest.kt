@@ -163,7 +163,11 @@ class MnemonicImportViewModelTest {
         runCurrent()
 
         assertFalse(entering().importing)
-        assertEquals("The key store does not work on this device. Nothing was added.", entering().error)
+        assertEquals(
+            "The key store failed. Nothing was added. Try again; if it keeps failing, this device cannot " +
+                "store the key.",
+            entering().error,
+        )
         assertTrue(entering().canImport, "the user can try again")
     }
 
@@ -175,7 +179,11 @@ class MnemonicImportViewModelTest {
         viewModel.onImport()
         runCurrent()
 
-        assertEquals("The key store does not work on this device. Nothing was added.", entering().error)
+        assertEquals(
+            "The key store failed. Nothing was added. Try again; if it keeps failing, this device cannot " +
+                "store the key.",
+            entering().error,
+        )
         assertEquals(twelveWords, entering().phrase.text)
     }
 

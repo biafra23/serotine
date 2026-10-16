@@ -196,7 +196,10 @@ its KDoc and returns it as a result the UI shows as state.
     refused by the adapter otherwise. Every later import must give the same
     one, which is checked by unwrapping a stored envelope's DEK, never by a
     comparison. The account's own envelope is tried first, and the seed
-    stays sealed during the check.
+    stays sealed during the check. A GCM tag cannot tell a wrong password
+    from a damaged file, so one envelope's refusal does not end the check
+    while another may open. The password is wrong only when none opens and
+    one refused it, and then nothing is sealed.
   - It is stretched from its NFKC form, so the same password typed on
     keyboards that compose characters differently opens the same envelopes.
 - **Argon2id** is libsodium's `crypto_pwhash`, through a JNA mapping of its
