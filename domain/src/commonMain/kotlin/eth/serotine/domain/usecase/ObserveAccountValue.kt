@@ -53,8 +53,12 @@ class ObserveAccountValue(
         // The currency's own rate missing is no fault of the assets': said once, as such.
         val noRate = rate is Price.NoPrice || rate is Price.Unavailable
         fun value(units: String, decimals: Int, id: PriceId?): Valuation {
+            // An amount of the display currency itself is its own value: no feed is asked.
+            if (id == inputs.currency.priceId) return valuation(units, decimals, Price.ONE)
             val own = id?.let { usd[it] ?: Price.Checking } ?: Price.NoPrice(NoPriceReason.NO_FEED)
-            if (noRate && own is Price.Priced) return Valuation.NoRate
+            // An asset without a feed has no price whatever the rate; any other has no value
+            // in a currency without one.
+            if (noRate && own !is Price.NoPrice) return Valuation.NoRate
             return valuation(units, decimals, own inUnitsOf rate)
         }
         val native = inputs.native

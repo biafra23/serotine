@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -14,7 +15,8 @@ import kotlinx.coroutines.launch
  * reader per key, started when its key arrives and cancelled when it leaves, so the other
  * readers go on undisturbed and none waits for a cancelled read in flight to end (a verified
  * read can take long). A key has no entry until its first reading; what a cancelled reader
- * still delivers is dropped, its key being no longer named. The upstream is collected once.
+ * still delivers is dropped, so a key named again starts from no entry. The upstream is
+ * collected once.
  */
 internal fun <T, K, V> Flow<T>.readEach(keys: (T) -> Set<K>, read: (K) -> Flow<V>): Flow<Pair<T, Map<K, V>>> =
     channelFlow {
@@ -28,7 +30,13 @@ internal fun <T, K, V> Flow<T>.readEach(keys: (T) -> Set<K>, read: (K) -> Flow<V
                 readings.update { it - key }
             }
             wanted.filterNot { it in readers }.forEach { key ->
-                readers[key] = launch { read(key).collect { reading -> readings.update { it + (key to reading) } } }
+                readers[key] = launch {
+                    read(key).collect { reading ->
+                        // Checked inside the update: its removal comes after the cancellation,
+                        // so a write racing it is retried, and then sees the reader cancelled.
+                        readings.update { if (isActive) it + (key to reading) else it }
+                    }
+                }
             }
         }
         combine(values, readings) { value, read ->

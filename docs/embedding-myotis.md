@@ -115,11 +115,18 @@ consumer developed against an unreleased engine, Myotis's
   `latestRoundData()`, through `ProvenReads`, at every verified head. Decimals
   other than the pin, a negative or zero answer, or what is no round are no
   price; a refusal is `REFUSED`. A round's age is measured against the
-  verified head's time, which the engine snapshot derives from the
-  BLS-attested slot (genesis + slot × seconds per slot), never the device's
-  clock; with no head time known yet the read is unproven. A round older than
-  its feed's heartbeat is stale. (`ChainHandle.getBlockVerified`, which would
-  give a block's timestamp, is not available on the Rust engine.)
+  time of the verified head the read started at, which the engine snapshot
+  derives from the BLS-attested slot (genesis + slot × seconds per slot),
+  never the device's clock; with no head time known yet the read is
+  unproven. A round older than its feed's heartbeat and ten minutes' grace
+  is stale, and one dated more than two minutes after the head is no feed's
+  answer. (`ChainHandle.getBlockVerified`, which would give a block's
+  timestamp, is not available on the Rust engine.)
+- **One fetch per key and head.** `ProvenReads` keeps the last proof per key,
+  and a subscriber that arrives while that key's proof for its head is being
+  fetched waits for that fetch rather than making the same blocking calls:
+  the account screen, the Assets screen and every account of the portfolio
+  read the same prices and balances.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,

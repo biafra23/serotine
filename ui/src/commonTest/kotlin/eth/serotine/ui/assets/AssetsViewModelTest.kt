@@ -135,6 +135,25 @@ class AssetsViewModelTest {
     }
 
     @Test
+    fun aRowIsAlwaysShownInTheCurrencyItsValueWasComputedIn() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(treasury)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 9)
+        feeds.answer("ETH", 2_000.0)
+        feeds.answer("EUR", 1.25)
+        runCurrent()
+        val before = (viewModel.uiState.value as AssetsUiState.Ready).accounts.single().value
+        assertEquals("$2,000.00 · testnet prices", before)
+
+        currency.choose(DisplayCurrency.EUR)
+        runCurrent()
+        val values = (viewModel.uiState.value as AssetsUiState.Ready).accounts.map { it.value }
+        assertEquals(listOf("€1,600.00 · testnet prices"), values, "never $2,000 marked €")
+    }
+
+    @Test
     fun theHeaderTotalsEveryAccountInTheChosenCurrency() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         repository.accounts = listOf(treasury, daily)

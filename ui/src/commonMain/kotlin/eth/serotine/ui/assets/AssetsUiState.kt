@@ -85,16 +85,15 @@ data class AccountItem(
     companion object {
         /**
          * [account] with its [balance], or with none read yet ([balance] null), and that
-         * balance's [value] in [currency]; [address] is its EIP-55 form, which a caller that
-         * re-renders the row per balance computes once.
+         * balance's [value] with the currency it is in (null before it is valued); [address]
+         * is its EIP-55 form, which a caller that re-renders the row per balance computes once.
          */
         fun from(
             account: Account,
             balance: BalanceReading?,
             network: Network,
             address: String = Eip55.format(account.address),
-            value: Valuation? = null,
-            currency: DisplayCurrency = DisplayCurrency.USD,
+            value: Pair<Valuation?, DisplayCurrency>? = null,
         ): AccountItem = AccountItem(
             label = account.label,
             address = address,
@@ -102,7 +101,7 @@ data class AccountItem(
             control = Control.of(account.kind, account.custody),
             balance = balance?.let { balanceText(it, network) } ?: "Checking…",
             balanceVerified = balance is BalanceReading.Verified,
-            value = valuationText(value, currency, network),
+            value = value?.let { (valuation, currency) -> valuationText(valuation, currency, network) },
         )
     }
 }

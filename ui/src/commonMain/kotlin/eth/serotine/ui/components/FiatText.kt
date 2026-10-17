@@ -2,6 +2,7 @@ package eth.serotine.ui.components
 
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.NoPriceReason
 import eth.serotine.domain.usecase.Total
 import eth.serotine.domain.usecase.Valuation
 import kotlin.math.pow
@@ -56,7 +57,12 @@ internal fun valuationText(value: Valuation?, currency: DisplayCurrency, network
         "price ${age(value.ageSeconds)} old".takeIf { value.stale },
         "testnet prices".takeIf { network.testnet },
     ).joinToString(" · ")
-    is Valuation.NoPrice -> "No price"
+    is Valuation.NoPrice -> when (value.reason) {
+        NoPriceReason.NO_FEED -> "No price"
+        NoPriceReason.DECIMALS_CHANGED -> "No price: its feed changed"
+        NoPriceReason.NOT_POSITIVE -> "No price: its feed answered none"
+        NoPriceReason.NOT_A_FEED -> "No price: its feed does not answer as one"
+    }
     is Valuation.Unavailable -> "Price not verified"
     Valuation.NoRate -> "No ${currency.code} rate"
 }

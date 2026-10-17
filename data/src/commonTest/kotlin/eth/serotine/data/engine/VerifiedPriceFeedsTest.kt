@@ -50,11 +50,11 @@ class VerifiedPriceFeedsTest {
     }
 
     @Test
-    fun aRoundOlderThanTheHeartbeatIsStale() = runTest {
-        answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 6_000), 9))
+    fun aRoundOlderThanTheHeartbeatAndItsGraceIsStale() = runTest {
+        answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 5_000), 9))
 
         val reading = feeds().observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
-        assertEquals(4_000, reading.ageSeconds)
+        assertEquals(5_000, reading.ageSeconds)
         assertEquals(true, reading.stale)
     }
 
@@ -65,11 +65,25 @@ class VerifiedPriceFeedsTest {
         suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
         assertEquals(false, reading().stale)
 
-        // An hour and more later, no new round: read again at the new head, and stale.
+        // Past the heartbeat, but within the grace a heartbeat update takes to land: not stale.
         chain.snapshot = running(head = 310, headTimestamp = 13_100)
-        val later = reading()
-        assertEquals(3_700, later.ageSeconds)
-        assertEquals(true, later.stale)
+        val late = reading()
+        assertEquals(3_700, late.ageSeconds)
+        assertEquals(false, late.stale)
+
+        // Past the grace too, and still no new round: stale.
+        chain.snapshot = running(head = 400, headTimestamp = 13_100 + VerifiedPriceFeeds.STALE_GRACE_SECONDS)
+        assertEquals(true, reading().stale)
+    }
+
+    @Test
+    fun aRoundDatedWellAfterTheHeadIsNoFeedsAnswer() = runTest {
+        answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(1), 10_000 + 3_600), 9))
+
+        assertEquals(
+            FeedReading.NoPrice(NoPriceReason.NOT_A_FEED),
+            feeds().observe(eth.priceId).first { it !is FeedReading.Syncing },
+        )
     }
 
     @Test

@@ -168,6 +168,41 @@ class PricesTest {
     }
 
     @Test
+    fun etherInEtherIsItsOwnValueWhateverItsFeedSays() = runTest {
+        pricesAndBalances()
+        setting.choose(DisplayCurrency.ETH)
+        feeds.answer(ETH, 2_000.0, ageSeconds = 7_200, stale = true)
+
+        val value = accountValue(holder).first { it.nativeValue is Valuation.Valued }
+
+        assertEquals(Valuation.Valued(1.5, ageSeconds = 0, stale = false), value.nativeValue)
+    }
+
+    @Test
+    fun anAssetWhosePriceIsStillReadUnderAMissingRateHasNoRateNotNoPrice() = runTest {
+        pricesAndBalances()
+        setting.choose(DisplayCurrency.EUR)
+        feeds.of(EUR).value = FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED)
+        feeds.of(PriceId("USDC")).value = FeedReading.Syncing
+
+        val value = accountValue(holder).first { it.tokens.size == 2 && it.tokens[0].value != null }
+
+        assertEquals(Valuation.NoRate, value.tokens[0].value)
+        assertEquals(1, value.total.leftOut, "only UNI, which has no feed at all")
+    }
+
+    @Test
+    fun verifiedBalancesWithAPriceStillBeingReadAreIncomplete() = runTest {
+        pricesAndBalances()
+        feeds.of(PriceId("USDC")).value = FeedReading.Syncing
+
+        val value = accountValue(holder).first { it.tokens.size == 2 && it.tokens[0].value != null }
+
+        assertEquals(Valuation.Checking, value.tokens[0].value)
+        assertFalse(value.total.complete)
+    }
+
+    @Test
     fun aPortfolioStillValuedInThePreviousCurrencyIsIncomplete() = runTest {
         pricesAndBalances()
         val accounts = ListAccountRepository(Account(holder, AccountKind.EOA, "Daily", AccountCustody.Watched))

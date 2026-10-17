@@ -55,13 +55,14 @@ class AssetsViewModel(
                 // added, or a screen just back, never waits for every proof.
                 val items = list.accounts.map { account ->
                     val value = portfolio.values[account.address]
+                    // In the currency the value was computed in: just after a change of
+                    // currency, an account not revalued yet is still in the one before.
                     AccountItem.from(
                         account,
                         value?.native,
                         network,
                         checksums.getOrPut(account.address) { Eip55.format(account.address) },
-                        value?.nativeValue,
-                        portfolio.currency,
+                        value?.let { it.nativeValue to it.currency },
                     )
                 }
                 val total = portfolio.total.takeIf { list.accounts.isNotEmpty() }
