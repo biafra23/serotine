@@ -12,13 +12,21 @@ import androidx.compose.ui.unit.dp
 
 /**
  * An EIP-55 [address] with its blockie and shortened, after what it is ([what], if said): the
- * line a Safe's modules and guards are drawn with, on the Watch card and the Owners view.
+ * line a Safe's modules and guards are drawn with, on the Watch card and the Owners view. The
+ * address keeps its one line; a long [what] wraps in the width left beside it.
  */
 @Composable
 fun AddressLine(address: String, what: String? = null, modifier: Modifier = Modifier) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        // Weighted, so the row measures the blockie and the address first and the label gets the rest.
+        what?.let { Text(it, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodySmall) }
         Blockie(address, size = 20.dp)
-        Text(shortAddress(address), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        Text(
+            shortAddress(address),
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }

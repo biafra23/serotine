@@ -1,0 +1,107 @@
+package eth.serotine.ui.addtoken
+
+import androidx.compose.runtime.Composable
+import eth.serotine.ui.theme.SerotineTheme
+import org.jetbrains.compose.ui.tooling.preview.Preview
+
+// The Add token screen in Android Studio's preview pane, one preview per state it draws
+// differently. Built from display-ready values, as the screen tests are, never from the
+// ViewModel. AddTokenScreenPreviewsTest renders each one in addTokenScreenPreviews, at the
+// end. The addresses are EIP-55's own examples, and the tokens are made up.
+
+private const val CONTRACT = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb"
+
+private val claimed = AddTokenUiState(
+    address = CONTRACT,
+    card = TokenCard.Claim(
+        CONTRACT,
+        "EURC",
+        "Euro Coin",
+        6,
+        "Read from the contract at block 8,412,307",
+        warning = null,
+    ),
+)
+
+@Composable
+private fun AddTokenPreview(state: AddTokenUiState, darkTheme: Boolean = false) {
+    SerotineTheme(darkTheme = darkTheme) {
+        AddTokenScreen(state = state, onAddressChange = {}, onAdd = {}, onBack = {})
+    }
+}
+
+@Preview
+@Composable
+private fun AddTokenEmptyPreview() = AddTokenPreview(AddTokenUiState())
+
+@Preview
+@Composable
+private fun AddTokenReadingPreview() = AddTokenPreview(AddTokenUiState(address = CONTRACT, card = TokenCard.Checking))
+
+@Preview
+@Composable
+private fun AddTokenClaimPreview() = AddTokenPreview(claimed)
+
+@Preview
+@Composable
+private fun AddTokenClaimDarkPreview() = AddTokenPreview(claimed, darkTheme = true)
+
+@Preview
+@Composable
+private fun AddTokenImpostorPreview() = AddTokenPreview(
+    AddTokenUiState(
+        address = CONTRACT,
+        card = TokenCard.Claim(
+            CONTRACT,
+            "USDC",
+            "USD Coin",
+            6,
+            "Read from the contract at block 8,412,307",
+            warning = "Not the USDC the wallet lists: another contract calls itself that",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun AddTokenKnownPreview() =
+    AddTokenPreview(AddTokenUiState(address = CONTRACT, card = TokenCard.Known("EURC")))
+
+@Preview
+@Composable
+private fun AddTokenNotATokenPreview() = AddTokenPreview(
+    AddTokenUiState(address = CONTRACT, card = TokenCard.Unavailable("This address does not answer as a token.")),
+)
+
+@Preview
+@Composable
+private fun AddTokenInvalidAddressPreview() = AddTokenPreview(
+    AddTokenUiState(
+        address = "0xD1220a0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+        addressError = "The capitals do not match this address's checksum: check it for a typo.",
+    ),
+)
+
+@Preview
+@Composable
+private fun AddTokenAddingPreview() = AddTokenPreview(claimed.copy(adding = true))
+
+@Preview
+@Composable
+private fun AddTokenNotSavedPreview() = AddTokenPreview(
+    claimed.copy(error = "The token could not be saved. Nothing was added."),
+)
+
+/** Every preview above, which AddTokenScreenPreviewsTest renders: a new preview goes in here too. */
+internal val addTokenScreenPreviews: List<@Composable () -> Unit> = listOf(
+    { AddTokenEmptyPreview() },
+    { AddTokenReadingPreview() },
+    { AddTokenClaimPreview() },
+    { AddTokenClaimDarkPreview() },
+    { AddTokenImpostorPreview() },
+    { AddTokenKnownPreview() },
+    { AddTokenNotATokenPreview() },
+    { AddTokenInvalidAddressPreview() },
+    { AddTokenAddingPreview() },
+    { AddTokenNotSavedPreview() },
+)
