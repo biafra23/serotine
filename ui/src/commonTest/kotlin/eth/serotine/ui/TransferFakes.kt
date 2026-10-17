@@ -72,9 +72,10 @@ internal class FakeTransactionInputs : TransactionInputs {
 
 /**
  * A [Signer] that answers [answer], or, while [pending] is set, waits for it; each request is
- * kept in [asked], and each password it was given in [passwords].
+ * kept in [asked], and each password it was given in [passwords]. With a [recovery], what it signs
+ * is that recovery's made-up signature of the account, which recovers to it, as a Safe owner's must.
  */
-internal class FakeSigner : Signer {
+internal class FakeSigner(private val recovery: FakeRecovery? = null) : Signer {
     var answer: Signing = Signing.Signed(SIGNATURE)
     var pending: CompletableDeferred<Signing>? = null
     val asked = mutableListOf<Pair<Address, Unlock>>()
@@ -83,7 +84,12 @@ internal class FakeSigner : Signer {
     override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing {
         asked += account to unlock
         if (unlock is Unlock.WithPassword) passwords += unlock.password.text
-        return pending?.await() ?: answer
+        val answered = pending?.await() ?: answer
+        return if (answered is Signing.Signed && recovery != null) {
+            Signing.Signed(recovery.sign(account, digest))
+        } else {
+            answered
+        }
     }
 
     companion object {
