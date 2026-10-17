@@ -349,22 +349,26 @@ class SendTransfer(
  * never a new quote, which could take the next nonce while the first one is still on its way
  * and pay twice. A retry refused as rejected may be the first broadcast's own doing: no peer
  * answered then, yet one took it, and a block has since used its nonce. So a rejection is
- * checked against the transaction's verified receipt ([receipts]) before it is believed, and a
- * transaction already in a block is sent. A transfer's, or a Safe transaction's approval or
- * execution alike.
+ * checked against the transaction's verified receipt ([receipts]) before it is believed: a
+ * transaction already in a block is sent, one whose receipt cannot be verified right now is
+ * [TransferSending.RejectionUnverified]. A transfer's, or a Safe transaction's approval or
+ * execution alike. [clock] is in unix seconds.
  */
 class RebroadcastTransfer(
     private val broadcaster: Broadcaster,
     private val sentTransfers: SentTransfers,
     private val receipts: ReceiptTracker,
+    private val clock: () -> Long = ::epochSecondsNow,
 ) {
     suspend operator fun invoke(transfer: SentTransfer): TransferSending = withContext(NonCancellable) {
         when (val broadcast = broadcaster.send(transfer.signed.raw)) {
-            is Broadcast.Sent -> sent(sentTransfers, transfer)
+            is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
             is Broadcast.Rejected -> when (receipts.observe(transfer.hash).first()) {
-                is TransactionProgress.Included, is TransactionProgress.Finalized -> sent(sentTransfers, transfer)
-                TransactionProgress.Pending, is TransactionProgress.Unavailable ->
-                    TransferSending.NotSent(broadcast, transfer)
+                is TransactionProgress.Included, is TransactionProgress.Finalized ->
+                    sent(sentTransfers, transfer, clock)
+                // A verified read found no receipt: the engine's verdict on verified state stands.
+                TransactionProgress.Pending -> TransferSending.NotSent(broadcast, transfer)
+                is TransactionProgress.Unavailable -> TransferSending.RejectionUnverified(broadcast, transfer)
             }
             else -> TransferSending.NotSent(broadcast, transfer)
         }
@@ -389,6 +393,18 @@ sealed interface TransferSending {
      * reached a peer all the same, so it is that retry, not a new quote, that sends it again.
      */
     data class NotSent(val broadcast: Broadcast, val transfer: SentTransfer) : TransferSending {
+        /** The signed bytes a retry sends. */
+        val signed: SignedTransfer
+            get() = transfer.signed
+    }
+
+    /**
+     * A retry [rejection] that could not be checked: whether the first broadcast reached a block
+     * after all, the transfer's receipt could not be verified right now. Neither verdict is known,
+     * so [transfer] may well be in a block: a retry asks both again, and nothing new is to be
+     * signed for it meanwhile.
+     */
+    data class RejectionUnverified(val rejection: Broadcast.Rejected, val transfer: SentTransfer) : TransferSending {
         /** The signed bytes a retry sends. */
         val signed: SignedTransfer
             get() = transfer.signed

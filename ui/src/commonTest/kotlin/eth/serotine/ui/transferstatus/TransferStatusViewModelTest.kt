@@ -82,8 +82,8 @@ class TransferStatusViewModelTest {
         )
         assertEquals(
             listOf(
-                StatusStep("Signed", StepState.DONE, "On this device, at 1800000000"),
-                StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers"),
+                StatusStep("Signed", StepState.DONE, "On this device"),
+                StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers, at 1800000000"),
                 StatusStep("Included", StepState.WAITING, "Waiting for a block to include it"),
                 StatusStep("Finalized", StepState.WAITING, "Once the beacon chain finalizes its block"),
             ),

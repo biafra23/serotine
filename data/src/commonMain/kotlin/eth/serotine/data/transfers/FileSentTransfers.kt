@@ -62,10 +62,10 @@ class FileSentTransfers(
         Decision(true, next = transfers.filterNot { it.hash == transfer.hash } + transfer)
     }
 
-    override suspend fun prune(account: Address, minedCount: Long, signedBefore: Long): Boolean =
+    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean =
         file.change(notSaved = false) { transfers ->
             val kept = transfers.filterNot {
-                it.account == account && (it.nonce < minedCount || it.sentAt < signedBefore)
+                it.account == account && (it.nonce < minedCount || it.sentAt < sentBefore)
             }
             if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
         }

@@ -22,8 +22,8 @@ import kotlinx.coroutines.flow.stateIn
 /**
  * The transfer status screen's ViewModel (docs/wallet-ux.md, screen 9): the transfer [hash] on
  * [network], what this device recorded of it and where its verified receipt says it stands
- * ([ObserveSentTransfer]), as [TransferStatusUiState]. [formatTime] dates the signature in the
- * user's own time zone. No intents: the screen's only action, Done, is navigation.
+ * ([ObserveSentTransfer]), as [TransferStatusUiState]. [formatTime] dates the broadcast a peer
+ * took in the user's own time zone. No intents: the screen's only action, Done, is navigation.
  */
 class TransferStatusViewModel(
     private val hash: String,
@@ -41,10 +41,10 @@ class TransferStatusViewModel(
 
     private fun render(status: SentTransferStatus): TransferStatusUiState.Shown {
         val progress = status.progress
-        // Broadcast: this screen opens for a transfer a peer took.
-        val signedAt = status.transfer?.let { "On this device, ${formatTime(it.sentAt)}" }
-        val signed = StatusStep("Signed", StepState.DONE, signedAt)
-        val broadcast = StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers")
+        // Broadcast: this screen opens for a transfer a peer took, and its record says when.
+        val signed = StatusStep("Signed", StepState.DONE, status.transfer?.let { "On this device" })
+        val takenAt = status.transfer?.let { ", ${formatTime(it.sentAt)}" }.orEmpty()
+        val broadcast = StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
         val included = when (progress) {
             TransactionProgress.Pending ->
                 StatusStep("Included", StepState.WAITING, "Waiting for a block to include it")

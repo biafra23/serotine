@@ -277,19 +277,22 @@ internal suspend fun signAndSend(
         signed = SignedTransfer(transaction.encodeSigned(signature)),
         action = action,
         maxCost = quote.maxCost,
-        sentAt = clock(), // once signed: a prompt may have taken a while
+        sentAt = clock(), // restamped once a peer took it
     )
     return withContext(NonCancellable) {
         when (val broadcast = broadcaster.send(transfer.signed.raw)) {
-            is Broadcast.Sent -> sent(sentTransfers, transfer)
+            is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
             else -> TransferSending.NotSent(broadcast, transfer)
         }
     }
 }
 
-/** [transfer], which a peer took: recorded, and [TransferSending.Sent] by its hash. */
-internal suspend fun sent(sentTransfers: SentTransfers, transfer: SentTransfer): TransferSending {
-    sentTransfers.record(transfer)
+/**
+ * [transfer], which a peer took: recorded with the moment it was taken ([clock], unix seconds),
+ * which its lifetime in the network's pools runs from, and [TransferSending.Sent] by its hash.
+ */
+internal suspend fun sent(sentTransfers: SentTransfers, transfer: SentTransfer, clock: () -> Long): TransferSending {
+    sentTransfers.record(transfer.copy(sentAt = clock()))
     // The hash is the raw bytes' own: what the receipt is looked up by.
     return TransferSending.Sent(transfer.hash)
 }

@@ -20,8 +20,8 @@ private val sent = SentSummary(
     from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
 )
 
-private val signed = StatusStep("Signed", StepState.DONE, "On this device, Oct 17, 2026, 3:04 PM")
-private val broadcast = StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers")
+private val signed = StatusStep("Signed", StepState.DONE, "On this device")
+private val broadcast = StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers, Oct 17, 2026, 3:04 PM")
 private val waitingFinal = StatusStep("Finalized", StepState.WAITING, "Once the beacon chain finalizes its block")
 
 private val pending = TransferStatusUiState.Shown(

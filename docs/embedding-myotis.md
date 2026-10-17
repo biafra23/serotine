@@ -223,14 +223,17 @@ verified read.
     - A transfer is recorded once a peer took it. One no peer took holds no
       nonce, so a later quote may take the same one, and only one of the two
       can ever be mined.
-    - A record is forgotten once its nonce is mined, or three hours after it
-      was signed if no block took it (geth's transaction-pool lifetime):
-      kept, it would hold every later transfer behind a nonce no block takes.
+    - A record is forgotten once its nonce is mined, or three hours after a
+      peer took it if no block did (geth's transaction-pool lifetime, which
+      runs from that broadcast, a retry's included): kept, it would hold every
+      later transfer behind a nonce no block takes.
     - A retry of a broadcast no peer answered may come back rejected because
       the first broadcast reached a peer after all and a block used its
       nonce. `RebroadcastTransfer` checks the verified receipt before it
       believes the rejection, so such a transfer reads as sent, not as one
-      that can never be mined.
+      that can never be mined. A receipt that cannot be verified right now
+      leaves both verdicts open (`RejectionUnverified`): the review says so and
+      keeps Try again, which checks again, and offers no new transfer.
   - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
     50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
     median of its percentile, never below 0.001 gwei and never below the

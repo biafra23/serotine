@@ -114,9 +114,9 @@ internal class MemorySentTransfers : SentTransfers {
         return true
     }
 
-    override suspend fun prune(account: Address, minedCount: Long, signedBefore: Long): Boolean {
+    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean {
         transfers.value = transfers.value.filterNot {
-            it.account == account && (it.nonce < minedCount || it.sentAt < signedBefore)
+            it.account == account && (it.nonce < minedCount || it.sentAt < sentBefore)
         }
         return true
     }

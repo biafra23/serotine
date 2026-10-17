@@ -88,7 +88,7 @@ class FileSentTransfersTest {
         }
 
         // Signed at 1_800_000_000 + nonce: 8 is too old, 9 is not.
-        assertTrue(store.prune(alice, minedCount = 8, signedBefore = 1_800_000_009))
+        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_800_000_009))
 
         assertEquals(listOf(transfer(9), transfer(3, account = bob)), stored())
     }

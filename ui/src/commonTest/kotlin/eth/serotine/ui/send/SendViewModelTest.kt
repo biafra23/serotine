@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
@@ -32,6 +33,7 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccountValue
@@ -133,6 +135,7 @@ class SendViewModelTest {
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
     private val clock = TestTimeSource()
+    private val receipts = FakeReceipts()
 
     private fun TestScope.viewModel(from: Address = daily.address, asset: Address? = null): SendViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
@@ -155,7 +158,7 @@ class SendViewModelTest {
             ResolveRecipient(names),
             QuoteTransfer(inputs, balances, tokenBalances, sent, Network.SEPOLIA),
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
-            RebroadcastTransfer(broadcaster, sent, FakeReceipts()),
+            RebroadcastTransfer(broadcaster, sent, receipts),
             Network.SEPOLIA,
             clock,
         )
@@ -547,6 +550,33 @@ class SendViewModelTest {
         // Nothing went out, so a new transfer may be composed from where this one was.
         viewModel.edit()
         assertEquals("0.1", viewModel.compose.amount)
+    }
+
+    @Test
+    fun aRetryRejectedWhileItsReceiptCannotBeVerifiedStaysOpen() = runTest {
+        broadcaster.answers += Broadcast.Unavailable("no peer")
+        broadcaster.answers += Broadcast.Rejected("nonce too low")
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.sign()
+        runCurrent()
+        receipts.of(Eip1559Transaction.hashOf(broadcaster.sent.single())).value =
+            TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN)
+
+        viewModel.retry()
+        runCurrent()
+
+        val notSent = assertIs<NotSentItem>(viewModel.review.notSent)
+        assertTrue(notSent.canRetry, "the next try checks again")
+        assertEquals(
+            "Rejected this time (nonce too low), and whether the first broadcast reached a block after all cannot " +
+                "be verified right now. Try again sends the same signed transfer and checks again; do not send a " +
+                "new one meanwhile.",
+            notSent.message,
+        )
+        viewModel.edit()
+        assertIs<SendUiState.Review>(viewModel.uiState.value, "no new transfer while it may be in a block")
+        assertTrue(sent.transfers.value.isEmpty())
     }
 
     @Test
