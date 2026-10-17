@@ -55,10 +55,11 @@ Modules (Gradle):
   the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
   seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
-  token metadata, prices and address kinds), whose glue over `io.myotis.api`
-  lives in a `jvmSharedMain` source set the Android and desktop targets share;
-  the built-in token list and the user's token settings
-  (`eth.serotine.data.tokens`); the Chainlink feed table
+  token metadata, prices and address kinds, the peer-reported network-upgrade
+  advisory), whose glue over `io.myotis.api` lives in a `jvmSharedMain` source
+  set the Android and desktop targets share; the record of a known upgrade
+  (`eth.serotine.data.upgrade`); the built-in token list and the user's token
+  settings (`eth.serotine.data.tokens`); the Chainlink feed table
   (`eth.serotine.data.prices`); the pinned Safe deployments
   (`eth.serotine.data.safe`); and the display currency
   (`eth.serotine.data.settings`).
@@ -76,7 +77,9 @@ Modules (Gradle):
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
   adapters and renders `App`. The desktop one runs once per user: it holds an
-  `InstanceLock` on its data directory for the process's lifetime.
+  `InstanceLock` on its data directory for the process's lifetime. A port
+  whose adapter is the platform's own output (`UpgradeNotifier`: Android's
+  notifications and alarm, the desktop's tray) is implemented in the host.
 
 **The dependency rule: arrows point inward only.** `:domain` depends on nothing
 of ours; `:ui` and `:data` depend on `:domain`; the hosts depend on `:ui` and
@@ -129,6 +132,23 @@ and that is the owner's decision, not a drive-by dependency.
   `Dispatchers.setMain` (`ui/src/commonTest`), stateless screens headless with
   `createComposeRule` (`ui/src/desktopTest`). A test that needs a device or
   the network is `@Ignore`d by default and documented.
+- **Every screen has previews** (owner's request, 2026-10-17), so Android
+  Studio renders it: `<Feature>ScreenPreviews.kt` next to the screen, one
+  private `@Preview` per state the screen draws differently plus one in the
+  dark theme, each wrapping the screen in `SerotineTheme` and handing it a
+  hand-made, display-ready UiState as the screen tests do — never a
+  ViewModel, a use case or an adapter. The file ends with the internal list
+  of its previews (`<feature>ScreenPreviews`, a new preview goes in it too),
+  which `<Feature>ScreenPreviewsTest` (`ui/src/desktopTest`) renders, so a
+  broken preview fails the build. The annotation is the multiplatform
+  `org.jetbrains.compose.ui.tooling.preview.Preview` (androidx's does not
+  compile in `commonMain` on Compose Multiplatform 1.9). Sample data is made
+  up: never a real or published seed phrase, key or password. Routes and
+  `App` get none: they need a ViewModel or an `AppGraph`. A screen without
+  previews is a review finding. The ui-tooling that renders them lives in
+  `:ui`'s debug variant only, and `:android-app` keeps it out of every APK
+  (its exported `PreviewActivity`, android-app/build.gradle.kts), which the
+  APK workflow checks in the built manifests.
 - **Adding a feature** follows the five-step checklist at the end of
   docs/architecture.md, and the PR describes it along those steps.
 - Two apps come out of `:android-app` on purpose: the release one signed with
@@ -514,6 +534,20 @@ discussion that produced this note.
   anchors are sync-committee signatures and its embedded accumulators) or shown
   as not available. No JSON-RPC provider, no indexer API and no "temporary"
   fallback supplies chain state, in any build type.
+- **Network-upgrade warnings are peer reports, and say so** (owner's request,
+  2026-10-17: warn ahead of a breaking hard fork, notify even while the app
+  is closed, and after it do nothing but ask for the update). The engine's
+  upgrade advisory is derived from what peers announce and is not verified:
+  the one thing the wallet shows about the network that the light client
+  does not prove. It is never chain state — no balance, nonce or transaction
+  depends on it, nothing in verification reads it — and every text showing
+  it says peers report it. Only the light client's own state may make the app
+  claim it cannot follow the network: the update screen, which replaces every
+  other, needs an activation peers confirmed (not merely an announced time
+  passing) AND a light client that is not verifying (not synced, or a stale
+  head), Myotis's rule for its hosts. On peers' word alone the app shows a
+  banner and notifications, never that screen (docs/embedding-myotis.md,
+  *Network upgrades*).
 - **A parameter that can change the answer must be APPLIED or REFUSED — never
   accepted and silently ignored** (Myotis rule, learned the hard way in its
   #314). A well-formed result computed against something other than what the

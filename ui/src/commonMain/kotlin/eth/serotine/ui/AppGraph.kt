@@ -6,8 +6,10 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
@@ -30,6 +32,7 @@ import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
+import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveToken
@@ -49,6 +52,7 @@ import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
 import eth.serotine.ui.settings.SettingsViewModel
 import eth.serotine.ui.tokens.TokensViewModel
+import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchViewModel
 
 /**
@@ -82,17 +86,27 @@ class AppGraph(
     private val addressKinds: AddressKinds,
     /** That light client's own state. */
     private val lightClient: LightClient,
+    /** Network upgrades this version does not support, as peers report them to that light client. */
+    private val networkUpgrades: NetworkUpgrades,
+    /**
+     * The upgrade recorded from earlier reports. The host's own notices write it too, so it is
+     * one instance per process, shared with them.
+     */
+    private val knownUpgrades: KnownUpgradeStore,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
 
+    private fun observeUpgradeWarning() = ObserveUpgradeWarning(networkUpgrades, knownUpgrades, lightClient)
+
     fun assetsViewModel(): AssetsViewModel =
         AssetsViewModel(
             ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
             ObserveSafes(accounts, ObserveSafe(addressKinds, accounts)),
             ObserveLightClient(lightClient),
+            observeUpgradeWarning(),
             network,
         )
 
@@ -154,6 +168,8 @@ class AppGraph(
         ImportMnemonicAccount(keys, accounts, walletChanges),
         DescribeKeyStore(keys),
     )
+
+    fun updateRequiredViewModel(): UpdateRequiredViewModel = UpdateRequiredViewModel(observeUpgradeWarning(), network)
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
         MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))

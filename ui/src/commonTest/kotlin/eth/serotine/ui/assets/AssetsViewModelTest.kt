@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
@@ -15,9 +16,12 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.KnownUpgrade
+import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.ObserveAccountValue
@@ -30,7 +34,9 @@ import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeTokenBalances
@@ -40,12 +46,14 @@ import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.update.UpgradeBannerItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -57,6 +65,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssetsViewModelTest {
@@ -64,6 +73,7 @@ class AssetsViewModelTest {
     private val repository = FakeAccountRepository()
     private val balances = FakeBalances()
     private val lightClient = FakeLightClient()
+    private val upgrades = FakeNetworkUpgrades()
     private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
     private var now = 1_792_100_000L
     private val feeds = FakeFeeds()
@@ -89,8 +99,10 @@ class AssetsViewModelTest {
             ObservePortfolio(ObserveAccounts(repository), value, currencies),
             ObserveSafes(repository, ObserveSafe(kinds, repository)),
             ObserveLightClient(lightClient),
+            ObserveUpgradeWarning(upgrades, NoRecord, lightClient) { now },
             Network.SEPOLIA,
             clock = { now },
+            formatTime = { "<$it>" },
         )
     }
 
@@ -300,6 +312,39 @@ class AssetsViewModelTest {
     }
 
     @Test
+    fun anUpgradePeersReportIsABannerAboveTheList() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals(null, viewModel.uiState.value.upgrade)
+
+        val ahead = NetworkUpgrade(NetworkUpgrade.Phase.SCHEDULED, now + 86_400, "0x6c1d9423", 5)
+        upgrades.report.value = ahead
+        runCurrent()
+
+        assertEquals(
+            UpgradeBannerItem.from(UpgradeWarning.Ahead(ahead), Network.SEPOLIA) { "<$it>" },
+            viewModel.uiState.value.upgrade,
+        )
+        assertEquals("Network upgrade ahead: update Serotine", viewModel.uiState.value.upgrade?.title)
+    }
+
+    @Test
+    fun anUnreadableListStillShowsTheUpgradeBanner() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        repository.list.value = AccountList.Unreadable(AccountList.Reason.READ_FAILED)
+        upgrades.report.value = NetworkUpgrade(NetworkUpgrade.Phase.SCHEDULED, now + 86_400, "0x6c1d9423", 5)
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertIs<AssetsUiState.ListUnavailable>(state)
+        assertEquals("Network upgrade ahead: update Serotine", state.upgrade?.title)
+    }
+
+    @Test
     fun accountItemShowsTheChecksummedAddressShortenedForTheRow() {
         val item = AccountItem.from(
             Account(
@@ -380,6 +425,16 @@ class AssetsViewModelTest {
         override suspend fun remove(address: Address): AccountChange = error("not used by this test")
         override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
             error("not used by this test")
+    }
+
+    private class FakeNetworkUpgrades : NetworkUpgrades {
+        val report = MutableStateFlow<NetworkUpgrade?>(null)
+        override fun observeUpgrade(): Flow<NetworkUpgrade?> = report
+    }
+
+    private object NoRecord : KnownUpgradeStore {
+        override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
+        override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
     }
 
     private class FakeLightClient : LightClient {

@@ -57,7 +57,9 @@ consumer developed against an unreleased engine, Myotis's
 - **Android:** the `:data` module's Android target is what resolves the AAR;
   minSdk 29, two ABIs — a build that ships other ABIs has no engine there.
   The engine's start belongs in a foreground service once sync runs in the
-  background, as in the Myotis app.
+  background, as in the Myotis app. Until then the one background run is the
+  daily network-upgrade check (*Network upgrades*, below): a JobScheduler job
+  that holds the engine awake for five minutes.
 - **Desktop:** the JVM jar does not carry the host library; the desktop
   packaging stages it into the app's resources, as Myotis's own desktop app
   does (`appResourcesRootDir`), one per OS/arch leg of the installer
@@ -72,9 +74,9 @@ consumer developed against an unreleased engine, Myotis's
   `MyotisNode.start(network, dataDir, dnsServers)`. Loading the native library,
   creating the engine and starting it all run on a background thread, so
   nothing blocks a main thread. The desktop stops it after its window closes.
-  Android pauses its networking 30 s after the app leaves the foreground and
-  resumes it when the app returns; `AndroidDnsServers` supplies the active
-  network's resolvers.
+  Android pauses its networking 30 s after nothing holds it any more (a
+  visible activity, the daily network-upgrade check) and resumes it with the
+  next hold; `AndroidDnsServers` supplies the active network's resolvers.
 - **Readiness, as Myotis reads it.** The adapters read `ChainHandle.status()`,
   a snapshot that never blocks, the way Myotis's own readiness ladder does:
   `SYNCING` is the checkpoint bootstrap; `CATCHING_UP` walks sync-committee
@@ -197,6 +199,66 @@ consumer developed against an unreleased engine, Myotis's
   engine then reports "listen failed" and the list says "No light client". No
   released Serotine was ever without the permission, so this is a development
   trap, not a user path.
+
+## Network upgrades
+
+A hard fork the engine's build does not implement is the one thing that ends
+a working install: past it, the light client can no longer verify the chain
+(the sync committee signs under the new fork's version), and the wallet would
+look stuck syncing. Myotis detects one ahead of time and Serotine tells the
+user to update — before it, and, after it, nothing else.
+
+- **What Myotis reports.** `StatusSnapshot.upgradeAdvisory()`: an
+  `UpgradeAdvisory` with a phase (`SCHEDULED`, its activation ahead;
+  `ACTIVE`, passed), the activation time (0 when unknown), the fork id
+  upgraded peers use (`0x00000000` when unknown) and how many distinct peer
+  networks back it. Two detectors feed it: the execution layer's EIP-2124 fork
+  ids in peers' eth Status (enabled on Sepolia) and the consensus layer's ENR
+  `eth2` fields and Status digests (every network), each judged against the
+  build's own fork schedule, with one vote per IPv4 /24 or IPv6 /48, at least
+  three sources and more than those contradicting it. It is reported in every
+  lifecycle state, asleep included. Upgraded clients announce a fork from the
+  day their release carries it, so the warning comes weeks ahead.
+- **It is peer data, never verified.** Lying peers can raise a false warning,
+  never a wrong answer: nothing in verification reads it. So Serotine shows
+  it as what peers report, and claims it can no longer follow the network
+  only when the light client's own state agrees — not synced, or synced with
+  a stale head — the rule Myotis sets for every host (CLAUDE.md, *Trust*).
+- **In Serotine.** `EngineNetworkUpgrades` (`eth.serotine.data.engine`) is the
+  `NetworkUpgrades` port over it, polled with the engine's status; a malformed
+  field becomes unknown rather than failing the status poll the light client
+  and every verified read share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
+  client's state and the upgrade recorded from earlier reports:
+  - *Ahead*: a banner on Assets, with the date and the way to the update;
+  - *Activated*, as peers report or by its announced time on the clock, the
+    light client not showing this version cut off: the banner says so;
+  - *Update required*, an activation peers confirmed (reported now, or
+    recorded as active) and a light client that is not verifying: the app
+    shows the update screen and nothing else, the back stack cleared, until
+    the light client verifies again (or the app is updated). A recorded time
+    that merely passed on the clock never locks the app: a fork can move.
+- **Notifications.** `UpgradeNotices` (`:domain`) shows a notice when peers
+  first report an upgrade, a week and a day before its activation, and once
+  when it has activated; then nothing more. Each is shown once, the most
+  urgent when several fall due together. The record that remembers this
+  (`FileKnownUpgradeStore`, `eth.serotine.data.upgrade`, `upgrade.json` next to
+  the account list) belongs to one app version: an updated app starts with
+  none, and its own engine says whether its build supports the upgrade. An app
+  opened after an activation peers confirmed knows it from the record at once,
+  before peers report it again. A changing count of reporting networks is not
+  written. The activation notice says "peers report" only when they did; one
+  due by the clock alone says the announced time has passed.
+- **While the app is closed.** Android: a daily JobScheduler job (any network,
+  battery not low) wakes the engine for five minutes, long enough for peers to
+  report an upgrade, and no longer once peers confirmed an upgrade activated
+  and the user has been told (all is said; only an update changes it); an
+  inexact alarm (`setAndAllowWhileIdle`, no exact-alarm
+  permission) shows each reminder at its time, re-armed after a reboot or an
+  update; the notification permission is asked for at launch (Android 13 and
+  later; Android stops asking after two refusals), and without it the app's
+  own screens still say everything. The
+  desktop notifies through the system tray while it runs; a reminder that fell
+  due while it was closed is shown at its next start.
 
 ## What the engine's rules mean for a wallet
 

@@ -70,7 +70,11 @@ The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
 one `NavHost`, and switching tabs keeps the user's place (docs/architecture.md). The light
 client's status strip stays at the top of Assets. A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
-Safe transaction) is a destination that covers the bar until it ends.
+Safe transaction) is a destination that covers the bar until it ends. The
+update screen covers everything, the bar included, while a network upgrade
+has left this version unable to follow Sepolia, and gives way to the Assets
+tab's start when it no longer has (docs/embedding-myotis.md, *Network
+upgrades*).
 
 ## Screens
 
@@ -79,6 +83,9 @@ Safe transaction) is a destination that covers the bar until it ends.
 1. **Assets**
    - Header: the portfolio's total in the display currency, marked "testnet
      prices" on Sepolia, with a count of the assets that have no price.
+   - Under the status strip, a banner while peers announce or report a
+     network upgrade this version does not support, with the way to the
+     update (docs/embedding-myotis.md, *Network upgrades*).
    - One row per account: blockie (with `t/n` for a Safe), name, short
      address, control badge, native balance and its fiat value.
    - The FAB (2). A long press on a row opens 3; a tap opens 4, or 16 for a

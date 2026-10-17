@@ -13,6 +13,7 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.valuationText
+import eth.serotine.ui.update.UpgradeBannerItem
 
 /**
  * Everything the Assets screen renders, as one immutable value: the screen is a pure
@@ -26,8 +27,15 @@ sealed interface AssetsUiState {
     /** The embedded light client's state, for the status strip. */
     val lightClient: LightClientItem
 
+    /** A network upgrade this version does not support, for the banner under the strip; null when none. */
+    val upgrade: UpgradeBannerItem?
+
     /** The account stream has not emitted yet. */
-    data class Loading(override val network: String, override val lightClient: LightClientItem) : AssetsUiState
+    data class Loading(
+        override val network: String,
+        override val lightClient: LightClientItem,
+        override val upgrade: UpgradeBannerItem? = null,
+    ) : AssetsUiState
 
     /**
      * The managed accounts, possibly none; one row per address (the list keys rows on it).
@@ -43,6 +51,7 @@ sealed interface AssetsUiState {
         val notice: String? = null,
         val total: String? = null,
         val totalNote: String? = null,
+        override val upgrade: UpgradeBannerItem? = null,
     ) : AssetsUiState {
         init {
             require(accounts.distinctBy { it.address }.size == accounts.size) {
@@ -60,6 +69,7 @@ sealed interface AssetsUiState {
         override val network: String,
         override val lightClient: LightClientItem,
         val message: String,
+        override val upgrade: UpgradeBannerItem? = null,
     ) : AssetsUiState
 }
 

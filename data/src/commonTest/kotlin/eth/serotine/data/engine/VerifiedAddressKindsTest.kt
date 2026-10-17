@@ -75,6 +75,17 @@ class VerifiedAddressKindsTest {
     }
 
     @Test
+    fun anEngineStateThatCannotBeReadIsNotVerifiedNotSyncing() = runTest {
+        // The engine's state crosses JNA: a broken native library fails with an Error. As for
+        // balances (ProvenReads), that poll says not verified, and an address is never called
+        // an account on the strength of a state nobody could read.
+        chain.snapshot = running(head = 9)
+        chain.failure = Error("native library broken")
+
+        assertEquals(KindReading.Unavailable(ReadUnavailable.UNPROVEN), kinds().observeKind(address).first())
+    }
+
+    @Test
     fun codeIsAcceptedOnlyWhenItHashesToTheProvenValue() {
         val contract = "6080604052".fromHex()
         val contractHash = "0x" + Keccak256().digest(contract).toHex()

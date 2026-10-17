@@ -152,7 +152,7 @@ class WatchViewModel(
                     "There is no light client on this device, so the address cannot be checked."
                 ReadUnavailable.STALE_ANCHOR ->
                     "The light client refuses to sync, so the address cannot be checked."
-                ReadUnavailable.UNPROVEN -> "No peer has proven this address's code yet. Serotine keeps trying."
+                ReadUnavailable.UNPROVEN -> "This address's code could not be verified this time. Serotine keeps trying."
                 ReadUnavailable.REFUSED -> "The light client on this device cannot check this address."
             },
         )

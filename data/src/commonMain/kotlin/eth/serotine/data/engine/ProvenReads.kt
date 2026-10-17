@@ -2,11 +2,12 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.repository.ReadUnavailable
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
@@ -44,8 +45,11 @@ internal sealed interface EngineReading<out T> {
  * only looked at (the Watch screen) do not pile up. A device without
  * an engine ([chain] null) and an engine that is down answer [ReadUnavailable.NO_ENGINE]
  * once and stop, and so does a key the engine refuses ([ReadUnavailable.REFUSED]).
- * Whatever [prove] throws, and a null from it, become [ReadUnavailable.UNPROVEN]: no answer
- * from anywhere else stands in.
+ * Whatever [prove] throws, and a null from it, become [ReadUnavailable.UNPROVEN], and so does
+ * an engine state that cannot be read, for that poll — never an answer kept from before; the
+ * poll goes on. A cancellation of the poll itself ends it, while a `CancellationException`
+ * the engine's own code throws is a failure like any other. No answer from anywhere else
+ * stands in.
  */
 internal class ProvenReads<K, T>(
     private val chain: VerifiedChain?,
@@ -83,20 +87,23 @@ internal class ProvenReads<K, T>(
         val chain = chain ?: return flowOf(EngineReading.Unavailable(ReadUnavailable.NO_ENGINE))
         return flow {
             while (true) {
-                // Throwable: the snapshot crosses JNA too. A state that cannot be read is no
-                // state yet, as the light client's own adapter treats it.
                 val snapshot = try {
                     chain.snapshot()
-                } catch (e: CancellationException) {
-                    throw e
                 } catch (e: Throwable) {
-                    null
+                    // A cancellation of this poll ends it; anything else, a CancellationException
+                    // the engine's own code throws included, is an engine failure.
+                    currentCoroutineContext().ensureActive()
+                    // Throwable, as for proofs: the engine's state crosses JNA too. This poll's
+                    // reading says it is not verified, never an answer kept from before.
+                    emit(UNPROVEN)
+                    delay(pollInterval)
+                    continue
                 }
                 if (snapshot == EngineSnapshot.Down) {
                     emit(EngineReading.Unavailable(ReadUnavailable.NO_ENGINE))
                     return@flow
                 }
-                val reading = if (snapshot == null) EngineReading.Syncing else readingAt(chain, key, snapshot)
+                val reading = readingAt(chain, key, snapshot)
                 emit(reading)
                 // A refusal is for good on this build: asking again on every tick changes nothing.
                 if (reading == REFUSED) return@flow
@@ -137,9 +144,8 @@ internal class ProvenReads<K, T>(
     private suspend fun prove(chain: VerifiedChain, key: K, head: Long): EngineReading<T> {
         val proven = try {
             prove(chain, key)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Throwable) {
+            currentCoroutineContext().ensureActive() // as for the snapshot
             // Throwable: engine calls cross JNA, where a broken native library fails with an
             // Error (UnsatisfiedLinkError), not an Exception.
             null

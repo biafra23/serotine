@@ -117,9 +117,12 @@ class VerifiedTokenBalancesTest {
     }
 
     @Test
-    fun aStateTheEngineCannotReportIsNoStateYet() = runTest {
+    fun aStateTheEngineCannotReportIsNotVerified() = runTest {
         chain.failure = IllegalStateException("the native library failed")
 
-        assertEquals(TokenBalanceReading.Syncing, balances().observeBalance(holder, usdc).first())
+        assertEquals(
+            TokenBalanceReading.Unavailable(ReadUnavailable.UNPROVEN),
+            balances().observeBalance(holder, usdc).first(),
+        )
     }
 }

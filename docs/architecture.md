@@ -36,16 +36,20 @@ rule in code.
   in it can ever import `android.*` (and that variant emits Java 17 class
   files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
-  `KeyStore`, `TokenCatalog`, `UserTokens`, `DisplayCurrencySetting`, and
-  `NativeBalances`, `TokenBalances`, `TokenMetadata`, `PriceFeeds`,
-  `AddressKinds` and `LightClient` over the embedded Myotis engine) and owns
-  every data source.
+  `KeyStore`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
+  `DisplayCurrencySetting`, and `NativeBalances`, `TokenBalances`,
+  `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient` and
+  `NetworkUpgrades` over the embedded Myotis engine) and owns every data
+  source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
   which adapter implements which port. Each has one composition root
   (`SerotineApplication` on Android, `main()` on desktop) that builds an
-  `AppGraph` and hands it to `App`.
+  `AppGraph` and hands it to `App`. A port whose adapter is the platform's own
+  output rather than a data source — `UpgradeNotifier`, the notifications —
+  is implemented in the host itself, since it needs the host's activity, icon
+  or tray; the decision what to show stays a use case in `:domain`.
 
 Anything that violates the arrows — a screen reaching for a repository, a use
 case importing a Compose or Android type, `:data` depending on `:ui` — is a
@@ -58,10 +62,10 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `tokens`, `prices`, `safe`, `settings`, `files`) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe`, `settings`, `files`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu) and the display helpers they share (EIP-55, amounts, the light client's line, the seed screens' password step); no ViewModel, no use case |
-| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet) |
+| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |
 | `eth.serotine.ui.theme` | Material 3 theme |
 | `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
 
@@ -79,12 +83,23 @@ review finding, whatever it saves.
   an intent (the seed screen drops its words); nothing else. It is the only
   composable that knows the ViewModel exists, which keeps every other screen
   renderable in a test with a hand-made state.
+- **Every screen has previews.** `<Feature>ScreenPreviews.kt`, next to the
+  screen, holds a `@Preview` (the multiplatform
+  `org.jetbrains.compose.ui.tooling.preview.Preview`) per state the screen
+  draws differently, plus one in the dark theme: the screen in
+  `SerotineTheme`, fed a hand-made UiState with made-up data, as its UI
+  tests are. Android Studio renders them on the Android target, and
+  `<Feature>ScreenPreviewsTest` renders each one in the build.
 - **Navigation is one `NavHost`, in `App`**, with a destination per screen. A
   screen's ViewModel is created by `viewModel {}` inside its destination, so
   the destination's back-stack entry owns it: it survives configuration
   changes while the screen is on the back stack and is cleared when the
   screen is popped. Routes say where the user wants to go through callbacks
-  (`onAddAccount`, `onBack`); only `App` holds the `NavController`.
+  (`onAddAccount`, `onBack`); only `App` holds the `NavController`. The one
+  exception is the update screen: its ViewModel decides whether the app shows
+  anything else, so `App` creates it in the host's scope and navigates to the
+  screen, clearing the back stack (both tabs' stacks included), while an
+  update is required, and to the Assets tab's start once it no longer is.
 - **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
   Each tab is a nested graph. Settings opens over the Assets tab's stack and
@@ -94,8 +109,9 @@ review finding, whatever it saves.
   (`account/{address}`), never an object: the destination's ViewModel loads
   what it shows through its use cases. The bar shows on the tabs' screens; a
   flow that ends in a key operation or a transaction (import, create, send,
-  a Safe transaction) is a destination of its own that covers it. The screens
-  themselves are docs/wallet-ux.md.
+  a Safe transaction) is a destination of its own that covers it, and so is
+  the update screen, outside both tabs. The screens themselves are
+  docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference
@@ -165,7 +181,8 @@ documented.
    contract.
 3. **UiState + ViewModel.** The sealed state, the ViewModel mapping use-case
    output to it, the intents. Test the state transitions.
-4. **Screen + Route.** The stateless screen, a UI test per state, the Route.
+4. **Screen + Route.** The stateless screen, a UI test and a preview per state,
+   the Route.
 5. **Wire it.** `AppGraph` gets the ViewModel factory; the hosts supply the
    new adapter in their composition roots.
 6. The PR describes the feature along these five lines, so a reviewer can
