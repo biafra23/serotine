@@ -55,9 +55,12 @@ Modules (Gradle):
   the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
   seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
-  token metadata and address kinds), whose glue over `io.myotis.api` lives in a
-  `jvmSharedMain` source set the Android and desktop targets share; and the
-  built-in token list and the user's token settings (`eth.serotine.data.tokens`).
+  token metadata, prices and address kinds), whose glue over `io.myotis.api`
+  lives in a `jvmSharedMain` source set the Android and desktop targets share;
+  the built-in token list and the user's token settings
+  (`eth.serotine.data.tokens`); the Chainlink feed table
+  (`eth.serotine.data.prices`); and the display currency
+  (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
   engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with

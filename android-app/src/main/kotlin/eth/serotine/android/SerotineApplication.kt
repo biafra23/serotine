@@ -10,6 +10,7 @@ import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.domain.model.Network
@@ -42,6 +43,8 @@ class SerotineApplication : Application() {
             tokenBalances = node.tokenBalances,
             tokenMetadata = node.tokenMetadata,
             userTokens = FileUserTokens(filesDir.resolve("tokens.json").path),
+            priceFeeds = node.priceFeeds,
+            displayCurrency = FileDisplayCurrency(filesDir.resolve("display-currency.json").path),
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             network = Network.SEPOLIA,

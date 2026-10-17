@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.TokenOrigin
@@ -16,17 +17,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
-/** The Settings screen's ViewModel: the known tokens, the [network], the light client's state and the version. */
+/**
+ * The Settings screen's ViewModel: the display currency, the known tokens, the [network], the
+ * light client's state and the version.
+ */
 class SettingsViewModel(
     observeLightClient: ObserveLightClient,
     observeKnownTokens: ObserveKnownTokens,
+    observeDisplayCurrencies: ObserveDisplayCurrencies,
     network: Network,
     /** Now, in unix seconds: what the light client's line dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> =
-        combine(observeLightClient().asItems(clock), observeKnownTokens()) { item, known ->
+        combine(
+            observeLightClient().asItems(clock),
+            observeKnownTokens(),
+            observeDisplayCurrencies(),
+        ) { item, known, currencies ->
             val builtIn = known.tokens.count { it.origin == TokenOrigin.BUILT_IN }
             val added = if (known.settingsUnavailable) {
                 "added ones cannot be read"
@@ -34,7 +43,8 @@ class SettingsViewModel(
                 "${known.tokens.size - builtIn} added"
             }
             val tokens = "$builtIn built in · $added"
-            SettingsUiState(network.displayName, item, APP_VERSION, tokens)
+            val currency = currencies.chosen.code + if (currencies.unreadable) " (your choice cannot be read)" else ""
+            SettingsUiState(network.displayName, item, APP_VERSION, tokens, currency)
         }
         .stateIn(
             viewModelScope,

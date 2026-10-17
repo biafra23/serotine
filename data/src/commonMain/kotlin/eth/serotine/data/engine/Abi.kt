@@ -19,6 +19,26 @@ internal object Abi {
         return toDecimal(returnedHex.fromHex())
     }
 
+    /** Chainlink's `latestRoundData()`: no arguments, the selector alone. */
+    val LATEST_ROUND_DATA: ByteArray = "feaf968c".fromHex()
+
+    /**
+     * The round `latestRoundData()` answered in [returnedHex]: five words — roundId, answer
+     * (an int256), startedAt, updatedAt, answeredInRound. Null when it is not five words, or
+     * its update time is no time; [Round.answer] is null for a negative answer.
+     */
+    fun round(returnedHex: String): Round? {
+        if (returnedHex.length != ROUND_WORDS * WORD_HEX_DIGITS || !returnedHex.all { it in HEX }) return null
+        val words = returnedHex.chunked(WORD_HEX_DIGITS)
+        // Two's complement: a set top bit is a negative answer.
+        val answer = words[1].takeIf { it[0] < '8' }?.let(::uint256)
+        val updatedAt = uint256(words[3])?.toLongOrNull() ?: return null
+        return Round(answer, updatedAt)
+    }
+
+    /** A feed's [answer] (a non-negative decimal integer; null when negative) as of [updatedAt], in unix seconds. */
+    data class Round(val answer: String?, val updatedAt: Long)
+
     /** `symbol()`, `name()`, `decimals()`: no arguments, the selector alone. */
     val SYMBOL: ByteArray = "95d89b41".fromHex()
     val NAME: ByteArray = "06fdde03".fromHex()
@@ -125,6 +145,7 @@ internal object Abi {
     )
 
     private const val WORD = 32
+    private const val ROUND_WORDS = 5
     private const val WORD_HEX_DIGITS = 64
 
     /** Longer than any symbol or name a screen shows: what a contract says beyond this is refused. */

@@ -2,89 +2,78 @@ package eth.serotine.ui.assets
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
-import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.LightClientStatus
-import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveLightClient
-import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import eth.serotine.ui.components.totalNote
+import eth.serotine.ui.components.totalText
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * The Assets screen's ViewModel: turns the domain's account stream, each account's verified
- * balance and the light client's state into [AssetsUiState], on the [network] the
- * composition root runs the app on. It holds no platform reference and exposes state only
- * through [uiState]; what the user does with an account is navigation, which the screen's
- * route turns into the destination of the screen or dialog that does it.
+ * The Assets screen's ViewModel: turns the domain's portfolio — the accounts, what each
+ * holds and what it is worth ([ObservePortfolio]) — and the light client's state into
+ * [AssetsUiState], on the [network] the composition root runs the app on. It holds no
+ * platform reference and exposes state only through [uiState]; what the user does with an
+ * account is navigation, which the screen's route turns into the destination of the screen
+ * or dialog that does it.
  */
 class AssetsViewModel(
-    observeAccounts: ObserveAccounts,
-    observeNativeBalance: ObserveNativeBalance,
+    observePortfolio: ObservePortfolio,
     observeLightClient: ObserveLightClient,
-    network: Network,
+    private val network: Network,
     /** Now, in unix seconds: what the strip dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
-    /** What the account list gives the screen: rows (with any notice), or why there are none. */
-    private sealed interface Rows {
-        data class Shown(val items: List<AccountItem>, val notice: String?) : Rows
-        data class Unavailable(val message: String) : Rows
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val rows = observeAccounts()
-        .flatMapLatest { list ->
-            when (list) {
-                is AccountList.Unreadable -> flowOf(
-                    Rows.Unavailable(
-                        when (list.reason) {
-                            AccountList.Reason.NEWER_FORMAT -> NEWER_FORMAT
-                            AccountList.Reason.READ_FAILED -> READ_FAILED
-                        },
-                    ),
-                )
-                is AccountList.Loaded -> {
-                    val notice = if (list.damagedListSetAside) DAMAGED_SET_ASIDE else null
-                    if (list.accounts.isEmpty()) {
-                        flowOf(Rows.Shown(emptyList(), notice))
-                    } else {
-                        combine(
-                            list.accounts.map { account ->
-                                // A row from the start, "Checking…" until its first reading: an
-                                // account just added, or a screen just back, never waits for
-                                // every proof.
-                                val address = Eip55.format(account.address)
-                                observeNativeBalance(account.address)
-                                    .map<BalanceReading, BalanceReading?> { it }
-                                    .onStart { emit(null) }
-                                    .map { AccountItem.from(account, it, network, address) }
-                            },
-                        ) { items -> Rows.Shown(items.toList(), notice) }
-                    }
-                }
-            }
-        }
-
     private val strip = observeLightClient().asItems(clock)
 
-    val uiState: StateFlow<AssetsUiState> = combine(rows, strip) { rows, lightClient ->
-        when (rows) {
-            is Rows.Shown -> AssetsUiState.Ready(network.displayName, lightClient, rows.items, rows.notice)
-            is Rows.Unavailable -> AssetsUiState.ListUnavailable(network.displayName, lightClient, rows.message)
+    // The checksums once per account, not on every balance reading.
+    private val checksums = mutableMapOf<Address, String>()
+
+    val uiState: StateFlow<AssetsUiState> = combine(observePortfolio(), strip) { portfolio, lightClient ->
+        when (val list = portfolio.accounts) {
+            is AccountList.Unreadable -> AssetsUiState.ListUnavailable(
+                network.displayName,
+                lightClient,
+                when (list.reason) {
+                    AccountList.Reason.NEWER_FORMAT -> NEWER_FORMAT
+                    AccountList.Reason.READ_FAILED -> READ_FAILED
+                },
+            )
+            is AccountList.Loaded -> {
+                // A row from the start, "Checking…" until its first reading: an account just
+                // added, or a screen just back, never waits for every proof.
+                val items = list.accounts.map { account ->
+                    val value = portfolio.values[account.address]
+                    AccountItem.from(
+                        account,
+                        value?.native,
+                        network,
+                        checksums.getOrPut(account.address) { Eip55.format(account.address) },
+                        value?.nativeValue,
+                        portfolio.currency,
+                    )
+                }
+                val total = portfolio.total.takeIf { list.accounts.isNotEmpty() }
+                AssetsUiState.Ready(
+                    network.displayName,
+                    lightClient,
+                    items,
+                    notice = if (list.damagedListSetAside) DAMAGED_SET_ASIDE else null,
+                    total = total?.let { totalText(it, portfolio.currency) },
+                    totalNote = total?.let { totalNote(it, network) }?.ifEmpty { null },
+                )
+            }
         }
     }
         .stateIn(

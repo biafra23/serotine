@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -29,9 +30,9 @@ class AccountDetailScreenTest {
         address = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
         kind = AccountKind.EOA,
         control = Control.WATCH_ONLY,
-        balance = "1.5 ETH",
-        balanceVerified = true,
-        balanceNote = "Verified at block 9,412,118",
+        total = "$3,000.00",
+        totalNote = "Testnet prices · 1 asset without a price",
+        pricesNote = "Prices: Chainlink feeds, read through the light client, testnet prices",
     )
     private val events = mutableListOf<String>()
 
@@ -46,19 +47,39 @@ class AccountDetailScreenTest {
                 onRemove = { events += "remove" },
                 onHideToken = { contract, symbol -> events += "hide $symbol $contract" },
                 onMessageShown = { events += "message shown" },
+                onSort = { events += "sort $it" },
             )
         }
     }
 
     @Test
-    fun showsTheAccountItsBalanceAndWhereItWasVerified() {
+    fun showsTheAccountItsTotalAndWhatTheTotalLeavesOut() {
         show(ready)
 
         rule.onNodeWithText("Daily").assertIsDisplayed()
-        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertTextEquals("1.5 ETH")
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertTextEquals("$3,000.00")
         rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals(ready.address)
         rule.onNodeWithText("Watch-only").assertIsDisplayed()
-        rule.onNodeWithText("Verified at block 9,412,118").assertIsDisplayed()
+        rule.onNodeWithText("Testnet prices · 1 asset without a price").assertIsDisplayed()
+        rule.onNodeWithText("Prices: Chainlink feeds, read through the light client, testnet prices").assertExists()
+    }
+
+    @Test
+    fun eachRowHasItsValueAndTheRowsAreSortedByValueOrName() {
+        show(
+            ready.copy(
+                assets = listOf(
+                    AssetRow("ETH", "Ether", "1.5 ETH", "eth", verified = true, "block 9", value = "$3,000.00"),
+                    AssetRow("UNI", "Uniswap", "2 UNI", "uni", verified = true, "block 9", value = "No price"),
+                ),
+            ),
+        )
+
+        // The header's total and the ETH row's value.
+        rule.onAllNodesWithText("$3,000.00", useUnmergedTree = true).assertCountEquals(2)
+        rule.onNodeWithText("No price", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("Name").performClick()
+        assertEquals(listOf("sort NAME"), events)
     }
 
     @Test

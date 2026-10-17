@@ -25,18 +25,36 @@ const val SETTINGS_VERSION_TAG = "settings-version"
 
 /** Binds [SettingsScreen] to its ViewModel. */
 @Composable
-fun SettingsRoute(viewModel: SettingsViewModel, onTokens: () -> Unit, modifier: Modifier = Modifier) {
+fun SettingsRoute(
+    viewModel: SettingsViewModel,
+    onCurrency: () -> Unit,
+    onTokens: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    SettingsScreen(state, onTokens, modifier)
+    SettingsScreen(state, onCurrency, onTokens, modifier)
 }
 
-/** The Settings tab as a pure function of [state]; Tokens opens through [onTokens]. */
+/**
+ * The Settings tab as a pure function of [state]; the display currency opens through
+ * [onCurrency], Tokens through [onTokens].
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(state: SettingsUiState, onTokens: () -> Unit, modifier: Modifier = Modifier) {
+fun SettingsScreen(
+    state: SettingsUiState,
+    onCurrency: () -> Unit,
+    onTokens: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Section("Display")
+            ListItem(
+                modifier = Modifier.clickable(onClick = onCurrency),
+                headlineContent = { Text("Display currency") },
+                supportingContent = { Text(state.currency) },
+            )
             ListItem(
                 modifier = Modifier.clickable(onClick = onTokens),
                 headlineContent = { Text("Tokens") },

@@ -173,7 +173,11 @@ Safe transaction) is a destination that covers the bar until it ends.
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the
-    ones with a pinned feed on the network (*Prices* below).
+    ones with a pinned feed on the network (*Prices* below): on Sepolia every
+    one but CHF, which has no feed there. A stored choice the network does
+    not offer reads as USD. It is a file of its own
+    (`display-currency.json`), and values only: no amount is entered or
+    signed in it.
 20. **Add token by address**: the contract's address, then its symbol, name
     and decimals read from the contract and labelled as its claim, with the
     monogram icon it will get.
@@ -185,10 +189,14 @@ read through the light client. Applied:
 
 - **A feed table per network**: price id → feed address, the currency it
   quotes in, its decimals and its heartbeat, pinned in code from Chainlink's
-  feed directory. A token names its price id; a token without one has no
-  price. The pins say what is expected; the contract is the source of truth.
+  feed directory (`ChainlinkFeeds`). A token names its price id; a token
+  without one has no price. The pins say what is expected; the contract is
+  the source of truth. On Sepolia the table has ETH, BTC, LINK, USDC, EUR,
+  GBP and JPY, each against USD; UNI has no Sepolia feed, so it has no price,
+  and neither has a token the user adds.
 - **A price is a verified call** of `latestRoundData()` and `decimals()`
-  together, at the verified head (one Multicall3 call where it can be). The
+  together, at the verified head (two calls for now; one Multicall3 call once
+  its code hash is pinned, as for balances). The
   feed address is a proxy whose aggregator Chainlink can swap, and
   `decimals()` answers from the aggregator, so it is read every time: one
   that differs from the pinned value is no price, and the screen that would
@@ -208,6 +216,11 @@ read through the light client. Applied:
   `updatedAt` on the path is the age shown and the one the stale rule
   applies to, totals included.
 - **Totals add only priced holdings**, and say how many assets they left out.
+  A held asset with no price, or a stale one, is left out and counted; one
+  whose balance or price is still being read, or cannot be verified right
+  now, makes the total incomplete ("still checking") rather than counted.
+  A portfolio total adds the accounts valued in the currency chosen, so a
+  change of currency never sums two of them.
 - **On Sepolia every fiat value says "testnet prices"**: Chainlink's Sepolia
   feeds are testnet feeds, and Sepolia's tokens have no market value of
   their own.

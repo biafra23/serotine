@@ -25,6 +25,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -58,8 +61,8 @@ import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
-/** Test tag of the account's balance, for UI tests. */
-const val ACCOUNT_BALANCE_TAG = "account-balance"
+/** Test tag of the account's total, for UI tests. */
+const val ACCOUNT_TOTAL_TAG = "account-total"
 
 /** Test tag of the account's full address, for UI tests. */
 const val ACCOUNT_ADDRESS_TAG = "account-address"
@@ -101,6 +104,7 @@ fun AccountDetailRoute(
         onRemove = onRemove,
         onHideToken = viewModel::hideToken,
         onMessageShown = viewModel::messageShown,
+        onSort = viewModel::sortBy,
         modifier = modifier,
     )
 }
@@ -121,6 +125,7 @@ fun AccountDetailScreen(
     onRemove: () -> Unit,
     onHideToken: (contract: String, symbol: String) -> Unit,
     onMessageShown: () -> Unit,
+    onSort: (AssetSort) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -187,6 +192,7 @@ fun AccountDetailScreen(
                         scope.launch { snackbar.showSnackbar("Contract address copied") }
                     },
                     onHideToken = { asset -> asset.contract?.let { onHideToken(it, asset.symbol) } },
+                    onSort = onSort,
                 )
             }
         }
@@ -200,6 +206,7 @@ private fun Details(
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
+    onSort: (AssetSort) -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -209,29 +216,24 @@ private fun Details(
             AccountAvatar(state.address, size = 56.dp)
             Column {
                 Text(
-                    state.balance,
-                    Modifier.testTag(ACCOUNT_BALANCE_TAG),
+                    state.total,
+                    Modifier.testTag(ACCOUNT_TOTAL_TAG),
                     style = MaterialTheme.typography.headlineSmall,
-                    color = if (state.balanceVerified) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
                 )
+                // Right under the total it qualifies: testnet prices, what it leaves out.
+                state.totalNote?.let { note ->
+                    Text(
+                        note,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ControlBadge(state.control)
                     if (state.kind == AccountKind.SAFE) Text("Safe", style = MaterialTheme.typography.labelMedium)
-                }
-                // Right under the amount it dates, so it cannot be read as the tokens' block.
-                state.balanceNote?.let { note ->
-                    Text(
-                        note,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
         }
@@ -256,6 +258,7 @@ private fun Details(
                 Text("Receive")
             }
         }
+        SortChoice(state.sort, onSort)
         Assets(state, onCopyContract, onHideToken)
     }
 }
@@ -293,6 +296,25 @@ private fun Assets(
         state.tokensNote?.let { note ->
             Text(note, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        state.pricesNote?.let { note ->
+            Text(note, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Sort: Value | Name (docs/wallet-ux.md, screen 4). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SortChoice(sort: AssetSort, onSort: (AssetSort) -> Unit) {
+    SingleChoiceSegmentedButtonRow {
+        AssetSort.entries.forEachIndexed { index, order ->
+            SegmentedButton(
+                selected = sort == order,
+                onClick = { onSort(order) },
+                shape = SegmentedButtonDefaults.itemShape(index, AssetSort.entries.size),
+                label = { Text(if (order == AssetSort.VALUE) "Value" else "Name") },
+            )
+        }
     }
 }
 
@@ -311,15 +333,24 @@ private fun AssetItem(asset: AssetRow) {
             }
         },
         trailingContent = {
-            Text(
-                asset.amount,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (asset.verified) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    asset.amount,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (asset.verified) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                asset.value?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
     )
 }

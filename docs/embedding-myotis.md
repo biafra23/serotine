@@ -110,6 +110,16 @@ consumer developed against an unreleased engine, Myotis's
   plane (bidi overrides, zero-width ones, tags), the rest of Unicode's
   default-ignorable set (variation selectors, the Hangul fillers) and the
   blank Braille cell, so none can reorder a line or hide in a symbol.
+- **Verified prices.** `VerifiedPriceFeeds` reads each pinned Chainlink feed
+  (`ChainlinkFeeds`, per network) with two verified calls, `decimals()` and
+  `latestRoundData()`, through `ProvenReads`, at every verified head. Decimals
+  other than the pin, a negative or zero answer, or what is no round are no
+  price; a refusal is `REFUSED`. A round's age is measured against the
+  verified head's time, which the engine snapshot derives from the
+  BLS-attested slot (genesis + slot × seconds per slot), never the device's
+  clock; with no head time known yet the read is unproven. A round older than
+  its feed's heartbeat is stale. (`ChainHandle.getBlockVerified`, which would
+  give a block's timestamp, is not available on the Rust engine.)
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,

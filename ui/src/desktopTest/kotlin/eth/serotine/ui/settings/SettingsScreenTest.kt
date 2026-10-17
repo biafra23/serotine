@@ -20,12 +20,20 @@ class SettingsScreenTest {
     val rule = createComposeRule()
 
     private var tokensOpened = 0
+    private var currencyOpened = 0
 
     private fun show() = rule.setContent {
         SerotineTheme {
             val lightClient = LightClientItem("Verified at block 9,412,118 · 8 s ago", null, false)
             SettingsScreen(
-                SettingsUiState("Sepolia", lightClient, APP_VERSION, tokens = "3 built in · 1 added"),
+                SettingsUiState(
+                    "Sepolia",
+                    lightClient,
+                    APP_VERSION,
+                    tokens = "3 built in · 1 added",
+                    currency = "EUR",
+                ),
+                onCurrency = { currencyOpened++ },
                 onTokens = { tokensOpened++ },
             )
         }
@@ -37,6 +45,14 @@ class SettingsScreenTest {
 
         rule.onNodeWithText("3 built in · 1 added").performClick()
         assertEquals(1, tokensOpened)
+    }
+
+    @Test
+    fun theCurrencyRowSaysTheChoiceAndOpensThePicker() {
+        show()
+
+        rule.onNodeWithText("EUR").performClick()
+        assertEquals(1, currencyOpened)
     }
 
     @Test

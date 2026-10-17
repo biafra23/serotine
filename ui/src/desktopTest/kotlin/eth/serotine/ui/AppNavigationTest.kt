@@ -54,7 +54,7 @@ import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
-import eth.serotine.ui.accountdetail.ACCOUNT_BALANCE_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
@@ -154,6 +154,8 @@ class AppNavigationTest {
         },
         tokenMetadata = tokenMetadata,
         userTokens = userTokens,
+        priceFeeds = FakeFeeds(),
+        displayCurrency = MemoryCurrencySetting(),
         addressKinds = object : AddressKinds {
             override fun observeKind(address: Address): Flow<KindReading> =
                 flowOf(KindReading.Verified(AddressKind.Eoa, 9_412_118))
@@ -228,7 +230,7 @@ class AppNavigationTest {
         rule.onNodeWithText("The only network for now").assertIsDisplayed()
 
         rule.onNodeWithText("Assets").performClick()
-        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         // Selecting the tab it is on returns to the tab's start.
         rule.onNodeWithText("Assets").performClick()
         rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
@@ -246,7 +248,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertTextEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
         rule.onNodeWithText("Only send Sepolia assets to this address").assertIsDisplayed()
         rule.onNodeWithContentDescription("Back").performClick()
-        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
 
     @Test
@@ -278,7 +280,7 @@ class AppNavigationTest {
 
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(listOf(daily.address), deletedKeys)
-        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertDoesNotExist()
     }
 
     @Test
@@ -297,7 +299,7 @@ class AppNavigationTest {
         }
         rule.onNodeWithText("OK").performClick()
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertDoesNotExist()
     }
 
     @Test
@@ -308,7 +310,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Settings").performClick()
         // The system's back, twice: from Settings to the account, from the account to the list.
         rule.runOnIdle { navController.single().popBackStack() }
-        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         rule.runOnIdle { navController.single().popBackStack() }
         rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
 
@@ -316,7 +318,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Assets").performClick()
 
         rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
-        rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertDoesNotExist()
     }
 
     @Test

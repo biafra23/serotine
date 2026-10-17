@@ -1,11 +1,13 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.keys.fromHex
+import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import io.myotis.api.BeaconState
@@ -26,12 +28,12 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances], [tokenBalances], [addressKinds] and
- * [lightClient] to the AppGraph, and owns it for the life of the process: [pause] and
+ * creates it with [start], hands [nativeBalances], [tokenBalances], [tokenMetadata],
+ * [priceFeeds], [addressKinds] and [lightClient] to the AppGraph, and owns it for the life of the process: [pause] and
  * [resume] it around the app being in the background, [shutdown] on exit. Only
  * `io.myotis.api` and the library's default ports are used; nothing below them.
  */
-class MyotisNode private constructor() {
+class MyotisNode private constructor(network: Network) {
 
     private sealed interface State {
         data object Booting : State
@@ -72,6 +74,9 @@ class MyotisNode private constructor() {
 
     /** What a token contract says about itself, as verified calls. */
     val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
+    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
     val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -251,7 +256,7 @@ class MyotisNode private constructor() {
          * start gets a node whose balances and light client say so.
          */
         fun start(network: Network, dataDir: File, dnsServers: (() -> List<String>)? = null): MyotisNode {
-            val node = MyotisNode()
+            val node = MyotisNode(network)
             node.bootThread = thread(name = "myotis-boot", isDaemon = true) {
                 try {
                     node.boot(network, dataDir, dnsServers?.let { servers -> DnsServers { servers() } })

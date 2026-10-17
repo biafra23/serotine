@@ -2,11 +2,13 @@ package eth.serotine.ui.assets
 
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -173,5 +175,23 @@ class AssetsScreenTest {
         rule.onNodeWithText("Import recovery phrase").performClick()
 
         assertEquals(listOf("watch", "import"), adds)
+    }
+
+    @Test
+    fun theHeaderTotalsThePortfolioAndEachRowHasItsValue() {
+        show(
+            AssetsUiState.Ready(
+                "Sepolia",
+                syncing,
+                listOf(daily.copy(value = "$1,000.00")),
+                total = "$1,000.00",
+                totalNote = "Testnet prices",
+            ),
+        )
+
+        rule.onNodeWithTag(ASSETS_TOTAL_TAG).assertTextEquals("$1,000.00")
+        rule.onNodeWithText("Testnet prices").assertIsDisplayed()
+        // The header's total and the row's value.
+        rule.onAllNodesWithText("$1,000.00", useUnmergedTree = true).assertCountEquals(2)
     }
 }
