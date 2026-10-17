@@ -15,6 +15,7 @@ import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.KeyStoreDescription
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -209,6 +210,8 @@ class ImportMnemonicAccountTest {
     }
 
     private class FakeKeyStore : KeyStore {
+        override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
         // Keyed by identity, which is Mnemonic's equality.
         val results = mutableMapOf<Mnemonic, KeyImport>()
         val received = mutableListOf<Pair<Mnemonic, WalletPassword>>()

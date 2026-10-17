@@ -40,6 +40,7 @@ import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.assets.AccountAction
 import eth.serotine.ui.assets.AssetsRoute
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.receive.ReceiveRoute
@@ -178,6 +179,7 @@ private fun Destinations(
                     viewModel = viewModel { graph.assetsViewModel() },
                     onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
                     onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
+                    onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
                     onAccountAction = { action -> navController.open(action) },
                 )
             }
@@ -250,6 +252,13 @@ private fun Destinations(
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
+        composable(Destination.CREATE_ACCOUNT) {
+            CreateAccountRoute(
+                viewModel = viewModel { graph.createAccountViewModel() },
+                onBack = { navController.leave(Destination.CREATE_ACCOUNT) },
+                onCreated = { navController.leave(Destination.CREATE_ACCOUNT) },
+            )
+        }
         composable(Destination.MNEMONIC_IMPORT) {
             MnemonicImportRoute(
                 viewModel = viewModel { graph.mnemonicImportViewModel() },
@@ -335,6 +344,7 @@ private object Destination {
     const val TOKENS = "tokens"
     const val ADD_TOKEN = "add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
+    const val CREATE_ACCOUNT = "create-account"
     const val UPDATE_REQUIRED = "update-required"
 }
 

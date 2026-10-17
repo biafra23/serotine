@@ -1,13 +1,18 @@
 package eth.serotine.data.keys
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.Signing
+import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -44,6 +49,18 @@ class EnvelopeKeyStoreTest {
     private fun envelopeOf(address: Address): File = directory.resolve("${address.hex}.seed")
 
     private fun sealedIn(file: File): SealedSeed = Json.decodeFromString(SealedSeed.serializer(), file.readText())
+
+    /** A flipped digit in the wrapped DEK of [address]'s envelope: still well-formed, so only the tag notices. */
+    private fun damageTheWrappedKeyOf(address: Address) {
+        val damaged = sealedIn(envelopeOf(address)).let { sealed ->
+            val flipped = (if (sealed.dek[0] == '0') '1' else '0') + sealed.dek.drop(1)
+            SealedSeed(
+                sealed.version, sealed.address, sealed.hardware, sealed.salt, sealed.opsLimit, sealed.memLimitBytes,
+                sealed.dekNonce, flipped, sealed.seedNonce, sealed.seed,
+            )
+        }
+        envelopeOf(address).writeText(Json.encodeToString(SealedSeed.serializer(), damaged))
+    }
 
     @AfterTest
     fun cleanUp() {
@@ -265,15 +282,7 @@ class EnvelopeKeyStoreTest {
         val store = store()
         store.importMnemonic(abandon, password)
         store.importMnemonic(hardhat, password)
-        // A flipped digit in the wrapped DEK: still well-formed, so only the tag notices.
-        val damaged = sealedIn(envelopeOf(hardhatAddress)).let { sealed ->
-            val flipped = (if (sealed.dek[0] == '0') '1' else '0') + sealed.dek.drop(1)
-            SealedSeed(
-                sealed.version, sealed.address, sealed.hardware, sealed.salt, sealed.opsLimit, sealed.memLimitBytes,
-                sealed.dekNonce, flipped, sealed.seedNonce, sealed.seed,
-            )
-        }
-        envelopeOf(hardhatAddress).writeText(Json.encodeToString(SealedSeed.serializer(), damaged))
+        damageTheWrappedKeyOf(hardhatAddress)
 
         assertEquals(KeyImport.WrongPassword, store.importMnemonic(hardhat, WalletPassword("another password")))
         // Its own envelope refuses, abandon's opens: the password is right, the file is damaged.
@@ -354,5 +363,112 @@ class EnvelopeKeyStoreTest {
             store.importMnemonic(Mnemonic(List(12) { "test" }.joinToString(" ")), password),
         )
         assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
+    }
+
+    // --- Signing.
+
+    private val digest = Digest.of("0x" + "5a".repeat(32))
+
+    /** Whether [signature] is [signed] signed by the key of [address], and has a low s. */
+    private fun signs(signature: Signature, address: Address, signed: Digest = digest): Boolean {
+        val compact = (signature.r + signature.s).fromHex()
+        val publicKey = Secp256k1.ecdsaRecover(compact, signed.hex.fromHex(), signature.recoveryId)
+        val hash = org.kotlincrypto.hash.sha3.Keccak256().digest(publicKey.copyOfRange(1, 65))
+        val recovered = Address.of("0x" + hash.copyOfRange(12, 32).toHex())
+        val halfOrder = java.math.BigInteger("7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0", 16)
+        return recovered == address && java.math.BigInteger(signature.s, 16) <= halfOrder
+    }
+
+    @Test
+    fun aStoredAccountsKeySignsTheDigestAsGivenAndNothingElse() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+
+        val signed = store.sign(hardhatAddress, digest, password)
+
+        assertIs<Signing.Signed>(signed)
+        assertTrue(signs(signed.signature, hardhatAddress), "recovers the account, with a low s")
+        // libsecp256k1's nonce is RFC 6979's: the same digest, the same signature.
+        assertEquals(signed, store.sign(hardhatAddress, digest, password))
+    }
+
+    @Test
+    fun aWrongPasswordOrAnAccountWithoutAKeySignsNothing() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+
+        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, WalletPassword("not the password")))
+        assertEquals(Signing.NoKey, store.sign(abandonAddress, digest, password))
+    }
+
+    @Test
+    fun everyRecoveryIdRecoversTheSigner() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+
+        // Deterministic signatures: these sixteen digests give both recovery ids, every run.
+        val signatures = (1..16).map { n ->
+            val each = Digest.of(n.toString(16).padStart(64, '0'))
+            each to assertIs<Signing.Signed>(store.sign(hardhatAddress, each, password)).signature
+        }
+
+        assertEquals(setOf(0, 1), signatures.map { it.second.recoveryId }.toSet())
+        signatures.forEach { (each, signature) -> assertTrue(signs(signature, hardhatAddress, each), each.hex) }
+    }
+
+    @Test
+    fun anEnvelopeWhoseSeedIsAnotherAccountsSignsNothing() = runTest {
+        val store = store()
+        // Sealed under the abandon account's name, with the hardhat seed inside: it opens, but its
+        // key does not derive the account it is named for.
+        val passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
+        val sealed = Envelope.seal(
+            Bip39.seed(hardhat.words),
+            abandonAddress.hex,
+            passwordBytes,
+            hardware = null,
+            Envelope.Cost(opsLimit = 2, memLimitBytes = Envelope.MIN_MEMORY_BYTES),
+        )
+        envelopeOf(abandonAddress).writeText(Json.encodeToString(SealedSeed.serializer(), sealed))
+        assertIs<Envelope.Opened.Seed>(Envelope.open(sealed, passwordBytes, null), "only the key check refuses it")
+
+        assertEquals(Signing.Unavailable, store.sign(abandonAddress, digest, password))
+    }
+
+    @Test
+    fun aLostHardwareKeyIsSaidNotTakenForAWrongPassword() = runTest {
+        var provisioned = true
+        val store = store(FakeHardware(provisioned = { provisioned }))
+        store.importMnemonic(hardhat, password)
+        provisioned = false
+
+        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, password))
+    }
+
+    @Test
+    fun aDamagedEnvelopeSignsNothingAndIsNotTakenForAWrongPassword() = runTest {
+        val store = store()
+        store.importMnemonic(abandon, password)
+        store.importMnemonic(hardhat, password)
+        damageTheWrappedKeyOf(hardhatAddress)
+
+        // abandon's envelope opens under the password: the password is right, the file is damaged.
+        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, password))
+        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, WalletPassword("not the password")))
+        assertIs<Signing.Signed>(store.sign(abandonAddress, digest, password))
+    }
+
+    @Test
+    fun aNewMnemonicIsTwelveValidWordsAndStoresNothing() = runTest {
+        val store = store()
+
+        val created = store.newMnemonic()
+
+        assertIs<NewMnemonic.Created>(created)
+        assertEquals(12, created.mnemonic.words.size)
+        assertEquals(null, Bip39.problemWith(created.mnemonic.words))
+        assertEquals("Mnemonic(redacted)", created.mnemonic.toString())
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
+        assertTrue(created.mnemonic.text != (store.newMnemonic() as NewMnemonic.Created).mnemonic.text)
     }
 }

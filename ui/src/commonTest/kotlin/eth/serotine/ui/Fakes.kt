@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -63,6 +64,8 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
 
 /** A [KeyStore] whose deletions are recorded, and fail when [failDeletes]. */
 internal class FakeKeys : KeyStore {
+    override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
     val deleted = mutableListOf<Address>()
     var failDeletes = false
 

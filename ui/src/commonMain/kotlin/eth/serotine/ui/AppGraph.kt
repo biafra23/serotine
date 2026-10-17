@@ -18,6 +18,7 @@ import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -43,6 +44,7 @@ import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.assets.AssetsViewModel
+import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
@@ -159,6 +161,12 @@ class AppGraph(
         ObserveUsdPrice(priceFeeds),
         displayCurrencies(),
         network,
+    )
+
+    fun createAccountViewModel(): CreateAccountViewModel = CreateAccountViewModel(
+        NewRecoveryPhrase(keys),
+        ImportMnemonicAccount(keys, accounts, walletChanges),
+        DescribeKeyStore(keys),
     )
 
     fun updateRequiredViewModel(): UpdateRequiredViewModel = UpdateRequiredViewModel(observeUpgradeWarning(), network)

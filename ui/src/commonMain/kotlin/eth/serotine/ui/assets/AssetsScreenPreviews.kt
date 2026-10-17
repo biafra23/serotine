@@ -60,7 +60,13 @@ private val withAccounts = AssetsUiState.Ready(
 @Composable
 private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        AssetsScreen(state = state, onWatchAddress = {}, onImportPhrase = {}, onAccountAction = {})
+        AssetsScreen(
+            state = state,
+            onWatchAddress = {},
+            onImportPhrase = {},
+            onCreateAccount = {},
+            onAccountAction = {},
+        )
     }
 }
 

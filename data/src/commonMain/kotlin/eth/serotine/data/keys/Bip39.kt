@@ -16,6 +16,32 @@ internal object Bip39 {
     private const val BITS_PER_WORD = 11
     private const val PBKDF2_ROUNDS = 2048
 
+    /**
+     * The words of [entropy] (16 to 32 bytes, a multiple of 4): its bits followed by the
+     * first (bits / 32) bits of its SHA-256, read 11 bits per word from the English list.
+     * The caller zeroes [entropy].
+     */
+    fun wordsOf(entropy: ByteArray): List<String> {
+        require(entropy.size in 16..32 && entropy.size % 4 == 0) { "BIP-39 entropy is 128 to 256 bits in steps of 32" }
+        val hash = SHA256().digest(entropy)
+        try {
+            val entropyBits = entropy.size * 8
+            val totalBits = entropyBits + entropyBits / 32
+            fun bit(i: Int): Int = if (i < entropyBits) {
+                (entropy[i / 8].toInt() shr (7 - i % 8)) and 1
+            } else {
+                (hash[(i - entropyBits) / 8].toInt() shr (7 - (i - entropyBits) % 8)) and 1
+            }
+            return (0 until totalBits / BITS_PER_WORD).map { word ->
+                var value = 0
+                for (b in 0 until BITS_PER_WORD) value = (value shl 1) or bit(word * BITS_PER_WORD + b)
+                BIP39_ENGLISH[value]
+            }
+        } finally {
+            hash.fill(0)
+        }
+    }
+
     /** Why [words] are not a BIP-39 mnemonic, or null when they are one. */
     fun problemWith(words: List<String>): MnemonicProblem? {
         if (words.size !in Mnemonic.WORD_COUNTS) return MnemonicProblem.WordCount(words.size)

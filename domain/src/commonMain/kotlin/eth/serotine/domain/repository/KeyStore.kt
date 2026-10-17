@@ -32,6 +32,15 @@ interface KeyStore {
     suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport
 
     /**
+     * A new BIP-39 mnemonic of 12 words, from 128 bits of the platform's secure randomness,
+     * for Create account (docs/wallet-ux.md, screen 12): the backup words shown at creation, the
+     * mnemonic exception's other end (CLAUDE.md, *Trust*). Nothing is stored: the words are
+     * kept by [importMnemonic] once the user has written them down and checked them. Never
+     * throws.
+     */
+    suspend fun newMnemonic(): NewMnemonic
+
+    /**
      * Deletes the key of [address], the envelope its seed is sealed in, so that nothing on
      * this device can sign for it any more ([KeyDeletion.Deleted]); [KeyDeletion.NotFound]
      * when there is none. Once the last one is gone no wallet password is set: the next
@@ -90,6 +99,15 @@ sealed interface KeyImport {
 
     /** The envelope could not be written. Nothing was stored. */
     data object NotSaved : KeyImport
+}
+
+/** The outcome of [KeyStore.newMnemonic]. */
+sealed interface NewMnemonic {
+    /** [mnemonic] was made; nothing is stored yet. */
+    data class Created(val mnemonic: Mnemonic) : NewMnemonic
+
+    /** The key store cannot run on this device. */
+    data object Unavailable : NewMnemonic
 }
 
 /** The outcome of [KeyStore.delete]. */

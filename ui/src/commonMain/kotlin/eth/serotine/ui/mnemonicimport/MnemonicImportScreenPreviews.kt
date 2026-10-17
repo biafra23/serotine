@@ -3,6 +3,7 @@ package eth.serotine.ui.mnemonicimport
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
