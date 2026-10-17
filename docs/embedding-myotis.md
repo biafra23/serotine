@@ -317,10 +317,10 @@ a Safe transaction*). What the engine adds:
     takes none), and that limit is what the Safe's call gets when the
     transaction has a `safeTxGas` and no gas price: a call that runs out
     there returns `false` instead of reverting, so it can pass the run and
-    fail on chain. Such a transaction is not executed here
-    (`SafeTxRefusal.SafeTxGasUncheckable`). With both zero a failing call
-    reverts the execution and the estimate finds a limit it passes at; with a
-    gas price the call gets exactly `safeTxGas` whatever the limit.
+    fail on chain. That is one reason no transaction with gas or refund
+    terms is signed, approved or executed here (`SafeTxRefusal.GasTerms`):
+    with all of them zero a failing call reverts the execution, and the
+    estimate finds a limit it passes at.
   - An approval (`QuoteSafeApproval`) runs `approveHash` from the owner, which
     the Safe reverts for anyone else.
 - **The co-signing medium is no engine read.** A signing request travels as

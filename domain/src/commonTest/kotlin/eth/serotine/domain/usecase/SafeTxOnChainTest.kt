@@ -68,6 +68,10 @@ class SafeTxOnChainTest {
         )
         assertEquals(2, reading.confirmations)
         assertEquals(2, reading.threshold)
+        // As the execution counts them: an owner executing it confirms it by sending it.
+        assertEquals(3, reading.confirmationsExecutedBy(world.carol))
+        assertEquals(2, reading.confirmationsExecutedBy(world.alice.address), "it signed already")
+        assertEquals(2, reading.confirmationsExecutedBy(world.stranger), "no owner")
     }
 
     @Test
@@ -200,23 +204,37 @@ class SafeTxOnChainTest {
     }
 
     @Test
-    fun aSafeTxGasWithoutAGasPriceIsNotExecutedHere() = runTest {
+    fun aSafeTxWithGasOrRefundTermsIsShownButNeverSignedApprovedOrExecutedHere() = runTest {
         world.inputs.simulation = Simulation.Succeeded(executed, 100)
-        fun withGas(safeTxGas: Long, gasPrice: Long) = SafeTx(
-            payment.to, payment.value, ByteArray(0), SafeOperation.CALL, UInt256.of(safeTxGas), UInt256.ZERO,
-            UInt256.of(gasPrice), Address.ZERO, Address.ZERO, nonce = 4,
-        )
+        fun withTerms(safeTxGas: Long = 0, baseGas: Long = 0, gasPrice: Long = 0, gasToken: Address = Address.ZERO) =
+            SafeTx(
+                payment.to, payment.value, ByteArray(0), SafeOperation.CALL, UInt256.of(safeTxGas),
+                UInt256.of(baseGas), UInt256.of(gasPrice), gasToken, Address.ZERO, nonce = 4,
+            )
+        val sign = SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA)
 
-        // Its call gets what gas is left, may fail without reverting, and the run has more gas.
-        assertEquals(
-            SafeExecutionQuoting.Refused(SafeTxRefusal.SafeTxGasUncheckable),
-            quoteExecution(world.request(withGas(50_000, 0), world.carol), world.alice.address, FeeLevel.NORMAL),
-        )
+        for (
+            tx in listOf(
+                withTerms(safeTxGas = 50_000), // a failing call would use up the nonce
+                withTerms(gasPrice = 1), // its call gets no gas, and the Safe pays a refund all the same
+                withTerms(baseGas = 1_000_000_000, gasPrice = 1), // a refund bounded by nothing but the Safe
+                withTerms(safeTxGas = 50_000, gasPrice = 1, gasToken = world.recipient),
+            )
+        ) {
+            val request = world.request(tx, world.carol)
+            assertEquals(SafeTxRefusal.GasTerms, DecodedSafeTx.of(request).refusal, "said before anyone asks")
+            assertEquals(SafeTxSigning.Refused(SafeTxRefusal.GasTerms), sign(request, world.alice.address, unlock))
+            assertEquals(
+                SafeApprovalQuoting.Refused(SafeTxRefusal.GasTerms),
+                quoteApproval(request, world.alice.address, FeeLevel.NORMAL),
+            )
+            assertEquals(
+                SafeExecutionQuoting.Refused(SafeTxRefusal.GasTerms),
+                quoteExecution(request, world.alice.address, FeeLevel.NORMAL),
+            )
+        }
         assertEquals(emptyList(), world.inputs.simulated)
-        // With a gas price, its call gets exactly its safeTxGas whatever the limit: the run tells.
-        assertIs<SafeExecutionQuoting.Quoted>(
-            quoteExecution(world.request(withGas(50_000, 1), world.carol), world.alice.address, FeeLevel.NORMAL),
-        )
+        assertEquals(null, DecodedSafeTx.of(world.request(payment)).refusal, "a plain call may be signed")
     }
 
     @Test
@@ -250,6 +268,11 @@ class SafeTxOnChainTest {
         assertEquals(
             SafeExecutionQuoting.Refused(SafeTxRefusal.AlreadySent),
             quoteExecution(request, world.alice.address, FeeLevel.NORMAL),
+        )
+        assertEquals(
+            SafeExecutionQuoting.Refused(SafeTxRefusal.AlreadySent),
+            quoteExecution(request, world.stranger, FeeLevel.NORMAL),
+            "from another account of this wallet just the same: the nonce is the Safe's",
         )
 
         world.inputs.simulation = Simulation.Succeeded("", 100)

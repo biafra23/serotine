@@ -53,7 +53,6 @@ sealed interface SafeTxAction {
         private val ENABLE_MODULE = selector("enableModule(address)")
         private val DISABLE_MODULE = selector("disableModule(address,address)")
         private val SET_GUARD = selector("setGuard(address)")
-        private val SET_MODULE_GUARD = selector("setModuleGuard(address)")
         private val SET_FALLBACK_HANDLER = selector("setFallbackHandler(address)")
 
         /** What [tx], a transaction of the Safe at [safe], does. */
@@ -102,9 +101,6 @@ sealed interface SafeTxAction {
             args(SET_GUARD, 1)?.let { (guard) ->
                 return SafeSettingsChange.GuardSet((address(guard) ?: return null).orNone())
             }
-            args(SET_MODULE_GUARD, 1)?.let { (guard) ->
-                return SafeSettingsChange.ModuleGuardSet((address(guard) ?: return null).orNone())
-            }
             args(SET_FALLBACK_HANDLER, 1)?.let { (handler) ->
                 return SafeSettingsChange.FallbackHandlerSet((address(handler) ?: return null).orNone())
             }
@@ -143,39 +139,42 @@ sealed interface SafeSettingsChange {
     /** [guard] checks every transaction from now on (null: no guard any more). */
     data class GuardSet(val guard: Address?) : SafeSettingsChange
 
-    /** [guard] checks every module's transaction from now on (null: none any more); Safe 1.5.0 on. */
-    data class ModuleGuardSet(val guard: Address?) : SafeSettingsChange
-
     /** [handler] answers the calls the Safe has no function for (null: none any more). */
     data class FallbackHandlerSet(val handler: Address?) : SafeSettingsChange
 }
 
 /**
- * The refund a [SafeTx] makes the Safe pay whoever executes it, when its gas price is not zero
- * (docs/wallet-ux.md, screen 17): up to `(gas used + baseGas) × gasPrice` — for ether, at most
- * the gas price the execution itself pays — in [gasToken] (null: ether) to [receiver] (null:
- * the account that executes it). The gas used is the execution's and is known only once it
- * runs: with a [safeTxGas] of zero the call may use whatever gas the execution is given.
+ * The gas and refund terms a [SafeTx] carries beside its call (docs/wallet-ux.md, screen 17),
+ * when it carries any: what a plain call ([SafeTx.call], all of them zero) does not.
+ * - A [gasPrice] that is not zero makes the Safe pay whoever it names a refund after the call:
+ *   `(gas used + baseGas) × gasPrice` in [gasToken] (null: ether) to [receiver] (null: the
+ *   account that executes it). For ether the gas price is capped at the one the execution pays,
+ *   but [baseGas] is not, and in a gas token neither is: the refund is bounded only by what the
+ *   Safe holds, whatever the call does. The call then gets exactly [safeTxGas]; with none, it
+ *   runs out at once and fails, and the Safe still uses up the nonce and pays.
+ * - A [safeTxGas] that is not zero, with no gas price, lets the call fail without reverting the
+ *   execution: whoever executes it with too little gas uses up the nonce.
  */
-data class SafeTxRefund(
-    val gasPrice: UInt256,
-    val baseGas: UInt256,
+data class SafeTxGasTerms(
     val safeTxGas: UInt256,
+    val baseGas: UInt256,
+    val gasPrice: UInt256,
     val gasToken: Address?,
     val receiver: Address?,
 ) {
     companion object {
-        /** The refund [tx] makes, or null when it makes none (a gas price of zero). */
-        fun of(tx: SafeTx): SafeTxRefund? = if (tx.gasPrice.isZero) {
-            null
-        } else {
-            SafeTxRefund(
-                gasPrice = tx.gasPrice,
-                baseGas = tx.baseGas,
+        /** The terms [tx] carries, or null when it carries none: a plain call's. */
+        fun of(tx: SafeTx): SafeTxGasTerms? {
+            val terms = SafeTxGasTerms(
                 safeTxGas = tx.safeTxGas,
+                baseGas = tx.baseGas,
+                gasPrice = tx.gasPrice,
                 gasToken = tx.gasToken.takeIf { it != Address.ZERO },
                 receiver = tx.refundReceiver.takeIf { it != Address.ZERO },
             )
+            return terms.takeUnless { it == NONE }
         }
+
+        private val NONE = SafeTxGasTerms(UInt256.ZERO, UInt256.ZERO, UInt256.ZERO, gasToken = null, receiver = null)
     }
 }

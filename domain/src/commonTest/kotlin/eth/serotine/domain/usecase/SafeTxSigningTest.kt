@@ -210,7 +210,7 @@ class SafeTxSigningTest {
 
         val signed = assertIs<SafeTxSigning.Signed>(sign(world.request(usdcTransfer(4)), world.alice.address, unlock))
         val queued = assertIs<SafeTxQueueReading.Loaded>(
-            ObserveSafeTxQueue(world.queue, world.observeSafe, Network.SEPOLIA)(world.safe).first(),
+            ObserveSafeTxQueue(world.queue, world.observeSafe, world.recovery, Network.SEPOLIA)(world.safe).first(),
         )
 
         // Shared with Carol's, another device would refuse the whole request.
@@ -330,7 +330,7 @@ class SafeTxSigningTest {
         world.queue.save(world.request(usdcTransfer(3)))
 
         val reading = assertIs<SafeTxQueueReading.Loaded>(
-            ObserveSafeTxQueue(world.queue, world.observeSafe, Network.SEPOLIA)(world.safe).first(),
+            ObserveSafeTxQueue(world.queue, world.observeSafe, world.recovery, Network.SEPOLIA)(world.safe).first(),
         )
 
         assertEquals(4, reading.safeNonce)

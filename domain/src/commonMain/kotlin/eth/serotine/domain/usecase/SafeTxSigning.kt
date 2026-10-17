@@ -8,14 +8,13 @@ import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SafeTxAction
-import eth.serotine.domain.model.SafeTxRefund
+import eth.serotine.domain.model.SafeTxGasTerms
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.ReadUnavailable
-import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SafeTxQueue
 import eth.serotine.domain.repository.SafeTxQueueList
 import eth.serotine.domain.repository.SignatureRecovery
@@ -28,11 +27,14 @@ import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 /**
  * Why a Safe transaction was not imported, signed, approved or executed (docs/wallet-ux.md,
@@ -94,12 +96,13 @@ sealed interface SafeTxRefusal {
     data class ThresholdNotMet(val confirmations: Int, val threshold: Int) : SafeTxRefusal
 
     /**
-     * Its `safeTxGas` is not zero and its gas price is: the Safe then gives its call whatever gas
-     * is left, and a call that runs out does not revert the execution — it returns false and the
-     * nonce is used up. The verified run has more gas than the execution is sent with, so it
-     * cannot tell; this wallet does not execute it (another may, with a gas limit of its choice).
+     * It carries gas or refund terms ([eth.serotine.domain.model.SafeTxGasTerms]): a refund can
+     * pay the Safe's funds to whoever it names, bounded only by what the Safe holds, and a
+     * `safeTxGas` lets the call fail and still use up the nonce. This wallet proposes none, and
+     * signs, approves and executes none either (docs/wallet-ux.md, screen 17); it is shown,
+     * with its terms, and nothing more.
      */
-    data object SafeTxGasUncheckable : SafeTxRefusal
+    data object GasTerms : SafeTxRefusal
 
     /** The light client has no verified head yet. */
     data object Syncing : SafeTxRefusal
@@ -113,26 +116,42 @@ sealed interface SafeTxRefusal {
 
 /**
  * A Safe transaction as this wallet shows it: [request], what it does as decoded here from its
- * raw fields ([action]), and the refund it makes the Safe pay ([refund], null: none). A
- * [delegateCall] is marked as such and never signed here ([SafeTxRefusal.DelegateCall]). Made
- * only by [of], so what is shown is always what the request's fields decode to.
+ * raw fields ([action]), and the gas and refund terms it carries beside its call ([gasTerms],
+ * null: none). A [delegateCall] is marked as such. [refusal] says why this wallet will not sign,
+ * approve or execute it, before anyone asks: a delegate call, or gas terms (null: neither).
+ * Made only by [of], so what is shown is always what the request's fields decode to.
  */
 @ConsistentCopyVisibility
 data class DecodedSafeTx private constructor(
     val request: SigningRequest,
     val action: SafeTxAction,
-    val refund: SafeTxRefund?,
+    val gasTerms: SafeTxGasTerms?,
 ) {
 
     /** Whether the Safe would run the target's code as itself. */
     val delegateCall: Boolean
         get() = request.tx.operation == SafeOperation.DELEGATECALL
 
+    /** Why this wallet signs, approves and executes none of it, or null when it may. */
+    val refusal: SafeTxRefusal?
+        get() = request.unsignable()
+
     companion object {
         /** [request], decoded. */
         fun of(request: SigningRequest) =
-            DecodedSafeTx(request, SafeTxAction.of(request.safe, request.tx), SafeTxRefund.of(request.tx))
+            DecodedSafeTx(request, SafeTxAction.of(request.safe, request.tx), SafeTxGasTerms.of(request.tx))
     }
+}
+
+/**
+ * Why this wallet signs, approves and executes none of [this], whatever its signatures and the
+ * Safe say: a delegate call, or gas or refund terms (docs/wallet-ux.md, screen 17). Null when it
+ * is a plain call, the only kind it proposes.
+ */
+internal fun SigningRequest.unsignable(): SafeTxRefusal? = when {
+    tx.operation == SafeOperation.DELEGATECALL -> SafeTxRefusal.DelegateCall
+    SafeTxGasTerms.of(tx) != null -> SafeTxRefusal.GasTerms
+    else -> null
 }
 
 /** The Safe's verified state for a one-shot check, or the refusal there is instead. */
@@ -185,18 +204,20 @@ internal fun SignatureRecovery.validOnly(request: SigningRequest, owners: List<A
  * signature it carries is a current owner's and recovers to that owner over that hash
  * ([SignatureRecovery]). Anything else is refused with the reason, and nothing of it is kept.
  *
- * What it does is decoded here from the fields ([DecodedSafeTx]); a delegate call is accepted
- * for display, marked as such, and never signed here. A request that passes is saved to the
- * queue ([SafeTxQueue]), its signatures merged into the same transaction's there.
+ * What it does is decoded here from the fields ([DecodedSafeTx]); a delegate call or gas terms
+ * are accepted for display, marked as such, and never signed here. A request that passes is
+ * saved to the queue ([SafeTxQueue]), its signatures merged into the same transaction's there.
+ * The text, up to the codec's limit, is decoded on [decoding], never on the caller's thread.
  */
 class ImportSigningRequest(
     private val codec: SigningRequestCodec,
     private val observeSafe: ObserveSafe,
     private val recovery: SignatureRecovery,
     private val queue: SafeTxQueue,
+    private val decoding: CoroutineDispatcher = Dispatchers.Default,
 ) {
     suspend operator fun invoke(text: String): SigningRequestImport {
-        val request = when (val decoded = codec.decode(text)) {
+        val request = when (val decoded = withContext(decoding) { codec.decode(text) }) {
             is SigningRequestDecoding.Decoded -> decoded.request
             SigningRequestDecoding.Malformed -> return SigningRequestImport.Refused(SafeTxRefusal.Malformed)
             is SigningRequestDecoding.UnknownVersion ->
@@ -266,7 +287,7 @@ class SignSafeTx(
     suspend operator fun invoke(request: SigningRequest, owner: Address, unlock: Unlock): SafeTxSigning {
         fun refused(refusal: SafeTxRefusal) = SafeTxSigning.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
-        if (request.tx.operation == SafeOperation.DELEGATECALL) return refused(SafeTxRefusal.DelegateCall)
+        request.unsignable()?.let { return refused(it) }
         val state = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
@@ -391,7 +412,7 @@ class ProposeSafeTx(
                 SafeTxProposal(
                     tx = DecodedSafeTx.of(request),
                     safe = reading,
-                    queuedAhead = ahead.size,
+                    queuedAhead = (nonce - safeNonce).toInt(),
                     balanceBefore = before,
                     queuedAmount = queuedAmount,
                     balanceAfter = available - amount,
@@ -445,7 +466,7 @@ class ProposeSafeTx(
 
 /**
  * A Safe transfer proposed for review: [tx] at the Safe's next nonce, after [queuedAhead]
- * transactions queued before it; the Safe's verified state ([safe]); its balance of the asset
+ * nonces queued before it (two transactions at one nonce, of which one runs, count once); the Safe's verified state ([safe]); its balance of the asset
  * ([balanceBefore], at [balanceBlock]), what those queued before it may move of it
  * ([queuedAmount]) and what this one leaves ([balanceAfter]); and whether the Safe's call was
  * run as a verified call ([simulation]). Only [ProposeSafeTx] makes one.
@@ -510,13 +531,15 @@ sealed interface SafeTxProposing {
 /**
  * The transactions queued for the Safe at [safe] (docs/wallet-ux.md, screen 16, Queue), each
  * decoded here from its raw fields, in nonce order. Once the Safe's state is verified, those whose
- * nonce it has passed are left out, so are the signatures of owners it no longer has (what is
- * shared from here is then what another device accepts), and
- * [SafeTxQueueReading.Loaded.safeNonce] says its nonce. On [network] only.
+ * nonce it has passed are left out, so are the signatures that are not its current owners' or
+ * do not recover to them ([SignatureRecovery]: what is shared from here is then what another
+ * device accepts, whatever the queue file holds), and [SafeTxQueueReading.Loaded.safeNonce] says
+ * its nonce. On [network] only.
  */
 class ObserveSafeTxQueue(
     private val queue: SafeTxQueue,
     private val observeSafe: ObserveSafe,
+    private val recovery: SignatureRecovery,
     private val network: Network,
 ) {
     operator fun invoke(safe: Address): Flow<SafeTxQueueReading> =
@@ -528,17 +551,13 @@ class ObserveSafeTxQueue(
                     val pending = list.requests
                         .filter { it.network == network && (state == null || it.nonce >= state.nonce) }
                         .sortedBy { it.nonce }
-                        // Each was checked when it was queued; an owner removed since counts no more.
-                        .map { request -> state?.let { request.signedByOwnersOf(it) } ?: request }
+                        // Checked again: an owner removed since, or a file changed under it, counts no more.
+                        .map { request -> state?.let { recovery.validOnly(request, it.owners) } ?: request }
                     SafeTxQueueReading.Loaded(pending.map(DecodedSafeTx::of), state?.nonce)
                 }
             }
         }
 }
-
-/** This request with only the signatures of [state]'s current owners. */
-private fun SigningRequest.signedByOwnersOf(state: SafeState): SigningRequest =
-    SigningRequest.of(network, safe, tx, signatures.filter { it.owner in state.owners })
 
 /** One answer of [ObserveSafeTxQueue]. */
 sealed interface SafeTxQueueReading {

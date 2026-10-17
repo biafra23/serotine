@@ -207,6 +207,10 @@ its KDoc and returns it as a result the UI shows as state.
     them, and the nonce is not one the Safe has passed;
   - a delegate call is refused: the Safe would run the target's code as
     itself, and no preview can say what that code does;
+  - so are gas and refund terms (`safeTxGas`, `baseGas`, `gasPrice`,
+    `gasToken`, `refundReceiver` other than zero): a refund can pay the Safe's
+    funds to whoever it names, bounded only by what the Safe holds, and a
+    `safeTxGas` lets a failing call use up the nonce;
   - the key store's signature is recovered (`SignatureRecovery`, libsecp256k1)
     and kept only when it recovers to the owner, as a co-signer's is.
 

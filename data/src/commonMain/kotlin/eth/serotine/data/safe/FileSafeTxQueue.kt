@@ -21,8 +21,9 @@ import kotlinx.serialization.json.Json
  * [SafeTxQueue] kept in the file at [path] (a [VersionedJsonFile]), each request in the form a
  * signing request travels in ([WireRequest]): the Safe, its chain, the raw transaction and its
  * owners' signatures, all public. A request for a chain no [Network] is, or with a field out of
- * its range, makes the file damaged: it is set aside and the queue starts empty. One that cannot
- * be read is [SafeTxQueueList.Unreadable].
+ * its range, is left out and the others are kept: the signatures they collected cannot be had
+ * again without asking their owners. A file that is no queue at all is damaged, set aside, and
+ * the queue starts empty; one that cannot be read is [SafeTxQueueList.Unreadable].
  */
 class FileSafeTxQueue(
     path: String,
@@ -35,7 +36,7 @@ class FileSafeTxQueue(
         what = "Safe transaction queue",
         formatVersion = FORMAT_VERSION,
         empty = emptyList<SigningRequest>(),
-        decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).requests.map(::request) },
+        decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).requests.mapNotNull(::request) },
         encode = { requests ->
             JSON.encodeToString(StoredFile.serializer(), StoredFile(FORMAT_VERSION, requests.map(WireRequest::of)))
         },
@@ -77,11 +78,11 @@ class FileSafeTxQueue(
         const val FORMAT_VERSION = 1
         val JSON = Json
 
-        /** [wire] as the request it keeps; throws on anything else, which makes the file damaged. */
-        fun request(wire: WireRequest): SigningRequest {
-            require(wire.v == WireRequest.VERSION) { "a request of another version" }
-            val network = requireNotNull(Network.entries.firstOrNull { it.chainId == wire.chainId }) { "another chain" }
-            return requireNotNull(wire.toRequest(network)) { "a field out of its range" }
+        /** [wire] as the request it keeps, or null for one of another version, chain or range: left out. */
+        fun request(wire: WireRequest): SigningRequest? {
+            if (wire.v != WireRequest.VERSION) return null
+            val network = Network.entries.firstOrNull { it.chainId == wire.chainId } ?: return null
+            return wire.toRequest(network)
         }
     }
 }

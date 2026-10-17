@@ -95,16 +95,24 @@ class SafeTxActionTest {
     }
 
     @Test
-    fun aRefundIsSaidWhenTheGasPriceIsNotZero() {
-        assertNull(SafeTxRefund.of(call(bob, value = 1)))
-        val tx = SafeTx(
+    fun gasAndRefundTermsAreSaidWheneverAPlainCallWouldHaveNone() {
+        assertNull(SafeTxGasTerms.of(call(bob, value = 1)))
+        val refund = SafeTx(
             bob, UInt256.ONE, ByteArray(0), SafeOperation.CALL, UInt256.of(50_000), UInt256.of(100),
             UInt256.of(10), usdc, Address.ZERO, nonce = 1,
         )
-
         assertEquals(
-            SafeTxRefund(UInt256.of(10), UInt256.of(100), UInt256.of(50_000), gasToken = usdc, receiver = null),
-            SafeTxRefund.of(tx),
+            SafeTxGasTerms(UInt256.of(50_000), UInt256.of(100), UInt256.of(10), gasToken = usdc, receiver = null),
+            SafeTxGasTerms.of(refund),
+        )
+        // A safeTxGas alone, with no gas price, is terms too: a failing call would use up the nonce.
+        val gasOnly = SafeTx(
+            bob, UInt256.ONE, ByteArray(0), SafeOperation.CALL, UInt256.of(50_000), UInt256.ZERO,
+            UInt256.ZERO, Address.ZERO, Address.ZERO, nonce = 1,
+        )
+        assertEquals(
+            SafeTxGasTerms(UInt256.of(50_000), UInt256.ZERO, UInt256.ZERO, gasToken = null, receiver = null),
+            SafeTxGasTerms.of(gasOnly),
         )
     }
 

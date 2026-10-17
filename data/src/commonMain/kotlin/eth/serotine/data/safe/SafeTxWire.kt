@@ -43,7 +43,12 @@ internal class WireRequest(
     }
 
     companion object {
-        /** The format version this build writes and reads. */
+        /**
+         * The format version this build writes and reads. The queue file ([FileSafeTxQueue]) and
+         * the record of sent transactions ([eth.serotine.data.transfers.FileSentTransfers]) keep
+         * requests in this form too: a new version bumps their formats with it, or an older build
+         * reads their files as damaged and sets them aside.
+         */
         const val VERSION = 1
 
         /** [request] as its JSON object, its signatures in ascending owner order. */

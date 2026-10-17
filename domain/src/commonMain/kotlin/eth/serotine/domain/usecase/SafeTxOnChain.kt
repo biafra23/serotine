@@ -3,7 +3,6 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeCalls
-import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.UInt256
@@ -16,6 +15,7 @@ import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
+import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.Signer
@@ -43,7 +43,11 @@ sealed interface OwnerConfirmation {
 }
 
 /** [owner], one of the Safe's current owners, whose key the wallet holds or not ([held]), and how it stands. */
-data class SafeTxOwner(val owner: Address, val held: Boolean, val confirmation: OwnerConfirmation)
+data class SafeTxOwner(val owner: Address, val held: Boolean, val confirmation: OwnerConfirmation) {
+    /** Whether it confirms the transaction, by signature or on chain. */
+    val confirms: Boolean
+        get() = confirmation == OwnerConfirmation.Signed || confirmation is OwnerConfirmation.ApprovedOnChain
+}
 
 /**
  * Where a Safe transaction stands with the Safe's current owners (docs/wallet-ux.md, screen 17):
@@ -100,9 +104,14 @@ sealed interface SafeTxOwnersReading {
         SafeTxOwnersReading {
         /** How many owners confirm it, by signature or on chain. */
         val confirmations: Int
-            get() = owners.count {
-                it.confirmation == OwnerConfirmation.Signed || it.confirmation is OwnerConfirmation.ApprovedOnChain
-            }
+            get() = owners.count { it.confirms }
+
+        /**
+         * How many confirm it when [executor] executes it: an owner executing it confirms it by
+         * sending it, as [QuoteSafeExecution] counts, whether it signed or not.
+         */
+        fun confirmationsExecutedBy(executor: Address): Int =
+            owners.count { it.confirms || it.owner == executor }
     }
 
     /** Not read: [refusal] (the Safe is none, or cannot be verified now). */
@@ -148,7 +157,7 @@ class QuoteSafeApproval(
     suspend operator fun invoke(request: SigningRequest, owner: Address, level: FeeLevel): SafeApprovalQuoting {
         fun refused(refusal: SafeTxRefusal) = SafeApprovalQuoting.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
-        if (request.tx.operation == SafeOperation.DELEGATECALL) return refused(SafeTxRefusal.DelegateCall)
+        request.unsignable()?.let { return refused(it) }
         val state = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
@@ -228,7 +237,9 @@ data class SafeExecutionQuote internal constructor(
  * Quotes a Safe transaction's execution (docs/wallet-ux.md, *Co-signing a Safe transaction*):
  * `execTransaction` sent to the Safe by [executor], an account this wallet holds, once its
  * owners' confirmations reach the threshold. Checked against the Safe's verified state first: a
- * delegate call is refused; its nonce must be the Safe's verified nonce (one below has run or
+ * delegate call and gas or refund terms are refused ([SafeTxRefusal.GasTerms]), so the Safe's
+ * call always gets the gas the execution has left and a call that fails reverts it; its nonce
+ * must be the Safe's verified nonce (one below has run or
  * been replaced, one above waits for the transactions before it); and the confirmations are
  * counted from the Safe's current owners alone — each signature in the request that recovers to
  * its owner over the hash computed here, [executor]'s own when it is an owner (the Safe takes the
@@ -238,14 +249,10 @@ data class SafeExecutionQuote internal constructor(
  * The execution is quoted as every transaction from an account this wallet holds is
  * ([CallQuoter]), and its run is the whole of it — the Safe's checks of the signatures and the
  * nonce, its guard, and the call itself — as a verified call from [executor] at the head, with no
- * state override: a revert, or an execution that returns false (a call that failed under a
- * non-zero gas price, which would use up the nonce), stops it here; so does an execution of it
- * [executor] sent before and no block has yet. The run has the engine's gas, not the limit the
- * execution is signed with, which is what the Safe's call gets when it has a `safeTxGas` and no
- * gas price: such a call could pass the run and fail on chain, so that one is refused
- * ([SafeTxRefusal.SafeTxGasUncheckable]). With neither, a call that fails reverts the execution,
- * and the estimate finds a limit it passes at; with a gas price, the call gets exactly its
- * `safeTxGas` whatever the limit. Any account the wallet holds can execute: the Safe asks
+ * state override: a revert, or an execution that does not return true, stops it here, and the
+ * estimate finds a limit it passes at. So does an execution of it that any account of this
+ * wallet sent and no block has yet: run at the head, a second passes while the first is on its
+ * way, and reverts once that is mined. Any account the wallet holds can execute: the Safe asks
  * nothing of the sender but the gas. On [network] only; [clock] is in unix seconds.
  */
 class QuoteSafeExecution(
@@ -254,25 +261,24 @@ class QuoteSafeExecution(
     private val approvals: SafeApprovals,
     private val nativeBalances: NativeBalances,
     inputs: TransactionInputs,
-    sentTransfers: SentTransfers,
+    private val sentTransfers: SentTransfers,
     private val network: Network,
-    clock: () -> Long = ::epochSecondsNow,
+    private val clock: () -> Long = ::epochSecondsNow,
 ) {
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock)
 
     suspend operator fun invoke(request: SigningRequest, executor: Address, level: FeeLevel): SafeExecutionQuoting {
         fun refused(refusal: SafeTxRefusal) = SafeExecutionQuoting.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
-        if (request.tx.operation == SafeOperation.DELEGATECALL) return refused(SafeTxRefusal.DelegateCall)
-        if (!request.tx.safeTxGas.isZero && request.tx.gasPrice.isZero) {
-            return refused(SafeTxRefusal.SafeTxGasUncheckable)
-        }
+        request.unsignable()?.let { return refused(it) }
         val state = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (request.nonce > state.nonce) return refused(SafeTxRefusal.NotNext(state.nonce))
+        // Sent already from any account here, and in no block yet: the nonce is the Safe's, not the sender's.
+        if (sentAndUnmined(request)) return refused(SafeTxRefusal.AlreadySent)
         val signatures = when (val confirmed = confirmations(request, state, executor)) {
             is Confirmed.Enough -> confirmed.signatures
             is Confirmed.Refused -> return refused(confirmed.refusal)
@@ -284,15 +290,21 @@ class QuoteSafeExecution(
         val data = SafeCalls.execTransaction(request.tx, signatures)
         val quoting = quoter.quote(executor, request.safe, UInt256.ZERO, data, level, native) { it == TRUE }
         return when (quoting) {
-            // Run at the head, a second execution passes while the first is on its way, and
-            // reverts once that is mined.
-            is CallQuoting.Quoted -> if (quoting.unmined.any { it.executes(request) }) {
-                refused(SafeTxRefusal.AlreadySent)
-            } else {
+            is CallQuoting.Quoted ->
                 SafeExecutionQuoting.Quoted(SafeExecutionQuote(request, executor, signatures, quoting.quote))
-            }
             is CallQuoting.Refused -> refused(SafeTxRefusal.NotQuoted(quoting.refusal))
         }
+    }
+
+    /**
+     * Whether an execution of [request] that an account of this wallet sent is recorded and not
+     * mined: within its pool lifetime ([RECORD_LIFETIME_SECONDS]), since the Safe's nonce is still
+     * the request's (checked before), so no block has run it.
+     */
+    private suspend fun sentAndUnmined(request: SigningRequest): Boolean {
+        val since = clock() - RECORD_LIFETIME_SECONDS
+        val recorded = (sentTransfers.observe().first() as? SentTransferList.Loaded)?.transfers.orEmpty()
+        return recorded.any { it.sentAt >= since && it.executes(request) }
     }
 
     /** As many confirmations of [request] by [state]'s owners as its threshold, or why there are not. */

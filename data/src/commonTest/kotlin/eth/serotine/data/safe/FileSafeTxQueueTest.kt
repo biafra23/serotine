@@ -105,11 +105,23 @@ class FileSafeTxQueueTest {
     }
 
     @Test
-    fun aDamagedQueueIsSetAsideAndStartsEmpty() = runTest {
+    fun aRequestThatNoLongerDecodesIsLeftOutAndTheOthersKeepTheirSignatures() = runTest {
         SystemFileSystem.createDirectories(directory)
-        // A request for a chain the app does not know is no request it keeps.
-        val elsewhere = JsonSigningRequestCodec(Network.SEPOLIA).encode(request(4)).replace("11155111", "1")
-        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":1,"requests":[$elsewhere]}""") }
+        val codec = JsonSigningRequestCodec(Network.SEPOLIA)
+        val kept = request(5).withSignatures(listOf(byA, byB))
+        // A request for a chain the app does not know is no request it keeps; the next one stays.
+        val elsewhere = codec.encode(request(4)).replace("11155111", "1")
+        SystemFileSystem.sink(file).buffered().use {
+            it.writeString("""{"version":1,"requests":[$elsewhere,${codec.encode(kept)}]}""")
+        }
+
+        assertEquals(listOf(kept), queued())
+    }
+
+    @Test
+    fun aFileThatIsNoQueueIsSetAsideAndStartsEmpty() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":1,"requests":"none"}""") }
 
         assertEquals(emptyList(), queued())
     }

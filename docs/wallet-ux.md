@@ -220,8 +220,8 @@ upgrades*).
 17. **Safe transaction**
     - The action, decoded here from the raw transaction (`SafeTxAction`): a
       native or ERC-20 transfer, a change of the Safe's settings (an owner
-      added, removed or swapped, the threshold, a module, the guard or
-      module guard, the fallback handler), a rejection (the Safe calling
+      added, removed or swapped, the threshold, a module, the guard, the
+      fallback handler), a rejection (the Safe calling
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
     - `delegatecall` is marked as such and decoded no further: the Safe runs
@@ -229,11 +229,15 @@ upgrades*).
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
       another wallet through MultiSend arrives as one. Allowing a pinned
       MultiSendCallOnly is the owner's decision.
-    - A refund, when `gasPrice` is not zero: its terms, from which the most
-      it can cost the Safe follows once the gas used is known — `(gas used +
-      baseGas) × gasPrice` in `gasToken` (ether: at most the execution's own
-      gas price), to `refundReceiver` (none: whoever executes it), with
-      `safeTxGas` capping the call's gas when it is not zero.
+    - Gas and refund terms, when any of `safeTxGas`, `baseGas`, `gasPrice`,
+      `gasToken` or `refundReceiver` is not zero: shown, and marked as what
+      this wallet does not sign, approve or execute
+      (`SafeTxRefusal.GasTerms`), as it proposes none. A refund pays
+      `(gas used + baseGas) × gasPrice` in `gasToken` to `refundReceiver`,
+      bounded only by what the Safe holds (for ether the gas price is capped,
+      `baseGas` is not), and with a gas price the call gets exactly
+      `safeTxGas`; a `safeTxGas` without one lets a failing call use up the
+      nonce. Allowing some of these terms is the owner's decision.
     - Each owner's state (`ReadSafeTxOwners`): signed (a signature that
       recovers to it over the hash computed here), approved on chain (a
       verified `approvedHashes`), missing, or not verifiable now; a signature
@@ -242,11 +246,8 @@ upgrades*).
       chain · Execute, once the threshold is met. Execute may be sent from
       any account held here, an owner's counting as its own confirmation;
       only the Safe's next nonce can be executed, and an approval or
-      execution sent and not mined yet is not offered again. A transaction
-      with a `safeTxGas` and no gas price is not executed here: its call
-      could fail at the signed gas limit without reverting, which the
-      verified run cannot test (docs/embedding-myotis.md, *Safe
-      transactions*). What is shown and shared carries the signatures of the
+      execution sent and not mined yet is not offered again, from any
+      account held here. What is shown and shared carries the signatures of the
       Safe's current owners only, so another device never refuses it for an
       owner removed since.
 

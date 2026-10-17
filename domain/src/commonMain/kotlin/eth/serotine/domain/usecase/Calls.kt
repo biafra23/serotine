@@ -119,8 +119,8 @@ internal sealed interface CallQuoting {
  *
  * The sender's own transactions a peer took and no block has yet ([SentTransfers]) count: the
  * nonce is never below the last of them plus one, and what they may still take of the native
- * balance is not available to this one. Those mined since are forgotten, and so are those
- * signed more than [RECORD_LIFETIME_SECONDS] ago and still not mined: the network's
+ * balance is not available to this one. Those mined since are forgotten, and so are those a
+ * peer took more than [RECORD_LIFETIME_SECONDS] ago and still not mined: the network's
  * transaction pools have dropped them by then (geth's default lifetime), and kept they would
  * hold every later transaction behind a nonce no block takes. Only one transaction per nonce can
  * be mined, so taking such a nonce again can never pay twice. [clock] is in unix seconds.
