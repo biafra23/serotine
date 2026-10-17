@@ -76,6 +76,13 @@ review finding, whatever it saves.
   an intent (the seed screen drops its words); nothing else. It is the only
   composable that knows the ViewModel exists, which keeps every other screen
   renderable in a test with a hand-made state.
+- **Every screen has previews.** `<Feature>ScreenPreviews.kt`, next to the
+  screen, holds a `@Preview` (the multiplatform
+  `org.jetbrains.compose.ui.tooling.preview.Preview`) per state the screen
+  draws differently, plus one in the dark theme: the screen in
+  `SerotineTheme`, fed a hand-made UiState with made-up data, as its UI
+  tests are. Android Studio renders them on the Android target, and
+  `<Feature>ScreenPreviewsTest` renders each one in the build.
 - **Navigation is one `NavHost`, in `App`**, with a destination per screen. A
   screen's ViewModel is created by `viewModel {}` inside its destination, so
   the destination's back-stack entry owns it: it survives configuration
@@ -151,7 +158,8 @@ documented.
    contract.
 3. **UiState + ViewModel.** The sealed state, the ViewModel mapping use-case
    output to it, the intents. Test the state transitions.
-4. **Screen + Route.** The stateless screen, a UI test per state, the Route.
+4. **Screen + Route.** The stateless screen, a UI test and a preview per state,
+   the Route.
 5. **Wire it.** `AppGraph` gets the ViewModel factory; the hosts supply the
    new adapter in their composition roots.
 6. The PR describes the feature along these five lines, so a reviewer can

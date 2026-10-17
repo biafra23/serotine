@@ -121,6 +121,23 @@ and that is the owner's decision, not a drive-by dependency.
   `Dispatchers.setMain` (`ui/src/commonTest`), stateless screens headless with
   `createComposeRule` (`ui/src/desktopTest`). A test that needs a device or
   the network is `@Ignore`d by default and documented.
+- **Every screen has previews** (owner's request, 2026-10-17), so Android
+  Studio renders it: `<Feature>ScreenPreviews.kt` next to the screen, one
+  private `@Preview` per state the screen draws differently plus one in the
+  dark theme, each wrapping the screen in `SerotineTheme` and handing it a
+  hand-made, display-ready UiState as the screen tests do — never a
+  ViewModel, a use case or an adapter. The file ends with the internal list
+  of its previews (`<feature>ScreenPreviews`, a new preview goes in it too),
+  which `<Feature>ScreenPreviewsTest` (`ui/src/desktopTest`) renders, so a
+  broken preview fails the build. The annotation is the multiplatform
+  `org.jetbrains.compose.ui.tooling.preview.Preview` (androidx's does not
+  compile in `commonMain` on Compose Multiplatform 1.9). Sample data is made
+  up: never a real or published seed phrase, key or password. Routes and
+  `App` get none: they need a ViewModel or an `AppGraph`. A screen without
+  previews is a review finding. The ui-tooling that renders them lives in
+  `:ui`'s debug variant only, and `:android-app` keeps it out of every APK
+  (its exported `PreviewActivity`, android-app/build.gradle.kts), which the
+  APK workflow checks in the built manifests.
 - **Adding a feature** follows the five-step checklist at the end of
   docs/architecture.md, and the PR describes it along those steps.
 - Two apps come out of `:android-app` on purpose: the release one signed with
