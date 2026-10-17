@@ -43,7 +43,8 @@ sealed interface TransferAsset {
 
 /**
  * The recipient of a transfer as the user typed it (docs/wallet-ux.md, screen 7): an address,
- * or an ENS name, which [NameResolver] resolves against finalized state only.
+ * or an ENS name, which [NameResolver] resolves against finalized state only. A typed address's
+ * EIP-55 checksum is the input layer's to check before it gets here, as for every [Address].
  */
 class ResolveRecipient(private val names: NameResolver) {
 
@@ -125,6 +126,8 @@ class QuoteTransfer(
         amount: UInt256,
         level: FeeLevel,
     ): TransferQuoting = coroutineScope {
+        // Nothing to move is nothing to pay a fee for.
+        if (amount.isZero) return@coroutineScope TransferQuoting.NothingToSend
         val token = (asset as? TransferAsset.Erc20Token)?.token
         val txTo = token?.address ?: to
         val value = if (token == null) amount else UInt256.ZERO
@@ -151,7 +154,9 @@ class QuoteTransfer(
         if (token == null && nativeBefore.first < amount) return@coroutineScope TransferQuoting.InsufficientFunds
 
         val gas = when (val estimate = inputs.estimateGas(from, txTo, value, data)) {
-            is GasEstimate.Estimated -> estimate.gas
+            // Never below what the transaction needs before it runs: an estimate under it (the Rust
+            // engine's for a zero-value transfer, 17433) would be refused by every node.
+            is GasEstimate.Estimated -> maxOf(estimate.gas, Eip1559Transaction.intrinsicGas(data))
             is GasEstimate.Reverted -> return@coroutineScope TransferQuoting.Reverts(blockNumber = null)
             is GasEstimate.Infeasible -> return@coroutineScope TransferQuoting.InsufficientFunds
             is GasEstimate.Refused -> return@coroutineScope TransferQuoting.Refused
@@ -177,9 +182,10 @@ class QuoteTransfer(
             is NonceReading.Read -> reading.nonce
             is NonceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
         }
-        val maxFeePerGas = quote.maxFeePerGas(level)
-        val maxFee = maxFeePerGas * UInt256.of(gas)
-        val nativeCost = maxFee + value
+        // An engine answer this large is no answer: the use case never throws over it.
+        val maxFeePerGas = quote.maxFeePerGasOrNull(level) ?: return@coroutineScope UNPROVEN
+        val maxFee = maxFeePerGas.timesOrNull(UInt256.of(gas)) ?: return@coroutineScope UNPROVEN
+        val nativeCost = maxFee.plusOrNull(value) ?: return@coroutineScope TransferQuoting.InsufficientFunds
         if (nativeBefore.first < nativeCost) return@coroutineScope TransferQuoting.InsufficientFunds
         TransferQuoting.Quoted(
             TransferQuote(
@@ -218,6 +224,9 @@ sealed interface TransferQuoting {
 
     /** [quote] is ready for review. */
     data class Quoted(val quote: TransferQuote) : TransferQuoting
+
+    /** The amount is zero: there is nothing to send, and no fee is worth paying for it. */
+    data object NothingToSend : TransferQuoting
 
     /** The sender's balance of the network's currency cannot pay the amount and the most the fee can be. */
     data object InsufficientFunds : TransferQuoting

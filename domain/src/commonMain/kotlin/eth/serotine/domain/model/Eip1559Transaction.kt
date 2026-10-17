@@ -124,5 +124,23 @@ class Eip1559Transaction(
          * answers with, and what a block explorer finds the transaction by.
          */
         fun hashOf(raw: ByteArray): String = "0x" + keccak256(raw).toHex()
+
+        /**
+         * The least gas a transaction with call data [data] (to an address, no access list) must
+         * carry before it runs at all: 21000, and for the data the larger of EIP-2028's price
+         * (4 gas a zero byte, 16 a nonzero one) and EIP-7623's floor (10 per token, a zero byte
+         * one token and a nonzero byte four), which since Prague is always the floor. A gas limit
+         * below it is refused by every node.
+         */
+        fun intrinsicGas(data: ByteArray): Long {
+            val zeros = data.count { it == 0.toByte() }.toLong()
+            val nonzeros = data.size - zeros
+            val standard = 4 * zeros + 16 * nonzeros
+            val floor = 10 * (zeros + 4 * nonzeros)
+            return BASE_GAS + maxOf(standard, floor)
+        }
+
+        /** What every transaction pays before its data and its execution. */
+        private const val BASE_GAS = 21_000L
     }
 }

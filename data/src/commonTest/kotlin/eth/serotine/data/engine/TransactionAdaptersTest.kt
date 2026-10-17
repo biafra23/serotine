@@ -203,6 +203,17 @@ class TransactionAdaptersTest {
     }
 
     @Test
+    fun aMalformedHashIsRefusedOnceNotPolled() = runTest {
+        synced()
+        val receipts = EngineReceipts(chain, StandardTestDispatcher(testScheduler), 4.seconds)
+
+        assertEquals(
+            listOf<TransactionProgress>(TransactionProgress.Unavailable(ReadUnavailable.REFUSED)),
+            receipts.observe("cd".repeat(32)).toList(),
+        )
+    }
+
+    @Test
     fun aNameIsTakenOnlyAsFinalizedStateVerifiesIt() = runTest {
         synced()
         val names = EngineNames(chain, StandardTestDispatcher(testScheduler))

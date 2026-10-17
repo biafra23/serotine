@@ -127,6 +127,40 @@ class TransfersTest {
     }
 
     @Test
+    fun anEstimateBelowTheIntrinsicGasIsRaisedToIt() = runTest {
+        inputs.gas = 17_433 // what the Rust engine estimates for a zero-value transfer
+
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        ).quote
+
+        assertEquals(21_000, quote.transaction.gasLimit)
+    }
+
+    @Test
+    fun aZeroAmountIsNothingToSend() = runTest {
+        assertEquals(
+            TransferQuoting.NothingToSend,
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ZERO, FeeLevel.NORMAL),
+        )
+        assertEquals(0, inputs.simulated.size, "nothing asked of the chain")
+    }
+
+    @Test
+    fun anAbsurdFeeAnswerIsNoAnswerNotACrash() = runTest {
+        // A base fee of 2 × 10^76: the cap fits in 256 bits, times the gas it does not.
+        val huge = UInt256.parse("1" + "0".repeat(76))!!
+        inputs.fees = FeeReading.Quoted(
+            FeeQuote(huge + huge, FeeLevel.entries.associateWith { UInt256.ONE }, blockNumber = 99),
+        )
+
+        assertEquals(
+            TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN),
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
+    }
+
+    @Test
     fun aTransferThatRevertsOrThatTheTokenRefusesStopsAtTheQuote() = runTest {
         inputs.simulation = Simulation.Reverted(100)
         assertEquals(

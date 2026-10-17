@@ -219,4 +219,15 @@ class Eip1559TransactionTest {
         assertContentEquals("a9059cbb".hexToBytes(), tx.data)
         assertTrue(tx.toString().endsWith("data=0xa9059cbb)"), tx.toString())
     }
+
+    @Test
+    fun theIntrinsicGasIsTheBaseAndPraguesCalldataFloor() {
+        assertEquals(21_000, Eip1559Transaction.intrinsicGas(ByteArray(0)))
+        // Four nonzero bytes: EIP-7623's 10 × 16 tokens beats EIP-2028's 16 × 4.
+        assertEquals(21_000L + 160, Eip1559Transaction.intrinsicGas(byteArrayOf(1, 2, 3, 4)))
+        // An ERC-20 transfer's 68 bytes: 4 selector bytes nonzero, the rest as they come.
+        val data = Erc20.transferData(Address.of("0x" + "11".repeat(20)), UInt256.ONE)
+        val zeros = data.count { it == 0.toByte() }
+        assertEquals(21_000L + 10 * (zeros + 4 * (data.size - zeros)), Eip1559Transaction.intrinsicGas(data))
+    }
 }

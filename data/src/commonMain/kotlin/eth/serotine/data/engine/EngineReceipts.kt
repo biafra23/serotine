@@ -29,6 +29,8 @@ class EngineReceipts internal constructor(
 ) : ReceiptTracker {
 
     override fun observe(hash: String): Flow<TransactionProgress> {
+        // Not a transaction hash: refused once, not polled as unproven forever.
+        if (!HASH.matches(hash)) return flowOf(TransactionProgress.Unavailable(ReadUnavailable.REFUSED))
         val chain = chain ?: return flowOf(TransactionProgress.Unavailable(ReadUnavailable.NO_ENGINE))
         return flow {
             while (true) {
@@ -61,5 +63,6 @@ class EngineReceipts internal constructor(
 
     private companion object {
         val NO_ENGINE = TransactionProgress.Unavailable(ReadUnavailable.NO_ENGINE)
+        val HASH = Regex("^0x[0-9a-fA-F]{64}$")
     }
 }

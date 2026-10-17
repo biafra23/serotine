@@ -68,7 +68,12 @@ data class FeeQuote(val nextBaseFee: UInt256, val tips: Map<FeeLevel, UInt256>, 
      * The fee cap per gas for [level]: twice the next base fee, room for it to rise for
      * several full blocks, plus the level's tip. Only what the block charges is paid.
      */
-    fun maxFeePerGas(level: FeeLevel): UInt256 = nextBaseFee + nextBaseFee + tip(level)
+    fun maxFeePerGas(level: FeeLevel): UInt256 =
+        requireNotNull(maxFeePerGasOrNull(level)) { "a fee cap above 2^256 - 1" }
+
+    /** [maxFeePerGas], or null when it would not fit in 256 bits (an answer no chain gives). */
+    fun maxFeePerGasOrNull(level: FeeLevel): UInt256? =
+        nextBaseFee.plusOrNull(nextBaseFee)?.plusOrNull(tip(level))
 
     /** The priority fee per gas [level] offers. */
     fun tip(level: FeeLevel): UInt256 = tips.getValue(level)
