@@ -141,11 +141,12 @@ upgrades*).
       guard if any); or another contract.
     - The control badge the account will get (owners held here count).
 11. **Import recovery phrase**: today's seed screen, with the account's name,
-    the wallet password (on the first key) and the biometric opt-in.
+    the wallet password (on the first key) and the biometric opt-in (still to
+    come; until then it is turned on in Security, 21).
 12. **Create account**: the new phrase, shown on this screen alone and only
     until it is stored, protected from screen capture, the display kept on;
     then a check of three of its words; then the wallet password and
-    the biometric opt-in (on the first key).
+    the biometric opt-in (on the first key; still to come, as on 11).
 13. **Create Safe 1/3, owners**: a name; owners from "This device (hardware
     key)", the user's mnemonic accounts and external addresses.
 14. **Create Safe 2/3, threshold and recovery**: a threshold stepper, and only
@@ -174,9 +175,9 @@ upgrades*).
 
 ### Settings tab
 
-18. **Settings**: Display currency · Tokens (n built in, m added) · Wallet
-    password · Biometric unlock · Network (Sepolia, the only one for now) ·
-    Light client (status) · About. Tokens opens the list of every token the
+18. **Settings**: Display currency · Tokens (n built in, m added) · Security
+    (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
+    for now) · Light client (status) · About. Tokens opens the list of every token the
     wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
@@ -189,6 +190,17 @@ upgrades*).
 20. **Add token by address**: the contract's address, then its symbol, name
     and decimals read from the contract and labelled as its claim, with the
     monogram icon it will get.
+21. **Security**
+    - Wallet password: whether one is set, and how this device keeps the keys
+      under it.
+    - Biometric unlock, a switch: what it does, or why this device cannot offer
+      it (no sensor, nothing enrolled, only weak biometrics, no secure hardware,
+      no biometric path on this platform yet).
+    - Turning it on asks for the wallet password here, under the screen
+      protections of a screen that takes the password, and drops it when the
+      screen is left. Turning it off asks nothing: it deletes a way in.
+    - After a change of the enrolled biometrics it reads as off, until it is
+      turned on again.
 
 ## Prices
 

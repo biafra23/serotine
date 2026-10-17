@@ -17,6 +17,8 @@ import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.DisableBiometricUnlock
+import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
@@ -50,6 +52,7 @@ import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
+import eth.serotine.ui.security.SecurityViewModel
 import eth.serotine.ui.settings.SettingsViewModel
 import eth.serotine.ui.tokens.TokensViewModel
 import eth.serotine.ui.update.UpdateRequiredViewModel
@@ -170,6 +173,9 @@ class AppGraph(
     )
 
     fun updateRequiredViewModel(): UpdateRequiredViewModel = UpdateRequiredViewModel(observeUpgradeWarning(), network)
+
+    fun securityViewModel(): SecurityViewModel =
+        SecurityViewModel(DescribeKeyStore(keys), EnableBiometricUnlock(keys), DisableBiometricUnlock(keys))
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
         MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))

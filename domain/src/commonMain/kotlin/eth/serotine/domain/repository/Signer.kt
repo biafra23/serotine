@@ -13,14 +13,29 @@ import eth.serotine.domain.model.WalletPassword
 interface Signer {
     /**
      * Signs [digest] with the key of [account], held in this device's key store: its envelope
-     * is opened with [password] and, where there is one, this device's hardware secret, the key
-     * derived from the seed inside it, and the seed, the key and the password's bytes zeroed
-     * before this returns. [digest] is signed as given, never hashed again: what it is the hash
-     * of is the caller's to know and to have shown the user. Refused when this device holds no
-     * key for [account] ([Signing.NoKey]), or the key it holds does not derive [account]. Never
-     * throws.
+     * is opened as [unlock] says — with the wallet password and, where there is one, this
+     * device's hardware secret, or with the DEK a strong biometric unwraps — the key derived from
+     * the seed inside it, and the seed, the key and the password's bytes zeroed before this
+     * returns. [digest] is signed as given, never hashed again: what it is the hash of is the
+     * caller's to know and to have shown the user. Refused when this device holds no key for
+     * [account] ([Signing.NoKey]), or the key it holds does not derive [account]. Never throws.
      */
-    suspend fun sign(account: Address, digest: Digest, password: WalletPassword): Signing
+    suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing
+}
+
+/** How [Signer.sign] opens the account's envelope. */
+sealed interface Unlock {
+
+    /** With [password], the wallet password: the path every envelope has. */
+    class WithPassword(val password: WalletPassword) : Unlock {
+        override fun toString(): String = "WithPassword(redacted)"
+    }
+
+    /**
+     * With a strong biometric, through the system's prompt, which says [reason] (display-ready:
+     * what is being signed). Only where the biometric path is on ([KeyStore.enableBiometrics]).
+     */
+    data class WithBiometrics(val reason: String) : Unlock
 }
 
 /** The outcome of [Signer.sign]. */
@@ -37,4 +52,28 @@ sealed interface Signing {
 
     /** The key store cannot run on this device, or its envelope cannot be opened here. Nothing was signed. */
     data object Unavailable : Signing
+
+    /** The biometric prompt was dismissed. Nothing was signed; the password still works. */
+    data object Cancelled : Signing
+
+    /**
+     * A biometric cannot open this account's envelope now, for [reason]. Nothing was signed;
+     * the password still works.
+     */
+    data class BiometricsUnusable(val reason: BiometricUnusable) : Signing
+}
+
+/** Why [Unlock.WithBiometrics] cannot open an envelope. */
+enum class BiometricUnusable {
+    /** The biometric path is off, or this account's key was stored without it. */
+    OFF,
+
+    /** A change of the enrolled biometrics invalidated the path's key (rule 3). */
+    INVALIDATED,
+
+    /** Too many failed attempts: the system locked biometrics for now. */
+    LOCKED_OUT,
+
+    /** No screen of the app is in front to show the prompt on. */
+    NO_PROMPT,
 }

@@ -25,7 +25,7 @@ private val synced = SettingsUiState(
 @Composable
 private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        SettingsScreen(state = state, onCurrency = {}, onTokens = {})
+        SettingsScreen(state = state, onCurrency = {}, onTokens = {}, onSecurity = {})
     }
 }
 

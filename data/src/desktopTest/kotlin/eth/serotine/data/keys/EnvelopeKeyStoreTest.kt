@@ -12,6 +12,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.repository.Unlock
 import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -368,6 +369,7 @@ class EnvelopeKeyStoreTest {
     // --- Signing.
 
     private val digest = Digest.of("0x" + "5a".repeat(32))
+    private val notThePassword = Unlock.WithPassword(WalletPassword("not the password"))
 
     /** Whether [signature] is [signed] signed by the key of [address], and has a low s. */
     private fun signs(signature: Signature, address: Address, signed: Digest = digest): Boolean {
@@ -384,12 +386,12 @@ class EnvelopeKeyStoreTest {
         val store = store()
         store.importMnemonic(hardhat, password)
 
-        val signed = store.sign(hardhatAddress, digest, password)
+        val signed = store.sign(hardhatAddress, digest, Unlock.WithPassword(password))
 
         assertIs<Signing.Signed>(signed)
         assertTrue(signs(signed.signature, hardhatAddress), "recovers the account, with a low s")
         // libsecp256k1's nonce is RFC 6979's: the same digest, the same signature.
-        assertEquals(signed, store.sign(hardhatAddress, digest, password))
+        assertEquals(signed, store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
     }
 
     @Test
@@ -397,8 +399,8 @@ class EnvelopeKeyStoreTest {
         val store = store()
         store.importMnemonic(hardhat, password)
 
-        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, WalletPassword("not the password")))
-        assertEquals(Signing.NoKey, store.sign(abandonAddress, digest, password))
+        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, notThePassword))
+        assertEquals(Signing.NoKey, store.sign(abandonAddress, digest, Unlock.WithPassword(password)))
     }
 
     @Test
@@ -409,7 +411,7 @@ class EnvelopeKeyStoreTest {
         // Deterministic signatures: these sixteen digests give both recovery ids, every run.
         val signatures = (1..16).map { n ->
             val each = Digest.of(n.toString(16).padStart(64, '0'))
-            each to assertIs<Signing.Signed>(store.sign(hardhatAddress, each, password)).signature
+            each to assertIs<Signing.Signed>(store.sign(hardhatAddress, each, Unlock.WithPassword(password))).signature
         }
 
         assertEquals(setOf(0, 1), signatures.map { it.second.recoveryId }.toSet())
@@ -432,7 +434,7 @@ class EnvelopeKeyStoreTest {
         envelopeOf(abandonAddress).writeText(Json.encodeToString(SealedSeed.serializer(), sealed))
         assertIs<Envelope.Opened.Seed>(Envelope.open(sealed, passwordBytes, null), "only the key check refuses it")
 
-        assertEquals(Signing.Unavailable, store.sign(abandonAddress, digest, password))
+        assertEquals(Signing.Unavailable, store.sign(abandonAddress, digest, Unlock.WithPassword(password)))
     }
 
     @Test
@@ -442,7 +444,7 @@ class EnvelopeKeyStoreTest {
         store.importMnemonic(hardhat, password)
         provisioned = false
 
-        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, password))
+        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
     }
 
     @Test
@@ -453,9 +455,9 @@ class EnvelopeKeyStoreTest {
         damageTheWrappedKeyOf(hardhatAddress)
 
         // abandon's envelope opens under the password: the password is right, the file is damaged.
-        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, password))
-        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, WalletPassword("not the password")))
-        assertIs<Signing.Signed>(store.sign(abandonAddress, digest, password))
+        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
+        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, notThePassword))
+        assertIs<Signing.Signed>(store.sign(abandonAddress, digest, Unlock.WithPassword(password)))
     }
 
     @Test

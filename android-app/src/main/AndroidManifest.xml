@@ -5,6 +5,8 @@
          upgrade check and the reminder alarm surviving a reboot. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The biometric prompt that unlocks a key, where the user turned biometric unlock on. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:name=".SerotineApplication"

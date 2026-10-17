@@ -3,6 +3,7 @@ package eth.serotine.ui.createaccount
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -251,5 +252,10 @@ class CreateAccountViewModelTest {
         }
 
         override suspend fun delete(address: Address): KeyDeletion = error("not used by these tests")
+
+        override suspend fun enableBiometrics(password: WalletPassword): BiometricChange =
+            BiometricChange.NotOnThisDevice
+
+        override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
     }
 }

@@ -50,7 +50,19 @@ internal object Envelope {
         }
     }
 
-    fun seal(seed: ByteArray, address: String, password: ByteArray, hardware: HardwareSecret?, cost: Cost): SealedSeed {
+    /**
+     * [seed] sealed for [address] under [password] and [hardware]. [withDek] is handed the new
+     * DEK before it is zeroed, for the biometric path to wrap it too (rule 4: its own key, the
+     * password path untouched); it must not keep it.
+     */
+    fun seal(
+        seed: ByteArray,
+        address: String,
+        password: ByteArray,
+        hardware: HardwareSecret?,
+        cost: Cost,
+        withDek: (ByteArray) -> Unit = {},
+    ): SealedSeed {
         val salt = EnvelopeCrypto.randomBytes(SALT_BYTES)
         val hardwareTag = hardware?.tag ?: NO_HARDWARE
         val kek = kek(password, salt, cost.opsLimit, cost.memLimitBytes, hardware)
@@ -58,6 +70,7 @@ internal object Envelope {
         try {
             val dekNonce = EnvelopeCrypto.randomBytes(NONCE_BYTES)
             val seedNonce = EnvelopeCrypto.randomBytes(NONCE_BYTES)
+            withDek(dek)
             return SealedSeed(
                 version = VERSION,
                 address = address,
@@ -123,6 +136,36 @@ internal object Envelope {
             Unwrapped.WrongPassword -> return Opened.WrongPassword
             Unwrapped.Refused -> return Opened.Refused
         }
+        return openWith(sealed, dek)
+    }
+
+    /**
+     * [sealed]'s DEK, opened with [password] and [hardware] — [Opened.Dek], which the caller
+     * zeroes — for the biometric path to wrap: [Opened.WrongPassword] or [Opened.Refused] as
+     * for [open].
+     */
+    fun dek(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Opened =
+        when (val unwrapped = unwrapDek(sealed, password, hardware)) {
+            is Unwrapped.Dek -> Opened.Dek(unwrapped.bytes)
+            Unwrapped.WrongPassword -> Opened.WrongPassword
+            Unwrapped.Refused -> Opened.Refused
+        }
+
+    /**
+     * The seed of [sealed], opened with [dek] as the biometric path unwrapped it; zeroes [dek].
+     * [Opened.Refused] when [dek] is not this envelope's (a wrap filed under the wrong name: the
+     * seed's tag, bound to its address, does not match) or the data is damaged.
+     */
+    fun openWithDek(sealed: SealedSeed, dek: ByteArray, hardware: HardwareSecret?, address: String): Opened {
+        if (!canOpen(sealed, hardware, address) || dek.size != 32) {
+            dek.fill(0)
+            return Opened.Refused
+        }
+        return openWith(sealed, dek)
+    }
+
+    /** The seed [dek] opens; zeroes [dek]. */
+    private fun openWith(sealed: SealedSeed, dek: ByteArray): Opened {
         try {
             val seed = EnvelopeCrypto.aesGcmOpen(
                 dek,
@@ -141,6 +184,9 @@ internal object Envelope {
     sealed interface Opened {
         /** The seed; the caller zeroes it. */
         class Seed(val bytes: ByteArray) : Opened
+
+        /** The DEK ([dek]); the caller zeroes it. */
+        class Dek(val bytes: ByteArray) : Opened
 
         /** The password opens the envelope ([verify]). */
         data object Verified : Opened

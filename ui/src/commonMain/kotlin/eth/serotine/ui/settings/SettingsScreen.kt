@@ -29,15 +29,17 @@ fun SettingsRoute(
     viewModel: SettingsViewModel,
     onCurrency: () -> Unit,
     onTokens: () -> Unit,
+    onSecurity: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    SettingsScreen(state, onCurrency, onTokens, modifier)
+    SettingsScreen(state, onCurrency, onTokens, onSecurity, modifier)
 }
 
 /**
  * The Settings tab as a pure function of [state]; the display currency opens through
- * [onCurrency], Tokens through [onTokens].
+ * [onCurrency], Tokens through [onTokens], and Security (the wallet password, biometric unlock)
+ * through [onSecurity].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +47,7 @@ fun SettingsScreen(
     state: SettingsUiState,
     onCurrency: () -> Unit,
     onTokens: () -> Unit,
+    onSecurity: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
@@ -59,6 +62,12 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(onClick = onTokens),
                 headlineContent = { Text("Tokens") },
                 supportingContent = { Text(state.tokens) },
+            )
+            Section("Keys")
+            ListItem(
+                modifier = Modifier.clickable(onClick = onSecurity),
+                headlineContent = { Text("Security") },
+                supportingContent = { Text("Wallet password · Biometric unlock") },
             )
             Section("Network")
             ListItem(
