@@ -58,6 +58,32 @@ class TransactionAdaptersTest {
     }
 
     @Test
+    fun eachLevelsTipIsTheMedianOfItsPercentileOverTheBlocks() {
+        val gwei = 1_000_000_000L
+        fun hex(n: Long) = "\"0x" + n.toString(16) + "\""
+        val blocks = listOf(listOf(1, 4, 9), listOf(3, 2, 7), listOf(2, 6, 8)).joinToString(",") { row ->
+            "[" + row.joinToString(",") { hex(it * gwei) } + "]"
+        }
+        val json = """{"oldestBlock":"0x1","baseFeePerGas":[${(1..4).joinToString(",") { hex(gwei) }}],
+            "reward":[$blocks]}"""
+
+        val quote = EngineJson.feeQuote(json)!!
+
+        // Medians: 2 of (1, 3, 2), 4 of (4, 2, 6), 8 of (9, 7, 8): neither the least nor the most.
+        assertEquals(UInt256.of(2 * gwei), quote.tip(FeeLevel.SLOW))
+        assertEquals(UInt256.of(4 * gwei), quote.tip(FeeLevel.NORMAL))
+        assertEquals(UInt256.of(8 * gwei), quote.tip(FeeLevel.FAST))
+    }
+
+    @Test
+    fun aFeeHistoryWithoutItsRewardsIsNoAnswer() {
+        assertNull(EngineJson.feeQuote("""{"oldestBlock":"0x1","baseFeePerGas":["0x1","0x1"]}"""))
+        // Two blocks' base fees, one block's rewards: not the history that was asked for.
+        val short = """{"oldestBlock":"0x1","baseFeePerGas":["0x1","0x1","0x1"],"reward":[["0x1","0x2","0x3"]]}"""
+        assertNull(EngineJson.feeQuote(short))
+    }
+
+    @Test
     fun aFeeHistoryWithRealTipsKeepsThemInOrder() {
         val gwei = 1_000_000_000L
         fun hex(n: Long) = "\"0x" + n.toString(16) + "\""
@@ -94,7 +120,9 @@ class TransactionAdaptersTest {
     @Test
     fun inputsAreAskedOnlyWhileReadsCanBeVerified() = runTest {
         chain.base.snapshot = EngineSnapshot.Booting
+        chain.nonce = 7
         assertEquals(NonceReading.Unavailable(ReadUnavailable.UNPROVEN), inputs().nonce(alice))
+        assertEquals(0, chain.asked, "not asked at all before reads can be verified")
         chain.base.snapshot = EngineSnapshot.Down
         assertEquals(FeeReading.Unavailable(ReadUnavailable.NO_ENGINE), inputs().fees())
         assertEquals(
@@ -130,6 +158,18 @@ class TransactionAdaptersTest {
             Simulation.Unavailable(ReadUnavailable.UNPROVEN),
             inputs().simulate(alice, bob, value, ByteArray(0)),
         )
+    }
+
+    @Test
+    fun aNonPositiveGasOrANegativeNonceIsNoAnswer() = runTest {
+        synced()
+        chain.estimate = EstimateAnswer.Gas(0)
+        assertEquals(
+            GasEstimate.Unavailable(ReadUnavailable.UNPROVEN),
+            inputs().estimateGas(alice, bob, UInt256.ONE, ByteArray(0)),
+        )
+        chain.nonce = -1
+        assertEquals(NonceReading.Unavailable(ReadUnavailable.UNPROVEN), inputs().nonce(alice))
     }
 
     @Test
@@ -203,6 +243,28 @@ class TransactionAdaptersTest {
     }
 
     @Test
+    fun aReceiptErrorIsNotVerifiedAndADownEngineEndsTheWatch() = runTest {
+        synced()
+        val receipts = EngineReceipts(chain, StandardTestDispatcher(testScheduler), 4.seconds)
+        val seen = mutableListOf<TransactionProgress>()
+        val watching = launch { receipts.observe("0x" + "cd".repeat(32)).toList(seen) }
+
+        chain.receipt = """{"error":"receipts root mismatch"}"""
+        runCurrent()
+        chain.base.snapshot = EngineSnapshot.Down
+        advanceTimeBy(4_001)
+
+        assertEquals(
+            listOf<TransactionProgress>(
+                TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN),
+                TransactionProgress.Unavailable(ReadUnavailable.NO_ENGINE),
+            ),
+            seen,
+        )
+        assertEquals(true, watching.isCompleted, "a down engine is final")
+    }
+
+    @Test
     fun aMalformedHashIsRefusedOnceNotPolled() = runTest {
         synced()
         val receipts = EngineReceipts(chain, StandardTestDispatcher(testScheduler), 4.seconds)
@@ -231,5 +293,22 @@ class TransactionAdaptersTest {
         assertEquals(NameResolution.NotAName, names.resolve("serotine"))
         assertEquals(NameResolution.NotAName, names.resolve("a..eth"))
         assertEquals(NameResolution.NotAName, names.resolve("my name.eth"))
+    }
+
+    @Test
+    fun aLookAlikeNameIsNotTakenAndAnOffchainOneIsSaid() = runTest {
+        synced()
+        val names = EngineNames(chain, StandardTestDispatcher(testScheduler))
+        chain.name = NameAnswer(bob.hex, 90, verified = true, error = null)
+
+        // A Cyrillic "а", and a zero-width joiner: they hash to other nodes than they look like.
+        assertEquals(NameResolution.NotAName, names.resolve("vit\u0430lik.eth"))
+        assertEquals(NameResolution.NotAName, names.resolve("vitalik\u200d.eth"))
+        assertEquals(NameResolution.NotAName, names.resolve("-vitalik.eth"))
+        assertEquals(emptyList<String>(), chain.resolved, "none of them asked")
+        assertEquals(NameResolution.Resolved("my-name2.eth", bob, 90), names.resolve("my-name2.eth"))
+
+        chain.name = NameAnswer(null, -1, verified = false, error = "resolves offchain (ERC-3668)", offchain = true)
+        assertEquals(NameResolution.OffchainOnly, names.resolve("dark.eth"))
     }
 }

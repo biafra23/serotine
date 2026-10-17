@@ -205,22 +205,28 @@ consumer developed against an unreleased engine, Myotis's
 Part 11 of `feature/wallet-ux` adds the engine's half of a transfer: four
 adapters over `VerifiedReads` and `EnsApi`, behind domain ports, all on a
 `TransactingChain` seam that extends `VerifiedChain`. The screens come with
-the next part. Every call is made only while the light client can verify reads
-at its head, on the adapters' dispatcher. An engine that fails, or a
-`CancellationException` its own code throws, is no answer, as for every
+the next part. Every read is made only while the light client can verify reads
+at its head; the broadcast is the engine's to judge (it does so on verified
+state). All of it runs on the adapters' dispatcher, and an engine that fails,
+or a `CancellationException` its own code throws, is no answer, as for every
 verified read.
 
 - **`EngineTransactionInputs`** (`TransactionInputs`):
   - The nonce is `getTransactionCount(address, "pending")`: the verified count
     plus the sends this node made that are not mined yet, so a second transfer
-    right after a first does not reuse its nonce.
+    right after a first does not reuse its nonce. That record is the engine's
+    memory, gone with the process and expiring; the app's own record of sent
+    transfers comes with the Send screens.
   - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
     50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
     median of its percentile, never below 0.001 gwei and never below the
     slower level's. The next base fee is the history's last; the fee cap is
     twice that plus the tip.
   - The gas is `estimateGasDetailed`, so a revert, an infeasible transfer and
-    a refusal are told apart.
+    a refusal are told apart. It is never taken below the transaction's
+    intrinsic gas (21000 plus Prague's calldata floor): probed on Sepolia, the
+    Rust engine estimates a zero-value transfer at 17433, which every node
+    would refuse.
   - The simulation is `callDetailed` from the sender at the head, the transfer
     as it will run.
 - **`EngineBroadcaster`** (`Broadcaster`): `sendRawTransactionDetailed`. The
@@ -233,11 +239,24 @@ verified read.
 - **`EngineNames`** (`NameResolver`): `ens().resolveAddress(name,
   EnsRoot.FINALIZED)` and nothing fresher. `PEER_HEAD` would be a peer's claim,
   and `AUTO` falls back to it, so an answer not `verified` is no answer.
+  - The engine is built without a CCIP-Read gateway (`EnginePorts.httpGateway`
+    null). A name whose resolver answers through one (EIP-3668) is off-chain
+    data no ruling allows, and the request would tell the gateway the name
+    and the device's address. The engine then refuses the name, and it reads
+    as `OffchainOnly`, not as "try again".
+  - The engine lower-cases a name and normalizes nothing else (no ENSIP-15),
+    so a look-alike (a Cyrillic letter, a zero-width joiner) would hash to
+    another node. Until normalization exists, only ASCII letter-digit-hyphen
+    labels are resolved.
 
 The transaction itself is the domain's: `Eip1559Transaction` builds the
 signing digest the signer signs and the raw bytes the broadcaster sends, and
 `QuoteTransfer` and `SendTransfer` (`:domain`) put the four together with the
-balances and the signer. What is signed is exactly what the quote shows.
+balances and the signer. What is signed is exactly what the quote shows: only
+`QuoteTransfer` makes a quote, and nothing copies it. A transfer signed but not
+broadcast keeps its signed bytes (`SignedTransfer`), and a retry
+(`RebroadcastTransfer`) sends those bytes again rather than quoting anew, which
+could take the next nonce while the first is still on its way.
 
 ## Network upgrades
 

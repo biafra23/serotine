@@ -30,3 +30,19 @@ internal fun Address.toBytes(): ByteArray = hex.removePrefix("0x").hexToBytes()
 
 /** Keccak-256 of [bytes]: Ethereum's hash, the original Keccak padding rather than NIST SHA3-256's. */
 internal fun keccak256(bytes: ByteArray): ByteArray = Keccak256().digest(bytes)
+
+/**
+ * Whether [text], an address as typed, carries no checksum (one case throughout) or a correct
+ * EIP-55 one: mixed case is a checksum, and a wrong one is a typo.
+ */
+internal fun hasValidChecksum(text: String): Boolean {
+    val digits = text.trim().let { if (it.startsWith("0x") || it.startsWith("0X")) it.drop(2) else it }
+    if (digits == digits.lowercase() || digits == digits.uppercase()) return true
+    val lower = digits.lowercase()
+    val hash = keccak256(lower.encodeToByteArray())
+    return digits.indices.all { i ->
+        val nibble = (hash[i / 2].toInt() shr (if (i % 2 == 0) 4 else 0)) and 0x0f
+        val digit = lower[i]
+        digits[i] == if (digit in 'a'..'f' && nibble >= 8) digit.uppercaseChar() else digit
+    }
+}

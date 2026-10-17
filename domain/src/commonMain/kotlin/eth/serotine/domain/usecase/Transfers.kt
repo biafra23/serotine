@@ -6,6 +6,7 @@ import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.hasValidChecksum
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
@@ -43,20 +44,26 @@ sealed interface TransferAsset {
 
 /**
  * The recipient of a transfer as the user typed it (docs/wallet-ux.md, screen 7): an address,
- * or an ENS name, which [NameResolver] resolves against finalized state only. A typed address's
- * EIP-55 checksum is the input layer's to check before it gets here, as for every [Address].
+ * whose EIP-55 checksum must hold when it has one, or an ENS name, which [NameResolver] resolves
+ * against finalized state only. This is the one use case that takes the typed text, so the
+ * checksum is checked here for every screen that sends.
  */
 class ResolveRecipient(private val names: NameResolver) {
 
     /** What [input] names, trimmed: an address as is, anything with a dot as an ENS name. */
     suspend operator fun invoke(input: String): RecipientLookup {
         val text = input.trim()
-        Address.parse(text)?.let { return RecipientLookup.Found(it, name = null, blockNumber = null) }
-        if (text.startsWith("0x", ignoreCase = true) || '.' !in text) return RecipientLookup.NotAnAddress
+        Address.parse(text)?.let { address ->
+            if (!hasValidChecksum(text)) return RecipientLookup.ChecksumMismatch
+            return RecipientLookup.Found(address, name = null, blockNumber = null)
+        }
+        // A name before the 0x test: "0xfoo.eth" is a name.
+        if ('.' !in text) return RecipientLookup.NotAnAddress
         return when (val resolved = names.resolve(text)) {
             is NameResolution.Resolved -> RecipientLookup.Found(resolved.address, resolved.name, resolved.blockNumber)
             NameResolution.NoAddress -> RecipientLookup.NoAddress
             NameResolution.NotAName -> RecipientLookup.NotAnAddress
+            NameResolution.OffchainOnly -> RecipientLookup.OffchainOnly
             is NameResolution.Unavailable -> RecipientLookup.Unavailable(resolved.reason)
         }
     }
@@ -71,6 +78,15 @@ sealed interface RecipientLookup {
     /** Neither an address nor an ENS name. */
     data object NotAnAddress : RecipientLookup
 
+    /** An address in mixed case whose EIP-55 checksum fails: a typo, refused. */
+    data object ChecksumMismatch : RecipientLookup
+
+    /**
+     * A name whose address only an off-chain gateway (CCIP-Read) gives: an off-chain source no
+     * ruling allows, so it is not resolvable here (docs/wallet-ux.md, screen 7).
+     */
+    data object OffchainOnly : RecipientLookup
+
     /** An ENS name without an address. */
     data object NoAddress : RecipientLookup
 
@@ -83,11 +99,17 @@ sealed interface RecipientLookup {
  * moves [amount] of [asset] from [from] to [to] at [level]'s fees, the most its fee can be
  * ([maxFee], gas limit × fee cap), and the balances it leaves — [nativeBefore] and the least
  * the native balance can be after ([nativeAfterAtLeast]), and for a token its balance before
- * and after. Every figure comes from verified state: the balances at [balanceBlock], the fees
- * from the history up to [feeBlock], and the transfer run as a verified call from the sender at
- * [simulationBlock].
+ * and after. Every figure comes from verified state, each at its own block: the native balance
+ * at [balanceBlock], the token's at [tokenBalanceBlock], the fees from the history up to
+ * [feeBlock], and the transfer run as a verified call from the sender at [simulationBlock].
+ *
+ * Only [QuoteTransfer] makes one, and nothing copies it: what [SendTransfer] signs is its
+ * [transaction], so a display field changed beside it would show one transfer and sign another.
+ * A quote ages (its nonce, its fees): the screen that shows it quotes again rather than keeping
+ * one for long.
  */
-data class TransferQuote(
+@ConsistentCopyVisibility
+data class TransferQuote internal constructor(
     val from: Address,
     val to: Address,
     val asset: TransferAsset,
@@ -100,6 +122,7 @@ data class TransferQuote(
     val tokenBefore: UInt256?,
     val tokenAfter: UInt256?,
     val balanceBlock: Long?,
+    val tokenBalanceBlock: Long?,
     val feeBlock: Long,
     val simulationBlock: Long?,
 )
@@ -132,8 +155,6 @@ class QuoteTransfer(
         val txTo = token?.address ?: to
         val value = if (token == null) amount else UInt256.ZERO
         val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
-        val nonce = async { inputs.nonce(from) }
-        val fees = async { inputs.fees() }
         val native = async { nativeBalances.observeBalance(from).first() }
         val tokenBalance = token?.let { async { tokenBalances.observeBalance(from, it.address).first() } }
 
@@ -143,22 +164,34 @@ class QuoteTransfer(
             BalanceReading.Syncing -> return@coroutineScope TransferQuoting.Syncing
             is BalanceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
         }
+        var tokenBlock: Long? = null
         val tokenBefore = when (val reading = tokenBalance?.await()) {
             null -> null
-            is TokenBalanceReading.Verified -> UInt256.parse(reading.units.decimal) ?: return@coroutineScope UNPROVEN
+            is TokenBalanceReading.Verified -> {
+                tokenBlock = reading.blockNumber
+                UInt256.parse(reading.units.decimal) ?: return@coroutineScope UNPROVEN
+            }
             TokenBalanceReading.Syncing -> return@coroutineScope TransferQuoting.Syncing
             TokenBalanceReading.NotAToken -> return@coroutineScope TransferQuoting.NotAToken
             is TokenBalanceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
         }
         if (tokenBefore != null && tokenBefore < amount) return@coroutineScope TransferQuoting.InsufficientToken
         if (token == null && nativeBefore.first < amount) return@coroutineScope TransferQuoting.InsufficientFunds
+        // Past the cheap checks: the nonce and the fee history, alongside the estimate and the run.
+        val nonce = async { inputs.nonce(from) }
+        val fees = async { inputs.fees() }
 
         val gas = when (val estimate = inputs.estimateGas(from, txTo, value, data)) {
             // Never below what the transaction needs before it runs: an estimate under it (the Rust
             // engine's for a zero-value transfer, 17433) would be refused by every node.
             is GasEstimate.Estimated -> maxOf(estimate.gas, Eip1559Transaction.intrinsicGas(data))
             is GasEstimate.Reverted -> return@coroutineScope TransferQuoting.Reverts(blockNumber = null)
-            is GasEstimate.Infeasible -> return@coroutineScope TransferQuoting.InsufficientFunds
+            // The EVM's words: about what the sender can pay, or something else it cannot do.
+            is GasEstimate.Infeasible -> return@coroutineScope if (aboutFunds(estimate.detail)) {
+                TransferQuoting.InsufficientFunds
+            } else {
+                TransferQuoting.Infeasible(estimate.detail)
+            }
             is GasEstimate.Refused -> return@coroutineScope TransferQuoting.Refused
             is GasEstimate.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(estimate.reason)
         }
@@ -210,6 +243,7 @@ class QuoteTransfer(
                 tokenBefore = tokenBefore,
                 tokenAfter = tokenBefore?.let { it - amount },
                 balanceBlock = nativeBefore.second,
+                tokenBalanceBlock = tokenBlock,
                 feeBlock = quote.blockNumber,
                 simulationBlock = simulationBlock,
             ),
@@ -218,6 +252,10 @@ class QuoteTransfer(
 }
 
 private val UNPROVEN = TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN)
+
+/** Whether an infeasible estimate's [detail] (geth's words) is about the sender's funds. */
+private fun aboutFunds(detail: String): Boolean =
+    "insufficient funds" in detail || "exceeds allowance" in detail
 
 /** The outcome of [QuoteTransfer]. */
 sealed interface TransferQuoting {
@@ -233,6 +271,9 @@ sealed interface TransferQuoting {
 
     /** The sender holds less of the token than the amount. */
     data object InsufficientToken : TransferQuoting
+
+    /** It cannot succeed for a reason other than the sender's funds ([detail], the EVM's words). */
+    data class Infeasible(val detail: String) : TransferQuoting
 
     /** The transfer reverts, run as a verified call from the sender (at [blockNumber]): nothing is signed. */
     data class Reverts(val blockNumber: Long?) : TransferQuoting
@@ -264,13 +305,46 @@ class SendTransfer(private val signer: Signer, private val broadcaster: Broadcas
             is Signing.Signed -> signed.signature
             else -> return TransferSending.NotSigned(signed)
         }
-        val raw = transaction.encodeSigned(signature)
-        return when (val broadcast = broadcaster.send(raw)) {
-            // The hash is the raw bytes' own: what the receipt is looked up by.
-            is Broadcast.Sent -> TransferSending.Sent(Eip1559Transaction.hashOf(raw))
-            else -> TransferSending.NotSent(broadcast)
-        }
+        return broadcast(broadcaster, SignedTransfer(transaction.encodeSigned(signature)))
     }
+}
+
+/**
+ * Broadcasts [signed] again, byte for byte: what a transfer that was signed but not sent is
+ * retried with, never a new quote, which could take the next nonce while the first one is
+ * still on its way and pay twice.
+ */
+class RebroadcastTransfer(private val broadcaster: Broadcaster) {
+    suspend operator fun invoke(signed: SignedTransfer): TransferSending = broadcast(broadcaster, signed)
+}
+
+private suspend fun broadcast(broadcaster: Broadcaster, signed: SignedTransfer): TransferSending =
+    when (val broadcast = broadcaster.send(signed.raw)) {
+        // The hash is the raw bytes' own: what the receipt is looked up by.
+        is Broadcast.Sent -> TransferSending.Sent(signed.hash)
+        else -> TransferSending.NotSent(broadcast, signed)
+    }
+
+/**
+ * A signed transfer: its [raw] bytes as they are broadcast, and their [hash]. Not secret (a
+ * broadcast makes it public), and kept when a broadcast fails, so that a retry sends exactly
+ * these bytes and the receipt can be watched for by [hash] in case they reached a peer anyway.
+ */
+class SignedTransfer(raw: ByteArray) {
+    private val bytes = raw.copyOf()
+
+    /** The signed transaction's bytes: a copy. */
+    val raw: ByteArray
+        get() = bytes.copyOf()
+
+    /** `0x` + keccak256 of [raw]: the transaction hash. */
+    val hash: String = Eip1559Transaction.hashOf(bytes)
+
+    override fun equals(other: Any?): Boolean = other is SignedTransfer && bytes.contentEquals(other.bytes)
+
+    override fun hashCode(): Int = bytes.contentHashCode()
+
+    override fun toString(): String = "SignedTransfer($hash)"
 }
 
 /** The outcome of [SendTransfer]. */
@@ -282,8 +356,12 @@ sealed interface TransferSending {
     /** Not signed, for the reason [signing] gives: nothing left the device. */
     data class NotSigned(val signing: Signing) : TransferSending
 
-    /** Signed but not broadcast, for the reason [broadcast] gives. */
-    data class NotSent(val broadcast: Broadcast) : TransferSending
+    /**
+     * Signed but not broadcast, for the reason [broadcast] gives. [signed] is kept: a retry
+     * broadcasts it again ([RebroadcastTransfer]), and an unavailable broadcast may have reached a
+     * peer all the same, so its receipt is worth watching.
+     */
+    data class NotSent(val broadcast: Broadcast, val signed: SignedTransfer) : TransferSending
 }
 
 /** Where a sent transfer stands (docs/wallet-ux.md, screen 9), as its verified receipt says. */

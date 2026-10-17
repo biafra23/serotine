@@ -73,6 +73,30 @@ class TransfersTest {
     }
 
     @Test
+    fun aTypedAddressMustCarryItsChecksumRightAndANameMayStartWith0x() = runTest {
+        val asked = mutableListOf<String>()
+        val names = object : NameResolver {
+            override suspend fun resolve(name: String): NameResolution {
+                asked += name
+                return if (name == "dark.eth") {
+                    NameResolution.OffchainOnly
+                } else {
+                    NameResolution.Resolved(name, bob, 5)
+                }
+            }
+        }
+        val resolve = ResolveRecipient(names)
+        val vector = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" // EIP-55's own example
+
+        assertEquals(RecipientLookup.Found(Address.of(vector), null, null), resolve(vector))
+        assertEquals(RecipientLookup.Found(Address.of(vector), null, null), resolve(vector.lowercase()))
+        assertEquals(RecipientLookup.ChecksumMismatch, resolve(vector.replace("aAeb", "aaEb")))
+        assertEquals(RecipientLookup.Found(bob, "0xfoo.eth", 5), resolve("0xfoo.eth"))
+        assertEquals(RecipientLookup.OffchainOnly, resolve("dark.eth"))
+        assertEquals(listOf("0xfoo.eth", "dark.eth"), asked)
+    }
+
+    @Test
     fun aNativeTransferIsQuotedFromVerifiedInputs() = runTest {
         val amount = UInt256.of(100_000_000_000_000_000L) // 0.1 ETH
 
@@ -107,6 +131,7 @@ class TransfersTest {
         assertContentEquals(Erc20.transferData(bob, amount), quote.transaction.data)
         assertEquals(UInt256.of(5_000_000), quote.tokenBefore)
         assertEquals(UInt256.of(3_500_000), quote.tokenAfter)
+        assertEquals(100, quote.tokenBalanceBlock)
     }
 
     @Test
@@ -135,6 +160,29 @@ class TransfersTest {
         ).quote
 
         assertEquals(21_000, quote.transaction.gasLimit)
+    }
+
+    @Test
+    fun aCheapRefusalAsksTheChainNothingMore() = runTest {
+        assertEquals(
+            TransferQuoting.InsufficientToken,
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(6_000_000), FeeLevel.SLOW),
+        )
+        assertEquals(0, inputs.nonces + inputs.feeHistories, "no nonce, no fee history for a transfer refused before")
+    }
+
+    @Test
+    fun anInfeasibleEstimateIsSaidAsTheEvmSaysIt() = runTest {
+        inputs.estimate = GasEstimate.Infeasible("insufficient funds for transfer")
+        assertEquals(
+            TransferQuoting.InsufficientFunds,
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
+        inputs.estimate = GasEstimate.Infeasible("max initcode size exceeded")
+        assertEquals(
+            TransferQuoting.Infeasible("max initcode size exceeded"),
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
     }
 
     @Test
@@ -233,10 +281,28 @@ class TransfersTest {
         )
         assertEquals(0, broadcaster.sent.size, "nothing left the device")
         val signature = Signature("1".padStart(64, '0'), "2".padStart(64, '0'), recoveryId = 0)
+        val signed = SignedTransfer(quote.transaction.encodeSigned(signature))
         assertEquals(
-            TransferSending.NotSent(Broadcast.Rejected("nonce too low")),
+            TransferSending.NotSent(Broadcast.Rejected("nonce too low"), signed),
             SendTransfer(FakeSigner(Signing.Signed(signature)), broadcaster)(quote, unlock),
         )
+    }
+
+    @Test
+    fun aTransferNotSentIsRetriedWithItsOwnBytes() = runTest {
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        ).quote
+        val signature = Signature("1".padStart(64, '0'), "2".padStart(64, '0'), recoveryId = 0)
+        val unavailable = FakeBroadcaster(Broadcast.Unavailable("no peer"))
+        val sending = SendTransfer(FakeSigner(Signing.Signed(signature)), unavailable)
+        val notSent = assertIs<TransferSending.NotSent>(sending(quote, Unlock.WithBiometrics("Send 1 wei")))
+
+        val again = FakeBroadcaster(Broadcast.Sent("0x" + "00".repeat(32)))
+        val sent = assertIs<TransferSending.Sent>(RebroadcastTransfer(again)(notSent.signed))
+
+        assertContentEquals(unavailable.sent.single(), again.sent.single(), "the very bytes, not a new quote")
+        assertEquals(notSent.signed.hash, sent.hash)
     }
 
     private inner class FakeInputs : TransactionInputs {
@@ -255,10 +321,18 @@ class TransfersTest {
             ),
         )
         val simulated = mutableListOf<Triple<Address, Address, UInt256>>()
+        var nonces = 0
+        var feeHistories = 0
 
-        override suspend fun nonce(account: Address): NonceReading = NonceReading.Read(7)
+        override suspend fun nonce(account: Address): NonceReading {
+            nonces++
+            return NonceReading.Read(7)
+        }
 
-        override suspend fun fees(): FeeReading = fees
+        override suspend fun fees(): FeeReading {
+            feeHistories++
+            return fees
+        }
 
         override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
             estimate ?: GasEstimate.Estimated(gas)

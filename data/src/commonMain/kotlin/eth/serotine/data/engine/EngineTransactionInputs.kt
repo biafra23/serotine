@@ -26,7 +26,8 @@ class EngineTransactionInputs internal constructor(
 ) : TransactionInputs {
 
     override suspend fun nonce(account: Address): NonceReading = ask(NonceReading::Unavailable) { chain ->
-        chain.pendingNonce(account)?.let(NonceReading::Read) ?: NonceReading.Unavailable(ReadUnavailable.UNPROVEN)
+        chain.pendingNonce(account)?.takeIf { it >= 0 }?.let(NonceReading::Read)
+            ?: NonceReading.Unavailable(ReadUnavailable.UNPROVEN)
     }
 
     override suspend fun fees(): FeeReading = ask(FeeReading::Unavailable) { chain ->
@@ -37,7 +38,9 @@ class EngineTransactionInputs internal constructor(
     override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
         ask(GasEstimate::Unavailable) { chain ->
             when (val answer = chain.estimateGas(from, to, value.toDecimal(), data)) {
-                is EstimateAnswer.Gas -> GasEstimate.Estimated(answer.gas)
+                // No transaction takes no gas: a non-positive estimate is no answer.
+                is EstimateAnswer.Gas -> answer.gas.takeIf { it > 0 }?.let(GasEstimate::Estimated)
+                    ?: GasEstimate.Unavailable(ReadUnavailable.UNPROVEN)
                 is EstimateAnswer.Reverted -> GasEstimate.Reverted(answer.revertHex)
                 is EstimateAnswer.Infeasible -> GasEstimate.Infeasible(answer.detail)
                 is EstimateAnswer.Refused -> GasEstimate.Refused(answer.detail)

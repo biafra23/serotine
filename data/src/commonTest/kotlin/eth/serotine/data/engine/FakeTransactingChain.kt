@@ -12,6 +12,7 @@ internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : Transac
     var receipt: String? = null
     var name: NameAnswer = NameAnswer(null, -1, verified = false, error = "not set")
     val sent = mutableListOf<ByteArray>()
+    var asked = 0
     val resolved = mutableListOf<String>()
     var failure: Throwable? = null
 
@@ -37,6 +38,7 @@ internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : Transac
     }
 
     private fun <T> answer(value: () -> T): T {
+        asked++
         failure?.let { throw it }
         return value()
     }

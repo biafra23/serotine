@@ -21,11 +21,10 @@ import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
 import io.myotis.api.EnsRoot
-import io.myotis.api.EstimateResult
 import io.myotis.api.LifecycleState
 import io.myotis.api.MyotisEngine
-import io.myotis.api.SendResult
 import io.myotis.api.ports.DnsServers
+import io.myotis.api.ports.EnginePorts
 import io.myotis.engine.Myotis
 import io.myotis.engine.ports.DefaultEnginePorts
 import kotlinx.coroutines.Dispatchers
@@ -185,6 +184,19 @@ class MyotisNode private constructor(network: Network) {
         // One directory for the default ports and the engine: the Rust engine keeps its peer
         // caches and sync snapshot under EngineConfig.dataDir, in the ports' file names.
         val ports = Myotis.defaultPorts(engine, dir, dir, name, dnsServers)
+        // No CCIP-Read gateway: an off-chain ENS answer (EIP-3668) comes from an HTTP gateway the
+        // resolver names, an off-chain source no ruling allows, and the request would tell it the
+        // name and this device's address. With none, the engine refuses such a name, and says so.
+        val defaults = ports.ports()
+        val enginePorts = EnginePorts(
+            defaults.keyStore(),
+            defaults.peerCache(),
+            defaults.clPeerCache(),
+            defaults.dnsServers(),
+            null,
+            defaults.logger(),
+            defaults.clock(),
+        )
         val config = EngineConfig(
             name,
             0, 0, 0, // the network's default EL and discv5 ports; rpcPort is unused, nothing listens
@@ -194,7 +206,7 @@ class MyotisNode private constructor(network: Network) {
             dataDir.path,
         )
         val handle = try {
-            engine.create(config, ports.ports())
+            engine.create(config, enginePorts)
         } catch (e: Throwable) {
             // An engine that refuses the config (an anchor mismatch, a bad data directory)
             // still holds the ports' cache writers: release them before giving up.
@@ -372,14 +384,7 @@ class MyotisNode private constructor(network: Network) {
 
         override fun estimateGas(from: Address, to: Address, valueWei: String, data: ByteArray): EstimateAnswer {
             val handle = (state as? State.Running)?.handle ?: return EstimateAnswer.Unavailable
-            val result = handle.reads().estimateGasDetailed(from.bytes(), to.bytes(), data, valueWei)
-            return when (result.status()) {
-                EstimateResult.Status.OK -> EstimateAnswer.Gas(result.gas())
-                EstimateResult.Status.REVERTED -> EstimateAnswer.Reverted(result.revertData()?.toHex().orEmpty())
-                EstimateResult.Status.INFEASIBLE -> EstimateAnswer.Infeasible(result.detail().orEmpty())
-                EstimateResult.Status.REFUSED -> EstimateAnswer.Refused(result.detail().orEmpty())
-                EstimateResult.Status.UNAVAILABLE, null -> EstimateAnswer.Unavailable
-            }
+            return estimateAnswer(handle.reads().estimateGasDetailed(from.bytes(), to.bytes(), data, valueWei))
         }
 
         override fun callFrom(from: Address, to: Address, valueWei: String, data: ByteArray): CallOutcome? {
@@ -391,13 +396,7 @@ class MyotisNode private constructor(network: Network) {
         override fun sendRaw(raw: ByteArray): SendAnswer {
             val handle = (state as? State.Running)?.handle
                 ?: return SendAnswer.Unavailable("the light client is not running")
-            val result = handle.reads().sendRawTransactionDetailed(raw)
-            return when (result.status()) {
-                SendResult.Status.SENT -> SendAnswer.Sent("0x" + result.txHash().toHex())
-                SendResult.Status.REJECTED -> SendAnswer.Rejected(result.detail())
-                SendResult.Status.REFUSED -> SendAnswer.Refused(result.detail())
-                SendResult.Status.UNAVAILABLE, null -> SendAnswer.Unavailable(result.detail())
-            }
+            return sendAnswer(handle.reads().sendRawTransactionDetailed(raw))
         }
 
         override fun receipt(hash: String): String? {
@@ -409,8 +408,7 @@ class MyotisNode private constructor(network: Network) {
         override fun resolveName(name: String): NameAnswer {
             val handle = (state as? State.Running)?.handle
                 ?: return NameAnswer(null, -1, verified = false, error = "the light client is not running")
-            val result = handle.ens().resolveAddress(name, EnsRoot.FINALIZED)
-            return NameAnswer(result.addressHex(), result.blockNumber(), result.verified(), result.error())
+            return nameAnswerOf { handle.ens().resolveAddress(name, EnsRoot.FINALIZED) }
         }
     }
 

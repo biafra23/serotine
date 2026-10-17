@@ -13,8 +13,11 @@ import eth.serotine.domain.model.UInt256
 interface TransactionInputs {
 
     /**
-     * The nonce [account]'s next transaction must carry: its verified transaction count,
-     * counting the transactions this device sent that are not mined yet.
+     * The nonce [account]'s next transaction must carry: its verified transaction count, plus
+     * the engine's own record of transactions it sent that are not mined yet. That record is the
+     * engine's memory: it lasts while the process does and an entry expires, so a send right after
+     * a restart, before an earlier one is mined, can be given the earlier one's nonce. A record of
+     * the app's own comes with the Send screens.
      */
     suspend fun nonce(account: Address): NonceReading
 

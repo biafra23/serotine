@@ -22,8 +22,15 @@ sealed interface NameResolution {
     /** The name exists without an address record, or does not exist: a verified answer. */
     data object NoAddress : NameResolution
 
-    /** [name] is not an ENS name this resolver can look up (empty labels, characters ENS refuses). */
+    /** [name] is not an ENS name this resolver can look up (empty labels, characters it does not take). */
     data object NotAName : NameResolution
+
+    /**
+     * The name's resolver answers only through an off-chain gateway (CCIP-Read, EIP-3668): an
+     * off-chain source no ruling allows, and a request that would tell the gateway the name and
+     * the device's address. Not resolvable here; asking again changes nothing.
+     */
+    data object OffchainOnly : NameResolution
 
     /** No verified answer right now (finalized state not served, the light client not synced). */
     data class Unavailable(val reason: ReadUnavailable) : NameResolution

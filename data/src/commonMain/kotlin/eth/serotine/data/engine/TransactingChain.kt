@@ -59,13 +59,16 @@ internal sealed interface SendAnswer {
 
 /**
  * An engine's ENS answer: [addressHex] null with [error] null is a verified "no address";
- * [verified] says the resolution ran against beacon-finalized state, at [blockNumber].
+ * [verified] says the resolution ran against beacon-finalized state, at [blockNumber];
+ * [offchain] that the name's resolver answers only through an off-chain gateway, which this
+ * engine is not given.
  */
 internal data class NameAnswer(
     val addressHex: String?,
     val blockNumber: Long,
     val verified: Boolean,
     val error: String?,
+    val offchain: Boolean = false,
 )
 
 /** Why reads cannot be verified now, from [snapshot], or null when they can (at its readable head). */

@@ -32,10 +32,12 @@ internal object EngineJson {
     private fun quoteOf(root: JsonObject): FeeQuote? {
         val baseFees = root.getValue("baseFeePerGas").jsonArray.map { quantity(it) ?: return null }
         val oldest = quantity(root.getValue("oldestBlock"))?.toLongOrNull() ?: return null
-        val rewards = root["reward"]?.jsonArray.orEmpty().map { block ->
+        // The percentiles were asked for: an answer without their rewards is no answer.
+        val rewards = root["reward"]?.jsonArray?.map { block ->
             block.jsonArray.map { quantity(it) ?: return null }
-        }
-        if (baseFees.isEmpty() || rewards.any { it.size != PERCENTILES.size }) return null
+        } ?: return null
+        if (baseFees.size < 2 || rewards.size != baseFees.size - 1) return null
+        if (rewards.any { it.size != PERCENTILES.size }) return null
         val newest = oldest + baseFees.size - 2
         var floor = MIN_TIP
         val tips = FeeLevel.entries.mapIndexed { index, level ->
