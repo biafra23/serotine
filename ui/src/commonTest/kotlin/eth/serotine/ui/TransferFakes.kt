@@ -114,13 +114,10 @@ internal class MemorySentTransfers : SentTransfers {
         return true
     }
 
-    override suspend fun forgetMined(account: Address, minedCount: Long): Boolean {
-        transfers.value = transfers.value.filterNot { it.account == account && it.nonce < minedCount }
-        return true
-    }
-
-    override suspend fun forget(hash: String): Boolean {
-        transfers.value = transfers.value.filterNot { it.hash == hash }
+    override suspend fun prune(account: Address, minedCount: Long, signedBefore: Long): Boolean {
+        transfers.value = transfers.value.filterNot {
+            it.account == account && (it.nonce < minedCount || it.sentAt < signedBefore)
+        }
         return true
     }
 }

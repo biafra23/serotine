@@ -66,7 +66,8 @@ class TransfersTest {
             flowOf(this@TransfersTest.token)
     }
     private val sent = FakeSentTransfers()
-    private val quoteTransfer = QuoteTransfer(inputs, balances, tokens, sent, Network.SEPOLIA)
+    private var now = 1_800_000_100L
+    private val quoteTransfer = QuoteTransfer(inputs, balances, tokens, sent, Network.SEPOLIA) { now }
 
     @Test
     fun anAddressIsTakenAsIsAndANameIsResolved() = runTest {
@@ -164,7 +165,8 @@ class TransfersTest {
 
     @Test
     fun theEnginesEstimateIsTheGasLimitEvenBelowThe21000OfOldForks() = runTest {
-        // What the Rust engine estimates for a plain transfer on Sepolia's Amsterdam (EIP-2780).
+        // What the Rust engine estimated for a zero-value transfer on Sepolia's Amsterdam
+        // (EIP-2780); whatever it answers is the limit, no floor added.
         inputs.gas = 17_433
 
         val quote = assertIs<TransferQuoting.Quoted>(
@@ -250,25 +252,73 @@ class TransfersTest {
     }
 
     @Test
-    fun aSignedTransferIsRecordedBeforeItIsBroadcast() = runTest {
+    fun anOwnTransferNoBlockTookInTimeHoldsItsNonceNoLonger() = runTest {
+        val earlier = SentTransfer(
+            alice, 7, SignedTransfer(byteArrayOf(2, 1)), bob, TransferAsset.Native, UInt256.ONE, UInt256.ONE,
+            sentAt = now - RECORD_LIFETIME_SECONDS - 1,
+        )
+        sent.transfers.value = listOf(earlier)
+
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        ).quote
+
+        assertEquals(7, quote.transaction.nonce, "dropped by the pools: its nonce is free, and one of two is mined")
+        assertEquals(UInt256.ZERO, quote.pendingCost)
+        assertEquals(emptyList(), sent.transfers.value)
+    }
+
+    @Test
+    fun theNonceIsNeverBelowTheMinedCount() = runTest {
+        inputs.pending = 6 // read at an older head than the mined count
+        inputs.mined = 8
+
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        ).quote
+
+        assertEquals(8, quote.transaction.nonce)
+    }
+
+    @Test
+    fun whatAnOwnTokenTransferStillMovesIsNotAvailableToTheNext() = runTest {
+        val earlier = SentTransfer(
+            alice, 7, SignedTransfer(byteArrayOf(2, 1)), bob, TransferAsset.Erc20Token(usdc),
+            amount = UInt256.of(4_000_000), maxCost = UInt256.ONE, sentAt = now,
+        )
+        sent.transfers.value = listOf(earlier)
+        val usdcAsset = TransferAsset.Erc20Token(usdc)
+
+        assertEquals(
+            TransferQuoting.InsufficientToken,
+            quoteTransfer(alice, bob, usdcAsset, UInt256.of(2_000_000), FeeLevel.NORMAL),
+            "5 USDC held, 4 still on their way: 2 more would revert once those are mined",
+        )
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, usdcAsset, UInt256.of(1_000_000), FeeLevel.NORMAL),
+        ).quote
+        assertEquals(UInt256.of(4_000_000), quote.pendingTokenAmount)
+        assertEquals(UInt256.ZERO, quote.tokenAfter)
+    }
+
+    @Test
+    fun aTransferIsRecordedOnceAPeerTookItAndNotBefore() = runTest {
         val quote = assertIs<TransferQuoting.Quoted>(
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
         ).quote
         val signature = Signature("1".padStart(64, '0'), "2".padStart(64, '0'), recoveryId = 0)
-        var recordedAtBroadcast: List<SentTransfer>? = null
-        val broadcaster = object : Broadcaster {
-            override suspend fun send(raw: ByteArray): Broadcast {
-                recordedAtBroadcast = sent.transfers.value
-                return Broadcast.Unavailable("no peer")
-            }
-        }
+        val signer = FakeSigner(Signing.Signed(signature))
+        val unlock = Unlock.WithBiometrics("Send 1 wei")
 
-        SendTransfer(FakeSigner(Signing.Signed(signature)), broadcaster, sent) { 1_800_000_123 }(
+        SendTransfer(signer, FakeBroadcaster(Broadcast.Unavailable("no peer")), sent) { 1_800_000_123 }(quote, unlock)
+        assertEquals(emptyList(), sent.transfers.value, "no peer took it: it holds no nonce")
+
+        SendTransfer(signer, FakeBroadcaster(Broadcast.Sent("0x" + "00".repeat(32))), sent) { 1_800_000_123 }(
             quote,
-            Unlock.WithBiometrics("Send 1 wei"),
+            unlock,
         )
 
-        val record = recordedAtBroadcast!!.single()
+        val record = sent.transfers.value.single()
         assertEquals(quote.transaction.nonce, record.nonce)
         assertEquals(SignedTransfer(quote.transaction.encodeSigned(signature)), record.signed)
         assertEquals(quote.maxFee + UInt256.ONE, record.maxCost)
@@ -390,12 +440,12 @@ class TransfersTest {
         )
         assertEquals(0, broadcaster.sent.size, "nothing left the device")
         val signature = Signature("1".padStart(64, '0'), "2".padStart(64, '0'), recoveryId = 0)
-        val signed = SignedTransfer(quote.transaction.encodeSigned(signature))
-        assertEquals(
-            TransferSending.NotSent(Broadcast.Rejected("nonce too low"), signed),
+        val notSent = assertIs<TransferSending.NotSent>(
             SendTransfer(FakeSigner(Signing.Signed(signature)), broadcaster, sent)(quote, unlock),
         )
-        assertEquals(emptyList(), sent.transfers.value, "never mined as signed: its record and its nonce go")
+        assertEquals(Broadcast.Rejected("nonce too low"), notSent.broadcast)
+        assertEquals(SignedTransfer(quote.transaction.encodeSigned(signature)), notSent.signed)
+        assertEquals(emptyList(), sent.transfers.value, "never sent: nothing recorded, no nonce held")
     }
 
     @Test
@@ -409,16 +459,38 @@ class TransfersTest {
         val notSent = assertIs<TransferSending.NotSent>(sending(quote, Unlock.WithBiometrics("Send 1 wei")))
 
         val again = FakeBroadcaster(Broadcast.Sent("0x" + "00".repeat(32)))
-        assertEquals(listOf(notSent.signed), sent.transfers.value.map { it.signed }, "kept")
-        val resent = assertIs<TransferSending.Sent>(RebroadcastTransfer(again, sent)(notSent.signed))
+        val resent = assertIs<TransferSending.Sent>(RebroadcastTransfer(again, sent, receipts())(notSent.transfer))
 
         assertContentEquals(unavailable.sent.single(), again.sent.single(), "the very bytes, not a new quote")
         assertEquals(notSent.signed.hash, resent.hash)
-        assertEquals(1, sent.transfers.value.size, "still recorded once sent")
+        assertEquals(listOf(notSent.transfer), sent.transfers.value, "recorded once a peer took it")
+    }
 
-        val refused = FakeBroadcaster(Broadcast.Refused("not a transaction"))
-        assertIs<TransferSending.NotSent>(RebroadcastTransfer(refused, sent)(notSent.signed))
-        assertEquals(emptyList(), sent.transfers.value, "a refused retry forgets it too")
+    @Test
+    fun aRetryRejectedBecauseItsFirstBroadcastWasMinedIsSent() = runTest {
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        ).quote
+        val signature = Signature("1".padStart(64, '0'), "2".padStart(64, '0'), recoveryId = 0)
+        val unavailable = FakeBroadcaster(Broadcast.Unavailable("no peer"))
+        val notSent = assertIs<TransferSending.NotSent>(
+            SendTransfer(FakeSigner(Signing.Signed(signature)), unavailable, sent)(quote, Unlock.WithBiometrics("x")),
+        )
+        val tooLow = FakeBroadcaster(Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7"))
+
+        // In no block: the rejection stands, and nothing is recorded.
+        val pending = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Pending))(notSent.transfer)
+        assertIs<TransferSending.NotSent>(pending)
+        assertEquals(emptyList(), sent.transfers.value)
+
+        // A peer took the first broadcast after all, and a block has it: sent, not "never minable".
+        val mined = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Included(100, true)))
+        assertEquals(TransferSending.Sent(notSent.signed.hash), mined(notSent.transfer))
+        assertEquals(listOf(notSent.transfer), sent.transfers.value)
+    }
+
+    private fun receipts(progress: TransactionProgress = TransactionProgress.Pending) = object : ReceiptTracker {
+        override fun observe(hash: String): Flow<TransactionProgress> = flowOf(progress)
     }
 
     private inner class FakeInputs : TransactionInputs {
@@ -441,10 +513,11 @@ class TransfersTest {
         var feeHistories = 0
 
         var mined = 7L
+        var pending = 7L
 
         override suspend fun nonce(account: Address): NonceReading {
             nonces++
-            return NonceReading.Read(7)
+            return NonceReading.Read(pending)
         }
 
         override suspend fun minedNonce(account: Address): NonceReading = NonceReading.Read(mined)
@@ -465,7 +538,6 @@ class TransfersTest {
 
     private class FakeSentTransfers : SentTransfers {
         val transfers = MutableStateFlow<List<SentTransfer>>(emptyList())
-        val forgotten = mutableListOf<Pair<Address, Long>>()
 
         override fun observe(): Flow<SentTransferList> = transfers.map { SentTransferList.Loaded(it) }
 
@@ -474,14 +546,10 @@ class TransfersTest {
             return true
         }
 
-        override suspend fun forgetMined(account: Address, minedCount: Long): Boolean {
-            forgotten += account to minedCount
-            transfers.value = transfers.value.filterNot { it.account == account && it.nonce < minedCount }
-            return true
-        }
-
-        override suspend fun forget(hash: String): Boolean {
-            transfers.value = transfers.value.filterNot { it.hash == hash }
+        override suspend fun prune(account: Address, minedCount: Long, signedBefore: Long): Boolean {
+            transfers.value = transfers.value.filterNot {
+                it.account == account && (it.nonce < minedCount || it.sentAt < signedBefore)
+            }
             return true
         }
     }

@@ -50,6 +50,7 @@ import eth.serotine.ui.FakeBroadcaster
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeNames
+import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
@@ -57,6 +58,8 @@ import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemoryUserTokens
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -128,6 +131,8 @@ class SendViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
+    private val clock = TestTimeSource()
+
     private fun TestScope.viewModel(from: Address = daily.address, asset: Address? = null): SendViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val currency = MemoryCurrencySetting()
@@ -149,8 +154,9 @@ class SendViewModelTest {
             ResolveRecipient(names),
             QuoteTransfer(inputs, balances, tokenBalances, sent, Network.SEPOLIA),
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
-            RebroadcastTransfer(broadcaster, sent),
+            RebroadcastTransfer(broadcaster, sent, FakeReceipts()),
             Network.SEPOLIA,
+            clock,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -476,7 +482,7 @@ class SendViewModelTest {
         runCurrent()
 
         assertEquals(
-            Unlock.WithBiometrics("Send 0.1 ETH to 0xfB69…d359"),
+            Unlock.WithBiometrics("Send 0.1 ETH to 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"),
             signer.asked.single().second,
         )
         val review = viewModel.review
@@ -534,6 +540,49 @@ class SendViewModelTest {
         )
         viewModel.retry()
         assertEquals(1, broadcaster.sent.size)
+
+        // Nothing went out, so a new transfer may be composed from where this one was.
+        viewModel.edit()
+        assertEquals("0.1", viewModel.compose.amount)
+    }
+
+    @Test
+    fun aQuoteTooOldAtTheTapIsMadeAgainBeforeAnythingIsSigned() = runTest {
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("correct horse battery")
+        clock += 61.seconds
+        inputs.nonce = 8
+
+        viewModel.sign()
+        runCurrent()
+
+        assertTrue(signer.asked.isEmpty(), "nothing signed on the old quote")
+        assertEquals(2, inputs.estimated.size, "quoted again")
+        assertEquals(
+            "The quote was over a minute old, so it was made again: check it, then sign.",
+            viewModel.review.unlock.error,
+        )
+        viewModel.sign()
+        runCurrent()
+        assertEquals(8, sent.transfers.value.single().nonce, "the fresh quote is the one signed")
+    }
+
+    @Test
+    fun aReviewHiddenWhileItsSignatureRanIsQuotedAgainWhenNothingWasSent() = runTest {
+        val viewModel = reviewed()
+        viewModel.onShown()
+        signer.pending = CompletableDeferred()
+        viewModel.onPasswordChange("mistyped")
+        viewModel.sign()
+        runCurrent()
+
+        viewModel.onHidden()
+        viewModel.onShown() // back while the signature still runs: no quote yet
+        assertEquals(1, inputs.estimated.size)
+        signer.pending!!.complete(Signing.WrongPassword)
+        runCurrent()
+
+        assertEquals(2, inputs.estimated.size, "the quote from before it was hidden is made again")
     }
 
     @Test

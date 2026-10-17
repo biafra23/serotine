@@ -161,7 +161,7 @@ class AppGraph(
         ResolveRecipient(names),
         QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
         SendTransfer(signer, broadcaster, sentTransfers),
-        RebroadcastTransfer(broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         network,
     )
 

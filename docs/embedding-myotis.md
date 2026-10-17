@@ -218,10 +218,19 @@ verified read.
     memory, gone with the process and expiring; the app's own record of sent
     transfers (`SentTransfers`, kept in `sent-transfers.json` beside the account
     list) covers a restart: `QuoteTransfer` never quotes below its last unmined
-    nonce plus one. A transfer is recorded once signed, before it is
-    broadcast; a broadcast rejected or refused can never be mined as signed,
-    so its record goes and its nonce is free again, while an unavailable one
-    stays recorded, since it may have reached a peer all the same.
+    nonce plus one, nor below the mined count, and holds back what those
+    transfers may still take of the native balance and of the token's.
+    - A transfer is recorded once a peer took it. One no peer took holds no
+      nonce, so a later quote may take the same one, and only one of the two
+      can ever be mined.
+    - A record is forgotten once its nonce is mined, or three hours after it
+      was signed if no block took it (geth's transaction-pool lifetime):
+      kept, it would hold every later transfer behind a nonce no block takes.
+    - A retry of a broadcast no peer answered may come back rejected because
+      the first broadcast reached a peer after all and a block used its
+      nonce. `RebroadcastTransfer` checks the verified receipt before it
+      believes the rejection, so such a transfer reads as sent, not as one
+      that can never be mined.
   - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
     50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
     median of its percentile, never below 0.001 gwei and never below the

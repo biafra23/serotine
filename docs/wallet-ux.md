@@ -148,9 +148,14 @@ upgrades*).
      the fee), and what earlier transfers not mined yet may still take. A
      call that reverts stops at 7, before anything is signed.
    - The quote is never signed stale: it is made when the review is entered,
-     again on Refresh and when the screen is shown again after it was not,
-     a name is resolved again with every quote (one that moved is said, not
-     signed), and back to 7 drops it.
+     again on Refresh, when the screen is shown again after it was not, and
+     at the tap that would sign it when it is over a minute old (made again
+     and said, not signed). A name is resolved again with every quote (one
+     that moved, or that cannot be verified again, is said, not signed), and
+     back to 7 drops it.
+   - Back, the system's included, returns to 7. It waits while a signature
+     runs, and after a broadcast no peer answered it leaves Send: only Try
+     again may send those bytes.
    - The password field, or the biometric prompt where the user enabled it
      ("Sign with fingerprint or face", the password the fallback), then Sign
      and send. Each refusal is said: a wrong password, a dismissed prompt,
@@ -158,7 +163,8 @@ upgrades*).
      key store that cannot open it.
    - Signed but not broadcast: said, and only the same signed bytes can be
      sent again (Try again, when no peer took it); a transfer the engine
-     rejects on verified state is not offered again. Nothing is signed twice.
+     rejects on verified state is not offered again, and 7 is open again
+     for a new one. Nothing is signed twice.
 9. **Send, status**: what was sent (amount, asset, recipient, from this
    device's record), then Signed → Broadcast → Included (receipt verified,
    its block; "it reverted" when it failed, its fee paid) → Finalized (its

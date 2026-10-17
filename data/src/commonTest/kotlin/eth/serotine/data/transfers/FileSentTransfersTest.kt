@@ -30,7 +30,7 @@ class FileSentTransfersTest {
     private val file = Path(directory, "sent-transfers.json")
     private val alice = Address.of("0x" + "aa".repeat(20))
     private val bob = Address.of("0x" + "bb".repeat(20))
-    private val usdc = Token(Address.of("0x" + "cc".repeat(20)), "USDC", "USD Coin", 6, icon = null)
+    private val usdc = Token(Address.of("0x" + "cc".repeat(20)), "USDC", "USD Coin", 6, icon = "usdc")
 
     private fun TestScope.record() = FileSentTransfers(file.toString(), StandardTestDispatcher(testScheduler))
 
@@ -64,7 +64,7 @@ class FileSentTransfersTest {
         record().record(native)
         record().record(token)
 
-        // The icon and the price are the catalog's, not the record's.
+        // The bundled icon's name comes back with the token, for its status to show.
         assertEquals(listOf(native, token), stored())
     }
 
@@ -77,24 +77,16 @@ class FileSentTransfersTest {
     }
 
     @Test
-    fun whatIsMinedIsForgottenForItsAccountAlone() = runTest {
+    fun whatIsMinedOrTooOldIsForgottenForItsAccountAlone() = runTest {
         val store = record()
-        listOf(transfer(6), transfer(7), transfer(8), transfer(3, account = bob)).forEach { store.record(it) }
+        listOf(transfer(6), transfer(7), transfer(8), transfer(9), transfer(3, account = bob)).forEach {
+            store.record(it)
+        }
 
-        store.forgetMined(alice, minedCount = 8)
+        // Signed at 1_800_000_000 + nonce: 8 is too old, 9 is not.
+        assertTrue(store.prune(alice, minedCount = 8, signedBefore = 1_800_000_009))
 
-        assertEquals(listOf(transfer(8), transfer(3, account = bob)), stored())
-    }
-
-    @Test
-    fun aTransferNeverBroadcastIsForgottenByItsHashAlone() = runTest {
-        val store = record()
-        listOf(transfer(6), transfer(7)).forEach { store.record(it) }
-
-        assertTrue(store.forget(transfer(6).hash))
-        assertTrue(store.forget("0x" + "00".repeat(32)), "nothing under that hash is nothing to forget")
-
-        assertEquals(listOf(transfer(7)), stored())
+        assertEquals(listOf(transfer(9), transfer(3, account = bob)), stored())
     }
 
     @Test

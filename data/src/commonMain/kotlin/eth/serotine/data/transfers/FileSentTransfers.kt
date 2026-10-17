@@ -53,16 +53,13 @@ class FileSentTransfers(
         Decision(true, next = transfers.filterNot { it.hash == transfer.hash } + transfer)
     }
 
-    override suspend fun forgetMined(account: Address, minedCount: Long): Boolean =
+    override suspend fun prune(account: Address, minedCount: Long, signedBefore: Long): Boolean =
         file.change(notSaved = false) { transfers ->
-            val kept = transfers.filterNot { it.account == account && it.nonce < minedCount }
+            val kept = transfers.filterNot {
+                it.account == account && (it.nonce < minedCount || it.sentAt < signedBefore)
+            }
             if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
         }
-
-    override suspend fun forget(hash: String): Boolean = file.change(notSaved = false) { transfers ->
-        val kept = transfers.filterNot { it.hash == hash }
-        if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
-    }
 
     /** The file's layout. [version] comes first and is always written. */
     @Serializable
@@ -91,10 +88,16 @@ class FileSentTransfers(
         )
     }
 
-    /** What a token transfer needs shown again: not its icon or price, which the catalog has. */
+    /** What a token transfer needs shown again: its bundled icon's name too, not its price. */
     @Serializable
-    private class StoredToken(val address: String, val symbol: String, val name: String, val decimals: Int) {
-        fun toToken() = Token(Address.of(address), symbol, name, decimals, icon = null)
+    private class StoredToken(
+        val address: String,
+        val symbol: String,
+        val name: String,
+        val decimals: Int,
+        val icon: String? = null,
+    ) {
+        fun toToken() = Token(Address.of(address), symbol, name, decimals, icon)
     }
 
     private companion object {
@@ -107,7 +110,7 @@ class FileSentTransfers(
             raw = transfer.signed.raw.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') },
             to = transfer.to.hex,
             token = (transfer.asset as? TransferAsset.Erc20Token)?.token?.let {
-                StoredToken(it.address.hex, it.symbol, it.name, it.decimals)
+                StoredToken(it.address.hex, it.symbol, it.name, it.decimals, it.icon)
             },
             amount = transfer.amount.toDecimal(),
             maxCost = transfer.maxCost.toDecimal(),

@@ -44,7 +44,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -137,7 +139,7 @@ fun SendRoute(
  * signs it. While the review takes the wallet password, the window is kept out of screen capture
  * where the platform allows ([protectFromScreenCapture]); where it does not, the screen says so.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun SendScreen(
     state: SendUiState,
@@ -159,14 +161,23 @@ fun SendScreen(
     modifier: Modifier = Modifier,
 ) {
     val review = state as? SendUiState.Review
+    // In the review, back is to the compose step, until bytes may be out there: after a broadcast
+    // no peer answered, only Try again may send them, so back leaves Send. While a signature
+    // runs, back waits for it: leaving would not stop it, only hide what it did.
+    val toCompose = review != null && review.notSent?.canRetry != true
+    BackHandler(enabled = review != null) {
+        when {
+            review?.signing == true -> Unit
+            toCompose -> onEdit()
+            else -> onBack()
+        }
+    }
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    // In the review, back is to the compose step, until something was signed.
-                    val inReview = review != null && review.notSent == null
-                    IconButton(onClick = if (inReview) onEdit else onBack, enabled = review?.signing != true) {
+                    IconButton(onClick = if (toCompose) onEdit else onBack, enabled = review?.signing != true) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
