@@ -34,6 +34,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.ControlBadge
@@ -186,10 +187,63 @@ private fun DetectionCard(detection: Detection) {
                         Text("Detected from verified code", style = MaterialTheme.typography.labelMedium)
                     }
                 }
+                is Detection.Safe -> SafeCard(detection)
                 is Detection.Contract -> Text(detection.message)
                 is Detection.InWallet -> Text("Already in your wallet as “${detection.label}”.")
                 is Detection.Unavailable -> Text(detection.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+/**
+ * What the light client proved of a Safe (docs/wallet-ux.md, screen 10): its version, who must
+ * sign, the owners' blockies, and the modules and guard, which act without them or on every
+ * transaction.
+ */
+@Composable
+private fun SafeCard(safe: Detection.Safe) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        AccountAvatar(safe.address, size = 36.dp, threshold = safe.threshold)
+        Column {
+            Text("${safe.title} · ${safe.signers}")
+            Text(
+                safe.checkedAt,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    Text(
+        safe.address,
+        Modifier.testTag(WATCH_CHECKSUMMED_TAG),
+        style = MaterialTheme.typography.bodySmall,
+        fontFamily = FontFamily.Monospace,
+    )
+    Text("Owners", style = MaterialTheme.typography.labelMedium)
+    safe.owners.forEach { owner ->
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Blockie(owner, size = 20.dp)
+            Text(shortAddress(owner), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        }
+    }
+    if (safe.modules.isNotEmpty()) {
+        Text(
+            if (safe.modules.size == 1) {
+                "1 module is enabled: it can move this Safe's funds without the owners' signatures."
+            } else {
+                "${safe.modules.size} modules are enabled: each can move this Safe's funds without the " +
+                    "owners' signatures."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        safe.modules.forEach { module -> AddressLine(module) }
+    }
+    safe.guard?.let { guard -> AddressLine(guard, "A guard checks every transaction the owners sign:") }
+    safe.moduleGuard?.let { guard -> AddressLine(guard, "A module guard checks the modules' transactions:") }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        ControlBadge(safe.control)
+        Text("Detected from verified code and storage", style = MaterialTheme.typography.labelMedium)
     }
 }

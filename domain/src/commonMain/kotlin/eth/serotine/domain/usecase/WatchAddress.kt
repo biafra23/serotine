@@ -15,13 +15,13 @@ import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.flow.first
 
 /**
- * Adds an address to the wallet to watch it: issue #9's watch-only account. Only what the
- * light client proves is an externally owned account — with or without an EIP-7702
- * delegation — is added, as an [AccountKind.EOA] held as [AccountCustody.Watched]; a
- * contract is refused (a Safe is added once Safes are detected), and so is an address whose
- * kind cannot be verified right now: the account's kind is chain data, shown verified or not
- * at all. An address already in the wallet, watched or with its key, is refused and named.
- * [label] is trimmed; empty, the account is named "Account N" as an import names it.
+ * Adds an address to the wallet to watch it (issues #9 and #10). Only what the light client
+ * proves is an externally owned account — with or without an EIP-7702 delegation — or a Safe
+ * is added, as an [AccountKind.EOA] or [AccountKind.SAFE] held as [AccountCustody.Watched];
+ * another contract is refused, and so is an address whose kind cannot be verified right now:
+ * the account's kind is chain data, shown verified or not at all. An address already in the
+ * wallet, watched or with its key, is refused and named. [label] is trimmed; empty, the
+ * account is named "Account N" as an import names it.
  */
 class WatchAddress(
     private val accounts: AccountRepository,
@@ -35,14 +35,18 @@ class WatchAddress(
             is AccountList.Loaded -> list.accounts
         }
         current.firstOrNull { it.address == address }?.let { return AddressWatch.AlreadyInWallet(it) }
-        when (val reading = kinds.observeKind(address).first()) {
+        val kind = when (val reading = kinds.observeKind(address).first()) {
             KindReading.Syncing -> return AddressWatch.NotVerified(null)
             is KindReading.Unavailable -> return AddressWatch.NotVerified(reading.reason)
-            is KindReading.Verified -> if (reading.kind == AddressKind.Contract) return AddressWatch.Contract
+            is KindReading.Verified -> when (reading.kind) {
+                AddressKind.Contract -> return AddressWatch.Contract
+                is AddressKind.Safe -> AccountKind.SAFE
+                AddressKind.Eoa, is AddressKind.DelegatedEoa -> AccountKind.EOA
+            }
         }
         val account = Account(
             address,
-            AccountKind.EOA,
+            kind,
             name.ifEmpty { nextFreeLabel(current) },
             AccountCustody.Watched,
         )
@@ -68,7 +72,7 @@ sealed interface AddressWatch {
     /** The address is in the wallet already, as [account]; nothing changed. */
     data class AlreadyInWallet(val account: Account) : AddressWatch
 
-    /** The address holds a contract; nothing changed. */
+    /** The address holds a contract that is not a recognised Safe; nothing changed. */
     data object Contract : AddressWatch
 
     /**

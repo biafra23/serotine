@@ -33,6 +33,21 @@ internal interface VerifiedChain {
      * Blocks, bounded by the engine.
      */
     fun call(to: Address, data: ByteArray): CallOutcome?
+
+    /**
+     * Storage slot [slot] of [address] — or, given a [holder], the entry of the mapping at
+     * [slot] under that key (`keccak256(holder ‖ slot)`) — proven against the account's proven
+     * storage root and the beacon-attested state; null when the engine could not prove it.
+     * Blocks, bounded by the engine.
+     */
+    fun proveSlot(address: Address, slot: Long, holder: Address? = null): ProvenSlot?
+
+    /**
+     * The storage word at the 32-byte [slot] of [address] (a slot no number names, such as a
+     * hashed one), as a verified read at the head; null when it could not be read verified.
+     * Blocks, bounded by the engine.
+     */
+    fun storageAt(address: Address, slot: ByteArray): String?
 }
 
 /** A verified call's answer. */
@@ -50,6 +65,9 @@ internal sealed interface CallOutcome {
 
 /** A balance in decimal wei, proven at [blockNumber], the block the proof anchors to. */
 internal data class ProvenBalance(val wei: String, val blockNumber: Long)
+
+/** A storage word as 64 lower-case hex digits ([valueHex]; all zero for an empty slot), proven at [blockNumber]. */
+internal data class ProvenSlot(val valueHex: String, val blockNumber: Long)
 
 /** Code as lower-case hex without `0x` (empty: none), proven at [blockNumber]. */
 internal data class ProvenCode(val codeHex: String, val blockNumber: Long)

@@ -9,6 +9,7 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -47,6 +48,15 @@ class WatchAddressTest {
         reading = KindReading.Verified(AddressKind.DelegatedEoa(daily.address), 100)
 
         assertEquals(AccountCustody.Watched, (watch(address, "") as AddressWatch.Added).account.custody)
+    }
+
+    @Test
+    fun aVerifiedSafeIsAddedAsASafe() = runTest {
+        val state = SafeState("1.4.1", l2 = false, listOf(daily.address), 1, 0, emptyList(), guard = null)
+        reading = KindReading.Verified(AddressKind.Safe(state), 100)
+
+        val added = watch(address, "Treasury") as AddressWatch.Added
+        assertEquals(Account(address, AccountKind.SAFE, "Treasury", AccountCustody.Watched), added.account)
     }
 
     @Test

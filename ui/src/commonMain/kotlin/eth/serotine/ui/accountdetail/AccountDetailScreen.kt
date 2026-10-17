@@ -50,14 +50,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
-import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
+import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.WithActionMenu
+import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -66,6 +67,9 @@ const val ACCOUNT_TOTAL_TAG = "account-total"
 
 /** Test tag of the account's full address, for UI tests. */
 const val ACCOUNT_ADDRESS_TAG = "account-address"
+
+/** Test tag of a Safe's owners, for UI tests. */
+const val ACCOUNT_OWNERS_TAG = "account-owners"
 
 /** Test tag of each asset row, for UI tests. */
 const val ACCOUNT_ASSET_TAG = "account-asset"
@@ -105,6 +109,7 @@ fun AccountDetailRoute(
         onHideToken = viewModel::hideToken,
         onMessageShown = viewModel::messageShown,
         onSort = viewModel::sortBy,
+        onSegment = viewModel::show,
         modifier = modifier,
     )
 }
@@ -126,6 +131,7 @@ fun AccountDetailScreen(
     onHideToken: (contract: String, symbol: String) -> Unit,
     onMessageShown: () -> Unit,
     onSort: (AssetSort) -> Unit,
+    onSegment: (DetailSegment) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -193,6 +199,7 @@ fun AccountDetailScreen(
                     },
                     onHideToken = { asset -> asset.contract?.let { onHideToken(it, asset.symbol) } },
                     onSort = onSort,
+                    onSegment = onSegment,
                 )
             }
         }
@@ -207,13 +214,14 @@ private fun Details(
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
     onSort: (AssetSort) -> Unit,
+    onSegment: (DetailSegment) -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            AccountAvatar(state.address, size = 56.dp)
+            AccountAvatar(state.address, size = 56.dp, threshold = state.threshold)
             Column {
                 Text(
                     state.total,
@@ -233,7 +241,7 @@ private fun Details(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ControlBadge(state.control)
-                    if (state.kind == AccountKind.SAFE) Text("Safe", style = MaterialTheme.typography.labelMedium)
+                    state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                 }
             }
         }
@@ -258,8 +266,14 @@ private fun Details(
                 Text("Receive")
             }
         }
-        SortChoice(state.sort, onSort)
-        Assets(state, onCopyContract, onHideToken)
+        val safe = state.safe
+        if (safe != null) SegmentChoice(state.segment, onSegment)
+        if (safe != null && state.segment == DetailSegment.OWNERS) {
+            SafeOwners(safe)
+        } else {
+            SortChoice(state.sort, onSort)
+            Assets(state, onCopyContract, onHideToken)
+        }
     }
 }
 
@@ -298,6 +312,70 @@ private fun Assets(
         }
         state.pricesNote?.let { note ->
             Text(note, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A Safe's Assets | Owners (docs/wallet-ux.md, screen 16; its queue comes with Safe transactions). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SegmentChoice(segment: DetailSegment, onSegment: (DetailSegment) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        DetailSegment.entries.forEachIndexed { index, choice ->
+            SegmentedButton(
+                selected = segment == choice,
+                onClick = { onSegment(choice) },
+                shape = SegmentedButtonDefaults.itemShape(index, DetailSegment.entries.size),
+                label = { Text(if (choice == DetailSegment.ASSETS) "Assets" else "Owners") },
+            )
+        }
+    }
+}
+
+/**
+ * A Safe's owners with their blockies, "this device" on the ones whose keys are held here, and
+ * the threshold; the modules and the guard follow them (docs/wallet-ux.md, screen 16).
+ */
+@Composable
+private fun SafeOwners(safe: SafeDetails) {
+    Column(Modifier.testTag(ACCOUNT_OWNERS_TAG), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (safe) {
+            SafeDetails.Checking -> Text("Reading the Safe's storage…")
+            is SafeDetails.Unavailable -> Text(safe.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            is SafeDetails.Shown -> {
+                Text(safe.title, style = MaterialTheme.typography.titleSmall)
+                Text(safe.signers)
+                safe.owners.forEach { owner ->
+                    ListItem(
+                        leadingContent = { AccountAvatar(owner.address, size = 32.dp) },
+                        headlineContent = { Text(owner.label ?: shortAddress(owner.address)) },
+                        supportingContent = {
+                            Text(
+                                if (owner.label != null) shortAddress(owner.address) else "Not in this wallet",
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        },
+                        trailingContent = {
+                            if (owner.heldHere) Text("This device", style = MaterialTheme.typography.labelMedium)
+                        },
+                    )
+                }
+                if (safe.modules.isNotEmpty()) {
+                    Text(
+                        "Modules: each can move this Safe's funds without the owners' signatures.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    safe.modules.forEach { AddressLine(it) }
+                }
+                safe.guard?.let { AddressLine(it, "A guard checks every transaction the owners sign:") }
+                safe.moduleGuard?.let { AddressLine(it, "A module guard checks the modules' transactions:") }
+                Text(
+                    safe.checkedAt,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

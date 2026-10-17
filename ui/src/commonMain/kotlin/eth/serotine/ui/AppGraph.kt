@@ -25,6 +25,8 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveUsdPrice
@@ -87,12 +89,20 @@ class AppGraph(
     fun assetsViewModel(): AssetsViewModel =
         AssetsViewModel(
             ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
+            ObserveSafes(accounts, ObserveSafe(addressKinds, accounts)),
             ObserveLightClient(lightClient),
             network,
         )
 
     fun accountDetailViewModel(address: Address): AccountDetailViewModel =
-        AccountDetailViewModel(address, ObserveAccount(accounts), accountValue(), SetTokenHidden(userTokens), network)
+        AccountDetailViewModel(
+            address,
+            ObserveAccount(accounts),
+            accountValue(),
+            ObserveSafe(addressKinds, accounts),
+            SetTokenHidden(userTokens),
+            network,
+        )
 
     fun receiveViewModel(address: Address): ReceiveViewModel =
         ReceiveViewModel(address, ObserveAccount(accounts), network)
@@ -103,8 +113,11 @@ class AppGraph(
     fun removeAccountViewModel(address: Address): RemoveAccountViewModel =
         RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
 
-    fun watchViewModel(): WatchViewModel =
-        WatchViewModel(ObserveAddressKind(addressKinds), ObserveAccount(accounts), WatchAddress(accounts, addressKinds))
+    fun watchViewModel(): WatchViewModel = WatchViewModel(
+        ObserveAddressKind(addressKinds),
+        ObserveAccounts(accounts),
+        WatchAddress(accounts, addressKinds),
+    )
 
     fun settingsViewModel(): SettingsViewModel =
         SettingsViewModel(ObserveLightClient(lightClient), knownTokens(), displayCurrencies(), network)

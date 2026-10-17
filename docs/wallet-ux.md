@@ -290,9 +290,24 @@ address. Applied:
   0 (the singleton) must be a pinned canonical singleton for the network
   (1.3.0, 1.4.1 or 1.5.0, L1 or L2); the owners are the linked list in slot
   2 walked from the sentinel `0x1` with storage proofs, the threshold is slot
-  4 and the nonce slot 5. The modules (slot 1's list) and the guard are read
-  too, because a module can move funds without the owners' signatures.
-  Anything that does not match is "another contract", never a Safe.
+  4 and the nonce slot 5. The modules (slot 1's list), the guard and, from
+  1.5.0, the module guard are read too, because a module can move funds
+  without the owners' signatures.
+  Anything that does not match is "another contract", never a Safe. The
+  pins (`SafeDeployments`) cover 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the
+  SafeProxy runtime code of each factory. A Safe's control badge follows its
+  verified owners: as many held here as its threshold is full control, fewer
+  is co-signer, none is watch-only, and so is a Safe not read yet.
+  - The numbered slots carry the block they were proven at; the guards sit
+    at hashed slots no storage proof names, so they are verified reads at the
+    head, which may be a head newer than that block.
+  - The owner and module lists are what the Safe's own getters return.
+    Storage written outside them (a setup delegatecall can plant a module the
+    list does not link) is not something reading the lists can rule out; the
+    co-signing flow's own checks against the chain stand for that.
+  - The stored kind is what was verified when the account was added. An
+    address watched while it was still counterfactual stays an account after
+    its Safe is deployed; re-detecting it is a follow-up.
 - **Creation** deploys Safe 1.4.1 through `SafeProxyFactory.createProxyWithNonce`
   with a `setup` call, from an EOA the user holds. The address is predicted
   locally and shown before the deployment is signed.

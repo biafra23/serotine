@@ -40,6 +40,10 @@ class ProvenReadsSingleFlightTest {
         override fun proveCode(address: Address): ProvenCode? = null
 
         override fun call(to: Address, data: ByteArray): CallOutcome? = null
+
+        override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? = null
+
+        override fun storageAt(address: Address, slot: ByteArray): String? = null
     }
 
     @Test

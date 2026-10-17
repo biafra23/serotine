@@ -8,6 +8,9 @@ import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObserveSafes
+import eth.serotine.domain.usecase.Portfolio
+import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.asItems
@@ -29,6 +32,7 @@ import kotlinx.coroutines.flow.stateIn
  */
 class AssetsViewModel(
     observePortfolio: ObservePortfolio,
+    observeSafes: ObserveSafes,
     observeLightClient: ObserveLightClient,
     private val network: Network,
     /** Now, in unix seconds: what the strip dates the head block against. */
@@ -40,7 +44,24 @@ class AssetsViewModel(
     // The checksums once per account, not on every balance reading.
     private val checksums = mutableMapOf<Address, String>()
 
-    val uiState: StateFlow<AssetsUiState> = combine(observePortfolio(), strip) { portfolio, lightClient ->
+    val uiState: StateFlow<AssetsUiState> = combine(observePortfolio(), observeSafes(), strip, ::stateOf)
+        .stateIn(
+            scope = viewModelScope,
+            // Keeps collecting across a configuration change (the screen re-subscribes within
+            // the timeout) but stops when the screen is really gone, and then forgets the
+            // last state: a screen back after that must not show old balances as current.
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            initialValue = AssetsUiState.Loading(
+                network.displayName,
+                LightClientItem.from(LightClientStatus.Starting, now = 0),
+            ),
+        )
+
+    private fun stateOf(
+        portfolio: Portfolio,
+        safes: Map<Address, SafeReading>,
+        lightClient: LightClientItem,
+    ): AssetsUiState =
         when (val list = portfolio.accounts) {
             is AccountList.Unreadable -> AssetsUiState.ListUnavailable(
                 network.displayName,
@@ -63,6 +84,7 @@ class AssetsViewModel(
                         network,
                         checksums.getOrPut(account.address) { Eip55.format(account.address) },
                         value?.let { it.nativeValue to it.currency },
+                        safes[account.address],
                     )
                 }
                 val total = portfolio.total.takeIf { list.accounts.isNotEmpty() }
@@ -76,18 +98,6 @@ class AssetsViewModel(
                 )
             }
         }
-    }
-        .stateIn(
-            scope = viewModelScope,
-            // Keeps collecting across a configuration change (the screen re-subscribes within
-            // the timeout) but stops when the screen is really gone, and then forgets the
-            // last state: a screen back after that must not show old balances as current.
-            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-            initialValue = AssetsUiState.Loading(
-                network.displayName,
-                LightClientItem.from(LightClientStatus.Starting, now = 0),
-            ),
-        )
 
     private companion object {
         const val DAMAGED_SET_ASIDE =

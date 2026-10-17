@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
@@ -67,7 +68,10 @@ sealed interface AssetsUiState {
  * model. [address] is EIP-55 checksummed. [balance] is a verified amount ("0.5 ETH") when
  * [balanceVerified], and otherwise says why there is none ("Checking…", "Syncing…", "Not
  * verified"): never a number from anywhere else. [value] is that balance in the display
- * currency, or why it has none ("No price"; null while the balance is not verified).
+ * currency, or why it has none ("No price"; null while the balance is not verified). For a
+ * Safe, [signers] is its verified threshold of its owners ("2/3"; null until verified), and
+ * [kindNote] what the row says of its kind ("Safe", or "Not a recognised Safe" once its
+ * address no longer verifies as one); null for any other account.
  */
 data class AccountItem(
     val label: String,
@@ -77,6 +81,8 @@ data class AccountItem(
     val balance: String,
     val balanceVerified: Boolean,
     val value: String? = null,
+    val signers: String? = null,
+    val kindNote: String? = null,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -85,8 +91,9 @@ data class AccountItem(
     companion object {
         /**
          * [account] with its [balance], or with none read yet ([balance] null), and that
-         * balance's [value] with the currency it is in (null before it is valued); [address]
-         * is its EIP-55 form, which a caller that re-renders the row per balance computes once.
+         * balance's [value] with the currency it is in (null before it is valued); for a Safe,
+         * its verified [safe] reading. [address] is its EIP-55 form, which a caller that
+         * re-renders the row per balance computes once.
          */
         fun from(
             account: Account,
@@ -94,14 +101,23 @@ data class AccountItem(
             network: Network,
             address: String = Eip55.format(account.address),
             value: Pair<Valuation?, DisplayCurrency>? = null,
+            safe: SafeReading? = null,
         ): AccountItem = AccountItem(
             label = account.label,
             address = address,
             kind = account.kind,
-            control = Control.of(account.kind, account.custody),
+            // A Safe's control is its verified owners'; until they are read, no more than watch-only.
+            control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
+                ?: Control.of(account.kind, account.custody),
             balance = balance?.let { balanceText(it, network) } ?: "Checking…",
             balanceVerified = balance is BalanceReading.Verified,
             value = value?.let { (valuation, currency) -> valuationText(valuation, currency, network) },
+            signers = (safe as? SafeReading.Verified)?.let { "${it.state.threshold}/${it.state.owners.size}" },
+            kindNote = when {
+                account.kind != AccountKind.SAFE -> null
+                safe == SafeReading.NotASafe -> "Not a recognised Safe"
+                else -> "Safe"
+            },
         )
     }
 }
