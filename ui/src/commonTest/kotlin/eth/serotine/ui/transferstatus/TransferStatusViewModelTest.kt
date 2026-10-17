@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.usecase.ObserveSentTransfer
@@ -37,9 +38,11 @@ class TransferStatusViewModelTest {
         account = Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         nonce = 7,
         signed = SignedTransfer(byteArrayOf(2, 1, 9)),
-        to = Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
-        asset = TransferAsset.Erc20Token(usdc),
-        amount = UInt256.of(40_500_000),
+        action = SentAction.Transfer(
+            to = Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
+            asset = TransferAsset.Erc20Token(usdc),
+            amount = UInt256.of(40_500_000),
+        ),
         maxCost = UInt256.of(1_000_000),
         sentAt = 1_800_000_000,
     )
