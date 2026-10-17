@@ -181,7 +181,7 @@ class AccountDetailViewModel(
             when (reading.reason) {
                 ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so the owners cannot be read."
                 ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the owners cannot be read."
-                ReadUnavailable.UNPROVEN -> "No peer has proven the Safe's storage yet. Serotine keeps trying."
+                ReadUnavailable.UNPROVEN -> "The Safe's storage could not be verified this time. Serotine keeps trying."
                 ReadUnavailable.REFUSED -> "The light client on this device cannot read this Safe's storage."
             },
         )

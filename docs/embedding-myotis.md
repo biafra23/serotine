@@ -226,8 +226,8 @@ user to update — before it, and, after it, nothing else.
   a stale head — the rule Myotis sets for every host (CLAUDE.md, *Trust*).
 - **In Serotine.** `EngineNetworkUpgrades` (`eth.serotine.data.engine`) is the
   `NetworkUpgrades` port over it, polled with the engine's status; a malformed
-  field becomes unknown rather than failing the poll the light client and the
-  balances share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
+  field becomes unknown rather than failing the status poll the light client
+  and every verified read share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
   client's state and the upgrade recorded from earlier reports:
   - *Ahead*: a banner on Assets, with the date and the way to the update;
   - *Activated*, as peers report or by its announced time on the clock, the

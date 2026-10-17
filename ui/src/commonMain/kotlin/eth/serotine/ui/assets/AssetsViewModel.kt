@@ -9,8 +9,8 @@ import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafes
-import eth.serotine.domain.usecase.Portfolio
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
+import eth.serotine.domain.usecase.Portfolio
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
@@ -31,10 +31,9 @@ import kotlinx.coroutines.flow.stateIn
  * The Assets screen's ViewModel: turns the domain's portfolio — the accounts, what each
  * holds and what it is worth ([ObservePortfolio]) — the light client's state and any network
  * upgrade this version does not support into [AssetsUiState], on the [network] the
- * composition root runs the app on. It holds no
- * platform reference and exposes state only through [uiState]; what the user does with an
- * account is navigation, which the screen's route turns into the destination of the screen
- * or dialog that does it.
+ * composition root runs the app on. It holds no platform reference and exposes state only
+ * through [uiState]; what the user does with an account is navigation, which the screen's route
+ * turns into the destination of the screen or dialog that does it.
  */
 class AssetsViewModel(
     observePortfolio: ObservePortfolio,

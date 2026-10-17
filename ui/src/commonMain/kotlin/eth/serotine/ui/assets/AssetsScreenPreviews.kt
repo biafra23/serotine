@@ -84,7 +84,16 @@ private fun AssetsCatchingUpPreview() = AssetsPreview(
     AssetsUiState.Ready(
         network,
         LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true),
-        accounts.map { it.copy(balance = "Syncing…", balanceVerified = false, value = null, signers = null) },
+        // Until a Safe is read it is never shown as more than watch-only (AccountItem.from).
+        accounts.map {
+            it.copy(
+                balance = "Syncing…",
+                balanceVerified = false,
+                value = null,
+                signers = null,
+                control = if (it.kind == AccountKind.SAFE) Control.WATCH_ONLY else it.control,
+            )
+        },
         total = "Checking…",
         totalNote = "Testnet prices · still checking",
     ),

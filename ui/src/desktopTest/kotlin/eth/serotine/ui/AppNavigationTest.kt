@@ -23,6 +23,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import eth.serotine.domain.model.Account
@@ -89,7 +90,10 @@ import org.junit.rules.TestWatcher
 import org.junit.runner.Description
 import kotlin.test.assertEquals
 
-/** The shared [App] end to end, over fake ports: the tabs, the account screens and their dialogs. */
+/**
+ * The shared [App] end to end, over fake ports: the tabs, the account screens and their dialogs,
+ * and the update screen that replaces them all while a network upgrade leaves this version behind.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppNavigationTest {
 
@@ -247,7 +251,30 @@ class AppNavigationTest {
     }
 
     @Test
-    fun theBackArrowReturnsHomeWithNothingAdded() {
+    fun aRequiredUpdateFromATabLeavesNothingUnderItAndRecoversToTheAssetsStart() {
+        accounts.value = listOf(daily)
+        showApp()
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
+
+        report.value = NetworkUpgrade(NetworkUpgrade.Phase.ACTIVE, activationTime = null, forkId = null, 4)
+        rule.waitUntil { rule.onAllNodesWithTag(UPDATE_REQUIRED_TAG).fetchSemanticsNodes().isNotEmpty() }
+        // The account and Settings are gone, and both tabs' stacks with them: back leaves the app.
+        assertEquals(listOf("update-required"), screens())
+
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        rule.waitUntil { rule.onAllNodesWithTag(ASSETS_ACCOUNT_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(listOf("assets"), screens(), "the Assets start, with neither the account nor Settings under it")
+    }
+
+    /** The screens on the back stack, bottom first, without the graphs that hold them. */
+    private fun screens(): List<String?> = rule.runOnIdle {
+        navController.single().currentBackStack.value.filter { it.destination !is NavGraph }.map { it.destination.route }
+    }
+
+    @Test
+    fun theBackArrowReturnsToAssetsWithNothingAdded() {
         showApp()
 
         rule.onNodeWithContentDescription("Add account").performClick()

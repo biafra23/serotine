@@ -98,7 +98,8 @@ review finding, whatever it saves.
   (`onAddAccount`, `onBack`); only `App` holds the `NavController`. The one
   exception is the update screen: its ViewModel decides whether the app shows
   anything else, so `App` creates it in the host's scope and navigates to the
-  screen, clearing the back stack, while an update is required.
+  screen, clearing the back stack (both tabs' stacks included), while an
+  update is required, and to the Assets tab's start once it no longer is.
 - **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
   Each tab is a nested graph. Settings opens over the Assets tab's stack and
@@ -108,8 +109,9 @@ review finding, whatever it saves.
   (`account/{address}`), never an object: the destination's ViewModel loads
   what it shows through its use cases. The bar shows on the tabs' screens; a
   flow that ends in a key operation or a transaction (import, create, send,
-  a Safe transaction) is a destination of its own that covers it. The screens
-  themselves are docs/wallet-ux.md.
+  a Safe transaction) is a destination of its own that covers it, and so is
+  the update screen, outside both tabs. The screens themselves are
+  docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference
