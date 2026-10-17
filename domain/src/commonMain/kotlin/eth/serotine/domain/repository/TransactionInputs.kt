@@ -21,6 +21,12 @@ interface TransactionInputs {
      */
     suspend fun nonce(account: Address): NonceReading
 
+    /**
+     * [account]'s verified count of mined transactions at the head (`latest`): every nonce below
+     * it is used on chain.
+     */
+    suspend fun minedNonce(account: Address): NonceReading
+
     /** The fee levels the verified fee history of the last blocks suggests. */
     suspend fun fees(): FeeReading
 

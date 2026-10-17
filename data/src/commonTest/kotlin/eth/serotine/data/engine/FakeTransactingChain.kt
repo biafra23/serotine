@@ -18,6 +18,10 @@ internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : Transac
 
     override fun pendingNonce(address: Address): Long? = answer { nonce }
 
+    var mined: Long? = null
+
+    override fun minedNonce(address: Address): Long? = answer { mined }
+
     override fun feeHistory(blocks: Int, percentiles: DoubleArray): String? = answer { feeHistory }
 
     override fun estimateGas(from: Address, to: Address, valueWei: String, data: ByteArray): EstimateAnswer =

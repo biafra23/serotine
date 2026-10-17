@@ -377,6 +377,11 @@ class MyotisNode private constructor(network: Network) {
             return handle.reads().getTransactionCount(address.bytes(), "pending")
         }
 
+        override fun minedNonce(address: Address): Long? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getTransactionCount(address.bytes(), "latest")
+        }
+
         override fun feeHistory(blocks: Int, percentiles: DoubleArray): String? {
             val handle = (state as? State.Running)?.handle ?: return null
             return handle.reads().feeHistory(blocks.toLong(), "latest", percentiles)

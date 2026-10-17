@@ -18,6 +18,9 @@ internal interface TransactingChain : VerifiedChain {
      */
     fun pendingNonce(address: Address): Long?
 
+    /** [address]'s verified count of mined transactions at `latest`; null: no answer. */
+    fun minedNonce(address: Address): Long?
+
     /** `eth_feeHistory` over the last [blocks] blocks up to `latest`, with [percentiles]: its JSON, or null. */
     fun feeHistory(blocks: Int, percentiles: DoubleArray): String?
 

@@ -4,7 +4,8 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.hasValidChecksum
 import eth.serotine.domain.repository.BalanceReading
@@ -19,6 +20,9 @@ import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SentTransfer
+import eth.serotine.domain.repository.SentTransferList
+import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
@@ -27,20 +31,15 @@ import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-
-/** What a transfer moves: the network's own currency, or an ERC-20 [token]. */
-sealed interface TransferAsset {
-
-    /** The network's currency (ETH on Sepolia), sent as the transaction's value. */
-    data object Native : TransferAsset
-
-    /** [token], sent with its contract's `transfer`. */
-    data class Erc20Token(val token: Token) : TransferAsset
-}
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 /**
  * The recipient of a transfer as the user typed it (docs/wallet-ux.md, screen 7): an address,
@@ -106,9 +105,10 @@ sealed interface RecipientLookup {
 /**
  * A transfer quoted for review (docs/wallet-ux.md, screen 8): the unsigned [transaction] that
  * moves [amount] of [asset] from [from] to [to] at [level]'s fees, the most its fee can be
- * ([maxFee], gas limit × fee cap), and the balances it leaves — [nativeBefore] and the least
- * the native balance can be after ([nativeAfterAtLeast]), and for a token its balance before
- * and after. Every figure comes from verified state, each at its own block: the native balance
+ * ([maxFee], gas limit × fee cap), and the balances it leaves — [nativeBefore], what this
+ * wallet's own transfers not mined yet may still take of it ([pendingCost]), the least the
+ * native balance can be after ([nativeAfterAtLeast]), and for a token its balance before and
+ * after. Every figure comes from verified state, each at its own block: the native balance
  * at [balanceBlock], the token's at [tokenBalanceBlock], the fees from the history up to
  * [feeBlock], and the transfer run as a verified call from the sender at [simulationBlock].
  *
@@ -128,6 +128,7 @@ data class TransferQuote internal constructor(
     val maxFee: UInt256,
     val nativeBefore: UInt256,
     val nativeAfterAtLeast: UInt256,
+    val pendingCost: UInt256,
     val tokenBefore: UInt256?,
     val tokenAfter: UInt256?,
     val balanceBlock: Long?,
@@ -142,11 +143,16 @@ data class TransferQuote internal constructor(
  * revert. Nothing is quoted on anything less than verified state, and an amount is in the
  * asset's smallest unit: prices never reach a transaction (CLAUDE.md, *Data sources*). On
  * [network] only, its chain id signed into the transaction.
+ *
+ * The sender's own transfers not mined yet ([SentTransfers]) count: the nonce is never below
+ * the last of them plus one, and what they may still take of the native balance is not
+ * available to this one. Those mined since are forgotten.
  */
 class QuoteTransfer(
     private val inputs: TransactionInputs,
     private val nativeBalances: NativeBalances,
     private val tokenBalances: TokenBalances,
+    private val sentTransfers: SentTransfers,
     private val network: Network,
 ) {
 
@@ -190,8 +196,10 @@ class QuoteTransfer(
         }
         if (tokenBefore != null && tokenBefore < amount) return@coroutineScope TransferQuoting.InsufficientToken
         if (token == null && nativeBefore.first < amount) return@coroutineScope TransferQuoting.InsufficientFunds
-        // Past the cheap checks: the nonce and the fee history, alongside the estimate and the run.
+        // Past the cheap checks: the nonces and the fee history, alongside the estimate and the run.
         val nonce = async { inputs.nonce(from) }
+        val mined = async { inputs.minedNonce(from) }
+        val recorded = async { sentTransfers.observe().first() }
         val fees = async { inputs.fees() }
 
         val gas = when (val estimate = inputs.estimateGas(from, txTo, value, data)) {
@@ -224,15 +232,28 @@ class QuoteTransfer(
             is FeeReading.Quoted -> reading.quote
             is FeeReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
         }
-        val next = when (val reading = nonce.await()) {
+        val pendingNonce = when (val reading = nonce.await()) {
             is NonceReading.Read -> reading.nonce
             is NonceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
         }
+        val minedCount = when (val reading = mined.await()) {
+            is NonceReading.Read -> reading.nonce
+            is NonceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
+        }
+        // This wallet's own sends not mined yet: a record that cannot be read leaves the engine's.
+        val unmined = (recorded.await() as? SentTransferList.Loaded)?.transfers.orEmpty()
+            .filter { it.account == from && it.nonce >= minedCount }
+        val next = maxOf(pendingNonce, (unmined.maxOfOrNull { it.nonce } ?: -1) + 1)
+        sentTransfers.forgetMined(from, minedCount)
+        val pendingCost = unmined.fold(UInt256.ZERO as UInt256?) { sum, it -> sum?.plusOrNull(it.maxCost) }
+            ?: return@coroutineScope TransferQuoting.InsufficientFunds
+        val available = nativeBefore.first.minusOrNull(pendingCost)
+            ?: return@coroutineScope TransferQuoting.InsufficientFunds
         // An engine answer this large is no answer: the use case never throws over it.
         val maxFeePerGas = quote.maxFeePerGasOrNull(level) ?: return@coroutineScope UNPROVEN
         val maxFee = maxFeePerGas.timesOrNull(UInt256.of(gas)) ?: return@coroutineScope UNPROVEN
         val nativeCost = maxFee.plusOrNull(value) ?: return@coroutineScope TransferQuoting.InsufficientFunds
-        if (nativeBefore.first < nativeCost) return@coroutineScope TransferQuoting.InsufficientFunds
+        if (available < nativeCost) return@coroutineScope TransferQuoting.InsufficientFunds
         TransferQuoting.Quoted(
             TransferQuote(
                 from = from,
@@ -252,7 +273,8 @@ class QuoteTransfer(
                 ),
                 maxFee = maxFee,
                 nativeBefore = nativeBefore.first,
-                nativeAfterAtLeast = nativeBefore.first - nativeCost,
+                nativeAfterAtLeast = available - nativeCost,
+                pendingCost = pendingCost,
                 tokenBefore = tokenBefore,
                 tokenAfter = tokenBefore?.let { it - amount },
                 balanceBlock = nativeBefore.second,
@@ -318,16 +340,40 @@ sealed interface TransferQuoting {
  * signing digest is signed by the sender's key as [unlock] opens it ([Signer]), and the signed
  * bytes are broadcast. What is signed is exactly what was quoted and reviewed.
  */
-class SendTransfer(private val signer: Signer, private val broadcaster: Broadcaster) {
+class SendTransfer(
+    private val signer: Signer,
+    private val broadcaster: Broadcaster,
+    private val sentTransfers: SentTransfers,
+    private val clock: () -> Long = ::epochSecondsNow,
+) {
 
-    /** Signs and broadcasts [quote]'s transaction. */
+    /**
+     * Signs and broadcasts [quote]'s transaction. It is recorded ([SentTransfers]) once signed and
+     * before it is broadcast, so that a crash in between still keeps its nonce and its status; a
+     * record that cannot be saved does not stop the send.
+     */
     suspend operator fun invoke(quote: TransferQuote, unlock: Unlock): TransferSending {
         val transaction = quote.transaction
         val signature = when (val signed = signer.sign(quote.from, transaction.signingDigest(), unlock)) {
             is Signing.Signed -> signed.signature
             else -> return TransferSending.NotSigned(signed)
         }
-        return broadcast(broadcaster, SignedTransfer(transaction.encodeSigned(signature)))
+        val signed = SignedTransfer(transaction.encodeSigned(signature))
+        withContext(NonCancellable) {
+            sentTransfers.record(
+                SentTransfer(
+                    account = quote.from,
+                    nonce = transaction.nonce,
+                    signed = signed,
+                    to = quote.to,
+                    asset = quote.asset,
+                    amount = quote.amount,
+                    maxCost = quote.maxFee.plusOrNull(transaction.value) ?: quote.maxFee,
+                    sentAt = clock(),
+                ),
+            )
+        }
+        return broadcast(broadcaster, signed)
     }
 }
 
@@ -347,28 +393,6 @@ private suspend fun broadcast(broadcaster: Broadcaster, signed: SignedTransfer):
         else -> TransferSending.NotSent(broadcast, signed)
     }
 
-/**
- * A signed transfer: its [raw] bytes as they are broadcast, and their [hash]. Not secret (a
- * broadcast makes it public), and kept when a broadcast fails, so that a retry sends exactly
- * these bytes and the receipt can be watched for by [hash] in case they reached a peer anyway.
- */
-class SignedTransfer(raw: ByteArray) {
-    private val bytes = raw.copyOf()
-
-    /** The signed transaction's bytes: a copy. */
-    val raw: ByteArray
-        get() = bytes.copyOf()
-
-    /** `0x` + keccak256 of [raw]: the transaction hash. */
-    val hash: String = Eip1559Transaction.hashOf(bytes)
-
-    override fun equals(other: Any?): Boolean = other is SignedTransfer && bytes.contentEquals(other.bytes)
-
-    override fun hashCode(): Int = bytes.contentHashCode()
-
-    override fun toString(): String = "SignedTransfer($hash)"
-}
-
 /** The outcome of [SendTransfer]. */
 sealed interface TransferSending {
 
@@ -386,7 +410,19 @@ sealed interface TransferSending {
     data class NotSent(val broadcast: Broadcast, val signed: SignedTransfer) : TransferSending
 }
 
-/** Where a sent transfer stands (docs/wallet-ux.md, screen 9), as its verified receipt says. */
-class ObserveTransfer(private val receipts: ReceiptTracker) {
-    operator fun invoke(hash: String): Flow<TransactionProgress> = receipts.observe(hash)
+/**
+ * A sent transfer (docs/wallet-ux.md, screen 9): what was sent, from its record (null when the
+ * record has none: an older install, an unreadable record), and where it stands, as its verified
+ * receipt says.
+ */
+class ObserveSentTransfer(private val sentTransfers: SentTransfers, private val receipts: ReceiptTracker) {
+    operator fun invoke(hash: String): Flow<SentTransferStatus> = combine(
+        sentTransfers.observe().map { list ->
+            (list as? SentTransferList.Loaded)?.transfers?.lastOrNull { it.hash == hash }
+        }.distinctUntilChanged(),
+        receipts.observe(hash),
+    ) { transfer, progress -> SentTransferStatus(transfer, progress) }
 }
+
+/** What [ObserveSentTransfer] emits: the [transfer] as recorded, and its [progress]. */
+data class SentTransferStatus(val transfer: SentTransfer?, val progress: TransactionProgress)
