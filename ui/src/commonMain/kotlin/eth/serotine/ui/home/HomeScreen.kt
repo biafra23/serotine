@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.APP_VERSION
+import eth.serotine.ui.update.UpgradeBanner
 
 /** Test tag of the account list, for UI tests. */
 const val HOME_ACCOUNT_LIST_TAG = "home-account-list"
@@ -88,6 +89,7 @@ fun HomeScreen(state: HomeUiState, onAddAccount: () -> Unit, modifier: Modifier 
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             LightClientStrip(state.lightClient)
+            state.upgrade?.let { UpgradeBanner(it) }
             (state as? HomeUiState.Ready)?.notice?.let { notice ->
                 Text(
                     notice,

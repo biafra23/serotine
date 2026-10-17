@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkUpgrades
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
@@ -22,10 +23,10 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances] and [lightClient] to the AppGraph, and owns
- * it for the life of the process: [pause] and [resume] it around the app being in the
- * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
- * used; nothing below them.
+ * creates it with [start], hands [nativeBalances], [lightClient] and [networkUpgrades] to the
+ * AppGraph, and owns it for the life of the process: [pause] and [resume] it around the app
+ * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default
+ * ports are used; nothing below them.
  */
 class MyotisNode private constructor() {
 
@@ -75,6 +76,9 @@ class MyotisNode private constructor() {
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
+
+    /** Network upgrades this build does not support, as peers report them to this node. */
+    val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
@@ -236,6 +240,7 @@ class MyotisNode private constructor() {
                 headTimestamp = headTimestamp,
                 headAgeMs = status.verifiedHeadAgeMs(),
                 wsBoundPeriods = status.wsBoundPeriods(),
+                upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
             )
         }
 

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.theme.SerotineTheme
+import eth.serotine.ui.update.UpgradeBannerItem
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 // The Home screen in Android Studio's preview pane, one preview per state it draws
@@ -73,6 +74,37 @@ private fun HomeListSetAsidePreview() = HomePreview(
     ),
 )
 
+private const val UPGRADE_DETAILS = "Reported by peers in 5 networks, not verified · fork id 0x6c1d9423"
+
+@Preview
+@Composable
+private fun HomeUpgradeAheadPreview() = HomePreview(
+    withAccounts.copy(
+        upgrade = UpgradeBannerItem(
+            "Network upgrade ahead: update Serotine",
+            "Peers announce a Sepolia network upgrade on Nov 6, 2026, 3:00 PM that this version of Serotine " +
+                "does not support. Update the app before it activates, or Serotine stops verifying at the upgrade.",
+            UPGRADE_DETAILS,
+            urgent = false,
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun HomeUpgradeActivatedDarkPreview() = HomePreview(
+    withAccounts.copy(
+        upgrade = UpgradeBannerItem(
+            "Network upgrade reported: update Serotine",
+            "Peers report that Sepolia upgraded on Nov 6, 2026, 3:00 PM to rules this version of Serotine does " +
+                "not support. It is still verifying for now: update the app before it stops.",
+            UPGRADE_DETAILS,
+            urgent = false,
+        ),
+    ),
+    darkTheme = true,
+)
+
 @Preview
 @Composable
 private fun HomeListUnavailablePreview() = HomePreview(
@@ -92,5 +124,7 @@ internal val homeScreenPreviews: List<@Composable () -> Unit> = listOf(
     { HomeNoAccountsPreview() },
     { HomeLoadingPreview() },
     { HomeListSetAsidePreview() },
+    { HomeUpgradeAheadPreview() },
+    { HomeUpgradeActivatedDarkPreview() },
     { HomeListUnavailablePreview() },
 )

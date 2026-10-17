@@ -1,0 +1,96 @@
+package eth.serotine.ui.update
+
+import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.model.UpgradeNotice
+import eth.serotine.domain.usecase.UpgradeWarning
+import eth.serotine.ui.platform.formatDateTime
+
+// How a network upgrade this version does not support is put into words, the same on every
+// surface: the banner on Home, the update screen, and the notifications the hosts show. Peers
+// report it and nothing verifies it, so each text says that peers report it, and only the
+// update screen, which needs the light client's own agreement, says the app is not verifying.
+
+/** Where every Serotine release is published (README, *Releases*): what "update" leads to. */
+const val RELEASES_URL = "https://github.com/biafra23/serotine/releases"
+
+/**
+ * An upgrade warning as a banner shows it, display-ready: [urgent] when this version can no
+ * longer follow the network.
+ */
+data class UpgradeBannerItem(val title: String, val text: String, val details: String, val urgent: Boolean) {
+    companion object {
+        /** The banner for [warning] on [network], dated with [formatTime]; null when there is nothing to say. */
+        fun from(warning: UpgradeWarning, network: Network, formatTime: (Long) -> String): UpgradeBannerItem? =
+            when (warning) {
+                UpgradeWarning.None -> null
+                is UpgradeWarning.Ahead -> UpgradeBannerItem(
+                    "Network upgrade ahead: update Serotine",
+                    "Peers announce a ${network.displayName} network upgrade${warning.upgrade.onDate(formatTime)} " +
+                        "that this version of Serotine does not support. Update the app before it activates, " +
+                        "or Serotine stops verifying at the upgrade.",
+                    detailsOf(warning.upgrade),
+                    urgent = false,
+                )
+                is UpgradeWarning.Activated -> UpgradeBannerItem(
+                    "Network upgrade reported: update Serotine",
+                    "Peers report that ${network.displayName} upgraded${warning.upgrade.onDate(formatTime)} to " +
+                        "rules this version of Serotine does not support. It is still verifying for now: " +
+                        "update the app before it stops.",
+                    detailsOf(warning.upgrade),
+                    urgent = false,
+                )
+                is UpgradeWarning.UpdateRequired -> UpgradeBannerItem(
+                    "Update required",
+                    updateRequiredText(warning.upgrade, network, formatTime),
+                    detailsOf(warning.upgrade),
+                    urgent = true,
+                )
+            }
+    }
+}
+
+/** An upgrade notice as a notification shows it, display-ready. */
+data class UpgradeNotificationText(val title: String, val text: String) {
+    companion object {
+        /** The notification for [notice] on [network], dated with [formatTime]. */
+        fun from(
+            notice: UpgradeNotice,
+            network: Network,
+            formatTime: (Long) -> String = ::formatDateTime,
+        ): UpgradeNotificationText {
+            val name = network.displayName
+            val on = notice.upgrade.onDate(formatTime)
+            val ahead = "Peers announce a $name network upgrade$on that this version of Serotine does not " +
+                "support. Update the app before it activates."
+            return when (notice.kind) {
+                UpgradeNotice.Kind.ANNOUNCED ->
+                    UpgradeNotificationText("Update Serotine before the network upgrade", ahead)
+                UpgradeNotice.Kind.WEEK_AHEAD -> UpgradeNotificationText("$name upgrades within a week", ahead)
+                UpgradeNotice.Kind.DAY_AHEAD -> UpgradeNotificationText("$name upgrades within a day", ahead)
+                UpgradeNotice.Kind.ACTIVATED -> UpgradeNotificationText(
+                    "Update Serotine",
+                    "Peers report that $name upgraded$on to rules this version of Serotine does not support. " +
+                        "Update the app to keep using your wallet.",
+                )
+            }
+        }
+    }
+}
+
+/** What the update screen says: the one text that may say the app is not verifying. */
+internal fun updateRequiredText(upgrade: NetworkUpgrade, network: Network, formatTime: (Long) -> String): String =
+    "Peers report that ${network.displayName} upgraded${upgrade.onDate(formatTime)} to rules this version of " +
+        "Serotine does not support, and its light client is not verifying the chain. Update the app to keep " +
+        "using your wallet."
+
+/** Who reports [upgrade], and that nothing verifies it; its fork id when known. */
+internal fun detailsOf(upgrade: NetworkUpgrade): String {
+    val networks = upgrade.reportingNetworks
+    val peers = "Reported by peers in $networks ${if (networks == 1) "network" else "networks"}, not verified"
+    return "$peers · fork id ${upgrade.forkId ?: "unknown"}"
+}
+
+/** " on <date>" for a sentence, or nothing when no time was announced. */
+private fun NetworkUpgrade.onDate(formatTime: (Long) -> String): String =
+    activationTime?.let { " on ${formatTime(it)}" }.orEmpty()

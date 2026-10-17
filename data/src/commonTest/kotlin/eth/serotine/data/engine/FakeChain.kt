@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.NetworkUpgrade
 
 /** A [VerifiedChain] whose snapshot and proofs a test sets. */
 internal class FakeChain : VerifiedChain {
@@ -37,6 +38,7 @@ internal fun running(
     headTimestamp: Long? = null,
     headAgeMs: Long = 2_000,
     bound: Long = 13,
+    upgrade: NetworkUpgrade? = null,
 ) = EngineSnapshot.Running(
-    phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound,
+    phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound, upgrade,
 )

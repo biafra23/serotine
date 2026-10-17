@@ -5,18 +5,32 @@ import android.app.Application
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import eth.serotine.android.upgrade.AndroidUpgradeNotifier
+import eth.serotine.android.upgrade.UpgradeCheckJob
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.UpgradeNotices
+import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * The Android composition root: the one place that knows which adapters implement the
  * domain's ports on this platform, and the owner of the process's one Myotis engine
- * (docs/embedding-myotis.md). Built once per process; activities read [graph].
+ * (docs/embedding-myotis.md). Built once per process; activities read [graph]. The engine's
+ * networking is on while something holds it ([holdEngine]: a visible activity, the daily
+ * upgrade check), and while it is, the engine's upgrade reports are followed into
+ * notifications ([upgradeNotices]).
  */
 class SerotineApplication : Application() {
 
@@ -25,6 +39,17 @@ class SerotineApplication : Application() {
     // not ship (it has arm64-v8a and x86_64), balances say so.
     private val node: MyotisNode by lazy {
         MyotisNode.start(Network.SEPOLIA, filesDir.resolve("myotis"), AndroidDnsServers(this))
+    }
+
+    /**
+     * The upgrade record, for this app version only: one instance, which the screens read and
+     * the notices write. Peer reports, no keys; kept out of backups with the rest of the files.
+     */
+    private val knownUpgrades by lazy { FileKnownUpgradeStore(filesDir.resolve("upgrade.json").path, APP_VERSION) }
+
+    /** What the user hears about an upgrade outside the app. Needs no engine, so a reminder never starts one. */
+    private val upgradeNotices by lazy {
+        UpgradeNotices(knownUpgrades, AndroidUpgradeNotifier(this, Network.SEPOLIA))
     }
 
     val graph: AppGraph by lazy {
@@ -37,36 +62,81 @@ class SerotineApplication : Application() {
             keys = EnvelopeKeyStore(filesDir.resolve("keys").path, AndroidKeystoreSecret()),
             nativeBalances = node.nativeBalances,
             lightClient = node.lightClient,
+            networkUpgrades = node.networkUpgrades,
+            knownUpgrades = knownUpgrades,
             network = Network.SEPOLIA,
         )
     }
 
+    /** The process's own work: following upgrade reports and showing reminders. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // The holds on the engine, and what they keep running: main thread only.
+    private val handler = Handler(Looper.getMainLooper())
+    private var holds = 0
+    private var following: Job? = null
+    private val sleep = Runnable {
+        node.pause()
+        following?.cancel()
+        following = null
+    }
+
     override fun onCreate() {
         super.onCreate()
-        registerActivityLifecycleCallbacks(PauseInBackground())
+        registerActivityLifecycleCallbacks(HoldWhileVisible())
+        UpgradeCheckJob.schedule(this)
     }
 
     /**
-     * Turns the engine's networking off once no activity has been visible for
-     * [PAUSE_DELAY_MS], and back on when one is again: a backgrounded wallet keeps no sockets
-     * or timers open. The delay keeps a rotation or a quick app switch from pausing at all.
-     * A foreground service comes with background sync.
+     * Keeps the engine's networking on, and its upgrade reports followed into notifications,
+     * until the matching [releaseEngine]. Main thread.
      */
-    private inner class PauseInBackground : ActivityLifecycleCallbacks {
-        private var visible = 0
-        private val handler = Handler(Looper.getMainLooper())
-        private val pause = Runnable { node.pause() }
+    fun holdEngine() {
+        if (holds++ > 0) return
+        handler.removeCallbacks(sleep)
+        node.resume()
+        // Not active: never started, stopped by the last sleep, or ended with an engine that is down.
+        if (following?.isActive != true) {
+            following = scope.launch { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
+        }
+    }
 
-        override fun onActivityStarted(activity: Activity) {
-            if (visible++ == 0) {
-                handler.removeCallbacks(pause)
-                node.resume()
+    /**
+     * Ends a [holdEngine]. [PAUSE_DELAY_MS] after the last one, networking goes off (a
+     * backgrounded wallet keeps no sockets or timers open) and the reports are no longer
+     * followed: the reminder alarm covers the time until the next hold. The delay keeps a
+     * rotation or a quick app switch from pausing at all. Main thread.
+     */
+    fun releaseEngine() {
+        if (--holds == 0) handler.postDelayed(sleep, PAUSE_DELAY_MS)
+    }
+
+    /**
+     * Calls [then], on the main thread, with whether a background look for upgrades can learn
+     * anything: not once the user has been told the known one activated. Never starts the engine.
+     */
+    fun whenUpgradeCheckWanted(then: (Boolean) -> Unit) {
+        scope.launch {
+            val wanted = !upgradeNotices.activationShown()
+            handler.post { then(wanted) }
+        }
+    }
+
+    /** Shows the upgrade reminder due now, if any, and arms the next; then [done]. Never starts the engine. */
+    fun remindOfUpgrades(done: () -> Unit) {
+        scope.launch {
+            try {
+                upgradeNotices.remind()
+            } finally {
+                done()
             }
         }
+    }
 
-        override fun onActivityStopped(activity: Activity) {
-            if (--visible == 0) handler.postDelayed(pause, PAUSE_DELAY_MS)
-        }
+    /** Holds the engine while any activity is visible. */
+    private inner class HoldWhileVisible : ActivityLifecycleCallbacks {
+        override fun onActivityStarted(activity: Activity) = holdEngine()
+        override fun onActivityStopped(activity: Activity) = releaseEngine()
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
         override fun onActivityResumed(activity: Activity) = Unit

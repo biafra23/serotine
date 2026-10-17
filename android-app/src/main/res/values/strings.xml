@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Serotine</string>
+    <string name="upgrade_channel_name">Network upgrades</string>
+    <string name="upgrade_channel_description">Tells you to update Serotine before, and after, a network upgrade this version does not support.</string>
 </resources>
