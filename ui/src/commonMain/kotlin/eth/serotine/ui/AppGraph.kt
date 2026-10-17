@@ -9,25 +9,34 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
+import eth.serotine.domain.repository.TokenMetadata
+import eth.serotine.domain.repository.UserTokens
+import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.RemoveAccount
+import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
+import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.assets.AssetsViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
 import eth.serotine.ui.settings.SettingsViewModel
+import eth.serotine.ui.tokens.TokensViewModel
 import eth.serotine.ui.watch.WatchViewModel
 
 /**
@@ -49,6 +58,10 @@ class AppGraph(
     private val tokenCatalog: TokenCatalog,
     /** Token balances verified by that light client. */
     private val tokenBalances: TokenBalances,
+    /** What token contracts say about themselves, verified by that light client. */
+    private val tokenMetadata: TokenMetadata,
+    /** The tokens the user added and hid. */
+    private val userTokens: UserTokens,
     /** What is at an address, verified by that light client. */
     private val addressKinds: AddressKinds,
     /** That light client's own state. */
@@ -72,7 +85,8 @@ class AppGraph(
             address,
             ObserveAccount(accounts),
             ObserveNativeBalance(nativeBalances),
-            ObserveTokenHoldings(tokenCatalog, tokenBalances),
+            ObserveTokenHoldings(knownTokens(), tokenBalances),
+            SetTokenHidden(userTokens),
             network,
         )
 
@@ -88,7 +102,20 @@ class AppGraph(
     fun watchViewModel(): WatchViewModel =
         WatchViewModel(ObserveAddressKind(addressKinds), ObserveAccount(accounts), WatchAddress(accounts, addressKinds))
 
-    fun settingsViewModel(): SettingsViewModel = SettingsViewModel(ObserveLightClient(lightClient), network)
+    fun settingsViewModel(): SettingsViewModel =
+        SettingsViewModel(ObserveLightClient(lightClient), knownTokens(), network)
+
+    fun tokensViewModel(): TokensViewModel =
+        TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens))
+
+    fun addTokenViewModel(): AddTokenViewModel =
+        AddTokenViewModel(
+            knownTokens(),
+            ObserveTokenMetadata(tokenMetadata),
+            AddToken(userTokens, tokenMetadata, knownTokens()),
+        )
+
+    private fun knownTokens() = ObserveKnownTokens(tokenCatalog, userTokens, tokenMetadata)
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
         MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))

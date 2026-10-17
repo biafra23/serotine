@@ -1,0 +1,77 @@
+package eth.serotine.data.tokens
+
+import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Token
+import eth.serotine.domain.repository.TokenChange
+import eth.serotine.domain.repository.TokenSettings
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
+import kotlinx.io.buffered
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readString
+import kotlinx.io.writeString
+import kotlin.random.Random
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class FileUserTokensTest {
+
+    private val directory = Path(SystemTemporaryDirectory, "serotine-tokens-${Random.nextLong().toULong()}")
+    private val file = Path(directory, "tokens.json")
+    private val eurc = Token(Address.of("0x08210f9170f89ab7658f0b5e3ff39b0e03c594d4"), "EURC", "EURC", 6, icon = null)
+    private val usdc = Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238")
+
+    private fun TestScope.tokens() = FileUserTokens(file.toString(), StandardTestDispatcher(testScheduler))
+
+    @AfterTest
+    fun cleanUp() {
+        if (SystemFileSystem.exists(directory)) {
+            SystemFileSystem.list(directory).forEach { SystemFileSystem.delete(it) }
+            SystemFileSystem.delete(directory)
+        }
+    }
+
+    @Test
+    fun addedAndHiddenTokensSurviveARestart() = runTest {
+        val first = tokens()
+        assertEquals(TokenChange.Changed, first.add(eurc))
+        assertEquals(TokenChange.AlreadyPresent, first.add(eurc))
+        assertEquals(TokenChange.Changed, first.setHidden(usdc, hidden = true))
+        assertEquals(TokenChange.AlreadyPresent, first.setHidden(usdc, hidden = true))
+
+        assertEquals(TokenSettings.Loaded(listOf(eurc), setOf(usdc)), tokens().observe().first())
+        assertEquals(
+            """{"version":1,"added":[{"address":"0x08210f9170f89ab7658f0b5e3ff39b0e03c594d4","symbol":"EURC",""" +
+                """"name":"EURC","decimals":6}],"hidden":["0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"]}""",
+            SystemFileSystem.source(file).buffered().use { it.readString() },
+        )
+    }
+
+    @Test
+    fun aRemovedTokenLeavesNothingBehind() = runTest {
+        val tokens = tokens()
+        tokens.add(eurc)
+        tokens.setHidden(eurc.address, hidden = true)
+
+        assertEquals(TokenChange.Changed, tokens.remove(eurc.address))
+        assertEquals(TokenChange.NotFound, tokens.remove(eurc.address))
+        assertEquals(TokenSettings.Loaded(emptyList(), emptySet()), tokens().observe().first())
+    }
+
+    @Test
+    fun aNewerFormatIsUnreadableAndNothingChanges() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":2,"added":[],"hidden":[]}""") }
+        val tokens = tokens()
+
+        assertEquals(TokenSettings.Unreadable, tokens.observe().first())
+        assertEquals(TokenChange.NotSaved, tokens.add(eurc))
+    }
+}

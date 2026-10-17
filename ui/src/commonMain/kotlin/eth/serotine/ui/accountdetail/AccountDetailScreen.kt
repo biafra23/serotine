@@ -54,6 +54,7 @@ import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -98,6 +99,7 @@ fun AccountDetailRoute(
         onCopy = rememberCopyText(),
         onRename = onRename,
         onRemove = onRemove,
+        onHideToken = viewModel::hideToken,
         modifier = modifier,
     )
 }
@@ -116,6 +118,7 @@ fun AccountDetailScreen(
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
+    onHideToken: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -165,7 +168,21 @@ fun AccountDetailScreen(
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
                 )
-                is AccountDetailUiState.Ready -> Details(state, onReceive, copy)
+                is AccountDetailUiState.Ready -> Details(
+                    state,
+                    onReceive,
+                    copy,
+                    onCopyContract = { contract ->
+                        onCopy(contract)
+                        scope.launch { snackbar.showSnackbar("Contract address copied") }
+                    },
+                    onHideToken = { asset ->
+                        asset.contract?.let(onHideToken)
+                        scope.launch {
+                            snackbar.showSnackbar("${asset.symbol} hidden. Settings → Tokens shows it again.")
+                        }
+                    },
+                )
             }
         }
     }
@@ -176,6 +193,8 @@ private fun Details(
     state: AccountDetailUiState.Ready,
     onReceive: () -> Unit,
     onCopy: (String) -> Unit,
+    onCopyContract: (String) -> Unit,
+    onHideToken: (AssetRow) -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -232,7 +251,7 @@ private fun Details(
                 Text("Receive")
             }
         }
-        Assets(state)
+        Assets(state, onCopyContract, onHideToken)
     }
 }
 
@@ -241,31 +260,56 @@ private fun Details(
  * at, and what is not known yet about the other tokens.
  */
 @Composable
-private fun Assets(state: AccountDetailUiState.Ready) {
+private fun Assets(
+    state: AccountDetailUiState.Ready,
+    onCopyContract: (String) -> Unit,
+    onHideToken: (AssetRow) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.assets.forEach { asset ->
-            ListItem(
-                modifier = Modifier.testTag(ACCOUNT_ASSET_TAG),
-                leadingContent = { TokenIcon(asset.icon, asset.symbol) },
-                headlineContent = { Text(asset.symbol) },
-                supportingContent = {
-                    Text(asset.verifiedAt?.let { "${asset.name} · verified at $it" } ?: asset.name)
-                },
-                trailingContent = {
-                    Text(
-                        asset.amount,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (asset.verified) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                },
-            )
+            val contract = asset.contract
+            if (contract == null) {
+                AssetItem(asset)
+            } else {
+                // Long press (right click): docs/wallet-ux.md, screen 5. Both actions are also
+                // in Settings → Tokens, behind a visible button. (Send arrives with sending.)
+                WithActionMenu(
+                    actions = listOf(
+                        MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(contract) },
+                        MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) },
+                    ),
+                    menuLabel = "Actions for ${asset.symbol}",
+                    onClick = {},
+                ) {
+                    AssetItem(asset)
+                }
+            }
         }
         state.tokensNote?.let { note ->
             Text(note, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+private fun AssetItem(asset: AssetRow) {
+    ListItem(
+        modifier = Modifier.testTag(ACCOUNT_ASSET_TAG),
+        leadingContent = { TokenIcon(asset.icon, asset.symbol) },
+        headlineContent = { Text(asset.symbol) },
+        supportingContent = {
+            Text(asset.verifiedAt?.let { "${asset.name} · verified at $it" } ?: asset.name)
+        },
+        trailingContent = {
+            Text(
+                asset.amount,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (asset.verified) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        },
+    )
 }

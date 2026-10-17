@@ -1,5 +1,6 @@
 package eth.serotine.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -24,17 +25,23 @@ const val SETTINGS_VERSION_TAG = "settings-version"
 
 /** Binds [SettingsScreen] to its ViewModel. */
 @Composable
-fun SettingsRoute(viewModel: SettingsViewModel, modifier: Modifier = Modifier) {
+fun SettingsRoute(viewModel: SettingsViewModel, onTokens: () -> Unit, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    SettingsScreen(state, modifier)
+    SettingsScreen(state, onTokens, modifier)
 }
 
-/** The Settings tab as a pure function of [state]. */
+/** The Settings tab as a pure function of [state]; Tokens opens through [onTokens]. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(state: SettingsUiState, modifier: Modifier = Modifier) {
+fun SettingsScreen(state: SettingsUiState, onTokens: () -> Unit = {}, modifier: Modifier = Modifier) {
     Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
+            Section("Display")
+            ListItem(
+                modifier = Modifier.clickable(onClick = onTokens),
+                headlineContent = { Text("Tokens") },
+                supportingContent = { Text(state.tokens) },
+            )
             Section("Network")
             ListItem(
                 headlineContent = { Text(state.network) },

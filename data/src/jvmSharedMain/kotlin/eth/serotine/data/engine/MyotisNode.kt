@@ -7,6 +7,7 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.TokenBalances
+import eth.serotine.domain.repository.TokenMetadata
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
@@ -68,6 +69,9 @@ class MyotisNode private constructor() {
 
     /** What is at an address (an account, a delegated one, a contract), verified here. */
     val addressKinds: AddressKinds = VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** What a token contract says about itself, as verified calls. */
+    val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
     val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL)

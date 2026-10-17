@@ -168,7 +168,10 @@ Safe transaction) is a destination that covers the bar until it ends.
 
 18. **Settings**: Display currency · Tokens (n built in, m added) · Wallet
     password · Biometric unlock · Network (Sepolia, the only one for now) ·
-    Light client (status) · About.
+    Light client (status) · About. Tokens opens the list of every token the
+    wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
+    Copy contract, Hide or Show, and Remove for an added one; Add token
+    opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the
     ones with a pinned feed on the network (*Prices* below).
 20. **Add token by address**: the contract's address, then its symbol, name
@@ -224,17 +227,25 @@ address. Applied:
   Aave's faucet tokens (DAI, USDT, WBTC, AAVE) are not their issuers', so all
   of them are added by address. It is checked twice against the contract's
   `symbol()` and `decimals()`: by the PR that adds it, which shows the values
-  read, and by the app with verified calls when it first lists the token (that
-  second check arrives with Settings → Tokens). An entry that disagrees with
-  its contract is not shown, and Settings → Tokens says why.
+  read, and by the app with verified calls each time it runs. An entry its
+  contract contradicts, or whose contract does not answer as a token, is not
+  shown, and Settings → Tokens says why. While the check has no verified
+  answer yet the entry is shown: its balance is a verified call of its own.
 - **Icons are bundled** as Compose `ImageVector`s, converted from the SVGs of
   the CC0 `cryptocurrency-icons` set at a pinned commit, with their provenance
   and licence stated (`TokenIcons`); the built-in list keeps to tokens that set
   has an icon for. A token the user adds gets a monogram of its symbol. Nothing is
   fetched to draw a token.
 - **A token the user adds** is read from its contract (`symbol()`, `name()`,
-  `decimals()`, verified) and labelled as the contract's claim. One whose
-  symbol is a built-in token's is marked as not that token.
+  `decimals()`, verified) and labelled as the contract's claim, with the block
+  it was read at. One whose symbol is a built-in token's is marked as not that
+  token. An address the wallet already knows, or that does not answer as a
+  token, cannot be added, and nothing is added without a verified answer. The
+  added tokens and the hidden ones are the user's settings, kept in a file of
+  their own (`tokens.json`, beside the account list).
+- **Hiding** a token takes it off every account's rows, from the asset menu
+  (5) or Settings → Tokens, which shows it again. A built-in token can only be
+  hidden; an added one can also be removed.
 - **Balances are verified `balanceOf` calls**, one per token and account,
   each labelled with the block it ran against. A call that reverts, or returns
   anything but one word, is a verified "not a token", not a zero. With a short

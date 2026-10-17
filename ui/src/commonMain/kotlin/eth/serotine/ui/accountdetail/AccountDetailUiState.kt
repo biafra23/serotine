@@ -38,8 +38,9 @@ sealed interface AccountDetailUiState {
 /**
  * One asset row (docs/wallet-ux.md, screen 4): its [symbol] and [name], the [amount] held —
  * verified when [verified], otherwise why there is none — the block it was verified at
- * ([verifiedAt], "block 11,932,144"; null when not verified or not named), and the bundled
- * [icon] key (null: a monogram).
+ * ([verifiedAt], "block 11,932,144"; null when not verified or not named), the bundled
+ * [icon] key (null: a monogram), and a token's EIP-55 [contract] (null for the native
+ * currency), which its long-press menu copies and hides.
  */
 data class AssetRow(
     val symbol: String,
@@ -48,4 +49,5 @@ data class AssetRow(
     val icon: String?,
     val verified: Boolean,
     val verifiedAt: String? = null,
+    val contract: String? = null,
 )

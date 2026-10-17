@@ -1,0 +1,51 @@
+package eth.serotine.domain.repository
+
+import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Token
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * The port for the user's own token settings: the tokens added by address and the ones
+ * hidden. :data keeps them in a file, so they survive a restart. Nothing here is chain data:
+ * an added token's symbol, name and decimals are what its contract said when it was added.
+ */
+interface UserTokens {
+    /** The settings, re-emitted on each change, or why they cannot be read. Never throws. */
+    fun observe(): Flow<TokenSettings>
+
+    /** Adds [token]; [TokenChange.AlreadyPresent] when its address is added already. Never throws. */
+    suspend fun add(token: Token): TokenChange
+
+    /** Takes the added token at [address] out; [TokenChange.NotFound] when none is added there. Never throws. */
+    suspend fun remove(address: Address): TokenChange
+
+    /**
+     * Hides the token at [address] from every account, or shows it again ([hidden] false);
+     * [TokenChange.AlreadyPresent] when it already is as asked. Never throws.
+     */
+    suspend fun setHidden(address: Address, hidden: Boolean): TokenChange
+}
+
+/** What [UserTokens.observe] emits. */
+sealed interface TokenSettings {
+    /** The [added] tokens, in the order added, and the [hidden] addresses. */
+    data class Loaded(val added: List<Token>, val hidden: Set<Address>) : TokenSettings
+
+    /** The stored settings exist but cannot be read; nothing can be changed until they can. */
+    data object Unreadable : TokenSettings
+}
+
+/** The outcome of a [UserTokens] change. */
+sealed interface TokenChange {
+    /** Done. */
+    data object Changed : TokenChange
+
+    /** It already was so; nothing changed. */
+    data object AlreadyPresent : TokenChange
+
+    /** Nothing is there to change. */
+    data object NotFound : TokenChange
+
+    /** The settings could not be saved, or cannot be read; nothing changed. */
+    data object NotSaved : TokenChange
+}

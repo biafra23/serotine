@@ -143,6 +143,8 @@ class AppNavigationTest {
             override fun observeBalance(holder: Address, token: Address): Flow<TokenBalanceReading> =
                 flowOf(TokenBalanceReading.Syncing)
         },
+        tokenMetadata = FakeMetadata(),
+        userTokens = MemoryUserTokens(),
         addressKinds = object : AddressKinds {
             override fun observeKind(address: Address): Flow<KindReading> =
                 flowOf(KindReading.Verified(AddressKind.Eoa, 9_412_118))

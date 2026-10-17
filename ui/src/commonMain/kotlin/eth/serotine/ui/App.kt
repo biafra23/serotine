@@ -35,6 +35,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import eth.serotine.domain.model.Address
 import eth.serotine.ui.accountdetail.AccountDetailRoute
+import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.assets.AccountAction
 import eth.serotine.ui.assets.AssetsRoute
 import eth.serotine.ui.components.SerotineIcons
@@ -43,8 +44,9 @@ import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
 import eth.serotine.ui.settings.SettingsRoute
-import eth.serotine.ui.watch.WatchRoute
 import eth.serotine.ui.theme.SerotineTheme
+import eth.serotine.ui.tokens.TokensRoute
+import eth.serotine.ui.watch.WatchRoute
 
 /**
  * The whole shared UI, identical on every host. A host renders this inside its own
@@ -186,7 +188,24 @@ private fun Destinations(graph: AppGraph, navController: NavHostController, modi
         }
         navigation(startDestination = Destination.SETTINGS, route = Tab.SETTINGS.graph) {
             composable(Destination.SETTINGS) {
-                SettingsRoute(viewModel { graph.settingsViewModel() })
+                SettingsRoute(
+                    viewModel { graph.settingsViewModel() },
+                    onTokens = { navController.navigate(Destination.TOKENS) { launchSingleTop = true } },
+                )
+            }
+            composable(Destination.TOKENS) {
+                TokensRoute(
+                    viewModel { graph.tokensViewModel() },
+                    onBack = { navController.leave(Destination.TOKENS) },
+                    onAddToken = { navController.navigate(Destination.ADD_TOKEN) { launchSingleTop = true } },
+                )
+            }
+            composable(Destination.ADD_TOKEN) {
+                AddTokenRoute(
+                    viewModel { graph.addTokenViewModel() },
+                    onBack = { navController.leave(Destination.ADD_TOKEN) },
+                    onAdded = { navController.leave(Destination.ADD_TOKEN) },
+                )
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
@@ -267,6 +286,8 @@ private object Destination {
     const val RENAME = "rename"
     const val REMOVE = "remove"
     const val SETTINGS = "settings"
+    const val TOKENS = "tokens"
+    const val ADD_TOKEN = "add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
 }
 

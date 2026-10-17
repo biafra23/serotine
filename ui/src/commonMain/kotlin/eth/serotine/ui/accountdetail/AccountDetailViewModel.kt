@@ -11,6 +11,7 @@ import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.TokenHolding
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
@@ -23,18 +24,20 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * The account detail screen's ViewModel: the account under [address], its verified native
- * balance on [network] and what it holds of each known token, as [AccountDetailUiState]. What
- * the user does from the screen is navigation (Receive, Rename, Remove) or the clipboard,
- * which the route handles.
+ * balance on [network] and what it holds of each known token, as [AccountDetailUiState]. Its
+ * one intent is hiding a token ([hideToken]); what else the user does from the screen is
+ * navigation (Receive, Rename, Remove) or the clipboard, which the route handles.
  */
 class AccountDetailViewModel(
     address: Address,
     observeAccount: ObserveAccount,
     observeNativeBalance: ObserveNativeBalance,
     observeTokenHoldings: ObserveTokenHoldings,
+    private val setTokenHidden: SetTokenHidden,
     private val network: Network,
 ) : ViewModel() {
 
@@ -98,6 +101,7 @@ class AccountDetailViewModel(
                 icon = token.icon,
                 verified = true,
                 verifiedAt = verified.blockNumber?.let(::block),
+                contract = Eip55.format(token.address),
             )
         }
         return listOf(nativeRow) + tokenRows.sortedBy { it.symbol.lowercase() }
@@ -120,6 +124,12 @@ class AccountDetailViewModel(
     }
 
     private fun tokens(count: Int) = if (count == 1) "1 token" else "$count tokens"
+
+    /** Hides the token at [contract] from every account; Settings → Tokens shows it again. */
+    fun hideToken(contract: String) {
+        val address = Address.parse(contract) ?: return
+        viewModelScope.launch { setTokenHidden(address, hidden = true) }
+    }
 
     private fun block(number: Long) = "block ${grouped(number)}"
 
