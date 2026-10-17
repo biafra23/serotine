@@ -1,11 +1,14 @@
 package eth.serotine.ui.safetx
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
@@ -20,10 +23,13 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -39,6 +45,9 @@ import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.ui.SafeWorld
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.ShareItem
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -546,5 +555,171 @@ class SafeTxViewModelTest {
             ),
             world.signer.asked.single().second,
         )
+    }
+
+    @Test
+    fun aRetriedRejectionThatCannotBeCheckedAgainstTheReceiptKeepsTryAgainOpen() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        world.broadcaster.answers += Broadcast.Unavailable("no peers")
+        world.broadcaster.answers += Broadcast.Rejected("nonce too low")
+        viewModel.startApproval()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        val hash = SignedTransfer(world.broadcaster.sent.single()).hash
+        world.receipts.of(hash).value = TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN)
+
+        viewModel.retry()
+        runCurrent()
+
+        val notSent = assertIs<NotSentItem>(viewModel.review.notSent)
+        assertTrue(notSent.canRetry, "whether the first broadcast was mined is not known")
+        assertTrue(notSent.message.startsWith("Rejected this time (nonce too low)"), notSent.message)
+        viewModel.back()
+        assertIs<SafeTxUiState.Review>(viewModel.uiState.value, "only Try again may send those bytes")
+        world.receipts.of(hash).value = TransactionProgress.Included(130, succeeded = true)
+        viewModel.retry()
+        runCurrent()
+        assertEquals(SafeTxUiState.Sent("Sepolia", hash), viewModel.uiState.value)
+        assertEquals(1, world.signer.asked.size, "nothing is signed twice")
+    }
+
+    @Test
+    fun aQuoteThatLandsWhileHiddenIsQuotedAgainWhenTheScreenIsShown() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        viewModel.onShown()
+        val gate = CompletableDeferred<Unit>()
+        world.inputs.gate = gate
+
+        viewModel.startApproval()
+        runCurrent()
+        viewModel.onHidden()
+        gate.complete(Unit)
+        runCurrent()
+        val quotes = world.inputs.estimated.size
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(quotes + 1, world.inputs.estimated.size, "quoted before the hide: made again, not signed")
+        assertEquals(emptyList(), world.signer.asked)
+        viewModel.onShown()
+        runCurrent()
+        assertEquals(quotes + 1, world.inputs.estimated.size, "and not again once it was")
+    }
+
+    @Test
+    fun aQuoteThatLandsAfterAHideAndAShowIsQuotedAgainAtOnce() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        viewModel.onShown()
+        viewModel.startApproval()
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        world.inputs.gate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        viewModel.onHidden()
+        viewModel.onShown()
+        val quotes = world.inputs.estimated.size
+        world.inputs.gate = null
+        gate.complete(Unit)
+        runCurrent()
+
+        assertEquals(quotes + 1, world.inputs.estimated.size, "the refresh from before the hide is made again")
+        assertFalse(viewModel.review.refreshing)
+    }
+
+    @Test
+    fun aTokenThatOnlyTakesABuiltInSymbolIsSaidToBeAnotherContractUpToThePrompt() = runTest {
+        biometrics = BiometricUnlock.On
+        val impostor = Token(Address.of("0x" + "cd".repeat(20)), "USDC", "Not USD Coin", 6, icon = null)
+        world.userTokens.add(impostor)
+        val transfer = SafeTx.call(
+            impostor.address,
+            UInt256.ZERO,
+            Erc20.transferData(world.recipient, UInt256.of(40_000_000)),
+            4,
+        )
+        val viewModel = viewModel(queued(world.request(transfer)))
+
+        val action = viewModel.overview.action
+        assertEquals("Send 40 USDC", action.title)
+        assertEquals("Not the built-in USDC: another contract", action.warning)
+        viewModel.startSigning()
+        runCurrent()
+        viewModel.signWithBiometrics()
+        runCurrent()
+        val prompt = assertIs<Unlock.WithBiometrics>(world.signer.asked.single().second).reason
+        assertTrue("(Not the built-in USDC: another contract)" in prompt, prompt)
+    }
+
+    @Test
+    fun aSigningUnderWayOutlivesTheQueuesReadingAndAStepThatIsNotEndsWithItsPassword() = runTest {
+        val request = queued(world.request(world.ether(4)))
+        val viewModel = viewModel(request)
+        viewModel.startSigning()
+        viewModel.onPasswordChange("made-up test password")
+        val pending = CompletableDeferred<Signing>()
+        world.signer.pending = pending
+        viewModel.sign()
+        runCurrent()
+
+        world.queue.unreadable.value = true
+        runCurrent()
+        assertTrue(viewModel.signing.signing, "the signature under way stays on screen")
+        pending.complete(Signing.WrongPassword)
+        runCurrent()
+        // Done signing, the step ends with the queue gone: no password is left without its field.
+        world.signer.pending = null
+        viewModel.onPasswordChange("made-up test password")
+        world.queue.unreadable.value = false
+        runCurrent()
+        world.queue.unreadable.value = true
+        runCurrent()
+
+        assertIs<SafeTxUiState.NotQueued>(viewModel.uiState.value)
+        world.queue.unreadable.value = false
+        runCurrent()
+        assertIs<SafeTxUiState.Overview>(viewModel.uiState.value, "the password went with the step")
+    }
+
+    @Test
+    fun whileTheSafeIsNotVerifiedItsRequestIsNotShared() = runTest {
+        val viewModel = viewModel(queued(world.request(world.ether(4), world.carol)))
+        world.kind.value = KindReading.Syncing
+        runCurrent()
+
+        viewModel.onShare()
+
+        val state = viewModel.overview
+        assertFalse(state.canShare)
+        assertEquals(null, state.share)
+    }
+
+    @Test
+    fun anApprovalTheConfirmationsMadeNeedlessMeanwhileIsNotSigned() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4), world.carol)))
+        viewModel.startApproval()
+        runCurrent()
+        viewModel.onPasswordChange("made-up test password")
+
+        world.approvals.approved[world.bob.address] = ApprovalReading.Read(approved = true, blockNumber = 130)
+        viewModel.checkAgain()
+        runCurrent()
+        viewModel.sign()
+        runCurrent()
+
+        val review = viewModel.review
+        assertEquals(
+            "Its confirmations reach the threshold now: approving it is no longer needed. Go back to execute it.",
+            review.notNeeded,
+        )
+        assertFalse(review.canSign)
+        assertEquals(emptyList(), world.signer.asked)
     }
 }

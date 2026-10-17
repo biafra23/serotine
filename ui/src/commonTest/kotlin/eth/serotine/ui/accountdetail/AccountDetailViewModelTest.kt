@@ -409,7 +409,10 @@ class AccountDetailViewModelTest {
             listOf("Nonce 12 · next", "Nonce 13 · 1 before it", "Nonce 14 · 2 before it"),
             rows.map { it.nonce },
         )
-        assertEquals(listOf("0 of 2 signatures", "1 of 2 signatures", "0 of 2 signatures"), rows.map { it.signatures })
+        assertEquals(
+            listOf("0 of 2 signatures", "1 of 2 signatures", "0 of 2 signatures").map { "$it on this device" },
+            rows.map { it.signatures },
+        )
         assertEquals(listOf(null, null, "Not signed here: a delegate call"), rows.map { it.refusal })
         assertEquals("0x" + SigningRequest.of(Network.SEPOLIA, treasury.address, ether).hash.hex, rows.first().hash)
         assertEquals(Eip55.format(friend), rows.first().about)

@@ -15,11 +15,14 @@ import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
+import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.SAFE_TX_ACTION_TAG
+import eth.serotine.ui.components.SAFE_TX_QR_TAG
+import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.components.SafeTxActionItem
+import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
-import eth.serotine.ui.send.BalanceChange
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test

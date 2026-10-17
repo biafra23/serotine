@@ -1,7 +1,13 @@
 package eth.serotine.ui.send
 
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.AccountChoice
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
 
 /**
@@ -36,10 +42,9 @@ sealed interface SendUiState {
      * asking again may help. [accounts] are the wallet's other accounts, to pick one as the
      * recipient. [amount] is typed in token units ([amountError] why it is no amount), with
      * [amountHint] its value in the display currency (display only) and [canMax] when the whole
-     * verified balance can be filled in. [fee] is the chosen level (null where there is none to
-     * choose: a Safe's proposal, whose execution the executing account pays for). [quoting] while
-     * the quote for the review is made, and [error] why the last one was refused; [canReview] when
-     * it can be asked for.
+     * verified balance can be filled in. [fee] is the chosen level. [quoting] while the quote for
+     * the review is made, and [error] why the last one was refused; [canReview] when it can be
+     * asked for. [form] is all of it but the fee, as the transfer form draws it.
      */
     data class Compose(
         override val network: String,
@@ -49,7 +54,7 @@ sealed interface SendUiState {
         val to: String,
         val accounts: List<AccountChoice>,
         val amount: String,
-        val fee: FeeLevel?,
+        val fee: FeeLevel,
         val assetNote: String? = null,
         val recipient: RecipientItem? = null,
         val toNote: String? = null,
@@ -61,7 +66,31 @@ sealed interface SendUiState {
         val quoting: Boolean = false,
         val error: String? = null,
         val canReview: Boolean = false,
-    ) : SendUiState
+    ) : SendUiState {
+
+        /** The transfer form's fields, as Send and Send from a Safe both draw them. */
+        val form: TransferForm
+            get() = TransferForm(
+                network = network,
+                from = from,
+                assets = assets,
+                asset = asset,
+                to = to,
+                accounts = accounts,
+                amount = amount,
+                assetNote = assetNote,
+                recipient = recipient,
+                toNote = toNote,
+                toError = toError,
+                canRetryLookup = canRetryLookup,
+                amountError = amountError,
+                amountHint = amountHint,
+                canMax = canMax,
+                quoting = quoting,
+                error = error,
+                canReview = canReview,
+            )
+    }
 
     /**
      * Screen 8: a verified quote of the transfer. [amount] is exact, in [asset]'s units with its
@@ -106,45 +135,3 @@ sealed interface SendUiState {
     /** Broadcast: [hash] is the transaction's, which the status screen follows. */
     data class Sent(override val network: String, val hash: String) : SendUiState
 }
-
-/** The account sent from: its [label] and EIP-55 [address]. */
-data class SendFrom(val label: String, val address: String)
-
-/**
- * One asset the account can send: its [symbol], [name] and bundled [icon] (null: a monogram), a
- * token's EIP-55 [contract] (null for the network's currency), the [balance] held ("1.5 ETH",
- * or why there is none yet), the block it was verified at ([verifiedAt], "block 9,412,118"), and
- * [warning] for a token the user added whose symbol is a built-in token's.
- */
-data class AssetChoice(
-    val symbol: String,
-    val name: String,
-    val icon: String?,
-    val balance: String,
-    val contract: String? = null,
-    val verifiedAt: String? = null,
-    val warning: String? = null,
-)
-
-/** One of the wallet's accounts, offered as the recipient: its [label] and EIP-55 [address]. */
-data class AccountChoice(val label: String, val address: String)
-
-/**
- * The recipient: its EIP-55 [address], in full wherever it is confirmed; the ENS [name] it was
- * resolved from, if any, and [resolvedAt], the finalized block it was resolved at; its [label]
- * when it is one of the wallet's accounts; and [note], what to know about it ("The account you
- * send from").
- */
-data class RecipientItem(
-    val address: String,
-    val name: String? = null,
-    val resolvedAt: String? = null,
-    val label: String? = null,
-    val note: String? = null,
-)
-
-/**
- * One balance of the verified simulation: [what] ("ETH balance"), [before] and [after] it, and
- * the block the balance before was verified at ([verifiedAt]).
- */
-data class BalanceChange(val what: String, val before: String, val after: String, val verifiedAt: String)

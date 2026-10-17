@@ -408,7 +408,8 @@ private fun SafeQueueList(queue: SafeQueue, onOpenSafeTx: (String) -> Unit, onIm
                 queue.rows.forEach { row -> QueueItem(row) { onOpenSafeTx(row.hash) } }
                 queue.note?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                 Text(
-                    "Signatures as this device has them; approvals made on chain show on each transaction.",
+                    "Signatures as this device has them; approvals made on chain, and signatures shared " +
+                        "elsewhere, show on each transaction.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -426,7 +427,7 @@ private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
         supportingContent = {
             Column {
                 Text("${row.nonce} · ${row.signatures}")
-                row.refusal?.let {
+                listOfNotNull(row.warning, row.refusal).forEach {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 }
             }

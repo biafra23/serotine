@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -68,17 +67,18 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.GAS_TERMS_WARNING
+import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.NotSentFields
+import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.QrCode
+import eth.serotine.ui.components.RequestShareContent
 import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
-import eth.serotine.ui.send.Heading
-import eth.serotine.ui.send.Note
-import eth.serotine.ui.send.levelName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -90,12 +90,6 @@ const val SAFE_TX_OWNER_TAG = "safe-tx-owner"
 
 /** Test tag of the Share request button, for UI tests. */
 const val SAFE_TX_SHARE_TAG = "safe-tx-share"
-
-/** Test tag of the request's QR code, for UI tests. */
-const val SAFE_TX_QR_TAG = "safe-tx-qr"
-
-/** Test tag of the request's text, for UI tests. */
-const val SAFE_TX_REQUEST_TAG = "safe-tx-request"
 
 /** Test tag of the wallet password field, for UI tests. */
 const val SAFE_TX_PASSWORD_TAG = "safe-tx-password"
@@ -313,7 +307,12 @@ private fun OverviewContent(
         HorizontalDivider()
         val share = state.share
         if (share != null) {
-            ShareContent(share, onCopy, onShareText, actions.onShareClosed)
+            RequestShareContent(share, onCopy, onShareText, actions.onShareClosed)
+        } else if (!state.canShare) {
+            Note(
+                "Shared once the Safe is verified again: what is shared carries only the signatures of its " +
+                    "current owners, checked first.",
+            )
         } else {
             OutlinedButton(
                 onClick = actions.onShare,
@@ -464,58 +463,6 @@ private val OwnerState.description: String
         OwnerState.UNKNOWN -> "Not verifiable right now"
     }
 
-/**
- * The request as it travels to another device: one QR code where it fits, its text always, Copy
- * and, where the platform has a share sheet, Share.
- */
-@Composable
-private fun ShareContent(
-    share: ShareItem,
-    onCopy: (String) -> Unit,
-    onShareText: ((String) -> Unit)?,
-    onClose: () -> Unit,
-) {
-    Column(
-        Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Heading("Share request")
-        if (share.qr) {
-            QrCode(
-                share.text,
-                description = "QR code of the signing request",
-                modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth().testTag(SAFE_TX_QR_TAG),
-            )
-        }
-        Note(share.note)
-        SelectionContainer {
-            Text(
-                share.text,
-                Modifier.fillMaxWidth().testTag(SAFE_TX_REQUEST_TAG),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 4,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { onCopy(share.text) }) {
-                Icon(SerotineIcons.ContentCopy, contentDescription = null, Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("Copy text")
-            }
-            if (onShareText != null) {
-                OutlinedButton(onClick = { onShareText(share.text) }) {
-                    Icon(Icons.Filled.Share, contentDescription = null, Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Share")
-                }
-            }
-            TextButton(onClick = onClose) { Text("Close") }
-        }
-    }
-}
-
 @Composable
 private fun SigningContent(state: SafeTxUiState.Signing, actions: SafeTxActions) {
     Column(
@@ -559,6 +506,7 @@ private fun ReviewContent(state: SafeTxUiState.Review, actions: SafeTxActions) {
         Heading(if (state.kind == ReviewKind.APPROVAL) "Approve as" else "Send the execution from")
         Choices(state.accounts, state.account, enabled = state.idle, onChoose = actions.onAccountChange)
         state.confirmations?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        state.notNeeded?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Heading("Fee")
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             FeeLevel.entries.forEachIndexed { index, level ->

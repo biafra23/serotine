@@ -1,12 +1,13 @@
 package eth.serotine.ui.safepropose
 
+import eth.serotine.ui.components.AccountChoice
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SafeTxActionItem
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.ShareItem
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
-import eth.serotine.ui.send.AccountChoice
-import eth.serotine.ui.send.AssetChoice
-import eth.serotine.ui.send.RecipientItem
-import eth.serotine.ui.send.SendFrom
-import eth.serotine.ui.send.SendUiState
 
 /**
  * Everything the screen that proposes a transfer from a Safe renders (docs/wallet-ux.md, screen 7
@@ -31,8 +32,8 @@ sealed interface SafeProposeUiState {
      */
     data class CannotPropose(override val network: String, val message: String) : SafeProposeUiState
 
-    /** Screen 7 for a Safe: Send's [form], with no fee to choose (the account that executes it pays). */
-    data class Compose(val form: SendUiState.Compose) : SafeProposeUiState {
+    /** Screen 7 for a Safe: the transfer [form], with no fee to choose (the account that executes it pays). */
+    data class Compose(val form: TransferForm) : SafeProposeUiState {
         override val network: String
             get() = form.network
     }
@@ -44,7 +45,7 @@ sealed interface SafeProposeUiState {
      * those queued before it move, and after; and how its call ran ([simulation]). An owner held
      * here, [owner] (EIP-55) of [owners], signs it as [unlock] says; [refreshing] while it is
      * proposed again, [signing] while it is signed and queued, and [error] what the last attempt
-     * came to.
+     * came to. [share] is a signed request the queue could not keep, to be shared from here.
      */
     data class Review(
         override val network: String,
@@ -63,6 +64,7 @@ sealed interface SafeProposeUiState {
         val refreshing: Boolean = false,
         val signing: Boolean = false,
         val error: String? = null,
+        val share: ShareItem? = null,
     ) : SafeProposeUiState {
 
         /** Something is typed and nothing runs: the password may sign. */

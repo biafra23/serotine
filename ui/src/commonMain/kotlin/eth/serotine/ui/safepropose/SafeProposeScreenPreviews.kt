@@ -2,14 +2,14 @@ package eth.serotine.ui.safepropose
 
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.ActionAddress
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SafeTxActionItem
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
-import eth.serotine.ui.send.AccountChoice
-import eth.serotine.ui.send.AssetChoice
-import eth.serotine.ui.send.RecipientItem
-import eth.serotine.ui.send.SendFrom
-import eth.serotine.ui.send.SendUiState
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -28,7 +28,7 @@ private const val FRIEND = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb"
 private val from = SendFrom("Treasury", TREASURY)
 private val ether = AssetChoice("ETH", "Ether", "eth", "2.5 ETH", verifiedAt = "block 8,412,307")
 
-private val form = SendUiState.Compose(
+private val form = TransferForm(
     network = "Sepolia",
     from = from,
     assets = listOf(ether),
@@ -36,7 +36,6 @@ private val form = SendUiState.Compose(
     to = FRIEND,
     accounts = listOf(AccountChoice("Daily", DAILY), AccountChoice("Savings", SAVINGS)),
     amount = "0.5",
-    fee = null,
     recipient = RecipientItem(FRIEND),
     amountHint = "≈ $1,250.00 · testnet prices",
     canMax = true,

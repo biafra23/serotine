@@ -29,14 +29,34 @@ import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.TransferQuote
 import eth.serotine.domain.usecase.TransferQuoting
 import eth.serotine.domain.usecase.TransferSending
+import eth.serotine.ui.components.AccountChoice
+import eth.serotine.ui.components.AssetOption
+import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
+import eth.serotine.ui.components.QUOTE_MAX_AGE
+import eth.serotine.ui.components.RecipientState
+import eth.serotine.ui.components.ResolvedAgain
+import eth.serotine.ui.components.STALE_QUOTE
+import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.ZERO_ADDRESS
+import eth.serotine.ui.components.amountHint
+import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.exactAmount
+import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.lookUpSafely
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
+import eth.serotine.ui.components.recipientItem
+import eth.serotine.ui.components.recipientNote
+import eth.serotine.ui.components.recipientStates
+import eth.serotine.ui.components.resolveAgain
+import eth.serotine.ui.components.typedAmount
+import eth.serotine.ui.components.verifiedAt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -176,6 +196,9 @@ class SendViewModel(
     /** Whether the screen is shown now ([onShown], [onHidden]). */
     private var shown = false
 
+    /** Whether the screen was hidden while the review's first quote was being made. */
+    private var hiddenWhileQuoting = false
+
     /** The typed recipient, resolved: an address at once, a name once the typing paused. */
     private val lookup: Flow<RecipientState> =
         recipientStates(inputs.map { it.to.trim() to it.lookupAttempt }, resolveRecipient::lookUpSafely)
@@ -233,9 +256,13 @@ class SendViewModel(
         if (current.quoting) return
         val request = model.value?.let(::requestOf) ?: return
         step.value = Step.Composing(quoting = true)
+        hiddenWhileQuoting = false
         job = viewModelScope.launch {
             val next = quoted(request, unlock = null)
-            step.update { latest -> if (latest == Step.Composing(quoting = true)) next else latest }
+            if (step.value != Step.Composing(quoting = true)) return@launch
+            // Made while hidden: it is from before the screen came back, so it is made again.
+            step.value = if (next is Step.Reviewing) next.copy(hidden = hiddenWhileQuoting) else next
+            requoteIfHidden()
         }
     }
 
@@ -264,7 +291,7 @@ class SendViewModel(
             step.update { latest ->
                 when {
                     latest !is Step.Reviewing || !latest.refreshing -> latest
-                    // The password typed meanwhile stays: it is the same review.
+                    // The password typed meanwhile stays: it is the same review, hidden since or not.
                     next is Step.Reviewing -> latest.copy(
                         request = next.request,
                         quote = next.quote,
@@ -275,6 +302,8 @@ class SendViewModel(
                     else -> next
                 }
             }
+            // Hidden and shown again while it was made: it is from before, so it is made again.
+            requoteIfHidden()
         }
     }
 
@@ -306,6 +335,11 @@ class SendViewModel(
 
     /** Whether [review]'s quote is too old to sign, and so is being made again instead. */
     private fun requoted(review: Step.Reviewing): Boolean {
+        // Quoted before the screen was last hidden: never signed as it was.
+        if (review.hidden) {
+            refresh(note = null)
+            return true
+        }
         if (review.quotedAt.elapsedNow() <= QUOTE_MAX_AGE) return false
         refresh(note = STALE_QUOTE)
         return true
@@ -342,6 +376,7 @@ class SendViewModel(
      */
     fun onHidden() {
         shown = false
+        if ((step.value as? Step.Composing)?.quoting == true) hiddenWhileQuoting = true
         step.update { current ->
             if (current is Step.Reviewing) {
                 current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY), hidden = true)

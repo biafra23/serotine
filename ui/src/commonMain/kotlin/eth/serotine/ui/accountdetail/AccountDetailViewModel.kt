@@ -6,7 +6,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -25,6 +25,7 @@ import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
@@ -119,7 +120,7 @@ class AccountDetailViewModel(
     private sealed interface QueueView {
         data object None : QueueView
         data object Checking : QueueView
-        data class Read(val reading: SafeTxQueueReading, val tokens: List<Token>) : QueueView
+        data class Read(val reading: SafeTxQueueReading, val tokens: List<DecodingToken>) : QueueView
     }
 
     val uiState: StateFlow<AccountDetailUiState> =
@@ -207,7 +208,7 @@ class AccountDetailViewModel(
         }
     }
 
-    private fun queueRow(tx: DecodedSafeTx, safeNonce: Long?, threshold: Int?, tokens: List<Token>): QueueRow {
+    private fun queueRow(tx: DecodedSafeTx, safeNonce: Long?, threshold: Int?, tokens: List<DecodingToken>): QueueRow {
         val request = tx.request
         val action = safeTxActionItem(tx.action, request.nonce, tokens, network)
         val signed = request.signatures.size
@@ -220,8 +221,13 @@ class AccountDetailViewModel(
                 request.nonce == safeNonce -> " · next"
                 else -> " · ${request.nonce - safeNonce} before it"
             },
-            signatures = threshold?.let { "$signed of $it signatures" }
-                ?: if (signed == 1) "1 signature" else "$signed signatures",
+            // Those this device holds: approvals on chain, and signatures elsewhere, show on the transaction.
+            signatures = when {
+                threshold != null -> "$signed of $threshold signatures"
+                signed == 1 -> "1 signature"
+                else -> "$signed signatures"
+            } + " on this device",
+            warning = action.warning.takeIf { tx.action is SafeTxAction.TokenTransfer },
             refusal = when (tx.refusal) {
                 SafeTxRefusal.DelegateCall -> "Not signed here: a delegate call"
                 SafeTxRefusal.GasTerms -> "Not signed here: it carries gas or refund terms"

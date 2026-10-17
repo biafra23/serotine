@@ -44,16 +44,19 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.FromLine
+import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.RecipientCard
+import eth.serotine.ui.components.RequestShareContent
+import eth.serotine.ui.components.ReviewButton
 import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.TransferFormFields
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.shortAddress
-import eth.serotine.ui.send.FromLine
-import eth.serotine.ui.send.Heading
-import eth.serotine.ui.send.Note
-import eth.serotine.ui.send.RecipientCard
-import eth.serotine.ui.send.ReviewButton
-import eth.serotine.ui.send.TransferFormFields
+import eth.serotine.ui.platform.rememberCopyText
+import eth.serotine.ui.platform.rememberShareText
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the reviewed amount, for UI tests. */
@@ -105,6 +108,8 @@ fun SafeProposeRoute(
             onSignWithBiometrics = viewModel::signWithBiometrics,
         ),
         onBack = onBack,
+        onCopy = rememberCopyText(),
+        onShareText = rememberShareText(),
         modifier = modifier,
     )
 }
@@ -136,7 +141,9 @@ class SafeProposeActions(
  * review of the proposal: the Safe transaction it is, decoded here, its nonce and those queued
  * before it, the Safe's balance before, queued and after, whether its call was simulated, and the
  * owner held here who signs it. While the review takes the wallet password the window is kept
- * out of screen capture where the platform allows; where it does not, the screen says so.
+ * out of screen capture where the platform allows; where it does not, the screen says so. A
+ * request signed that the queue could not keep is shared from the review: [onCopy] puts its text
+ * on the clipboard, [onShareText] hands it to the share sheet (null where there is none).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -144,6 +151,8 @@ fun SafeProposeScreen(
     state: SafeProposeUiState,
     actions: SafeProposeActions,
     onBack: () -> Unit,
+    onCopy: (String) -> Unit = {},
+    onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val review = state as? SafeProposeUiState.Review
@@ -205,14 +214,19 @@ fun SafeProposeScreen(
                     form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     ReviewButton(form, actions.onReview, Modifier.align(Alignment.End))
                 }
-                is SafeProposeUiState.Review -> ReviewContent(state, actions)
+                is SafeProposeUiState.Review -> ReviewContent(state, actions, onCopy, onShareText)
             }
         }
     }
 }
 
 @Composable
-private fun ReviewContent(state: SafeProposeUiState.Review, actions: SafeProposeActions) {
+private fun ReviewContent(
+    state: SafeProposeUiState.Review,
+    actions: SafeProposeActions,
+    onCopy: (String) -> Unit,
+    onShareText: ((String) -> Unit)?,
+) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -276,6 +290,7 @@ private fun ReviewContent(state: SafeProposeUiState.Review, actions: SafePropose
         }
         Note("Signed, it is queued on this device, from where it is shared with the other owners.")
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.share?.let { RequestShareContent(it, onCopy, onShareText, onClose = null) }
         UnlockFields(
             unlock = state.unlock,
             signing = state.signing,

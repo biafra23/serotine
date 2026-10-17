@@ -22,7 +22,7 @@ class SafeTxTextTest {
     private val module = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
     private val usdc = Token(Address.of("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"), "USDC", "USD Coin", 6, "usdc")
 
-    private fun item(action: SafeTxAction, tokens: List<Token> = listOf(usdc)) =
+    private fun item(action: SafeTxAction, tokens: List<DecodingToken> = listOf(DecodingToken(usdc))) =
         safeTxActionItem(action, nonce = 12, tokens, Network.SEPOLIA)
 
     @Test
@@ -36,6 +36,17 @@ class SafeTxTextTest {
         assertEquals("Send 40.25 USDC", token.title)
         assertEquals(listOf("To", "Token contract"), token.addresses.map { it.what })
         assertNull(token.warning)
+    }
+
+    @Test
+    fun anAddedTokenThatTakesABuiltInSymbolIsMarkedAsNotThatToken() {
+        val impostor = Token(module, "USDC", "USD Coin", 6, icon = null)
+        val transfer = SafeTxAction.TokenTransfer(module, friend, UInt256.of(40_000_000))
+
+        val item = item(transfer, tokens = listOf(DecodingToken(impostor, sharesBuiltInSymbol = true)))
+
+        assertEquals("Send 40 USDC", item.title)
+        assertEquals("Not the built-in USDC: another contract", item.warning)
     }
 
     @Test

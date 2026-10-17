@@ -1,11 +1,12 @@
 package eth.serotine.ui.safetx
 
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.GasTermsItem
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.SafeTxActionItem
+import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
-import eth.serotine.ui.send.BalanceChange
 
 /**
  * Everything the Safe transaction screen renders (docs/wallet-ux.md, screen 17): one transaction
@@ -37,8 +38,9 @@ sealed interface SafeTxUiState {
      * gas terms), or null; and each owner's stand ([owners]). What can be done: [canSign] with an
      * owner key held here, [canApprove] on chain, [canExecute] once its confirmations reach the
      * threshold, [executeNote] saying why it cannot be executed yet; [quoting] while an approval
-     * or an execution is quoted for review. [share] is the request opened for sharing, null while
-     * closed; [message] what the last action came to, or null.
+     * or an execution is quoted for review. [canShare] once the Safe is verified, so that what is
+     * shared carries only signatures its current owners made; [share] is the request opened for
+     * sharing, null while closed; [message] what the last action came to, or null.
      */
     data class Overview(
         override val network: String,
@@ -54,6 +56,7 @@ sealed interface SafeTxUiState {
         val canExecute: Boolean = false,
         val executeNote: String? = null,
         val quoting: Boolean = false,
+        val canShare: Boolean = true,
         val share: ShareItem? = null,
         val message: String? = null,
     ) : SafeTxUiState
@@ -89,7 +92,8 @@ sealed interface SafeTxUiState {
      * level; [maxFee] the most its fee can be and [feeDetail] what it is made of; [balance] the
      * account's native balance before → after; [simulation] how it ran as a verified call; for an
      * execution, the [confirmations] it is executed with; [pending] what earlier transactions not
-     * mined yet may take. [unlock] is how it is signed; [refreshing] while it is quoted again,
+     * mined yet may take; for an approval, [notNeeded] once the owners read since make it so, and
+     * then it is not signed. [unlock] is how it is signed; [refreshing] while it is quoted again,
      * [signing] while it is signed and broadcast, and [notSent] once it was signed but not
      * broadcast: then the same signed bytes are all that can be sent.
      */
@@ -109,6 +113,7 @@ sealed interface SafeTxUiState {
         val unlock: UnlockStep,
         val confirmations: String? = null,
         val pending: String? = null,
+        val notNeeded: String? = null,
         val refreshing: Boolean = false,
         val signing: Boolean = false,
         val notSent: NotSentItem? = null,
@@ -116,11 +121,11 @@ sealed interface SafeTxUiState {
 
         /** Something is typed, and nothing else runs or has run: the password may sign. */
         val canSign: Boolean
-            get() = idle && unlock.password.text.isNotEmpty()
+            get() = idle && notNeeded == null && unlock.password.text.isNotEmpty()
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean
-            get() = idle && unlock.biometrics
+            get() = idle && notNeeded == null && unlock.biometrics
 
         /** Neither a refresh nor a signature runs, and nothing was signed yet. */
         val idle: Boolean
@@ -192,13 +197,6 @@ enum class OwnerState {
 
 /** An account that can sign or send for the transaction: its [label] and EIP-55 [address], and [note] about it. */
 data class SignerChoice(val label: String, val address: String, val note: String? = null)
-
-/**
- * The request as it is shared with another device (docs/wallet-ux.md, *Co-signing a Safe
- * transaction*): its [text]; [qr] when it fits one QR code (otherwise it is shared as text); and
- * [note], what it carries.
- */
-data class ShareItem(val text: String, val qr: Boolean, val note: String)
 
 /** What a [SafeTxUiState.Review] sends. */
 enum class ReviewKind {

@@ -3,9 +3,11 @@ package eth.serotine.ui.safepropose
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
@@ -13,10 +15,14 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -30,9 +36,11 @@ import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeNames
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.SafeWorld
+import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.Eip55
-import eth.serotine.ui.send.AccountChoice
-import eth.serotine.ui.send.SendFrom
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.ShareItem
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -101,6 +109,7 @@ class SafeProposeViewModelTest {
                 Network.SEPOLIA,
             ),
             SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
+            EncodeSigningRequest(world.codec),
             Network.SEPOLIA,
             clock,
         )
@@ -137,7 +146,6 @@ class SafeProposeViewModelTest {
 
         val form = viewModel.form
         assertEquals(SendFrom("Treasury", Eip55.format(world.safe)), form.from)
-        assertEquals(null, form.fee, "the account that executes it pays the fee")
         assertEquals(listOf("ETH", "USDC"), form.assets.map { it.symbol })
         assertEquals(
             listOf("Alice", "Bob", "Dave"),
@@ -250,6 +258,9 @@ class SafeProposeViewModelTest {
 
         assertTrue(viewModel.review.error!!.startsWith("Signed, but this device's queue cannot be saved"))
         assertEquals(emptyList(), world.queue.requests.value)
+        // Not kept here, but shared from the review, the signature is not lost.
+        val share = assertIs<ShareItem>(viewModel.review.share)
+        assertTrue(share.text.endsWith(":1"), "the request carries the signature made here")
     }
 
     @Test
@@ -281,5 +292,72 @@ class SafeProposeViewModelTest {
             ),
             viewModel.uiState.value,
         )
+    }
+
+    @Test
+    fun aProposalMadeWhileHiddenIsMadeAgainBeforeItIsSigned() = runTest {
+        holding()
+        val viewModel = viewModel()
+        viewModel.onShown()
+        viewModel.onToChange(Eip55.format(world.recipient))
+        viewModel.onAmountChange("0.1")
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        world.inputs.gate = gate
+
+        viewModel.review()
+        runCurrent()
+        viewModel.onHidden()
+        world.inputs.gate = null
+        gate.complete(Unit)
+        runCurrent()
+        assertTrue(viewModel.review.idle)
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(emptyList(), world.signer.asked, "made before the hide: proposed again, not signed")
+        assertTrue(viewModel.review.idle)
+    }
+
+    @Test
+    fun theReviewStandsWhileTheSafesReadingIsGoneAndASignatureUnderWayLands() = runTest {
+        val viewModel = reviewed()
+        val pending = CompletableDeferred<Signing>()
+        world.signer.pending = pending
+        viewModel.onPasswordChange("made-up test password")
+
+        world.kind.value = KindReading.Syncing
+        runCurrent()
+        assertEquals("Safe nonce 4", viewModel.review.nonce, "the review stands on its proposal")
+        world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 100)
+        runCurrent()
+        viewModel.sign()
+        runCurrent()
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        runCurrent()
+        assertTrue(viewModel.review.signing, "the signature under way stays on screen")
+        pending.complete(Signing.Signed(world.recovery.sign(world.alice.address, world.request(world.ether(4)).hash)))
+        runCurrent()
+
+        assertIs<SafeProposeUiState.Proposed>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun anAddedTokenThatTakesABuiltInSymbolIsSaidToBeAnotherContract() = runTest {
+        val impostor = Token(Address.of("0x" + "cd".repeat(20)), "USDC", "Not USD Coin", 6, icon = null)
+        world.userTokens.add(impostor)
+        holding()
+        world.tokenBalances.of(world.safe, impostor.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("50000000"), 99)
+        val viewModel = viewModel(asset = impostor.address)
+        viewModel.onToChange(Eip55.format(world.recipient))
+        viewModel.onAmountChange("40")
+        runCurrent()
+
+        viewModel.review()
+        runCurrent()
+
+        assertEquals("Not the built-in USDC: another contract", viewModel.review.action.warning)
     }
 }

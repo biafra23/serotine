@@ -96,8 +96,10 @@ sealed interface SafeQueue {
  * One queued transaction: its [hash] (`0x` and 64 lower-case hex digits, what opens it), what it
  * does as decoded here ([action], "Send 40 USDC"), the address its row's blockie is of ([about],
  * null when it names none), where it stands in the Safe's order ([nonce], "Nonce 12 · next"),
- * its owners' signatures against the threshold ([signatures], "1 of 2 signatures"), and [refusal]
- * when this wallet will not sign it ("Not signed here: a delegate call"), or null.
+ * its owners' signatures this device holds against the threshold ([signatures], "1 of 2
+ * signatures on this device"), [refusal] when this wallet will not sign it ("Not signed here: a
+ * delegate call"), and [warning] when a token it moves only takes a built-in token's symbol ("Not
+ * the built-in USDC: another contract"); each null when there is none.
  */
 data class QueueRow(
     val hash: String,
@@ -106,6 +108,7 @@ data class QueueRow(
     val nonce: String,
     val signatures: String,
     val refusal: String? = null,
+    val warning: String? = null,
 )
 
 /** A Safe's owners and what else acts on it, display-ready (docs/wallet-ux.md, screen 16). */

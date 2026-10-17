@@ -219,6 +219,7 @@ class AppGraph(
         ResolveRecipient(names),
         ProposeSafeTx(observeSafe(), nativeBalances, tokenBalances, transactionInputs, safeTxQueue, network),
         signSafeTx(),
+        EncodeSigningRequest(signingRequests),
         network,
     )
 

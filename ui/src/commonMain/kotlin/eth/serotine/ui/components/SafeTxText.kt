@@ -40,14 +40,22 @@ data class ActionAddress(val what: String, val address: String)
 data class GasTermsItem(val lines: List<String>, val addresses: List<ActionAddress>)
 
 /**
+ * A token a Safe transaction's transfer is shown in the units of: [token] as the wallet knows it,
+ * and whether it is a token the user added whose symbol is a built-in token's ([sharesBuiltInSymbol]),
+ * which it is not: a contract may call itself anything.
+ */
+internal data class DecodingToken(val token: Token, val sharesBuiltInSymbol: Boolean = false)
+
+/**
  * [action], a transaction of a Safe at [nonce], as screens show it: a transfer's amount in the
- * token's units where the wallet knows the token ([tokens], the known ones by address), its
- * smallest units where it does not, and every address it names in full.
+ * token's units where the wallet knows the token ([tokens], the known ones by address), marked when
+ * the token only takes a built-in token's symbol; its smallest units where it does not; and every
+ * address it names in full.
  */
 internal fun safeTxActionItem(
     action: SafeTxAction,
     nonce: Long,
-    tokens: List<Token>,
+    tokens: List<DecodingToken>,
     network: Network,
 ): SafeTxActionItem = when (action) {
     is SafeTxAction.NativeTransfer -> SafeTxActionItem(
@@ -57,7 +65,8 @@ internal fun safeTxActionItem(
         symbol = network.nativeSymbol,
     )
     is SafeTxAction.TokenTransfer -> {
-        val token = tokens.firstOrNull { it.address == action.token }
+        val known = tokens.firstOrNull { it.token.address == action.token }
+        val token = known?.token
         val addresses = listOf(
             ActionAddress("To", Eip55.format(action.to)),
             ActionAddress("Token contract", Eip55.format(action.token)),
@@ -76,6 +85,8 @@ internal fun safeTxActionItem(
             SafeTxActionItem(
                 title = "Send ${action.amount.formatUnits(token.decimals)} $symbol",
                 addresses = addresses,
+                // As Send's asset row says it: the symbol is the contract's claim.
+                warning = if (known.sharesBuiltInSymbol) "Not the built-in $symbol: another contract" else null,
                 icon = token.icon,
                 symbol = symbol,
             )
@@ -241,7 +252,8 @@ private fun grouped(amount: UInt256): String =
 
 /**
  * The tokens a Safe transaction's transfer is shown in the units of: every token the wallet knows,
- * hidden ones too, but no built-in entry its contract contradicts.
+ * hidden ones too, but no built-in entry its contract contradicts; an added one that takes a
+ * built-in token's symbol marked as such.
  */
-internal fun KnownTokenList.forDecoding(): List<Token> =
-    tokens.filter { it.check !is BuiltInCheck.Disagrees }.map { it.token }
+internal fun KnownTokenList.forDecoding(): List<DecodingToken> =
+    tokens.filter { it.check !is BuiltInCheck.Disagrees }.map { DecodingToken(it.token, it.sharesBuiltInSymbol) }

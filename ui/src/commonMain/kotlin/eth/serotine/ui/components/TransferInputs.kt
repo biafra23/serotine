@@ -1,4 +1,4 @@
-package eth.serotine.ui.send
+package eth.serotine.ui.components
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.Address
@@ -15,14 +15,6 @@ import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.RecipientLookup
 import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.Valuation
-import eth.serotine.ui.components.Eip55
-import eth.serotine.ui.components.NATIVE_DECIMALS
-import eth.serotine.ui.components.balanceText
-import eth.serotine.ui.components.displayName
-import eth.serotine.ui.components.displaySymbol
-import eth.serotine.ui.components.formatUnits
-import eth.serotine.ui.components.grouped
-import eth.serotine.ui.components.valuationText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay

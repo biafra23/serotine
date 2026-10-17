@@ -12,17 +12,17 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.ActionAddress
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SAFE_TX_ACTION_TAG
+import eth.serotine.ui.components.SEND_AMOUNT_TAG
+import eth.serotine.ui.components.SEND_REVIEW_TAG
 import eth.serotine.ui.components.SafeTxActionItem
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
-import eth.serotine.ui.send.AccountChoice
-import eth.serotine.ui.send.AssetChoice
-import eth.serotine.ui.send.RecipientItem
-import eth.serotine.ui.send.SEND_AMOUNT_TAG
-import eth.serotine.ui.send.SEND_REVIEW_TAG
-import eth.serotine.ui.send.SendFrom
-import eth.serotine.ui.send.SendUiState
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -38,7 +38,7 @@ class SafeProposeScreenTest {
     private val daily = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
     private val savings = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
     private val ether = AssetChoice("ETH", "Ether", "eth", "2.5 ETH", verifiedAt = "block 9")
-    private val form = SendUiState.Compose(
+    private val form = TransferForm(
         network = "Sepolia",
         from = SendFrom("Treasury", treasury),
         assets = listOf(ether),
@@ -46,7 +46,6 @@ class SafeProposeScreenTest {
         to = savings,
         accounts = listOf(AccountChoice("Daily", daily)),
         amount = "",
-        fee = null,
         recipient = RecipientItem(savings),
         canMax = true,
     )

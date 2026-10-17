@@ -7,6 +7,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
@@ -15,6 +16,7 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveSafe
@@ -28,33 +30,35 @@ import eth.serotine.domain.usecase.SafeTxProposing
 import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SafeTxSigning
 import eth.serotine.domain.usecase.SignSafeTx
+import eth.serotine.ui.components.AccountChoice
+import eth.serotine.ui.components.AssetOption
+import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.QUOTE_MAX_AGE
+import eth.serotine.ui.components.RecipientState
+import eth.serotine.ui.components.ResolvedAgain
+import eth.serotine.ui.components.STALE_QUOTE
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.ZERO_ADDRESS
+import eth.serotine.ui.components.amountHint
+import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.lookUpSafely
 import eth.serotine.ui.components.notSignedText
+import eth.serotine.ui.components.recipientItem
+import eth.serotine.ui.components.recipientNote
+import eth.serotine.ui.components.recipientStates
+import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
-import eth.serotine.ui.send.AccountChoice
-import eth.serotine.ui.send.AssetOption
-import eth.serotine.ui.send.QUOTE_MAX_AGE
-import eth.serotine.ui.send.RecipientState
-import eth.serotine.ui.send.ResolvedAgain
-import eth.serotine.ui.send.STALE_QUOTE
-import eth.serotine.ui.send.SendFrom
-import eth.serotine.ui.send.SendUiState
-import eth.serotine.ui.send.ZERO_ADDRESS
-import eth.serotine.ui.send.amountHint
-import eth.serotine.ui.send.assetOptions
-import eth.serotine.ui.send.exactAmount
-import eth.serotine.ui.send.lookUpSafely
-import eth.serotine.ui.send.recipientItem
-import eth.serotine.ui.send.recipientNote
-import eth.serotine.ui.send.recipientStates
-import eth.serotine.ui.send.resolveAgain
-import eth.serotine.ui.send.typedAmount
-import eth.serotine.ui.send.verifiedAt
+import eth.serotine.ui.components.shareItem
+import eth.serotine.ui.components.typedAmount
+import eth.serotine.ui.components.verifiedAt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -101,6 +105,7 @@ class SafeProposeViewModel(
     private val resolveRecipient: ResolveRecipient,
     private val proposeSafeTx: ProposeSafeTx,
     private val signSafeTx: SignSafeTx,
+    private val encodeSigningRequest: EncodeSigningRequest,
     private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
@@ -148,7 +153,11 @@ class SafeProposeViewModel(
 
         /**
          * [proposal] of [request], made at [proposedAt], under review, to be signed by [owner];
-         * [hidden] once the screen stopped being shown since it was made.
+         * [hidden] once the screen stopped being shown since it was made. [safeAccount] and
+         * [accounts] are the wallet's as they were when it was proposed: the review stands on them
+         * while the Safe's reading or the list is not there, rather than vanish with a password in
+         * it or a signature under way. [unsaved] is the request signed here that the queue could
+         * not save: shown for sharing until the review is left.
          */
         data class Reviewing(
             val request: Request,
@@ -156,10 +165,13 @@ class SafeProposeViewModel(
             val proposedAt: TimeMark,
             val owner: Address,
             val unlock: UnlockStep,
+            val safeAccount: Account,
+            val accounts: List<Account>,
             val refreshing: Boolean = false,
             val signing: Boolean = false,
             val error: String? = null,
             val hidden: Boolean = false,
+            val unsaved: SigningRequest? = null,
         ) : Step {
             val idle: Boolean
                 get() = !refreshing && !signing
@@ -179,6 +191,9 @@ class SafeProposeViewModel(
 
     /** Whether the screen is shown now ([onShown], [onHidden]). */
     private var shown = false
+
+    /** Whether the screen was hidden while the first proposal of a review was being made. */
+    private var hiddenWhileProposing = false
 
     /** The typed recipient, resolved: an address at once, a name once the typing paused. */
     private val lookup: Flow<RecipientState> =
@@ -238,9 +253,13 @@ class SafeProposeViewModel(
         val request = requestOf(model) ?: return
         val sender = model.sender as? Sender.From ?: return
         step.value = Step.Composing(proposing = true)
+        hiddenWhileProposing = false
         job = viewModelScope.launch {
-            val next = proposed(request, owner = sender.reading.ownersHeld.firstOrNull(), unlock = null)
-            step.update { latest -> if (latest == Step.Composing(proposing = true)) next else latest }
+            val next = proposed(request, sender.reading.ownersHeld.firstOrNull(), null, sender.account, model.accounts)
+            if (step.value != Step.Composing(proposing = true)) return@launch
+            // Made while hidden: it is from before the screen came back, so it is made again.
+            step.value = if (next is Step.Reviewing) next.copy(hidden = hiddenWhileProposing) else next
+            reproposeIfHidden()
         }
     }
 
@@ -273,22 +292,27 @@ class SafeProposeViewModel(
         val cleared = current.unlock.copy(error = null)
         step.value = current.copy(refreshing = true, hidden = false, error = null, unlock = cleared)
         job = viewModelScope.launch {
-            val next = proposed(current.request, current.owner, current.unlock)
+            val accounts = model.value?.accounts ?: current.accounts
+            val next = proposed(current.request, current.owner, current.unlock, current.safeAccount, accounts)
             step.update { latest ->
                 when {
                     latest !is Step.Reviewing || !latest.refreshing -> latest
-                    // The password typed meanwhile stays: it is the same review.
+                    // The password typed meanwhile stays: it is the same review, hidden since or not.
                     next is Step.Reviewing -> latest.copy(
                         request = next.request,
                         proposal = next.proposal,
                         proposedAt = next.proposedAt,
                         owner = next.owner,
+                        accounts = next.accounts,
                         refreshing = false,
                         unlock = latest.unlock.copy(error = note),
+                        unsaved = latest.unsaved?.takeIf { it.hash == next.proposal.request.hash },
                     )
                     else -> next
                 }
             }
+            // Hidden and shown again while it was made: it is from before, so it is made again.
+            reproposeIfHidden()
         }
     }
 
@@ -315,14 +339,20 @@ class SafeProposeViewModel(
         if (!current.idle || !current.unlock.biometrics || reproposed(current)) return
         val option = current.request.option
         val amount = exactAmount(current.request.amount, option.decimals, option.symbol)
-        val label = (model.value?.sender as? Sender.From)?.account?.label ?: display
+        val label = current.safeAccount.label
         // The recipient in full: the prompt is the last thing read before the key signs.
         val to = Eip55.format(current.request.to.address)
-        sign(current, Unlock.WithBiometrics("Sign a Safe transaction of $label: send $amount to $to"))
+        val warning = option.warning?.let { " ($it)" }.orEmpty()
+        sign(current, Unlock.WithBiometrics("Sign a Safe transaction of $label: send $amount$warning to $to"))
     }
 
     /** Whether [review]'s proposal is too old to sign, and so is being made again instead. */
     private fun reproposed(review: Step.Reviewing): Boolean {
+        // Made before the screen was last hidden: never signed as it was.
+        if (review.hidden) {
+            refresh(note = null)
+            return true
+        }
         if (review.proposedAt.elapsedNow() <= QUOTE_MAX_AGE) return false
         refresh(note = STALE_QUOTE)
         return true
@@ -335,6 +365,7 @@ class SafeProposeViewModel(
      */
     fun onHidden() {
         shown = false
+        if ((step.value as? Step.Composing)?.proposing == true) hiddenWhileProposing = true
         step.update { current ->
             if (current is Step.Reviewing) {
                 current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY), hidden = true)
@@ -379,7 +410,8 @@ class SafeProposeViewModel(
                     is SafeTxSigning.Signed -> if (signing.saved) {
                         Step.Proposed("0x" + signing.request.hash.hex)
                     } else {
-                        latest.copy(signing = false, error = NOT_SAVED)
+                        // Not kept here, but signed: shared from this review, it is not lost.
+                        latest.copy(signing = false, error = NOT_SAVED, unsaved = signing.request)
                     }
                     is SafeTxSigning.NotSigned -> latest.copy(
                         signing = false,
@@ -403,7 +435,13 @@ class SafeProposeViewModel(
      * owner any more) with [unlock] (a new one when null), or the form saying why there is none.
      * A name is resolved again first: what is proposed is the address the name has now.
      */
-    private suspend fun proposed(request: Request, owner: Address?, unlock: UnlockStep?): Step {
+    private suspend fun proposed(
+        request: Request,
+        owner: Address?,
+        unlock: UnlockStep?,
+        safeAccount: Account,
+        accounts: List<Account>,
+    ): Step {
         val to = when (val again = resolveAgain(request.to, resolveRecipient::lookUpSafely)) {
             is ResolvedAgain.Same -> again.found
             is ResolvedAgain.Changed -> {
@@ -430,6 +468,8 @@ class SafeProposeViewModel(
             timeSource.markNow(),
             signer,
             unlock ?: UnlockStep(biometrics = describeKeyStore.biometricsOn()),
+            safeAccount,
+            accounts,
         )
     }
 
@@ -485,6 +525,9 @@ class SafeProposeViewModel(
     private fun render(model: Model?, step: Step): SafeProposeUiState {
         val network = network.displayName
         if (step is Step.Proposed) return SafeProposeUiState.Proposed(network, step.hash)
+        // A review stands on its proposal, whatever the Safe's reading says meanwhile: a refresh or
+        // the signature checks the Safe again, and says what it finds.
+        if (step is Step.Reviewing) return review(model?.accounts ?: step.accounts, step)
         model ?: return SafeProposeUiState.Loading(network)
         val account = when (val sender = model.sender) {
             Sender.Checking -> return SafeProposeUiState.Loading(network)
@@ -494,12 +537,12 @@ class SafeProposeViewModel(
         val from = SendFrom(account.label, display)
         return when (step) {
             is Step.Composing -> SafeProposeUiState.Compose(compose(model, from, step))
-            is Step.Reviewing -> review(model, from, step)
+            is Step.Reviewing -> review(model.accounts, step)
             is Step.Proposed -> SafeProposeUiState.Proposed(network, step.hash)
         }
     }
 
-    private fun compose(model: Model, from: SendFrom, step: Step.Composing): SendUiState.Compose {
+    private fun compose(model: Model, from: SendFrom, step: Step.Composing): TransferForm {
         val inputs = model.inputs
         val text = inputs.to.trim()
         // The lookup of what is typed now; one of an earlier text is no answer about it.
@@ -508,7 +551,7 @@ class SafeProposeViewModel(
         val (note, isError) = recipientNote(text, lookup)
         val selected = model.selected
         val amount = typedAmount(inputs.amount, selected)
-        return SendUiState.Compose(
+        return TransferForm(
             network = network.displayName,
             from = from,
             assets = model.options.map { it.choice() },
@@ -517,7 +560,6 @@ class SafeProposeViewModel(
             accounts = model.accounts.filter { it.address != safe }
                 .map { AccountChoice(it.label, Eip55.format(it.address)) },
             amount = inputs.amount,
-            fee = null,
             assetNote = when {
                 selected != null -> null
                 !model.tokensRead -> "Checking this Safe's tokens…"
@@ -536,20 +578,21 @@ class SafeProposeViewModel(
         )
     }
 
-    private fun review(model: Model, from: SendFrom, step: Step.Reviewing): SafeProposeUiState.Review {
+    private fun review(accounts: List<Account>, step: Step.Reviewing): SafeProposeUiState.Review {
         val proposal = step.proposal
         val option = step.request.option
         val token = (option.asset as? TransferAsset.Erc20Token)?.token
         val request = proposal.request
         val held = proposal.safe.ownersHeld
-        val labels = model.accounts.associate { it.address to it.label }
+        val labels = accounts.associate { it.address to it.label }
+        val decoding = listOfNotNull(token?.let { DecodingToken(it, sharesBuiltInSymbol = option.warning != null) })
         return SafeProposeUiState.Review(
             network = network.displayName,
-            from = from,
-            action = safeTxActionItem(proposal.tx.action, request.nonce, listOfNotNull(token), network),
+            from = SendFrom(step.safeAccount.label, display),
+            action = safeTxActionItem(proposal.tx.action, request.nonce, decoding, network),
             amount = exactAmount(step.request.amount, option.decimals, option.symbol),
             asset = option.choice(),
-            recipient = recipientItem(step.request.to, model.accounts, option),
+            recipient = recipientItem(step.request.to, accounts, option),
             nonce = "Safe nonce ${request.nonce}",
             queued = proposal.queuedAhead.takeIf { it > 0 }?.let { ahead ->
                 (if (ahead == 1) "1 transaction" else "$ahead transactions") +
@@ -581,6 +624,7 @@ class SafeProposeViewModel(
             refreshing = step.refreshing,
             signing = step.signing,
             error = step.error,
+            share = step.unsaved?.let { shareItem(encodeSigningRequest(it), it.signatures.size) },
         )
     }
 
@@ -627,8 +671,8 @@ class SafeProposeViewModel(
     private companion object {
         const val SIGN_FAILED = "Serotine could not finish this signature. Nothing was queued: try again."
         const val NOT_SAVED =
-            "Signed, but this device's queue cannot be saved right now, so the proposal is not kept: try again " +
-                "in a moment."
+            "Signed, but this device's queue cannot be saved right now, so the proposal is not kept here: share " +
+                "it below before you leave this screen, or sign it again in a moment."
         const val LIST_UNAVAILABLE =
             "Your account list cannot be read right now, so nothing can be proposed. Serotine keeps trying."
         const val NOT_IN_WALLET = "This Safe is not in your wallet any more."

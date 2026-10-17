@@ -214,11 +214,13 @@ upgrades*).
       proposal, import or signature. Two at one nonce (a transfer and its
       rejection) are both listed; only one can ever run. Each row is what it
       does as decoded here ("Send 40 USDC", a token the wallet does not know
-      in its smallest units), with the blockie of the address it names, its
-      nonce and how many run before it ("Nonce 13 · 1 before it"), its
-      signatures against the threshold ("1 of 2 signatures": those this
-      device holds and the Safe accepts now; approvals on chain show on 17),
-      and "Not signed here" with the reason for a delegate call or gas terms.
+      in its smallest units, an added token that takes a built-in token's
+      symbol marked "Not the built-in USDC: another contract"), with the
+      blockie of the address it names, its nonce and how many run before it
+      ("Nonce 13 · 1 before it"), its signatures against the threshold ("1
+      of 2 signatures on this device": those this device holds and the Safe
+      accepts now; approvals on chain show on 17), and "Not signed here" with
+      the reason for a delegate call or gas terms.
       While the Safe cannot be verified, the rows say that neither its nonce
       nor the signatures are checked. A tap opens 17.
     - Import a request (above the rows): the text another owner's Share
@@ -246,7 +248,10 @@ upgrades*).
       (`SignSafeTx`, the password or the biometric prompt as on 8); it is then
       queued and 17 opens for it, in place of the proposal. Nothing is queued
       until an owner held here signs it, so a proposal given up leaves no
-      nonce taken.
+      nonce taken. A proposal the queue cannot save once signed is shared
+      from the review (its QR code and text), not lost. The review stands on
+      its proposal while the Safe's reading or the account list is not
+      there; a refresh or the signature checks the Safe again.
 17. **Safe transaction**
     - The action, decoded here from the raw transaction (`SafeTxAction`): a
       native or ERC-20 transfer, a change of the Safe's settings (an owner
@@ -290,7 +295,9 @@ upgrades*).
       signatures change and when the screen is shown again.
     - Share request opens the request's text (`EncodeSigningRequest`) as one
       QR code when it fits one (else it says to share the text), with Copy
-      text and, where the platform has a share sheet, Share.
+      text and, where the platform has a share sheet, Share. It is offered
+      only while the Safe is verified: what is shared then carries only
+      signatures its current owners made, checked here.
     - Sign opens a step: the owner held here who signs, when there are
       several, and the unlock of 8. The signed request is queued; one the
       queue cannot save stays on the screen, to be shared before it is left.
@@ -299,10 +306,17 @@ upgrades*).
       account that sends it (an owner held here first; for Execute, any
       account held here whose sending reaches the threshold), the fee level,
       the most the fee can be, the account's balance before and after, the
-      verified run, and for Execute the confirmations it is executed with.
+      verified run, and for Execute the confirmations it is executed with. An
+      approval the confirmations made needless meanwhile says so and is not
+      signed. Each step offers only what the owners read for the request as
+      it is now say: a new signature reads them again before anything is
+      offered on it.
       The quote follows 8's freshness rules and its Back, and one signed but
       not broadcast is sent again only as Try again, through
-      `RebroadcastTransfer`. Sent, the status (9) replaces the screen, and
+      `RebroadcastTransfer`; a quote made or refreshed while the screen was
+      hidden is made again before it is signed. A step signing goes on when
+      the transaction leaves the queue meanwhile; one that does not ends,
+      its password with it. Sent, the status (9) replaces the screen, and
       says "Approval of a Safe transaction" or "Execution of a Safe
       transaction", with the Safe and its nonce.
     - Remove from this device asks first, then takes it out of the queue:

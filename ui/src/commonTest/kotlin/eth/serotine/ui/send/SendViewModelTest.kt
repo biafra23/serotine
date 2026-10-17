@@ -61,7 +61,12 @@ import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.components.AccountChoice
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SendFrom
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
@@ -704,5 +709,53 @@ class SendViewModelTest {
             ),
             viewModel.uiState.value,
         )
+    }
+
+    @Test
+    fun aQuoteThatLandsWhileTheScreenIsHiddenIsMadeAgainBeforeItIsSigned() = runTest {
+        holding()
+        val viewModel = viewModel()
+        viewModel.onShown()
+        viewModel.onPickAccount(viewModel.compose.accounts.single().address)
+        viewModel.onAmountChange("0.1")
+        val gate = CompletableDeferred<Unit>()
+        inputs.gate = gate
+
+        viewModel.review()
+        runCurrent()
+        viewModel.onHidden()
+        inputs.gate = null
+        gate.complete(Unit)
+        runCurrent()
+        val quotes = inputs.estimated.size
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(quotes + 1, inputs.estimated.size, "quoted before the hide: made again, not signed")
+        assertEquals(emptyList(), signer.asked)
+        viewModel.onShown()
+        runCurrent()
+        assertEquals(quotes + 1, inputs.estimated.size)
+    }
+
+    @Test
+    fun aRefreshInFlightAcrossAHideAndAShowIsMadeAgainWhenItLands() = runTest {
+        val viewModel = reviewed()
+        viewModel.onShown()
+        val gate = CompletableDeferred<Unit>()
+        inputs.gate = gate
+        viewModel.refresh()
+        runCurrent()
+
+        viewModel.onHidden()
+        viewModel.onShown()
+        val quotes = inputs.estimated.size
+        inputs.gate = null
+        gate.complete(Unit)
+        runCurrent()
+
+        assertEquals(quotes + 1, inputs.estimated.size, "the refresh from before the hide is made again")
+        assertFalse(viewModel.review.refreshing)
     }
 }

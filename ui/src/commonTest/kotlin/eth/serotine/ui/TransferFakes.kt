@@ -59,15 +59,23 @@ internal class FakeTransactionInputs : TransactionInputs {
 
     override suspend fun minedNonce(account: Address): NonceReading = NonceReading.Read(mined)
 
-    override suspend fun fees(): FeeReading = fees
+    /** While set, the fees and every run wait for it: a quote in flight, for as long as a test needs. */
+    var gate: CompletableDeferred<Unit>? = null
+
+    override suspend fun fees(): FeeReading {
+        gate?.await()
+        return fees
+    }
 
     override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate {
         estimated += Triple(from, to, value)
         return estimate
     }
 
-    override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation =
-        simulation
+    override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+        gate?.await()
+        return simulation
+    }
 }
 
 /**

@@ -10,7 +10,6 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SigningRequest
-import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.Broadcast
@@ -43,13 +42,19 @@ import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SafeTxSigning
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.TransferSending
+import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
-import eth.serotine.ui.components.QrMatrix
+import eth.serotine.ui.components.QUOTE_MAX_AGE
+import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SafeTxActionItem
+import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.exactAmount
+import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.gasTermsItem
 import eth.serotine.ui.components.grouped
@@ -57,13 +62,9 @@ import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
+import eth.serotine.ui.components.shareItem
 import eth.serotine.ui.components.shortAddress
-import eth.serotine.ui.send.BalanceChange
-import eth.serotine.ui.send.QUOTE_MAX_AGE
-import eth.serotine.ui.send.STALE_QUOTE
-import eth.serotine.ui.send.exactAmount
-import eth.serotine.ui.send.feeDetail
-import eth.serotine.ui.send.verifiedAt
+import eth.serotine.ui.components.verifiedAt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -74,12 +75,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -160,7 +163,7 @@ class SafeTxViewModel(
         val request: SigningRequest,
         val owners: SafeTxOwnersReading?,
         val options: Options,
-        val tokens: List<Token>,
+        val tokens: List<DecodingToken>,
         val labels: Map<Address, String>,
     ) : Source {
         fun labelOf(address: Address): String = labels[address] ?: shortAddress(Eip55.format(address))
@@ -261,6 +264,19 @@ class SafeTxViewModel(
     /** Whether the screen was hidden since it was last shown: shown again, the owners are read again. */
     private var hiddenSince = false
 
+    /** Whether the screen was hidden while an approval or an execution was first quoted for review. */
+    private var hiddenWhileQuoting = false
+
+    /**
+     * The transaction as last shown: what a step signing or under review is drawn from while the
+     * queue's reading is not there (a restart of its collection), so that it never vanishes with a
+     * signature under way.
+     */
+    private var lastContext: Context? = null
+
+    /** The nonce the transaction had when it was last in the queue, across restarts of its reading. */
+    private var lastNonce: Long? = null
+
     /** The transaction as the queue holds it, each reading judged against the one before. */
     private val queued: Flow<Queued> = observeSafeTxQueue(safe)
         .scan<SafeTxQueueReading, Queued>(Queued.Loading, ::queuedOf)
@@ -276,11 +292,16 @@ class SafeTxViewModel(
         view.unsaved?.takeIf { it.hash == request.hash }?.let { request.withSignatures(it.signatures) } ?: request
     }.distinctUntilChanged()
 
-    /** Where the owners stand on [request], read again when it changes and when asked; null while read first. */
+    /**
+     * Where the owners stand on [request], read again when asked; null while it is read for a
+     * request it has not been read for — a reading of the request before (one signature fewer) is
+     * no reading of this one, and nothing is offered on it.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val owners: Flow<SafeTxOwnersReading?> = combine(request, readAgain) { request, _ -> request }
-        .mapLatest { request -> request?.let { readOwners(it) } }
-        .onStart { emit(null) }
+    private val owners: Flow<SafeTxOwnersReading?> = request.transformLatest { request ->
+        emit(null)
+        if (request != null) emitAll(readAgain.mapLatest { readOwners(request) })
+    }
 
     private val accounts: Flow<List<Account>> = observeAccounts()
         .map { (it as? AccountList.Loaded)?.accounts.orEmpty() }
@@ -305,7 +326,7 @@ class SafeTxViewModel(
             null,
         )
 
-    val uiState: StateFlow<SafeTxUiState> = combine(context, view, step, ::render).stateIn(
+    val uiState: StateFlow<SafeTxUiState> = combine(context.onEach(::follow), view, step, ::render).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         SafeTxUiState.Loading(network.displayName),
@@ -316,7 +337,11 @@ class SafeTxViewModel(
         get() = context.value as? Context
 
     /** Opens the request for sharing: its text, in one QR code where it fits. */
-    fun onShare() = view.update { it.copy(sharing = true) }
+    fun onShare() {
+        // Only what the Safe's verified owners signed is shared: unverified, nothing is.
+        if (now?.found?.safeNonce == null) return
+        view.update { it.copy(sharing = true) }
+    }
 
     /** Closes the request's sharing. */
     fun onShareClosed() = view.update { it.copy(sharing = false) }
@@ -326,7 +351,7 @@ class SafeTxViewModel(
 
     /** Starts signing the hash with the first owner held here that has not confirmed it. */
     fun startSigning() {
-        if (step.value != Step.Overview) return
+        if (step.value != Step.Overview || job?.isActive == true) return
         val owner = now?.options?.signers?.firstOrNull() ?: return
         view.update { it.copy(message = null, sharing = false) }
         step.value = Step.Signing(owner, UnlockStep())
@@ -371,6 +396,7 @@ class SafeTxViewModel(
         val account = Address.parse(address) ?: return
         val review = step.value as? Step.Reviewing ?: return
         if (!review.idle || account == review.account) return
+        // The account under review is offered as long as the review is.
         val options = now?.options ?: return
         val allowed = if (review.kind == ReviewKind.APPROVAL) options.approvers else options.executors
         if (account !in allowed) return
@@ -412,7 +438,7 @@ class SafeTxViewModel(
             }
             is Step.Reviewing -> {
                 val password = current.unlock.password
-                if (!current.idle || password.text.isEmpty() || requoted(current)) return
+                if (!current.idle || password.text.isEmpty() || notNeeded(current) != null || requoted(current)) return
                 send(current, Unlock.WithPassword(password))
             }
             else -> Unit
@@ -428,7 +454,9 @@ class SafeTxViewModel(
                 signHash(current, Unlock.WithBiometrics("Sign Safe transaction $action"))
             }
             is Step.Reviewing -> {
-                if (!current.idle || !current.unlock.biometrics || requoted(current)) return
+                if (!current.idle || !current.unlock.biometrics || notNeeded(current) != null || requoted(current)) {
+                    return
+                }
                 val what = if (current.kind == ReviewKind.APPROVAL) "Approve on chain" else "Execute"
                 send(current, Unlock.WithBiometrics("$what Safe transaction $action"))
             }
@@ -478,8 +506,8 @@ class SafeTxViewModel(
 
     /** Takes the transaction out of this device's queue; the screen then leaves. */
     fun remove() {
-        if (step.value != Step.Overview) return
-        viewModelScope.launch {
+        if (step.value != Step.Overview || job?.isActive == true) return
+        job = viewModelScope.launch {
             val removed = try {
                 removeQueuedSafeTx(hash)
             } catch (e: CancellationException) {
@@ -487,6 +515,7 @@ class SafeTxViewModel(
             } catch (e: Exception) {
                 false // the port promises not to throw; the backstop
             }
+            if (step.value != Step.Overview) return@launch
             if (removed) {
                 step.value = Step.Removed
             } else {
@@ -502,6 +531,7 @@ class SafeTxViewModel(
     fun onHidden() {
         shown = false
         hiddenSince = true
+        if (step.value is Step.Quoting) hiddenWhileQuoting = true
         step.update { current ->
             when (current) {
                 is Step.Signing -> current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY))
@@ -532,6 +562,11 @@ class SafeTxViewModel(
 
     /** Whether [review]'s quote is too old to sign, and so is being made again instead. */
     private fun requoted(review: Step.Reviewing): Boolean {
+        // Quoted before the screen was last hidden: never signed as it was.
+        if (review.hidden) {
+            requote(review, review.account, review.level, note = null)
+            return true
+        }
         if (review.quotedAt.elapsedNow() <= QUOTE_MAX_AGE) return false
         requote(review, review.account, review.level, note = STALE_QUOTE)
         return true
@@ -543,18 +578,26 @@ class SafeTxViewModel(
         view.update { it.copy(message = null, sharing = false) }
         val quoting = Step.Quoting(kind, account, level)
         step.value = quoting
+        hiddenWhileQuoting = false
         job = viewModelScope.launch {
             val next = quoted(kind, request, account, level)
             val biometrics = describeKeyStore.biometricsOn()
             if (step.value != quoting) return@launch
             when (next) {
-                is Quoted.Made -> step.value =
-                    Step.Reviewing(kind, next.quote, timeSource.markNow(), UnlockStep(biometrics = biometrics))
+                // Made while hidden: it is from before the screen came back, so it is made again.
+                is Quoted.Made -> step.value = Step.Reviewing(
+                    kind,
+                    next.quote,
+                    timeSource.markNow(),
+                    UnlockStep(biometrics = biometrics),
+                    hidden = hiddenWhileQuoting,
+                )
                 is Quoted.Refused -> {
                     view.update { it.copy(message = next.message) }
                     step.value = Step.Overview
                 }
             }
+            requoteIfHidden()
         }
     }
 
@@ -580,6 +623,8 @@ class SafeTxViewModel(
                     step.value = Step.Overview
                 }
             }
+            // Hidden and shown again while it was made: it is from before, so it is made again.
+            requoteIfHidden()
         }
     }
 
@@ -724,13 +769,14 @@ class SafeTxViewModel(
         is SafeTxQueueReading.Loaded -> {
             val tx = reading.transactions.firstOrNull { it.request.hash == hash }
             if (tx != null) {
+                lastNonce = tx.request.nonce
                 Queued.Found(tx, reading.safeNonce)
             } else {
                 val nonce = when (previous) {
                     is Queued.Found -> previous.tx.request.nonce
                     is Queued.Missing -> previous.lastNonce
                     else -> null
-                }
+                } ?: lastNonce
                 val safeNonce = reading.safeNonce
                 Queued.Missing(nonce, passed = nonce != null && safeNonce != null && nonce < safeNonce)
             }
@@ -743,7 +789,31 @@ class SafeTxViewModel(
         val action = safeTxActionItem(context.found.tx.action, request.nonce, context.tokens, network)
         // The address it names in full: the prompt is the last thing read before the key signs.
         val named = action.addresses.firstOrNull()?.let { ", ${it.what.lowercase()} ${it.address}" }.orEmpty()
-        return "${request.nonce} of ${context.labelOf(safe)}: ${action.title}$named"
+        val warning = action.warning?.let { " ($it)" }.orEmpty()
+        return "${request.nonce} of ${context.labelOf(safe)}: ${action.title}$warning$named"
+    }
+
+    /**
+     * Follows what [source] says of the transaction: the last one shown is kept, and once it is gone
+     * from the queue, or the queue cannot be read, a step that does not sign right now ends, its
+     * password with it. One signing goes on, and lands on the transaction as last shown.
+     */
+    private fun follow(source: Source?) {
+        when (source) {
+            is Context -> lastContext = source
+            Queued.Unreadable, is Queued.Missing -> step.update { current ->
+                when {
+                    current is Step.Signing && !current.signing -> Step.Overview
+                    current is Step.Reviewing && !current.signing -> Step.Overview
+                    current is Step.Quoting -> {
+                        job?.cancel()
+                        Step.Overview
+                    }
+                    else -> current
+                }
+            }
+            else -> Unit
+        }
     }
 
     private fun render(context: Source?, view: View, step: Step): SafeTxUiState {
@@ -753,11 +823,15 @@ class SafeTxViewModel(
             Step.Removed -> return SafeTxUiState.Removed(network)
             else -> Unit
         }
-        val shown = when (context) {
-            is Context -> context
-            Queued.Unreadable -> return SafeTxUiState.NotQueued(network, QUEUE_UNREADABLE)
-            is Queued.Missing -> return SafeTxUiState.NotQueued(network, if (context.passed) PASSED else NOT_QUEUED)
-            null, Queued.Loading, is Queued.Found -> return SafeTxUiState.Loading(network)
+        val inStep = step is Step.Signing || step is Step.Reviewing || step is Step.Quoting
+        val shown = when {
+            context is Context -> context
+            inStep && lastContext != null -> lastContext!!
+            else -> when (context) {
+                Queued.Unreadable -> return SafeTxUiState.NotQueued(network, QUEUE_UNREADABLE)
+                is Queued.Missing -> return SafeTxUiState.NotQueued(network, if (context.passed) PASSED else NOT_QUEUED)
+                else -> return SafeTxUiState.Loading(network)
+            }
         }
         val tx = shown.found.tx
         val request = shown.request
@@ -778,7 +852,8 @@ class SafeTxViewModel(
                 action = action,
                 nonce = nonce,
                 hash = hashText,
-                owners = options.signers.map { choice(shown, it) },
+                // The owner chosen stays offered while the step is, whatever the owners read since.
+                owners = (listOf(step.owner) + options.signers).distinct().map { choice(shown, it) },
                 owner = Eip55.format(step.owner),
                 unlock = step.unlock,
                 signing = step.signing,
@@ -798,7 +873,8 @@ class SafeTxViewModel(
                 canExecute = options.executors.isNotEmpty(),
                 executeNote = options.executeNote,
                 quoting = step is Step.Quoting,
-                share = if (view.sharing) share(request) else null,
+                canShare = shown.found.safeNonce != null,
+                share = if (view.sharing && shown.found.safeNonce != null) share(request) else null,
                 message = view.message,
             )
         }
@@ -822,6 +898,8 @@ class SafeTxViewModel(
             executors.isNotEmpty() -> null
             nonce > read.safeNonce -> "Executed only once the ${count(nonce - read.safeNonce)} before it have run: " +
                 "only the Safe's next transaction can be executed."
+            nonce < read.safeNonce -> "The Safe is at nonce ${read.safeNonce} already: this one ran, or another " +
+                "transaction used its nonce."
             candidates.isEmpty() -> "No account of this wallet holds a key to send its execution."
             else -> "$best of the ${read.threshold} confirmations it needs to be executed."
         }
@@ -838,6 +916,7 @@ class SafeTxViewModel(
     private fun nonceText(nonce: Long, safeNonce: Long?): String = "Safe nonce $nonce" + when {
         safeNonce == null -> ""
         nonce == safeNonce -> " · next to run"
+        nonce < safeNonce -> " · passed: the Safe is at nonce $safeNonce"
         else -> " · ${count(nonce - safeNonce)} run before it"
     }
 
@@ -865,17 +944,8 @@ class SafeTxViewModel(
         )
     }
 
-    private fun share(request: SigningRequest): ShareItem {
-        val text = encodeSigningRequest(request)
-        val signatures = request.signatures.size
-        val carries = "The raw transaction and " + when (signatures) {
-            0 -> "no signature yet"
-            1 -> "1 signature"
-            else -> "$signatures signatures"
-        } + ": the other device decodes it and checks it against the chain itself."
-        val fits = QrMatrix.fits(text.encodeToByteArray().size)
-        return ShareItem(text, fits, if (fits) carries else "Too large for one QR code: share it as text. $carries")
-    }
+    private fun share(request: SigningRequest): ShareItem =
+        shareItem(encodeSigningRequest(request), request.signatures.size)
 
     private fun review(
         context: Context,
@@ -918,6 +988,7 @@ class SafeTxViewModel(
             },
             unlock = step.unlock,
             confirmations = (step.quote as? TxQuote.Execution)?.quote?.let { confirmationsText(context, it) },
+            notNeeded = notNeeded(step, context),
             pending = call.pendingCost.takeUnless { it.isZero }?.let {
                 "Earlier transactions from this account, not mined yet, may still take up to " +
                     exactAmount(it, NATIVE_DECIMALS, native) + ": the balance after counts it."
@@ -929,6 +1000,22 @@ class SafeTxViewModel(
                 notSentItem(it.broadcast, it.unverified, what)
             },
         )
+    }
+
+    /**
+     * Why the approval under [review] is no longer needed, as the owners read now say (the
+     * confirmations reach the threshold, or its owner confirmed it meanwhile), or null.
+     */
+    private fun notNeeded(review: Step.Reviewing, context: Context? = now ?: lastContext): String? {
+        if (review.kind != ReviewKind.APPROVAL) return null
+        val read = context?.owners as? SafeTxOwnersReading.Read ?: return null
+        return when {
+            read.confirmations >= read.threshold ->
+                "Its confirmations reach the threshold now: approving it is no longer needed. Go back to execute it."
+            read.owners.any { it.owner == review.account && it.confirms } ->
+                "This owner has confirmed it meanwhile: approving it is no longer needed."
+            else -> null
+        }
     }
 
     private fun confirmationsText(context: Context, quote: SafeExecutionQuote): String =

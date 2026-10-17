@@ -14,7 +14,17 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.AccountChoice
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SEND_AMOUNT_TAG
+import eth.serotine.ui.components.SEND_ASSET_TAG
+import eth.serotine.ui.components.SEND_RECIPIENT_TAG
+import eth.serotine.ui.components.SEND_REVIEW_TAG
+import eth.serotine.ui.components.SEND_TO_TAG
+import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
