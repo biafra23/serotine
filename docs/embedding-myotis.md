@@ -204,8 +204,8 @@ consumer developed against an unreleased engine, Myotis's
 
 Part 11 of `feature/wallet-ux` adds the engine's half of a transfer: four
 adapters over `VerifiedReads` and `EnsApi`, behind domain ports, all on a
-`TransactingChain` seam that extends `VerifiedChain`. The screens come with
-the next part. Every read is made only while the light client can verify reads
+`TransactingChain` seam that extends `VerifiedChain`, which the Send screens
+(docs/wallet-ux.md, screens 7 to 9) put to use. Every read is made only while the light client can verify reads
 at its head; the broadcast is the engine's to judge (it does so on verified
 state). All of it runs on the adapters' dispatcher, and an engine that fails,
 or a `CancellationException` its own code throws, is no answer, as for every
@@ -216,7 +216,9 @@ verified read.
     plus the sends this node made that are not mined yet, so a second transfer
     right after a first does not reuse its nonce. That record is the engine's
     memory, gone with the process and expiring; the app's own record of sent
-    transfers comes with the Send screens.
+    transfers (`SentTransfers`, kept in `sent-transfers.json` beside the account
+    list) covers a restart: `QuoteTransfer` never quotes below its last unmined
+    nonce plus one.
   - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
     50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
     median of its percentile, never below 0.001 gwei and never below the

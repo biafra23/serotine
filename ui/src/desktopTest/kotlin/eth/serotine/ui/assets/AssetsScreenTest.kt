@@ -110,6 +110,20 @@ class AssetsScreenTest {
         rule.onNodeWithText("Rename").assertDoesNotExist()
     }
 
+    @Test
+    fun sendIsInTheMenuOfAnAccountWhoseKeyIsHeldHereOnly() {
+        show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
+
+        rule.onNodeWithText("Savings").performTouchInput { longClick() }
+        rule.onNodeWithText("Receive").assertIsDisplayed()
+        rule.onNodeWithText("Send").assertDoesNotExist()
+        rule.onNodeWithText("Receive").performClick()
+        rule.onNodeWithText("Daily").performTouchInput { longClick() }
+        rule.onNodeWithText("Send").performClick()
+
+        assertEquals(listOf(AccountAction.Receive(savings.address), AccountAction.Send(daily.address)), actions)
+    }
+
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun aRightClickOpensTheSameMenu() {

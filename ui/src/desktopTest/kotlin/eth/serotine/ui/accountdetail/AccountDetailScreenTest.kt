@@ -41,6 +41,7 @@ class AccountDetailScreenTest {
             AccountDetailScreen(
                 state,
                 onBack = { events += "back" },
+                onSend = { events += "send $it" },
                 onReceive = { events += "receive" },
                 onCopy = { events += "copy $it" },
                 onRename = { events += "rename" },
@@ -96,6 +97,38 @@ class AccountDetailScreenTest {
 
         assertEquals(listOf("receive", "copy ${ready.address}", "rename", "remove"), events)
         rule.onNodeWithText("Address copied").assertIsDisplayed()
+    }
+
+    @Test
+    fun anAccountWhoseKeyIsHeldHereSendsFromItsButtonAndFromAnAssetsMenu() {
+        val contract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+        show(
+            ready.copy(
+                control = Control.FULL_CONTROL,
+                assets = listOf(
+                    AssetRow("ETH", "Ether", "1.5 ETH", "eth", verified = true),
+                    AssetRow("USDC", "USDC", "5 USDC", "usdc", verified = true, contract = contract),
+                ),
+            ),
+        )
+
+        rule.onNodeWithText("Send").performClick()
+        rule.onNodeWithText("5 USDC").performTouchInput { longClick() }
+        rule.onNodeWithText("Send USDC").performClick()
+        rule.onNodeWithText("1.5 ETH").performTouchInput { longClick() }
+        rule.onNodeWithText("Send ETH").performClick()
+
+        assertEquals(listOf("send null", "send $contract", "send null"), events)
+    }
+
+    @Test
+    fun aWatchOnlyAccountHasNoSend() {
+        show(ready.copy(assets = listOf(AssetRow("USDC", "USDC", "5 USDC", "usdc", verified = true, contract = "0x1"))))
+
+        rule.onNodeWithText("Send").assertDoesNotExist()
+        rule.onNodeWithText("5 USDC").performTouchInput { longClick() }
+        rule.onNodeWithText("Hide token").assertIsDisplayed()
+        rule.onNodeWithText("Send USDC").assertDoesNotExist()
     }
 
     @Test

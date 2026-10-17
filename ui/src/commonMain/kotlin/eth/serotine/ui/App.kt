@@ -28,12 +28,14 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.dialog
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import eth.serotine.domain.model.Address
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
@@ -47,9 +49,11 @@ import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
 import eth.serotine.ui.security.SecurityRoute
+import eth.serotine.ui.send.SendRoute
 import eth.serotine.ui.settings.SettingsRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
+import eth.serotine.ui.transferstatus.TransferStatusRoute
 import eth.serotine.ui.update.UpdateRequiredRoute
 import eth.serotine.ui.update.UpdateRequiredUiState
 import eth.serotine.ui.update.UpdateRequiredViewModel
@@ -196,6 +200,7 @@ private fun Destinations(
                     viewModel = viewModel { graph.accountDetailViewModel(address) },
                     onBack = { navController.leave(Destination.ACCOUNT) },
                     onGone = { navController.leave(Destination.ACCOUNT) },
+                    onSend = { contract -> navController.send(address.hex, contract) },
                     onReceive = { navController.open(AccountAction.Receive(address.hex)) },
                     onRename = { navController.open(AccountAction.Rename(address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(address.hex)) },
@@ -274,6 +279,46 @@ private fun Destinations(
                 onImported = { navController.leave(Destination.MNEMONIC_IMPORT) },
             )
         }
+        // Send, and then where the transfer stands: the transaction's flow, over the bar too.
+        composable(
+            SEND_ROUTE,
+            arguments = listOf(
+                navArgument(ASSET) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val asked = entry.savedStateHandle.get<String>(ASSET)
+            val asset = asked?.let(Address::parse)
+            if (address != null && (asked == null || asset != null)) {
+                SendRoute(
+                    viewModel = viewModel { graph.sendViewModel(address, asset) },
+                    onBack = { navController.popBackStack(SEND_ROUTE, inclusive = true) },
+                    // Back from the status goes where Send was opened from, not to a signed review.
+                    onSent = { hash ->
+                        navController.navigate("${Destination.TRANSFER}/$hash") {
+                            popUpTo(SEND_ROUTE) { inclusive = true }
+                        }
+                    },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SEND_ROUTE, inclusive = true) }
+            }
+        }
+        composable(TRANSFER_ROUTE) { entry ->
+            val hash = entry.savedStateHandle.get<String>(HASH)?.lowercase()?.takeIf(TRANSACTION_HASH::matches)
+            if (hash != null) {
+                TransferStatusRoute(
+                    viewModel = viewModel { graph.transferStatusViewModel(hash) },
+                    onDone = { navController.popBackStack(TRANSFER_ROUTE, inclusive = true) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(TRANSFER_ROUTE, inclusive = true) }
+            }
+        }
         // Outside the tabs too, and alone on the back stack while it is shown.
         composable(Destination.UPDATE_REQUIRED) {
             UpdateRequiredRoute(viewModel = update)
@@ -284,6 +329,7 @@ private fun Destinations(
 /** Opens what [action] asks for; Copy is the screen's own, done on the clipboard. */
 private fun NavController.open(action: AccountAction) {
     val route = when (action) {
+        is AccountAction.Send -> return send(action.address, asset = null)
         is AccountAction.Open -> Destination.ACCOUNT
         is AccountAction.Receive -> Destination.RECEIVE
         is AccountAction.Rename -> Destination.RENAME
@@ -296,6 +342,18 @@ private fun NavController.open(action: AccountAction) {
     // The route carries the address in lower case: an identifier, never display text.
     val address = Address.parse(action.address) ?: return
     navigate("$route/${address.hex}")
+}
+
+/**
+ * Opens Send from the account at [address], with the token at [asset] chosen (null: the
+ * network's currency). The route carries both in lower case: identifiers, never display text.
+ */
+private fun NavController.send(address: String, asset: String?) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == SEND_ROUTE) return
+    val from = Address.parse(address) ?: return
+    val token = asset?.let { Address.parse(it) ?: return }
+    navigate("${Destination.SEND}/${from.hex}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
 }
 
 /**
@@ -354,11 +412,28 @@ private object Destination {
     const val ADD_TOKEN = "add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
     const val CREATE_ACCOUNT = "create-account"
+    const val SEND = "send"
+    const val TRANSFER = "transfer"
     const val UPDATE_REQUIRED = "update-required"
 }
 
 /** The route argument every account destination carries. */
 private const val ADDRESS = "address"
+
+/** Send's optional route argument: the contract of the token chosen. */
+private const val ASSET = "asset"
+
+/** The transfer status's route argument: the transaction hash. */
+private const val HASH = "hash"
+
+/** Send from an account, with a token chosen or not. */
+private const val SEND_ROUTE = "${Destination.SEND}/{$ADDRESS}?$ASSET={$ASSET}"
+
+/** Where a transfer stands, by its hash. */
+private const val TRANSFER_ROUTE = "${Destination.TRANSFER}/{$HASH}"
+
+/** A transaction hash as a route carries it: `0x` and 64 lower-case hex digits. */
+private val TRANSACTION_HASH = Regex("^0x[0-9a-f]{64}$")
 
 /** From this width on, the tabs are a rail at the side instead of a bar at the bottom. */
 private val WIDE_WINDOW = 840.dp

@@ -94,6 +94,7 @@ private fun AccountDetailPreview(state: AccountDetailUiState, darkTheme: Boolean
         AccountDetailScreen(
             state = state,
             onBack = {},
+            onSend = {},
             onReceive = {},
             onCopy = {},
             onRename = {},

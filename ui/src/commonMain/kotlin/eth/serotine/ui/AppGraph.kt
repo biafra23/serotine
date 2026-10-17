@@ -4,16 +4,22 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
+import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
+import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
+import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -30,15 +36,20 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.QuoteTransfer
+import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.SetDisplayCurrency
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.WalletChanges
@@ -53,8 +64,10 @@ import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
 import eth.serotine.ui.security.SecurityViewModel
+import eth.serotine.ui.send.SendViewModel
 import eth.serotine.ui.settings.SettingsViewModel
 import eth.serotine.ui.tokens.TokensViewModel
+import eth.serotine.ui.transferstatus.TransferStatusViewModel
 import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchViewModel
 
@@ -96,6 +109,21 @@ class AppGraph(
      * one instance per process, shared with them.
      */
     private val knownUpgrades: KnownUpgradeStore,
+    /** What a transfer needs from the chain before it is signed, verified by that light client. */
+    private val transactionInputs: TransactionInputs,
+    /** Hands a signed transfer to that light client's peers. */
+    private val broadcaster: Broadcaster,
+    /** A sent transfer's receipt, verified by that light client. */
+    private val receipts: ReceiptTracker,
+    /** ENS names, resolved by that light client against finalized state. */
+    private val names: NameResolver,
+    /**
+     * Signs with the keys held in [keys]: the key adapter's signer, the same instance as [keys],
+     * whose calls take turns (docs/keys-and-signing.md).
+     */
+    private val signer: Signer,
+    /** The transfers this wallet signed, kept across restarts. */
+    private val sentTransfers: SentTransfers,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
@@ -122,6 +150,24 @@ class AppGraph(
             SetTokenHidden(userTokens),
             network,
         )
+
+    /** Send from the account at [from], with the token at [asset] chosen (null: the network's currency). */
+    fun sendViewModel(from: Address, asset: Address?): SendViewModel = SendViewModel(
+        from,
+        asset,
+        ObserveAccounts(accounts),
+        accountValue(),
+        DescribeKeyStore(keys),
+        ResolveRecipient(names),
+        QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
+        SendTransfer(signer, broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster),
+        network,
+    )
+
+    /** Where the transfer [hash] stands. */
+    fun transferStatusViewModel(hash: String): TransferStatusViewModel =
+        TransferStatusViewModel(hash, ObserveSentTransfer(sentTransfers, receipts), network)
 
     fun receiveViewModel(address: Address): ReceiveViewModel =
         ReceiveViewModel(address, ObserveAccount(accounts), network)

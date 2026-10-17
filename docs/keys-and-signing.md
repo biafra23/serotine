@@ -190,8 +190,11 @@ its KDoc and returns it as a result the UI shows as state.
   32-byte digest as given, never hashed again, with libsecp256k1 (a low s, RFC
   6979's nonce) and finds the recovery id by recovering the public key. The seed, the key and the password's bytes are
   zeroed before it returns (rule 7); a wrong password, a missing key and an
-  envelope this device cannot open are results, never exceptions. Its consumers
-  arrive with sending and Safe transactions, later parts of `feature/wallet-ux`.
+  envelope this device cannot open are results, never exceptions. Send
+  (docs/wallet-ux.md, screens 7 to 9) is its first consumer: the review takes
+  the password under rule 8's protections, or offers the biometric prompt where
+  the path is on, and the signer signs the quoted transaction's EIP-1559 digest.
+  Safe transactions follow in a later part of `feature/wallet-ux`.
 - **Biometric unlock** (rules 3 to 5), the user's opt-in in Settings → Security,
   on Android:
   - `HW_bio` is `AndroidBiometricKey`: an RSA-2048 pair in the Keystore,

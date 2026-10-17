@@ -38,8 +38,8 @@ rule in code.
   in it can ever import `android.*` (and that variant emits Java 17 class
   files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
-  `KeyStore`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
-  `DisplayCurrencySetting`, and `NativeBalances`, `TokenBalances`,
+  `KeyStore` and `Signer`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
+  `DisplayCurrencySetting`, `SentTransfers`, and `NativeBalances`, `TokenBalances`,
   `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient`,
   `NetworkUpgrades`, and for sending `TransactionInputs`, `Broadcaster`,
   `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine) and
@@ -68,8 +68,8 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe`, `settings`, `files`) |
-| `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe`, `settings`, `transfers`, `files`) |
+| `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `transferstatus` follows a transfer once sent) |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu) and the display helpers they share (EIP-55, amounts, the light client's line, the seed screens' password step); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |
 | `eth.serotine.ui.theme` | Material 3 theme |

@@ -93,45 +93,78 @@ upgrades*).
 2. **FAB fan-out**: Watch address (10) · Import recovery phrase (11) · Create
    account (12) · Create Safe (13). Create Safe appears once the user holds
    an EOA's key: an EOA pays for the deployment.
-3. **Account menu**: Send (absent when watch-only) · Receive · Copy address ·
+3. **Account menu**: Send (absent when watch-only, and for a Safe until Safe
+   transactions exist: its transfers are those) · Receive · Copy address ·
    Rename · Remove. Removing an account the user holds a key for says that
    only its recovery phrase brings it back; the key store deletes an envelope
    only once no remaining account derives from it.
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send and Receive buttons.
+   - Send and Receive buttons (Send absent as in 3).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
      long press opens 5.
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
-5. **Asset menu**: Send ‹symbol› (7 with the asset chosen) · Copy contract
-   address · Hide token.
+5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; absent as in 3) ·
+   Copy contract address · Hide token. The native currency's row has the menu
+   too, with Send alone.
 6. **Receive**: a QR code of the EIP-55 address, "Only send Sepolia assets"
    (for a Safe: "This Safe exists only on Sepolia"), Copy and Share.
 7. **Send, compose**
    - From: the account, fixed.
-   - Asset: the account's assets, the one from 5 preselected.
-   - To: an address, an ENS name or one of the user's accounts; the blockie
-     appears once the input parses as an address or resolves. The zero
-     address, and for a token the token's own contract, are refused: nobody
-     can ever move out what is sent there.
-   - Amount, with Max and a fiat hint.
+   - Asset: the account's assets — its native currency and the tokens it
+     holds — each with its verified balance and block; the one from 5
+     preselected (shown whatever its balance, and said when it is not among
+     the account's tokens).
+   - To: an address, an ENS name or one of the user's accounts (offered as
+     chips); the blockie appears once the input parses as an address or
+     resolves. The address is checked at the input as everywhere; a name is
+     resolved once the typing pauses, against finalized state, and says the
+     block it was resolved at. Why a name does not resolve is said (no
+     address, off-chain only, not a name this build resolves, or not
+     verifiable right now, with Try again). The zero address, and for a
+     token the token's own contract, are refused: nobody can ever move out
+     what is sent there.
+   - Amount, in the asset's units and decimals, with Max (the whole verified
+     balance; for the native currency the quote then says the fee does not
+     fit) and a fiat hint beside it ("≈ $40.00 · testnet prices"), the
+     verified balance's value scaled to the amount: display only.
    - Fee: Slow | Normal | Fast, from the verified fee history.
+   - Review quotes the transfer; a refusal (not enough of the asset or for
+     the fee, the call reverts, not a token, not synced, not verifiable) is
+     said here and nothing is signed.
 8. **Send, review**
-   - The amount in token units; the recipient in full, with its blockie and
-     the ENS name it was resolved from.
-   - The most the fee can be (gas limit × max fee per gas).
+   - The amount in token units, exact; the recipient in full, with its
+     blockie, the ENS name it was resolved from and its name in the wallet.
+   - The most the fee can be (gas limit × max fee per gas), and the level,
+     gas and fee cap it is made of.
    - A verified simulation: the transfer run as a verified call from the
-     sender against the head, and the balance before → after. A call that
-     reverts stops here, before anything is signed.
-   - The password field, or the biometric prompt where the user enabled it,
-     then Sign and send.
-9. **Send, status**: Signed → Broadcast → Included (receipt verified) →
-   Finalized (its block at or below the engine's finalized head), each step
-   with its block.
+     sender against the head, and the balance before → after, each with the
+     block it was verified at (the native balance "at least", net of the most
+     the fee can be; for a token, its balance and the native one that pays
+     the fee), and what earlier transfers not mined yet may still take. A
+     call that reverts stops at 7, before anything is signed.
+   - The quote is never signed stale: it is made when the review is entered,
+     again on Refresh and when the screen is shown again after it was not,
+     a name is resolved again with every quote (one that moved is said, not
+     signed), and back to 7 drops it.
+   - The password field, or the biometric prompt where the user enabled it
+     ("Sign with fingerprint or face", the password the fallback), then Sign
+     and send. Each refusal is said: a wrong password, a dismissed prompt,
+     biometrics that cannot open the key now (use the password), no key, a
+     key store that cannot open it.
+   - Signed but not broadcast: said, and only the same signed bytes can be
+     sent again (Try again, when no peer took it); a transfer the engine
+     rejects on verified state is not offered again. Nothing is signed twice.
+9. **Send, status**: what was sent (amount, asset, recipient, from this
+   device's record), then Signed → Broadcast → Included (receipt verified,
+   its block; "it reverted" when it failed, its fee paid) → Finalized (its
+   block at or below the engine's finalized head). A receipt that cannot be
+   verified right now reads as such, never as pending. Done returns to where
+   Send was opened from.
 10. **Watch address**
     - An address or ENS name, and a name for the account.
     - A detection card built from verified code and storage: an EOA; an EOA
