@@ -1,5 +1,7 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.keys.fromHex
+import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading.Reason
@@ -12,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
+import org.kotlincrypto.hash.sha3.Keccak256
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class VerifiedAddressKindsTest {
@@ -56,5 +59,24 @@ class VerifiedAddressKindsTest {
             KindReading.Unavailable(Reason.NO_ENGINE),
             VerifiedAddressKinds(null, StandardTestDispatcher(testScheduler), 4.seconds).observeKind(address).first(),
         )
+    }
+
+    @Test
+    fun codeIsAcceptedOnlyWhenItHashesToTheProvenValue() {
+        val contract = "6080604052".fromHex()
+        val contractHash = "0x" + Keccak256().digest(contract).toHex()
+        var fetched = 0
+        val fetch = { fetched++; contract }
+
+        // An absent account and the empty hash have no code to fetch.
+        assertEquals(ProvenCode("", 5), provenCode(exists = false, null, 5, fetch))
+        assertEquals(ProvenCode("", 5), provenCode(exists = true, "0x" + EMPTY_CODE_HASH.uppercase(), 5, fetch))
+        assertEquals(0, fetched)
+
+        assertEquals(ProvenCode("6080604052", 5), provenCode(exists = true, contractHash, 5, fetch))
+        // The head moved and the code with it: not the proven code, so unproven.
+        assertEquals(null, provenCode(exists = true, "0x" + "ab".repeat(32), 5, fetch))
+        assertEquals(null, provenCode(exists = true, contractHash, 5) { null })
+        assertEquals(null, provenCode(exists = true, null, 5, fetch))
     }
 }

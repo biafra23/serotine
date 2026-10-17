@@ -3,7 +3,6 @@ package eth.serotine.data.engine
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.data.keys.fromHex
-import eth.serotine.data.keys.toHex
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
@@ -16,7 +15,6 @@ import io.myotis.api.ports.DnsServers
 import io.myotis.engine.Myotis
 import io.myotis.engine.ports.DefaultEnginePorts
 import kotlinx.coroutines.Dispatchers
-import org.kotlincrypto.hash.sha3.Keccak256
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -201,28 +199,19 @@ class MyotisNode private constructor() {
         }
 
         // The code hash comes with the account proof, labelled with its block; the code itself
-        // comes from the verified reads (which check it against a proven hash too) and must
-        // hash to the same value, or the head moved between the two reads and this round is
-        // unproven.
+        // from the verified reads; provenCode decides what of it is proven.
         override fun proveCode(address: Address): ProvenCode? {
             val handle = (state as? State.Running)?.handle ?: return null
             val account = handle.requestAccount(address.hex)
             if (account.failReason() != null || account.verifyMethod() == null) return null
-            val block = account.blockNumber()
-            if (!account.exists()) return ProvenCode("", block)
-            val codeHash = account.codeHashHex()?.removePrefix("0x")?.lowercase() ?: return null
-            if (codeHash == EMPTY_CODE_HASH) return ProvenCode("", block)
-            val code = handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest") ?: return null
-            if (Keccak256().digest(code).toHex() != codeHash) return null
-            return ProvenCode(code.toHex(), block)
+            return provenCode(account.exists(), account.codeHashHex(), account.blockNumber()) {
+                handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest")
+            }
         }
     }
 
     companion object {
         private val POLL_INTERVAL = 4.seconds
-
-        /** Keccak-256 of no code: the code hash of every account without code. */
-        private const val EMPTY_CODE_HASH = "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
 
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds

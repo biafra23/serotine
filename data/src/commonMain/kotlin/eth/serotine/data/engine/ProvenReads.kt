@@ -37,7 +37,8 @@ internal sealed interface EngineReading<out T> {
  * reading says so instead of keeping an old answer on screen.
  *
  * The last proof per address is shared by all subscribers, so one that re-subscribes on the
- * same head gets it at once instead of fetching it again. A device without an engine
+ * same head gets it at once instead of fetching it again; the [MAX_CACHED] most recently
+ * proven addresses are kept, so addresses only looked at (the Watch screen) do not pile up. A device without an engine
  * ([chain] null) and an engine that is down answer [Reason.NO_ENGINE] once and stop.
  * Whatever [prove] throws, and a null from it, become [Reason.UNPROVEN]: no answer from
  * anywhere else stands in.
@@ -84,7 +85,16 @@ internal class ProvenReads<T>(
             // Error (UnsatisfiedLinkError), not an Exception.
             null
         } ?: return EngineReading.Unavailable(Reason.UNPROVEN)
-        proofsLock.withLock { proofs[address] = head to proven }
+        proofsLock.withLock {
+            proofs.remove(address) // re-inserted last: the map's order is the order of proving
+            proofs[address] = head to proven
+            if (proofs.size > MAX_CACHED) proofs.remove(proofs.keys.first())
+        }
         return proven
+    }
+
+    private companion object {
+        /** Proofs kept: far more than the accounts a wallet shows at once. */
+        const val MAX_CACHED = 64
     }
 }
