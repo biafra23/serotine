@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -35,6 +36,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
@@ -70,8 +72,15 @@ import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_REPEAT_TAG
 import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
 import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
+import eth.serotine.ui.send.SEND_AMOUNT_REVIEWED_TAG
+import eth.serotine.ui.send.SEND_AMOUNT_TAG
+import eth.serotine.ui.send.SEND_PASSWORD_TAG
+import eth.serotine.ui.send.SEND_RECIPIENT_TAG
+import eth.serotine.ui.send.SEND_REVIEW_TAG
+import eth.serotine.ui.send.SEND_SIGN_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
 import eth.serotine.ui.tokens.TOKENS_ROW_TAG
+import eth.serotine.ui.transferstatus.TRANSFER_HASH_TAG
 import eth.serotine.ui.update.UPDATE_REQUIRED_TAG
 import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
 import eth.serotine.ui.watch.WATCH_NAME_TAG
@@ -119,6 +128,10 @@ class AppNavigationTest {
     private val userTokens = MemoryUserTokens()
     private val report = MutableStateFlow<NetworkUpgrade?>(null)
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+    private val nativeBalance = MutableStateFlow<BalanceReading>(BalanceReading.Syncing)
+    private val signer = FakeSigner()
+    private val broadcaster = FakeBroadcaster()
+    private val sentTransfers = MemorySentTransfers()
     private val graph = AppGraph(
         accounts = object : AccountRepository {
             override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
@@ -162,7 +175,7 @@ class AppNavigationTest {
             }
         },
         nativeBalances = object : NativeBalances {
-            override fun observeBalance(address: Address): Flow<BalanceReading> = flowOf(BalanceReading.Syncing)
+            override fun observeBalance(address: Address): Flow<BalanceReading> = nativeBalance
         },
         tokenCatalog = object : TokenCatalog {
             override fun observeTokens(): Flow<List<Token>> = flowOf(emptyList())
@@ -189,6 +202,12 @@ class AppNavigationTest {
             override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
             override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
         },
+        transactionInputs = FakeTransactionInputs(),
+        broadcaster = broadcaster,
+        receipts = FakeReceipts(),
+        names = FakeNames(),
+        signer = signer,
+        sentTransfers = sentTransfers,
         network = Network.SEPOLIA,
     )
 
@@ -197,6 +216,13 @@ class AppNavigationTest {
         AccountKind.EOA,
         "Daily",
         AccountCustody.InKeyStore,
+    )
+
+    private val savings = Account(
+        Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
+        AccountKind.EOA,
+        "Savings",
+        AccountCustody.Watched,
     )
 
     /** What the window (desktop) or the activity (Android) provides the [App] with. */
@@ -425,6 +451,48 @@ class AppNavigationTest {
         rule.onNodeWithText("Added: as its contract describes itself").assertIsDisplayed()
         rule.runOnIdle { navController.single().popBackStack() }
         rule.onNodeWithText("0 built in · 1 added").assertIsDisplayed()
+    }
+
+    @Test
+    fun anAccountSendsFromItsDetailThroughTheReviewToWhereTheTransferStands() {
+        accounts.value = listOf(daily, savings)
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Send").performClick()
+        // Over the bar, as every flow that ends in a transaction.
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        rule.onNodeWithText("Savings · 0xfB69…d359").performClick()
+        rule.onNodeWithTag(SEND_AMOUNT_TAG).performTextInput("0.1")
+        rule.onNodeWithTag(SEND_REVIEW_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(SEND_AMOUNT_REVIEWED_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithTag(SEND_AMOUNT_REVIEWED_TAG).assertTextEquals("0.1 ETH")
+        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        rule.onNodeWithTag(SEND_PASSWORD_TAG).performScrollTo().performTextInput("correct horse")
+        rule.onNodeWithTag(SEND_SIGN_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithText("Waiting for a block to include it").assertIsDisplayed()
+        val hash = sentTransfers.transfers.value.single().hash
+        rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(hash)
+        assertEquals(listOf("correct horse"), signer.passwords)
+        assertEquals(1, broadcaster.sent.size)
+        // The signed review is gone from the back stack: Done returns to the account.
+        assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
+        rule.onNodeWithText("Done").performScrollTo().performClick()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun aWatchOnlyAccountOffersNoSend() {
+        accounts.value = listOf(savings)
+        showApp()
+
+        rule.onNodeWithText("Savings").performClick()
+        rule.onNodeWithText("Receive").assertIsDisplayed()
+        rule.onNodeWithText("Send").assertDoesNotExist()
     }
 
     @Test

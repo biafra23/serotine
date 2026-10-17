@@ -159,6 +159,9 @@ kotlin {
                 // ViewModelStoreOwner of its screen's ViewModel, so leaving a screen
                 // clears its ViewModel (the seed screen relies on that).
                 implementation(libs.navigation.compose)
+                // System back on the Send review (back to compose, held while signing). It is in
+                // every build already, through navigation-compose; declared for its API.
+                implementation(libs.compose.ui.backhandler)
                 implementation(libs.material.icons.core)
                 // Keccak-256 for EIP-55, the checksum every address is shown and typed with
                 // (components/Eip55.kt): presentation, so it is computed here, not in :domain.

@@ -204,8 +204,8 @@ consumer developed against an unreleased engine, Myotis's
 
 Part 11 of `feature/wallet-ux` adds the engine's half of a transfer: four
 adapters over `VerifiedReads` and `EnsApi`, behind domain ports, all on a
-`TransactingChain` seam that extends `VerifiedChain`. The screens come with
-the next part. Every read is made only while the light client can verify reads
+`TransactingChain` seam that extends `VerifiedChain`, which the Send screens
+(docs/wallet-ux.md, screens 7 to 9) put to use. Every read is made only while the light client can verify reads
 at its head; the broadcast is the engine's to judge (it does so on verified
 state). All of it runs on the adapters' dispatcher, and an engine that fails,
 or a `CancellationException` its own code throws, is no answer, as for every
@@ -216,17 +216,34 @@ verified read.
     plus the sends this node made that are not mined yet, so a second transfer
     right after a first does not reuse its nonce. That record is the engine's
     memory, gone with the process and expiring; the app's own record of sent
-    transfers comes with the Send screens.
+    transfers (`SentTransfers`, kept in `sent-transfers.json` beside the account
+    list) covers a restart: `QuoteTransfer` never quotes below its last unmined
+    nonce plus one, nor below the mined count, and holds back what those
+    transfers may still take of the native balance and of the token's.
+    - A transfer is recorded once a peer took it. One no peer took holds no
+      nonce, so a later quote may take the same one, and only one of the two
+      can ever be mined.
+    - A record is forgotten once its nonce is mined, or three hours after a
+      peer took it if no block did (geth's transaction-pool lifetime, which
+      runs from that broadcast, a retry's included): kept, it would hold every
+      later transfer behind a nonce no block takes.
+    - A retry of a broadcast no peer answered may come back rejected because
+      the first broadcast reached a peer after all and a block used its
+      nonce. `RebroadcastTransfer` checks the verified receipt before it
+      believes the rejection, so such a transfer reads as sent, not as one
+      that can never be mined. A receipt that cannot be verified right now
+      leaves both verdicts open (`RejectionUnverified`): the review says so and
+      keeps Try again, which checks again, and offers no new transfer.
   - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
     50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
     median of its percentile, never below 0.001 gwei and never below the
     slower level's. The next base fee is the history's last; the fee cap is
     twice that plus the tip.
   - The gas is `estimateGasDetailed`, so a revert, an infeasible transfer and
-    a refusal are told apart. It is never taken below the transaction's
-    intrinsic gas (21000 plus Prague's calldata floor): probed on Sepolia, the
-    Rust engine estimates a zero-value transfer at 17433, which every node
-    would refuse.
+    a refusal are told apart. It is the engine's answer as it stands, priced
+    under the fork the chain runs: on Sepolia, Amsterdam since 2026-10-06, a
+    plain transfer estimates below the 21000 of earlier forks (EIP-2780;
+    17433 when probed), so Serotine adds no floor of its own.
   - The simulation is `callDetailed` from the sender at the head, the transfer
     as it will run.
 - **`EngineBroadcaster`** (`Broadcaster`): `sendRawTransactionDetailed`. The

@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -85,6 +86,7 @@ fun AccountDetailRoute(
     viewModel: AccountDetailViewModel,
     onBack: () -> Unit,
     onGone: () -> Unit,
+    onSend: (contract: String?) -> Unit,
     onReceive: () -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
@@ -102,6 +104,7 @@ fun AccountDetailRoute(
     AccountDetailScreen(
         state = state,
         onBack = onBack,
+        onSend = onSend,
         onReceive = onReceive,
         onCopy = rememberCopyText(),
         onRename = onRename,
@@ -116,14 +119,17 @@ fun AccountDetailRoute(
 
 /**
  * One account (docs/wallet-ux.md, screen 4) as a pure function of [state]: its blockie,
- * balance, address and control, Receive as a button, and Copy, Rename and Remove in the top
- * bar's menu, so none of them depends on the long press of the account list.
+ * balance, address and control, Send (where it can send) and Receive as buttons, and Copy,
+ * Rename and Remove in the top bar's menu, so none of them depends on the long press of the
+ * account list. [onSend] opens Send with the token at a contract chosen, or the network's
+ * currency (null).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountDetailScreen(
     state: AccountDetailUiState,
     onBack: () -> Unit,
+    onSend: (contract: String?) -> Unit,
     onReceive: () -> Unit,
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
@@ -191,6 +197,7 @@ fun AccountDetailScreen(
                 )
                 is AccountDetailUiState.Ready -> Details(
                     state,
+                    onSend,
                     onReceive,
                     copy,
                     onCopyContract = { contract ->
@@ -209,6 +216,7 @@ fun AccountDetailScreen(
 @Composable
 private fun Details(
     state: AccountDetailUiState.Ready,
+    onSend: (String?) -> Unit,
     onReceive: () -> Unit,
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
@@ -260,6 +268,13 @@ private fun Details(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (state.canSend) {
+                FilledTonalButton(onClick = { onSend(null) }) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Send")
+                }
+            }
             FilledTonalButton(onClick = onReceive) {
                 Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
@@ -272,7 +287,7 @@ private fun Details(
             SafeOwners(safe)
         } else {
             SortChoice(state.sort, onSort)
-            Assets(state, onCopyContract, onHideToken)
+            Assets(state, onSend, onCopyContract, onHideToken)
         }
     }
 }
@@ -284,25 +299,25 @@ private fun Details(
 @Composable
 private fun Assets(
     state: AccountDetailUiState.Ready,
+    onSend: (String?) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.assets.forEach { asset ->
             val contract = asset.contract
-            if (contract == null) {
+            // Long press (right click): docs/wallet-ux.md, screen 5. Each action is also behind a
+            // visible button: Send above (the asset chosen there), the others in Settings → Tokens.
+            val actions = listOfNotNull(
+                MenuAction("Send ${asset.symbol}", Icons.AutoMirrored.Filled.Send) { onSend(contract) }
+                    .takeIf { state.canSend },
+                contract?.let { MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(it) } },
+                contract?.let { MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) } },
+            )
+            if (actions.isEmpty()) {
                 AssetItem(asset)
             } else {
-                // Long press (right click): docs/wallet-ux.md, screen 5. Both actions are also
-                // in Settings → Tokens, behind a visible button. (Send arrives with sending.)
-                WithActionMenu(
-                    actions = listOf(
-                        MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(contract) },
-                        MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) },
-                    ),
-                    menuLabel = "Actions for ${asset.symbol}",
-                    onClick = {},
-                ) {
+                WithActionMenu(actions = actions, menuLabel = "Actions for ${asset.symbol}", onClick = {}) {
                     AssetItem(asset)
                 }
             }

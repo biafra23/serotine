@@ -37,7 +37,16 @@ sealed interface AccountDetailUiState {
         val segment: DetailSegment = DetailSegment.ASSETS,
         val kindNote: String? = null,
         val threshold: String? = null,
-    ) : AccountDetailUiState
+    ) : AccountDetailUiState {
+
+        /**
+         * Whether Send is offered: for an account whose key is held here. Never for a watch-only
+         * one (docs/wallet-ux.md, *Control is a badge*), and not yet for a Safe, whose transfers
+         * are Safe transactions its owners sign.
+         */
+        val canSend: Boolean
+            get() = kind == AccountKind.EOA && control == Control.FULL_CONTROL
+    }
 
     /** The account is not in the wallet (removed): the screen leaves. */
     data object Gone : AccountDetailUiState

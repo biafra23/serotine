@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -248,7 +249,7 @@ private fun AccountList(
     LazyColumn(modifier.fillMaxSize().testTag(ASSETS_ACCOUNT_LIST_TAG)) {
         items(accounts, key = { it.address }) { account ->
             WithActionMenu(
-                actions = accountMenu(account.address, onAccountAction),
+                actions = accountMenu(account, onAccountAction),
                 menuLabel = "Actions for ${account.label}",
                 onClick = { onAccountAction(AccountAction.Open(account.address)) },
             ) {
@@ -259,13 +260,21 @@ private fun AccountList(
     }
 }
 
-/** The long-press menu of an account row: docs/wallet-ux.md, screen 3 (Send arrives with sending). */
-private fun accountMenu(address: String, act: (AccountAction) -> Unit): List<MenuAction> = listOf(
-    MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(address)) },
-    MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(address)) },
-    MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(address)) },
-    MenuAction("Remove", Icons.Filled.Delete, destructive = true) { act(AccountAction.Remove(address)) },
-)
+/**
+ * The long-press menu of an account row: docs/wallet-ux.md, screen 3. Send only where the
+ * account can send ([AccountItem.canSend]); its detail screen has the same as buttons.
+ */
+private fun accountMenu(account: AccountItem, act: (AccountAction) -> Unit): List<MenuAction> {
+    val address = account.address
+    return listOfNotNull(
+        MenuAction("Send", Icons.AutoMirrored.Filled.Send) { act(AccountAction.Send(address)) }
+            .takeIf { account.canSend },
+        MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(address)) },
+        MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(address)) },
+        MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(address)) },
+        MenuAction("Remove", Icons.Filled.Delete, destructive = true) { act(AccountAction.Remove(address)) },
+    )
+}
 
 @Composable
 private fun AccountRow(account: AccountItem) {

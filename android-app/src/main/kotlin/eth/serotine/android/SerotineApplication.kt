@@ -18,6 +18,7 @@ import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
+import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowUpgradeReports
@@ -60,18 +61,20 @@ class SerotineApplication : Application() {
     }
 
     val graph: AppGraph by lazy {
+        // Imported seeds in envelopes under the app's private files, the hardware factor a
+        // Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers. The
+        // biometric path's key prompts on the activity in front. One instance is both the key
+        // store and the signer, so that their calls take turns.
+        val keyStore = EnvelopeKeyStore(
+            filesDir.resolve("keys").path,
+            AndroidKeystoreSecret(),
+            biometricKey = AndroidBiometricKey(this, PlatformBiometricPrompter { foreground.current }),
+        )
         AppGraph(
             // The account list in the app's private files, which the manifest keeps out of
             // backups and device transfers; addresses and labels only, no keys.
             accounts = FileAccountRepository(filesDir.resolve("accounts.json").path),
-            // Imported seeds in envelopes under the app's private files, the hardware factor
-            // a Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers.
-            // The biometric path's key prompts on the activity in front.
-            keys = EnvelopeKeyStore(
-                filesDir.resolve("keys").path,
-                AndroidKeystoreSecret(),
-                biometricKey = AndroidBiometricKey(this, PlatformBiometricPrompter { foreground.current }),
-            ),
+            keys = keyStore,
             nativeBalances = node.nativeBalances,
             tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
             tokenBalances = node.tokenBalances,
@@ -83,6 +86,14 @@ class SerotineApplication : Application() {
             lightClient = node.lightClient,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
+            transactionInputs = node.transactionInputs,
+            broadcaster = node.broadcaster,
+            receipts = node.receipts,
+            names = node.names,
+            signer = keyStore,
+            // The transfers signed here, with their signed bytes (public once broadcast, no key in
+            // them), beside the account list in the app's private files.
+            sentTransfers = FileSentTransfers(filesDir.resolve("sent-transfers.json").path),
             network = Network.SEPOLIA,
         )
     }

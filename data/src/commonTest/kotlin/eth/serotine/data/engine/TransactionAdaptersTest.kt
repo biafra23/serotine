@@ -173,6 +173,20 @@ class TransactionAdaptersTest {
     }
 
     @Test
+    fun theMinedCountIsItsOwnVerifiedRead() = runTest {
+        synced()
+        chain.nonce = 9
+        chain.mined = 7
+        assertEquals(NonceReading.Read(7), inputs().minedNonce(alice), "latest, not the pending count")
+        chain.mined = null
+        assertEquals(NonceReading.Unavailable(ReadUnavailable.UNPROVEN), inputs().minedNonce(alice))
+        chain.mined = -1
+        assertEquals(NonceReading.Unavailable(ReadUnavailable.UNPROVEN), inputs().minedNonce(alice))
+        chain.base.snapshot = EngineSnapshot.Down
+        assertEquals(NonceReading.Unavailable(ReadUnavailable.NO_ENGINE), inputs().minedNonce(alice))
+    }
+
+    @Test
     fun anEngineThatFailsHasNoAnswerNotACrash() = runTest {
         synced()
         chain.failure = Error("native library broken")

@@ -14,6 +14,7 @@ import eth.serotine.data.keys.desktopPasswordOnlyProtection
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
+import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowUpgradeReports
@@ -104,12 +105,14 @@ private fun openWallet(dataDir: File) {
             }
         }
         val graph = remember {
+            // A Mac's Secure Enclave where the wallet uses it or can start to, the password
+            // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
+            // (the owner's rulings of 2026-10-15 and -16). One instance is both the key store
+            // and the signer, so that their calls take turns.
+            val keyStore = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection())
             AppGraph(
                 accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
-                // A Mac's Secure Enclave where the wallet uses it or can start to, the
-                // password alone otherwise, and on Windows and Linux saying that their TPM is
-                // not used yet (the owner's rulings of 2026-10-15 and -16).
-                keys = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection()),
+                keys = keyStore,
                 nativeBalances = node.nativeBalances,
                 tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
                 tokenBalances = node.tokenBalances,
@@ -121,6 +124,13 @@ private fun openWallet(dataDir: File) {
                 lightClient = node.lightClient,
                 networkUpgrades = node.networkUpgrades,
                 knownUpgrades = knownUpgrades,
+                transactionInputs = node.transactionInputs,
+                broadcaster = node.broadcaster,
+                receipts = node.receipts,
+                names = node.names,
+                signer = keyStore,
+                // The transfers signed here, with their signed bytes (public once broadcast).
+                sentTransfers = FileSentTransfers(dataDir.resolve("sent-transfers.json").path),
                 network = Network.SEPOLIA,
             )
         }

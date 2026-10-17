@@ -30,6 +30,11 @@ class EngineTransactionInputs internal constructor(
             ?: NonceReading.Unavailable(ReadUnavailable.UNPROVEN)
     }
 
+    override suspend fun minedNonce(account: Address): NonceReading = ask(NonceReading::Unavailable) { chain ->
+        chain.minedNonce(account)?.takeIf { it >= 0 }?.let(NonceReading::Read)
+            ?: NonceReading.Unavailable(ReadUnavailable.UNPROVEN)
+    }
+
     override suspend fun fees(): FeeReading = ask(FeeReading::Unavailable) { chain ->
         chain.feeHistory(FEE_BLOCKS, EngineJson.PERCENTILES)?.let(EngineJson::feeQuote)?.let(FeeReading::Quoted)
             ?: FeeReading.Unavailable(ReadUnavailable.UNPROVEN)
