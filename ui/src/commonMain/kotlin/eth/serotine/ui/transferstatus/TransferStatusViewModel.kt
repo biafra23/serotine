@@ -69,26 +69,22 @@ class TransferStatusViewModel(
     )
 
     /**
-     * Lists the Safe [status] deployed once its receipt says it succeeded in a block, and again
-     * after a check that could not be verified.
+     * Lists the Safe [status] deployed once its receipt says it succeeded in a block (the use case
+     * waits for the light client, and tries again itself while it cannot verify the Safe).
      */
     private fun listOnceMined(status: SentTransferStatus) {
         val deployment = status.transfer?.action as? SentAction.SafeDeployment ?: return
         if (!succeeded(status.progress)) return
-        val current = listing.value
-        val again = current is Listing.Done && current.listing is DeployedSafeListing.NotVerified
-        if (current != Listing.Idle && !again) return
-        if (listingJob?.isActive == true) return
+        if (listing.value != Listing.Idle || listingJob?.isActive == true) return
         listing.value = Listing.Running
         listingJob = viewModelScope.launch {
-            val listed = try {
-                listDeployedSafe(deployment)
+            listing.value = try {
+                Listing.Done(listDeployedSafe(deployment))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                DeployedSafeListing.NotVerified(ReadUnavailable.UNPROVEN) // the use case promises not to throw
+                Listing.Idle // the use case promises not to throw; the backstop: tried again on the next receipt
             }
-            listing.value = Listing.Done(listed)
         }
     }
 
@@ -161,8 +157,6 @@ class TransferStatusViewModel(
                 is DeployedSafeListing.AlreadyInWallet -> "In your wallet as ${done.account.label}." to false
                 DeployedSafeListing.NotTheSafe -> "The address does not hold the Safe deployed, as the light " +
                     "client verifies it, so it was not added to your wallet." to true
-                is DeployedSafeListing.NotVerified ->
-                    "The new Safe cannot be verified right now, so it is not listed yet: Serotine tries again." to false
                 DeployedSafeListing.NotSaved -> "Your account list cannot be saved right now, so the Safe was not " +
                     "added: add it with Watch address." to true
             }

@@ -21,8 +21,11 @@ import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlin.random.Random
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * One owner of a Safe being created (docs/wallet-ux.md, screen 13): an [Account] — an externally
@@ -177,7 +180,11 @@ class PlanSafe(
 /** The bytes of a salt nonce: a whole uint256. */
 private const val SALT_NONCE_BYTES = 32
 
-/** A salt nonce no earlier plan used: 256 random bits. */
+/**
+ * A fresh salt nonce: 32 bytes of the platform's default random generator. It needs no secrecy,
+ * only to differ between plans; were two plans of the same owners ever to meet, the second is
+ * refused before signing ([SafeDeploymentRefusal.AlreadyDeployed]).
+ */
 private fun randomSaltNonce(): UInt256 = UInt256.fromBigEndian(Random.nextBytes(SALT_NONCE_BYTES))
 
 /** The outcome of [PlanSafe]. */
@@ -362,26 +369,32 @@ class DeploySafe(
  * proves code at its address — it waits for that, as long as it is asked to — a Safe with the
  * deployment's owners and threshold is watched ([WatchAddress], which detects it again and adds
  * it as a Safe, named as the deployment says). Anything else at the address is not listed. Its
- * owners held here make it a Safe this wallet can act for, as any watched Safe.
+ * owners held here make it a Safe this wallet can act for, as any watched Safe. A detection that
+ * cannot be verified again when it is watched is tried again after [retryDelay], for as long as
+ * it is asked to.
  */
 class ListDeployedSafe(
     private val kinds: AddressKinds,
     private val watchAddress: WatchAddress,
+    private val retryDelay: Duration = 12.seconds,
 ) {
     suspend operator fun invoke(deployment: SentAction.SafeDeployment): DeployedSafeListing {
-        // Codeless until the head the light client verifies includes the deployment's block.
-        val reading = kinds.observeKind(deployment.safe)
-            .first { it is KindReading.Verified && it.kind != AddressKind.Eoa } as KindReading.Verified
-        val state = (reading.kind as? AddressKind.Safe)?.state ?: return DeployedSafeListing.NotTheSafe
-        if (state.owners.toSet() != deployment.owners.toSet() || state.threshold != deployment.threshold) {
-            return DeployedSafeListing.NotTheSafe
-        }
-        return when (val watch = watchAddress(deployment.safe, deployment.label)) {
-            is AddressWatch.Added -> DeployedSafeListing.Listed(watch.account)
-            is AddressWatch.AlreadyInWallet -> DeployedSafeListing.AlreadyInWallet(watch.account)
-            AddressWatch.Contract -> DeployedSafeListing.NotTheSafe
-            is AddressWatch.NotVerified -> DeployedSafeListing.NotVerified(watch.reason)
-            AddressWatch.NameTooLong, AddressWatch.NotSaved -> DeployedSafeListing.NotSaved
+        while (true) {
+            // Codeless until the head the light client verifies includes the deployment's block.
+            val reading = kinds.observeKind(deployment.safe)
+                .first { it is KindReading.Verified && it.kind != AddressKind.Eoa } as KindReading.Verified
+            val state = (reading.kind as? AddressKind.Safe)?.state ?: return DeployedSafeListing.NotTheSafe
+            if (state.owners.toSet() != deployment.owners.toSet() || state.threshold != deployment.threshold) {
+                return DeployedSafeListing.NotTheSafe
+            }
+            when (val watch = watchAddress(deployment.safe, deployment.label)) {
+                is AddressWatch.Added -> return DeployedSafeListing.Listed(watch.account)
+                is AddressWatch.AlreadyInWallet -> return DeployedSafeListing.AlreadyInWallet(watch.account)
+                AddressWatch.Contract -> return DeployedSafeListing.NotTheSafe
+                AddressWatch.NameTooLong, AddressWatch.NotSaved -> return DeployedSafeListing.NotSaved
+                // Proven a moment ago, not now (a head moved past the proof, the light client stalled).
+                is AddressWatch.NotVerified -> delay(retryDelay)
+            }
         }
     }
 }
@@ -397,9 +410,6 @@ sealed interface DeployedSafeListing {
 
     /** The address holds something other than the Safe deployed: not listed. */
     data object NotTheSafe : DeployedSafeListing
-
-    /** Its kind could not be verified again right now ([reason]; null: syncing): not listed yet. */
-    data class NotVerified(val reason: ReadUnavailable?) : DeployedSafeListing
 
     /** The account list could not be saved, or cannot be read: not listed. */
     data object NotSaved : DeployedSafeListing

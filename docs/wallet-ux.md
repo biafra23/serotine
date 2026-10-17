@@ -257,9 +257,11 @@ upgrades*).
       Safe is listed through `ListDeployedSafe`: it waits until the light
       client proves code at the address, checks that it is a Safe with the
       owners and threshold deployed, then watches it (`WatchAddress`, which
-      detects it again) under the name given. That runs while the status
-      screen is open; one left before has its Safe added with Watch address,
-      as the screen says.
+      detects it again, and is tried again while that cannot be verified)
+      under the name given. That runs while the status screen is open; one
+      left before has its Safe added with Watch address, as the screen says.
+      A deployment whose receipt says it reverted lists nothing, even when
+      someone else's copy of the same call created the Safe first.
 16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
     owners are shown with blockies, a "this device" mark on the ones held
     here, and the threshold; the modules and guard follow them.

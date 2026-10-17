@@ -25,6 +25,7 @@ import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -327,6 +328,28 @@ class SafeCreationTest {
         val listed = assertIs<DeployedSafeListing.Listed>(listing.await()).account
         assertEquals(Account(world.safe, AccountKind.SAFE, "Vault", AccountCustody.Watched), listed)
         assertEquals(listOf(world.alice, listed), accounts.accounts.value)
+    }
+
+    @Test
+    fun aSafeThatCannotBeVerifiedAgainWhenWatchedIsTriedAgain() = runTest {
+        val accounts = ListAccountRepository(world.alice)
+        val owners = listOf(world.alice.address, world.carol)
+        val safe = KindReading.Verified(
+            AddressKind.Safe(SafeState("1.4.1", false, owners, 1, 0, emptyList(), null)),
+            130,
+        )
+        // Each read in turn: the detection, then the watch's own, which cannot be verified once.
+        val answers = ArrayDeque(listOf(safe, KindReading.Unavailable(ReadUnavailable.UNPROVEN)))
+        val flaky = object : AddressKinds {
+            override fun observeKind(address: Address): Flow<KindReading> =
+                flowOf(answers.removeFirstOrNull() ?: safe)
+        }
+        val list = ListDeployedSafe(flaky, WatchAddress(accounts, flaky))
+
+        val listed = list(SentAction.SafeDeployment(world.safe, owners, 1, "1.4.1", "Vault"))
+
+        assertEquals("Vault", assertIs<DeployedSafeListing.Listed>(listed).account.label)
+        assertEquals(listOf(world.alice, listed.account), accounts.accounts.value)
     }
 
     @Test
