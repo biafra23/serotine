@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeKeys
@@ -29,7 +30,7 @@ class RemoveAccountViewModelTest {
     private val keys = FakeKeys()
 
     private fun viewModel(address: Address) =
-        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys))
+        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys, WalletChanges()))
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()

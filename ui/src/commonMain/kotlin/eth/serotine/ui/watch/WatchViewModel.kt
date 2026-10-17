@@ -78,19 +78,24 @@ class WatchViewModel(
         )
     }.stateIn(
         viewModelScope,
-        // A screen back after the timeout must not show an old verdict as current.
-        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+        // The last state is kept (it holds what the user typed); on a return the card starts
+        // again from "Checking", so no old verdict stands as current.
+        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
         WatchUiState(),
     )
 
+    /** The address field changed; ignored while an add runs, whose result is about what was typed then. */
     fun onAddressChange(text: String) {
+        if (outcome.value.adding || outcome.value.done) return
         typed.update { Typed(text, it.name) }
-        outcome.update { if (it.adding || it.done) it else Outcome() }
+        outcome.value = Outcome()
     }
 
+    /** The name field changed; ignored while an add runs. */
     fun onNameChange(text: String) {
+        if (outcome.value.adding || outcome.value.done) return
         typed.update { Typed(it.address, text) }
-        outcome.update { if (it.adding || it.done) it else Outcome() }
+        outcome.value = Outcome()
     }
 
     /** Adds the address, once; [WatchAddress] proves its kind again first. */

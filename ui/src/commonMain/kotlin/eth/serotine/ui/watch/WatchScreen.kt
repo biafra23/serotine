@@ -48,6 +48,9 @@ const val WATCH_NAME_TAG = "watch-name"
 /** Test tag of the detection card, for UI tests. */
 const val WATCH_DETECTION_TAG = "watch-detection"
 
+/** Test tag of the checksummed address on the detection card, for UI tests. */
+const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
+
 /** Binds [WatchScreen] to its ViewModel; an added address ends the screen through [onAdded]. */
 @Composable
 fun WatchRoute(viewModel: WatchViewModel, onBack: () -> Unit, onAdded: () -> Unit, modifier: Modifier = Modifier) {
@@ -95,6 +98,7 @@ fun WatchScreen(
                 value = state.address,
                 onValueChange = onAddressChange,
                 modifier = Modifier.fillMaxWidth().testTag(WATCH_ADDRESS_TAG),
+                enabled = !state.adding,
                 label = { Text("Address") },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 singleLine = true,
@@ -110,6 +114,7 @@ fun WatchScreen(
                 value = state.name,
                 onValueChange = onNameChange,
                 modifier = Modifier.fillMaxWidth().testTag(WATCH_NAME_TAG),
+                enabled = !state.adding,
                 label = { Text("Name (optional)") },
                 singleLine = true,
                 isError = state.nameError != null,
@@ -146,6 +151,20 @@ private fun DetectionCard(detection: Detection) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                    }
+                    // In full and checksummed: this is the address the user confirms.
+                    Text(
+                        detection.address,
+                        Modifier.testTag(WATCH_CHECKSUMMED_TAG),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    if (detection.delegate == null) {
+                        Text(
+                            "No contract code: an account a key controls (or a contract not deployed yet).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     detection.delegate?.let { delegate ->
                         Row(

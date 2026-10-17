@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -110,6 +111,80 @@ class WatchViewModelTest {
 
         assertEquals(Detection.InWallet("Daily"), viewModel.uiState.value.detection)
         assertFalse(viewModel.uiState.value.canAdd)
+    }
+
+    @Test
+    fun aKindThatTurnsUnverifiableBeforeTheAddIsRefusedAndSaid() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        // The card shows an account; at Add the use case proves again, and cannot.
+        val syncing = object : AddressKinds {
+            override fun observeKind(address: Address): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
+        }
+        val viewModel =
+            WatchViewModel(ObserveAddressKind(kinds), ObserveAccount(accounts), WatchAddress(accounts, syncing))
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+        viewModel.add()
+        runCurrent()
+
+        assertEquals("The address cannot be checked right now. Nothing was added.", viewModel.uiState.value.error)
+        assertFalse(viewModel.uiState.value.done)
+        viewModel.onNameChange("x")
+        runCurrent()
+        assertNull(viewModel.uiState.value.error, "an edit clears what the last add said")
+    }
+
+    @Test
+    fun anOverlongNameIsSaidOnTheNameField() = runTest {
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        viewModel.onNameChange("x".repeat(41))
+        runCurrent()
+        viewModel.add()
+        runCurrent()
+
+        assertEquals("Use at most 40 characters", viewModel.uiState.value.nameError)
+    }
+
+    @Test
+    fun aListThatCannotBeSavedIsSaid() = runTest {
+        accounts.failSaves = true
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+        viewModel.add()
+        runCurrent()
+
+        assertEquals("The account could not be saved. Nothing was added.", viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun editsWhileAnAddRunsAreIgnored() = runTest {
+        val slow = MutableStateFlow<KindReading?>(null)
+        val gatedKinds = object : AddressKinds {
+            override fun observeKind(address: Address): Flow<KindReading> = slow.filterNotNull()
+        }
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel =
+            WatchViewModel(ObserveAddressKind(kinds), ObserveAccount(accounts), WatchAddress(accounts, gatedKinds))
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        viewModel.onAddressChange(vitalik)
+        viewModel.onNameChange("Vitalik")
+        runCurrent()
+        viewModel.add()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.adding)
+
+        viewModel.onAddressChange("0x" + "22".repeat(20))
+        viewModel.onNameChange("For B")
+        runCurrent()
+        assertEquals(vitalik, viewModel.uiState.value.address, "the form stays what is being added")
+
+        slow.value = KindReading.Verified(AddressKind.Eoa, 9)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.done)
+        assertEquals("Vitalik", accounts.accounts.value.last().label)
     }
 
     @Test

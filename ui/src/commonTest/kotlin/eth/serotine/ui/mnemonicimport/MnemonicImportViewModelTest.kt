@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Imported
@@ -65,7 +66,10 @@ class MnemonicImportViewModelTest {
                 override val viewModelStore = store
             },
             factory = viewModelFactory {
-                initializer { MnemonicImportViewModel(ImportMnemonicAccount(keys, repository), DescribeKeyStore(keys)) }
+                initializer {
+                    val import = ImportMnemonicAccount(keys, repository, WalletChanges())
+                    MnemonicImportViewModel(import, DescribeKeyStore(keys))
+                }
             },
         )[MnemonicImportViewModel::class]
     }
@@ -100,6 +104,19 @@ class MnemonicImportViewModelTest {
 
         viewModel.onPasswordChange(password)
         assertTrue(entering().canImport)
+    }
+
+    @Test
+    fun theKeyOfAWatchedAccountIsAnImportThatSucceeded() = runTest {
+        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals(Imported("Savings"), viewModel.uiState.value)
+        assertEquals(AccountCustody.InKeyStore, repository.accounts.value.single().custody)
     }
 
     @Test
@@ -407,8 +424,9 @@ class MnemonicImportViewModelTest {
 
         override suspend fun remove(address: Address): AccountChange = error("not used by this test")
 
-        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
-
-            error("not used by this test")
+        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
+            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+            return AccountChange.Changed
+        }
     }
 }

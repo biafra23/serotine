@@ -32,17 +32,20 @@ import kotlinx.coroutines.withContext
 class ImportMnemonicAccount(
     private val keys: KeyStore,
     private val accounts: AccountRepository,
+    /** The app's one [WalletChanges]: an import never interleaves with a removal. */
+    private val changes: WalletChanges,
 ) {
     suspend operator fun invoke(mnemonic: Mnemonic, password: WalletPassword): MnemonicImport =
-        withContext(NonCancellable) {
-            when (val stored = keys.importMnemonic(mnemonic, password)) {
-                is KeyImport.Invalid -> MnemonicImport.Invalid(stored.problem)
-                KeyImport.WrongPassword -> MnemonicImport.WrongPassword
-                KeyImport.PasswordTooShort -> MnemonicImport.PasswordTooShort
-                KeyImport.Unavailable -> MnemonicImport.Unavailable
-                KeyImport.NotSaved -> MnemonicImport.KeyNotSaved
-                is KeyImport.Stored -> addOrFind(stored.address, stored.protection)
-            }
+        withContext(NonCancellable) { changes.serialized { import(mnemonic, password) } }
+
+    private suspend fun import(mnemonic: Mnemonic, password: WalletPassword): MnemonicImport =
+        when (val stored = keys.importMnemonic(mnemonic, password)) {
+            is KeyImport.Invalid -> MnemonicImport.Invalid(stored.problem)
+            KeyImport.WrongPassword -> MnemonicImport.WrongPassword
+            KeyImport.PasswordTooShort -> MnemonicImport.PasswordTooShort
+            KeyImport.Unavailable -> MnemonicImport.Unavailable
+            KeyImport.NotSaved -> MnemonicImport.KeyNotSaved
+            is KeyImport.Stored -> addOrFind(stored.address, stored.protection)
         }
 
     /**
@@ -57,14 +60,15 @@ class ImportMnemonicAccount(
                 is AccountList.Loaded -> list.accounts
                 is AccountList.Unreadable -> return MnemonicImport.ListNotSaved
             }
-            current.firstOrNull { it.address == address }?.let { existing ->
+            val existing = current.firstOrNull { it.address == address }
+            if (existing != null) {
                 if (existing.custody == AccountCustody.InKeyStore) return MnemonicImport.AlreadyAdded(existing)
                 // A watched address whose key the user has now: it is held, not watched, from here on.
                 when (accounts.setCustody(address, AccountCustody.InKeyStore)) {
                     AccountChange.Changed ->
                         return MnemonicImport.KeyAdded(existing.copy(custody = AccountCustody.InKeyStore))
                     AccountChange.NotSaved -> return MnemonicImport.ListNotSaved
-                    AccountChange.NotFound -> Unit // removed meanwhile: read again
+                    AccountChange.NotFound -> continue // removed by another writer meanwhile: read again
                 }
             }
             val account = Account(address, AccountKind.EOA, nextFreeLabel(current), AccountCustody.InKeyStore)

@@ -1,5 +1,6 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
@@ -17,27 +18,35 @@ import kotlinx.coroutines.withContext
  * gone. One step that a cancelled caller does not cut in half. The recovery phrase is the
  * only way back for a key, which the screen says before it asks for this.
  *
- * The key store is asked whatever the entry's custody was when read: an import can turn a
- * watched entry into a held one between that read and the removal, and its key must not
- * outlive the account. For an address it holds no key for it answers NotFound.
+ * It runs under the app's [WalletChanges], so an import cannot change the entry's custody,
+ * or store a key for it, between the read below and the removal: the custody read is the one
+ * removed, and a watched account's removal leaves the key store alone.
  */
 class RemoveAccount(
     private val accounts: AccountRepository,
     private val keys: KeyStore,
+    /** The app's one [WalletChanges]: a removal never interleaves with an import. */
+    private val changes: WalletChanges,
 ) {
-    suspend operator fun invoke(address: Address): AccountRemoval = withContext(NonCancellable) {
+    suspend operator fun invoke(address: Address): AccountRemoval =
+        withContext(NonCancellable) { changes.serialized { remove(address) } }
+
+    private suspend fun remove(address: Address): AccountRemoval {
         val account = when (val list = accounts.observeAccounts().first()) {
-            is AccountList.Unreadable -> return@withContext AccountRemoval.NotSaved
+            is AccountList.Unreadable -> return AccountRemoval.NotSaved
             is AccountList.Loaded -> list.accounts.firstOrNull { it.address == address }
-        } ?: return@withContext AccountRemoval.NotFound
+        } ?: return AccountRemoval.NotFound
         when (accounts.remove(address)) {
             AccountChange.Changed -> Unit
-            AccountChange.NotFound -> return@withContext AccountRemoval.NotFound
-            AccountChange.NotSaved -> return@withContext AccountRemoval.NotSaved
+            AccountChange.NotFound -> return AccountRemoval.NotFound
+            AccountChange.NotSaved -> return AccountRemoval.NotSaved
         }
-        when (keys.delete(account.address)) {
-            KeyDeletion.Deleted, KeyDeletion.NotFound -> AccountRemoval.Removed
-            KeyDeletion.Failed -> AccountRemoval.RemovedKeyKept
+        return when (account.custody) {
+            AccountCustody.Watched -> AccountRemoval.Removed
+            AccountCustody.InKeyStore -> when (keys.delete(address)) {
+                KeyDeletion.Deleted, KeyDeletion.NotFound -> AccountRemoval.Removed
+                KeyDeletion.Failed -> AccountRemoval.RemovedKeyKept
+            }
         }
     }
 }

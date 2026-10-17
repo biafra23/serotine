@@ -16,6 +16,7 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.assets.AssetsViewModel
@@ -48,6 +49,9 @@ class AppGraph(
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
+    /** The one [WalletChanges] of the app: imports and removals never interleave. */
+    private val walletChanges = WalletChanges()
+
     fun assetsViewModel(): AssetsViewModel =
         AssetsViewModel(
             ObserveAccounts(accounts),
@@ -66,7 +70,7 @@ class AppGraph(
         RenameAccountViewModel(address, ObserveAccount(accounts), RenameAccount(accounts))
 
     fun removeAccountViewModel(address: Address): RemoveAccountViewModel =
-        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys))
+        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
 
     fun watchViewModel(): WatchViewModel =
         WatchViewModel(ObserveAddressKind(addressKinds), ObserveAccount(accounts), WatchAddress(accounts, addressKinds))
@@ -74,5 +78,5 @@ class AppGraph(
     fun settingsViewModel(): SettingsViewModel = SettingsViewModel(ObserveLightClient(lightClient), network)
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
-        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts), DescribeKeyStore(keys))
+        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))
 }

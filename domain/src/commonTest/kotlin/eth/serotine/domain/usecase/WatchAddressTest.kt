@@ -9,6 +9,7 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -68,6 +69,27 @@ class WatchAddressTest {
     @Test
     fun anAddressInTheWalletAlreadyIsNamedNotAddedAgain() = runTest {
         assertEquals(AddressWatch.AlreadyInWallet(daily), watch(daily.address, "Again"))
+    }
+
+    @Test
+    fun anAddressAddedByAnotherWriterMeanwhileIsNamed() = runTest {
+        val other = Account(address, AccountKind.EOA, "Theirs", AccountCustody.InKeyStore)
+        val racing = object : AddressKinds {
+            // The other writer adds the address while its kind is being proven.
+            override fun observeKind(address: Address): Flow<KindReading> = flow {
+                repository.accounts.value = repository.accounts.value + other
+                emit(reading)
+            }
+        }
+
+        assertEquals(AddressWatch.AlreadyInWallet(other), WatchAddress(repository, racing)(address, "Mine"))
+    }
+
+    @Test
+    fun anUnreadableListAddsNothing() = runTest {
+        repository.unreadable = true
+
+        assertEquals(AddressWatch.NotSaved, watch(address, "Savings"))
     }
 
     @Test

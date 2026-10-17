@@ -11,8 +11,10 @@ import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
+import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -57,16 +59,25 @@ internal class ListAccountRepository(vararg initial: Account) : AccountRepositor
     }
 }
 
-/** A [KeyStore] holding keys for the addresses in [stored], whose deletions can be made to fail. */
+/**
+ * A [KeyStore] holding keys for the addresses in [stored], whose deletions can be made to
+ * fail; an import stores the key of [importing], after [importDelayMillis].
+ */
 internal class RecordingKeyStore(stored: List<Address>) : KeyStore {
     val stored = stored.toMutableSet()
     val deleted = mutableListOf<Address>()
     var failDeletes = false
+    var importing: Address? = null
+    var importDelayMillis = 0L
 
     override suspend fun describe(): KeyStoreDescription = error("not used by these tests")
 
-    override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport =
-        error("not used by these tests")
+    override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport {
+        val address = importing ?: error("no import set up")
+        delay(importDelayMillis)
+        stored += address
+        return KeyImport.Stored(address, KeyProtection.HARDWARE)
+    }
 
     override suspend fun delete(address: Address): KeyDeletion {
         deleted += address

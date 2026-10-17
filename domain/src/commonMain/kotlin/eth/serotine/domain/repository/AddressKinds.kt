@@ -21,7 +21,11 @@ interface AddressKinds {
 /** What is at an address, as its verified code says. */
 sealed interface AddressKind {
 
-    /** No code: an externally owned account, controlled by its key alone. */
+    /**
+     * No code: an externally owned account, controlled by its key alone — or an address whose
+     * contract is not deployed yet (a counterfactual Safe), which nothing on chain tells
+     * apart until it is.
+     */
     data object Eoa : AddressKind
 
     /**

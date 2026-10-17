@@ -3,7 +3,12 @@ package eth.serotine.ui.watch
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import eth.serotine.ui.theme.SerotineTheme
@@ -32,6 +37,7 @@ class WatchScreenTest {
 
         rule.onNodeWithText("Account").assertIsDisplayed()
         rule.onNodeWithText("Checked at block 9,412,118").assertIsDisplayed()
+        rule.onNodeWithTag(WATCH_CHECKSUMMED_TAG).assertTextEquals(vitalik)
         rule.onNodeWithText("Watch-only").assertIsDisplayed()
         rule.onNodeWithText("Add").assertIsEnabled().performClick()
         assertEquals(1, adds)
@@ -44,6 +50,39 @@ class WatchScreenTest {
 
         rule.onNodeWithText("Account with a delegation").assertIsDisplayed()
         rule.onNodeWithText("Its code delegates to 0x63c0…e32B (EIP-7702), which can act for it.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theOtherCardsSayWhyThereIsNoAdd() {
+        var detection by mutableStateOf<Detection>(Detection.Checking)
+        rule.setContent {
+            SerotineTheme { WatchScreen(WatchUiState(address = vitalik, detection = detection), {}, {}, {}, {}) }
+        }
+
+        rule.onNodeWithText("Checking the address on chain…").assertIsDisplayed()
+        rule.onNodeWithText("Add").assertIsNotEnabled()
+        detection = Detection.InWallet("Daily")
+        rule.onNodeWithText("Already in your wallet as “Daily”.").assertIsDisplayed()
+        detection = Detection.Unavailable("The light client is not synced yet.")
+        rule.onNodeWithText("The light client is not synced yet.").assertIsDisplayed()
+        rule.onNodeWithText("Add").assertIsNotEnabled()
+    }
+
+    @Test
+    fun whileAddingTheFormIsLockedAndAnErrorIsShown() {
+        show(
+            WatchUiState(
+                address = vitalik,
+                detection = Detection.Account(vitalik, "Checked at block 7", null),
+                adding = true,
+                error = "Something went wrong.",
+            ),
+        )
+
+        rule.onNodeWithTag(WATCH_ADDRESS_TAG).assertIsNotEnabled()
+        rule.onNodeWithTag(WATCH_NAME_TAG).assertIsNotEnabled()
+        rule.onNodeWithText("Add").assertIsNotEnabled()
+        rule.onNodeWithText("Something went wrong.").assertIsDisplayed()
     }
 
     @Test

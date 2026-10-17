@@ -28,8 +28,9 @@ sealed interface Detection {
     data object Checking : Detection
 
     /**
-     * An account a key controls, at the EIP-55 [address], verified at the block [checkedAt]
-     * names; [delegate] is the EIP-55 address its EIP-7702 delegation points to, if it has one.
+     * No contract code at the EIP-55 [address] — an account a key controls, or a contract not
+     * deployed yet — verified at the block [checkedAt] names; [delegate] is the EIP-55
+     * address its EIP-7702 delegation points to, if it has one.
      */
     data class Account(val address: String, val checkedAt: String, val delegate: String?) : Detection
 
