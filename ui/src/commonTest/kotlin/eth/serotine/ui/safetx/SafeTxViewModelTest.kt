@@ -53,6 +53,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -96,7 +97,7 @@ class SafeTxViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun TestScope.viewModel(request: SigningRequest): SafeTxViewModel {
+    private fun TestScope.viewModel(request: SigningRequest, collect: Boolean = true): SafeTxViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { 1_800_000_000L }
         val viewModel = SafeTxViewModel(
@@ -135,7 +136,7 @@ class SafeTxViewModelTest {
             Network.SEPOLIA,
             clock,
         )
-        backgroundScope.launch { viewModel.uiState.collect {} }
+        if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
         return viewModel
     }
@@ -721,5 +722,32 @@ class SafeTxViewModelTest {
         )
         assertFalse(review.canSign)
         assertEquals(emptyList(), world.signer.asked)
+    }
+
+    @Test
+    fun aReviewIsQuotedAgainOnReturnAfterAHideLongEnoughToLetTheQueuesReadingGo() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))), collect = false)
+        val screen = backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        viewModel.onShown()
+        viewModel.startApproval()
+        runCurrent()
+        assertIs<SafeTxUiState.Review>(viewModel.uiState.value)
+
+        viewModel.onHidden()
+        screen.cancel()
+        advanceTimeBy(30.seconds)
+        runCurrent()
+        val quotes = world.inputs.estimated.size
+        viewModel.onShown()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        assertEquals(quotes + 1, world.inputs.estimated.size, "quoted again on return, not at the first tap")
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertIs<SafeTxUiState.Sent>(viewModel.uiState.value, "the first tap signs")
     }
 }

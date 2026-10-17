@@ -48,11 +48,11 @@ import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.grouped
-import eth.serotine.ui.components.lookUpSafely
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
+import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
@@ -157,7 +157,8 @@ class SafeProposeViewModel(
          * [accounts] are the wallet's as they were when it was proposed: the review stands on them
          * while the Safe's reading or the list is not there, rather than vanish with a password in
          * it or a signature under way. [unsaved] is the request signed here that the queue could
-         * not save: shown for sharing until the review is left.
+         * not save: shown for sharing until the review is left, a new proposal or one that fails
+         * whatever.
          */
         data class Reviewing(
             val request: Request,
@@ -197,7 +198,7 @@ class SafeProposeViewModel(
 
     /** The typed recipient, resolved: an address at once, a name once the typing paused. */
     private val lookup: Flow<RecipientState> =
-        recipientStates(inputs.map { it.to.trim() to it.lookupAttempt }, resolveRecipient::lookUpSafely)
+        recipientStates(inputs.map { it.to.trim() to it.lookupAttempt }, ::lookUp)
 
     private val model: StateFlow<Model?> = combine(
         observeAccounts(),
@@ -306,8 +307,11 @@ class SafeProposeViewModel(
                         accounts = next.accounts,
                         refreshing = false,
                         unlock = latest.unlock.copy(error = note),
-                        unsaved = latest.unsaved?.takeIf { it.hash == next.proposal.request.hash },
                     )
+                    // A request signed here that is kept nowhere else is not given up with a
+                    // re-proposal that fails: the review stays, saying why, with it to share.
+                    latest.unsaved != null && next is Step.Composing ->
+                        latest.copy(refreshing = false, error = next.error, unlock = latest.unlock.copy(error = note))
                     else -> next
                 }
             }
@@ -442,7 +446,7 @@ class SafeProposeViewModel(
         safeAccount: Account,
         accounts: List<Account>,
     ): Step {
-        val to = when (val again = resolveAgain(request.to, resolveRecipient::lookUpSafely)) {
+        val to = when (val again = resolveAgain(request.to, ::lookUp)) {
             is ResolvedAgain.Same -> again.found
             is ResolvedAgain.Changed -> {
                 inputs.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
@@ -467,7 +471,7 @@ class SafeProposeViewModel(
             proposal,
             timeSource.markNow(),
             signer,
-            unlock ?: UnlockStep(biometrics = describeKeyStore.biometricsOn()),
+            unlock ?: UnlockStep(biometrics = biometricsOffered()),
             safeAccount,
             accounts,
         )
@@ -666,6 +670,24 @@ class SafeProposeViewModel(
                 "refuses it. Nothing was proposed."
         }
         is SafeTxProposing.Refused -> safeTxRefusalText(proposing.refusal, network)
+    }
+
+    /** What [text] names, resolved ([ResolveRecipient]); never throws. */
+    private suspend fun lookUp(text: String): RecipientLookup = try {
+        resolveRecipient(recipientText(text))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        RecipientLookup.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
+    }
+
+    /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */
+    private suspend fun biometricsOffered(): Boolean = try {
+        biometricsOn(describeKeyStore())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false // the use case promises not to throw; the backstop: the password still works
     }
 
     private companion object {

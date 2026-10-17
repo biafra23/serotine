@@ -13,9 +13,7 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.RecipientLookup
-import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.Valuation
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -142,18 +140,8 @@ internal fun recipientStates(
         emit(RecipientState.Done(text, lookUp(text)))
     }
 
-/** What [text] names, resolved; never throws. */
-internal suspend fun ResolveRecipient.lookUpSafely(text: String): RecipientLookup {
-    // An all-caps copy upper-cases the prefix too.
-    val normalized = if (text.startsWith("0X")) "0x" + text.drop(2) else text
-    return try {
-        this(normalized)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        RecipientLookup.Unavailable(ReadUnavailable.UNPROVEN) // the port promises not to throw; the backstop
-    }
-}
+/** [text], a typed recipient, as it is resolved: an all-caps copy upper-cases the `0x` prefix too. */
+internal fun recipientText(text: String): String = if (text.startsWith("0X")) "0x" + text.drop(2) else text
 
 /** A recipient resolved again before a quote, from the name it was resolved from. */
 internal sealed interface ResolvedAgain {

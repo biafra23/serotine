@@ -356,7 +356,7 @@ class SafeTxViewModel(
         view.update { it.copy(message = null, sharing = false) }
         step.value = Step.Signing(owner, UnlockStep())
         viewModelScope.launch {
-            val biometrics = describeKeyStore.biometricsOn()
+            val biometrics = biometricsOffered()
             step.update { current ->
                 if (current is Step.Signing && !current.signing) {
                     current.copy(unlock = current.unlock.copy(biometrics = biometrics))
@@ -581,7 +581,7 @@ class SafeTxViewModel(
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             val next = quoted(kind, request, account, level)
-            val biometrics = describeKeyStore.biometricsOn()
+            val biometrics = biometricsOffered()
             if (step.value != quoting) return@launch
             when (next) {
                 // Made while hidden: it is from before the screen came back, so it is made again.
@@ -603,7 +603,9 @@ class SafeTxViewModel(
 
     /** [review] quoted again from [account] at [level], saying [note] under the unlock once shown. */
     private fun requote(review: Step.Reviewing, account: Address, level: FeeLevel, note: String?) {
-        val request = now?.request ?: return
+        // The reading may have been let go while the screen was not shown (a longer hide): the
+        // transaction as last shown is what is quoted again, and the quote checks the chain anew.
+        val request = (now ?: lastContext)?.request ?: return
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
         job = viewModelScope.launch {
             val next = quoted(review.kind, request, account, level)
@@ -1030,6 +1032,15 @@ class SafeTxViewModel(
                 }
             }
         }
+
+    /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */
+    private suspend fun biometricsOffered(): Boolean = try {
+        biometricsOn(describeKeyStore())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false // the use case promises not to throw; the backstop: the password still works
+    }
 
     private companion object {
         const val SIGN_FAILED = "Serotine could not finish this signature. Nothing was queued: try again."

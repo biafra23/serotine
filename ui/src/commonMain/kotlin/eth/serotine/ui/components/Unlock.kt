@@ -24,9 +24,7 @@ import eth.serotine.domain.repository.BiometricUnusable
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.Signing
-import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.ui.platform.protectFromScreenCapture
-import kotlinx.coroutines.CancellationException
 
 /**
  * How a screen signs (Send's review, a Safe transaction's signature, approval or execution): with
@@ -135,14 +133,9 @@ internal fun NotSentFields(notSent: NotSentItem, retrying: Boolean, onRetry: () 
     }
 }
 
-/** Whether the biometric prompt is on for this wallet: what a signing step offers it on. */
-internal suspend fun DescribeKeyStore.biometricsOn(): Boolean = try {
-    (this() as? KeyStoreDescription.Ready)?.biometrics == BiometricUnlock.On
-} catch (e: CancellationException) {
-    throw e
-} catch (e: Exception) {
-    false // the port promises not to throw; the backstop: the password still works
-}
+/** Whether [description] has the biometric prompt on for this wallet: what a signing step offers it on. */
+internal fun biometricsOn(description: KeyStoreDescription): Boolean =
+    (description as? KeyStoreDescription.Ready)?.biometrics == BiometricUnlock.On
 
 /**
  * Why [signing] signed nothing, display-ready; [failed] for an answer that is no refusal (a

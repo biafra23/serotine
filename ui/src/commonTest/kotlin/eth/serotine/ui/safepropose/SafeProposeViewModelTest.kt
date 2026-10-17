@@ -360,4 +360,25 @@ class SafeProposeViewModelTest {
 
         assertEquals("Not the built-in USDC: another contract", viewModel.review.action.warning)
     }
+
+    @Test
+    fun aSignatureTheQueueCouldNotSaveOutlivesAReProposalThatFails() = runTest {
+        val viewModel = reviewed()
+        viewModel.onShown()
+        world.queue.failSaves = true
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        val shared = assertIs<ShareItem>(viewModel.review.share)
+
+        // The share sheet hides the screen; back, the proposal is made again, and that fails.
+        viewModel.onHidden()
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.onShown()
+        runCurrent()
+
+        val review = viewModel.review
+        assertEquals(shared, review.share, "still there to be shared")
+        assertEquals("A figure could not be verified this time: try again.", review.error)
+    }
 }
