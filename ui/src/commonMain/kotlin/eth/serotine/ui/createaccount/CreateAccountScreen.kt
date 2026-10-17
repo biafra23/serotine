@@ -41,6 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.mnemonicimport.PasswordStep
+import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers
 
@@ -89,9 +90,10 @@ fun CreateAccountRoute(
 
 /**
  * Create account (docs/wallet-ux.md, screen 12) as a function of [state]: the new phrase shown
- * once, three of its words asked back, then the wallet password. While it is shown the window is
- * kept out of screen capture where the platform allows ([protectFromScreenCapture]); where it
- * does not, the screen says so. Nothing typed is saved: it lives in the ViewModel's state only.
+ * here alone, three of its words asked back, then the wallet password. While it is shown the
+ * window is kept out of screen capture where the platform allows ([protectFromScreenCapture]),
+ * where it does not the screen says so, and the display is kept on ([KeepScreenOn]). Nothing
+ * typed is saved: it lives in the ViewModel's state only.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -109,6 +111,7 @@ fun CreateAccountScreen(
     modifier: Modifier = Modifier,
 ) {
     val captureBlocked = protectFromScreenCapture()
+    if (state is CreateAccountUiState.Showing || state is CreateAccountUiState.Checking) KeepScreenOn()
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -134,6 +137,12 @@ fun CreateAccountScreen(
                 is CreateAccountUiState.Securing ->
                     SecuringContent(state, onPasswordChange, onRepeatChange, onCreate)
                 is CreateAccountUiState.Created -> Text("${state.label} created")
+                CreateAccountUiState.NotListed -> Text(
+                    "The key is stored, but the account list could not be saved, and the phrase is gone from " +
+                        "this screen. To finish, import the phrase you wrote down (Import recovery phrase) with " +
+                        "the wallet password.",
+                    color = MaterialTheme.colorScheme.error,
+                )
                 is CreateAccountUiState.Restart -> {
                     Text(state.message)
                     Button(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text("New phrase") }
@@ -159,7 +168,8 @@ fun CreateAccountScreen(
 private fun ShowingContent(state: CreateAccountUiState.Showing, onWrittenDown: () -> Unit) {
     Text(
         "Write these ${state.words.size} words down, in order, on paper. They are the only way to restore " +
-            "this account: whoever has them controls it. Serotine shows them this once.",
+            "this account: whoever has them controls it. Serotine shows them only while this account " +
+            "is being created.",
         style = MaterialTheme.typography.bodyMedium,
     )
     Column(Modifier.testTag(CREATE_PHRASE_TAG), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -188,7 +198,7 @@ private fun CheckingContent(
     Text("Type these words from what you wrote down.", style = MaterialTheme.typography.bodyMedium)
     state.positions.forEachIndexed { index, position ->
         OutlinedTextField(
-            value = state.typed[index],
+            value = state.typed[index].text,
             onValueChange = { onCheckedWordChange(index, it) },
             modifier = Modifier.fillMaxWidth().testTag("$CREATE_CHECK_TAG-$index"),
             label = { Text("Word $position") },

@@ -16,6 +16,7 @@ import eth.serotine.ui.createaccount.CreateAccountUiState.Showing
 import eth.serotine.ui.mnemonicimport.PasswordStep
 import eth.serotine.ui.mnemonicimport.protectionText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,8 +26,8 @@ import kotlin.random.Random
 
 /**
  * Create account's ViewModel (docs/wallet-ux.md, screen 12): a new phrase from the key adapter
- * ([NewRecoveryPhrase]), shown once; three of its words asked back; then the wallet password,
- * and the account stored as an import of those words ([ImportMnemonicAccount]). One of the
+ * ([NewRecoveryPhrase]), shown on this screen alone; three of its words asked back; then the
+ * wallet password, and the account stored as an import of those words ([ImportMnemonicAccount]). One of the
  * ViewModels the [Mnemonic] and the [WalletPassword] pass through (CLAUDE.md, *Trust*): it never
  * logs, saves or caches them, and drops them as soon as the screen is not shown ([onHidden],
  * [onCleared]). [random] picks the words to check; which ones is no secret.
@@ -40,16 +41,23 @@ class CreateAccountViewModel(
 
     private val state = MutableStateFlow<CreateAccountUiState>(CreateAccountUiState.Preparing)
 
+    /** Whether the screen is shown: a phrase made while it is not is not kept. */
+    private var shown = true
+
+    private var making: Job? = null
+
     val uiState: StateFlow<CreateAccountUiState> = state.asStateFlow()
 
     init {
         startOver()
     }
 
-    /** A new phrase, the one before forgotten. */
+    /** A new phrase, the one before forgotten; ignored while one is being made. */
     fun startOver() {
+        if (making?.isActive == true) return
+        shown = true
         state.value = CreateAccountUiState.Preparing
-        viewModelScope.launch {
+        making = viewModelScope.launch {
             val made = try {
                 newRecoveryPhrase()
             } catch (e: CancellationException) {
@@ -58,7 +66,8 @@ class CreateAccountViewModel(
                 NewMnemonic.Unavailable // the port promises not to throw; the backstop
             }
             state.value = when (made) {
-                is NewMnemonic.Created -> Showing(made.mnemonic)
+                // Made after the screen was left: not kept, so never shown later as if fresh.
+                is NewMnemonic.Created -> if (shown) Showing(made.mnemonic) else CreateAccountUiState.Restart(HIDDEN)
                 NewMnemonic.Unavailable -> CreateAccountUiState.Unavailable
             }
         }
@@ -68,7 +77,7 @@ class CreateAccountViewModel(
     fun onWrittenDown() {
         val showing = state.value as? Showing ?: return
         val positions = (1..showing.words.size).shuffled(random).take(CHECKED_WORDS).sorted()
-        state.value = Checking(showing.phrase, positions, List(CHECKED_WORDS) { "" })
+        state.value = Checking(showing.phrase, positions, List(CHECKED_WORDS) { Mnemonic.EMPTY })
     }
 
     /** Back from the check to the phrase, to look at it again. */
@@ -81,7 +90,7 @@ class CreateAccountViewModel(
     fun onCheckedWordChange(index: Int, text: String) {
         state.update { current ->
             if (current is Checking && index in current.typed.indices) {
-                current.copy(typed = current.typed.toMutableList().also { it[index] = text }, wrong = false)
+                current.copy(typed = current.typed.toMutableList().also { it[index] = Mnemonic(text) }, wrong = false)
             } else {
                 current
             }
@@ -94,7 +103,7 @@ class CreateAccountViewModel(
         if (!checking.canCheck) return
         val words = checking.phrase.words
         val matches = checking.positions.zip(checking.typed).all { (position, typed) ->
-            typed.trim().lowercase() == words[position - 1]
+            typed.words == listOf(words[position - 1])
         }
         if (!matches) {
             state.value = checking.copy(wrong = true)
@@ -137,6 +146,8 @@ class CreateAccountViewModel(
                 MnemonicImport.Unavailable // the port promises not to throw; the backstop
             }
             state.update { now -> if (now is Securing) now.after(result) else outcomeWithoutPhrase(result) }
+            // As on the import screen: whatever failed, the key store may have changed (a password set).
+            if (result !is MnemonicImport.Added && result !is MnemonicImport.KeyAdded) describe()
         }
     }
 
@@ -146,6 +157,7 @@ class CreateAccountViewModel(
      * one is made if the user goes on. An attempt still running finishes without them.
      */
     fun onHidden() {
+        shown = false
         state.update { current ->
             when (current) {
                 is Showing, is Checking -> CreateAccountUiState.Restart(HIDDEN)
@@ -212,12 +224,15 @@ class CreateAccountViewModel(
     private fun outcomeWithoutPhrase(result: MnemonicImport): CreateAccountUiState = when (result) {
         is MnemonicImport.Added -> CreateAccountUiState.Created(result.account.label)
         is MnemonicImport.KeyAdded -> CreateAccountUiState.Created(result.account.label)
-        else -> CreateAccountUiState.Restart("The account was not created, and the phrase is gone. Start again.")
+        MnemonicImport.ListNotSaved -> CreateAccountUiState.NotListed
+        else -> CreateAccountUiState.Restart(
+            "The account was not created, and the phrase is gone. Cross out what you wrote of it, then start again.",
+        )
     }
 
     private companion object {
         const val CHECKED_WORDS = 3
-        const val HIDDEN =
-            "The phrase was cleared when the screen was left, before it was stored. Start again for a new one."
+        const val HIDDEN = "The phrase was cleared when the screen was left, before it was stored, and it will " +
+            "never be used. Cross out every word of it you wrote down, then start again with a new phrase."
     }
 }

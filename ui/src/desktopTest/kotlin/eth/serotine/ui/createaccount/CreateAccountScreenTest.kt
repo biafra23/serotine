@@ -3,12 +3,15 @@ package eth.serotine.ui.createaccount
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.ui.mnemonicimport.PasswordStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -52,7 +55,7 @@ class CreateAccountScreenTest {
 
     @Test
     fun threeWordsAreAskedBackByPosition() {
-        show(CreateAccountUiState.Checking(phrase, listOf(2, 7, 12), listOf("", "", "")))
+        show(CreateAccountUiState.Checking(phrase, listOf(2, 7, 12), List(3) { Mnemonic.EMPTY }))
 
         rule.onNodeWithText("Word 7").assertIsDisplayed()
         rule.onNodeWithText("Check").assertIsNotEnabled()
@@ -65,11 +68,34 @@ class CreateAccountScreenTest {
 
     @Test
     fun aWrongCheckIsSaid() {
-        show(CreateAccountUiState.Checking(phrase, listOf(2, 7, 12), listOf("a", "b", "c"), wrong = true))
+        val typed = listOf("a", "b", "c").map(::Mnemonic)
+        show(CreateAccountUiState.Checking(phrase, listOf(2, 7, 12), typed, wrong = true))
 
         rule.onNodeWithText("At least one word does not match. Check what you wrote down, or look at the phrase again.")
             .assertIsDisplayed()
         rule.onNodeWithText("Check").assertIsEnabled()
+    }
+
+    @Test
+    fun aFirstKeySetsTheWalletPasswordTwiceAndTheDesktopSaysCaptureIsNotBlocked() {
+        show(CreateAccountUiState.Securing(phrase, PasswordStep.New("Protected by the password alone.")))
+
+        rule.onNodeWithText("New wallet password").assertIsDisplayed()
+        rule.onNodeWithText("Repeat the password").assertIsDisplayed()
+        // The button, not the title of the same words.
+        rule.onNode(hasText("Create account") and hasClickAction()).assertIsNotEnabled()
+        rule.onNodeWithText(
+            "Screenshots and screen recordings of this window cannot be blocked here.",
+            substring = true,
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun aKeyStoredButNotListedPointsToTheImportNotToANewPhrase() {
+        show(CreateAccountUiState.NotListed)
+
+        rule.onNodeWithText("import the phrase you wrote down", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("New phrase").assertDoesNotExist()
     }
 
     @Test

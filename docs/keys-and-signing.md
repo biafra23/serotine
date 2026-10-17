@@ -180,8 +180,8 @@ its KDoc and returns it as a result the UI shows as state.
 - **Create.** `newMnemonic()` makes a 12-word BIP-39 mnemonic from 128 bits of
   the platform's secure randomness (`EnvelopeCrypto.randomBytes`), zeroing the
   entropy. Nothing is stored: the words travel to Create account's screen under
-  the mnemonic exception, are shown once, three of them are asked back, and they
-  are stored by the import below.
+  the mnemonic exception, are shown there alone, three of them are asked back,
+  and they are stored by the import below.
 - **Sign.** `sign(account, digest, password)` opens the account's envelope
   (`<address>.seed`) with the password and the hardware secret, derives the first
   account's key and refuses a key that does not derive the account it is filed
@@ -190,7 +190,7 @@ its KDoc and returns it as a result the UI shows as state.
   recovering the public key. The seed, the key and the password's bytes are
   zeroed before it returns (rule 7); a wrong password, a missing key and an
   envelope this device cannot open are results, never exceptions. Its consumers
-  arrive with sending (part 9) and Safe transactions (part 10).
+  arrive with sending and Safe transactions, later parts of `feature/wallet-ux`.
 
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
@@ -306,7 +306,8 @@ its KDoc and returns it as a result the UI shows as state.
   hardware secret whether its key exists before anything could create one.
   When envelopes sealed with that kind of secret exist but the key does not,
   the key store reports itself unavailable instead of making a new key, whose
-  secret would only answer "wrong password". This covers a Keystore key lost
+  secret would only answer "wrong password"; signing answers unavailable for
+  the same reason, before the envelope is touched. This covers a Keystore key lost
   in an OS upgrade or a cleared key store, and a deleted enclave state. The
   way back is the reset and recovery flows.
 - **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
@@ -317,14 +318,21 @@ its KDoc and returns it as a result the UI shows as state.
   - The JDK's AES keeps its own copy of a key until the garbage collector
     takes it: the GC caveat of rule 7.
   - The words and the password reach the adapter along the mnemonic
-    exception's one path. The restore screen's ViewModel drops both from its
-    state when the screen stops being shown; an import already running
-    finishes without them.
-- **Screen protections.** The restore screen carries rule 8's protections
-  through `protectFromScreenCapture()` in `eth.serotine.ui.platform`:
-  `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
-  until its host covers the window, the screen says that capture cannot be
-  blocked.
+    exception's one path. The restore and Create account screens'
+    ViewModels drop both from their state when the screen stops being shown;
+    an import already running finishes without them.
+  - Create account's phrase is not stored until its check and password are
+    done, so leaving the screen before then voids it: the screen tells the
+    user to cross out what they wrote, and the next attempt gets a new
+    phrase. A phrase the key adapter returns after the screen was left is
+    dropped the same way.
+- **Screen protections.** The restore and Create account screens carry rule
+  8's protections through `protectFromScreenCapture()` in
+  `eth.serotine.ui.platform`: `FLAG_SECURE` and an autofill exclusion on
+  Android. On desktop, and on iOS until its host covers the window, the screen
+  says that capture cannot be blocked. Create account also keeps the display
+  on while its phrase is shown and checked (`KeepScreenOn()`; Android's
+  `keepScreenOn`), because a display that times out is a screen left.
 - **Not yet.**
   - The biometric path (rule 3) and Settings → Security come with the next
     part of `feature/wallet-ux`.

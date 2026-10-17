@@ -29,7 +29,7 @@ import kotlinx.io.readString
 import kotlinx.serialization.json.Json
 
 /**
- * [KeyStore] in the key adapter: each imported seed sealed in its own envelope ([Envelope]),
+ * [KeyStore] and [Signer] in the key adapter: each imported seed sealed in its own envelope ([Envelope]),
  * one file per account (`<address>.seed`) under [directory]. [hardware] is this device's
  * hardware secret, or null on a computer without one; [withoutHardware] is then what the key
  * store reports, [KeyProtection.PASSWORD_ONLY] or, on a computer whose TPM is not used yet,
@@ -43,7 +43,9 @@ import kotlinx.serialization.json.Json
  * ([EnvelopeCrypto.writeDurably]); keeping [directory] out of backups and device transfers
  * (rule 8) is the host's part: Android's backup rules, the desktop's backup exclusion. A
  * file that cannot be read, or that this device must not open, is reported and passed over,
- * never trusted. Work runs on [dispatcher]; calls are serialized within the process.
+ * never trusted. It makes Create account's new mnemonics ([newMnemonic]) and signs with a
+ * stored account's key ([sign]), the one place that key exists. Work runs on [dispatcher];
+ * calls are serialized within the process.
  */
 class EnvelopeKeyStore(
     private val directory: String,
@@ -133,11 +135,16 @@ class EnvelopeKeyStore(
                 try {
                     val file = Path(directory, "${account.hex}$SEED_SUFFIX")
                     if (!SystemFileSystem.exists(file)) return@withContext Signing.NoKey
+                    // A lost hardware key is said, not taken for a wrong password.
+                    if (hardware?.isProvisioned() == false) {
+                        report("the hardware key the envelopes were sealed with is gone")
+                        return@withContext Signing.Unavailable
+                    }
                     val sealed = read(file) ?: return@withContext Signing.Unavailable
                     if (!Envelope.canOpen(sealed, hardware, account.hex)) return@withContext Signing.Unavailable
                     passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
                     when (val opened = Envelope.open(sealed, passwordBytes, hardware)) {
-                        Envelope.Opened.WrongPassword -> Signing.WrongPassword
+                        Envelope.Opened.WrongPassword -> refusedOrDamaged(account, passwordBytes)
                         Envelope.Opened.Refused, Envelope.Opened.Verified -> Signing.Unavailable
                         is Envelope.Opened.Seed -> signWith(opened.bytes, account, digest)
                     }
@@ -153,6 +160,20 @@ class EnvelopeKeyStore(
                 }
             }
         }
+
+    /**
+     * The account's envelope refused [password]: a wrong password, or a damaged file, which a
+     * GCM tag cannot tell apart. Another envelope that opens under it, all being under the one
+     * wallet password, says the file is damaged; as the import does, at most two more are asked.
+     */
+    private fun refusedOrDamaged(account: Address, password: ByteArray): Signing {
+        val others = envelopes().filter { it.address != account.hex }.take(MAX_PASSWORD_CHECKS - 1)
+        if (others.none { Envelope.verify(it.sealed, password, hardware) == Envelope.Opened.Verified }) {
+            return Signing.WrongPassword
+        }
+        report("the envelope of ${account.hex} does not open under the wallet password")
+        return Signing.Unavailable
+    }
 
     /** [digest] signed by the first account's key of [seed], which must derive [account]; zeroes [seed]. */
     private fun signWith(seed: ByteArray, account: Address, digest: Digest): Signing {

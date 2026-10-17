@@ -145,6 +145,80 @@ class CreateAccountViewModelTest {
     }
 
     @Test
+    fun aKeyStoredButNotListedAfterTheScreenWasLeftSaysToImportThePhrase() = runTest {
+        accounts.failSaves = true
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.checked()
+        runCurrent()
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.onRepeatChange("correct horse battery")
+        viewModel.onCreate()
+        viewModel.onHidden()
+
+        keys.next.complete(KeyImport.Stored(account, KeyProtection.HARDWARE))
+        runCurrent()
+        // Not "start again": a new phrase would leave the stored key behind.
+        assertEquals(CreateAccountUiState.NotListed, viewModel.uiState.value)
+    }
+
+    @Test
+    fun aFailedCreateAsksTheKeyStoreAgainWhichPasswordItWants() = runTest {
+        accounts.failSaves = true
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.checked()
+        runCurrent()
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.onRepeatChange("correct horse battery")
+        viewModel.onCreate()
+        keys.passwordSet = true // the key went in, and set the wallet password with it
+        keys.next.complete(KeyImport.Stored(account, KeyProtection.HARDWARE))
+        runCurrent()
+
+        val securing = assertIs<CreateAccountUiState.Securing>(viewModel.uiState.value)
+        assertTrue(securing.error!!.startsWith("The key is stored"), securing.error)
+        assertIs<PasswordStep.Existing>(securing.step, "the wallet's password now, not a new one")
+    }
+
+    @Test
+    fun aPhraseMadeAfterTheScreenWasLeftIsNeverShown() = runTest {
+        keys.gate = CompletableDeferred()
+        val viewModel = viewModel()
+        viewModel.onHidden()
+        keys.gate!!.complete(Unit)
+        runCurrent()
+
+        assertIs<CreateAccountUiState.Restart>(viewModel.uiState.value)
+        viewModel.startOver()
+        runCurrent()
+        assertIs<CreateAccountUiState.Showing>(viewModel.uiState.value, "the next phrase is made while shown")
+    }
+
+    @Test
+    fun startingOverWhileAPhraseIsBeingMadeMakesNoSecond() = runTest {
+        keys.gate = CompletableDeferred()
+        val viewModel = viewModel()
+        viewModel.startOver()
+        viewModel.startOver()
+        keys.gate!!.complete(Unit)
+        runCurrent()
+
+        assertIs<CreateAccountUiState.Showing>(viewModel.uiState.value)
+        assertEquals(1, keys.made)
+    }
+
+    @Test
+    fun theCheckedWordsAreRedactedAsThePhraseIs() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.onWrittenDown()
+        repeat(3) { viewModel.onCheckedWordChange(it, "junk") }
+
+        assertTrue("junk" !in viewModel.uiState.value.toString(), viewModel.uiState.value.toString())
+    }
+
+    @Test
     fun aKeyStoreThatDoesNotWorkIsSaid() = runTest {
         keys.works = false
         val viewModel = viewModel()
@@ -156,16 +230,19 @@ class CreateAccountViewModelTest {
     private inner class FakeKeyStore : KeyStore {
         var works = true
         var made = 0
+        var gate: CompletableDeferred<Unit>? = null
+        var passwordSet = false
         var next = CompletableDeferred<KeyImport>()
         val received = mutableListOf<Mnemonic>()
 
         override suspend fun newMnemonic(): NewMnemonic {
             if (!works) return NewMnemonic.Unavailable
             made++
+            gate?.await()
             return NewMnemonic.Created(Mnemonic(hardhat))
         }
 
-        override suspend fun describe() = KeyStoreDescription.Ready(passwordSet = false, KeyProtection.HARDWARE)
+        override suspend fun describe() = KeyStoreDescription.Ready(passwordSet, KeyProtection.HARDWARE)
 
         override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport {
             received += mnemonic

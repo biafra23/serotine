@@ -15,25 +15,26 @@ sealed interface CreateAccountUiState {
     /** The key adapter is making the phrase. */
     data object Preparing : CreateAccountUiState
 
-    /** The new [phrase], shown once, to be written down. */
+    /** The new [phrase], to be written down: shown on this screen alone, until it is stored. */
     data class Showing(val phrase: Mnemonic) : CreateAccountUiState {
         /** The words, numbered on screen in this order. */
         val words: List<String> = phrase.words
     }
 
     /**
-     * Three of the words asked back: the 1-based [positions] and what is [typed] for each;
+     * Three of the words asked back: the 1-based [positions] and what is [typed] for each, a
+     * [Mnemonic] too since it is a word of the phrase;
      * [wrong] once a check did not match what was written down.
      */
     data class Checking(
         val phrase: Mnemonic,
         val positions: List<Int>,
-        val typed: List<String>,
+        val typed: List<Mnemonic>,
         val wrong: Boolean = false,
     ) : CreateAccountUiState {
         /** Every word is typed. */
         val canCheck: Boolean
-            get() = typed.all { it.isNotBlank() }
+            get() = typed.all { it.words.isNotEmpty() }
     }
 
     /**
@@ -81,6 +82,13 @@ sealed interface CreateAccountUiState {
      * failed): nothing of it is kept. Starting again makes a new one.
      */
     data class Restart(val message: String) : CreateAccountUiState
+
+    /**
+     * The screen was left while the key was being stored, and the key is stored but the account
+     * list was not saved: the words are gone from the state, and importing the written-down
+     * phrase finishes it. A new phrase would leave that key behind under the wallet password.
+     */
+    data object NotListed : CreateAccountUiState
 
     /** The key store does not work on this device: no account can be created. */
     data object Unavailable : CreateAccountUiState

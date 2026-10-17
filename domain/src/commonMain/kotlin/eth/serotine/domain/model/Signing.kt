@@ -24,13 +24,25 @@ value class Digest private constructor(val hex: String) {
 }
 
 /**
- * A secp256k1 ECDSA signature: [r] and [s] as 64 lower-case hex digits each, [s] in the lower
- * half of the curve order (as Ethereum requires), and the [recoveryId] (0 or 1) that recovers the
- * signer's public key — EIP-1559's `yParity`, or a Safe signature's `v` less 27.
+ * A secp256k1 ECDSA signature: [r] and [s] as 64 lower-case hex digits each, [r] in 1..n-1 and
+ * [s] in the lower half of the curve order n (as Ethereum requires), and the [recoveryId] (0 or
+ * 1) that recovers the signer's public key — EIP-1559's `yParity`, or a Safe signature's `v` less
+ * 27. All of it is checked at construction, so a signature decoded from a co-signer's QR code
+ * holds the same promises as one this wallet made.
  */
 data class Signature(val r: String, val s: String, val recoveryId: Int) {
     init {
-        require(r.length == 64 && s.length == 64) { "r and s are 32 bytes each" }
+        require(SCALAR.matches(r) && SCALAR.matches(s)) { "r and s are 32 bytes each, in lower-case hex" }
+        // Equal lengths of lower-case hex: the strings order as the numbers do.
+        require(r != ZERO && r < ORDER) { "r is in 1..n-1" }
+        require(s != ZERO && s <= HALF_ORDER) { "s is in the lower half of the curve order" }
         require(recoveryId in 0..1) { "a recovery id is 0 or 1" }
+    }
+
+    private companion object {
+        val SCALAR = Regex("^[0-9a-f]{64}$")
+        val ZERO = "0".repeat(64)
+        const val ORDER = "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+        const val HALF_ORDER = "7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0"
     }
 }

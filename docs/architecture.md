@@ -61,7 +61,7 @@ review finding, whatever it saves.
 | `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `tokens`, `prices`, `safe`, `settings`, `files`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu) and the display helpers they share (EIP-55, amounts, the light client's line); no ViewModel, no use case |
-| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, the clipboard, the share sheet) |
+| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet) |
 | `eth.serotine.ui.theme` | Material 3 theme |
 | `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
 

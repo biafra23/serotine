@@ -135,8 +135,9 @@ Safe transaction) is a destination that covers the bar until it ends.
     - The control badge the account will get (owners held here count).
 11. **Import recovery phrase**: today's seed screen, with the account's name,
     the wallet password (on the first key) and the biometric opt-in.
-12. **Create account**: the new phrase shown once, protected from screen
-    capture; then a check of three of its words; then the wallet password and
+12. **Create account**: the new phrase, shown on this screen alone and only
+    until it is stored, protected from screen capture, the display kept on;
+    then a check of three of its words; then the wallet password and
     the biometric opt-in (on the first key).
 13. **Create Safe 1/3, owners**: a name; owners from "This device (hardware
     key)", the user's mnemonic accounts and external addresses.
