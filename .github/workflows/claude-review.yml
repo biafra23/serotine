@@ -226,6 +226,11 @@ jobs:
 
       # First choice. continue-on-error so an exhausted Fable 5 limit falls
       # through to the Opus fallback job instead of failing this one.
+      # --disallowedTools "Agent,Task" (both attempts): no subagents. A run
+      # ends when the reviewer's turn does, so one that starts background
+      # reviewers and stops to wait for them leaves nothing posted: #61's
+      # Opus fallback did exactly that after 64 turns, its findings in a
+      # final message no one sees.
       - name: Review (Fable 5)
         id: fable
         continue-on-error: true
@@ -237,6 +242,7 @@ jobs:
             --model claude-fable-5
             --effort max
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --disallowedTools "Agent,Task"
 
       # What the attempt was refused, and how it ended. The action keeps the
       # whole transcript on the runner (its execution file) and prints only
@@ -411,6 +417,7 @@ jobs:
             --model opus
             --effort max
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --disallowedTools "Agent,Task"
 
       # The review job's report, for this attempt; keep the two identical.
       # It runs after a failed attempt too, which the check below does not.
