@@ -234,6 +234,22 @@ class SafeTxSigningTest {
     }
 
     @Test
+    fun alternativesQueuedAtOneNonceHoldBackOnlyTheMostOneOfThemMoves() = runTest {
+        // Two competing transfers at nonce 4: one of them runs, never both.
+        world.queue.save(world.request(usdcTransfer(4, amount = 3_000_000)))
+        world.queue.save(world.request(usdcTransfer(4, amount = 1_000_000)))
+
+        val proposal = assertIs<SafeTxProposing.Proposed>(
+            propose(world.safe, world.recipient, TransferAsset.Erc20Token(usdc), UInt256.of(2_000_000)),
+        ).proposal
+
+        assertEquals(5, proposal.request.nonce)
+        assertEquals(1, proposal.queuedAhead)
+        assertEquals(UInt256.of(3_000_000), proposal.queuedAmount, "the larger of the two, not their sum")
+        assertEquals(UInt256.ZERO, proposal.balanceAfter)
+    }
+
+    @Test
     fun aSignatureThatRecoversToAnotherAddressIsNeverKept() = runTest {
         world.signer.signAs = world.bob.address
 

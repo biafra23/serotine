@@ -274,6 +274,10 @@ class SafeTxOnChainTest {
             quoteExecution(request, world.stranger, FeeLevel.NORMAL),
             "from another account of this wallet just the same: the nonce is the Safe's",
         )
+        // A block took it and it reverted (an owner swapped meanwhile): the Safe's nonce is still 4,
+        // the sender's count has passed it, and a corrected execution is not held back.
+        world.inputs.mined = 8
+        assertIs<SafeExecutionQuoting.Quoted>(quoteExecution(request, world.alice.address, FeeLevel.NORMAL))
 
         world.inputs.simulation = Simulation.Succeeded("", 100)
         val later = world.request(SafeTx.call(world.safe, UInt256.ZERO, ByteArray(0), nonce = 5))

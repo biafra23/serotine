@@ -221,7 +221,10 @@ internal class FakeTransactionInputs : TransactionInputs {
 
     override suspend fun nonce(account: Address): NonceReading = NonceReading.Read(7)
 
-    override suspend fun minedNonce(account: Address): NonceReading = NonceReading.Read(7)
+    /** Every account's verified count of mined transactions. */
+    var mined = 7L
+
+    override suspend fun minedNonce(account: Address): NonceReading = NonceReading.Read(mined)
 
     override suspend fun fees(): FeeReading = FeeReading.Quoted(
         FeeQuote(

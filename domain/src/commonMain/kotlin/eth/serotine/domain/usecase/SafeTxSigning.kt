@@ -390,8 +390,11 @@ class ProposeSafeTx(
             var nonce = safeNonce
             while (nonce in taken) nonce++
             val ahead = pending.filter { it.nonce < nonce }
-            // What the ones before it move of the asset is not this one's to move.
-            val queuedAmount = ahead.map { it.moves(token?.address) }.sumOrNull()
+            // What the ones before it move of the asset is not this one's to move: per nonce the most
+            // any of its alternatives moves, since only one transaction at a nonce ever runs.
+            val queuedAmount = ahead.groupBy { it.nonce }.values
+                .map { alternatives -> alternatives.maxOf { it.moves(token?.address) } }
+                .sumOrNull()
                 ?: return@coroutineScope insufficient(token != null)
             val available = before.minusOrNull(queuedAmount)?.takeIf { it >= amount }
                 ?: return@coroutineScope insufficient(token != null)
@@ -468,7 +471,8 @@ class ProposeSafeTx(
  * A Safe transfer proposed for review: [tx] at the Safe's next nonce, after [queuedAhead]
  * nonces queued before it (two transactions at one nonce, of which one runs, count once); the Safe's verified state ([safe]); its balance of the asset
  * ([balanceBefore], at [balanceBlock]), what those queued before it may move of it
- * ([queuedAmount]) and what this one leaves ([balanceAfter]); and whether the Safe's call was
+ * ([queuedAmount]: per nonce the most of its alternatives, as only one of them runs) and what
+ * this one leaves ([balanceAfter]); and whether the Safe's call was
  * run as a verified call ([simulation]). Only [ProposeSafeTx] makes one.
  */
 @ConsistentCopyVisibility
