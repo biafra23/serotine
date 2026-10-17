@@ -246,8 +246,10 @@ user to update — before it, and, after it, nothing else.
   none, and its own engine says whether its build supports the upgrade. An app
   opened after an activation peers confirmed knows it from the record at once,
   before peers report it again. A changing count of reporting networks is not
-  written. The activation notice says "peers report" only when they did; one
-  due by the clock alone says the announced time has passed.
+  written. A notice is shown before the record says it was: told twice
+  (should the app die in between) beats never. The activation notice and the
+  update screen say "peers report" only when they did; one due by the clock
+  alone says the announced time has passed.
 - **While the app is closed.** Android: a daily JobScheduler job (any network,
   battery not low) wakes the engine for five minutes, long enough for peers to
   report an upgrade, and no longer once peers confirmed an upgrade activated

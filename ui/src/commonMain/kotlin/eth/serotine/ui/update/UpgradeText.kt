@@ -97,11 +97,23 @@ private fun activatedText(upgrade: NetworkUpgrade, network: Network, formatTime:
 private val NetworkUpgrade.reportedActive: Boolean
     get() = phase == NetworkUpgrade.Phase.ACTIVE
 
-/** What the update screen says: the one text that may say the app is not verifying. */
-internal fun updateRequiredText(upgrade: NetworkUpgrade, network: Network, formatTime: (Long) -> String): String =
-    "Peers report that ${network.displayName} upgraded${upgrade.onDate(formatTime)} to rules this version of " +
-        "Serotine does not support, and its light client is not verifying the chain. Update the app to keep " +
-        "using your wallet."
+/**
+ * What the update screen says: the one text that may say the app is not verifying. As in
+ * [activatedText], "peers report" only when they did: a live report of a scheduled upgrade
+ * whose time has passed also requires the update, and then peers announced it and the clock
+ * passed it, while the light client's own failure is the evidence.
+ */
+internal fun updateRequiredText(upgrade: NetworkUpgrade, network: Network, formatTime: (Long) -> String): String {
+    val name = network.displayName
+    val happened = if (upgrade.reportedActive) {
+        "Peers report that $name upgraded${upgrade.onDate(formatTime)} to rules this version of Serotine does " +
+            "not support, and its light client is not verifying the chain."
+    } else {
+        "Peers announced a $name network upgrade${upgrade.onDate(formatTime)} that this version of Serotine " +
+            "does not support. That time has passed, and its light client is not verifying the chain."
+    }
+    return "$happened Update the app to keep using your wallet."
+}
 
 /** Who reports [upgrade], and that nothing verifies it; its fork id when known. */
 internal fun detailsOf(upgrade: NetworkUpgrade): String {

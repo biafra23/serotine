@@ -14,8 +14,9 @@ import kotlinx.coroutines.sync.withLock
  * When the user hears about an upgrade outside the app, through [notifier]: once when peers
  * first report it, again a week and a day before its activation, and once when it has
  * activated, after which nothing more is said about it. The record in [known] carries what
- * has been shown across restarts, so each notice is shown once, and what is still to come
- * falls due while the app is not running: the notifier is asked to wake it then.
+ * has been shown across restarts, so each notice is shown once (twice at worst, when its record
+ * could not be written: told twice beats never), and what is still to come falls due while the
+ * app is not running: the notifier is asked to wake it then.
  *
  * Fed by [FollowUpgradeReports] while the engine runs, and by the host's alarm through
  * [remind] while it does not. One instance per process: its calls take turns.
@@ -41,10 +42,13 @@ class UpgradeNotices(
         val now = clock()
         val stored = known.observe().first()
         val (record, notice) = plan(stored, report, now)
-        // A record that cannot be stored still has its notice shown: told twice beats never.
+        // Shown before the record says so: told twice beats never. Should the app die between
+        // the two, the notice is shown again; a record that cannot be stored still has its
+        // notice shown; and so does one whose store surfaces the caller's cancellation as the
+        // save returns, the record already written.
+        notice?.let(notifier::show)
         // Peers come and go, and with them the count of networks reporting: not worth a write.
         if (record != null && record.ignoringCount() != stored?.ignoringCount()) known.save(record)
-        notice?.let(notifier::show)
         val next = record?.let { nextReminder(it, now) }
         if (armed != Reminder(next)) {
             notifier.remindAt(next)
