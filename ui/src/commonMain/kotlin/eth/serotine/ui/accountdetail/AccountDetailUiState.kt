@@ -14,7 +14,8 @@ sealed interface AccountDetailUiState {
      * ([control]) and its native [balance], verified at the block [balanceNote] names when
      * [balanceVerified], or why there is none; its [assets] in [sort] order — the native
      * currency and every known token it holds — and [tokensNote], what is not known yet
-     * about the other tokens ("Checking 3 tokens…"), or null.
+     * about the other tokens ("Checking 3 tokens…"), or null; [tokensBlockNote], where the
+     * token amounts shown were verified.
      */
     data class Ready(
         val label: String,
@@ -27,6 +28,7 @@ sealed interface AccountDetailUiState {
         val assets: List<AssetRow> = emptyList(),
         val sort: AssetSort = AssetSort.NAME,
         val tokensNote: String? = null,
+        val tokensBlockNote: String? = null,
     ) : AccountDetailUiState
 
     /** The account is not in the wallet (removed): the screen leaves. */

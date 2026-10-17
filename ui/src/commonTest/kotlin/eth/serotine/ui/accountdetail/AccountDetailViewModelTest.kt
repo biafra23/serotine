@@ -142,6 +142,7 @@ class AccountDetailViewModelTest {
             byName.assets,
         )
         assertEquals("1 token not verified", byName.tokensNote)
+        assertEquals("Tokens verified at block 9", byName.tokensBlockNote)
 
         viewModel.sortBy(AssetSort.AMOUNT)
         runCurrent()

@@ -229,7 +229,7 @@ private fun Details(
             }
         }
         Assets(state, onSort)
-        state.balanceNote?.let { note ->
+        listOfNotNull(state.balanceNote, state.tokensBlockNote).forEach { note ->
             Text(note, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

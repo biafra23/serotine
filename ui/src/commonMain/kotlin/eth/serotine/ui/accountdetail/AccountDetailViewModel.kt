@@ -66,6 +66,7 @@ class AccountDetailViewModel(
                     assets = assets(reading, held, order),
                     sort = order,
                     tokensNote = tokensNote(held),
+                    tokensBlockNote = tokensBlockNote(held),
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
@@ -90,9 +91,9 @@ class AccountDetailViewModel(
         val nativeRow = Sortable(
             AssetRow(
                 symbol = network.nativeSymbol,
-                name = NATIVE_NAME,
+                name = network.nativeName,
                 amount = native?.let { balanceText(it, network) } ?: "Checking…",
-                icon = NATIVE_ICON,
+                icon = network.nativeIcon,
                 verified = native is BalanceReading.Verified,
             ),
             (native as? BalanceReading.Verified)?.let { unitsAsNumber(it.wei.decimal, NATIVE_DECIMALS) },
@@ -136,10 +137,19 @@ class AccountDetailViewModel(
 
     private fun tokens(count: Int) = if (count == 1) "1 token" else "$count tokens"
 
+    /**
+     * Where the token amounts shown were verified: the block of the newest reading, which may
+     * be another than the native balance's; null when no token row is shown.
+     */
+    private fun tokensBlockNote(holdings: List<TokenHolding>): String? {
+        val shown = holdings.mapNotNull { it.reading as? TokenBalanceReading.Verified }.filter { !it.units.isZero }
+        if (shown.isEmpty()) return null
+        val newest = shown.mapNotNull { it.blockNumber }.maxOrNull()
+        return if (newest != null) "Tokens verified at block ${grouped(newest)}" else "Tokens verified"
+    }
+
     private companion object {
         const val LIST_UNAVAILABLE = "Your account list cannot be read right now. Serotine keeps trying."
-        const val NATIVE_NAME = "Ether"
-        const val NATIVE_ICON = "eth"
         const val NATIVE_DECIMALS = 18
     }
 }
