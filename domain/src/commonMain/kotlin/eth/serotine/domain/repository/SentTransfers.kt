@@ -24,10 +24,10 @@ interface SentTransfers {
     /**
      * Forgets [account]'s transfers whose nonce is below [minedCount], its verified count of mined
      * transactions (each of those nonces is used on chain, by that transfer or another), and those
-     * signed before [signedBefore] (unix seconds), which no block took in time. False when the
+     * a peer took before [sentBefore] (unix seconds), which no block took in time. False when the
      * record could not be saved.
      */
-    suspend fun prune(account: Address, minedCount: Long, signedBefore: Long): Boolean
+    suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean
 }
 
 /** What [SentTransfers.observe] holds. */
@@ -43,7 +43,8 @@ sealed interface SentTransferList {
 /**
  * A transfer this wallet signed: [amount] of [asset] from [account] to [to], its transaction
  * [nonce] and [signed] bytes, the most it can take of the account's native balance ([maxCost]:
- * its value and the most its fee can be), and when it was signed ([sentAt], unix seconds).
+ * its value and the most its fee can be), and when a peer took it ([sentAt], unix seconds): the
+ * moment its lifetime in the network's transaction pools runs from.
  */
 data class SentTransfer(
     val account: Address,

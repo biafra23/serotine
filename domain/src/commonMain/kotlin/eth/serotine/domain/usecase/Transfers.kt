@@ -149,7 +149,7 @@ data class TransferQuote internal constructor(
  * The sender's own transfers a peer took and no block has yet ([SentTransfers]) count: the
  * nonce is never below the last of them plus one, and what they may still take of the native
  * balance, and of the token's, is not available to this one. Those mined since are forgotten,
- * and so are those signed more than [RECORD_LIFETIME_SECONDS] ago and still not mined: the
+ * and so are those a peer took more than [RECORD_LIFETIME_SECONDS] ago and still not mined: the
  * network's transaction pools have dropped them by then (geth's default lifetime), and kept they
  * would hold every later transfer behind a nonce no block takes. Only one transaction per nonce
  * can be mined, so taking such a nonce again can never pay twice. [clock] is in unix seconds.
@@ -402,7 +402,7 @@ class SendTransfer(
         )
         return withContext(NonCancellable) {
             when (val broadcast = broadcaster.send(transfer.signed.raw)) {
-                is Broadcast.Sent -> sent(sentTransfers, transfer)
+                is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
                 else -> TransferSending.NotSent(broadcast, transfer)
             }
         }
@@ -414,30 +414,37 @@ class SendTransfer(
  * never a new quote, which could take the next nonce while the first one is still on its way
  * and pay twice. A retry refused as rejected may be the first broadcast's own doing: no peer
  * answered then, yet one took it, and a block has since used its nonce. So a rejection is
- * checked against the transfer's verified receipt ([receipts]) before it is believed, and a
- * transfer already in a block is sent.
+ * checked against the transfer's verified receipt ([receipts]) before it is believed: a
+ * transfer already in a block is sent, one whose receipt cannot be verified right now is
+ * [TransferSending.RejectionUnverified]. [clock] is in unix seconds.
  */
 class RebroadcastTransfer(
     private val broadcaster: Broadcaster,
     private val sentTransfers: SentTransfers,
     private val receipts: ReceiptTracker,
+    private val clock: () -> Long = ::epochSecondsNow,
 ) {
     suspend operator fun invoke(transfer: SentTransfer): TransferSending = withContext(NonCancellable) {
         when (val broadcast = broadcaster.send(transfer.signed.raw)) {
-            is Broadcast.Sent -> sent(sentTransfers, transfer)
+            is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
             is Broadcast.Rejected -> when (receipts.observe(transfer.hash).first()) {
-                is TransactionProgress.Included, is TransactionProgress.Finalized -> sent(sentTransfers, transfer)
-                TransactionProgress.Pending, is TransactionProgress.Unavailable ->
-                    TransferSending.NotSent(broadcast, transfer)
+                is TransactionProgress.Included, is TransactionProgress.Finalized ->
+                    sent(sentTransfers, transfer, clock)
+                // A verified read found no receipt: the engine's verdict on verified state stands.
+                TransactionProgress.Pending -> TransferSending.NotSent(broadcast, transfer)
+                is TransactionProgress.Unavailable -> TransferSending.RejectionUnverified(broadcast, transfer)
             }
             else -> TransferSending.NotSent(broadcast, transfer)
         }
     }
 }
 
-/** [transfer], which a peer took: recorded, and [TransferSending.Sent] by its hash. */
-private suspend fun sent(sentTransfers: SentTransfers, transfer: SentTransfer): TransferSending {
-    sentTransfers.record(transfer)
+/**
+ * [transfer], which a peer took: recorded with the moment it was taken ([clock], unix seconds),
+ * which its lifetime in the network's pools runs from, and [TransferSending.Sent] by its hash.
+ */
+private suspend fun sent(sentTransfers: SentTransfers, transfer: SentTransfer, clock: () -> Long): TransferSending {
+    sentTransfers.record(transfer.copy(sentAt = clock()))
     // The hash is the raw bytes' own: what the receipt is looked up by.
     return TransferSending.Sent(transfer.hash)
 }
@@ -457,6 +464,18 @@ sealed interface TransferSending {
      * reached a peer all the same, so it is that retry, not a new quote, that sends it again.
      */
     data class NotSent(val broadcast: Broadcast, val transfer: SentTransfer) : TransferSending {
+        /** The signed bytes a retry sends. */
+        val signed: SignedTransfer
+            get() = transfer.signed
+    }
+
+    /**
+     * A retry [rejection] that could not be checked: whether the first broadcast reached a block
+     * after all, the transfer's receipt could not be verified right now. Neither verdict is known,
+     * so [transfer] may well be in a block: a retry asks both again, and nothing new is to be
+     * signed for it meanwhile.
+     */
+    data class RejectionUnverified(val rejection: Broadcast.Rejected, val transfer: SentTransfer) : TransferSending {
         /** The signed bytes a retry sends. */
         val signed: SignedTransfer
             get() = transfer.signed

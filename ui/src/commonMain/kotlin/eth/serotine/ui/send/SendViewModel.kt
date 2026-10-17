@@ -168,8 +168,18 @@ class SendViewModel(
         val amount: UInt256,
     )
 
-    /** A transfer signed but not broadcast: why ([broadcast]), and the [transfer] a retry sends. */
-    private data class NotSent(val broadcast: Broadcast, val transfer: SentTransfer)
+    /**
+     * A transfer signed but not broadcast: why ([broadcast]), and the [transfer] a retry sends;
+     * [unverified] when a retry's rejection could not be checked against the receipt.
+     */
+    private data class NotSent(val broadcast: Broadcast, val transfer: SentTransfer, val unverified: Boolean = false) {
+        /**
+         * Whether sending the same bytes again may change the verdict: no peer answered, or a
+         * rejection could not yet be told from the first broadcast having been mined.
+         */
+        val canRetry: Boolean
+            get() = unverified || broadcast is Broadcast.Unavailable
+    }
 
     /** Where the flow stands. */
     private sealed interface Step {
@@ -295,7 +305,7 @@ class SendViewModel(
      */
     fun edit() {
         val current = step.value as? Step.Reviewing ?: return
-        if (current.signing || current.notSent?.let { retryable(it.broadcast) } == true) return
+        if (current.signing || current.notSent?.canRetry == true) return
         job?.cancel()
         step.value = Step.Composing()
     }
@@ -364,7 +374,7 @@ class SendViewModel(
     fun retry() {
         val current = step.value as? Step.Reviewing ?: return
         val notSent = current.notSent ?: return
-        if (current.signing || !retryable(notSent.broadcast)) return
+        if (current.signing || !notSent.canRetry) return
         step.value = current.copy(signing = true)
         job = viewModelScope.launch {
             val sending = safely { rebroadcastTransfer(notSent.transfer) }
@@ -374,6 +384,10 @@ class SendViewModel(
                     sending is TransferSending.Sent -> Step.Sent(sending.hash)
                     sending is TransferSending.NotSent ->
                         latest.copy(signing = false, notSent = NotSent(sending.broadcast, sending.transfer))
+                    sending is TransferSending.RejectionUnverified -> latest.copy(
+                        signing = false,
+                        notSent = NotSent(sending.rejection, sending.transfer, unverified = true),
+                    )
                     else -> latest.copy(signing = false)
                 }
             }
@@ -434,6 +448,10 @@ class SendViewModel(
                     )
                     is TransferSending.NotSent ->
                         latest.copy(signing = false, notSent = NotSent(sending.broadcast, sending.transfer))
+                    is TransferSending.RejectionUnverified -> latest.copy(
+                        signing = false,
+                        notSent = NotSent(sending.rejection, sending.transfer, unverified = true),
+                    )
                     null -> latest.copy(signing = false, unlock = latest.unlock.copy(error = SEND_FAILED))
                 }
             }
@@ -868,15 +886,22 @@ class SendViewModel(
         else -> true
     }
 
-    /** Whether broadcasting the same bytes again can change [broadcast]'s verdict. */
-    private fun retryable(broadcast: Broadcast): Boolean = broadcast is Broadcast.Unavailable
-
     private fun notSentItem(notSent: NotSent): NotSentItem = when (val broadcast = notSent.broadcast) {
-        is Broadcast.Rejected -> NotSentItem(
-            "Signed, but not sent: judged on verified state, it can never be mined as signed " +
-                "(${broadcast.detail}). Sending it again would not change that.",
-            canRetry = false,
-        )
+        // Not "can never be mined" when unverified: that is a verified verdict, and this one could not be checked.
+        is Broadcast.Rejected -> if (notSent.unverified) {
+            NotSentItem(
+                "Rejected this time (${broadcast.detail}), and whether the first broadcast reached a block after " +
+                    "all cannot be verified right now. Try again sends the same signed transfer and checks again; " +
+                    "do not send a new one meanwhile.",
+                canRetry = true,
+            )
+        } else {
+            NotSentItem(
+                "Signed, but not sent: judged on verified state, it can never be mined as signed " +
+                    "(${broadcast.detail}). Sending it again would not change that.",
+                canRetry = false,
+            )
+        }
         is Broadcast.Refused -> NotSentItem(
             "Signed, but not sent: the light client does not relay it (${broadcast.detail}).",
             canRetry = false,

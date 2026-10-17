@@ -459,11 +459,16 @@ class TransfersTest {
         val notSent = assertIs<TransferSending.NotSent>(sending(quote, Unlock.WithBiometrics("Send 1 wei")))
 
         val again = FakeBroadcaster(Broadcast.Sent("0x" + "00".repeat(32)))
-        val resent = assertIs<TransferSending.Sent>(RebroadcastTransfer(again, sent, receipts())(notSent.transfer))
+        val retry = RebroadcastTransfer(again, sent, receipts()) { 1_800_009_000 }
+        val resent = assertIs<TransferSending.Sent>(retry(notSent.transfer))
 
         assertContentEquals(unavailable.sent.single(), again.sent.single(), "the very bytes, not a new quote")
         assertEquals(notSent.signed.hash, resent.hash)
-        assertEquals(listOf(notSent.transfer), sent.transfers.value, "recorded once a peer took it")
+        assertEquals(
+            listOf(notSent.transfer.copy(sentAt = 1_800_009_000)),
+            sent.transfers.value,
+            "recorded once a peer took it, with that moment: its pool lifetime runs from there",
+        )
     }
 
     @Test
@@ -476,17 +481,27 @@ class TransfersTest {
         val notSent = assertIs<TransferSending.NotSent>(
             SendTransfer(FakeSigner(Signing.Signed(signature)), unavailable, sent)(quote, Unlock.WithBiometrics("x")),
         )
-        val tooLow = FakeBroadcaster(Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7"))
+        val rejection = Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7")
+        val tooLow = FakeBroadcaster(rejection)
 
         // In no block: the rejection stands, and nothing is recorded.
         val pending = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Pending))(notSent.transfer)
         assertIs<TransferSending.NotSent>(pending)
         assertEquals(emptyList(), sent.transfers.value)
 
+        // Its receipt cannot be verified right now: neither verdict is known, and nothing is recorded.
+        val unreadable = RebroadcastTransfer(
+            tooLow,
+            sent,
+            receipts(TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN)),
+        )
+        assertEquals(TransferSending.RejectionUnverified(rejection, notSent.transfer), unreadable(notSent.transfer))
+        assertEquals(emptyList(), sent.transfers.value)
+
         // A peer took the first broadcast after all, and a block has it: sent, not "never minable".
-        val mined = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Included(100, true)))
+        val mined = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Included(100, true))) { now }
         assertEquals(TransferSending.Sent(notSent.signed.hash), mined(notSent.transfer))
-        assertEquals(listOf(notSent.transfer), sent.transfers.value)
+        assertEquals(listOf(notSent.transfer.copy(sentAt = now)), sent.transfers.value)
     }
 
     private fun receipts(progress: TransactionProgress = TransactionProgress.Pending) = object : ReceiptTracker {
@@ -546,9 +561,9 @@ class TransfersTest {
             return true
         }
 
-        override suspend fun prune(account: Address, minedCount: Long, signedBefore: Long): Boolean {
+        override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean {
             transfers.value = transfers.value.filterNot {
-                it.account == account && (it.nonce < minedCount || it.sentAt < signedBefore)
+                it.account == account && (it.nonce < minedCount || it.sentAt < sentBefore)
             }
             return true
         }
