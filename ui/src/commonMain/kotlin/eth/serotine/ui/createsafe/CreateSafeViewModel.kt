@@ -155,19 +155,21 @@ class CreateSafeViewModel(
 
     /** Where the flow stands. */
     private sealed interface Step {
-        data object Owners : Step
+        /** The owners, and [error], why the last review went back to them (a name that moved), if so. */
+        data class Owners(val error: String? = null) : Step
 
         data object Threshold : Step
 
         /**
-         * The review of [plan], with its [owners] as they were listed when it was planned, sent from
-         * [payer] (one of [payers], the accounts held here then) at [fee]: [quote], made at
-         * [quotedAt], or [error] why there is none; [hidden] once the screen stopped being shown
-         * since it was made.
+         * The review of [plan], with its [owners] as they were listed when it was planned ([named]:
+         * those added by an ENS name, resolved again with every quote), sent from [payer] (one of
+         * [payers], the accounts held here then) at [fee]: [quote], made at [quotedAt], or [error] why
+         * there is none; [hidden] once the screen stopped being shown since it was made.
          */
         data class Reviewing(
             val plan: SafePlan,
             val owners: List<OwnerItem>,
+            val named: List<Typed>,
             val payers: List<Account>,
             val payer: Address,
             val fee: FeeLevel,
@@ -188,7 +190,7 @@ class CreateSafeViewModel(
     }
 
     private val inputs = MutableStateFlow(Inputs())
-    private val step = MutableStateFlow<Step>(Step.Owners)
+    private val step = MutableStateFlow<Step>(Step.Owners())
 
     /** The quote, signature or broadcast in flight. */
     private var job: Job? = null
@@ -265,7 +267,7 @@ class CreateSafeViewModel(
     fun onContinue() {
         val model = model.value ?: return
         when (step.value) {
-            Step.Owners -> if (ownersRefusal(model) == null && nameError(model.inputs.name) == null) {
+            is Step.Owners -> if (ownersRefusal(model) == null && nameError(model.inputs.name) == null) {
                 step.value = Step.Threshold
             }
             Step.Threshold -> review(model)
@@ -281,7 +283,7 @@ class CreateSafeViewModel(
      */
     fun back() {
         when (val current = step.value) {
-            Step.Threshold -> step.value = Step.Owners
+            Step.Threshold -> step.value = Step.Owners()
             is Step.Reviewing -> {
                 if (current.signing || current.notSent?.canRetry == true) return
                 job?.cancel()
@@ -429,6 +431,7 @@ class CreateSafeViewModel(
         val asked = Step.Reviewing(
             plan = plan,
             owners = owners.map { ownerItem(it, model) },
+            named = model.typed.filter { it.name != null && it.address in owners },
             payers = payers,
             payer = payer,
             fee = FeeLevel.NORMAL,
@@ -462,8 +465,23 @@ class CreateSafeViewModel(
         job = viewModelScope.launch { quote(asked, note) }
     }
 
-    /** [asked]'s deployment quoted, into the review when it is still the one asked for. */
+    /**
+     * [asked]'s deployment quoted, into the review when it is still the one asked for. An owner added
+     * by its ENS name is resolved again first: one whose name moved, or cannot be verified again, is
+     * said on the owners' step, and nothing is quoted for it (as Send resolves its recipient again).
+     */
     private suspend fun quote(asked: Step.Reviewing, note: String?) {
+        for (owner in asked.named) {
+            val moved = movedName(owner) ?: continue
+            step.update { latest ->
+                if (latest is Step.Reviewing && latest.quoting && sameRequest(latest, asked)) {
+                    Step.Owners(moved)
+                } else {
+                    latest
+                }
+            }
+            return
+        }
         val quoting = try {
             quoteSafeDeployment(asked.plan, asked.payer, asked.fee)
         } catch (e: CancellationException) {
@@ -492,6 +510,20 @@ class CreateSafeViewModel(
         }
         // Hidden and shown again while it was made: it is from before, so it is made again.
         requoteIfHidden()
+    }
+
+    /** Why [owner]'s name is no longer the address it was added as, or null when it still is. */
+    private suspend fun movedName(owner: Typed): String? {
+        val name = owner.name ?: return null
+        val again = lookUp(name)
+        return when {
+            again is RecipientLookup.Found && again.address == owner.address -> null
+            again is RecipientLookup.Unavailable ->
+                "“$name” could not be resolved with verified calls again just now, so no Safe is deployed " +
+                    "with it as an owner: review it again in a moment."
+            else -> "“$name” no longer resolves to the address added as an owner, " +
+                "${Eip55.format(owner.address)}: check the owner, then take it out and add it again."
+        }
     }
 
     private fun sameRequest(a: Step.Reviewing, b: Step.Reviewing) =
@@ -543,8 +575,11 @@ class CreateSafeViewModel(
 
     /** Applies [edit] to the first two steps' inputs: only before the review. */
     private fun changeOwners(edit: (Inputs) -> Inputs) {
-        if (step.value != Step.Owners && step.value != Step.Threshold) return
+        val current = step.value
+        if (current !is Step.Owners && current != Step.Threshold) return
         inputs.update(edit)
+        // A change of the owners answers what the last review went back for.
+        if (current is Step.Owners && current.error != null) step.value = Step.Owners()
     }
 
     /** The owner typed, once it is an address the lookup found for the text as it is now. */
@@ -566,17 +601,16 @@ class CreateSafeViewModel(
         model ?: return CreateSafeUiState.Loading(network)
         when {
             model.list is AccountList.Unreadable -> return CreateSafeUiState.CannotCreate(network, LIST_UNAVAILABLE)
-            planSafe.ownersRefusal(emptyList()) == SafePlanRefusal.NoRelease ->
-                return CreateSafeUiState.CannotCreate(network, NO_RELEASE)
+            !planSafe.hasRelease() -> return CreateSafeUiState.CannotCreate(network, NO_RELEASE)
             model.held.isEmpty() -> return CreateSafeUiState.CannotCreate(network, NO_PAYER)
         }
         return when (step) {
-            Step.Owners -> owners(model)
+            is Step.Owners -> owners(model, step.error)
             else -> threshold(model)
         }
     }
 
-    private fun owners(model: Model): CreateSafeUiState.Owners {
+    private fun owners(model: Model, error: String?): CreateSafeUiState.Owners {
         val inputs = model.inputs
         val text = inputs.input.trim()
         val lookup = model.lookup.takeIf { it.text == text }
@@ -627,7 +661,7 @@ class CreateSafeViewModel(
             inputError = isError,
             canRetryLookup = (lookup as? RecipientState.Done)?.result is RecipientLookup.Unavailable,
             canAdd = found != null && found.address !in owners,
-            error = if (owners.isEmpty()) null else ownersRefusal(model)?.let(::planRefusalText),
+            error = error ?: if (owners.isEmpty()) null else ownersRefusal(model)?.let(::planRefusalText),
             canContinue = owners.isNotEmpty() && ownersRefusal(model) == null && nameError(inputs.name) == null,
         )
     }
@@ -779,6 +813,10 @@ class CreateSafeViewModel(
             "This address holds code already, so a deployment there would fail. Go back and continue again for " +
                 "another address."
         }
+        is SafeDeploymentRefusal.SameSafeSent ->
+            "This wallet sent the deployment of a Safe with these owners and this threshold already, at " +
+                "${Eip55.format(refusal.safe)}, and no block has it yet: it would be a second Safe of the same " +
+                "shape. Wait for it, or change the owners or the threshold."
         SafeDeploymentRefusal.AlreadySent ->
             "This wallet sent this deployment already, and no block has it yet: sending it again would only pay " +
                 "a fee to revert."

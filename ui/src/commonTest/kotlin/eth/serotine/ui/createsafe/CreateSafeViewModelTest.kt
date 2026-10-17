@@ -25,6 +25,7 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
@@ -536,6 +537,83 @@ class CreateSafeViewModelTest {
 
         assertNotEquals(first, viewModel.review.address, "another salt, another address")
         assertEquals("", viewModel.review.unlock.password.text)
+    }
+
+    /** Daily and friend.eth at 1 of 2, under review. */
+    private fun TestScope.reviewedWithAName(): CreateSafeViewModel {
+        names.names["friend.eth"] = NameResolution.Resolved("friend.eth", friend, 9_411_900)
+        balances.of(daily.address).value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        val viewModel = viewModel()
+        viewModel.onInputChange("friend.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        viewModel.onAddOwner()
+        viewModel.onContinue()
+        viewModel.onContinue()
+        runCurrent()
+        return viewModel
+    }
+
+    @Test
+    fun anOwnerAddedByANameIsResolvedAgainWithEveryQuote() = runTest {
+        val viewModel = reviewedWithAName()
+        assertEquals(listOf("friend.eth", "friend.eth"), names.asked, "once when added, again for the quote")
+        assertTrue(viewModel.review.quote != null)
+
+        names.names["friend.eth"] = NameResolution.Resolved("friend.eth", savings.address, 9_412_000)
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.refresh()
+        runCurrent()
+
+        val owners = viewModel.owners
+        assertEquals(
+            "“friend.eth” no longer resolves to the address added as an owner, " +
+                "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB: check the owner, then take it out and add it again.",
+            owners.error,
+        )
+        assertTrue(signer.asked.isEmpty())
+
+        // Taking it out answers it.
+        viewModel.onRemoveTyped("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB")
+        assertNull(viewModel.owners.error)
+    }
+
+    @Test
+    fun aNameThatCannotBeVerifiedAgainIsNotDeployedWith() = runTest {
+        names.names["friend.eth"] = NameResolution.Resolved("friend.eth", friend, 9_411_900)
+        val viewModel = viewModel()
+        viewModel.onInputChange("friend.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        viewModel.onAddOwner()
+        viewModel.onContinue()
+        names.names["friend.eth"] = NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.onContinue()
+        runCurrent()
+
+        val error = viewModel.owners.error!!
+        assertTrue(error.startsWith("“friend.eth” could not be resolved with verified calls again"))
+    }
+
+    @Test
+    fun aSecondSafeOfTheSameOwnersIsNotDeployedWhileTheFirstIsUnmined() = runTest {
+        val first = reviewed()
+        first.onPasswordChange("correct horse battery")
+        first.sign()
+        runCurrent()
+        assertIs<CreateSafeUiState.Sent>(first.uiState.value)
+        val deployed = (sent.transfers.value.single().action as SentAction.SafeDeployment).safe
+
+        val second = reviewed()
+
+        assertNotEquals(eip55(deployed), second.review.address, "planned anew, under another salt")
+        assertEquals(
+            "This wallet sent the deployment of a Safe with these owners and this threshold already, at " +
+                "${eip55(deployed)}, and no block has it yet: it would be a second Safe of the same shape. Wait " +
+                "for it, or change the owners or the threshold.",
+            second.review.error,
+        )
+        assertNull(second.review.quote)
     }
 
     @Test

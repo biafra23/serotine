@@ -52,6 +52,9 @@ class TransferStatusViewModel(
         data object Running : Listing
 
         data class Done(val listing: DeployedSafeListing) : Listing
+
+        /** The use case failed, against its promise: the user adds the Safe with Watch address. */
+        data object Broken : Listing
     }
 
     private val listing = MutableStateFlow<Listing>(Listing.Idle)
@@ -69,29 +72,36 @@ class TransferStatusViewModel(
     )
 
     /**
-     * Lists the Safe [status] deployed once its receipt says it succeeded in a block (the use case
-     * waits for the light client, and tries again itself while it cannot verify the Safe).
+     * Lists the Safe [status] deployed once its receipt is verified, once: when it succeeded, as
+     * soon as the light client proves the Safe (the use case waits for that, and tries again itself
+     * while it cannot verify it); when it reverted, if the address, read once, holds the Safe
+     * planned all the same — someone's copy of the same call mined first creates the very same Safe.
      */
     private fun listOnceMined(status: SentTransferStatus) {
         val deployment = status.transfer?.action as? SentAction.SafeDeployment ?: return
-        if (!succeeded(status.progress)) return
+        val succeeded = succeeded(status.progress) ?: return
         if (listing.value != Listing.Idle || listingJob?.isActive == true) return
         listing.value = Listing.Running
         listingJob = viewModelScope.launch {
             listing.value = try {
-                Listing.Done(listDeployedSafe(deployment))
+                Listing.Done(
+                    if (succeeded) listDeployedSafe(deployment) else listDeployedSafe.afterRevert(deployment),
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Listing.Idle // the use case promises not to throw; the backstop: tried again on the next receipt
+                // The use case promises not to throw; the backstop ends it, since a finalized receipt
+                // is never read again.
+                Listing.Broken
             }
         }
     }
 
-    private fun succeeded(progress: TransactionProgress): Boolean = when (progress) {
+    /** Whether the verified receipt says it succeeded (true) or reverted (false); null before it has one. */
+    private fun succeeded(progress: TransactionProgress): Boolean? = when (progress) {
         is TransactionProgress.Included -> progress.succeeded
         is TransactionProgress.Finalized -> progress.succeeded
-        else -> false
+        else -> null
     }
 
     private fun render(status: SentTransferStatus, listing: Listing): TransferStatusUiState.Shown {
@@ -129,8 +139,8 @@ class TransferStatusViewModel(
                 failed && transfer?.action is SentAction.Transfer ->
                     "It failed: the transfer reverted in its block, so nothing was moved. Its fee is paid all the same."
                 failed && transfer?.action is SentAction.SafeDeployment ->
-                    "It failed: the deployment reverted in its block, so no Safe was created. Its fee is paid all " +
-                        "the same."
+                    "It failed: this transaction reverted in its block and created no Safe itself. Its fee is " +
+                        "paid all the same."
                 failed -> "It failed: the transaction reverted in its block, so it did nothing. Its fee is paid all " +
                     "the same."
                 else -> null
@@ -150,17 +160,31 @@ class TransferStatusViewModel(
     ): DeploymentSummary? {
         val deployment = transfer.action as? SentAction.SafeDeployment ?: return null
         val owners = deployment.owners.size
+        // After a revert, a Safe at the address is another sender's copy of the same call's doing.
+        val copied = if (failed) {
+            "A Safe with these owners and threshold is at its address all the same: another sender's copy of " +
+                "the same deployment created it. "
+        } else {
+            ""
+        }
         val (text, listingFailed) = when {
-            failed -> "It reverted, so no Safe was created and nothing is added to your wallet." to true
             listing is Listing.Done -> when (val done = listing.listing) {
-                is DeployedSafeListing.Listed -> "Added to your wallet as ${done.account.label}." to false
-                is DeployedSafeListing.AlreadyInWallet -> "In your wallet as ${done.account.label}." to false
+                is DeployedSafeListing.Listed -> "${copied}Added to your wallet as ${done.account.label}." to false
+                is DeployedSafeListing.AlreadyInWallet -> "${copied}In your wallet as ${done.account.label}." to false
+                DeployedSafeListing.NoSafe ->
+                    "This transaction created no Safe, and none is at its address: nothing is added to your " +
+                        "wallet." to true
+                is DeployedSafeListing.NotVerified -> "Whether a Safe is at its address all the same cannot be " +
+                    "verified right now: check it later with Watch address." to true
                 DeployedSafeListing.NotTheSafe -> "The address does not hold the Safe deployed, as the light " +
                     "client verifies it, so it was not added to your wallet." to true
                 DeployedSafeListing.NotSaved -> "Your account list cannot be saved right now, so the Safe was not " +
                     "added: add it with Watch address." to true
             }
-            listing == Listing.Running || succeeded(progress) ->
+            listing == Listing.Broken -> "Serotine could not finish listing the new Safe: add it with Watch " +
+                "address." to true
+            failed -> "Checking whether a Safe is at its address all the same…" to false
+            listing == Listing.Running || succeeded(progress) != null ->
                 "Checking the new Safe with the light client before it is listed…" to false
             else -> "Added to your wallet once a block has it and the light client verifies the Safe there, while " +
                 "this screen is open; after leaving it, add it with Watch address." to false

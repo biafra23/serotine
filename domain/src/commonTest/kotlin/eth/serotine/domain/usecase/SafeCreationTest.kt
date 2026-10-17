@@ -35,6 +35,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SafeCreationTest {
 
@@ -289,6 +290,28 @@ class SafeCreationTest {
     }
 
     @Test
+    fun theSameOwnersAndThresholdSentAndNotMinedAreNotDeployedAgainUnderAnotherSalt() = runTest {
+        val first = plan(alice, bob)
+        world.sent.record(deploymentRecord(first, nonce = 7))
+        val again = plan(alice, bob)
+        returns(again.address)
+        assertNotEquals(first.address, again.address, "planned anew: another salt")
+
+        assertEquals(
+            SafeDeploymentRefusal.SameSafeSent(first.address),
+            assertIs<SafeDeploymentQuoting.Refused>(quote(again, world.alice.address, FeeLevel.NORMAL)).refusal,
+        )
+        // Another order of the owners, or another threshold, is another Safe.
+        val reordered = plan(bob, alice)
+        returns(reordered.address)
+        assertIs<SafeDeploymentQuoting.Quoted>(quote(reordered, world.alice.address, FeeLevel.NORMAL))
+        // Once the first is mined (or its nonce taken), it holds nothing back.
+        world.inputs.mined = 8
+        returns(again.address)
+        assertIs<SafeDeploymentQuoting.Quoted>(quote(again, world.alice.address, FeeLevel.NORMAL))
+    }
+
+    @Test
     fun aDeploymentIsSignedByThePayerAndRecordedAsWhatItDeploys() = runTest {
         val plan = plan(alice, bob, carol, threshold = 2)
         returns(plan.address)
@@ -350,6 +373,51 @@ class SafeCreationTest {
 
         assertEquals("Vault", assertIs<DeployedSafeListing.Listed>(listed).account.label)
         assertEquals(listOf(world.alice, listed.account), accounts.accounts.value)
+    }
+
+    @Test
+    fun afterARevertTheAddressIsReadOnceAndTheSafeAnotherCopyCreatedIsListed() = runTest {
+        val accounts = ListAccountRepository(world.alice)
+        val list = ListDeployedSafe(kinds, WatchAddress(accounts, kinds))
+        val owners = listOf(world.alice.address, world.carol)
+        val deployment = SentAction.SafeDeployment(world.safe, owners, 1, "1.4.1", "Vault")
+
+        // Codeless: nothing waits for code that will never come.
+        assertEquals(DeployedSafeListing.NoSafe, list.afterRevert(deployment))
+        kind.value = KindReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
+        assertEquals(DeployedSafeListing.NotVerified(ReadUnavailable.STALE_ANCHOR), list.afterRevert(deployment))
+        kind.value = KindReading.Syncing
+        assertEquals(DeployedSafeListing.NotVerified(null), list.afterRevert(deployment))
+        val reversed = SafeState("1.4.1", false, owners.reversed(), 1, 0, emptyList(), null)
+        kind.value = KindReading.Verified(AddressKind.Safe(reversed), 130)
+        assertEquals(DeployedSafeListing.NotTheSafe, list.afterRevert(deployment), "the owners in another order")
+        assertEquals(listOf(world.alice), accounts.accounts.value)
+
+        // Someone's copy of the same call was mined first: the very Safe planned.
+        val state = SafeState("1.4.1", false, owners, 1, 0, emptyList(), null)
+        kind.value = KindReading.Verified(AddressKind.Safe(state), 130)
+        val listed = assertIs<DeployedSafeListing.Listed>(list.afterRevert(deployment)).account
+        assertEquals(Account(world.safe, AccountKind.SAFE, "Vault", AccountCustody.Watched), listed)
+    }
+
+    @Test
+    fun theOwnersAreComparedInTheirOrder() = runTest {
+        val list = ListDeployedSafe(kinds, WatchAddress(ListAccountRepository(world.alice), kinds))
+        val owners = listOf(world.alice.address, world.carol)
+        val reversed = SafeState("1.4.1", false, owners.reversed(), 1, 0, emptyList(), null)
+        kind.value = KindReading.Verified(AddressKind.Safe(reversed), 130)
+
+        assertEquals(
+            DeployedSafeListing.NotTheSafe,
+            list(SentAction.SafeDeployment(world.safe, owners, 1, "1.4.1", "Vault")),
+        )
+    }
+
+    @Test
+    fun whetherAReleaseIsPinnedIsAskedOnItsOwn() {
+        assertTrue(planSafe.hasRelease())
+        releases.pinned = null
+        assertFalse(planSafe.hasRelease())
     }
 
     @Test

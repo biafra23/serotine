@@ -65,8 +65,11 @@ class TransferStatusViewModelTest {
     private val receipts = FakeReceipts()
     private val accounts = FakeAccounts()
     private val kind = MutableStateFlow<KindReading>(KindReading.Verified(AddressKind.Eoa, 9_412_118))
+    /** While set, every read of an address's kind throws: a use case breaking its promise. */
+    private var kindsBroken = false
     private val kinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> = kind
+        override fun observeKind(address: Address): Flow<KindReading> =
+            if (kindsBroken) throw IllegalStateException("broken") else kind
     }
 
     @AfterTest
@@ -249,7 +252,7 @@ class TransferStatusViewModelTest {
     }
 
     @Test
-    fun aDeploymentThatRevertedListsNothing() = runTest {
+    fun aDeploymentThatRevertedWithNoSafeAtItsAddressListsNothing() = runTest {
         sent.transfers.value = listOf(deployment)
         val viewModel = viewModel(deployment.hash)
         receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = false)
@@ -257,11 +260,64 @@ class TransferStatusViewModelTest {
 
         val shown = viewModel.shown
         assertEquals(
-            "It failed: the deployment reverted in its block, so no Safe was created. Its fee is paid all the same.",
+            "It failed: this transaction reverted in its block and created no Safe itself. Its fee is paid all " +
+                "the same.",
             shown.note,
+        )
+        assertEquals(
+            "This transaction created no Safe, and none is at its address: nothing is added to your wallet.",
+            shown.deployment?.listing,
         )
         assertTrue(shown.deployment!!.listingFailed)
         assertEquals(emptyList(), accounts.accounts.value)
+    }
+
+    @Test
+    fun aDeploymentThatRevertedBehindACopyOfItListsTheSafeTheCopyCreated() = runTest {
+        sent.transfers.value = listOf(deployment)
+        val owners = (deployment.action as SentAction.SafeDeployment).owners
+        kind.value = KindReading.Verified(
+            AddressKind.Safe(SafeState("1.4.1", false, owners, 1, 0, emptyList(), null)),
+            9_412_121,
+        )
+        val viewModel = viewModel(deployment.hash)
+        receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = false)
+        runCurrent()
+
+        assertEquals(
+            "A Safe with these owners and threshold is at its address all the same: another sender's copy of " +
+                "the same deployment created it. Added to your wallet as Family vault.",
+            viewModel.shown.deployment?.listing,
+        )
+        assertEquals(listOf(safe), accounts.accounts.value.map { it.address })
+    }
+
+    @Test
+    fun aRevertedDeploymentWhoseAddressCannotBeVerifiedSaysSoAndEnds() = runTest {
+        sent.transfers.value = listOf(deployment)
+        kind.value = KindReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
+        val viewModel = viewModel(deployment.hash)
+        receipts.of(deployment.hash).value = TransactionProgress.Finalized(9_412_120, succeeded = false)
+        runCurrent()
+
+        assertEquals(
+            "Whether a Safe is at its address all the same cannot be verified right now: check it later with " +
+                "Watch address.",
+            viewModel.shown.deployment?.listing,
+        )
+    }
+
+    @Test
+    fun aListingThatBreaksEndsWithWatchAddressInsteadOfCheckingForever() = runTest {
+        sent.transfers.value = listOf(deployment)
+        kindsBroken = true
+        val viewModel = viewModel(deployment.hash)
+        receipts.of(deployment.hash).value = TransactionProgress.Finalized(9_412_120, succeeded = true)
+        runCurrent()
+
+        val listing = viewModel.shown.deployment!!
+        assertEquals("Serotine could not finish listing the new Safe: add it with Watch address.", listing.listing)
+        assertTrue(listing.listingFailed)
     }
 
     @Test

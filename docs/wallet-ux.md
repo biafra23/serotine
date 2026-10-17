@@ -205,8 +205,10 @@ upgrades*).
       its blockie and a check box, the first held one chosen to start with;
       and an address or ENS name typed, checked at the input and resolved as
       Send's recipient is, then added with its blockie, in full, and the name
-      and finalized block it was resolved from. A name is resolved once, when
-      it is added: the owner is the address shown in full beside it.
+      and finalized block it was resolved from. A name is resolved again with
+      every quote of the review (15), as Send's recipient is: one that moved,
+      or cannot be verified again, sends the review back here with the
+      reason, and nothing is quoted or signed for it.
     - "This device (hardware key)" is listed but not offered: its passkey
       signer is not built yet, and the row says so. The domain already
       refuses a device key as the only owner (`SafePlanRefusal.DeviceKeyAlone`).
@@ -243,7 +245,10 @@ upgrades*).
       its earlier transactions not mined yet may still take. Then the unlock
       and Sign and deploy, as 8's.
     - Refused and said, nothing signed: an address that holds code already, a
-      deployment of it sent and not mined yet, a run that returns another
+      deployment of it sent and not mined yet, a deployment of a Safe with the
+      same owners (in their order) and threshold sent and not mined yet (a
+      review planned again has another salt, so another address: it would be
+      a second Safe), a run that returns another
       address (the pin does not match the chain), the payer's funds, a run
       that reverts, a light client not synced or not verifying.
     - The quote follows 8's freshness rules (made on entry, on Refresh, on a
@@ -260,8 +265,12 @@ upgrades*).
       detects it again, and is tried again while that cannot be verified)
       under the name given. That runs while the status screen is open; one
       left before has its Safe added with Watch address, as the screen says.
-      A deployment whose receipt says it reverted lists nothing, even when
-      someone else's copy of the same call created the Safe first.
+      A deployment whose receipt says it reverted had its address read once
+      (`ListDeployedSafe.afterRevert`): someone else's copy of the same call
+      mined first creates the very same Safe, which is then listed, and said;
+      otherwise the status says this transaction created no Safe. Nothing
+      waits for code there. Should the listing fail against its use case's
+      promise, the status says to add the Safe with Watch address.
 16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
     owners are shown with blockies, a "this device" mark on the ones held
     here, and the threshold; the modules and guard follow them.
