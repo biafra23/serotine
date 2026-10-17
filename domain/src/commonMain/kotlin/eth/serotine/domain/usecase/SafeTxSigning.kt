@@ -105,9 +105,15 @@ sealed interface SafeTxRefusal {
 /**
  * A Safe transaction as this wallet shows it: [request], what it does as decoded here from its
  * raw fields ([action]), and the refund it makes the Safe pay ([refund], null: none). A
- * [delegateCall] is marked as such and never signed here ([SafeTxRefusal.DelegateCall]).
+ * [delegateCall] is marked as such and never signed here ([SafeTxRefusal.DelegateCall]). Made
+ * only by [of], so what is shown is always what the request's fields decode to.
  */
-data class DecodedSafeTx(val request: SigningRequest, val action: SafeTxAction, val refund: SafeTxRefund?) {
+@ConsistentCopyVisibility
+data class DecodedSafeTx private constructor(
+    val request: SigningRequest,
+    val action: SafeTxAction,
+    val refund: SafeTxRefund?,
+) {
 
     /** Whether the Safe would run the target's code as itself. */
     val delegateCall: Boolean
@@ -229,7 +235,8 @@ class EncodeSigningRequest(private val codec: SigningRequestCodec) {
  * [owner]'s key as [unlock] opens it. Only a current owner of the Safe, as its verified storage
  * says, signs, and only a transaction whose nonce the Safe has not passed; a delegate call is
  * refused (docs/wallet-ux.md, screen 17). The signature is checked to recover to [owner] before
- * it is kept, and saved to the queue with the request ([SafeTxQueue]). On [network] only.
+ * it is kept, and saved to the queue with the request's other signatures that are current
+ * owners' and recover to them ([SafeTxQueue]). On [network] only.
  */
 class SignSafeTx(
     private val signer: Signer,
@@ -256,7 +263,11 @@ class SignSafeTx(
         // The key store's signature is checked like a co-signer's: one that recovers to another
         // address is never kept, nor shared.
         if (recovery.recover(request.hash, signature) != owner) return refused(SafeTxRefusal.BadSignature(owner))
-        val signed = request.withSignatures(listOf(SafeSignature.Ecdsa(owner, signature)))
+        // What is queued is checked: of the signatures the request carried, the current owners'
+        // that recover to them, with this one.
+        val valid = recovery.valid(request, state.owners)
+        val signed = SigningRequest.of(request.network, request.safe, request.tx, valid)
+            .withSignatures(listOf(SafeSignature.Ecdsa(owner, signature)))
         queue.prune(request.safe, state.nonce)
         val saved = queue.save(signed)
         return SafeTxSigning.Signed(saved ?: signed, saved = saved != null)

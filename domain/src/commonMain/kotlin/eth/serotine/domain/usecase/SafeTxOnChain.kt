@@ -50,13 +50,18 @@ data class SafeTxOwner(val owner: Address, val held: Boolean, val confirmation: 
  * for each, as its verified storage lists them, whether it signed (a signature in the request
  * that recovers to it over the hash computed here), approved the hash on chain
  * ([SafeApprovals]), or neither. A signature of an address that is no owner now is not counted.
+ * On [network] only.
  */
 class ReadSafeTxOwners(
     private val observeSafe: ObserveSafe,
     private val recovery: SignatureRecovery,
     private val approvals: SafeApprovals,
+    private val network: Network,
 ) {
     suspend operator fun invoke(request: SigningRequest): SafeTxOwnersReading = coroutineScope {
+        if (request.network != network) {
+            return@coroutineScope SafeTxOwnersReading.Refused(SafeTxRefusal.WrongChain(request.network.chainId))
+        }
         val safe = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading
             is SafeCheck.Refused -> return@coroutineScope SafeTxOwnersReading.Refused(check.refusal)

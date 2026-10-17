@@ -176,6 +176,19 @@ class SafeTxSigningTest {
     }
 
     @Test
+    fun onlyCheckedSignaturesAreQueuedWithANewOne() = runTest {
+        // Carried in from no check at all: a stranger's, and one said to be Carol's that is not.
+        val unchecked = world.request(usdcTransfer(4), world.stranger)
+        val notCarols = SafeSignature.Ecdsa(world.carol, unchecked.signatures.single().signature)
+        val request = unchecked.withSignatures(listOf(notCarols))
+
+        val signed = assertIs<SafeTxSigning.Signed>(sign(request, world.alice.address, unlock))
+
+        assertEquals(listOf(world.alice.address), signed.request.signers)
+        assertEquals(listOf(signed.request), world.queue.requests.value)
+    }
+
+    @Test
     fun aSignatureThatRecoversToAnotherAddressIsNeverKept() = runTest {
         world.signer.signAs = world.bob.address
 

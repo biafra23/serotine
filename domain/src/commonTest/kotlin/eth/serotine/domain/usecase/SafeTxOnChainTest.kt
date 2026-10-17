@@ -54,7 +54,7 @@ class SafeTxOnChainTest {
         world.approvals.approved[world.bob.address] = ApprovalReading.Read(approved = true, blockNumber = 120)
 
         val reading = assertIs<SafeTxOwnersReading.Read>(
-            ReadSafeTxOwners(world.observeSafe, world.recovery, world.approvals)(request),
+            ReadSafeTxOwners(world.observeSafe, world.recovery, world.approvals, Network.SEPOLIA)(request),
         )
 
         assertEquals(
