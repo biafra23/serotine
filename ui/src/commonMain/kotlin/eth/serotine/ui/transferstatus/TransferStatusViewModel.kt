@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.stateIn
  * ([ObserveSentTransfer]), as [TransferStatusUiState]. [formatTime] dates the broadcast a peer
  * took in the user's own time zone. No intents: the screen's only action, Done, is navigation.
  *
- * A Safe's deployment is listed in the wallet by `FollowSafeDeployments`, which the app runs
+ * A Safe's deployment is listed in the wallet by `FollowSafeDeployments`, which the host runs
  * whatever screen is open (docs/wallet-ux.md, screen 15); this screen only shows where that
  * stands, from the deployment's record and the account list ([ObserveAccounts]).
  */

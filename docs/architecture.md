@@ -31,9 +31,12 @@ rule in code.
 **Dependencies point inward, and only inward.**
 
 - `:domain` depends on nothing of ours and on no framework. Its libraries are
-  coroutines' `Flow` and kotlincrypto's Keccak-256, which the transaction
-  encoding hashes with (the EIP-1559 signing digest, the transaction hash, a
-  Safe transaction's EIP-712 hash), both pure Kotlin on every target. It has
+  coroutines' `Flow` and kotlincrypto's Keccak-256 (`sha3`), both pure Kotlin
+  on every target. Keccak-256 is there by the owner's ruling (2026-10-18,
+  #50) for the transaction encoding and hashing alone: the EIP-1559 signing
+  digest and transaction hash, a Safe transaction's EIP-712 hash, the CREATE2
+  address of a Safe and EIP-55. It is the one library besides coroutines, and
+  nothing else comes in under it. It has
   no Android target on purpose: Android
   consumers resolve its JVM variant, as they do kotlinx-coroutines, so nothing
   in it can ever import `android.*` (and that variant emits Java 17 class
@@ -113,14 +116,20 @@ review finding, whatever it saves.
   anything else, so `App` creates it in the host's scope and navigates to the
   screen, clearing the back stack (both tabs' stacks included), while an
   update is required, and to the Assets tab's start once it no longer is.
-  `App` also runs the work no screen owns while it is shown:
-  `AppGraph.followSafeDeployments()`, which lists the Safes this wallet
-  deployed whatever screen is open (docs/wallet-ux.md, screen 15).
+- **App-wide work runs in the hosts, not in `App`.** What no screen owns is a
+  use case the composition root builds from its ports and runs for the
+  process's life, beside the `AppGraph` (ports in, ViewModel factories out):
+  `FollowUpgradeReports`, which notifies of a network upgrade, and
+  `FollowSafeDeployments`, which lists the Safes this wallet deployed
+  whatever screen is open (docs/wallet-ux.md, screen 15). On Android both run
+  while the application holds the engine; on the desktop, while `main()`
+  runs.
 - **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
   Each tab is a nested graph. Settings opens over the Assets tab's stack and
   closes back down to it, so switching tabs keeps the user's place in Assets
-  with no stack saved aside to go stale; re-selecting the current tab returns
+  with no stack saved aside to go stale (owner ruling, 2026-10-18, #49: this
+  tab model stands for now); re-selecting the current tab returns
   to its start. A route's arguments are identifiers only
   (`account/{address}`), never an object: the destination's ViewModel loads
   what it shows through its use cases. The bar shows on the tabs' screens; a

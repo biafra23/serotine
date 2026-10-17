@@ -25,10 +25,14 @@ import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
+import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +46,9 @@ import kotlinx.coroutines.launch
  * (docs/embedding-myotis.md). Built once per process; activities read [graph]. The engine's
  * networking is on while something holds it ([holdEngine]: a visible activity, the daily
  * upgrade check), and while it is, the engine's upgrade reports are followed into
- * notifications ([upgradeNotices]).
+ * notifications ([upgradeNotices]) and the Safes this wallet deployed are listed once the light
+ * client proves them ([FollowSafeDeployments]): the work no screen owns, run here beside the
+ * [graph], on the same adapters, and never from the shared UI.
  */
 class SerotineApplication : Application() {
 
@@ -64,6 +70,20 @@ class SerotineApplication : Application() {
         UpgradeNotices(knownUpgrades, AndroidUpgradeNotifier(this, Network.SEPOLIA))
     }
 
+    /**
+     * The account list in the app's private files, which the manifest keeps out of backups and
+     * device transfers; addresses and labels only, no keys. One instance, which the graph and the
+     * deployments' follower share.
+     */
+    private val accounts by lazy { FileAccountRepository(filesDir.resolve("accounts.json").path) }
+
+    /**
+     * The transactions signed here, with their signed bytes (public once broadcast, no key in
+     * them), beside the account list. One instance, which the graph and the deployments' follower
+     * share.
+     */
+    private val sentTransfers by lazy { FileSentTransfers(filesDir.resolve("sent-transfers.json").path) }
+
     val graph: AppGraph by lazy {
         // Imported seeds in envelopes under the app's private files, the hardware factor a
         // Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers. The
@@ -75,9 +95,7 @@ class SerotineApplication : Application() {
             biometricKey = AndroidBiometricKey(this, PlatformBiometricPrompter { foreground.current }),
         )
         AppGraph(
-            // The account list in the app's private files, which the manifest keeps out of
-            // backups and device transfers; addresses and labels only, no keys.
-            accounts = FileAccountRepository(filesDir.resolve("accounts.json").path),
+            accounts = accounts,
             keys = keyStore,
             nativeBalances = node.nativeBalances,
             tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
@@ -95,9 +113,7 @@ class SerotineApplication : Application() {
             receipts = node.receipts,
             names = node.names,
             signer = keyStore,
-            // The transfers signed here, with their signed bytes (public once broadcast, no key in
-            // them), beside the account list in the app's private files.
-            sentTransfers = FileSentTransfers(filesDir.resolve("sent-transfers.json").path),
+            sentTransfers = sentTransfers,
             // The Safe transactions waiting for their owners, with the signatures collected (public
             // data, no key in them), beside the account list in the app's private files.
             safeTxQueue = FileSafeTxQueue(filesDir.resolve("safe-tx-queue.json").path),
@@ -111,13 +127,13 @@ class SerotineApplication : Application() {
     }
 
     /**
-     * The process's own work: following upgrade reports and showing reminders. A failure in
-     * it is reported and ends that one piece of work, never the wallet: the next hold, alarm
-     * or start runs it again.
+     * The process's own work: following upgrade reports, showing reminders and listing the
+     * Safes deployed. A failure in it is reported and ends that one piece of work, never the
+     * wallet: the next hold, alarm or start runs it again.
      */
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
-            System.err.println("Serotine: upgrade notices stopped: $e")
+            System.err.println("Serotine: the app's background work stopped: $e")
         },
     )
 
@@ -125,10 +141,13 @@ class SerotineApplication : Application() {
     private val handler = Handler(Looper.getMainLooper())
     private var holds = 0
     private var following: Job? = null
+    private var deployments: Job? = null
     private val sleep = Runnable {
         node.pause()
         following?.cancel()
         following = null
+        deployments?.cancel()
+        deployments = null
     }
 
     /** The activity in front, for the biometric prompt. */
@@ -142,8 +161,9 @@ class SerotineApplication : Application() {
     }
 
     /**
-     * Keeps the engine's networking on, and its upgrade reports followed into notifications,
-     * until the matching [releaseEngine]. Main thread.
+     * Keeps the engine's networking on, its upgrade reports followed into notifications, and the
+     * Safes this wallet deployed listed once proven, until the matching [releaseEngine]. Main
+     * thread.
      */
     fun holdEngine() {
         if (holds++ > 0) return
@@ -153,12 +173,35 @@ class SerotineApplication : Application() {
         if (following?.isActive != true) {
             following = scope.launch { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
         }
+        if (deployments?.isActive != true) deployments = scope.launch { followSafeDeployments() }
+    }
+
+    /**
+     * Lists every Safe this wallet deployed once the light client proves it, whatever screen is
+     * open (docs/wallet-ux.md, screen 15); runs until cancelled. A failure ends it, never the
+     * wallet: the next hold follows the deployments again.
+     */
+    private suspend fun followSafeDeployments() {
+        val kinds = node.addressKinds
+        try {
+            FollowSafeDeployments(
+                sentTransfers,
+                node.receipts,
+                accounts,
+                ListDeployedSafe(kinds, WatchAddress(accounts, kinds)),
+            )()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following Safe deployments stopped: ${e::class.simpleName}")
+        }
     }
 
     /**
      * Ends a [holdEngine]. [PAUSE_DELAY_MS] after the last one, networking goes off (a
-     * backgrounded wallet keeps no sockets or timers open) and the reports are no longer
-     * followed: the reminder alarm covers the time until the next hold. The delay keeps a
+     * backgrounded wallet keeps no sockets or timers open) and neither the reports nor the
+     * deployments are followed: the reminder alarm covers the reports until the next hold, and
+     * a deployment's record keeps it for the next. The delay keeps a
      * rotation or a quick app switch from pausing at all. Main thread.
      */
     fun releaseEngine() {

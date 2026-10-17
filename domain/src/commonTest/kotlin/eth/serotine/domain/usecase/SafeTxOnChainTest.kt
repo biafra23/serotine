@@ -140,35 +140,57 @@ class SafeTxOnChainTest {
     }
 
     @Test
-    fun anyAccountHeldHereExecutesWithApprovalsOnChainMakingUpTheThreshold() = runTest {
+    fun anOwnerExecutesWithApprovalsOnChainMakingUpTheThreshold() = runTest {
         world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        world.state = world.state.copy(threshold = 3)
         world.approvals.approved[world.bob.address] = ApprovalReading.Read(approved = true, blockNumber = 120)
         val request = world.request(payment, world.carol)
 
         val quote = assertIs<SafeExecutionQuoting.Quoted>(
-            quoteExecution(request, world.stranger, FeeLevel.NORMAL),
+            quoteExecution(request, world.alice.address, FeeLevel.NORMAL),
         ).quote
 
         assertEquals(
-            listOf(request.signatures.single(), SafeSignature.ApprovedHash(world.bob.address)),
+            listOf(
+                SafeSignature.ApprovedHash(world.alice.address),
+                request.signatures.single(),
+                SafeSignature.ApprovedHash(world.bob.address),
+            ),
             quote.signatures,
         )
-        assertEquals(listOf(world.alice.address, world.bob.address), world.approvals.asked)
+        assertEquals(listOf(world.bob.address), world.approvals.asked, "only the owner not confirming yet")
+    }
+
+    @Test
+    fun onlyAnOwnerExecutes() = runTest {
+        // CLAUDE.md, *Data sources*: once the threshold is met any owner executes it. The Safe would
+        // take any sender; this wallet sends from an owner alone.
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        val request = world.request(payment, world.alice.address, world.carol)
+
+        assertEquals(
+            SafeExecutionQuoting.Refused(SafeTxRefusal.NotAnOwner(world.stranger)),
+            quoteExecution(request, world.stranger, FeeLevel.NORMAL),
+        )
+        assertEquals(emptyList(), world.inputs.simulated, "nothing quoted")
+        assertIs<SafeExecutionQuoting.Quoted>(quoteExecution(request, world.bob.address, FeeLevel.NORMAL))
     }
 
     @Test
     fun anExecutionShortOfTheThresholdOrOutOfTurnIsRefused() = runTest {
         world.inputs.simulation = Simulation.Succeeded(executed, 100)
-        suspend fun refusal(request: SigningRequest, executor: Address = world.stranger) =
+        suspend fun refusal(request: SigningRequest, executor: Address = world.alice.address) =
             assertIs<SafeExecutionQuoting.Refused>(quoteExecution(request, executor, FeeLevel.NORMAL)).refusal
 
-        assertEquals(SafeTxRefusal.ThresholdNotMet(1, 2), refusal(world.request(payment, world.carol)))
+        // Alice by sending it and Carol's signature: two of three.
+        world.state = world.state.copy(threshold = 3)
+        assertEquals(SafeTxRefusal.ThresholdNotMet(2, 3), refusal(world.request(payment, world.carol)))
         // A former owner's signature counts for nothing.
-        world.state = world.state.copy(owners = listOf(world.alice.address, world.bob.address), threshold = 1)
-        assertEquals(SafeTxRefusal.ThresholdNotMet(0, 1), refusal(world.request(payment, world.carol)))
+        world.state = world.state.copy(owners = listOf(world.alice.address, world.bob.address), threshold = 2)
+        assertEquals(SafeTxRefusal.ThresholdNotMet(1, 2), refusal(world.request(payment, world.carol)))
         world.state = world.state.copy(
             owners = listOf(world.alice.address, world.bob.address, world.carol),
-            threshold = 2,
+            threshold = 3,
         )
 
         world.approvals.approved[world.bob.address] = ApprovalReading.Unavailable(ReadUnavailable.UNPROVEN)
@@ -271,8 +293,8 @@ class SafeTxOnChainTest {
         )
         assertEquals(
             SafeExecutionQuoting.Refused(SafeTxRefusal.AlreadySent),
-            quoteExecution(request, world.stranger, FeeLevel.NORMAL),
-            "from another account of this wallet just the same: the nonce is the Safe's",
+            quoteExecution(request, world.bob.address, FeeLevel.NORMAL),
+            "from another owner just the same: the nonce is the Safe's",
         )
         // A block took it and it reverted (an owner swapped meanwhile): the Safe's nonce is still 4,
         // the sender's count has passed it, and a corrected execution is not held back.

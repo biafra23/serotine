@@ -1,6 +1,7 @@
 package eth.serotine.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -86,6 +87,9 @@ import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_REPEAT_TAG
 import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
+import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
 import eth.serotine.ui.safeimport.IMPORT_REQUEST_BUTTON_TAG
 import eth.serotine.ui.safeimport.IMPORT_REQUEST_FIELD_TAG
@@ -170,30 +174,46 @@ class AppNavigationTest {
 
     /** The Safes deployed in this test, as the light client proves them once their code is there. */
     private val deployed = MutableStateFlow<Map<Address, SafeState>>(emptyMap())
+
+    /** The account list, kept in [accounts]. */
+    private val accountRepository = object : AccountRepository {
+        override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
+
+        override suspend fun add(account: Account): AccountAdd {
+            accounts.update { it + account }
+            return AccountAdd.Added
+        }
+
+        override suspend fun rename(address: Address, label: String): AccountChange {
+            accounts.update { list -> list.map { if (it.address == address) it.copy(label = label) else it } }
+            return AccountChange.Changed
+        }
+
+        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
+            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+            return AccountChange.Changed
+        }
+
+        override suspend fun remove(address: Address): AccountChange {
+            accounts.update { list -> list.filterNot { it.address == address } }
+            return AccountChange.Changed
+        }
+    }
+
+    /** Treasury is a Safe; any other address is an EOA until a Safe is [deployed] there. */
+    private val addressKinds = object : AddressKinds {
+        override fun observeKind(address: Address): Flow<KindReading> = if (address == treasuryAddress) {
+            val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 4, emptyList(), null)
+            flowOf(KindReading.Verified(AddressKind.Safe(state), 9_412_118))
+        } else {
+            deployed.map { safes ->
+                KindReading.Verified(safes[address]?.let { AddressKind.Safe(it) } ?: AddressKind.Eoa, 9_412_118)
+            }
+        }
+    }
+
     private val graph = AppGraph(
-        accounts = object : AccountRepository {
-            override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
-
-            override suspend fun add(account: Account): AccountAdd {
-                accounts.update { it + account }
-                return AccountAdd.Added
-            }
-
-            override suspend fun rename(address: Address, label: String): AccountChange {
-                accounts.update { list -> list.map { if (it.address == address) it.copy(label = label) else it } }
-                return AccountChange.Changed
-            }
-
-            override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
-                accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
-                return AccountChange.Changed
-            }
-
-            override suspend fun remove(address: Address): AccountChange {
-                accounts.update { list -> list.filterNot { it.address == address } }
-                return AccountChange.Changed
-            }
-        },
+        accounts = accountRepository,
         keys = object : KeyStore {
             override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
 
@@ -226,16 +246,7 @@ class AppNavigationTest {
         userTokens = userTokens,
         priceFeeds = FakeFeeds(),
         displayCurrency = MemoryCurrencySetting(),
-        addressKinds = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> = if (address == treasuryAddress) {
-                val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 4, emptyList(), null)
-                flowOf(KindReading.Verified(AddressKind.Safe(state), 9_412_118))
-            } else {
-                deployed.map { safes ->
-                    KindReading.Verified(safes[address]?.let { AddressKind.Safe(it) } ?: AddressKind.Eoa, 9_412_118)
-                }
-            }
-        },
+        addressKinds = addressKinds,
         lightClient = object : LightClient {
             override fun observeStatus(): Flow<LightClientStatus> = status
         },
@@ -289,8 +300,18 @@ class AppNavigationTest {
         override val viewModelStore = ViewModelStore()
     }
 
-    private fun showApp() = rule.setContent {
+    /**
+     * Shows the [App] in the [host]; with [followDeployments], beside it the deployments' follower,
+     * on the graph's own ports, as the hosts run it (`SerotineApplication`, `main()`).
+     */
+    private fun showApp(followDeployments: Boolean = false) = rule.setContent {
         CompositionLocalProvider(LocalLifecycleOwner provides host, LocalViewModelStoreOwner provides host) {
+            if (followDeployments) {
+                LaunchedEffect(Unit) {
+                    val listing = ListDeployedSafe(addressKinds, WatchAddress(accountRepository, addressKinds))
+                    FollowSafeDeployments(sentTransfers, receipts, accountRepository, listing)()
+                }
+            }
             val controller = rememberNavController()
             if (navController.isEmpty()) navController += controller
             App(graph, controller)
@@ -676,7 +697,7 @@ class AppNavigationTest {
     fun aSafeIsCreatedFromTheFloatingActionButtonAndItsDeploymentFollowed() {
         accounts.value = listOf(daily, savings)
         nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
-        showApp()
+        showApp(followDeployments = true)
 
         rule.onNodeWithContentDescription("Add account").performClick()
         rule.onNodeWithText("Create Safe").performClick()

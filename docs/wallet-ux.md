@@ -8,13 +8,14 @@ CLAUDE.md's *Trust* and *Data sources* sections to the screens; where this
 page and CLAUDE.md disagree, CLAUDE.md wins and this page is fixed.
 
 The mockups below (source: `wallet-ux-screens.html`, which opens in a
-browser) draw the 20 screens with their numbers. They are a sketch: the
+browser) draw screens 1 to 20 with their numbers; Security (21) came later
+and has no mockup. They are a sketch: the
 blockies are real, the QR code, amounts and addresses are not, the account
 rows abbreviate the control badges, and the token rows show monograms where
 a built-in token gets its bundled icon. Where a mockup and this text differ,
 the text wins.
 
-![The 20 screens, numbered as below](wallet-ux-screens.png)
+![Screens 1 to 20, numbered as below](wallet-ux-screens.png)
 
 ## Rules every screen follows
 
@@ -67,7 +68,9 @@ the text wins.
 
 The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
 `NavigationRail` on a wide desktop window. Each tab is a nested graph of the
-one `NavHost`, and switching tabs keeps the user's place (docs/architecture.md). The light
+one `NavHost`, and switching tabs keeps the user's place: Settings opens over
+the Assets tab's stack and closes back to it, with nothing saved aside (owner
+ruling, 2026-10-18, #49, for now; docs/architecture.md). The light
 client's status strip stays at the top of Assets. A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
 Safe transaction) is a destination that covers the bar until it ends. A
@@ -104,8 +107,12 @@ upgrades*).
 3. **Account menu**: Send (absent when watch-only; for a Safe, present once an
    owner of it is held here, and it opens the proposal of a Safe transaction,
    16) · Receive · Copy address · Rename · Remove. Removing an account the user
-   holds a key for says that only its recovery phrase brings it back; the key
-   store deletes an envelope only once no remaining account derives from it.
+   holds a key for says that only its recovery phrase brings it back, and
+   asks for a confirmation, not the wallet password (owner ruling,
+   2026-10-18, #17). The key store keeps one envelope per account, under its
+   address, so the removal deletes that account's envelope and its biometric
+   wrap; with the last envelope the wallet password and the biometric path go
+   too (`EnvelopeKeyStore.delete`).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
@@ -260,7 +267,8 @@ upgrades*).
     - Sent, the status (9) replaces the screen and says "Deployment of a
       Safe", and where its listing stands; it shows that, and drives
       nothing. The app lists the Safe itself (`FollowSafeDeployments`, run
-      by `App` whatever screen is open, and again after a restart): for each
+      by the host for as long as the app runs, whatever screen is open, and
+      again after a restart): for each
       recorded deployment whose listing has not ended, it waits for the
       verified receipt, then, when it succeeded, for the light client to
       prove code at the address (`ListDeployedSafe`), checks that it is a
@@ -308,7 +316,9 @@ upgrades*).
       whoever executes it pays — native or
       ERC-20, a plain call with no refund, at the Safe's verified nonce or
       the first after those queued from it without a gap (one queued far
-      ahead, as an imported request can be, moves nothing). The Safe's balance less what the
+      ahead, as an imported request can be, moves nothing; how far ahead of
+      the Safe's nonce a request may be signed is not bounded, the owner's
+      open question, issue #59). The Safe's balance less what the
       transactions queued before it move must cover it, and the Safe's call
       is run as a verified call from the Safe; the review says when the
       engine would not run it ("Not simulated"). The review shows the Safe
@@ -337,13 +347,14 @@ upgrades*).
       removed (its limits, allowlist or delay stop), a fallback handler set
       (it answers EIP-1271 for the Safe: one that accepts every signature
       lets anyone spend what the Safe approved, through Permit2, permits or
-      orders). They are signed like any other change; refusing some of them
-      is a policy for the owner to decide.
+      orders). They are signed like any other change; whether to refuse
+      some of them, or allow only a pinned handler, guard or module, is the
+      owner's open question (issue #63).
     - `delegatecall` is marked as such and decoded no further: the Safe runs
       the target's code as itself. This wallet shows it and does not sign,
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
-      another wallet through MultiSend arrives as one. Allowing a pinned
-      MultiSendCallOnly is the owner's decision.
+      another wallet through MultiSend arrives as one. Whether to allow a
+      pinned MultiSendCallOnly is the owner's open question (issue #57).
     - Gas and refund terms, when any of `safeTxGas`, `baseGas`, `gasPrice`,
       `gasToken` or `refundReceiver` is not zero: shown, and marked as what
       this wallet does not sign, approve or execute
@@ -352,15 +363,19 @@ upgrades*).
       bounded only by what the Safe holds (for ether the gas price is capped,
       `baseGas` is not), and with a gas price the call gets exactly
       `safeTxGas`; a `safeTxGas` without one lets a failing call use up the
-      nonce. Allowing some of these terms is the owner's decision.
+      nonce. Whether to allow bounded terms, with the most a refund costs
+      shown, is the owner's open question (issue #58).
     - Each owner's state (`ReadSafeTxOwners`): signed (a signature that
       recovers to it over the hash computed here), approved on chain (a
       verified `approvedHashes`), missing, or not verifiable now; a signature
       of an address that is no owner now counts for nobody.
     - Share request (QR or text) · Sign (an owner held here) · Approve on
-      chain · Execute, once the threshold is met. Execute may be sent from
-      any account held here, an owner's counting as its own confirmation;
-      only the Safe's next nonce can be executed, and an approval or
+      chain · Execute, once the threshold is met. Execute is sent by an owner
+      held here, as the ruling has it (CLAUDE.md, *Data sources*: once the
+      threshold is met any owner executes it), its sending counting as its
+      own confirmation; another account is refused
+      (`SafeTxRefusal.NotAnOwner`). Only the Safe's next nonce can be
+      executed, and an approval or
       execution sent and not mined yet is not offered again, from any
       account held here. What is shown and shared carries the signatures of the
       Safe's current owners only, so another device never refuses it for an
@@ -383,8 +398,8 @@ upgrades*).
       queue cannot save stays on the screen, to be shared before it is left.
     - Approve on chain, offered while the confirmations fall short, and
       Execute review the EOA transaction as 8 reviews a transfer: the
-      account that sends it (an owner held here first; for Execute, any
-      account held here whose sending reaches the threshold), the fee level,
+      account that sends it (an owner held here; for Execute, one whose
+      sending reaches the threshold), the fee level,
       the most the fee can be, the account's balance before and after, the
       verified run, and for Execute the confirmations it is executed with. An
       approval the confirmations made needless meanwhile says so and is not
@@ -500,7 +515,9 @@ address. Applied:
   Aave's faucet tokens (DAI, USDT, WBTC, AAVE) are not their issuers', so all
   of them are added by address. It is checked twice against the contract's
   `symbol()` and `decimals()`: by the PR that adds it, which shows the values
-  read, and by the app with verified calls each time it runs. An entry its
+  read, and by the app with verified calls each time it runs. (That reading
+  of the ruling's "when it is listed" as two checks is the owner's to
+  confirm: issue #53.) An entry its
   contract contradicts, or whose contract does not answer as a token, is not
   shown, and Settings → Tokens says why. While the check has no verified
   answer yet the entry is shown: its balance is a verified call of its own.
@@ -513,7 +530,10 @@ address. Applied:
   `decimals()`, verified) and labelled as the contract's claim, with the block
   it was read at, cut on screen beyond 24 characters of symbol or 48 of name.
   One whose symbol is a built-in token's is marked as not that
-  token, on the Add card, in Settings → Tokens and on every account row. An
+  token, on the Add card, in Settings → Tokens and on every account row. Two
+  added tokens sharing a symbol are not marked (Settings → Tokens shows each
+  one's address); whether they should be is the owner's open question (issue
+  #51). An
   address the wallet already knows, or that does not answer as a token,
   cannot be added, and nothing is added without a verified answer. The added
   tokens and the hidden ones are the user's settings, kept in a file of their
@@ -602,7 +622,10 @@ Applied:
   - One line, in this key order; addresses and bytes lower-case hex with
     `0x`; every uint256, the nonce included, a decimal string without a
     leading zero; each signature `r ‖ s ‖ v` (65 bytes, `v` 27 or 28, a low
-    `s`) of the raw hash; one per owner, in ascending owner order.
+    `s`) of the raw hash; one per owner, in ascending owner order. A high `s`
+    and an `eth_sign`-style `v` of 31 or 32 are refused, stricter than the
+    Safe contract; whether to accept them, for signers that make them, is the
+    owner's open question (issue #60).
   - Decoded only when the text, less the whitespace around it, is exactly
     the encoding of what it decodes to: a second value of a key, an unknown
     field, a comment, another form of a number cannot ride along. Another
@@ -619,7 +642,8 @@ Applied:
 - **The receiving device checks it against the chain** before showing it
   (`ImportSigningRequest`):
   the chain id is Sepolia; the Safe is detected as a Safe; the nonce is not
-  below the Safe's verified nonce; the `SafeTx` hash is computed here; every
+  below the Safe's verified nonce (how far above it may be is not bounded:
+  issue #59); the `SafeTx` hash is computed here; every
   signature is a current owner's over that hash. An ECDSA signature must
   recover to the owner; a contract owner's, such as the passkey signer of a
   hardware P-256 key, must pass a verified EIP-1271 `isValidSignature` call
@@ -631,12 +655,14 @@ Applied:
   holds approves the hash in a transaction, which needs no transport between
   devices. It is quoted and sent as any transaction from that account is
   (Send's quote: nonce, fees, a verified run).
-- **Execution** is `execTransaction` sent by an account the user holds,
-  once signatures and approvals reach the threshold, followed like a send
-  (9). The executing account, when it is an owner, confirms it by sending it;
-  approvals on chain are read only when the signatures fall short. Its run is
-  the whole execution — the Safe's checks, its guard, the call — as a
-  verified call from that account, and one that would fail is not signed.
+- **Execution** is `execTransaction` sent by an owner account the user
+  holds, once signatures and approvals reach the threshold, followed like a
+  send (9); an account that is not a current owner is refused
+  (`SafeTxRefusal.NotAnOwner`), though the Safe itself would take any sender.
+  The executing owner confirms it by sending it; approvals on chain are read
+  only when the signatures fall short. Its run is the whole execution — the
+  Safe's checks, its guard, the call — as a verified call from that account,
+  and one that would fail is not signed.
 
 ## Not part of this page
 
@@ -645,6 +671,8 @@ Still the owner's decisions (CLAUDE.md, docs/keys-and-signing.md and issue
 
 - importing a raw private key (an EOA comes from a recovery phrase);
 - the synced-passkey owner tier and external signers;
-- recovery modules beyond offering one when a Safe is created;
+- recovery modules: none is pinned, so none is offered when a Safe is
+  created (screen 14), and which to pin is the owner's open question (issue
+  #54);
 - the dApp connection protocol;
 - any network other than Sepolia.

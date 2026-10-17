@@ -40,8 +40,9 @@ consumer developed against an unreleased engine, Myotis's
 ## Where it goes in Serotine
 
 - **`:data` only.** The engine is a data source. An adapter in
-  `eth.serotine.data.engine` implements the domain's ports (balances, nonces,
-  logs, broadcast — each its own port) over `io.myotis.api`; `:domain` and
+  `eth.serotine.data.engine` implements the domain's ports (balances,
+  address kinds, prices, the transaction inputs, broadcast, receipts, ENS
+  names — each its own port) over `io.myotis.api`; `:domain` and
   `:ui` never import `io.myotis.*`.
 - **`io.myotis.api` and nothing below it.** Engine internals are not on the
   classpath (the library does not ship them), and the Myotis rule carries over
@@ -202,7 +203,7 @@ consumer developed against an unreleased engine, Myotis's
 
 ## Sending
 
-Part 11 of `feature/wallet-ux` adds the engine's half of a transfer: four
+The engine's half of a transfer is four
 adapters over `VerifiedReads` and `EnsApi`, behind domain ports, all on a
 `TransactingChain` seam that extends `VerifiedChain`, which the Send screens
 (docs/wallet-ux.md, screens 7 to 9) put to use. Every read is made only while the light client can verify reads

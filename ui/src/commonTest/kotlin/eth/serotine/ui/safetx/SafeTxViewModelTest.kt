@@ -357,8 +357,8 @@ class SafeTxViewModelTest {
         runCurrent()
         val review = viewModel.review
         assertEquals(ReviewKind.EXECUTION, review.kind)
-        assertEquals(Eip55.format(world.alice.address), review.account, "a held owner first")
-        // Dave is no owner: from him, Carol's signature alone falls short.
+        assertEquals(Eip55.format(world.alice.address), review.account, "the owner held here")
+        // Dave is held here but no owner: only an owner executes (CLAUDE.md, *Data sources*).
         assertEquals(listOf(Eip55.format(world.alice.address)), review.accounts.map { it.address })
         assertEquals("Executed with: Alice, by sending the execution; 0x3333…3333's signature", review.confirmations)
         viewModel.onPasswordChange("made-up test password")
@@ -370,24 +370,38 @@ class SafeTxViewModelTest {
     }
 
     @Test
-    fun anyAccountHeldHereExecutesOnceTheSignaturesReachTheThreshold() = runTest {
+    fun onlyAnOwnerHeldHereExecutesOnceTheSignaturesReachTheThreshold() = runTest {
         funded()
         world.inputs.simulation = executed
         val viewModel = viewModel(queued(world.request(world.ether(4), world.bob.address, world.carol)))
 
         viewModel.startExecution()
         runCurrent()
-        assertEquals(
-            listOf(world.alice.address, world.dave.address).map(Eip55::format),
-            viewModel.review.accounts.map { it.address },
-        )
+        // Dave holds a key here and could pay the gas, but is no owner: never offered, and refused if asked.
+        assertEquals(listOf(Eip55.format(world.alice.address)), viewModel.review.accounts.map { it.address })
         viewModel.onAccountChange(Eip55.format(world.dave.address))
         runCurrent()
 
         val review = viewModel.review
-        assertEquals(Eip55.format(world.dave.address), review.account)
-        assertEquals("Executed with: Bob's signature; 0x3333…3333's signature", review.confirmations)
-        assertEquals("ETH balance of Dave, which pays the fee", review.balance.what)
+        assertEquals(Eip55.format(world.alice.address), review.account)
+        assertEquals("Executed with: Alice, by sending the execution; Bob's signature", review.confirmations)
+        assertEquals("ETH balance of Alice, which pays the fee", review.balance.what)
+    }
+
+    @Test
+    fun aSafeWithNoOwnerHeldHereIsNotExecutedFromAnotherAccount() = runTest {
+        funded()
+        world.inputs.simulation = executed
+        // Bob and Carol signed; Alice, the one owner held here, is no owner any more.
+        world.state = world.state.copy(owners = listOf(world.bob.address, world.carol))
+        val viewModel = viewModel(queued(world.request(world.ether(4), world.bob.address, world.carol)))
+
+        val state = viewModel.overview
+        assertFalse(state.canExecute, "Dave is held here, and no owner")
+        assertEquals(
+            "No owner of this Safe has its key on this device, so nobody here can execute it.",
+            state.executeNote,
+        )
     }
 
     @Test

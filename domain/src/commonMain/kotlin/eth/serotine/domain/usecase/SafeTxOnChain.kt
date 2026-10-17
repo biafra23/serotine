@@ -236,15 +236,18 @@ data class SafeExecutionQuote internal constructor(
 
 /**
  * Quotes a Safe transaction's execution (docs/wallet-ux.md, *Co-signing a Safe transaction*):
- * `execTransaction` sent to the Safe by [executor], an account this wallet holds, once its
- * owners' confirmations reach the threshold. Checked against the Safe's verified state first: a
+ * `execTransaction` sent to the Safe by [executor], an owner account this wallet holds, once its
+ * owners' confirmations reach the threshold. Only a current owner, as the Safe's verified storage
+ * says, executes: "once the threshold is met any owner executes it" (CLAUDE.md, *Data sources*,
+ * 2026-10-16), so another account is refused ([SafeTxRefusal.NotAnOwner]), though the Safe itself
+ * asks nothing of the sender but the gas. Checked against the Safe's verified state first: a
  * delegate call and gas or refund terms are refused ([SafeTxRefusal.GasTerms]), so the Safe's
  * call always gets the gas the execution has left and a call that fails reverts it; its nonce
  * must be the Safe's verified nonce (one below has run or
  * been replaced, one above waits for the transactions before it); and the confirmations are
  * counted from the Safe's current owners alone — each signature in the request that recovers to
- * its owner over the hash computed here, [executor]'s own when it is an owner (the Safe takes the
- * account executing it as confirming), and approvals on chain ([SafeApprovals]), read only when
+ * its owner over the hash computed here, [executor]'s own (the Safe takes the owner executing it
+ * as confirming), and approvals on chain ([SafeApprovals]), read only when
  * the rest fall short. As many as the threshold are used, the executor's first.
  *
  * The execution is quoted as every transaction from an account this wallet holds is
@@ -253,8 +256,7 @@ data class SafeExecutionQuote internal constructor(
  * state override: a revert, or an execution that does not return true, stops it here, and the
  * estimate finds a limit it passes at. So does an execution of it that any account of this
  * wallet sent and no block has yet: run at the head, a second passes while the first is on its
- * way, and reverts once that is mined. Any account the wallet holds can execute: the Safe asks
- * nothing of the sender but the gas. On [network] only; [clock] is in unix seconds.
+ * way, and reverts once that is mined. On [network] only; [clock] is in unix seconds.
  */
 class QuoteSafeExecution(
     private val observeSafe: ObserveSafe,
@@ -278,6 +280,7 @@ class QuoteSafeExecution(
         }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (request.nonce > state.nonce) return refused(SafeTxRefusal.NotNext(state.nonce))
+        if (executor !in state.owners) return refused(SafeTxRefusal.NotAnOwner(executor))
         // Sent already from any account here, and in no block yet: the nonce is the Safe's, not the sender's.
         sentAndUnmined(request)?.let { return refused(it) }
         val signatures = when (val confirmed = confirmations(request, state, executor)) {
@@ -323,9 +326,9 @@ class QuoteSafeExecution(
         coroutineScope {
             val threshold = state.threshold
             val signed = recovery.valid(request, state.owners)
-            // The executor's own confirmation, when it is an owner that has not signed: the Safe
-            // takes the account sending execTransaction as having approved it.
-            val ownApproval = executor in state.owners && signed.none { it.owner == executor }
+            // The executor's own confirmation, when it has not signed: the Safe takes the owner
+            // sending execTransaction as having approved it.
+            val ownApproval = signed.none { it.owner == executor }
             val confirmed = listOfNotNull(SafeSignature.ApprovedHash(executor).takeIf { ownApproval }) + signed
             if (confirmed.size >= threshold) return@coroutineScope Confirmed.Enough(confirmed.take(threshold))
             val others = state.owners.filter { owner -> confirmed.none { it.owner == owner } }

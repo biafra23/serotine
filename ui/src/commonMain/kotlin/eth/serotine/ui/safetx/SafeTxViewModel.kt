@@ -3,8 +3,6 @@ package eth.serotine.ui.safetx
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
-import eth.serotine.domain.model.AccountCustody
-import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
@@ -102,7 +100,7 @@ import kotlin.time.TimeSource
  *   is left.
  * - Approve on chain ([QuoteSafeApproval] → review → [ApproveSafeTxOnChain]) and Execute, once
  *   the confirmations reach the threshold ([QuoteSafeExecution] → review → [ExecuteSafeTx]), from
- *   an account the wallet holds, a held owner first. Their reviews follow Send's (screen 8): a
+ *   an owner held here (CLAUDE.md, *Data sources*: any owner executes it). Their reviews follow Send's (screen 8): a
  *   quote made when the review is entered, again on Refresh, when the screen is shown again after
  *   it was not, and at the tap that would sign it when it is older than [QUOTE_MAX_AGE]
  *   ([timeSource] tells); one signed but not broadcast is retried with its own bytes
@@ -175,7 +173,7 @@ class SafeTxViewModel(
         val signers: List<Address>,
         /** Held owners that have not confirmed it, while the confirmations fall short: who may approve it. */
         val approvers: List<Address>,
-        /** Accounts held here that can execute it now, held owners first. */
+        /** Owners held here whose sending reaches the threshold now: who may execute it. */
         val executors: List<Address>,
         /** Why it cannot be executed now, or null. */
         val executeNote: String?,
@@ -310,12 +308,11 @@ class SafeTxViewModel(
     private val context: StateFlow<Source?> =
         combine(queued, request, owners, accounts, observeKnownTokens()) { queued, request, owners, accounts, tokens ->
             if (queued !is Queued.Found || request == null) return@combine queued
-            val held = accounts.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
             Context(
                 found = queued,
                 request = request,
                 owners = owners,
-                options = options(queued.tx, owners as? SafeTxOwnersReading.Read, held),
+                options = options(queued.tx, owners as? SafeTxOwnersReading.Read),
                 tokens = tokens.forDecoding(),
                 labels = accounts.associate { it.address to it.label },
             )
@@ -385,7 +382,7 @@ class SafeTxViewModel(
         quoteForReview(ReviewKind.APPROVAL, owner, FeeLevel.NORMAL)
     }
 
-    /** Quotes the execution from the first account held here that can execute it, a held owner first, for review. */
+    /** Quotes the execution from the first owner held here that can execute it, for review. */
     fun startExecution() {
         val executor = now?.options?.executors?.firstOrNull() ?: return
         quoteForReview(ReviewKind.EXECUTION, executor, FeeLevel.NORMAL)
@@ -891,13 +888,12 @@ class SafeTxViewModel(
         }
     }
 
-    private fun options(tx: DecodedSafeTx, read: SafeTxOwnersReading.Read?, held: List<Account>): Options {
+    private fun options(tx: DecodedSafeTx, read: SafeTxOwnersReading.Read?): Options {
         if (tx.refusal != null || read == null) return Options(emptyList(), emptyList(), emptyList(), null)
         val unconfirmed = read.owners.filter { it.held && !it.confirms }.map { it.owner }
         val short = read.confirmations < read.threshold
-        // A held owner first: its sending counts as its own confirmation.
-        val heldOwners = read.owners.filter { it.held }.map { it.owner }
-        val candidates = heldOwners + held.map { it.address }.filter { it !in heldOwners }
+        // Only an owner executes (CLAUDE.md, *Data sources*), its sending its own confirmation.
+        val candidates = read.owners.filter { it.held }.map { it.owner }
         val nonce = tx.request.nonce
         val executors = if (nonce == read.safeNonce) {
             candidates.filter { read.confirmationsExecutedBy(it) >= read.threshold }
@@ -911,7 +907,7 @@ class SafeTxViewModel(
                 "transaction can be executed."
             nonce < read.safeNonce -> "The Safe is at nonce ${read.safeNonce} already: this one ran, or another " +
                 "transaction used its nonce."
-            candidates.isEmpty() -> "No account of this wallet holds a key to send its execution."
+            candidates.isEmpty() -> "No owner of this Safe has its key on this device, so nobody here can execute it."
             else -> "$best of the ${read.threshold} confirmations it needs to be executed."
         }
         return Options(

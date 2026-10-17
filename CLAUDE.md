@@ -47,12 +47,19 @@ Modules (Gradle):
 
 - **domain** — entities and value objects (`Account`, `Address`, `AccountKind`),
   the ports (`AccountRepository`, …) and the use cases (`ObserveAccounts`, …).
-  Pure Kotlin + coroutines' `Flow` (and kotlincrypto's Keccak-256 for the
-  transaction encoding); targets desktop JVM + iOS and deliberately
+  Pure Kotlin + coroutines' `Flow`, and kotlincrypto's Keccak-256 (`sha3`;
+  owner ruling, 2026-10-18, #50) for the transaction encoding and hashing
+  only: the EIP-1559 signing digest and transaction hash, the EIP-712
+  `SafeTx` hash, the CREATE2 address and EIP-55. That is its one library
+  besides coroutines, and for that scope alone. Targets desktop JVM + iOS
+  and deliberately
   NO Android target (Android consumers resolve its JVM variant, so nothing in it
   can ever import `android.*`).
-- **data** — the adapters behind the ports: `FileAccountRepository` (the
-  account list, persisted as a JSON file; `InMemoryAccountRepository` for tests),
+- **data** — the adapters behind the ports: `FileAccountRepository`
+  (`eth.serotine.data.account`: the account list, persisted as a JSON file;
+  `InMemoryAccountRepository` for tests), on `VersionedJsonFile`, the
+  versioned JSON file every file adapter keeps its value in
+  (`eth.serotine.data.files`),
   the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
   seeds in envelopes, docs/keys-and-signing.md; and `Secp256k1Recovery`, which
   finds the address a signature recovers to and holds no key), and the Myotis
@@ -77,13 +84,17 @@ Modules (Gradle):
   `<Feature>ViewModel`, `<Feature>UiState`; `components` for what several
   screens draw (blockies, the QR code, EIP-55); the theme; `App` with the one
   `NavHost` under the Assets | Settings bar (a destination per screen, whose
-  back-stack entry owns the screen's ViewModel); and `AppGraph`, the
+  back-stack entry owns the screen's ViewModel; Settings opens over the Assets
+  tab's stack and closes back to it, with nothing saved aside: owner ruling,
+  2026-10-18, #49, for now); and `AppGraph`, the
   composition root's contract (ports in, ViewModel factories out). Depends on
   `:domain` only.
 - **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
-  adapters and renders `App`. The desktop one runs once per user: it holds an
+  adapters and renders `App`, and runs the app-wide work no screen owns
+  (`FollowUpgradeReports`, `FollowSafeDeployments`), never from `App` or
+  `AppGraph`. The desktop one runs once per user: it holds an
   `InstanceLock` on its data directory for the process's lifetime. A port
   whose adapter is the platform's own output (`UpgradeNotifier`: Android's
   notifications and alarm, the desktop's tray) is implemented in the host.
@@ -577,7 +588,10 @@ discussion that produced this note.
     UiState at creation, and back the same way at restore. Nothing on that
     path stores, logs or caches them, and the UiState is cleared when its
     screen is left. Everything the adapter derives from the words, the seed
-    and the keys, stays under the rule above.
+    and the keys, stays under the rule above. Open, the owner's to decide:
+    whether a rotation or the app going to the background counts as leaving
+    the screen (#39; today every `ON_STOP` does), and whether Create account,
+    one screen using both legs of the path, is within the entry (#40).
 - **How keys are held — docs/keys-and-signing.md is the contract** (owner
   decisions, 2026-10-15); this is the summary a reviewer holds a diff against:
   - No platform holds secp256k1 in hardware, so an EOA key or a
@@ -617,6 +631,9 @@ discussion that produced this note.
     present or not: rule 9's TPM path comes later, and until then the app
     tells the user that it does not use the TPM yet (owner ruling,
     2026-10-16).
+  - Deleting an account's key needs no wallet password (owner ruling,
+    2026-10-18, #17): removing the account deletes its envelope, and the app
+    asks the user to confirm the removal first (`RemoveAccountDialog`).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with
     Myotis, and the dApp connection protocol (WalletConnect is the candidate;

@@ -290,10 +290,10 @@ its KDoc and returns it as a result the UI shows as state.
   It asks for no password: it takes nothing from someone who could clear the
   app's data anyway. It is a plain file delete, so the ciphertext may stay on
   the storage until the blocks are reused. With the last envelope the wallet
-  password goes too, and the next import sets a new one. (Proposed with part 2
-  of `feature/wallet-ux`: whether deleting a key needs the password first is
-  the owner's ruling, recorded in CLAUDE.md, before that branch reaches
-  `main`.)
+  password goes too, and the next import sets a new one. That deleting a key
+  needs no password is the owner's ruling (2026-10-18, #17, recorded in
+  CLAUDE.md's *Trust*): the app asks the user to confirm the removal first
+  (`RemoveAccountDialog`), and nothing more.
 - **The password.**
   - The first import sets the wallet password: at least eight characters,
     refused by the adapter otherwise. Every later import must give the same
@@ -389,20 +389,29 @@ its KDoc and returns it as a result the UI shows as state.
     takes it: the GC caveat of rule 7.
   - The words and the password reach the adapter along the mnemonic
     exception's one path. The restore and Create account screens'
-    ViewModels drop both from their state when the screen stops being shown;
-    an import already running finishes without them.
+    ViewModels drop both from their state when the screen stops being shown
+    (every `ON_STOP`, a rotation and the app going to the background
+    included: the strict reading of "cleared when its screen is left",
+    which is the owner's open question, issue #39); an import already
+    running finishes without them.
   - Create account's phrase is not stored until its check and password are
     done, so leaving the screen before then voids it: the screen tells the
     user to cross out what they wrote, and the next attempt gets a new
     phrase. A phrase the key adapter returns after the screen was left is
     dropped the same way.
-- **Screen protections.** The restore and Create account screens carry rule
-  8's protections through `protectFromScreenCapture()` in
-  `eth.serotine.ui.platform`: `FLAG_SECURE` and an autofill exclusion on
-  Android. On desktop, and on iOS until its host covers the window, the screen
-  says that capture cannot be blocked. Create account also keeps the display
-  on while its phrase is shown and checked (`KeepScreenOn()`; Android's
-  `keepScreenOn`), because a display that times out is a screen left.
+- **Screen protections.** Every screen that takes the wallet password or
+  shows the words carries rule 8's protections through
+  `protectFromScreenCapture()` in `eth.serotine.ui.platform`: the restore and
+  Create account screens, Security (21) while it asks for the password, and,
+  through the unlock they share (`UnlockFields`), Send's review (8), Send
+  from a Safe's review (16), the Safe transaction's Sign, Approve on chain
+  and Execute steps (17) and Create Safe's review (15). That is
+  `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
+  until its host covers the window, the screen says that capture cannot be
+  blocked. Create account also keeps the display on while its phrase is
+  shown and checked (`KeepScreenOn()`; Android's `keepScreenOn`), because a
+  display that times out stops the screen, and a stopped screen is read as
+  one left (the reading issue #39 puts to the owner).
 - **Not yet.**
   - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`) and on
     iOS, and the opt-in on the seed screens at the first key (Settings →
@@ -521,6 +530,13 @@ conditions, which a reviewer holds those two flows to:
 - **Protected.** Both screens are under rule 8's screen protections.
 - **Narrow.** Everything the adapter derives from the words, the seed and the
   keys, stays under the absolute rule and never comes back up.
+
+Create account uses both legs on one screen: the words go out to its UiState
+as at creation and come back to the adapter as at restore. Whether the entry,
+worded for two screens, covers that is the owner's open question (issue #40);
+the code is built as if it does. Whether a rotation or the app going to the
+background leaves a seed screen is open too (issue #39): today every
+`ON_STOP` does.
 
 Every other screen and flow is held to the rule itself. A new exception is
 the owner's ruling, added to that list first.

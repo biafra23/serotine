@@ -21,8 +21,11 @@ import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
+import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
@@ -39,8 +42,10 @@ import kotlin.system.exitProcess
 /**
  * The desktop composition root: starts the process's one Myotis engine
  * (docs/embedding-myotis.md), builds the [AppGraph] from this platform's adapters and opens
- * the one window on the shared [App], and follows the engine's network-upgrade reports into
- * tray notices for as long as the app runs. The window provides the ViewModelStoreOwner the
+ * the one window on the shared [App], and for as long as the app runs follows the engine's
+ * network-upgrade reports into tray notices and lists the Safes this wallet deployed once the
+ * light client proves them: the work no screen owns, run here beside the graph, on the same
+ * adapters. The window provides the ViewModelStoreOwner the
  * navigation back stack keeps its screens' ViewModels in. Closing it ends the application
  * loop, and the engine is stopped after that, on the main thread: never on the Swing event
  * thread, which a slow network shutdown would freeze. One instance per user: a second one
@@ -96,6 +101,10 @@ private fun openWallet(dataDir: File) {
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
     val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
+    // One instance each, which the graph and the deployments' follower share.
+    val accounts = FileAccountRepository(dataDir.resolve("accounts.json").path)
+    // The transactions signed here, with their signed bytes (public once broadcast).
+    val sentTransfers = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
     application(exitProcessOnExit = false) {
         LaunchedEffect(Unit) {
             // A failure in the notices ends them, never the wallet (as on Android): the window
@@ -108,6 +117,23 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: upgrade notices stopped: $e")
             }
         }
+        LaunchedEffect(Unit) {
+            // The Safes this wallet deployed are listed whatever screen is open, and again after a
+            // restart (docs/wallet-ux.md, screen 15). A failure ends it, never the wallet.
+            val kinds = node.addressKinds
+            try {
+                FollowSafeDeployments(
+                    sentTransfers,
+                    node.receipts,
+                    accounts,
+                    ListDeployedSafe(kinds, WatchAddress(accounts, kinds)),
+                )()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following Safe deployments stopped: ${e::class.simpleName}")
+            }
+        }
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
@@ -115,7 +141,7 @@ private fun openWallet(dataDir: File) {
             // and the signer, so that their calls take turns.
             val keyStore = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection())
             AppGraph(
-                accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
+                accounts = accounts,
                 keys = keyStore,
                 nativeBalances = node.nativeBalances,
                 tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
@@ -133,8 +159,7 @@ private fun openWallet(dataDir: File) {
                 receipts = node.receipts,
                 names = node.names,
                 signer = keyStore,
-                // The transfers signed here, with their signed bytes (public once broadcast).
-                sentTransfers = FileSentTransfers(dataDir.resolve("sent-transfers.json").path),
+                sentTransfers = sentTransfers,
                 // The Safe transactions waiting for their owners, with the signatures collected (public).
                 safeTxQueue = FileSafeTxQueue(dataDir.resolve("safe-tx-queue.json").path),
                 signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),

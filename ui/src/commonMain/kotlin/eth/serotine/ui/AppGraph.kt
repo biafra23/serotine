@@ -35,10 +35,8 @@ import eth.serotine.domain.usecase.DisableBiometricUnlock
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
-import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
-import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
@@ -104,7 +102,9 @@ import eth.serotine.ui.watch.WatchViewModel
  * assembles use cases and ViewModels from it and never constructs an adapter itself.
  *
  * Manual constructor injection, no DI framework: the graph is small enough to read in one
- * place, and a missing dependency is a compile error rather than a start-up crash.
+ * place, and a missing dependency is a compile error rather than a start-up crash. Ports in,
+ * ViewModel factories out: the work no screen owns (following upgrade reports, listing the Safes
+ * this wallet deployed) is the host's, beside this graph, on the same adapter instances.
  */
 class AppGraph(
     private val accounts: AccountRepository,
@@ -267,17 +267,6 @@ class AppGraph(
         ObserveAccounts(accounts),
         network,
     )
-
-    /**
-     * Lists every Safe this wallet deployed once the light client proves it, whatever screen is
-     * open ([FollowSafeDeployments]); runs until cancelled. [App] runs it while it is shown.
-     */
-    suspend fun followSafeDeployments() = FollowSafeDeployments(
-        sentTransfers,
-        receipts,
-        accounts,
-        ListDeployedSafe(addressKinds, WatchAddress(accounts, addressKinds)),
-    )()
 
     /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
     fun createSafeViewModel(): CreateSafeViewModel = CreateSafeViewModel(

@@ -63,7 +63,6 @@ import eth.serotine.ui.update.UpdateRequiredRoute
 import eth.serotine.ui.update.UpdateRequiredUiState
 import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchRoute
-import kotlinx.coroutines.CancellationException
 
 /**
  * The whole shared UI, identical on every host. A host renders this inside its own
@@ -83,19 +82,6 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
     SerotineTheme {
         // Scoped to the host, not to a destination: it decides which destinations there are.
         val update = viewModel { graph.updateRequiredViewModel() }
-        // The Safes this wallet deployed are listed whatever screen is open, the status's included:
-        // for as long as the app is shown, and again after a restart (docs/wallet-ux.md, screen 15).
-        LaunchedEffect(graph) {
-            try {
-                graph.followSafeDeployments()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // The use case promises not to throw; the backstop ends it, never the wallet: the
-                // next start follows the deployments again.
-                println("Serotine: following Safe deployments stopped: ${e::class.simpleName}")
-            }
-        }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
             Tab.entries.firstOrNull { it.graph == destination.route }
