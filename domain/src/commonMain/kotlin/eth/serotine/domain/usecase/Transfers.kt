@@ -351,8 +351,8 @@ class SendTransfer(
  * answered then, yet one took it, and a block has since used its nonce. So a rejection is
  * checked against the transaction's verified receipt ([receipts]) before it is believed: a
  * transaction already in a block is sent, one whose receipt cannot be verified right now is
- * [TransferSending.RejectionUnverified]. A transfer's, or a Safe transaction's approval or
- * execution alike. [clock] is in unix seconds.
+ * [TransferSending.RejectionUnverified]. A transfer's, a Safe transaction's approval or
+ * execution, or a Safe's deployment alike. [clock] is in unix seconds.
  */
 class RebroadcastTransfer(
     private val broadcaster: Broadcaster,
@@ -377,7 +377,7 @@ class RebroadcastTransfer(
 
 /**
  * The outcome of [SendTransfer], and of every other transaction this wallet signs and sends
- * ([ApproveSafeTxOnChain], [ExecuteSafeTx]).
+ * ([ApproveSafeTxOnChain], [ExecuteSafeTx], [DeploySafe]).
  */
 sealed interface TransferSending {
 

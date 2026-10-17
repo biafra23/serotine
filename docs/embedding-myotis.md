@@ -280,8 +280,9 @@ The quote and the send are not a transfer's alone: `CallQuoter` and
 transaction from an account the wallet holds, a Safe transaction's approval
 or execution included, with the same nonce record, fees, estimate, verified
 run and receipt check on a rejected retry. `SentTransfers` records what each
-one did (`SentAction`: a transfer, or a Safe transaction's approval or
-execution), and its nonce and most cost hold a later one back whatever it did.
+one did (`SentAction`: a transfer, a Safe transaction's approval or
+execution, or a Safe's deployment), and its nonce and most cost hold a later
+one back whatever it did.
 
 ## Safe transactions
 
@@ -323,6 +324,13 @@ a Safe transaction*). What the engine adds:
     estimate finds a limit it passes at.
   - An approval (`QuoteSafeApproval`) runs `approveHash` from the owner, which
     the Safe reverts for anyone else.
+  - A Safe's deployment (`QuoteSafeDeployment`) runs the factory's
+    `createProxyWithNonce` from the paying account, estimated and run as any
+    transaction is. The run must return the address computed in `:domain`
+    (CREATE2 over the pinned proxy creation code, `SafeCreation`), so the
+    factory's code on verified state, not the pin, has the last word; before
+    it, that address must read as holding no code (`AddressKinds`, the
+    inspection above). No new engine read: the deployment needs none.
 - **The co-signing medium is no engine read.** A signing request travels as
   text between devices (`JsonSigningRequestCodec`), and signatures are
   checked with libsecp256k1 (`Secp256k1Recovery`), not with the engine.

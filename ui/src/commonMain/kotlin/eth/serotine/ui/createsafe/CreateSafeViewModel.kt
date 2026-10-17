@@ -436,7 +436,9 @@ class CreateSafeViewModel(
             quoting = true,
         )
         step.value = asked
-        job = viewModelScope.launch {
+        job = viewModelScope.launch { quote(asked, note = null) }
+        // Beside the quote, not before it: a change of payer or fee cancels a quote, never this.
+        viewModelScope.launch {
             val biometrics = describeKeyStore.biometricsOn()
             step.update { latest ->
                 if (latest is Step.Reviewing && latest.plan == plan) {
@@ -445,7 +447,6 @@ class CreateSafeViewModel(
                     latest
                 }
             }
-            quote(asked, note = null)
         }
     }
 

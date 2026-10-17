@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * The port for the transactions this wallet sent (signed, and taken by a peer) — its transfers,
- * and its approvals and executions of Safe transactions — kept across restarts: what the Send
+ * its approvals and executions of Safe transactions, and its Safes' deployments — kept across
+ * restarts: what the Send
  * status screen (docs/wallet-ux.md, screen 9) shows, and what keeps a new transaction from
  * reusing the nonce of one not mined yet — the engine's own record of its sends lasts only while
  * the process does. Public data only: a signed transaction's bytes are public once broadcast,
