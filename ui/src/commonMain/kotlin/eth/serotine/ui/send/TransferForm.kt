@@ -3,10 +3,12 @@ package eth.serotine.ui.send
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
+import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.AccountValue
@@ -14,6 +16,7 @@ import eth.serotine.domain.usecase.RecipientLookup
 import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
 import eth.serotine.ui.components.displaySymbol
@@ -26,6 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.transformLatest
+import kotlin.time.Duration.Companion.seconds
 
 // The transfer form (docs/wallet-ux.md, screen 7) as Send and a Safe's proposal of a transfer
 // (screen 16) both fill it in: the account's assets as options, the recipient typed or picked and
@@ -278,13 +282,40 @@ internal fun nameUnavailable(reason: ReadUnavailable): String = when (reason) {
     ReadUnavailable.REFUSED -> "The light client on this device cannot resolve names."
 }
 
+/**
+ * What the most a quoted [transaction]'s fee can be is made of, at [level], from the verified fee
+ * history up to [feeBlock]: what every review of a transaction from an account held here says.
+ */
+internal fun feeDetail(level: FeeLevel, transaction: Eip1559Transaction, feeBlock: Long): String =
+    "${levelName(level)} fee: ${grouped(transaction.gasLimit)} gas × at most " +
+        "${transaction.maxFeePerGas.formatUnits(GWEI_DECIMALS)} gwei, from the verified fee history " +
+        "up to block ${grouped(feeBlock)}. Only what the block charges is paid."
+
+/** A fee level's name, as the fee choice shows it. */
+internal fun levelName(level: FeeLevel): String = when (level) {
+    FeeLevel.SLOW -> "Slow"
+    FeeLevel.NORMAL -> "Normal"
+    FeeLevel.FAST -> "Fast"
+}
+
+/** The block a balance before a transaction was verified at, as a review says it. */
+internal fun verifiedAt(block: Long?) = block?.let { "verified at block ${grouped(it)}" } ?: "verified"
+
 /** [units] in whole units with [decimals], exact: what a review shows and what is signed. */
 internal fun exactAmount(units: UInt256, decimals: Int, symbol: String) = "${units.formatUnits(decimals)} $symbol"
 
 private fun block(number: Long) = "block ${grouped(number)}"
 
-/** Decimal places of the network's currency. */
-internal const val NATIVE_DECIMALS = 18
+private const val GWEI_DECIMALS = 9
+
+/**
+ * The oldest a quote may be at the tap that signs it; an older one is made again first, and said
+ * ([STALE_QUOTE]): a quote is never signed stale (docs/wallet-ux.md, screen 8).
+ */
+internal val QUOTE_MAX_AGE = 60.seconds
+
+/** What a review says under its unlock once a stale quote was made again at the tap that would sign it. */
+internal const val STALE_QUOTE = "The quote was over a minute old, so it was made again: check it, then sign."
 
 /** What a balance not read yet shows. */
 internal const val CHECKING = "Checking…"

@@ -6,7 +6,7 @@ import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
 
 /** Decimal places of ether and of every EVM chain's native currency. */
-private const val NATIVE_DECIMALS = 18
+internal const val NATIVE_DECIMALS = 18
 
 /**
  * [wei] in whole units of [symbol], truncated to [places] decimal places, never rounded up:

@@ -30,6 +30,7 @@ import eth.serotine.domain.usecase.TransferQuote
 import eth.serotine.domain.usecase.TransferQuoting
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
@@ -49,7 +50,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -561,9 +561,7 @@ class SendViewModel(
             asset = option.choice(),
             recipient = recipientItem(step.request.to, model.accounts, option),
             maxFee = exactAmount(quote.maxFee, NATIVE_DECIMALS, native),
-            feeDetail = "${levelName(quote.level)} fee: ${grouped(transaction.gasLimit)} gas × at most " +
-                "${transaction.maxFeePerGas.formatUnits(GWEI_DECIMALS)} gwei, from the verified fee history " +
-                "up to block ${grouped(quote.feeBlock)}. Only what the block charges is paid.",
+            feeDetail = feeDetail(quote.level, transaction, quote.feeBlock),
             balances = listOfNotNull(tokenBalance, nativeBalance),
             simulation = if (tokenBalance != null) {
                 "The token's transfer, run as a verified call from this account $ran, goes through."
@@ -644,20 +642,7 @@ class SendViewModel(
         }
     }
 
-    private fun levelName(level: FeeLevel): String = when (level) {
-        FeeLevel.SLOW -> "Slow"
-        FeeLevel.NORMAL -> "Normal"
-        FeeLevel.FAST -> "Fast"
-    }
-
-    private fun verifiedAt(block: Long?) = block?.let { "verified at block ${grouped(it)}" } ?: "verified"
-
     private companion object {
-        /** The oldest a quote may be at the tap that signs it; an older one is made again first. */
-        val QUOTE_MAX_AGE = 60.seconds
-
-        const val STALE_QUOTE = "The quote was over a minute old, so it was made again: check it, then sign."
-        const val GWEI_DECIMALS = 9
         const val SEND_FAILED =
             "Serotine could not finish this transfer. Check the account's balance before you send again."
         const val LIST_UNAVAILABLE =
