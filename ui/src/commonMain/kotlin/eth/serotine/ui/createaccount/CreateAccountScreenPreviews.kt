@@ -98,6 +98,14 @@ private fun CreateAccountWrongPasswordPreview() = CreateAccountPreview(
 @Composable
 private fun CreateAccountCreatingPreview() = CreateAccountPreview(securing.copy(creating = true))
 
+// The password step while the key store has not answered yet (PasswordStep.Checking) draws no
+// field, a moment that passes; the one where it stopped answering is a state the user can sit on.
+@Preview
+@Composable
+private fun CreateAccountKeyStoreStoppedPreview() = CreateAccountPreview(
+    securing.copy(step = PasswordStep.Unavailable, password = WalletPassword.EMPTY, repeat = WalletPassword.EMPTY),
+)
+
 @Preview
 @Composable
 private fun CreateAccountCreatedPreview() = CreateAccountPreview(CreateAccountUiState.Created("Account 2"))
@@ -130,6 +138,7 @@ internal val createAccountScreenPreviews: List<@Composable () -> Unit> = listOf(
     { CreateAccountPasswordHintPreview() },
     { CreateAccountWrongPasswordPreview() },
     { CreateAccountCreatingPreview() },
+    { CreateAccountKeyStoreStoppedPreview() },
     { CreateAccountCreatedPreview() },
     { CreateAccountRestartPreview() },
     { CreateAccountNotListedPreview() },

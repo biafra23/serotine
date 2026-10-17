@@ -120,6 +120,15 @@ private fun WatchNameTooLongPreview() = WatchPreview(
     ),
 )
 
+@Preview
+@Composable
+private fun WatchAddingPreview() = WatchPreview(account.copy(adding = true))
+
+@Preview
+@Composable
+private fun WatchNotSavedPreview() =
+    WatchPreview(account.copy(error = "The account could not be saved. Nothing was added."))
+
 /** Every preview above, which WatchScreenPreviewsTest renders: a new preview goes in here too. */
 internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchEmptyPreview() },
@@ -133,4 +142,6 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchUnavailablePreview() },
     { WatchInvalidAddressPreview() },
     { WatchNameTooLongPreview() },
+    { WatchAddingPreview() },
+    { WatchNotSavedPreview() },
 )
