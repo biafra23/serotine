@@ -3,7 +3,9 @@ package eth.serotine.ui.mnemonicimport
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -16,9 +18,8 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private const val WORDS = "one two three four five six seven eight nine ten eleven twelve"
 
-private const val HARDWARE =
-    "The seed is stored encrypted under your wallet password and a key in this device's secure hardware: " +
-        "both are needed to open it, and a copy of it is useless elsewhere."
+// What the screen says under the password on a device with secure hardware, from the one source.
+private val HARDWARE = KeyProtection.HARDWARE.protectionText
 
 private val typed = MnemonicImportUiState.Entering(
     Mnemonic(WORDS),
