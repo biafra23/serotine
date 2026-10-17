@@ -3,6 +3,7 @@ package eth.serotine.data.upgrade
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.UpgradeNotice.Kind
 import eth.serotine.domain.repository.KnownUpgrade
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -65,6 +66,23 @@ class FileKnownUpgradeStoreTest {
 
         assertEquals(listOf(null, record), seen)
         assertEquals(record, store().observe().first(), "read back by the next process")
+    }
+
+    @Test
+    fun aSaveWhoseCallerIsCancelledDuringTheWriteFinishesItAndReturns() = runTest {
+        val store = store()
+        var saved: Boolean? = null
+        // Run until the write waits for the store's dispatcher, then cancel the caller there.
+        val saving = launch(start = CoroutineStart.UNDISPATCHED) { saved = store.save(record) }
+        saving.cancel()
+        runCurrent()
+
+        // NonCancellable: the write finishes, the save returns normally, and the caller's
+        // cancellation shows at its next suspension, not as the save returns.
+        assertEquals(true, saved)
+        assertTrue(saving.isCancelled)
+        assertEquals(record, store.observe().first())
+        assertEquals(record, store().observe().first(), "and it is in the file")
     }
 
     @Test

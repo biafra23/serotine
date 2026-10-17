@@ -8,6 +8,7 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.UpgradeNotifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -26,12 +27,21 @@ internal class FakeKnownUpgradeStore : KnownUpgradeStore {
     var saves = 0
     var failing = false
 
+    /**
+     * The caller is cancelled while the record is written, and this store surfaces it as the
+     * save returns, the record already written: what a store written as a bare
+     * `withContext(Dispatchers.IO)` does. FileKnownUpgradeStore, under NonCancellable, returns
+     * normally instead; UpgradeNotices must hold up under either.
+     */
+    var cancelledDuringSave = false
+
     override fun observe(): Flow<KnownUpgrade?> = record
 
     override suspend fun save(record: KnownUpgrade): Boolean {
         if (failing) return false
         saves++
         this.record.value = record
+        if (cancelledDuringSave) throw CancellationException("the check was cancelled during the write")
         return true
     }
 }

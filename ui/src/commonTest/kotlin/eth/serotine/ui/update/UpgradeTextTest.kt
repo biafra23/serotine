@@ -73,6 +73,18 @@ class UpgradeTextTest {
     }
 
     @Test
+    fun aRequiredUpdateFromAScheduledReportSaysPeersAnnouncedItNotThatTheyReportIt() {
+        // A live report of a scheduled upgrade whose time passed, and a light client not verifying.
+        val item = banner(UpgradeWarning.UpdateRequired(glamsterdam))!!
+        assertEquals(
+            "Peers announced a Sepolia network upgrade on <1791294816> that this version of Serotine does not " +
+                "support. That time has passed, and its light client is not verifying the chain. Update the app " +
+                "to keep using your wallet.",
+            item.text,
+        )
+    }
+
+    @Test
     fun eachNoticeHasItsOwnTitle() {
         fun text(kind: UpgradeNotice.Kind, upgrade: NetworkUpgrade = glamsterdam) =
             UpgradeNotificationText.from(UpgradeNotice(kind, upgrade), Network.SEPOLIA, date)
