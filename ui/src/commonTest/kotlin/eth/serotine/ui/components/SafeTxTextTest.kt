@@ -75,6 +75,27 @@ class SafeTxTextTest {
     }
 
     @Test
+    fun changesThatWeakenTheSafeWarnOfWhatTheyGiveUp() {
+        val handler = item(SafeTxAction.SettingsChange(SafeSettingsChange.FallbackHandlerSet(module)))
+        assertEquals(
+            "The fallback handler answers the signature checks (EIP-1271) other contracts make for this Safe: one " +
+                "that accepts every signature lets anyone spend what the Safe has approved (Permit2, permits, " +
+                "orders), without its owners.",
+            handler.warning,
+        )
+        assertEquals(
+            "Whatever the guard enforces on the Safe's transactions stops: a limit, an allowlist, a delay.",
+            item(SafeTxAction.SettingsChange(SafeSettingsChange.GuardSet(null))).warning,
+        )
+        assertEquals(
+            "Whatever this module does for the Safe stops: a spending limit, a delay, a recovery path.",
+            item(SafeTxAction.SettingsChange(SafeSettingsChange.ModuleDisabled(module))).warning,
+        )
+        // Taking the handler away makes the Safe answer no signature check: nothing to warn of.
+        assertNull(item(SafeTxAction.SettingsChange(SafeSettingsChange.FallbackHandlerSet(null))).warning)
+    }
+
+    @Test
     fun aRejectionAContractCallAndADelegateCallSayWhatTheyAre() {
         assertEquals("Reject: use up nonce 12", item(SafeTxAction.Rejection).title)
         val call = item(SafeTxAction.ContractCall(module, UInt256.ZERO, "a9059cbb", 100))

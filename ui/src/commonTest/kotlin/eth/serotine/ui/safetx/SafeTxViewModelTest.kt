@@ -50,6 +50,7 @@ import eth.serotine.ui.components.ShareItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -395,10 +396,10 @@ class SafeTxViewModelTest {
         val viewModel = viewModel(queued(world.request(world.ether(5), world.carol)))
 
         val state = viewModel.overview
-        assertEquals("Safe nonce 5 · 1 transaction run before it", state.nonce)
+        assertEquals("Safe nonce 5 · 1 transaction runs before it", state.nonce)
         assertFalse(state.canExecute)
         assertEquals(
-            "Executed only once the 1 transaction before it have run: only the Safe's next transaction can be " +
+            "Executed only once the transaction before it has run: only the Safe's next transaction can be " +
                 "executed.",
             state.executeNote,
         )
@@ -749,5 +750,91 @@ class SafeTxViewModelTest {
         viewModel.sign()
         runCurrent()
         assertIs<SafeTxUiState.Sent>(viewModel.uiState.value, "the first tap signs")
+    }
+
+    /** [viewModel] after a hide long enough to let the queue's reading go, back with the Safe's reading held. */
+    private fun TestScope.backAfterALongHide(viewModel: SafeTxViewModel, screen: Job) {
+        viewModel.onHidden()
+        screen.cancel()
+        advanceTimeBy(30.seconds)
+        runCurrent()
+        world.kindGate = CompletableDeferred()
+        viewModel.onShown()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+    }
+
+    @Test
+    fun theSigningStepsSignTapAfterALongHideSignsWhileTheSafesReadingIsOnItsWay() = runTest {
+        val viewModel = viewModel(queued(world.request(world.ether(4))), collect = false)
+        val screen = backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        viewModel.startSigning()
+        runCurrent()
+
+        backAfterALongHide(viewModel, screen)
+        assertIs<SafeTxUiState.Signing>(viewModel.uiState.value, "drawn from the transaction as last shown")
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        world.kindGate!!.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf("made-up test password"), world.signer.passwords, "the tap was not dropped")
+        assertEquals(listOf(world.alice.address), world.queue.requests.value.single().signers)
+    }
+
+    @Test
+    fun theBiometricTapAfterALongHideSignsWhileTheSafesReadingIsOnItsWay() = runTest {
+        biometrics = BiometricUnlock.On
+        val viewModel = viewModel(queued(world.request(world.ether(4))), collect = false)
+        val screen = backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        viewModel.startSigning()
+        runCurrent()
+
+        backAfterALongHide(viewModel, screen)
+        viewModel.signWithBiometrics()
+        runCurrent()
+        world.kindGate!!.complete(Unit)
+        runCurrent()
+
+        assertIs<Unlock.WithBiometrics>(world.signer.asked.single().second, "the tap was not dropped")
+    }
+
+    @Test
+    fun aReviewWhoseBroadcastNoPeerTookOutlivesAQueueThatCannotBeReadButNotItsNoncePassing() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        world.broadcaster.answers += Broadcast.Unavailable("no peers")
+        viewModel.startApproval()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        world.queue.unreadable.value = true
+        runCurrent()
+        assertTrue(viewModel.review.notSent!!.canRetry, "the bytes stay to be sent again")
+        world.queue.unreadable.value = false
+        runCurrent()
+        viewModel.retry()
+        runCurrent()
+        assertIs<SafeTxUiState.Sent>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun aReviewWhoseBroadcastNoPeerTookEndsOnceTheSafesNonceHasPassedIt() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        world.broadcaster.answers += Broadcast.Unavailable("no peers")
+        viewModel.startApproval()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        world.state = world.state.copy(nonce = 5)
+        runCurrent()
+
+        assertIs<SafeTxUiState.NotQueued>(viewModel.uiState.value)
     }
 }

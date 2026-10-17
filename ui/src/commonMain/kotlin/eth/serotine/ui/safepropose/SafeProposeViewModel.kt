@@ -599,8 +599,11 @@ class SafeProposeViewModel(
             recipient = recipientItem(step.request.to, accounts, option),
             nonce = "Safe nonce ${request.nonce}",
             queued = proposal.queuedAhead.takeIf { it > 0 }?.let { ahead ->
-                (if (ahead == 1) "1 transaction" else "$ahead transactions") +
-                    " queued on this device run before it."
+                if (ahead == 1) {
+                    "1 transaction queued on this device runs before it."
+                } else {
+                    "$ahead transactions queued on this device run before it."
+                }
             },
             balance = SafeBalanceChange(
                 what = "${option.symbol} balance of the Safe",

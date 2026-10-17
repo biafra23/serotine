@@ -26,9 +26,12 @@ import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.SigningRequestDecoding
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 
 /**
@@ -127,9 +130,17 @@ internal class SafeWorld {
             field = value
             kind.value = KindReading.Verified(AddressKind.Safe(value), 100)
         }
+    /** While set, a reading of the Safe begun now waits for it: a fresh set of proofs on its way. */
+    var kindGate: CompletableDeferred<Unit>? = null
     val kinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> =
-            if (address == safe) kind else flowOf(KindReading.Verified(AddressKind.Eoa, 100))
+        override fun observeKind(address: Address): Flow<KindReading> = if (address == safe) {
+            flow {
+                kindGate?.await()
+                emitAll(kind)
+            }
+        } else {
+            flowOf(KindReading.Verified(AddressKind.Eoa, 100))
+        }
     }
     val accounts = FakeAccounts(alice, bob, dave, treasury)
     val observeSafe = ObserveSafe(kinds, accounts)

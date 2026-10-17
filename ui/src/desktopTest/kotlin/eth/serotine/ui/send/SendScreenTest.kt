@@ -25,6 +25,7 @@ import eth.serotine.ui.components.SEND_RECIPIENT_TAG
 import eth.serotine.ui.components.SEND_REVIEW_TAG
 import eth.serotine.ui.components.SEND_TO_TAG
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
@@ -39,7 +40,7 @@ class SendScreenTest {
 
     private val usdcContract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
     private val savings = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
-    private val compose = SendUiState.Compose(
+    private val form = TransferForm(
         network = "Sepolia",
         from = SendFrom("Daily", "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2"),
         assets = listOf(
@@ -50,14 +51,14 @@ class SendScreenTest {
         to = "",
         accounts = listOf(AccountChoice("Savings", savings)),
         amount = "",
-        fee = FeeLevel.NORMAL,
         canMax = true,
     )
+    private val compose = SendUiState.Compose(form, FeeLevel.NORMAL)
     private val review = SendUiState.Review(
         network = "Sepolia",
-        from = compose.from,
+        from = form.from,
         amount = "0.1 ETH",
-        asset = compose.assets.first(),
+        asset = form.assets.first(),
         recipient = RecipientItem(savings, label = "Savings"),
         maxFee = "0.000462 ETH",
         feeDetail = "Normal fee: 21,000 gas × at most 22 gwei",
@@ -115,11 +116,17 @@ class SendScreenTest {
     fun aResolvedRecipientIsShownInFullAndReviewIsAskedFor() {
         show(
             compose.copy(
-                to = "friend.eth",
-                recipient = RecipientItem(savings, name = "friend.eth", resolvedAt = "Resolved at finalized block 7"),
-                amount = "0.1",
-                amountHint = "≈ $250.00 · testnet prices",
-                canReview = true,
+                form = form.copy(
+                    to = "friend.eth",
+                    recipient = RecipientItem(
+                        savings,
+                        name = "friend.eth",
+                        resolvedAt = "Resolved at finalized block 7",
+                    ),
+                    amount = "0.1",
+                    amountHint = "≈ $250.00 · testnet prices",
+                    canReview = true,
+                ),
             ),
         )
 
@@ -134,13 +141,15 @@ class SendScreenTest {
     fun whatIsWrongWithTheInputsAndWhyTheQuoteWasRefusedIsSaid() {
         show(
             compose.copy(
-                to = "later.eth",
-                toNote = "The name could not be resolved with verified calls this time.",
-                toError = true,
-                canRetryLookup = true,
-                amount = "0,5",
-                amountError = "Use a dot for the decimals: 0.5, not 0,5.",
-                error = "The light client is not synced yet: try again in a moment.",
+                form = form.copy(
+                    to = "later.eth",
+                    toNote = "The name could not be resolved with verified calls this time.",
+                    toError = true,
+                    canRetryLookup = true,
+                    amount = "0,5",
+                    amountError = "Use a dot for the decimals: 0.5, not 0,5.",
+                    error = "The light client is not synced yet: try again in a moment.",
+                ),
             ),
         )
 

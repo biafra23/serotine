@@ -225,9 +225,9 @@ private fun ComposeContent(
     ) {
         TransferFormFields(state.form, onAssetChange, onToChange, onPickAccount, onRetryLookup, onAmountChange, onMax)
         Heading("Fee")
-        FeeChoice(state.fee, enabled = !state.quoting, onFeeChange)
+        FeeChoice(state.fee, enabled = !state.form.quoting, onFeeChange)
         Note("The fee is paid in the network's own currency; the review shows the most it can be.")
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         ReviewButton(state.form, onReview, Modifier.align(Alignment.End))
     }
 }

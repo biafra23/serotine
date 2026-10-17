@@ -110,7 +110,7 @@ private fun SafeProposeReviewQueuedNotSimulatedPreview() = SafeProposePreview(
     review.copy(
         owners = listOf(AccountChoice("Daily", DAILY), AccountChoice("Savings", SAVINGS)),
         nonce = "Safe nonce 13",
-        queued = "1 transaction queued on this device run before it.",
+        queued = "1 transaction queued on this device runs before it.",
         balance = review.balance.copy(after = "1.5 ETH", queued = "0.5 ETH moved by those queued before it"),
         simulation = "Not simulated: the light client on this device does not run a call from the Safe's address. " +
             "Its execution, the whole of it, is run as a verified call before anyone sends it.",

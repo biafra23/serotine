@@ -39,6 +39,7 @@ import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.ZERO_ADDRESS
 import eth.serotine.ui.components.amountHint
@@ -540,7 +541,7 @@ class SendViewModel(
         val (note, isError) = recipientNote(text, lookup)
         val selected = model.selected
         val amount = typedAmount(inputs.amount, selected)
-        return SendUiState.Compose(
+        val form = TransferForm(
             network = network.displayName,
             from = sender,
             assets = model.options.map { it.choice() },
@@ -549,7 +550,6 @@ class SendViewModel(
             accounts = model.accounts.filter { it.address != from }
                 .map { AccountChoice(it.label, Eip55.format(it.address)) },
             amount = inputs.amount,
-            fee = inputs.fee,
             assetNote = when {
                 selected != null -> null
                 !model.tokensRead -> "Checking this account's tokens…"
@@ -566,6 +566,7 @@ class SendViewModel(
             error = step.error,
             canReview = !step.quoting && requestOf(model) != null,
         )
+        return SendUiState.Compose(form, inputs.fee)
     }
 
     private fun review(model: Model, sender: SendFrom, step: Step.Reviewing): SendUiState.Review {

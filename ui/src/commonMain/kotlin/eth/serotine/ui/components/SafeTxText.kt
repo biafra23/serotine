@@ -148,6 +148,7 @@ private fun settingsChange(change: SafeSettingsChange): SafeTxActionItem = when 
     is SafeSettingsChange.ModuleDisabled -> SafeTxActionItem(
         title = "Disable a module",
         addresses = listOf(ActionAddress("Module", Eip55.format(change.module))),
+        warning = "Whatever this module does for the Safe stops: a spending limit, a delay, a recovery path.",
     )
     is SafeSettingsChange.GuardSet -> change.guard?.let { guard ->
         SafeTxActionItem(
@@ -155,12 +156,18 @@ private fun settingsChange(change: SafeSettingsChange): SafeTxActionItem = when 
             addresses = listOf(ActionAddress("Guard", Eip55.format(guard))),
             warning = "A guard checks every transaction the owners sign: one that refuses them all locks the Safe.",
         )
-    } ?: SafeTxActionItem(title = "Remove the guard")
+    } ?: SafeTxActionItem(
+        title = "Remove the guard",
+        warning = "Whatever the guard enforces on the Safe's transactions stops: a limit, an allowlist, a delay.",
+    )
     is SafeSettingsChange.FallbackHandlerSet -> change.handler?.let { handler ->
         SafeTxActionItem(
             title = "Set the fallback handler",
             addresses = listOf(ActionAddress("Fallback handler", Eip55.format(handler))),
             notes = listOf("It answers the calls the Safe has no function for."),
+            warning = "The fallback handler answers the signature checks (EIP-1271) other contracts make for this " +
+                "Safe: one that accepts every signature lets anyone spend what the Safe has approved (Permit2, " +
+                "permits, orders), without its owners.",
         )
     } ?: SafeTxActionItem(title = "Remove the fallback handler")
 }

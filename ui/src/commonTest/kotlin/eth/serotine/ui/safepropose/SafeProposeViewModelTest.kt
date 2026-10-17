@@ -189,7 +189,7 @@ class SafeProposeViewModelTest {
 
         val review = viewModel.review
         assertEquals("Safe nonce 5", review.nonce)
-        assertEquals("1 transaction queued on this device run before it.", review.queued)
+        assertEquals("1 transaction queued on this device runs before it.", review.queued)
         assertEquals("0.1 ETH moved by those queued before it", review.balance.queued)
         assertEquals("0.8 ETH", review.balance.after)
     }

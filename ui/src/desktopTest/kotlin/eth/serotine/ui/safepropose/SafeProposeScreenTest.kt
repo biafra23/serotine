@@ -68,7 +68,7 @@ class SafeProposeScreenTest {
         owners = listOf(AccountChoice("Daily", daily)),
         owner = daily,
         unlock = UnlockStep(WalletPassword("made-up test password")),
-        queued = "1 transaction queued on this device run before it.",
+        queued = "1 transaction queued on this device runs before it.",
     )
     private val events = mutableListOf<String>()
 
@@ -122,7 +122,7 @@ class SafeProposeScreenTest {
         rule.onNodeWithTag(PROPOSE_AMOUNT_REVIEWED_TAG).assertTextEquals("0.5 ETH")
         rule.onNodeWithTag(SAFE_TX_ACTION_TAG).performScrollTo().assertTextEquals("Send 0.5 ETH")
         rule.onNodeWithText("Safe nonce 13").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("1 transaction queued on this device run before it.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("1 transaction queued on this device runs before it.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("− 0.5 ETH moved by those queued before it").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("→ 1.5 ETH").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText(
