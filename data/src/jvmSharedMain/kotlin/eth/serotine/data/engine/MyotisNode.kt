@@ -206,7 +206,22 @@ class MyotisNode private constructor() {
     }
 
     private inner class HandleChain : VerifiedChain {
+
+        /**
+         * The last snapshot read and when (System.nanoTime). Every adapter, and each of its
+         * subscribers, polls on its own: those that ask within [SNAPSHOT_REUSE_NS] of one read
+         * share it, so they cost the engine one status call, not one each.
+         */
+        @Volatile
+        private var lastRead: TimedSnapshot? = null
+
         override fun snapshot(): EngineSnapshot {
+            val now = System.nanoTime()
+            lastRead?.let { if (now - it.atNanos < SNAPSHOT_REUSE_NS) return it.snapshot }
+            return read().also { lastRead = TimedSnapshot(now, it) }
+        }
+
+        private fun read(): EngineSnapshot {
             val running = when (val current = state) {
                 State.Booting -> return EngineSnapshot.Booting
                 State.Down -> return EngineSnapshot.Down
@@ -256,8 +271,13 @@ class MyotisNode private constructor() {
         }
     }
 
+    private class TimedSnapshot(val atNanos: Long, val snapshot: EngineSnapshot)
+
     companion object {
         private val POLL_INTERVAL = 4.seconds
+
+        /** How long one status read serves other pollers: well under the fastest poll (1 s). */
+        private const val SNAPSHOT_REUSE_NS = 500_000_000L
 
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds

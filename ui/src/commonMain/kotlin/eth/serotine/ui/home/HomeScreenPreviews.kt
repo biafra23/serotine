@@ -97,7 +97,7 @@ private fun HomeUpgradeActivatedDarkPreview() = HomePreview(
         upgrade = UpgradeBannerItem(
             "Network upgrade reported: update Serotine",
             "Peers report that Sepolia upgraded on Nov 6, 2026, 3:00 PM to rules this version of Serotine does " +
-                "not support. It is still verifying for now: update the app before it stops.",
+                "not support. Update the app to keep using your wallet.",
             UPGRADE_DETAILS,
             urgent = false,
         ),

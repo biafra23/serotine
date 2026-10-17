@@ -22,10 +22,13 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Peers' reports are not verified, so on their own they never make the app claim it can no
  * longer verify: [UpgradeWarning.UpdateRequired], the state in which the app shows nothing
- * but "update", needs an activated upgrade AND a light client whose own state agrees that
- * it is not verifying (not synced, or synced with a stale head) — the rule Myotis sets for
- * every host of its upgrade advisory. A light client that verifies fresh heads after the
- * upgrade gets [UpgradeWarning.Activated] instead: still working, update soon.
+ * but "update", needs an activation peers confirmed (reported now, or recorded as active)
+ * AND a light client whose own state agrees that it is not verifying (not synced, or synced
+ * with a stale head) — the rule Myotis sets for every host of its upgrade advisory. A
+ * recorded time that has merely passed on the clock is no such confirmation, since a fork
+ * can move: that is [UpgradeWarning.Activated], a banner, as is an activation the light
+ * client does not contradict. A record no peer reports any more says nothing once the light
+ * client verifies after it: this version follows the network.
  */
 class ObserveUpgradeWarning(
     private val upgrades: NetworkUpgrades,
@@ -58,26 +61,26 @@ class ObserveUpgradeWarning(
 
     private fun warningOf(inputs: Inputs, now: Long): UpgradeWarning {
         val (report, recorded, status) = inputs
-        if (report != null) {
+        val upgrade = when {
+            report == null -> recorded
             // The record may know a time the report does not: peers already on the new rules
             // do not say when they began.
-            val upgrade = recorded?.takeIf { it.isSameUpgradeAs(report) }?.updatedBy(report) ?: report
-            return when {
-                !upgrade.hasActivated(now) -> UpgradeWarning.Ahead(upgrade)
-                status.agreesItIsNotVerifying -> UpgradeWarning.UpdateRequired(upgrade)
-                else -> UpgradeWarning.Activated(upgrade)
-            }
-        }
-        recorded ?: return UpgradeWarning.None
+            recorded != null && recorded.isSameUpgradeAs(report) -> recorded.updatedBy(report)
+            else -> report
+        } ?: return UpgradeWarning.None
+        val confirmed = report != null || upgrade.phase == NetworkUpgrade.Phase.ACTIVE
         return when {
-            !recorded.hasActivated(now) -> UpgradeWarning.Ahead(recorded)
-            status.agreesItIsNotVerifying -> UpgradeWarning.UpdateRequired(recorded)
-            // Activated by the record's clock, peers report nothing now and the light client
-            // verifies fresh heads: this version follows the network, nothing to say.
-            else -> UpgradeWarning.None
+            !upgrade.hasActivated(now) -> UpgradeWarning.Ahead(upgrade)
+            confirmed && status.agreesItIsNotVerifying -> UpgradeWarning.UpdateRequired(upgrade)
+            report == null && status.verifies -> UpgradeWarning.None
+            else -> UpgradeWarning.Activated(upgrade)
         }
     }
 }
+
+/** Whether the light client verifies fresh heads: synced, with a head young enough to read at. */
+private val LightClientStatus.verifies: Boolean
+    get() = this is LightClientStatus.Synced || this is LightClientStatus.WaitingForProofPeers
 
 /**
  * Whether the light client's own state agrees that it is not verifying the chain: not synced
@@ -108,7 +111,10 @@ sealed interface UpgradeWarning {
     /** [upgrade] lies ahead, at its activation time or one not known yet: update before then. */
     data class Ahead(val upgrade: NetworkUpgrade) : UpgradeWarning
 
-    /** [upgrade] has activated, and the light client still verifies: update before it stops. */
+    /**
+     * [upgrade] has activated, as peers report or by its announced time on the clock, and the
+     * light client's own state does not show this version cut off: update before it is.
+     */
     data class Activated(val upgrade: NetworkUpgrade) : UpgradeWarning
 
     /**

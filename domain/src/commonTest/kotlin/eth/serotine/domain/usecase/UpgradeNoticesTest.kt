@@ -35,7 +35,9 @@ class UpgradeNoticesTest {
         notices.check(glamsterdam.copy(reportingNetworks = 9))
         assertEquals(listOf(Kind.ANNOUNCED), shownKinds)
         assertEquals(listOf<Long?>(activation - 7 * DAY), notifier.reminders, "asked for once")
-        assertEquals(KnownUpgrade(glamsterdam.copy(reportingNetworks = 9), setOf(Kind.ANNOUNCED)), known.record.value)
+        // Peers coming and going change the count only: not written.
+        assertEquals(KnownUpgrade(glamsterdam, setOf(Kind.ANNOUNCED)), known.record.value)
+        assertEquals(1, known.saves)
     }
 
     @Test
@@ -56,14 +58,20 @@ class UpgradeNoticesTest {
     }
 
     @Test
-    fun allIsSaidOnceTheActivationIsShown() = runTest {
-        assertEquals(false, notices.activationShown())
+    fun allIsSaidOnlyOncePeersConfirmedTheActivationTheUserWasToldOf() = runTest {
+        assertEquals(false, notices.allSaid())
         notices.check(glamsterdam)
-        assertEquals(false, notices.activationShown())
+        assertEquals(false, notices.allSaid())
 
+        // Told at its time by the clock alone: the fork may have moved, so not all is said.
         now = activation
         notices.remind()
-        assertEquals(true, notices.activationShown())
+        assertEquals(Kind.ACTIVATED, notifier.shown.last().kind)
+        assertEquals(false, notices.allSaid())
+
+        notices.check(glamsterdam.copy(phase = Phase.ACTIVE, activationTime = null))
+        assertEquals(true, notices.allSaid())
+        assertEquals(listOf(Kind.ANNOUNCED, Kind.ACTIVATED), shownKinds, "and nothing more is shown")
     }
 
     @Test

@@ -536,10 +536,11 @@ discussion that produced this note.
   depends on it, nothing in verification reads it — and every text showing
   it says peers report it. Only the light client's own state may make the app
   claim it cannot follow the network: the update screen, which replaces every
-  other, needs an activated upgrade AND a light client that is not verifying
-  (not synced, or a stale head), Myotis's rule for its hosts. On peers' word
-  alone the app shows a banner and notifications, never that screen
-  (docs/embedding-myotis.md, *Network upgrades*).
+  other, needs an activation peers confirmed (not merely an announced time
+  passing) AND a light client that is not verifying (not synced, or a stale
+  head), Myotis's rule for its hosts. On peers' word alone the app shows a
+  banner and notifications, never that screen (docs/embedding-myotis.md,
+  *Network upgrades*).
 - **A parameter that can change the answer must be APPLIED or REFUSED — never
   accepted and silently ignored** (Myotis rule, learned the hard way in its
   #314). A well-formed result computed against something other than what the

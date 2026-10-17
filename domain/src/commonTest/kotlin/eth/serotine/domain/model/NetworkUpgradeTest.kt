@@ -14,6 +14,12 @@ class NetworkUpgradeTest {
     @Test
     fun anInvalidReportCannotExist() {
         assertFailsWith<IllegalArgumentException> { scheduled.copy(activationTime = 0) }
+        // Peers can announce any number; past the year 9999 it is no schedule, and would
+        // overflow the clock and calendar the app dates it with.
+        assertFailsWith<IllegalArgumentException> {
+            scheduled.copy(activationTime = NetworkUpgrade.LATEST_ACTIVATION_TIME + 1)
+        }
+        scheduled.copy(activationTime = NetworkUpgrade.LATEST_ACTIVATION_TIME)
         assertFailsWith<IllegalArgumentException> { scheduled.copy(forkId = "0x6C1D9423") }
         assertFailsWith<IllegalArgumentException> { scheduled.copy(forkId = "6c1d9423") }
         assertFailsWith<IllegalArgumentException> { scheduled.copy(reportingNetworks = -1) }

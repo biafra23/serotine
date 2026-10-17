@@ -18,6 +18,7 @@ import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -68,8 +69,16 @@ class SerotineApplication : Application() {
         )
     }
 
-    /** The process's own work: following upgrade reports and showing reminders. */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * The process's own work: following upgrade reports and showing reminders. A failure in
+     * it is reported and ends that one piece of work, never the wallet: the next hold, alarm
+     * or start runs it again.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
+            System.err.println("Serotine: upgrade notices stopped: $e")
+        },
+    )
 
     // The holds on the engine, and what they keep running: main thread only.
     private val handler = Handler(Looper.getMainLooper())
@@ -84,7 +93,7 @@ class SerotineApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         registerActivityLifecycleCallbacks(HoldWhileVisible())
-        UpgradeCheckJob.schedule(this)
+        scope.launch { UpgradeCheckJob.schedule(this@SerotineApplication) }
     }
 
     /**
@@ -113,11 +122,12 @@ class SerotineApplication : Application() {
 
     /**
      * Calls [then], on the main thread, with whether a background look for upgrades can learn
-     * anything: not once the user has been told the known one activated. Never starts the engine.
+     * anything: not once all is said about the known one ([UpgradeNotices.allSaid]). Never
+     * starts the engine.
      */
     fun whenUpgradeCheckWanted(then: (Boolean) -> Unit) {
         scope.launch {
-            val wanted = !upgradeNotices.activationShown()
+            val wanted = !upgradeNotices.allSaid()
             handler.post { then(wanted) }
         }
     }

@@ -35,17 +35,30 @@ class UpgradeTextTest {
     }
 
     @Test
-    fun anActivatedUpgradeTheLightClientStillFollowsIsNotUrgent() {
+    fun anActivatedUpgradeTheLightClientDoesNotContradictIsNotUrgent() {
         assertEquals(
             UpgradeBannerItem(
                 "Network upgrade reported: update Serotine",
-                "Peers report that Sepolia upgraded to rules this version of Serotine does not support. It is " +
-                    "still verifying for now: update the app before it stops.",
+                "Peers report that Sepolia upgraded to rules this version of Serotine does not support. Update " +
+                    "the app to keep using your wallet.",
                 "Reported by peers in 1 network, not verified · fork id unknown",
                 urgent = false,
             ),
             banner(UpgradeWarning.Activated(placed)),
         )
+    }
+
+    @Test
+    fun aTimeThatPassedOnTheClockIsNotSaidToBeAnUpgradePeersReport() {
+        val due = banner(UpgradeWarning.Activated(glamsterdam))!!
+        assertEquals("Network upgrade due: update Serotine", due.title)
+        assertEquals(
+            "Peers announced a Sepolia network upgrade on <1791294816> that this version of Serotine does not " +
+                "support, and that time has passed. Update the app to keep using your wallet.",
+            due.text,
+        )
+        val notice = UpgradeNotice(UpgradeNotice.Kind.ACTIVATED, glamsterdam)
+        assertEquals(due.text, UpgradeNotificationText.from(notice, Network.SEPOLIA, date).text)
     }
 
     @Test
@@ -70,8 +83,14 @@ class UpgradeTextTest {
             UpgradeNotificationText("Update Serotine before the network upgrade", ahead),
             text(UpgradeNotice.Kind.ANNOUNCED),
         )
-        assertEquals(UpgradeNotificationText("Sepolia upgrades within a week", ahead), text(UpgradeNotice.Kind.WEEK_AHEAD))
-        assertEquals(UpgradeNotificationText("Sepolia upgrades within a day", ahead), text(UpgradeNotice.Kind.DAY_AHEAD))
+        assertEquals(
+            UpgradeNotificationText("Sepolia upgrades within a week", ahead),
+            text(UpgradeNotice.Kind.WEEK_AHEAD),
+        )
+        assertEquals(
+            UpgradeNotificationText("Sepolia upgrades within a day", ahead),
+            text(UpgradeNotice.Kind.DAY_AHEAD),
+        )
         assertEquals(
             UpgradeNotificationText(
                 "Update Serotine",

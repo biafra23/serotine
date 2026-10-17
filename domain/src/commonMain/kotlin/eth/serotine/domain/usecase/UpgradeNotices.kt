@@ -42,7 +42,8 @@ class UpgradeNotices(
         val stored = known.observe().first()
         val (record, notice) = plan(stored, report, now)
         // A record that cannot be stored still has its notice shown: told twice beats never.
-        if (record != null && record != stored) known.save(record)
+        // Peers come and go, and with them the count of networks reporting: not worth a write.
+        if (record != null && record.ignoringCount() != stored?.ignoringCount()) known.save(record)
         notice?.let(notifier::show)
         val next = record?.let { nextReminder(it, now) }
         if (armed != Reminder(next)) {
@@ -56,11 +57,16 @@ class UpgradeNotices(
     suspend fun remind(): Long? = check(null)
 
     /**
-     * Whether the user has been told that the recorded upgrade activated: then all is said,
-     * and only an update of the app changes anything, so a host's background look for
-     * upgrades has nothing left to find.
+     * Whether all is said: peers confirmed that the recorded upgrade activated, and the user
+     * has been told. Then only an update of the app changes anything, and a host's background
+     * look for upgrades has nothing left to find. An activation told by the clock alone is not
+     * enough: the fork may have moved, and the look is what hears its new time.
      */
-    suspend fun activationShown(): Boolean = known.observe().first()?.shown?.contains(Kind.ACTIVATED) == true
+    suspend fun allSaid(): Boolean = known.observe().first()?.let {
+        it.upgrade.phase == NetworkUpgrade.Phase.ACTIVE && Kind.ACTIVATED in it.shown
+    } == true
+
+    private fun KnownUpgrade.ignoringCount() = copy(upgrade = upgrade.copy(reportingNetworks = 0))
 
     private fun plan(stored: KnownUpgrade?, report: NetworkUpgrade?, now: Long): Pair<KnownUpgrade?, UpgradeNotice?> {
         val current = when {

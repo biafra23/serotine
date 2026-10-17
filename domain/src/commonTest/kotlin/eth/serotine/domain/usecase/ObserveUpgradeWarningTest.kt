@@ -73,16 +73,29 @@ class ObserveUpgradeWarningTest {
     }
 
     @Test
-    fun aRecordedUpgradeIsKnownBeforePeersReportItAgain() = runTest {
+    fun anActivationPeersConfirmedIsKnownBeforePeersReportItAgain() = runTest {
+        known.record.value = KnownUpgrade(activated, emptySet())
+        lightClient.status.value = LightClientStatus.Starting
+
+        // Opened after the upgrade, before the engine heard any peer: the update, at once.
+        assertEquals(UpgradeWarning.UpdateRequired(activated), observe(afterIt).first())
+
+        // A light client that verifies fresh heads after it, with no peer reporting it: this
+        // version follows the network, and the record alone says nothing.
+        lightClient.status.value = LightClientStatus.Synced(100, null)
+        assertEquals(UpgradeWarning.None, observe(afterIt).first())
+    }
+
+    @Test
+    fun aRecordedTimeThatPassedOnTheClockAloneNeverLocksTheApp() = runTest {
+        // Announced for a time that has passed, with no peer confirming it activated: the fork
+        // may have moved, so a starting light client gets a banner, not the update screen.
         known.record.value = KnownUpgrade(glamsterdam, emptySet())
         lightClient.status.value = LightClientStatus.Starting
 
         assertEquals(UpgradeWarning.Ahead(glamsterdam), observe(beforeIt).first())
-        // Opened after the upgrade, before the engine heard any peer: the update, at once.
-        assertEquals(UpgradeWarning.UpdateRequired(glamsterdam), observe(afterIt).first())
+        assertEquals(UpgradeWarning.Activated(glamsterdam), observe(afterIt).first())
 
-        // A light client that verifies fresh heads after it, with no peer reporting it: this
-        // version follows the network, and the record alone says nothing.
         lightClient.status.value = LightClientStatus.Synced(100, null)
         assertEquals(UpgradeWarning.None, observe(afterIt).first())
     }
@@ -107,7 +120,7 @@ class ObserveUpgradeWarningTest {
 
     @Test
     fun theWarningChangesWhenTheActivationTimePassesWithNothingElseChanging() = runTest {
-        known.record.value = KnownUpgrade(glamsterdam, emptySet())
+        upgrades.report.value = glamsterdam
         lightClient.status.value = LightClientStatus.WaitingForHead(headAgeSeconds = 120)
         val start = glamsterdam.activationTime!! - 60
         val seen = mutableListOf<UpgradeWarning>()

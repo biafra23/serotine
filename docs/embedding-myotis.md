@@ -157,10 +157,13 @@ user to update — before it, and, after it, nothing else.
   balances share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
   client's state and the upgrade recorded from earlier reports:
   - *Ahead*: a banner on Home, with the date and the way to the update;
-  - *Activated*, the light client still verifying: the banner says so;
-  - *Update required*, activated and the light client not verifying: the app
+  - *Activated*, as peers report or by its announced time on the clock, the
+    light client not showing this version cut off: the banner says so;
+  - *Update required*, an activation peers confirmed (reported now, or
+    recorded as active) and a light client that is not verifying: the app
     shows the update screen and nothing else, the back stack cleared, until
-    the light client verifies again (or the app is updated).
+    the light client verifies again (or the app is updated). A recorded time
+    that merely passed on the clock never locks the app: a fork can move.
 - **Notifications.** `UpgradeNotices` (`:domain`) shows a notice when peers
   first report an upgrade, a week and a day before its activation, and once
   when it has activated; then nothing more. Each is shown once, the most
@@ -168,15 +171,19 @@ user to update — before it, and, after it, nothing else.
   (`FileKnownUpgradeStore`, `eth.serotine.data.upgrade`, `upgrade.json` next to
   the account list) belongs to one app version: an updated app starts with
   none, and its own engine says whether its build supports the upgrade. An app
-  opened after the upgrade knows it from the record at once, before peers
-  report it again.
+  opened after an activation peers confirmed knows it from the record at once,
+  before peers report it again. A changing count of reporting networks is not
+  written. The activation notice says "peers report" only when they did; one
+  due by the clock alone says the announced time has passed.
 - **While the app is closed.** Android: a daily JobScheduler job (any network,
   battery not low) wakes the engine for five minutes, long enough for peers to
-  report an upgrade, and no longer once the user has been told an upgrade
-  activated (all is said; only an update changes it); an inexact alarm (`setAndAllowWhileIdle`, no exact-alarm
+  report an upgrade, and no longer once peers confirmed an upgrade activated
+  and the user has been told (all is said; only an update changes it); an
+  inexact alarm (`setAndAllowWhileIdle`, no exact-alarm
   permission) shows each reminder at its time, re-armed after a reboot or an
-  update; the notification permission is asked for once (Android 13 and
-  later), and without it the app's own screens still say everything. The
+  update; the notification permission is asked for at launch (Android 13 and
+  later; Android stops asking after two refusals), and without it the app's
+  own screens still say everything. The
   desktop notifies through the system tray while it runs; a reminder that fell
   due while it was closed is shown at its next start.
 

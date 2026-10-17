@@ -33,10 +33,12 @@ data class UpgradeBannerItem(val title: String, val text: String, val details: S
                     urgent = false,
                 )
                 is UpgradeWarning.Activated -> UpgradeBannerItem(
-                    "Network upgrade reported: update Serotine",
-                    "Peers report that ${network.displayName} upgraded${warning.upgrade.onDate(formatTime)} to " +
-                        "rules this version of Serotine does not support. It is still verifying for now: " +
-                        "update the app before it stops.",
+                    if (warning.upgrade.reportedActive) {
+                        "Network upgrade reported: update Serotine"
+                    } else {
+                        "Network upgrade due: update Serotine"
+                    },
+                    activatedText(warning.upgrade, network, formatTime),
                     detailsOf(warning.upgrade),
                     urgent = false,
                 )
@@ -68,15 +70,32 @@ data class UpgradeNotificationText(val title: String, val text: String) {
                     UpgradeNotificationText("Update Serotine before the network upgrade", ahead)
                 UpgradeNotice.Kind.WEEK_AHEAD -> UpgradeNotificationText("$name upgrades within a week", ahead)
                 UpgradeNotice.Kind.DAY_AHEAD -> UpgradeNotificationText("$name upgrades within a day", ahead)
-                UpgradeNotice.Kind.ACTIVATED -> UpgradeNotificationText(
-                    "Update Serotine",
-                    "Peers report that $name upgraded$on to rules this version of Serotine does not support. " +
-                        "Update the app to keep using your wallet.",
-                )
+                UpgradeNotice.Kind.ACTIVATED ->
+                    UpgradeNotificationText("Update Serotine", activatedText(notice.upgrade, network, formatTime))
             }
         }
     }
 }
+
+/**
+ * An upgrade that has activated: as peers report it, or, when only its announced time has
+ * passed on the clock, as announced, since no peer has said it happened.
+ */
+private fun activatedText(upgrade: NetworkUpgrade, network: Network, formatTime: (Long) -> String): String {
+    val name = network.displayName
+    val happened = if (upgrade.reportedActive) {
+        "Peers report that $name upgraded${upgrade.onDate(formatTime)} to rules this version of Serotine does " +
+            "not support."
+    } else {
+        "Peers announced a $name network upgrade${upgrade.onDate(formatTime)} that this version of Serotine " +
+            "does not support, and that time has passed."
+    }
+    return "$happened Update the app to keep using your wallet."
+}
+
+/** Whether peers reported the upgrade active, rather than its time passing on the clock. */
+private val NetworkUpgrade.reportedActive: Boolean
+    get() = phase == NetworkUpgrade.Phase.ACTIVE
 
 /** What the update screen says: the one text that may say the app is not verifying. */
 internal fun updateRequiredText(upgrade: NetworkUpgrade, network: Network, formatTime: (Long) -> String): String =

@@ -7,8 +7,9 @@ package eth.serotine.domain.model
  * verifies, so it is a warning, never chain state: lying peers can raise a false one, but it
  * can never make a wrong answer look right, and nothing in verification reads it.
  *
- * [activationTime] is when the upgrade activates, or activated, in unix seconds; null when no
- * peer announced it (peers are seen on the new rules, but the time is not on the wire).
+ * [activationTime] is when the upgrade activates, or activated, in unix seconds, at most
+ * [LATEST_ACTIVATION_TIME]; null when no peer announced it (peers are seen on the new rules,
+ * but the time is not on the wire).
  * [forkId] is the identifier upgraded peers use once it is active (`0x` and 8 lowercase hex
  * digits); null when unknown. [reportingNetworks] is how many distinct peer networks back the
  * report: the engine counts a source per IPv4 /24 or IPv6 /48, not per peer.
@@ -20,8 +21,10 @@ data class NetworkUpgrade(
     val reportingNetworks: Int,
 ) {
     init {
-        require(activationTime == null || activationTime > 0) { "an activation time is unix seconds, or null" }
-        require(forkId == null || FORK_ID.matches(forkId)) { "a fork id is 0x and 8 lowercase hex digits: $forkId" }
+        require(activationTime == null || activationTime in 1..LATEST_ACTIVATION_TIME) {
+            "an activation time is unix seconds up to $LATEST_ACTIVATION_TIME, or null: $activationTime"
+        }
+        require(forkId == null || isForkId(forkId)) { "a fork id is 0x and 8 lowercase hex digits: $forkId" }
         require(reportingNetworks >= 0) { "a count of peer networks: $reportingNetworks" }
     }
 
@@ -40,7 +43,10 @@ data class NetworkUpgrade(
     /**
      * Whether [other] reports this same upgrade: the same activation time, or a report that
      * does not know the time (an upgrade first announced for a time, then seen active on peers
-     * that do not say when). Another time is another upgrade, or this one moved.
+     * that do not say when). Another time is another upgrade, or this one moved. A report
+     * without a time cannot be told apart further: the fork id is no help, since the two
+     * detectors give one upgrade two ids (the EIP-2124 hash, the consensus digest), and the
+     * advice is the same either way, update.
      */
     fun isSameUpgradeAs(other: NetworkUpgrade): Boolean =
         activationTime == null || other.activationTime == null || activationTime == other.activationTime
@@ -57,7 +63,17 @@ data class NetworkUpgrade(
         reportingNetworks = newer.reportingNetworks,
     )
 
-    private companion object {
-        val FORK_ID = Regex("^0x[0-9a-f]{8}$")
+    companion object {
+        /**
+         * The latest activation time a report may carry: the last second of the year 9999. A
+         * peer's announcement past it is no real schedule, and a far larger one would overflow
+         * a clock in milliseconds and the calendar a date is shown in.
+         */
+        const val LATEST_ACTIVATION_TIME = 253_402_300_799L
+
+        /** Whether [id] has a fork id's shape: `0x` and 8 lowercase hex digits. */
+        fun isForkId(id: String): Boolean = FORK_ID.matches(id)
+
+        private val FORK_ID = Regex("^0x[0-9a-f]{8}$")
     }
 }

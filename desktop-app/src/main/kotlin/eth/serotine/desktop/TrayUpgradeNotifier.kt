@@ -25,10 +25,10 @@ class TrayUpgradeNotifier(private val network: Network) : UpgradeNotifier {
     private var icon: TrayIcon? = null
 
     override fun show(notice: UpgradeNotice) {
-        val text = UpgradeNotificationText.from(notice, network)
         EventQueue.invokeLater {
             try {
                 if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) return@invokeLater
+                val text = UpgradeNotificationText.from(notice, network)
                 val tray = icon ?: TrayIcon(mark(), "Serotine").also {
                     it.isImageAutoSize = true
                     SystemTray.getSystemTray().add(it)
@@ -36,7 +36,8 @@ class TrayUpgradeNotifier(private val network: Network) : UpgradeNotifier {
                 }
                 tray.displayMessage(text.title, text.text, TrayIcon.MessageType.WARNING)
             } catch (e: Exception) {
-                // A tray that refuses the icon: the window still says it.
+                // A tray that refuses the icon, or a notice that cannot be put into words: the
+                // window still says it.
                 println("Serotine: no tray notice (${e::class.simpleName})")
             }
         }
