@@ -8,6 +8,7 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.UpgradeNotifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -26,12 +27,19 @@ internal class FakeKnownUpgradeStore : KnownUpgradeStore {
     var saves = 0
     var failing = false
 
+    /**
+     * The caller is cancelled while the record is written: as FileKnownUpgradeStore does under
+     * NonCancellable, the write completes and the cancellation is thrown as the save returns.
+     */
+    var cancelledDuringSave = false
+
     override fun observe(): Flow<KnownUpgrade?> = record
 
     override suspend fun save(record: KnownUpgrade): Boolean {
         if (failing) return false
         saves++
         this.record.value = record
+        if (cancelledDuringSave) throw CancellationException("the check was cancelled during the write")
         return true
     }
 }

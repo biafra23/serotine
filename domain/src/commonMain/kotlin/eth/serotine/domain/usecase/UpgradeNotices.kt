@@ -41,10 +41,12 @@ class UpgradeNotices(
         val now = clock()
         val stored = known.observe().first()
         val (record, notice) = plan(stored, report, now)
-        // A record that cannot be stored still has its notice shown: told twice beats never.
+        // Shown before the record says so: told twice beats never. A record that cannot be
+        // stored still has its notice shown, and so does one whose save the caller's
+        // cancellation interrupts (the store finishes the write, then the cancellation ends this).
+        notice?.let(notifier::show)
         // Peers come and go, and with them the count of networks reporting: not worth a write.
         if (record != null && record.ignoringCount() != stored?.ignoringCount()) known.save(record)
-        notice?.let(notifier::show)
         val next = record?.let { nextReminder(it, now) }
         if (armed != Reminder(next)) {
             notifier.remindAt(next)

@@ -4,6 +4,7 @@ import eth.serotine.domain.model.NetworkUpgrade.Phase
 import eth.serotine.domain.model.UpgradeNotice
 import eth.serotine.domain.model.UpgradeNotice.Kind
 import eth.serotine.domain.repository.KnownUpgrade
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
@@ -12,6 +13,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UpgradeNoticesTest {
@@ -140,6 +142,17 @@ class UpgradeNoticesTest {
 
         assertEquals(listOf(Kind.ANNOUNCED), shownKinds)
         assertEquals(null, known.record.value)
+    }
+
+    @Test
+    fun aCheckCancelledWhileItsRecordIsWrittenHasStillShownTheNotice() = runTest {
+        // FollowUpgradeReports' collectLatest, or Android's sleep, can cancel a check mid-save.
+        known.cancelledDuringSave = true
+
+        assertFailsWith<CancellationException> { notices.check(glamsterdam) }
+
+        assertEquals(KnownUpgrade(glamsterdam, setOf(Kind.ANNOUNCED)), known.record.value, "the record says shown")
+        assertEquals(listOf(Kind.ANNOUNCED), shownKinds, "and it was")
     }
 
     @Test
