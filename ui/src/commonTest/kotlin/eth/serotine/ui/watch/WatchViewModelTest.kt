@@ -160,6 +160,22 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun aSecondAddBeforeTheFirstShowsIsIgnored() = runTest {
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+
+        // Two taps in one frame: the second before the first's state reaches uiState.
+        viewModel.add()
+        viewModel.add()
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.done)
+        assertNull(viewModel.uiState.value.error, "no 'already in your wallet' from a second add")
+        assertEquals(1, accounts.accounts.value.count { it.address == Address.of(vitalik) })
+    }
+
+    @Test
     fun editsWhileAnAddRunsAreIgnored() = runTest {
         val slow = MutableStateFlow<KindReading?>(null)
         val gatedKinds = object : AddressKinds {

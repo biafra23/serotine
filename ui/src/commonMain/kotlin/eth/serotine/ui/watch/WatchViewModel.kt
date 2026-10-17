@@ -101,7 +101,9 @@ class WatchViewModel(
     /** Adds the address, once; [WatchAddress] proves its kind again first. */
     fun add() {
         val address = (Eip55.parse(typed.value.address) as? AddressInput.Valid)?.address ?: return
-        if (!uiState.value.canAdd) return
+        // outcome first: it is set synchronously below, while uiState follows it a step later,
+        // so a second tap before that must still find the add running.
+        if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
         outcome.value = Outcome(adding = true)
         viewModelScope.launch {
             outcome.value = when (val result = watchAddress(address, typed.value.name)) {
