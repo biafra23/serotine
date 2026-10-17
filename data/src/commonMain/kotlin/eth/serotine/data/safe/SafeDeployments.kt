@@ -3,8 +3,11 @@ package eth.serotine.data.safe
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 
-/** A canonical Safe singleton: its [version] ("1.4.1"), and whether it is the L2 variant ([l2]). */
-internal data class SafeSingleton(val version: String, val l2: Boolean)
+/**
+ * A canonical Safe singleton: its [version] ("1.4.1"), whether it is the L2 variant ([l2]),
+ * and whether it consults a module guard ([moduleGuard]: 1.5.0 on; older ones never read it).
+ */
+internal data class SafeSingleton(val version: String, val l2: Boolean, val moduleGuard: Boolean = false)
 
 /**
  * The Safe deployments a Safe is recognised by, per network (docs/wallet-ux.md, *Safes*): the
@@ -44,11 +47,11 @@ internal object SafeDeployments {
             singleton("0xfb1bffc9d739b8d520daf37df666da4c687191ea", "1.3.0", l2 = true),
             singleton("0x41675c099f32341bf84bfc5382af534df5c7461a", "1.4.1", l2 = false),
             singleton("0x29fcb43b46531bca003ddc8fcb67ffe91900c762", "1.4.1", l2 = true),
-            singleton("0xff51a5898e281db6dfc7855790607438df2ca44b", "1.5.0", l2 = false),
-            singleton("0xedd160febbd92e350d4d398fb636302fccd67c7e", "1.5.0", l2 = true),
+            singleton("0xff51a5898e281db6dfc7855790607438df2ca44b", "1.5.0", l2 = false, moduleGuard = true),
+            singleton("0xedd160febbd92e350d4d398fb636302fccd67c7e", "1.5.0", l2 = true, moduleGuard = true),
         ),
     )
 
-    private fun singleton(address: String, version: String, l2: Boolean) =
-        Address.of(address) to SafeSingleton(version, l2)
+    private fun singleton(address: String, version: String, l2: Boolean, moduleGuard: Boolean = false) =
+        Address.of(address) to SafeSingleton(version, l2, moduleGuard)
 }

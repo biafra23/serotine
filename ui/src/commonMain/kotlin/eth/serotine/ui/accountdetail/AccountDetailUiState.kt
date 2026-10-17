@@ -17,7 +17,9 @@ sealed interface AccountDetailUiState {
      * [tokensNote], what is not known yet about the other tokens ("Checking 3 tokens"), or
      * null; [pricesNote], where the prices come from; and [message], how hiding a token
      * went, until it is said. A Safe's [safe] is what its verified storage says (null for any
-     * other account), and the screen shows its Assets or its Owners ([segment]).
+     * other account), the screen shows its Assets or its Owners ([segment]), [kindNote] says
+     * what it is ("Safe", or "Not a recognised Safe" once its address no longer verifies as
+     * one) and [threshold] its verified threshold of its owners ("2/3"), for its blockie.
      */
     data class Ready(
         val label: String,
@@ -33,6 +35,8 @@ sealed interface AccountDetailUiState {
         val message: String? = null,
         val safe: SafeDetails? = null,
         val segment: DetailSegment = DetailSegment.ASSETS,
+        val kindNote: String? = null,
+        val threshold: String? = null,
     ) : AccountDetailUiState
 
     /** The account is not in the wallet (removed): the screen leaves. */

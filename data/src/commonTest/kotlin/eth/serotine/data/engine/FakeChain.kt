@@ -50,11 +50,16 @@ internal class FakeChain : VerifiedChain {
     /** Slots no proof is had for: unproven. */
     val unprovenSlots = mutableSetOf<Triple<Address, Long, Address?>>()
 
+    /** The block of the n-th storage proof asked for, when a test moves the head under a read. */
+    var slotBlockOfCall: ((Int) -> Long)? = null
+    var slotCalls = 0
+
     override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
         failure?.let { throw it }
         val key = Triple(address, slot, holder)
         if (key in unprovenSlots) return null
-        return ProvenSlot(slots[key] ?: "0".repeat(64), slotBlocks[key] ?: slotBlock)
+        val block = slotBlockOfCall?.invoke(slotCalls++) ?: slotBlocks[key] ?: slotBlock
+        return ProvenSlot(slots[key] ?: "0".repeat(64), block)
     }
 
     override fun storageAt(address: Address, slot: ByteArray): String? {

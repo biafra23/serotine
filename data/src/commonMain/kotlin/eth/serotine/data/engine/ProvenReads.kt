@@ -52,11 +52,17 @@ internal class ProvenReads<K, T>(
     private val dispatcher: CoroutineDispatcher,
     private val pollInterval: Duration,
     /**
-     * For how many verified heads a proof stands before it is made again: 1, at every head;
-     * more for a fact that takes many proofs and rarely changes (a Safe's owners). Whatever it
-     * is, a reading is labelled with the block its proof anchors to.
+     * For how many verified heads a proof of a given fact stands before it is made again: 1,
+     * at every head; more for one that takes many proofs and rarely changes (a Safe's owners).
+     * Whatever it is, a reading is labelled with the block its proof anchors to.
      */
-    private val keptForHeads: Long = 1,
+    private val keptForHeads: (T) -> Long = { 1 },
+    /**
+     * Within how many heads a subscriber joins a fetch already in flight for its key, rather
+     * than starting its own: 1, at the same head only; as long as [keptForHeads] at most, for
+     * a fetch that can take several heads.
+     */
+    private val sharedForHeads: Long = 1,
     /**
      * The fact about a key and the block its proof anchors to; a refusal ([EngineReading.Unavailable]);
      * or null when unproven. Blocks.
@@ -106,9 +112,9 @@ internal class ProvenReads<K, T>(
         val pending = CompletableDeferred<EngineReading<T>>()
         val running = proofsLock.withLock {
             proofs[key]?.let { (provenAtHead, reading) ->
-                if (head - provenAtHead in 0 until keptForHeads) return reading
+                if (head - provenAtHead in 0 until keptForHeads(reading.value)) return reading
             }
-            inFlight[key]?.takeIf { (at, _) -> at == head }?.second ?: run {
+            inFlight[key]?.takeIf { (at, _) -> head - at in 0 until sharedForHeads }?.second ?: run {
                 inFlight[key] = head to pending
                 null
             }

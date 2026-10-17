@@ -1,16 +1,17 @@
 package eth.serotine.ui.watch
 
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import eth.serotine.ui.components.Control
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -100,5 +101,39 @@ class WatchScreenTest {
 
         rule.onNodeWithText("Not an address: an address is 0x and 40 hexadecimal digits.").assertIsDisplayed()
         rule.onNodeWithText("Add").assertIsNotEnabled()
+    }
+
+    @Test
+    fun aVerifiedSafeShowsWhoMustSignWhatActsWithoutThemAndCanBeAdded() {
+        show(
+            WatchUiState(
+                address = vitalik,
+                detection = Detection.Safe(
+                    address = vitalik,
+                    title = "Safe 1.5.0",
+                    signers = "2 of 3 owners",
+                    owners = listOf(
+                        "0x1111111111111111111111111111111111111111",
+                        "0x2222222222222222222222222222222222222222",
+                        "0x3333333333333333333333333333333333333333",
+                    ),
+                    modules = listOf("0x4444444444444444444444444444444444444444"),
+                    guard = "0x5555555555555555555555555555555555555555",
+                    checkedAt = "Checked at block 9,412,118",
+                    control = Control.CO_SIGNER,
+                    moduleGuard = "0x6666666666666666666666666666666666666666",
+                ),
+            ),
+        )
+
+        rule.onNodeWithText("Safe 1.5.0 · 2 of 3 owners").assertIsDisplayed()
+        rule.onNodeWithText("2/3", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("1 module is enabled: it can move this Safe's funds without the owners' signatures.")
+            .assertExists()
+        rule.onNodeWithText("A guard checks every transaction the owners sign:").assertExists()
+        rule.onNodeWithText("A module guard checks the modules' transactions:").assertExists()
+        rule.onNodeWithText("Co-signer").assertExists()
+        rule.onNodeWithText("Add").assertIsEnabled().performClick()
+        assertEquals(1, adds)
     }
 }

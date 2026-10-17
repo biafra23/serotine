@@ -194,4 +194,18 @@ class AssetsScreenTest {
         // The header's total and the row's value.
         rule.onAllNodesWithText("$1,000.00", useUnmergedTree = true).assertCountEquals(2)
     }
+
+    @Test
+    fun aSafesBlockieCarriesItsThresholdAndItsRowItsKind() {
+        show(
+            AssetsUiState.Ready(
+                "Sepolia",
+                syncing,
+                listOf(daily.copy(kind = AccountKind.SAFE, signers = "2/3", kindNote = "Safe")),
+            ),
+        )
+
+        rule.onNodeWithText("2/3", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("0x8F3a…91c2 · Safe", useUnmergedTree = true).assertExists()
+    }
 }

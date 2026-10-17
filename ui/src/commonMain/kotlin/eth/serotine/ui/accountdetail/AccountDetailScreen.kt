@@ -50,9 +50,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
-import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
+import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
@@ -221,7 +221,7 @@ private fun Details(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            AccountAvatar(state.address, size = 56.dp)
+            AccountAvatar(state.address, size = 56.dp, threshold = state.threshold)
             Column {
                 Text(
                     state.total,
@@ -241,7 +241,7 @@ private fun Details(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ControlBadge(state.control)
-                    if (state.kind == AccountKind.SAFE) Text("Safe", style = MaterialTheme.typography.labelMedium)
+                    state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                 }
             }
         }
@@ -366,26 +366,10 @@ private fun SafeOwners(safe: SafeDetails) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
-                    safe.modules.forEach {
-                        Text(
-                            shortAddress(it),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
+                    safe.modules.forEach { AddressLine(it) }
                 }
-                safe.guard?.let {
-                    Text(
-                        "A guard checks every transaction: ${shortAddress(it)}",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                safe.moduleGuard?.let {
-                    Text(
-                        "A module guard checks the modules' transactions: ${shortAddress(it)}",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+                safe.guard?.let { AddressLine(it, "A guard checks every transaction the owners sign:") }
+                safe.moduleGuard?.let { AddressLine(it, "A module guard checks the modules' transactions:") }
                 Text(
                     safe.checkedAt,
                     style = MaterialTheme.typography.labelSmall,
@@ -393,6 +377,16 @@ private fun SafeOwners(safe: SafeDetails) {
                 )
             }
         }
+    }
+}
+
+/** An address with its blockie, after what it is ([what], if said). */
+@Composable
+private fun AddressLine(address: String, what: String? = null) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Blockie(address, size = 20.dp)
+        Text(shortAddress(address), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
     }
 }
 

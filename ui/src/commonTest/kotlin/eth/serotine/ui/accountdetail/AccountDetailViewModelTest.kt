@@ -38,8 +38,10 @@ import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -327,6 +329,7 @@ class AccountDetailViewModelTest {
 
         val ready = viewModel.uiState.value as AccountDetailUiState.Ready
         assertEquals(DetailSegment.OWNERS, ready.segment)
+        assertEquals("2/2", ready.threshold)
         assertEquals(Control.CO_SIGNER, ready.control, "Daily's key is held here, one of the two that must sign")
         assertEquals(
             SafeDetails.Shown(
@@ -352,5 +355,52 @@ class AccountDetailViewModelTest {
         runCurrent()
 
         assertEquals(null, (viewModel.uiState.value as AccountDetailUiState.Ready).safe)
+    }
+
+    @Test
+    fun aSafesScreenShowsBeforeItsStorageIsReadAndSaysWhatItIs() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, treasury)
+        // A read that has not answered yet: a Safe's takes a dozen proofs.
+        val slow = object : AddressKinds {
+            override fun observeKind(address: Address): Flow<KindReading> = flow { awaitCancellation() }
+        }
+        val viewModel = AccountDetailViewModel(
+            treasury.address,
+            ObserveAccount(accounts),
+            ObserveAccountValue(
+                ObserveNativeBalance(balances),
+                ObserveTokenHoldings(ObserveKnownTokens(catalog, userTokens, metadata), tokenBalances),
+                ObserveUsdPrice(feeds),
+                ObserveDisplayCurrencies(feeds, currency),
+                Network.SEPOLIA,
+            ),
+            ObserveSafe(slow, accounts),
+            SetTokenHidden(userTokens),
+            Network.SEPOLIA,
+        )
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(SafeDetails.Checking, ready.safe)
+        assertEquals("Safe", ready.kindNote)
+        assertEquals(null, ready.threshold)
+    }
+
+    @Test
+    fun aSafeThatNoLongerVerifiesAsOneSaysSo() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, treasury)
+        kind.value = KindReading.Verified(AddressKind.Contract, 9)
+        val viewModel = viewModel(treasury.address)
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals("Not a recognised Safe", ready.kindNote)
+        assertEquals(Control.WATCH_ONLY, ready.control)
     }
 }

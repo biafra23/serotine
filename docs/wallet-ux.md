@@ -298,6 +298,16 @@ address. Applied:
   SafeProxy runtime code of each factory. A Safe's control badge follows its
   verified owners: as many held here as its threshold is full control, fewer
   is co-signer, none is watch-only, and so is a Safe not read yet.
+  - The numbered slots carry the block they were proven at; the guards sit
+    at hashed slots no storage proof names, so they are verified reads at the
+    head, which may be a head newer than that block.
+  - The owner and module lists are what the Safe's own getters return.
+    Storage written outside them (a setup delegatecall can plant a module the
+    list does not link) is not something reading the lists can rule out; the
+    co-signing flow's own checks against the chain stand for that.
+  - The stored kind is what was verified when the account was added. An
+    address watched while it was still counterfactual stays an account after
+    its Safe is deployed; re-detecting it is a follow-up.
 - **Creation** deploys Safe 1.4.1 through `SafeProxyFactory.createProxyWithNonce`
   with a `setup` call, from an EOA the user holds. The address is predicted
   locally and shown before the deployment is signed.

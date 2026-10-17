@@ -262,14 +262,13 @@ private fun accountMenu(address: String, act: (AccountAction) -> Unit): List<Men
 @Composable
 private fun AccountRow(account: AccountItem) {
     ListItem(
-        leadingContent = { SafeAwareAvatar(account) },
+        leadingContent = { AccountAvatar(account.address, threshold = account.signers) },
         headlineContent = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(account.label)
                 ControlBadge(account.control)
             }
         },
-        // Until a Safe's threshold overlay can be drawn, the kind says it is one.
         supportingContent = {
             Text(account.kindNote?.let { "${account.shortAddress} · $it" } ?: account.shortAddress)
         },
@@ -296,19 +295,3 @@ private fun AccountRow(account: AccountItem) {
     )
 }
 
-/** An account's blockie; a Safe's carries its verified threshold of its owners ("2/3"). */
-@Composable
-private fun SafeAwareAvatar(account: AccountItem) {
-    Box {
-        AccountAvatar(account.address)
-        account.signers?.let { signers ->
-            Surface(
-                Modifier.align(Alignment.BottomEnd),
-                shape = MaterialTheme.shapes.extraSmall,
-                color = MaterialTheme.colorScheme.primaryContainer,
-            ) {
-                Text(signers, Modifier.padding(horizontal = 3.dp), style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
-}

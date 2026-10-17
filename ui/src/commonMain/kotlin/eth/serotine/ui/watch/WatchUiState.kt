@@ -52,7 +52,11 @@ sealed interface Detection {
         val checkedAt: String,
         val control: Control,
         val moduleGuard: String? = null,
-    ) : Detection
+    ) : Detection {
+        /** The threshold of the owners, as a Safe's blockie carries it ("2/3"). */
+        val threshold: String
+            get() = signers.substringBefore(" of ") + "/" + owners.size
+    }
 
     /** A contract that is not a recognised Safe, which cannot be watched. */
     data class Contract(val message: String) : Detection

@@ -203,7 +203,7 @@ private fun DetectionCard(detection: Detection) {
 @Composable
 private fun SafeCard(safe: Detection.Safe) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        AccountAvatar(safe.address, size = 36.dp)
+        AccountAvatar(safe.address, size = 36.dp, threshold = safe.threshold)
         Column {
             Text("${safe.title} · ${safe.signers}")
             Text(
@@ -237,24 +237,22 @@ private fun SafeCard(safe: Detection.Safe) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
-        safe.modules.forEach { module ->
-            Text(shortAddress(module), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-        }
+        safe.modules.forEach { module -> AddressLine(module) }
     }
-    safe.guard?.let { guard ->
-        Text(
-            "A guard checks every transaction: ${shortAddress(guard)}",
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
-    safe.moduleGuard?.let { guard ->
-        Text(
-            "A module guard checks the modules' transactions: ${shortAddress(guard)}",
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
+    safe.guard?.let { guard -> AddressLine(guard, "A guard checks every transaction the owners sign:") }
+    safe.moduleGuard?.let { guard -> AddressLine(guard, "A module guard checks the modules' transactions:") }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         ControlBadge(safe.control)
         Text("Detected from verified code and storage", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+/** An address with its blockie, after what it is ([what], if said). */
+@Composable
+private fun AddressLine(address: String, what: String? = null) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Blockie(address, size = 20.dp)
+        Text(shortAddress(address), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
     }
 }

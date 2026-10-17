@@ -241,9 +241,10 @@ class MyotisNode private constructor(network: Network) {
             if (result.failReason() != null || !result.storageProofValid() || !result.beaconChainVerified()) return null
             val block = when {
                 result.verifyMethod() == null -> return null
+                // First: a header-chain walk ends at an attested slot that is not the proof's block.
+                result.verifyMethod() == "headerChain" -> result.peerBlockNumber()
                 result.matchedBeaconSlot() == result.optimisticSlot() -> result.optimisticBlockNumber()
                 result.matchedBeaconSlot() == result.finalizedSlot() -> result.finalizedBlockNumber()
-                result.verifyMethod() == "headerChain" -> result.peerBlockNumber()
                 else -> return null
             }
             val value = if (result.exists()) result.valueHex()?.removePrefix("0x")?.lowercase() ?: return null else ""

@@ -169,10 +169,10 @@ class VerifiedAddressKindsTest {
     }
 
     @Test
-    fun aReadTheHeadMovedUnderOrWithAnUnprovenSlotIsUnproven() = runTest {
+    fun aReadTheHeadKeepsMovingUnderOrWithAnUnprovenSlotIsUnproven() = runTest {
         chain.snapshot = running(head = 9)
         safeStorage()
-        chain.slotBlocks[Triple(address, 5L, null)] = 10
+        chain.slotBlocks[Triple(address, 5L, null)] = 10 // at every attempt
         assertEquals(
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),
             kinds().observeKind(address).first { it !is KindReading.Syncing },
@@ -187,17 +187,82 @@ class VerifiedAddressKindsTest {
     }
 
     @Test
-    fun aSafeWithoutModulesHasNoneWhetherItsListWasSetUpOrNot() = runTest {
+    fun aSafeWithoutModulesHasNoneButOneWhoseModuleListWasNeverWrittenIsNoSafe() = runTest {
         chain.snapshot = running(head = 9)
         safeStorage()
-        chain.slots[Triple(address, 1L, sentinel)] = word(sentinel) // set up, empty
+        chain.slots[Triple(address, 1L, sentinel)] = word(sentinel) // set up, empty: what setup writes
         chain.slots.remove(Triple(address, 1L, module))
-        suspend fun modules() = kinds().observeKind(address).first { it !is KindReading.Syncing }
-            .let { ((it as KindReading.Verified).kind as AddressKind.Safe).state.modules }
-        assertEquals(emptyList(), modules())
+        val kinds = kinds()
+        suspend fun kind() =
+            (kinds.observeKind(address).first { it !is KindReading.Syncing } as KindReading.Verified).kind
+        assertEquals(emptyList(), (kind() as AddressKind.Safe).state.modules)
 
-        chain.slots.remove(Triple(address, 1L, sentinel)) // never set up
-        assertEquals(emptyList(), modules())
+        // Setup always writes the sentinel: a set-up Safe without it was written by other means.
+        chain.snapshot = running(head = 20)
+        chain.slotBlock = 20
+        chain.slots.remove(Triple(address, 1L, sentinel))
+        assertEquals(AddressKind.Contract, kind())
+    }
+
+    @Test
+    fun aCountThatIsNotTheListsOrNoSmallNumberIsNoSafe() = runTest {
+        chain.snapshot = running(head = 9)
+        val kinds = kinds()
+        suspend fun kind() =
+            (kinds.observeKind(address).first { it !is KindReading.Syncing } as KindReading.Verified).kind
+
+        safeStorage()
+        chain.slots[Triple(address, 3L, null)] = word(3) // three owners counted, two listed
+        assertEquals(AddressKind.Contract, kind())
+
+        chain.snapshot = running(head = 20)
+        chain.slotBlock = 20
+        safeStorage()
+        chain.slots[Triple(address, 5L, null)] = "f".repeat(64) // a nonce no Safe reaches
+        assertEquals(AddressKind.Contract, kind())
+    }
+
+    @Test
+    fun aGuardWordThatIsNoAddressIsNoSafeAndAnOlderSafesModuleGuardSlotIsNothing() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        val planted = Address.of("0x" + "55".repeat(20))
+        chain.storage[address to VerifiedAddressKinds.MODULE_GUARD_SLOT.toHex()] = word(planted)
+        val kinds = kinds()
+        suspend fun kind() =
+            (kinds.observeKind(address).first { it !is KindReading.Syncing } as KindReading.Verified).kind
+        // 1.4.1 never consults a module guard: a word there is no protection.
+        assertEquals(null, (kind() as AddressKind.Safe).state.moduleGuard)
+
+        chain.snapshot = running(head = 20)
+        chain.slotBlock = 20
+        chain.storage[address to VerifiedAddressKinds.GUARD_SLOT.toHex()] = "ff".repeat(32)
+        assertEquals(AddressKind.Contract, kind())
+    }
+
+    @Test
+    fun aReadTheHeadMovedUnderIsMadeAgainAtOnce() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // The fourth proof of the first read lands at the next head; the second read is all there.
+        chain.slotBlockOfCall = { call -> if (call < 3) 9 else 10 }
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+
+        assertEquals(10, (reading as KindReading.Verified).blockNumber)
+        assertEquals(true, reading.kind is AddressKind.Safe)
+    }
+
+    @Test
+    fun storageFromBeforeTheCodesBlockIsNotTakenForIt() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        chain.codes[address] = ProvenCode(proxyCode, 12) // the code at 12, the slots at 9
+
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(address).first { it !is KindReading.Syncing },
+        )
     }
 
     @Test
@@ -226,6 +291,10 @@ class VerifiedAddressKindsTest {
         assertEquals(
             "4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8",
             VerifiedAddressKinds.GUARD_SLOT.toHex(),
+        )
+        assertEquals(
+            "b104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947",
+            VerifiedAddressKinds.MODULE_GUARD_SLOT.toHex(),
         )
     }
 }

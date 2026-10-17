@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -79,7 +80,12 @@ class AccountDetailViewModel(
     private val safe = lookup.map { (it as? AccountLookup.Found)?.account?.kind == AccountKind.SAFE }
         .distinctUntilChanged()
         .flatMapLatest { isSafe ->
-            if (isSafe) observeSafe(address).map<SafeReading, SafeReading?> { it } else flowOf(null)
+            // Never holding the screen back: a Safe's read takes a dozen proofs.
+            if (isSafe) {
+                observeSafe(address).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
+            } else {
+                flowOf(null)
+            }
         }
 
     val uiState: StateFlow<AccountDetailUiState> =
@@ -101,6 +107,13 @@ class AccountDetailViewModel(
                     message = view.message,
                     safe = safe?.let(::safeDetails),
                     segment = view.segment,
+                    kindNote = when {
+                        lookup.account.kind != AccountKind.SAFE -> null
+                        safe == SafeReading.NotASafe -> "Not a recognised Safe"
+                        else -> "Safe"
+                    },
+                    threshold = (safe as? SafeReading.Verified)
+                        ?.let { "${it.state.threshold}/${it.state.owners.size}" },
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
