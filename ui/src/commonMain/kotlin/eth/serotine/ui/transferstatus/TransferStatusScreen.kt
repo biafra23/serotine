@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
+import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.shortAddress
 
@@ -50,20 +51,29 @@ const val TRANSFER_HASH_TAG = "transfer-hash"
 /** Test tag of the address of the Safe a deployment created, for UI tests. */
 const val TRANSFER_SAFE_TAG = "transfer-safe"
 
-/** Binds [TransferStatusScreen] to its ViewModel; Done and Back end it through [onDone]. */
+/**
+ * Binds [TransferStatusScreen] to its ViewModel; Done and Back end it through [onDone], and Try
+ * again is [TransferStatusViewModel.retry].
+ */
 @Composable
 fun TransferStatusRoute(viewModel: TransferStatusViewModel, onDone: () -> Unit, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    TransferStatusScreen(state, onDone, modifier)
+    TransferStatusScreen(state, onDone, onRetry = viewModel::retry, modifier = modifier)
 }
 
 /**
  * Send, status (docs/wallet-ux.md, screen 9) as a pure function of [state]: what was sent, and
- * Signed → Broadcast → Included → Finalized, each step with its block once it has one.
+ * Signed → Broadcast → Included → Finalized, each step with its block once it has one; for one
+ * maybe sent, Try again ([onRetry]), which sends the same signed bytes.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TransferStatusScreen(state: TransferStatusUiState, onDone: () -> Unit, modifier: Modifier = Modifier) {
+fun TransferStatusScreen(
+    state: TransferStatusUiState,
+    onDone: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -88,14 +98,14 @@ fun TransferStatusScreen(state: TransferStatusUiState, onDone: () -> Unit, modif
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (state) {
                 is TransferStatusUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                is TransferStatusUiState.Shown -> Shown(state, onDone)
+                is TransferStatusUiState.Shown -> Shown(state, onDone, onRetry)
             }
         }
     }
 }
 
 @Composable
-private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit) {
+private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetry: () -> Unit) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -189,6 +199,7 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit) {
         Column {
             state.steps.forEach { step -> StepRow(step) }
         }
+        state.notSent?.let { NotSentFields(it, state.retrying, onRetry) }
         state.note?.let { note ->
             Text(
                 note,

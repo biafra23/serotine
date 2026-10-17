@@ -30,7 +30,6 @@ import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -373,11 +372,11 @@ class ProposeSafeTx(
     private val network: Network,
 ) {
     suspend operator fun invoke(safe: Address, to: Address, asset: TransferAsset, amount: UInt256): SafeTxProposing =
-        coroutineScope {
+        cancellingReads {
             val token = (asset as? TransferAsset.Erc20Token)?.token
-            if (to == Address.ZERO) return@coroutineScope SafeTxProposing.ToZeroAddress
-            if (token != null && to == token.address) return@coroutineScope SafeTxProposing.ToTokenContract
-            if (amount.isZero) return@coroutineScope SafeTxProposing.NothingToSend
+            if (to == Address.ZERO) return@cancellingReads SafeTxProposing.ToZeroAddress
+            if (token != null && to == token.address) return@cancellingReads SafeTxProposing.ToTokenContract
+            if (amount.isZero) return@cancellingReads SafeTxProposing.NothingToSend
             val txTo = token?.address ?: to
             val value = if (token == null) amount else UInt256.ZERO
             val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
@@ -387,13 +386,13 @@ class ProposeSafeTx(
 
             val reading = when (val check = checked.await()) {
                 is SafeCheck.Verified -> check.reading
-                is SafeCheck.Refused -> return@coroutineScope SafeTxProposing.Refused(check.refusal)
+                is SafeCheck.Refused -> return@cancellingReads SafeTxProposing.Refused(check.refusal)
             }
             val (before, balanceBlock) = when (val read = balance.await()) {
                 is SafeBalance.Read -> read.amount to read.blockNumber
-                is SafeBalance.Refused -> return@coroutineScope read.proposing
+                is SafeBalance.Refused -> return@cancellingReads read.proposing
             }
-            if (before < amount) return@coroutineScope insufficient(token != null)
+            if (before < amount) return@cancellingReads insufficient(token != null)
             val safeNonce = reading.state.nonce
             // A queue that cannot be read leaves the Safe's nonce: two transactions at one nonce
             // are two proposals, only one of which can ever run.
@@ -408,19 +407,19 @@ class ProposeSafeTx(
             val queuedAmount = ahead.groupBy { it.nonce }.values
                 .map { alternatives -> alternatives.maxOf { it.moves(token?.address) } }
                 .sumOrNull()
-                ?: return@coroutineScope insufficient(token != null)
+                ?: return@cancellingReads insufficient(token != null)
             val available = before.minusOrNull(queuedAmount)?.takeIf { it >= amount }
-                ?: return@coroutineScope insufficient(token != null)
+                ?: return@cancellingReads insufficient(token != null)
             val simulation = when (val run = inputs.simulate(safe, txTo, value, data)) {
                 is Simulation.Succeeded -> {
                     val refusedByToken = token != null && run.returnHex.isNotEmpty() && run.returnHex.all { it == '0' }
-                    if (refusedByToken) return@coroutineScope SafeTxProposing.Reverts(run.blockNumber)
+                    if (refusedByToken) return@cancellingReads SafeTxProposing.Reverts(run.blockNumber)
                     SafeCallSimulation.Ran(run.blockNumber)
                 }
-                is Simulation.Reverted -> return@coroutineScope SafeTxProposing.Reverts(run.blockNumber)
+                is Simulation.Reverted -> return@cancellingReads SafeTxProposing.Reverts(run.blockNumber)
                 Simulation.Refused -> SafeCallSimulation.NotRun
                 is Simulation.Unavailable ->
-                    return@coroutineScope SafeTxProposing.Refused(SafeTxRefusal.Unavailable(run.reason))
+                    return@cancellingReads SafeTxProposing.Refused(SafeTxRefusal.Unavailable(run.reason))
             }
             queue.prune(safe, safeNonce)
             val request = SigningRequest.of(network, safe, SafeTx.call(txTo, value, data, nonce))

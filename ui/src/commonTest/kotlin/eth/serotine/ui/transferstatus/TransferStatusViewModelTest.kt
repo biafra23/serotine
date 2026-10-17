@@ -11,6 +11,7 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
@@ -18,7 +19,9 @@ import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveSentTransfer
+import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.FakeBroadcaster
 import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.MemorySentTransfers
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +61,7 @@ class TransferStatusViewModelTest {
     private val sent = MemorySentTransfers()
     private val receipts = FakeReceipts()
     private val accounts = FakeAccounts()
+    private val broadcaster = FakeBroadcaster()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -68,6 +72,7 @@ class TransferStatusViewModelTest {
             hash,
             ObserveSentTransfer(sent, receipts),
             ObserveAccounts(accounts),
+            RebroadcastTransfer(broadcaster, sent, receipts) { 1_800_000_500 },
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -286,5 +291,61 @@ class TransferStatusViewModelTest {
         runCurrent()
 
         assertTrue(viewModel.shown.deployment!!.listingFailed)
+    }
+
+    @Test
+    fun aTransferMaybeSentIsRetriedWithItsOwnBytesFromItsStatus() = runTest {
+        val maybe = record.copy(maybeSent = true)
+        sent.transfers.value = listOf(maybe)
+        broadcaster.answers += Broadcast.Unavailable(null)
+        val viewModel = viewModel()
+        runCurrent()
+
+        assertEquals(StepState.UNKNOWN, viewModel.shown.steps[1].state, "no peer answered its broadcast")
+        assertTrue(assertNotNull(viewModel.shown.notSent).canRetry)
+
+        // No peer again: still maybe sent, from this broadcast on, and Try again stays.
+        viewModel.retry()
+        runCurrent()
+        assertEquals(listOf(maybe.copy(sentAt = 1_800_000_500)), sent.transfers.value)
+        assertTrue(assertNotNull(viewModel.shown.notSent).canRetry)
+
+        // A peer takes it: an ordinary record, and nothing left to retry.
+        viewModel.retry()
+        runCurrent()
+        assertEquals(2, broadcaster.sent.size)
+        assertTrue(broadcaster.sent.all { it.contentEquals(record.signed.raw) }, "the very bytes, never a new one")
+        assertFalse(sent.transfers.value.single().maybeSent)
+        assertNull(viewModel.shown.notSent)
+        assertEquals(StepState.DONE, viewModel.shown.steps[1].state)
+    }
+
+    @Test
+    fun aRetryRejectedOnVerifiedStateIsSaidOnceItsRecordIsGone() = runTest {
+        sent.transfers.value = listOf(record.copy(maybeSent = true))
+        broadcaster.answers += Broadcast.Rejected("nonce too low")
+        val viewModel = viewModel()
+        runCurrent()
+
+        viewModel.retry()
+        runCurrent()
+
+        assertEquals(emptyList(), sent.transfers.value, "it can never be mined: it holds nothing back")
+        val notSent = assertNotNull(viewModel.shown.notSent)
+        assertFalse(notSent.canRetry)
+        assertTrue("nonce too low" in notSent.message)
+    }
+
+    @Test
+    fun aTransferMinedIsNotRetriedEvenWhenItsBroadcastFoundNoPeer() = runTest {
+        sent.transfers.value = listOf(record.copy(maybeSent = true))
+        val viewModel = viewModel()
+        receipts.of(record.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
+        runCurrent()
+
+        assertNull(viewModel.shown.notSent)
+        viewModel.retry()
+        runCurrent()
+        assertEquals(emptyList(), broadcaster.sent)
     }
 }

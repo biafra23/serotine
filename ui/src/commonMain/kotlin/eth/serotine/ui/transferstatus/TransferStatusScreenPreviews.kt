@@ -1,6 +1,7 @@
 package eth.serotine.ui.transferstatus
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -48,7 +49,7 @@ private val included = pending.copy(
 @Composable
 private fun TransferStatusPreview(state: TransferStatusUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        TransferStatusScreen(state, onDone = {})
+        TransferStatusScreen(state, onDone = {}, onRetry = {})
     }
 }
 
@@ -179,6 +180,29 @@ private fun TransferStatusSafeNotListedPreview() = TransferStatusPreview(
     ),
 )
 
+@Preview
+@Composable
+private fun TransferStatusMaybeSentPreview() = TransferStatusPreview(
+    pending.copy(
+        steps = listOf(
+            signed,
+            StatusStep(
+                "Broadcast",
+                StepState.UNKNOWN,
+                "No peer answered, Oct 17, 2026, 3:04 PM: it may not have reached the network",
+            ),
+            StatusStep("Included", StepState.WAITING, "Waiting for a block to include it"),
+            waitingFinal,
+        ),
+        notSent = NotSentItem(
+            "No peer answered when this transfer was broadcast, so it may not have reached the network, or it may " +
+                "be on its way. Try again sends the same signed transfer; nothing new is sent from this account " +
+                "meanwhile, since a new one could pay twice.",
+            canRetry = true,
+        ),
+    ),
+)
+
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
@@ -193,5 +217,6 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusSafeListedPreview() },
     { TransferStatusSafeListedDarkPreview() },
     { TransferStatusSafeNotListedPreview() },
+    { TransferStatusMaybeSentPreview() },
     { TransferStatusLoadingPreview() },
 )

@@ -243,7 +243,17 @@ internal fun callRefusalText(refusal: CallRefusal, network: Network): String = w
     CallRefusal.Refused -> "The light client on this device cannot quote this transaction."
     CallRefusal.Syncing -> "The light client is not synced yet: try again in a moment."
     is CallRefusal.Unavailable -> unavailableText(refusal.reason)
+    is CallRefusal.EarlierMaybeSent -> EARLIER_MAYBE_SENT
 }
+
+/**
+ * Why nothing new is quoted from an account whose earlier transaction may still be on its way
+ * ([CallRefusal.EarlierMaybeSent]), where the screen offers no way to its status: Send on that
+ * account does.
+ */
+internal const val EARLIER_MAYBE_SENT = "An earlier transaction from this account may still be on its way: no " +
+    "peer answered when it was broadcast, and no block has it yet. Try it again from its status (Send on this " +
+    "account opens it) rather than sign a new one, which could pay twice."
 
 /** Why a verified figure could not be had right now, display-ready. */
 internal fun unavailableText(reason: ReadUnavailable): String = when (reason) {

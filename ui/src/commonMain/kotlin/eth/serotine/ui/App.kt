@@ -324,6 +324,10 @@ private fun Destinations(
                             popUpTo(SEND_ROUTE) { inclusive = true }
                         }
                     },
+                    // An earlier transaction that may still be on its way: its status, over Send.
+                    onOpenTransfer = { hash ->
+                        navController.navigate("${Destination.TRANSFER}/$hash") { launchSingleTop = true }
+                    },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SEND_ROUTE, inclusive = true) }

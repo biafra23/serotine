@@ -537,6 +537,33 @@ class SendViewModelTest {
     }
 
     @Test
+    fun aTransferMaybeSentHoldsTheNextOneBackAndOffersItsStatus() = runTest {
+        broadcaster.answers += Broadcast.Unavailable("no peer")
+        val first = reviewed()
+        first.onPasswordChange("correct horse battery")
+        first.sign()
+        runCurrent()
+        val maybe = sent.transfers.value.single()
+        assertTrue(maybe.maybeSent)
+
+        // The screen left, or the app restarted: the bytes are in the record, and no new one is quoted.
+        val again = reviewed()
+        val state = assertIs<SendUiState.Compose>(again.uiState.value)
+        assertEquals(maybe.hash, state.earlier)
+        assertEquals(
+            "An earlier transaction from this account may still be on its way: no peer answered when it was " +
+                "broadcast, and no block has it yet. Try it again from its status rather than sign a new one, " +
+                "which could pay twice.",
+            state.form.error,
+        )
+        assertEquals(1, signer.asked.size, "nothing signed for it")
+
+        // Any change to the form starts over, and the link goes with the refusal.
+        again.onAmountChange("0.2")
+        assertNull(assertIs<SendUiState.Compose>(again.uiState.value).earlier)
+    }
+
+    @Test
     fun aRejectedTransferIsNotTriedAgain() = runTest {
         broadcaster.answers += Broadcast.Rejected("nonce too low")
         val viewModel = reviewed()
@@ -583,7 +610,11 @@ class SendViewModelTest {
         )
         viewModel.edit()
         assertIs<SendUiState.Review>(viewModel.uiState.value, "no new transfer while it may be in a block")
-        assertTrue(sent.transfers.value.isEmpty())
+        assertEquals(
+            listOf(true),
+            sent.transfers.value.map { it.maybeSent },
+            "kept as maybe sent: no new quote passes it after a restart either",
+        )
     }
 
     @Test

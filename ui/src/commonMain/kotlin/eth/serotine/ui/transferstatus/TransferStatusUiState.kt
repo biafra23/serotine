@@ -1,5 +1,7 @@
 package eth.serotine.ui.transferstatus
 
+import eth.serotine.ui.components.NotSentItem
+
 /**
  * Everything the transfer status screen renders (docs/wallet-ux.md, screen 9): what was sent,
  * and the steps Signed → Broadcast → Included → Finalized, each with its block once it has one.
@@ -18,7 +20,9 @@ sealed interface TransferStatusUiState {
      * transaction's approval or execution, [deployment] for a Safe's deployment; all null when this
      * device has no record of it), its [steps] in order, and [note], what to know about where it
      * stands (a failure, or that it cannot be verified right now), or null. [finished] once its
-     * block is finalized.
+     * block is finalized. [notSent] while it is recorded as maybe sent (no peer answered its
+     * broadcast) and no block has it, with Try again, which sends the same signed bytes
+     * ([retrying] while it does); or what such a retry came to, once there is nothing to retry.
      */
     data class Shown(
         override val network: String,
@@ -29,6 +33,8 @@ sealed interface TransferStatusUiState {
         val finished: Boolean = false,
         val safeTx: SafeTxSummary? = null,
         val deployment: DeploymentSummary? = null,
+        val notSent: NotSentItem? = null,
+        val retrying: Boolean = false,
     ) : TransferStatusUiState
 }
 

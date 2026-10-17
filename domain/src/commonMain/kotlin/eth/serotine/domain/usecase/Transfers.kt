@@ -29,7 +29,6 @@ import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -180,14 +179,14 @@ class QuoteTransfer(
         asset: TransferAsset,
         amount: UInt256,
         level: FeeLevel,
-    ): TransferQuoting = coroutineScope {
+    ): TransferQuoting = cancellingReads {
         val token = (asset as? TransferAsset.Erc20Token)?.token
         // Recipients that can never give it back, refused here as well as at the typed text: this
         // is the one maker of quotes, whichever way the recipient was chosen.
-        if (to == Address.ZERO) return@coroutineScope TransferQuoting.ToZeroAddress
-        if (token != null && to == token.address) return@coroutineScope TransferQuoting.ToTokenContract
+        if (to == Address.ZERO) return@cancellingReads TransferQuoting.ToZeroAddress
+        if (token != null && to == token.address) return@cancellingReads TransferQuoting.ToTokenContract
         // Nothing to move is nothing to pay a fee for.
-        if (amount.isZero) return@coroutineScope TransferQuoting.NothingToSend
+        if (amount.isZero) return@cancellingReads TransferQuoting.NothingToSend
         val txTo = token?.address ?: to
         val value = if (token == null) amount else UInt256.ZERO
         val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
@@ -196,38 +195,38 @@ class QuoteTransfer(
 
         val nativeBefore = when (val read = NativeRead.of(native.await())) {
             is NativeRead.Before -> read
-            is NativeRead.NotRead -> return@coroutineScope read.refusal.asTransferQuoting()
+            is NativeRead.NotRead -> return@cancellingReads read.refusal.asTransferQuoting()
         }
         var tokenBlock: Long? = null
         val tokenBefore = when (val reading = tokenBalance?.await()) {
             null -> null
             is TokenBalanceReading.Verified -> {
                 tokenBlock = reading.blockNumber
-                UInt256.parse(reading.units.decimal) ?: return@coroutineScope UNPROVEN
+                UInt256.parse(reading.units.decimal) ?: return@cancellingReads UNPROVEN
             }
-            TokenBalanceReading.Syncing -> return@coroutineScope TransferQuoting.Syncing
-            TokenBalanceReading.NotAToken -> return@coroutineScope TransferQuoting.NotAToken
-            is TokenBalanceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
+            TokenBalanceReading.Syncing -> return@cancellingReads TransferQuoting.Syncing
+            TokenBalanceReading.NotAToken -> return@cancellingReads TransferQuoting.NotAToken
+            is TokenBalanceReading.Unavailable -> return@cancellingReads TransferQuoting.Unavailable(reading.reason)
         }
-        if (tokenBefore != null && tokenBefore < amount) return@coroutineScope TransferQuoting.InsufficientToken
-        if (token == null && nativeBefore.wei < amount) return@coroutineScope TransferQuoting.InsufficientFunds
+        if (tokenBefore != null && tokenBefore < amount) return@cancellingReads TransferQuoting.InsufficientToken
+        if (token == null && nativeBefore.wei < amount) return@cancellingReads TransferQuoting.InsufficientFunds
         // A token that returns false refused the transfer as surely as one that reverts.
         val accepts: (String) -> Boolean = { returned ->
             token == null || returned.isEmpty() || returned.any { it != '0' }
         }
         val (call, unmined) = when (val quoting = quoter.quote(from, txTo, value, data, level, nativeBefore, accepts)) {
             is CallQuoting.Quoted -> quoting
-            is CallQuoting.Refused -> return@coroutineScope quoting.refusal.asTransferQuoting()
+            is CallQuoting.Refused -> return@cancellingReads quoting.refusal.asTransferQuoting()
         }
         val pendingToken = token?.let { sending ->
             unmined.mapNotNull { it.tokenAmount(sending.address) }.sumOrNull()
-                ?: return@coroutineScope TransferQuoting.InsufficientToken
+                ?: return@cancellingReads TransferQuoting.InsufficientToken
         }
         // What the token's earlier transfers move is not this one's to move: kept, the later one
         // would pass the run at the head and revert once they are mined, its fee paid all the same.
         val tokenAvailable = tokenBefore?.let { before ->
             before.minusOrNull(pendingToken ?: UInt256.ZERO)?.takeIf { it >= amount }
-                ?: return@coroutineScope TransferQuoting.InsufficientToken
+                ?: return@cancellingReads TransferQuoting.InsufficientToken
         }
         TransferQuoting.Quoted(
             TransferQuote(
@@ -268,6 +267,7 @@ private fun CallRefusal.asTransferQuoting(): TransferQuoting = when (this) {
     CallRefusal.Refused -> TransferQuoting.Refused
     CallRefusal.Syncing -> TransferQuoting.Syncing
     is CallRefusal.Unavailable -> TransferQuoting.Unavailable(reason)
+    is CallRefusal.EarlierMaybeSent -> TransferQuoting.EarlierMaybeSent(hash)
 }
 
 /** The outcome of [QuoteTransfer]. */
@@ -311,6 +311,12 @@ sealed interface TransferQuoting {
 
     /** A verified figure could not be had right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : TransferQuoting
+
+    /**
+     * An earlier transaction from the sender, [hash], may still be on its way
+     * ([CallRefusal.EarlierMaybeSent]): it is retried from its status, not replaced by this one.
+     */
+    data class EarlierMaybeSent(val hash: String) : TransferQuoting
 }
 
 /**
@@ -353,6 +359,11 @@ class SendTransfer(
  * transaction already in a block is sent, one whose receipt cannot be verified right now is
  * [TransferSending.RejectionUnverified]. A transfer's, a Safe transaction's approval or
  * execution, or a Safe's deployment alike. [clock] is in unix seconds.
+ *
+ * Its record follows the outcome ([SentTransfers]): one a peer took is recorded as sent, one no
+ * peer answered again stays recorded as maybe sent ([SentTransfer.maybeSent]), from this
+ * broadcast on, and one the engine rejected with no receipt, or refused, is forgotten: it can
+ * never be mined as signed, so it holds nothing back.
  */
 class RebroadcastTransfer(
     private val broadcaster: Broadcaster,
@@ -367,10 +378,18 @@ class RebroadcastTransfer(
                 is TransactionProgress.Included, is TransactionProgress.Finalized ->
                     sent(sentTransfers, transfer, clock)
                 // A verified read found no receipt: the engine's verdict on verified state stands.
-                TransactionProgress.Pending -> TransferSending.NotSent(broadcast, transfer)
+                TransactionProgress.Pending -> {
+                    sentTransfers.forget(transfer.hash)
+                    TransferSending.NotSent(broadcast, transfer)
+                }
                 is TransactionProgress.Unavailable -> TransferSending.RejectionUnverified(broadcast, transfer)
             }
-            else -> TransferSending.NotSent(broadcast, transfer)
+            is Broadcast.Unavailable -> maybeSent(sentTransfers, broadcast, transfer, clock)
+            is Broadcast.Refused -> {
+                // Bytes the engine relays to no one, then as now: the first broadcast reached nobody.
+                sentTransfers.forget(transfer.hash)
+                TransferSending.NotSent(broadcast, transfer)
+            }
         }
     }
 }

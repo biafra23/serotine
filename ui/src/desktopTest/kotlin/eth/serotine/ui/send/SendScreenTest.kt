@@ -86,9 +86,21 @@ class SendScreenTest {
                 onSign = { events += "sign" },
                 onSignWithBiometrics = { events += "biometrics" },
                 onRetry = { events += "retry" },
+                onOpenTransfer = { events += "open $it" },
                 onBack = { events += "back" },
             )
         }
+    }
+
+    @Test
+    fun anEarlierTransactionMaybeOnItsWayIsOpenedFromTheComposeStep() {
+        val hash = "0x" + "5e".repeat(32)
+        val refused = compose.form.copy(error = "An earlier transaction may still be on its way.")
+        show(compose.copy(form = refused, earlier = hash))
+
+        rule.onNodeWithText("An earlier transaction may still be on its way.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag(SEND_EARLIER_TAG).performScrollTo().performClick()
+        assertEquals(listOf("open $hash"), events)
     }
 
     @Test

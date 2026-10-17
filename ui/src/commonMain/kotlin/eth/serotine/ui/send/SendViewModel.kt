@@ -162,7 +162,13 @@ class SendViewModel(
 
     /** Where the flow stands. */
     private sealed interface Step {
-        data class Composing(val quoting: Boolean = false, val error: String? = null) : Step
+        /**
+         * Composing; [quoting] while a review is quoted, [error] why the last one was not, and
+         * [earlier] the hash of an earlier transaction that may still be on its way, which held it
+         * back: its status is where it is tried again.
+         */
+        data class Composing(val quoting: Boolean = false, val error: String? = null, val earlier: String? = null) :
+            Step
 
         /**
          * [quote] of [request], made at [quotedAt], under review; [hidden] once the screen stopped
@@ -457,7 +463,12 @@ class SendViewModel(
         } catch (e: Exception) {
             TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
         }
-        if (quoting !is TransferQuoting.Quoted) return Step.Composing(error = refusal(quoting, request.option))
+        if (quoting !is TransferQuoting.Quoted) {
+            return Step.Composing(
+                error = refusal(quoting, request.option),
+                earlier = (quoting as? TransferQuoting.EarlierMaybeSent)?.hash,
+            )
+        }
         return Step.Reviewing(
             request.copy(to = to),
             quoting.quote,
@@ -566,7 +577,7 @@ class SendViewModel(
             error = step.error,
             canReview = !step.quoting && requestOf(model) != null,
         )
-        return SendUiState.Compose(form, inputs.fee)
+        return SendUiState.Compose(form, inputs.fee, earlier = step.earlier)
     }
 
     private fun review(model: Model, sender: SendFrom, step: Step.Reviewing): SendUiState.Review {
@@ -676,6 +687,9 @@ class SendViewModel(
             ReadUnavailable.UNPROVEN -> "A figure of the quote could not be verified this time: try again."
             ReadUnavailable.REFUSED -> "The light client on this device cannot quote this transfer."
         }
+        is TransferQuoting.EarlierMaybeSent -> "An earlier transaction from this account may still be on its way: " +
+            "no peer answered when it was broadcast, and no block has it yet. Try it again from its status rather " +
+            "than sign a new one, which could pay twice."
     }
 
     /** What [text] names, resolved ([ResolveRecipient]); never throws. */

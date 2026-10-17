@@ -21,6 +21,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -64,16 +65,21 @@ const val SEND_PASSWORD_TAG = "send-password"
 /** Test tag of the Sign and send button, for UI tests. */
 const val SEND_SIGN_TAG = "send-sign"
 
+/** Test tag of the button that opens an earlier transaction still maybe on its way, for UI tests. */
+const val SEND_EARLIER_TAG = "send-earlier"
+
 /**
  * Binds [SendScreen] to its ViewModel. A transfer broadcast ends the screen through [onSent]
- * with its hash; the screen stopping being shown becomes [SendViewModel.onHidden] (the password
- * goes) and being shown again [SendViewModel.onShown] (the review is quoted anew).
+ * with its hash, and [onOpenTransfer] opens the status of an earlier one that may still be on its
+ * way; the screen stopping being shown becomes [SendViewModel.onHidden] (the password goes) and
+ * being shown again [SendViewModel.onShown] (the review is quoted anew).
  */
 @Composable
 fun SendRoute(
     viewModel: SendViewModel,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
+    onOpenTransfer: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on the seed screens, an edit reaches its field in the same frame.
@@ -101,6 +107,7 @@ fun SendRoute(
         onSign = viewModel::sign,
         onSignWithBiometrics = viewModel::signWithBiometrics,
         onRetry = viewModel::retry,
+        onOpenTransfer = onOpenTransfer,
         onBack = onBack,
         modifier = modifier,
     )
@@ -130,6 +137,7 @@ fun SendScreen(
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
     onRetry: () -> Unit,
+    onOpenTransfer: (hash: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -199,6 +207,7 @@ fun SendScreen(
                     onMax,
                     onFeeChange,
                     onReview,
+                    onOpenTransfer,
                 )
                 is SendUiState.Review ->
                     ReviewContent(state, onRefresh, onPasswordChange, onSign, onSignWithBiometrics, onRetry)
@@ -218,6 +227,7 @@ private fun ComposeContent(
     onMax: () -> Unit,
     onFeeChange: (FeeLevel) -> Unit,
     onReview: () -> Unit,
+    onOpenTransfer: (hash: String) -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -228,6 +238,11 @@ private fun ComposeContent(
         FeeChoice(state.fee, enabled = !state.form.quoting, onFeeChange)
         Note("The fee is paid in the network's own currency; the review shows the most it can be.")
         state.form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.earlier?.let { hash ->
+            OutlinedButton(onClick = { onOpenTransfer(hash) }, Modifier.testTag(SEND_EARLIER_TAG)) {
+                Text("Open the earlier transaction")
+            }
+        }
         ReviewButton(state.form, onReview, Modifier.align(Alignment.End))
     }
 }

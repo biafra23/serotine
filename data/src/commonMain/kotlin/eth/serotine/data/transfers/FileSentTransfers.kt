@@ -23,19 +23,22 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /**
  * [SentTransfers] kept in the file at [path] (a [VersionedJsonFile]): the signed transactions,
  * each with its signed bytes as hex, which are public once broadcast, and what it does — a
  * transfer's recipient, token and amount, the Safe transaction an approval or execution was
  * for, in the form a signing request travels in, or the Safe a deployment created (its address,
- * owners, threshold, version and the name it is listed under). A damaged file is set aside and the
- * record starts empty; one that cannot be read is [SentTransferList.Unreadable] (a quote then goes
- * by the engine's nonce alone).
+ * owners, threshold, version and the name it is listed under), and whether it is only maybe sent.
+ * An entry that does not decode (a damaged one, or one of a kind this build does not know) is
+ * passed over, as [eth.serotine.data.safe.FileSafeTxQueue] passes one over, and the rest are read;
+ * a file that is not one at all is set aside and the record starts empty; one that cannot be read
+ * is [SentTransferList.Unreadable] (a quote then goes by the engine's nonce alone).
  *
- * Format 2 adds the Safe transactions, format 3 the Safe deployments; a file of an earlier format
- * reads as it is and is written as 3 at its next change, which a build that reads only an earlier
- * one then leaves alone.
+ * Format 2 adds the Safe transactions, format 3 the Safe deployments, format 4 the transactions
+ * maybe sent; a file of an earlier format reads as it is and is written as 4 at its next change,
+ * which a build that reads only an earlier one then leaves alone.
  */
 class FileSentTransfers(
     path: String,
@@ -48,9 +51,10 @@ class FileSentTransfers(
         what = "sent transfers",
         formatVersion = FORMAT_VERSION,
         empty = emptyList<SentTransfer>(),
-        decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).transfers.map { it.toTransfer() } },
+        decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).transfers.mapNotNull(::decoded) },
         encode = { transfers ->
-            JSON.encodeToString(StoredFile.serializer(), StoredFile(FORMAT_VERSION, transfers.map(::stored)))
+            val entries = transfers.map { JSON.encodeToJsonElement(StoredTransfer.serializer(), stored(it)) }
+            JSON.encodeToString(StoredFile.serializer(), StoredFile(FORMAT_VERSION, entries))
         },
     )
 
@@ -66,15 +70,23 @@ class FileSentTransfers(
         Decision(true, next = transfers.filterNot { it.hash == transfer.hash } + transfer)
     }
 
-    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long, unlistedBefore: Long): Boolean =
+    override suspend fun forget(hash: String): Boolean = file.change(notSaved = false) { transfers ->
+        val kept = transfers.filterNot { it.hash == hash }
+        if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
+    }
+
+    override suspend fun prune(account: Address, minedCount: Long, unlistedBefore: Long): Boolean =
         file.change(notSaved = false) { transfers ->
-            val kept = transfers.filterNot { it.prunable(account, minedCount, sentBefore, unlistedBefore) }
+            val kept = transfers.filterNot { it.prunable(account, minedCount, unlistedBefore) }
             if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
         }
 
-    /** The file's layout. [version] comes first and is always written. */
+    /**
+     * The file's layout. [version] comes first and is always written; each of [transfers] is a
+     * [StoredTransfer], decoded one by one so that one that does not decode is passed over.
+     */
     @Serializable
-    private class StoredFile(val version: Int, val transfers: List<StoredTransfer>)
+    private class StoredFile(val version: Int, val transfers: List<JsonElement>)
 
     /**
      * One transaction: a transfer's [to], [token] (null: the native currency) and [amount], a
@@ -93,6 +105,7 @@ class FileSentTransfers(
         val deployment: StoredDeployment? = null,
         val maxCost: String,
         val sentAt: Long,
+        val maybeSent: Boolean = false,
     ) {
         fun toTransfer() = SentTransfer(
             account = Address.of(account),
@@ -101,6 +114,7 @@ class FileSentTransfers(
             action = action(),
             maxCost = UInt256.of(maxCost),
             sentAt = sentAt,
+            maybeSent = maybeSent,
         )
 
         private fun action(): SentAction {
@@ -171,10 +185,19 @@ class FileSentTransfers(
     }
 
     private companion object {
-        const val FORMAT_VERSION = 3
+        const val FORMAT_VERSION = 4
         const val APPROVAL = "approval"
         const val EXECUTION = "execution"
         val JSON = Json
+
+        /** The transaction [entry] stores, or null when it does not decode: passed over, the rest read. */
+        fun decoded(entry: JsonElement): SentTransfer? = try {
+            JSON.decodeFromJsonElement(StoredTransfer.serializer(), entry).toTransfer()
+        } catch (e: IllegalArgumentException) {
+            // A SerializationException (a field missing or of another type), or a field out of
+            // range (an address, an amount, hex) as the stored types refuse it.
+            null
+        }
 
         fun stored(transfer: SentTransfer): StoredTransfer {
             val action = transfer.action
@@ -205,6 +228,7 @@ class FileSentTransfers(
                 },
                 maxCost = transfer.maxCost.toDecimal(),
                 sentAt = transfer.sentAt,
+                maybeSent = transfer.maybeSent,
             )
         }
 

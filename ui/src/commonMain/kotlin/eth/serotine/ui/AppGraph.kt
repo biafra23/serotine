@@ -265,6 +265,7 @@ class AppGraph(
         hash,
         ObserveSentTransfer(sentTransfers, receipts),
         ObserveAccounts(accounts),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         network,
     )
 

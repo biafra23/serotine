@@ -123,6 +123,7 @@ private fun SendPreview(state: SendUiState, darkTheme: Boolean = false) {
             onSign = {},
             onSignWithBiometrics = {},
             onRetry = {},
+            onOpenTransfer = {},
             onBack = {},
         )
     }
@@ -203,6 +204,22 @@ private fun SendComposeRefusedPreview() = SendPreview(
             canReview = true,
         )
     },
+)
+
+@Preview
+@Composable
+private fun SendComposeEarlierMaybeSentPreview() = SendPreview(
+    empty.with {
+        it.copy(
+            to = SAVINGS,
+            recipient = RecipientItem(SAVINGS, label = "Savings"),
+            amount = "0.1",
+            error = "An earlier transaction from this account may still be on its way: no peer answered when it " +
+                "was broadcast, and no block has it yet. Try it again from its status rather than sign a new " +
+                "one, which could pay twice.",
+            canReview = true,
+        )
+    }.copy(earlier = "0x" + "5e".repeat(32)),
 )
 
 @Preview
@@ -309,6 +326,7 @@ internal val sendScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SendComposeNameUnavailablePreview() },
     { SendComposeQuotingPreview() },
     { SendComposeRefusedPreview() },
+    { SendComposeEarlierMaybeSentPreview() },
     { SendComposeTokenNotFoundPreview() },
     { SendReviewPreview() },
     { SendReviewDarkPreview() },

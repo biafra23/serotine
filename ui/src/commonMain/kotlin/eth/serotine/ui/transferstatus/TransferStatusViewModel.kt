@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.repository.AccountList
+import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
@@ -12,21 +13,35 @@ import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveSentTransfer
+import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.SentTransferStatus
+import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.platform.formatDateTime
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The transfer status screen's ViewModel (docs/wallet-ux.md, screen 9): the transfer [hash] on
  * [network], what this device recorded of it and where its verified receipt says it stands
  * ([ObserveSentTransfer]), as [TransferStatusUiState]. [formatTime] dates the broadcast a peer
- * took in the user's own time zone. No intents: the screen's only action, Done, is navigation.
+ * took in the user's own time zone.
+ *
+ * Its one intent, [retry], is for a transaction recorded as maybe sent (its broadcast found no peer
+ * to answer: `SentTransfer.maybeSent`) and not mined: it sends the same signed bytes again
+ * ([RebroadcastTransfer]), never a new transaction, which could take the next nonce and pay twice.
+ * Done is navigation.
  *
  * A Safe's deployment is listed in the wallet by `FollowSafeDeployments`, which the host runs
  * whatever screen is open (docs/wallet-ux.md, screen 15); this screen only shows where that
@@ -36,24 +51,68 @@ class TransferStatusViewModel(
     private val hash: String,
     observeSentTransfer: ObserveSentTransfer,
     observeAccounts: ObserveAccounts,
+    private val rebroadcastTransfer: RebroadcastTransfer,
     private val network: Network,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
+    /** A retry of a transaction maybe sent: [running], and what the last one came to ([outcome], null: none yet). */
+    private data class Retry(val running: Boolean = false, val outcome: NotSentItem? = null)
+
+    private val retrying = MutableStateFlow(Retry())
+
+    /** The status as last read: what [retry] sends again. */
+    private var latest: SentTransferStatus? = null
+
     val uiState: StateFlow<TransferStatusUiState> =
-        combine(observeSentTransfer(hash), observeAccounts(), ::render).stateIn(
+        combine(observeSentTransfer(hash).onEach { latest = it }, observeAccounts(), retrying, ::render).stateIn(
             viewModelScope,
             // Back after the timeout, no old step stands as current.
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
             TransferStatusUiState.Loading(network.displayName),
         )
 
-    private fun render(status: SentTransferStatus, list: AccountList): TransferStatusUiState.Shown {
+    /**
+     * Broadcasts the transaction maybe sent again, byte for byte: only while its record says so and
+     * no block has it. It goes on when the screen is left meanwhile; its record then says how it went.
+     */
+    fun retry() {
+        val status = latest ?: return
+        val transfer = status.transfer ?: return
+        if (!transfer.maybeSent || mined(status.progress) || retrying.value.running) return
+        retrying.value = Retry(running = true)
+        viewModelScope.launch {
+            val sending = withContext(NonCancellable) {
+                try {
+                    rebroadcastTransfer(transfer)
+                } catch (e: Exception) {
+                    null // the use case promises not to throw; the backstop
+                }
+            }
+            retrying.value = Retry(outcome = outcomeOf(sending, whatOf(transfer)))
+        }
+    }
+
+    /** What a retry came to, said where its record no longer can; null when a peer took it. */
+    private fun outcomeOf(sending: TransferSending?, what: String): NotSentItem? = when (sending) {
+        is TransferSending.Sent -> null
+        is TransferSending.NotSent -> notSentItem(sending.broadcast, unverified = false, what)
+        is TransferSending.RejectionUnverified -> notSentItem(sending.rejection, unverified = true, what)
+        is TransferSending.NotSigned, null -> NotSentItem(RETRY_FAILED, canRetry = true)
+    }
+
+    private fun render(status: SentTransferStatus, list: AccountList, retry: Retry): TransferStatusUiState.Shown {
         val progress = status.progress
-        // Broadcast: this screen opens for a transfer a peer took, and its record says when.
+        // Broadcast: this screen opens for a transfer a peer took, and its record says when; one
+        // maybe sent, until a block has it, says that no peer answered.
+        val maybeSent = status.transfer?.maybeSent == true && !mined(progress)
         val signed = StatusStep("Signed", StepState.DONE, status.transfer?.let { "On this device" })
         val takenAt = status.transfer?.let { ", ${formatTime(it.sentAt)}" }.orEmpty()
-        val broadcast = StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
+        val broadcast = if (maybeSent) {
+            StatusStep("Broadcast", StepState.UNKNOWN, "No peer answered$takenAt: it may not have reached the network")
+        } else {
+            StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
+        }
         val included = when (progress) {
             TransactionProgress.Pending ->
                 StatusStep("Included", StepState.WAITING, "Waiting for a block to include it")
@@ -92,8 +151,29 @@ class TransferStatusViewModel(
             finished = progress is TransactionProgress.Finalized,
             safeTx = transfer?.let(::safeTxSummary),
             deployment = transfer?.let { deploymentSummary(it, progress, failed, list) },
+            notSent = when {
+                // A retry rejected or refused is forgotten: what it came to is said here alone.
+                !maybeSent -> retry.outcome?.takeUnless { it.canRetry }
+                else -> retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
+            },
+            retrying = retry.running,
         )
     }
+
+    private fun mined(progress: TransactionProgress): Boolean =
+        progress is TransactionProgress.Included || progress is TransactionProgress.Finalized
+
+    /** What [transfer] is called in a sentence: "transfer", "approval", "execution" or "deployment". */
+    private fun whatOf(transfer: SentTransfer): String = when (transfer.action) {
+        is SentAction.Transfer -> "transfer"
+        is SentAction.SafeApproval -> "approval"
+        is SentAction.SafeExecution -> "execution"
+        is SentAction.SafeDeployment -> "deployment"
+    }
+
+    private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
+        "reached the network, or it may be on its way. Try again sends the same signed $what; nothing new is " +
+        "sent from this account meanwhile, since a new one could pay twice."
 
     /** What [transfer] created, when it is a Safe's deployment, and where the Safe's listing stands. */
     private fun deploymentSummary(
@@ -189,5 +269,6 @@ class TransferStatusViewModel(
 
     private companion object {
         const val NATIVE_DECIMALS = 18
+        const val RETRY_FAILED = "Serotine could not finish sending it again. Try again."
     }
 }

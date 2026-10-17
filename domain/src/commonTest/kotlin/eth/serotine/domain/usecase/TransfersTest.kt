@@ -39,6 +39,7 @@ import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -263,9 +264,55 @@ class TransfersTest {
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
         ).quote
 
-        assertEquals(7, quote.transaction.nonce, "dropped by the pools: its nonce is free, and one of two is mined")
+        assertEquals(7, quote.transaction.nonce, "past its lifetime: its nonce is free, and one of two is mined")
         assertEquals(UInt256.ZERO, quote.pendingCost)
+        assertEquals(listOf(earlier), sent.transfers.value, "its record stays, for its status, until 7 is mined")
+
+        inputs.mined = 8
+        quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL)
         assertEquals(emptyList(), sent.transfers.value)
+    }
+
+    @Test
+    fun anEarlierTransactionThatMayHaveBeenSentHoldsTheNextOneBack() = runTest {
+        val maybe = SentTransfer(
+            alice, 7, SignedTransfer(byteArrayOf(2, 1)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.of(900_000_000_000_000_000L), sentAt = now - 60, maybeSent = true,
+        )
+        sent.transfers.value = listOf(maybe)
+
+        assertEquals(
+            TransferQuoting.EarlierMaybeSent(maybe.hash),
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+            "retried, never replaced: a new one could take nonce 8 and pay twice",
+        )
+        assertEquals(0, inputs.simulated.size, "nothing run for it")
+
+        // Past its lifetime it holds nothing back, and neither its nonce nor its cost.
+        sent.transfers.value = listOf(maybe.copy(sentAt = now - RECORD_LIFETIME_SECONDS - 1))
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        ).quote
+        assertEquals(7, quote.transaction.nonce)
+        assertEquals(UInt256.ZERO, quote.pendingCost)
+
+        // Mined: its nonce is used, and it holds nothing back either.
+        sent.transfers.value = listOf(maybe)
+        inputs.mined = 8
+        assertIs<TransferQuoting.Quoted>(quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL))
+        assertEquals(emptyList(), sent.transfers.value)
+    }
+
+    @Test
+    fun anEarlyRefusalWaitsForNoReadItNoLongerNeeds() = runTest {
+        // The fee history never comes; the estimate says the transfer reverts.
+        inputs.feesGate = CompletableDeferred()
+        inputs.estimate = GasEstimate.Reverted("")
+
+        assertEquals(
+            TransferQuoting.Reverts(null),
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
     }
 
     @Test
@@ -311,8 +358,19 @@ class TransfersTest {
         val signer = FakeSigner(Signing.Signed(signature))
         val unlock = Unlock.WithBiometrics("Send 1 wei")
 
-        SendTransfer(signer, FakeBroadcaster(Broadcast.Unavailable("no peer")), sent) { 1_800_000_123 }(quote, unlock)
-        assertEquals(emptyList(), sent.transfers.value, "no peer took it: it holds no nonce")
+        SendTransfer(signer, FakeBroadcaster(Broadcast.Rejected("nonce too low")), sent) { 1_800_000_123 }(quote, unlock)
+        assertEquals(emptyList(), sent.transfers.value, "rejected: it holds no nonce")
+
+        // No peer answered: it may be out there all the same, so it is kept, holding nothing but
+        // the next transaction back.
+        SendTransfer(signer, FakeBroadcaster(Broadcast.Unavailable("no peer")), sent) { 1_800_000_120 }(quote, unlock)
+        val maybe = sent.transfers.value.single()
+        assertEquals(true, maybe.maybeSent)
+        assertEquals(1_800_000_120, maybe.sentAt)
+        assertEquals(
+            TransferQuoting.EarlierMaybeSent(maybe.hash),
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
 
         SendTransfer(signer, FakeBroadcaster(Broadcast.Sent("0x" + "00".repeat(32))), sent) { 1_800_000_123 }(
             quote,
@@ -320,6 +378,7 @@ class TransfersTest {
         )
 
         val record = sent.transfers.value.single()
+        assertEquals(false, record.maybeSent, "a peer took it")
         assertEquals(quote.transaction.nonce, record.nonce)
         assertEquals(SignedTransfer(quote.transaction.encodeSigned(signature)), record.signed)
         assertEquals(quote.maxFee + UInt256.ONE, record.maxCost)
@@ -468,7 +527,7 @@ class TransfersTest {
         assertContentEquals(unavailable.sent.single(), again.sent.single(), "the very bytes, not a new quote")
         assertEquals(notSent.signed.hash, resent.hash)
         assertEquals(
-            listOf(notSent.transfer.copy(sentAt = 1_800_009_000)),
+            listOf(notSent.transfer.copy(sentAt = 1_800_009_000, maybeSent = false)),
             sent.transfers.value,
             "recorded once a peer took it, with that moment: its pool lifetime runs from there",
         )
@@ -487,24 +546,45 @@ class TransfersTest {
         val rejection = Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7")
         val tooLow = FakeBroadcaster(rejection)
 
-        // In no block: the rejection stands, and nothing is recorded.
-        val pending = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Pending))(notSent.transfer)
-        assertIs<TransferSending.NotSent>(pending)
-        assertEquals(emptyList(), sent.transfers.value)
+        assertEquals(listOf(notSent.transfer), sent.transfers.value, "maybe sent")
 
-        // Its receipt cannot be verified right now: neither verdict is known, and nothing is recorded.
+        // Its receipt cannot be verified right now: neither verdict is known, and the record stays.
         val unreadable = RebroadcastTransfer(
             tooLow,
             sent,
             receipts(TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN)),
         )
         assertEquals(TransferSending.RejectionUnverified(rejection, notSent.transfer), unreadable(notSent.transfer))
+        assertEquals(listOf(notSent.transfer), sent.transfers.value)
+
+        // In no block: the rejection stands, and the record is forgotten: it holds nothing back.
+        val pending = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Pending))(notSent.transfer)
+        assertIs<TransferSending.NotSent>(pending)
         assertEquals(emptyList(), sent.transfers.value)
 
         // A peer took the first broadcast after all, and a block has it: sent, not "never minable".
         val mined = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Included(100, true))) { now }
         assertEquals(TransferSending.Sent(notSent.signed.hash), mined(notSent.transfer))
-        assertEquals(listOf(notSent.transfer.copy(sentAt = now)), sent.transfers.value)
+        assertEquals(listOf(notSent.transfer.copy(sentAt = now, maybeSent = false)), sent.transfers.value)
+    }
+
+    @Test
+    fun aRetryNoPeerAnsweredStaysMaybeSentFromItsOwnBroadcast() = runTest {
+        val maybe = SentTransfer(
+            alice, 7, SignedTransfer(byteArrayOf(2, 1)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.ONE, sentAt = 1_800_000_000, maybeSent = true,
+        )
+        sent.transfers.value = listOf(maybe)
+
+        val again = RebroadcastTransfer(FakeBroadcaster(Broadcast.Unavailable(null)), sent, receipts()) { now }
+        val notSent = assertIs<TransferSending.NotSent>(again(maybe))
+
+        assertEquals(maybe.copy(sentAt = now), notSent.transfer)
+        assertEquals(listOf(maybe.copy(sentAt = now)), sent.transfers.value, "its lifetime runs from this broadcast")
+
+        val refused = RebroadcastTransfer(FakeBroadcaster(Broadcast.Refused("not a transaction")), sent, receipts())
+        assertIs<TransferSending.NotSent>(refused(maybe))
+        assertEquals(emptyList(), sent.transfers.value, "bytes no one relays reached no one the first time either")
     }
 
     private fun receipts(progress: TransactionProgress = TransactionProgress.Pending) = object : ReceiptTracker {
@@ -533,6 +613,9 @@ class TransfersTest {
         var mined = 7L
         var pending = 7L
 
+        /** While set, the fee history waits for it. */
+        var feesGate: CompletableDeferred<Unit>? = null
+
         override suspend fun nonce(account: Address): NonceReading {
             nonces++
             return NonceReading.Read(pending)
@@ -542,6 +625,7 @@ class TransfersTest {
 
         override suspend fun fees(): FeeReading {
             feeHistories++
+            feesGate?.await()
             return fees
         }
 
@@ -564,13 +648,13 @@ class TransfersTest {
             return true
         }
 
-        override suspend fun prune(
-            account: Address,
-            minedCount: Long,
-            sentBefore: Long,
-            unlistedBefore: Long,
-        ): Boolean {
-            transfers.value = transfers.value.filterNot { it.prunable(account, minedCount, sentBefore, unlistedBefore) }
+        override suspend fun forget(hash: String): Boolean {
+            transfers.value = transfers.value.filterNot { it.hash == hash }
+            return true
+        }
+
+        override suspend fun prune(account: Address, minedCount: Long, unlistedBefore: Long): Boolean {
+            transfers.value = transfers.value.filterNot { it.prunable(account, minedCount, unlistedBefore) }
             return true
         }
     }

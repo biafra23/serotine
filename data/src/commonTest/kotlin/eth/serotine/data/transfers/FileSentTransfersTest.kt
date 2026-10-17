@@ -82,16 +82,34 @@ class FileSentTransfersTest {
     }
 
     @Test
-    fun whatIsMinedOrTooOldIsForgottenForItsAccountAlone() = runTest {
+    fun whatIsMinedIsForgottenForItsAccountAlone() = runTest {
         val store = record()
         listOf(transfer(6), transfer(7), transfer(8), transfer(9), transfer(3, account = bob)).forEach {
             store.record(it)
         }
 
-        // Signed at 1_800_000_000 + nonce: 8 is too old, 9 is not.
-        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_800_000_009, unlistedBefore = 0))
+        // However old one not mined is, it stays: past its lifetime it holds nothing, and its
+        // status is still found.
+        assertTrue(store.prune(alice, minedCount = 8, unlistedBefore = 0))
 
-        assertEquals(listOf(transfer(9), transfer(3, account = bob)), stored())
+        assertEquals(listOf(transfer(8), transfer(9), transfer(3, account = bob)), stored())
+    }
+
+    @Test
+    fun aTransactionMaybeSentIsRecordedAsSuchAndForgottenByItsHash() = runTest {
+        val maybe = transfer(7).copy(maybeSent = true)
+        record().record(maybe)
+        record().record(transfer(8))
+
+        assertEquals(listOf(maybe, transfer(8)), stored())
+
+        // A peer took it on a retry: the same hash, one record, sent now.
+        record().record(transfer(7))
+        assertEquals(listOf(transfer(8), transfer(7)), stored())
+
+        assertTrue(record().forget(transfer(7).hash))
+        assertEquals(listOf(transfer(8)), stored())
+        assertTrue(record().forget(transfer(7).hash), "nothing to forget is no failure")
     }
 
     @Test
@@ -107,11 +125,11 @@ class FileSentTransfersTest {
         store.record(listed)
 
         // Both mined and old: the listed one goes; the unlisted one stays, its owners and name with it.
-        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_900_000_000, unlistedBefore = 1_800_000_006))
+        assertTrue(store.prune(alice, minedCount = 8, unlistedBefore = 1_800_000_006))
         assertEquals(listOf(unlisted), stored())
 
         // Past its own bound, it goes too.
-        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_900_000_000, unlistedBefore = 1_800_000_007))
+        assertTrue(store.prune(alice, minedCount = 8, unlistedBefore = 1_800_000_007))
         assertEquals(emptyList(), stored())
     }
 
@@ -179,19 +197,27 @@ class FileSentTransfersTest {
     }
 
     @Test
-    fun aRecordThatIsBothOrNeitherIsDamaged() = runTest {
+    fun anEntryThatDoesNotDecodeIsPassedOverAndTheRestRead() = runTest {
         SystemFileSystem.createDirectories(directory)
-        val neither = """{"version":2,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
-            """"maxCost":"1","sentAt":1800000007}]}"""
-        SystemFileSystem.sink(file).buffered().use { it.writeString(neither) }
+        val good = """{"account":"${alice.hex}","nonce":7,"raw":"0207ff","to":"${bob.hex}","amount":"1500000",""" +
+            """"maxCost":"630000000000000","sentAt":1800000007}"""
+        // Neither a transfer nor a Safe call; a field of the wrong type; an address out of range.
+        val neither = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","maxCost":"1","sentAt":1800000008}"""
+        val mistyped = """{"nonce":"x"}"""
+        val badAddress = good.replace(alice.hex, "0x12")
+        val text = """{"version":4,"transfers":[$neither,$good,$mistyped,$badAddress]}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString(text) }
 
-        assertEquals(emptyList(), stored())
+        assertEquals(listOf(transfer(7)), stored())
+        // The next change writes what was read: one entry passed over never sets the rest aside.
+        record().record(transfer(9))
+        assertEquals(listOf(transfer(7), transfer(9)), stored())
     }
 
     @Test
     fun aDamagedRecordIsSetAsideAndStartsEmpty() = runTest {
         SystemFileSystem.createDirectories(directory)
-        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":1,"transfers":[{"nonce":"x"}]}""") }
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":1,"transfers":{"nonce":"x"}}""") }
 
         assertEquals(emptyList(), stored())
     }

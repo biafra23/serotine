@@ -22,8 +22,10 @@ import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -78,6 +80,14 @@ sealed interface CallRefusal {
 
     /** A verified figure could not be had right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : CallRefusal
+
+    /**
+     * An earlier transaction from the sender, [hash], may still be on its way: its broadcast found
+     * no peer to answer, so it may have reached one all the same ([SentTransfer.maybeSent]), and
+     * it is not mined. It is retried with its own bytes ([RebroadcastTransfer], from its status),
+     * never replaced by a new one, which could take the next nonce and pay twice.
+     */
+    data class EarlierMaybeSent(val hash: String) : CallRefusal
 }
 
 /** A verified native balance a quote starts from, or why there is none. */
@@ -119,11 +129,15 @@ internal sealed interface CallQuoting {
  *
  * The sender's own transactions a peer took and no block has yet ([SentTransfers]) count: the
  * nonce is never below the last of them plus one, and what they may still take of the native
- * balance is not available to this one. Those mined since are forgotten, and so are those a
- * peer took more than [RECORD_LIFETIME_SECONDS] ago and still not mined: the network's
- * transaction pools have dropped them by then (geth's default lifetime), and kept they would
- * hold every later transaction behind a nonce no block takes. Only one transaction per nonce can
- * be mined, so taking such a nonce again can never pay twice. [clock] is in unix seconds.
+ * balance is not available to this one. Those mined since are forgotten. One a peer took more
+ * than [RECORD_LIFETIME_SECONDS] ago and still not mined no longer counts, though its record
+ * stays until the mined count passes it: kept counting, it would hold every later transaction
+ * behind a nonce no block may ever take. Only one transaction per nonce can be mined, so taking
+ * such a nonce again can never pay twice. One that may have been sent ([SentTransfer.maybeSent])
+ * counts for neither, but while it is within that lifetime and not mined, nothing new is quoted
+ * ([CallRefusal.EarlierMaybeSent]). [clock] is in unix seconds.
+ *
+ * A refusal returns at once: the reads still running are cancelled ([cancellingReads]).
  */
 internal class CallQuoter(
     private val inputs: TransactionInputs,
@@ -145,69 +159,81 @@ internal class CallQuoter(
         level: FeeLevel,
         native: NativeRead.Before,
         accepts: (returnHex: String) -> Boolean = { true },
-    ): CallQuoting = coroutineScope {
+    ): CallQuoting = cancellingReads {
         fun refused(refusal: CallRefusal) = CallQuoting.Refused(refusal)
 
-        // The nonces and the fee history, alongside the estimate and the run.
+        // The nonces, the record and the fee history, alongside the estimate and then the run.
         val nonce = async { inputs.nonce(from) }
         val mined = async { inputs.minedNonce(from) }
         val recorded = async { sentTransfers.observe().first() }
         val fees = async { inputs.fees() }
+        val estimated = async { inputs.estimateGas(from, to, value, data) }
 
-        val gas = when (val estimate = inputs.estimateGas(from, to, value, data)) {
+        // An earlier transaction that may still be on its way stops this one before anything else
+        // is said: it is retried, not replaced. A count or a record not read leaves it to the
+        // refusals below.
+        val expiredBefore = clock() - RECORD_LIFETIME_SECONDS
+        val records = (recorded.await() as? SentTransferList.Loaded)?.transfers.orEmpty()
+            .filter { it.account == from && it.sentAt >= expiredBefore }
+        (mined.await() as? NonceReading.Read)?.let { count ->
+            records.firstOrNull { it.maybeSent && it.nonce >= count.nonce }?.let {
+                return@cancellingReads refused(CallRefusal.EarlierMaybeSent(it.hash))
+            }
+        }
+
+        val gas = when (val estimate = estimated.await()) {
             // The engine's, priced under the fork the chain runs: on Sepolia's Amsterdam a plain
             // transfer takes less than the 21000 it did before (EIP-2780), so no floor is added.
             is GasEstimate.Estimated -> estimate.gas
-            is GasEstimate.Reverted -> return@coroutineScope refused(CallRefusal.Reverts(blockNumber = null))
+            is GasEstimate.Reverted -> return@cancellingReads refused(CallRefusal.Reverts(blockNumber = null))
             // The EVM's words: about what the sender can pay, or something else it cannot do.
-            is GasEstimate.Infeasible -> return@coroutineScope refused(
+            is GasEstimate.Infeasible -> return@cancellingReads refused(
                 if (aboutFunds(estimate.detail)) {
                     CallRefusal.InsufficientFunds
                 } else {
                     CallRefusal.Infeasible(estimate.detail)
                 },
             )
-            is GasEstimate.Refused -> return@coroutineScope refused(CallRefusal.Refused)
-            is GasEstimate.Unavailable -> return@coroutineScope refused(CallRefusal.Unavailable(estimate.reason))
+            is GasEstimate.Refused -> return@cancellingReads refused(CallRefusal.Refused)
+            is GasEstimate.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(estimate.reason))
         }
         val simulationBlock = when (val simulation = inputs.simulate(from, to, value, data)) {
             is Simulation.Succeeded -> if (accepts(simulation.returnHex)) {
                 simulation.blockNumber
             } else {
-                return@coroutineScope refused(CallRefusal.Reverts(simulation.blockNumber))
+                return@cancellingReads refused(CallRefusal.Reverts(simulation.blockNumber))
             }
-            is Simulation.Reverted -> return@coroutineScope refused(CallRefusal.Reverts(simulation.blockNumber))
-            Simulation.Refused -> return@coroutineScope refused(CallRefusal.Refused)
-            is Simulation.Unavailable -> return@coroutineScope refused(CallRefusal.Unavailable(simulation.reason))
+            is Simulation.Reverted -> return@cancellingReads refused(CallRefusal.Reverts(simulation.blockNumber))
+            Simulation.Refused -> return@cancellingReads refused(CallRefusal.Refused)
+            is Simulation.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(simulation.reason))
         }
         val quote = when (val reading = fees.await()) {
             is FeeReading.Quoted -> reading.quote
-            is FeeReading.Unavailable -> return@coroutineScope refused(CallRefusal.Unavailable(reading.reason))
+            is FeeReading.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(reading.reason))
         }
         val pendingNonce = when (val reading = nonce.await()) {
             is NonceReading.Read -> reading.nonce
-            is NonceReading.Unavailable -> return@coroutineScope refused(CallRefusal.Unavailable(reading.reason))
+            is NonceReading.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(reading.reason))
         }
         val minedCount = when (val reading = mined.await()) {
             is NonceReading.Read -> reading.nonce
-            is NonceReading.Unavailable -> return@coroutineScope refused(CallRefusal.Unavailable(reading.reason))
+            is NonceReading.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(reading.reason))
         }
-        // This wallet's own sends not mined yet: a record that cannot be read leaves the engine's.
-        val expiredBefore = clock() - RECORD_LIFETIME_SECONDS
-        val unmined = (recorded.await() as? SentTransferList.Loaded)?.transfers.orEmpty()
-            .filter { it.account == from && it.nonce >= minedCount && it.sentAt >= expiredBefore }
+        // This wallet's own sends not mined yet, within their lifetime and taken by a peer: a
+        // record that cannot be read leaves the engine's.
+        val unmined = records.filter { it.nonce >= minedCount && !it.maybeSent }
         // Never below the mined count either: the two counts may come from two heads.
         val next = maxOf(pendingNonce, minedCount, (unmined.maxOfOrNull { it.nonce } ?: -1) + 1)
-        sentTransfers.prune(from, minedCount, expiredBefore, clock() - DEPLOYMENT_LIFETIME_SECONDS)
+        sentTransfers.prune(from, minedCount, clock() - DEPLOYMENT_LIFETIME_SECONDS)
         val insufficient = refused(CallRefusal.InsufficientFunds)
-        val pendingCost = unmined.map { it.maxCost }.sumOrNull() ?: return@coroutineScope insufficient
-        val available = native.wei.minusOrNull(pendingCost) ?: return@coroutineScope insufficient
+        val pendingCost = unmined.map { it.maxCost }.sumOrNull() ?: return@cancellingReads insufficient
+        val available = native.wei.minusOrNull(pendingCost) ?: return@cancellingReads insufficient
         // An engine answer this large is no answer: the use case never throws over it.
         val unproven = refused(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN))
-        val maxFeePerGas = quote.maxFeePerGasOrNull(level) ?: return@coroutineScope unproven
-        val maxFee = maxFeePerGas.timesOrNull(UInt256.of(gas)) ?: return@coroutineScope unproven
-        val cost = maxFee.plusOrNull(value) ?: return@coroutineScope insufficient
-        if (available < cost) return@coroutineScope insufficient
+        val maxFeePerGas = quote.maxFeePerGasOrNull(level) ?: return@cancellingReads unproven
+        val maxFee = maxFeePerGas.timesOrNull(UInt256.of(gas)) ?: return@cancellingReads unproven
+        val cost = maxFee.plusOrNull(value) ?: return@cancellingReads insufficient
+        if (available < cost) return@cancellingReads insufficient
         CallQuoting.Quoted(
             CallQuote(
                 from = from,
@@ -236,8 +262,12 @@ internal class CallQuoter(
 }
 
 /**
- * How long a recorded transaction that no block took holds its nonce: three hours, the lifetime
- * geth's transaction pool gives a transaction before it drops it.
+ * How long a recorded transaction that no block took holds its nonce and its cost (and, one that
+ * may have been sent, holds new transactions back): three hours, geth's `txpool.lifetime`. That
+ * lifetime evicts only queued transactions, those not executable yet; an executable one can stay
+ * in a pool longer and still be mined, which is safe, since a nonce is mined once whichever
+ * transaction takes it. Past it the record stays, holding nothing, until the sender's mined count
+ * passes its nonce, so its status survives ([SentTransfers.prune]).
  */
 const val RECORD_LIFETIME_SECONDS: Long = 3 * 60 * 60
 
@@ -247,6 +277,18 @@ const val RECORD_LIFETIME_SECONDS: Long = 3 * 60 * 60
  * be listed by then is given up.
  */
 const val DEPLOYMENT_LIFETIME_SECONDS: Long = 7 * 24 * 60 * 60
+
+/**
+ * [block] in a scope of its own whose children still running when it returns are cancelled: a
+ * quote that refuses early waits for none of the reads it started and no longer needs.
+ */
+internal suspend fun <T> cancellingReads(block: suspend CoroutineScope.() -> T): T = coroutineScope {
+    try {
+        block()
+    } finally {
+        coroutineContext.cancelChildren()
+    }
+}
 
 /** The sum of these numbers, or null when it overflows 256 bits. */
 internal fun Iterable<UInt256>.sumOrNull(): UInt256? = fold(UInt256.ZERO as UInt256?) { sum, it -> sum?.plusOrNull(it) }
@@ -260,9 +302,12 @@ private fun aboutFunds(detail: String): Boolean =
  * to the network: what every transaction this wallet sends goes through. What is signed is
  * exactly what was quoted. Once a peer took it, it is recorded as doing [action] ([SentTransfers]):
  * what keeps its nonce from a later transaction after a restart, and what its status shows. One
- * no peer took is not recorded, so it holds no nonce: a later quote may take the same one, and
- * only one of the two can ever be mined. The broadcast and the record are one step a
- * cancellation cannot cut in half; a record that cannot be saved does not undo the send.
+ * whose broadcast no peer answered may have reached one all the same: it is recorded as maybe
+ * sent ([SentTransfer.maybeSent]), which holds new transactions back until it is retried, mined
+ * or past its lifetime. One the engine rejected or refused is not recorded, so it holds no nonce:
+ * a later quote may take the same one, and only one of the two can ever be mined. The broadcast
+ * and the record are one step a cancellation cannot cut in half; a record that cannot be saved
+ * does not undo the send.
  */
 internal suspend fun signAndSend(
     signer: Signer,
@@ -289,6 +334,7 @@ internal suspend fun signAndSend(
     return withContext(NonCancellable) {
         when (val broadcast = broadcaster.send(transfer.signed.raw)) {
             is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
+            is Broadcast.Unavailable -> maybeSent(sentTransfers, broadcast, transfer, clock)
             else -> TransferSending.NotSent(broadcast, transfer)
         }
     }
@@ -299,7 +345,24 @@ internal suspend fun signAndSend(
  * which its lifetime in the network's pools runs from, and [TransferSending.Sent] by its hash.
  */
 internal suspend fun sent(sentTransfers: SentTransfers, transfer: SentTransfer, clock: () -> Long): TransferSending {
-    sentTransfers.record(transfer.copy(sentAt = clock()))
+    sentTransfers.record(transfer.copy(sentAt = clock(), maybeSent = false))
     // The hash is the raw bytes' own: what the receipt is looked up by.
     return TransferSending.Sent(transfer.hash)
+}
+
+/**
+ * [transfer], whose broadcast came back [unavailable]: no peer answered, yet one may have taken
+ * it. Recorded as maybe sent ([SentTransfer.maybeSent]), from now ([clock], unix seconds), so that
+ * a restart neither loses its bytes nor quotes a transaction past it; and [TransferSending.NotSent]
+ * with that record, for a retry.
+ */
+internal suspend fun maybeSent(
+    sentTransfers: SentTransfers,
+    unavailable: Broadcast.Unavailable,
+    transfer: SentTransfer,
+    clock: () -> Long,
+): TransferSending {
+    val record = transfer.copy(sentAt = clock(), maybeSent = true)
+    sentTransfers.record(record)
+    return TransferSending.NotSent(unavailable, record)
 }

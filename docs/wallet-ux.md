@@ -150,7 +150,11 @@ upgrades*).
    - Fee: Slow | Normal | Fast, from the verified fee history.
    - Review quotes the transfer; a refusal (not enough of the asset or for
      the fee, the call reverts, not a token, not synced, not verifiable) is
-     said here and nothing is signed.
+     said here and nothing is signed. So is an earlier transaction from the
+     account that may still be on its way (its broadcast found no peer to
+     answer, and no block has it): nothing new is quoted from the account
+     until it is mined or three hours old, and the step offers its status
+     (9), where it is tried again.
 8. **Send, review**
    - The amount in token units, exact; the recipient in full, with its
      blockie, the ENS name it was resolved from and its name in the wallet.
@@ -179,14 +183,19 @@ upgrades*).
    - Signed but not broadcast: said, and only the same signed bytes can be
      sent again (Try again, when no peer took it); a transfer the engine
      rejects on verified state is not offered again, and 7 is open again
-     for a new one. Nothing is signed twice.
+     for a new one. Nothing is signed twice. One no peer answered may have
+     reached one all the same, so it is recorded as maybe sent: leaving the
+     screen, or the app, keeps its bytes for Try again on its status (9).
 9. **Send, status**: what was sent (amount, asset, recipient, from this
    device's record; for a Safe's deployment "Deployment of a Safe", the Safe
    with its `t/n`, its version and the account that paid), then Signed → Broadcast → Included (receipt verified,
    its block; "it reverted" when it failed, its fee paid) → Finalized (its
    block at or below the engine's finalized head). A receipt that cannot be
-   verified right now reads as such, never as pending. Done returns to where
-   Send was opened from.
+   verified right now reads as such, never as pending. One maybe sent (no
+   peer answered its broadcast) says so at Broadcast until a block has it,
+   with Try again, which sends the same signed bytes (`RebroadcastTransfer`);
+   a retry the engine rejects on verified state, with no receipt, is said and
+   the record forgotten. Done returns to where Send was opened from.
 10. **Watch address**
     - An address or ENS name, and a name for the account.
     - A detection card built from verified code and storage: an EOA; an EOA

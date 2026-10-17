@@ -8,13 +8,13 @@ import eth.serotine.domain.model.UInt256
 import kotlinx.coroutines.flow.Flow
 
 /**
- * The port for the transactions this wallet sent (signed, and taken by a peer) — its transfers,
- * its approvals and executions of Safe transactions, and its Safes' deployments — kept across
- * restarts: what the Send
- * status screen (docs/wallet-ux.md, screen 9) shows, and what keeps a new transaction from
- * reusing the nonce of one not mined yet — the engine's own record of its sends lasts only while
- * the process does. Public data only: a signed transaction's bytes are public once broadcast,
- * and no key is ever in them. :data keeps it in a file. Never throws.
+ * The port for the transactions this wallet sent (signed, and taken by a peer, or maybe taken:
+ * [SentTransfer.maybeSent]) — its transfers, its approvals and executions of Safe transactions,
+ * and its Safes' deployments — kept across restarts: what the Send status screen
+ * (docs/wallet-ux.md, screen 9) shows, and what keeps a new transaction from reusing the nonce of
+ * one not mined yet — the engine's own record of its sends lasts only while the process does.
+ * Public data only: a signed transaction's bytes are public once broadcast, and no key is ever in
+ * them. :data keeps it in a file. Never throws.
  */
 interface SentTransfers {
 
@@ -29,27 +29,34 @@ interface SentTransfers {
     suspend fun record(transfer: SentTransfer): Boolean
 
     /**
+     * Forgets the record of the transaction [hash], if any: one the engine has since judged, on
+     * verified state, as never to be mined as signed (a retry of a broadcast no peer answered,
+     * rejected with no receipt). False when the record could not be saved.
+     */
+    suspend fun forget(hash: String): Boolean
+
+    /**
      * Forgets [account]'s transactions whose nonce is below [minedCount], its verified count of
      * mined transactions (each of those nonces is used on chain, by that transaction or another),
-     * and those a peer took before [sentBefore] (unix seconds), which no block took in time — but
-     * for a Safe's deployment whose Safe is not listed yet ([SentAction.SafeDeployment.listed]
-     * null), which is kept until it was taken before [unlistedBefore]: it is the only record of
-     * the Safe's owners and name. [SentTransfer.prunable] is the rule. False when the record could
-     * not be saved.
+     * but for a Safe's deployment whose Safe is not listed yet ([SentAction.SafeDeployment.listed]
+     * null), which is kept until it was taken before [unlistedBefore] (unix seconds): it is the
+     * only record of the Safe's owners and name. One no block took stays, past the time it holds
+     * its nonce (`RECORD_LIFETIME_SECONDS`), so that its status is still found.
+     * [SentTransfer.prunable] is the rule. False when the record could not be saved.
      */
-    suspend fun prune(account: Address, minedCount: Long, sentBefore: Long, unlistedBefore: Long): Boolean
+    suspend fun prune(account: Address, minedCount: Long, unlistedBefore: Long): Boolean
 }
 
 /**
  * Whether [SentTransfers.prune] of [account] forgets this transaction: one of [account]'s whose
- * nonce is below [minedCount] or taken before [sentBefore], unless it is a Safe's deployment not
- * listed yet, which is forgotten only once taken before [unlistedBefore].
+ * nonce is below [minedCount], unless it is a Safe's deployment not listed yet, which is
+ * forgotten only once taken before [unlistedBefore].
  */
-fun SentTransfer.prunable(account: Address, minedCount: Long, sentBefore: Long, unlistedBefore: Long): Boolean {
+fun SentTransfer.prunable(account: Address, minedCount: Long, unlistedBefore: Long): Boolean {
     if (this.account != account) return false
     val deployment = action as? SentAction.SafeDeployment
     if (deployment != null && deployment.listed == null) return sentAt < unlistedBefore
-    return nonce < minedCount || sentAt < sentBefore
+    return nonce < minedCount
 }
 
 /** How the listing of a deployed Safe ended (`FollowSafeDeployments`). */
@@ -81,6 +88,12 @@ sealed interface SentTransferList {
  * seconds): the moment its lifetime in the network's transaction pools runs from. The nonce and
  * the cost are what hold a later transaction back while this one is not mined, whatever its
  * action.
+ *
+ * [maybeSent] when its broadcast came back unavailable instead (no peer answered, [sentAt] is
+ * that broadcast's): it may have reached one all the same, so it is recorded, its receipt watched
+ * by its hash, but it holds neither the nonce nor the cost. While it is not mined and within its
+ * lifetime, no new transaction is quoted from [account] (`CallRefusal.EarlierMaybeSent`): it is
+ * retried byte for byte, never replaced by one that could take the next nonce and pay twice.
  */
 data class SentTransfer(
     val account: Address,
@@ -89,6 +102,7 @@ data class SentTransfer(
     val action: SentAction,
     val maxCost: UInt256,
     val sentAt: Long,
+    val maybeSent: Boolean = false,
 ) {
     /** The transaction hash its receipt is watched by. */
     val hash: String

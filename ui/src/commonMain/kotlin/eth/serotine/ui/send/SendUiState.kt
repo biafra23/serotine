@@ -34,9 +34,11 @@ sealed interface SendUiState {
 
     /**
      * Screen 7: the transfer [form] (from, asset, to, amount; docs/wallet-ux.md, screen 7) and the
-     * [fee] level chosen, the one thing Send asks beyond the form.
+     * [fee] level chosen, the one thing Send asks beyond the form. [earlier] is the hash of an
+     * earlier transaction from the account that may still be on its way, when that is why the
+     * last review was refused: its status, which tries it again, is offered.
      */
-    data class Compose(val form: TransferForm, val fee: FeeLevel) : SendUiState {
+    data class Compose(val form: TransferForm, val fee: FeeLevel, val earlier: String? = null) : SendUiState {
         override val network: String
             get() = form.network
     }

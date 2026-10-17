@@ -221,13 +221,30 @@ verified read.
     list) covers a restart: `QuoteTransfer` never quotes below its last unmined
     nonce plus one, nor below the mined count, and holds back what those
     transfers may still take of the native balance and of the token's.
-    - A transfer is recorded once a peer took it. One no peer took holds no
-      nonce, so a later quote may take the same one, and only one of the two
-      can ever be mined.
-    - A record is forgotten once its nonce is mined, or three hours after a
-      peer took it if no block did (geth's transaction-pool lifetime, which
-      runs from that broadcast, a retry's included): kept, it would hold every
-      later transfer behind a nonce no block takes.
+    - A transfer is recorded once a peer took it. One the engine rejected
+      or refused holds no nonce, so a later quote may take the same one, and
+      only one of the two can ever be mined.
+    - A broadcast that came back unavailable (no peer answered) may have
+      reached one all the same, so it is recorded too, as maybe sent
+      (`SentTransfer.maybeSent`): it holds neither the nonce nor the cost,
+      and its receipt is watched by its hash. While one from the account is
+      not mined and within its lifetime, a new quote from that account is
+      refused (`CallRefusal.EarlierMaybeSent`): the earlier transaction may
+      still be on its way, and it is retried (`RebroadcastTransfer`, from the
+      review or from its status screen), never replaced by a new one, which
+      could take the next nonce and pay twice. A retry a peer takes makes it
+      an ordinary record; one the engine rejects on verified state, with no
+      receipt, forgets it.
+    - A record stops holding its nonce and its cost three hours after a peer
+      took it if no block did (`RECORD_LIFETIME_SECONDS`, which runs from
+      that broadcast, a retry's included): kept holding them, it would hold
+      every later transfer behind a nonce no block may ever take. Three hours
+      is geth's `txpool.lifetime`, which evicts only queued (not yet
+      executable) transactions, so an executable one can stay in a pool
+      longer, and be mined later; that is safe, since a nonce is mined once
+      whichever transaction takes it. The record itself stays until the
+      account's mined count passes its nonce, so its status screen still
+      finds it.
     - A retry of a broadcast no peer answered may come back rejected because
       the first broadcast reached a peer after all and a block used its
       nonce. `RebroadcastTransfer` checks the verified receipt before it

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -26,8 +27,25 @@ class TransferStatusScreenTest {
 
     private fun show(state: TransferStatusUiState) = rule.setContent {
         SerotineTheme {
-            TransferStatusScreen(state, onDone = { events += "done" })
+            TransferStatusScreen(state, onDone = { events += "done" }, onRetry = { events += "retry" })
         }
+    }
+
+    @Test
+    fun aTransactionMaybeSentOffersTryAgainWhichSendsTheSameBytes() {
+        show(
+            TransferStatusUiState.Shown(
+                network = "Sepolia",
+                hash = hash,
+                sent = null,
+                steps = listOf(StatusStep("Broadcast", StepState.UNKNOWN, "No peer answered")),
+                notSent = NotSentItem("No peer answered when this transfer was broadcast.", canRetry = true),
+            ),
+        )
+
+        rule.onNodeWithText("No peer answered when this transfer was broadcast.").assertIsDisplayed()
+        rule.onNodeWithText("Try again").performScrollTo().performClick()
+        assertEquals(listOf("retry"), events)
     }
 
     @Test

@@ -142,5 +142,14 @@ class SafeTxTextTest {
             "A figure could not be verified this time: try again.",
             safeTxRefusalText(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN), Network.SEPOLIA),
         )
+        assertEquals(
+            "An earlier transaction from this account may still be on its way: no peer answered when it was " +
+                "broadcast, and no block has it yet. Try it again from its status (Send on this account opens it) " +
+                "rather than sign a new one, which could pay twice.",
+            safeTxRefusalText(
+                SafeTxRefusal.NotQuoted(CallRefusal.EarlierMaybeSent("0x" + "5e".repeat(32))),
+                Network.SEPOLIA,
+            ),
+        )
     }
 }
