@@ -95,6 +95,21 @@ consumer developed against an unreleased engine, Myotis's
   token". `REFUSED`, and `INFEASIBLE` for a plain call, are a permanent refusal
   (`ReadUnavailable.REFUSED`, "cannot be read on this device"). `UNAVAILABLE`
   is unproven, retried at the next head.
+- **Verified token metadata.** `VerifiedTokenMetadata` reads a contract's
+  `decimals()`, `symbol()` and `name()` the same way, for the check of a
+  built-in entry and for Add token, labelled with the block of the
+  `decimals()` call. `decimals()` and `symbol()` must answer: a revert, an
+  answer that is not a number or an ABI string, or decimals above 77 is a
+  verified "not a token". A missing `name()` is the symbol. A refused call is
+  `REFUSED` at once, without the calls after it. A description and a refusal
+  are kept for the rest of the process (the 256 most recent): a token's
+  description is read once, not at every head. "Not a token" ends the read
+  but is not kept, since the contract may not be deployed at that head yet.
+  Text a contract returns loses, code point by code point, whatever renders
+  as nothing or moves text: controls, separators, format characters of any
+  plane (bidi overrides, zero-width ones, tags), the rest of Unicode's
+  default-ignorable set (variation selectors, the Hangul fillers) and the
+  blank Braille cell, so none can reorder a line or hide in a symbol.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,

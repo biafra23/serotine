@@ -11,6 +11,7 @@ import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
 import eth.serotine.data.tokens.BuiltInTokenCatalog
+import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
@@ -90,6 +91,8 @@ private fun openWallet(dataDir: File) {
                 nativeBalances = node.nativeBalances,
                 tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
                 tokenBalances = node.tokenBalances,
+                tokenMetadata = node.tokenMetadata,
+                userTokens = FileUserTokens(dataDir.resolve("tokens.json").path),
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
                 network = Network.SEPOLIA,

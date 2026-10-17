@@ -4,11 +4,13 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.theme.SerotineTheme
@@ -42,6 +44,8 @@ class AccountDetailScreenTest {
                 onCopy = { events += "copy $it" },
                 onRename = { events += "rename" },
                 onRemove = { events += "remove" },
+                onHideToken = { contract, symbol -> events += "hide $symbol $contract" },
+                onMessageShown = { events += "message shown" },
             )
         }
     }
@@ -98,5 +102,39 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("USDC · verified at block 12").assertIsDisplayed()
         rule.onNodeWithText("XY").assertIsDisplayed() // the monogram of a token without an icon
         rule.onNodeWithText("Checking 1 token").assertIsDisplayed()
+    }
+
+    @Test
+    fun aTokenRowIsHiddenFromItsMenuAndAnAddedImpostorIsMarked() {
+        val contract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+        show(
+            ready.copy(
+                assets = listOf(
+                    AssetRow("ETH", "Ether", "1.5 ETH", "eth", verified = true),
+                    AssetRow(
+                        "USDC",
+                        "Not USDC",
+                        "5 USDC",
+                        null,
+                        verified = true,
+                        contract = contract,
+                        warning = "Not the built-in USDC: another contract",
+                    ),
+                ),
+            ),
+        )
+
+        rule.onNodeWithText("Not the built-in USDC: another contract").assertIsDisplayed()
+        rule.onNodeWithText("5 USDC").performTouchInput { longClick() }
+        rule.onNodeWithText("Hide token").performClick()
+        assertEquals(listOf("hide USDC $contract"), events)
+    }
+
+    @Test
+    fun howHidingWentIsShownInASnackbar() {
+        val said = "USDC could not be hidden: the token settings cannot be saved right now."
+        show(ready.copy(message = said))
+
+        rule.onNodeWithText(said).assertIsDisplayed()
     }
 }

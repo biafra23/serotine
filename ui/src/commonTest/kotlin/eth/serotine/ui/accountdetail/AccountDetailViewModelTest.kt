@@ -12,12 +12,16 @@ import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
+import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
+import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -47,13 +51,16 @@ class AccountDetailViewModelTest {
         Token(Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789"), "LINK", "ChainLink Token", 18, "link")
     private val uni = Token(Address.of("0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"), "UNI", "Uniswap", 18, "uni")
     private val catalog = FakeTokenCatalog(usdc, link, uni)
+    private val userTokens = MemoryUserTokens()
+    private val metadata = FakeMetadata()
     private val tokenBalances = FakeTokenBalances()
 
     private fun viewModel() = AccountDetailViewModel(
         daily.address,
         ObserveAccount(accounts),
         ObserveNativeBalance(balances),
-        ObserveTokenHoldings(catalog, tokenBalances),
+        ObserveTokenHoldings(ObserveKnownTokens(catalog, userTokens, metadata), tokenBalances),
+        SetTokenHidden(userTokens),
         Network.SEPOLIA,
     )
 
@@ -137,7 +144,15 @@ class AccountDetailViewModelTest {
         assertEquals(
             listOf(
                 AssetRow("ETH", "Ether", "3.2041 ETH", "eth", verified = true, verifiedAt = "block 9"),
-                AssetRow("USDC", "USDC", "1250 USDC", "usdc", verified = true, verifiedAt = "block 12"),
+                AssetRow(
+                    "USDC",
+                    "USDC",
+                    "1250 USDC",
+                    "usdc",
+                    verified = true,
+                    verifiedAt = "block 12",
+                    contract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+                ),
             ),
             ready.assets,
         )
@@ -171,5 +186,42 @@ class AccountDetailViewModelTest {
 
         val ready = viewModel.uiState.value as AccountDetailUiState.Ready
         assertEquals("3 tokens cannot be read on this device", ready.tokensNote)
+    }
+
+    @Test
+    fun hidingATokenTakesItsRowAway() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 12)
+        runCurrent()
+
+        viewModel.hideToken("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "USDC")
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf("ETH"), ready.assets.map { it.symbol })
+        assertEquals("USDC hidden. Settings → Tokens shows it again.", ready.message)
+        viewModel.messageShown()
+        assertEquals(null, (viewModel.uiState.value as AccountDetailUiState.Ready).message)
+    }
+
+    @Test
+    fun aHideThatCannotBeSavedSaysSoAndKeepsTheRow() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 12)
+        userTokens.failSaves = true
+        runCurrent()
+
+        viewModel.hideToken("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "USDC")
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf("ETH", "USDC"), ready.assets.map { it.symbol })
+        assertEquals("USDC could not be hidden: the token settings cannot be saved right now.", ready.message)
     }
 }
