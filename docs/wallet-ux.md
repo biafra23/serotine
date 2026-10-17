@@ -316,6 +316,14 @@ upgrades*).
       fallback handler), a rejection (the Safe calling
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
+    - A change that weakens the Safe carries a warning wherever it is shown
+      (16's row, 17, the Sign step, the biometric prompt): a module enabled
+      (it moves funds without the owners) or disabled, a guard set or
+      removed (its limits, allowlist or delay stop), a fallback handler set
+      (it answers EIP-1271 for the Safe: one that accepts every signature
+      lets anyone spend what the Safe approved, through Permit2, permits or
+      orders). They are signed like any other change; refusing some of them
+      is a policy for the owner to decide.
     - `delegatecall` is marked as such and decoded no further: the Safe runs
       the target's code as itself. This wallet shows it and does not sign,
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by

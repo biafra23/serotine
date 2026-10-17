@@ -39,6 +39,7 @@ import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.ZERO_ADDRESS
 import eth.serotine.ui.components.amountHint
@@ -48,12 +49,12 @@ import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.grouped
-import eth.serotine.ui.components.lookUpSafely
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
+import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
@@ -201,7 +202,7 @@ class SendViewModel(
 
     /** The typed recipient, resolved: an address at once, a name once the typing paused. */
     private val lookup: Flow<RecipientState> =
-        recipientStates(inputs.map { it.to.trim() to it.lookupAttempt }, resolveRecipient::lookUpSafely)
+        recipientStates(inputs.map { it.to.trim() to it.lookupAttempt }, ::lookUp)
 
     private val model: StateFlow<Model?> =
         combine(observeAccounts(), observeAccountValue(from), inputs, lookup) { list, value, inputs, lookup ->
@@ -442,7 +443,7 @@ class SendViewModel(
      * address the name has now, and one that moved is said, not signed.
      */
     private suspend fun quoted(request: Request, unlock: UnlockStep?): Step {
-        val to = when (val again = resolveAgain(request.to, resolveRecipient::lookUpSafely)) {
+        val to = when (val again = resolveAgain(request.to, ::lookUp)) {
             is ResolvedAgain.Same -> again.found // its block is this resolution's
             is ResolvedAgain.Changed -> {
                 inputs.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
@@ -461,7 +462,7 @@ class SendViewModel(
             request.copy(to = to),
             quoting.quote,
             timeSource.markNow(),
-            unlock ?: UnlockStep(biometrics = describeKeyStore.biometricsOn()),
+            unlock ?: UnlockStep(biometrics = biometricsOffered()),
         )
     }
 
@@ -540,7 +541,7 @@ class SendViewModel(
         val (note, isError) = recipientNote(text, lookup)
         val selected = model.selected
         val amount = typedAmount(inputs.amount, selected)
-        return SendUiState.Compose(
+        val form = TransferForm(
             network = network.displayName,
             from = sender,
             assets = model.options.map { it.choice() },
@@ -549,7 +550,6 @@ class SendViewModel(
             accounts = model.accounts.filter { it.address != from }
                 .map { AccountChoice(it.label, Eip55.format(it.address)) },
             amount = inputs.amount,
-            fee = inputs.fee,
             assetNote = when {
                 selected != null -> null
                 !model.tokensRead -> "Checking this account's tokens…"
@@ -566,6 +566,7 @@ class SendViewModel(
             error = step.error,
             canReview = !step.quoting && requestOf(model) != null,
         )
+        return SendUiState.Compose(form, inputs.fee)
     }
 
     private fun review(model: Model, sender: SendFrom, step: Step.Reviewing): SendUiState.Review {
@@ -675,6 +676,24 @@ class SendViewModel(
             ReadUnavailable.UNPROVEN -> "A figure of the quote could not be verified this time: try again."
             ReadUnavailable.REFUSED -> "The light client on this device cannot quote this transfer."
         }
+    }
+
+    /** What [text] names, resolved ([ResolveRecipient]); never throws. */
+    private suspend fun lookUp(text: String): RecipientLookup = try {
+        resolveRecipient(recipientText(text))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        RecipientLookup.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
+    }
+
+    /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */
+    private suspend fun biometricsOffered(): Boolean = try {
+        biometricsOn(describeKeyStore())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false // the use case promises not to throw; the backstop: the password still works
     }
 
     private companion object {

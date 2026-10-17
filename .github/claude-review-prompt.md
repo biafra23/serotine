@@ -35,6 +35,11 @@ comments — don't leave review text as plain messages. Post the
 summary even when you find nothing to flag: a review that leaves no
 comment on the PR counts as a failed one.
 
+Review in this session alone: no subagents and no background tasks.
+The run ends when your turn does, so anything still running then is
+lost, and findings left in your final message are never seen. Post the
+inline comments and the summary yourself, then stop.
+
 Post the summary as one command on its own:
 `gh pr comment <PR NUMBER> --body '<summary>'`. No pipe, `$(…)`,
 heredoc or body file: your shell is allowed `gh pr comment`,

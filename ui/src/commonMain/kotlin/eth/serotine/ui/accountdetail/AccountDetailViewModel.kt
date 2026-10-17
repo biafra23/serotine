@@ -227,7 +227,8 @@ class AccountDetailViewModel(
                 signed == 1 -> "1 signature"
                 else -> "$signed signatures"
             } + " on this device",
-            warning = action.warning.takeIf { tx.action is SafeTxAction.TokenTransfer },
+            // A delegate call's warning is its refusal, said below.
+            warning = action.warning.takeIf { tx.action !is SafeTxAction.DelegateCall },
             refusal = when (tx.refusal) {
                 SafeTxRefusal.DelegateCall -> "Not signed here: a delegate call"
                 SafeTxRefusal.GasTerms -> "Not signed here: it carries gas or refund terms"

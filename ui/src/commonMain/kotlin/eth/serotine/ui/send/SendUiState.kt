@@ -1,7 +1,6 @@
 package eth.serotine.ui.send
 
 import eth.serotine.domain.repository.FeeLevel
-import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
@@ -34,62 +33,12 @@ sealed interface SendUiState {
     data class CannotSend(override val network: String, val message: String) : SendUiState
 
     /**
-     * Screen 7. [from] is fixed. [assets] are the account's: its native currency and the tokens
-     * it holds, each with its verified balance; [asset] the chosen one (null while the one asked
-     * for is not known yet, or is not among them: [assetNote] says which). [to] is the recipient as
-     * typed; [recipient] what it is once it parses as an address or resolves as a name, and
-     * [toNote] what the field says under it — an error when [toError], with [canRetryLookup] when
-     * asking again may help. [accounts] are the wallet's other accounts, to pick one as the
-     * recipient. [amount] is typed in token units ([amountError] why it is no amount), with
-     * [amountHint] its value in the display currency (display only) and [canMax] when the whole
-     * verified balance can be filled in. [fee] is the chosen level. [quoting] while the quote for
-     * the review is made, and [error] why the last one was refused; [canReview] when it can be
-     * asked for. [form] is all of it but the fee, as the transfer form draws it.
+     * Screen 7: the transfer [form] (from, asset, to, amount; docs/wallet-ux.md, screen 7) and the
+     * [fee] level chosen, the one thing Send asks beyond the form.
      */
-    data class Compose(
-        override val network: String,
-        val from: SendFrom,
-        val assets: List<AssetChoice>,
-        val asset: AssetChoice?,
-        val to: String,
-        val accounts: List<AccountChoice>,
-        val amount: String,
-        val fee: FeeLevel,
-        val assetNote: String? = null,
-        val recipient: RecipientItem? = null,
-        val toNote: String? = null,
-        val toError: Boolean = false,
-        val canRetryLookup: Boolean = false,
-        val amountError: String? = null,
-        val amountHint: String? = null,
-        val canMax: Boolean = false,
-        val quoting: Boolean = false,
-        val error: String? = null,
-        val canReview: Boolean = false,
-    ) : SendUiState {
-
-        /** The transfer form's fields, as Send and Send from a Safe both draw them. */
-        val form: TransferForm
-            get() = TransferForm(
-                network = network,
-                from = from,
-                assets = assets,
-                asset = asset,
-                to = to,
-                accounts = accounts,
-                amount = amount,
-                assetNote = assetNote,
-                recipient = recipient,
-                toNote = toNote,
-                toError = toError,
-                canRetryLookup = canRetryLookup,
-                amountError = amountError,
-                amountHint = amountHint,
-                canMax = canMax,
-                quoting = quoting,
-                error = error,
-                canReview = canReview,
-            )
+    data class Compose(val form: TransferForm, val fee: FeeLevel) : SendUiState {
+        override val network: String
+            get() = form.network
     }
 
     /**

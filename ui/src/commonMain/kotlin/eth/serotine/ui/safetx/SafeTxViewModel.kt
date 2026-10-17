@@ -356,7 +356,7 @@ class SafeTxViewModel(
         view.update { it.copy(message = null, sharing = false) }
         step.value = Step.Signing(owner, UnlockStep())
         viewModelScope.launch {
-            val biometrics = describeKeyStore.biometricsOn()
+            val biometrics = biometricsOffered()
             step.update { current ->
                 if (current is Step.Signing && !current.signing) {
                     current.copy(unlock = current.unlock.copy(biometrics = biometrics))
@@ -447,7 +447,8 @@ class SafeTxViewModel(
 
     /** Signs with a fingerprint or face: the hash in the signing step, the transaction in a review. */
     fun signWithBiometrics() {
-        val action = now?.let(::promptText) ?: return
+        // The reading may have been let go while hidden: the transaction as last shown, as requote does.
+        val action = (now ?: lastContext)?.let(::promptText) ?: return
         when (val current = step.value) {
             is Step.Signing -> {
                 if (current.signing || !current.unlock.biometrics) return
@@ -581,7 +582,7 @@ class SafeTxViewModel(
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             val next = quoted(kind, request, account, level)
-            val biometrics = describeKeyStore.biometricsOn()
+            val biometrics = biometricsOffered()
             if (step.value != quoting) return@launch
             when (next) {
                 // Made while hidden: it is from before the screen came back, so it is made again.
@@ -603,7 +604,9 @@ class SafeTxViewModel(
 
     /** [review] quoted again from [account] at [level], saying [note] under the unlock once shown. */
     private fun requote(review: Step.Reviewing, account: Address, level: FeeLevel, note: String?) {
-        val request = now?.request ?: return
+        // The reading may have been let go while the screen was not shown (a longer hide): the
+        // transaction as last shown is what is quoted again, and the quote checks the chain anew.
+        val request = (now ?: lastContext)?.request ?: return
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
         job = viewModelScope.launch {
             val next = quoted(review.kind, request, account, level)
@@ -654,7 +657,8 @@ class SafeTxViewModel(
         }
 
     private fun signHash(signing: Step.Signing, unlock: Unlock) {
-        val context = now ?: return
+        // As requote: after a long hide, the transaction as last shown; SignSafeTx checks it on chain.
+        val context = now ?: lastContext ?: return
         val request = context.request
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = signing.unlock.copy(password = WalletPassword.EMPTY, error = null)
@@ -796,14 +800,21 @@ class SafeTxViewModel(
     /**
      * Follows what [source] says of the transaction: the last one shown is kept, and once it is gone
      * from the queue, or the queue cannot be read, a step that does not sign right now ends, its
-     * password with it. One signing goes on, and lands on the transaction as last shown.
+     * password with it. One signing goes on, and lands on the transaction as last shown; so does a
+     * review whose broadcast no peer took, until the Safe's nonce has passed the transaction.
      */
     private fun follow(source: Source?) {
         when (source) {
             is Context -> lastContext = source
             Queued.Unreadable, is Queued.Missing -> step.update { current ->
+                // Bytes a peer may have taken stay to be sent again (as back() keeps them) until the
+                // Safe's nonce has passed the transaction: a queue that cannot be read for a moment
+                // proves nothing about them.
+                val bytesOut = current is Step.Reviewing && current.notSent?.canRetry == true
+                val passed = source is Queued.Missing && source.passed
                 when {
                     current is Step.Signing && !current.signing -> Step.Overview
+                    bytesOut && !passed -> current
                     current is Step.Reviewing && !current.signing -> Step.Overview
                     current is Step.Quoting -> {
                         job?.cancel()
@@ -896,8 +907,8 @@ class SafeTxViewModel(
         val best = candidates.maxOfOrNull { read.confirmationsExecutedBy(it) } ?: read.confirmations
         val executeNote = when {
             executors.isNotEmpty() -> null
-            nonce > read.safeNonce -> "Executed only once the ${count(nonce - read.safeNonce)} before it have run: " +
-                "only the Safe's next transaction can be executed."
+            nonce > read.safeNonce -> "Executed only once ${before(nonce - read.safeNonce)}: only the Safe's next " +
+                "transaction can be executed."
             nonce < read.safeNonce -> "The Safe is at nonce ${read.safeNonce} already: this one ran, or another " +
                 "transaction used its nonce."
             candidates.isEmpty() -> "No account of this wallet holds a key to send its execution."
@@ -911,13 +922,16 @@ class SafeTxViewModel(
         )
     }
 
-    private fun count(n: Long) = if (n == 1L) "1 transaction" else "$n transactions"
+    /** What runs first, in agreement with its number: "the transaction before it has run". */
+    private fun before(n: Long) =
+        if (n == 1L) "the transaction before it has run" else "the $n transactions before it have run"
 
     private fun nonceText(nonce: Long, safeNonce: Long?): String = "Safe nonce $nonce" + when {
         safeNonce == null -> ""
         nonce == safeNonce -> " · next to run"
         nonce < safeNonce -> " · passed: the Safe is at nonce $safeNonce"
-        else -> " · ${count(nonce - safeNonce)} run before it"
+        nonce - safeNonce == 1L -> " · 1 transaction runs before it"
+        else -> " · ${nonce - safeNonce} transactions run before it"
     }
 
     private fun choice(context: Context, address: Address) =
@@ -1030,6 +1044,15 @@ class SafeTxViewModel(
                 }
             }
         }
+
+    /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */
+    private suspend fun biometricsOffered(): Boolean = try {
+        biometricsOn(describeKeyStore())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false // the use case promises not to throw; the backstop: the password still works
+    }
 
     private companion object {
         const val SIGN_FAILED = "Serotine could not finish this signature. Nothing was queued: try again."

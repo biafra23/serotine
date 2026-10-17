@@ -67,8 +67,7 @@ import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SendFrom
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
+import eth.serotine.ui.components.TransferForm
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -88,6 +87,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 /** [SendViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -173,7 +174,7 @@ class SendViewModelTest {
         return viewModel
     }
 
-    private val SendViewModel.compose get() = assertIs<SendUiState.Compose>(uiState.value)
+    private val SendViewModel.compose get() = assertIs<SendUiState.Compose>(uiState.value).form
     private val SendViewModel.review get() = assertIs<SendUiState.Review>(uiState.value)
 
     private fun holding(eth: String = "1500000000000000000", usdcUnits: String = "250000000") {
@@ -218,7 +219,7 @@ class SendViewModelTest {
         )
         assertEquals("ETH", state.asset?.symbol, "the network's currency, unless a token was asked for")
         assertEquals(listOf(AccountChoice("Savings", "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")), state.accounts)
-        assertEquals(FeeLevel.NORMAL, state.fee)
+        assertEquals(FeeLevel.NORMAL, assertIs<SendUiState.Compose>(viewModel.uiState.value).fee)
         assertFalse(state.canReview)
     }
 
@@ -288,7 +289,7 @@ class SendViewModelTest {
         names.names["later.eth"] = NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
         val viewModel = viewModel()
 
-        suspend fun typed(text: String): SendUiState.Compose {
+        suspend fun typed(text: String): TransferForm {
             viewModel.onToChange(text)
             advanceTimeBy(1_000)
             runCurrent()
