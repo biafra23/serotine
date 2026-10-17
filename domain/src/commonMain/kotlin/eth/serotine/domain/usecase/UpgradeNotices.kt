@@ -14,8 +14,9 @@ import kotlinx.coroutines.sync.withLock
  * When the user hears about an upgrade outside the app, through [notifier]: once when peers
  * first report it, again a week and a day before its activation, and once when it has
  * activated, after which nothing more is said about it. The record in [known] carries what
- * has been shown across restarts, so each notice is shown once, and what is still to come
- * falls due while the app is not running: the notifier is asked to wake it then.
+ * has been shown across restarts, so each notice is shown once (twice at worst, when its record
+ * could not be written: told twice beats never), and what is still to come falls due while the
+ * app is not running: the notifier is asked to wake it then.
  *
  * Fed by [FollowUpgradeReports] while the engine runs, and by the host's alarm through
  * [remind] while it does not. One instance per process: its calls take turns.
