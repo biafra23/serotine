@@ -12,16 +12,10 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountList
-import eth.serotine.domain.repository.BalanceReading
-import eth.serotine.domain.repository.BiometricUnlock
-import eth.serotine.domain.repository.BiometricUnusable
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeLevel
-import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentTransfer
-import eth.serotine.domain.repository.Signing
-import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -35,28 +29,23 @@ import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.TransferQuote
 import eth.serotine.domain.usecase.TransferQuoting
 import eth.serotine.domain.usecase.TransferSending
-import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Eip55
-import eth.serotine.ui.components.balanceText
-import eth.serotine.ui.components.displayName
-import eth.serotine.ui.components.displaySymbol
-import eth.serotine.ui.components.formatUnits
+import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.biometricsOn
+import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.grouped
-import eth.serotine.ui.components.valuationText
+import eth.serotine.ui.components.notSentItem
+import eth.serotine.ui.components.notSignedText
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -110,20 +99,6 @@ class SendViewModel(
         val lookupAttempt: Int = 0,
     )
 
-    /** What the typed recipient [text] is, as far as is known yet. */
-    private sealed interface Lookup {
-        val text: String
-
-        data object Empty : Lookup {
-            override val text = ""
-        }
-
-        /** A name, being resolved. */
-        data class Resolving(override val text: String) : Lookup
-
-        data class Done(override val text: String, val result: RecipientLookup) : Lookup
-    }
-
     /** The account sent from, or why nothing can be sent from it. */
     private sealed interface Sender {
         data class From(val account: Account) : Sender
@@ -131,40 +106,23 @@ class SendViewModel(
         data class Cannot(val message: String) : Sender
     }
 
-    /** An asset the account can send, with what the compose step shows of it. */
-    private data class Option(
-        val asset: TransferAsset,
-        val symbol: String,
-        val name: String,
-        val icon: String?,
-        val decimals: Int,
-        val balance: UInt256?,
-        val balanceText: String,
-        val verifiedAt: String?,
-        val valuation: Valuation?,
-        val warning: String?,
-    ) {
-        val contract: Address?
-            get() = (asset as? TransferAsset.Erc20Token)?.token?.address
-    }
-
     /** Everything the compose step is derived from. */
     private class Model(
         val sender: Sender,
         val accounts: List<Account>,
         val currency: DisplayCurrency,
-        val options: List<Option>,
-        val selected: Option?,
+        val options: List<AssetOption>,
+        val selected: AssetOption?,
         val tokensRead: Boolean,
         val inputs: Inputs,
-        val lookup: Lookup,
+        val lookup: RecipientState,
     )
 
     /** A transfer the compose step can have quoted, exactly as it has it. */
     private data class Request(
         val inputs: Inputs,
         val to: RecipientLookup.Found,
-        val option: Option,
+        val option: AssetOption,
         val amount: UInt256,
     )
 
@@ -218,26 +176,9 @@ class SendViewModel(
     /** Whether the screen is shown now ([onShown], [onHidden]). */
     private var shown = false
 
-    /**
-     * The typed recipient, resolved: an address at once, a name once the typing paused, so that
-     * a name is not resolved for every letter of it.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val lookup: Flow<Lookup> = inputs
-        .map { it.to.trim() to it.lookupAttempt }
-        .distinctUntilChanged()
-        .transformLatest { (text, _) ->
-            if (text.isEmpty()) {
-                emit(Lookup.Empty)
-                return@transformLatest
-            }
-            // An address has no dot; ResolveRecipient takes anything with one as a name.
-            if ('.' in text) {
-                emit(Lookup.Resolving(text))
-                delay(NAME_PAUSE_MS)
-            }
-            emit(Lookup.Done(text, lookUp(text)))
-        }
+    /** The typed recipient, resolved: an address at once, a name once the typing paused. */
+    private val lookup: Flow<RecipientState> =
+        recipientStates(inputs.map { it.to.trim() to it.lookupAttempt }, resolveRecipient::lookUpSafely)
 
     private val model: StateFlow<Model?> =
         combine(observeAccounts(), observeAccountValue(from), inputs, lookup) { list, value, inputs, lookup ->
@@ -358,7 +299,7 @@ class SendViewModel(
     fun signWithBiometrics() {
         val current = step.value as? Step.Reviewing ?: return
         if (!current.idle || !current.unlock.biometrics || requoted(current)) return
-        val amount = exact(current.quote.amount, current.request.option.decimals, current.request.option.symbol)
+        val amount = exactAmount(current.quote.amount, current.request.option.decimals, current.request.option.symbol)
         // The recipient in full: the prompt is the last thing read before the key signs.
         sign(current, Unlock.WithBiometrics("Send $amount to ${Eip55.format(current.quote.to)}"))
     }
@@ -442,7 +383,7 @@ class SendViewModel(
                     is TransferSending.NotSigned -> latest.copy(
                         signing = false,
                         unlock = latest.unlock.copy(
-                            error = notSignedText(sending.signing),
+                            error = notSignedText(sending.signing, SEND_FAILED),
                             biometrics = latest.unlock.biometrics && biometricsStillOffered(sending.signing),
                         ),
                     )
@@ -466,22 +407,12 @@ class SendViewModel(
      * address the name has now, and one that moved is said, not signed.
      */
     private suspend fun quoted(request: Request, unlock: UnlockStep?): Step {
-        val name = request.to.name
-        var to = request.to
-        if (name != null) {
-            val again = lookUp(name)
-            if (again !is RecipientLookup.Found || again.address != request.to.address) {
+        val to = when (val again = resolveAgain(request.to, resolveRecipient::lookUpSafely)) {
+            is ResolvedAgain.Same -> again.found // its block is this resolution's
+            is ResolvedAgain.Changed -> {
                 inputs.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
-                return Step.Composing(
-                    error = if (again is RecipientLookup.Unavailable) {
-                        "“$name” could not be resolved with verified calls again just now, so nothing can be " +
-                            "signed for it: review it again in a moment."
-                    } else {
-                        "“$name” no longer resolves to the address shown: check the recipient."
-                    },
-                )
+                return Step.Composing(error = again.message)
             }
-            to = again // its block is this resolution's
         }
         val quoting = try {
             quoteTransfer(from, request.to.address, request.option.asset, request.amount, request.inputs.fee)
@@ -495,7 +426,7 @@ class SendViewModel(
             request.copy(to = to),
             quoting.quote,
             timeSource.markNow(),
-            unlock ?: UnlockStep(biometrics = biometricsOffered()),
+            unlock ?: UnlockStep(biometrics = describeKeyStore.biometricsOn()),
         )
     }
 
@@ -505,26 +436,6 @@ class SendViewModel(
         job?.cancel()
         inputs.update(edit)
         step.value = Step.Composing()
-    }
-
-    private suspend fun lookUp(text: String): RecipientLookup {
-        // An all-caps copy upper-cases the prefix too.
-        val normalized = if (text.startsWith("0X")) "0x" + text.drop(2) else text
-        return try {
-            resolveRecipient(normalized)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            RecipientLookup.Unavailable(ReadUnavailable.UNPROVEN) // the port promises not to throw; the backstop
-        }
-    }
-
-    private suspend fun biometricsOffered(): Boolean = try {
-        (describeKeyStore() as? KeyStoreDescription.Ready)?.biometrics == BiometricUnlock.On
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        false // the port promises not to throw; the backstop: the password still works
     }
 
     /**
@@ -542,7 +453,7 @@ class SendViewModel(
             }
         }
 
-    private fun modelOf(list: AccountList, value: AccountValue, inputs: Inputs, lookup: Lookup): Model {
+    private fun modelOf(list: AccountList, value: AccountValue, inputs: Inputs, lookup: RecipientState): Model {
         val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
         val sender = when (list) {
             is AccountList.Unreadable -> Sender.Cannot(LIST_UNAVAILABLE)
@@ -556,7 +467,7 @@ class SendViewModel(
                 }
             }
         }
-        val options = options(value, inputs.asset)
+        val options = assetOptions(value, inputs.asset, network)
         return Model(
             sender = sender,
             accounts = accounts,
@@ -567,51 +478,6 @@ class SendViewModel(
             inputs = inputs,
             lookup = lookup,
         )
-    }
-
-    /**
-     * The network's currency and every token the account holds, and the token [chosen] whatever
-     * its balance says: it was asked for, and its row says what is known of it.
-     */
-    private fun options(value: AccountValue, chosen: Address?): List<Option> {
-        val native = value.native
-        val nativeOption = Option(
-            asset = TransferAsset.Native,
-            symbol = network.nativeSymbol,
-            name = network.nativeName,
-            icon = network.nativeIcon,
-            decimals = NATIVE_DECIMALS,
-            balance = (native as? BalanceReading.Verified)?.wei?.toUInt256OrNull(),
-            balanceText = native?.let { balanceText(it, network) } ?: CHECKING,
-            verifiedAt = (native as? BalanceReading.Verified)?.let { block(it.blockNumber) },
-            valuation = value.nativeValue,
-            warning = null,
-        )
-        val tokens = value.tokens.mapNotNull { (holding, valuation) ->
-            val token = holding.token
-            val reading = holding.reading
-            val verified = reading as? TokenBalanceReading.Verified
-            if (token.address != chosen && (verified == null || verified.units.isZero)) return@mapNotNull null
-            val symbol = displaySymbol(token.symbol)
-            Option(
-                asset = TransferAsset.Erc20Token(token),
-                symbol = symbol,
-                name = displayName(token.name),
-                icon = token.icon,
-                decimals = token.decimals,
-                balance = verified?.let { UInt256.parse(it.units.decimal) },
-                balanceText = when (reading) {
-                    is TokenBalanceReading.Verified -> formatUnits(reading.units.decimal, token.decimals, symbol)
-                    null, TokenBalanceReading.Syncing -> CHECKING
-                    TokenBalanceReading.NotAToken -> "Not a token"
-                    is TokenBalanceReading.Unavailable -> "Not verified"
-                },
-                verifiedAt = verified?.blockNumber?.let(::block),
-                valuation = valuation,
-                warning = if (holding.sharesBuiltInSymbol) "Not the built-in $symbol: another contract" else null,
-            )
-        }
-        return listOf(nativeOption) + tokens
     }
 
     private fun render(model: Model?, step: Step): SendUiState {
@@ -635,15 +501,15 @@ class SendViewModel(
         val text = inputs.to.trim()
         // The lookup of what is typed now; one of an earlier text is no answer about it.
         val lookup = model.lookup.takeIf { it.text == text }
-        val result = (lookup as? Lookup.Done)?.result
-        val (note, isError) = toNote(text, lookup)
+        val result = (lookup as? RecipientState.Done)?.result
+        val (note, isError) = recipientNote(text, lookup)
         val selected = model.selected
-        val amount = amountOf(inputs.amount, selected)
+        val amount = typedAmount(inputs.amount, selected)
         return SendUiState.Compose(
             network = network.displayName,
             from = sender,
-            assets = model.options.map(::choice),
-            asset = selected?.let(::choice),
+            assets = model.options.map { it.choice() },
+            asset = selected?.choice(),
             to = inputs.to,
             accounts = model.accounts.filter { it.address != from }
                 .map { AccountChoice(it.label, Eip55.format(it.address)) },
@@ -659,7 +525,7 @@ class SendViewModel(
             toError = isError,
             canRetryLookup = result is RecipientLookup.Unavailable,
             amountError = amount.error,
-            amountHint = hint(amount.units, selected, model.currency),
+            amountHint = amountHint(amount.units, selected, model.currency, network),
             canMax = selected?.balance != null && !step.quoting,
             quoting = step.quoting,
             error = step.error,
@@ -675,15 +541,15 @@ class SendViewModel(
             val after = quote.tokenAfter ?: return@let null
             BalanceChange(
                 what = "${option.symbol} balance",
-                before = exact(before, option.decimals, option.symbol),
-                after = exact(after, option.decimals, option.symbol),
+                before = exactAmount(before, option.decimals, option.symbol),
+                after = exactAmount(after, option.decimals, option.symbol),
                 verifiedAt = verifiedAt(quote.tokenBalanceBlock),
             )
         }
         val nativeBalance = BalanceChange(
             what = "$native balance" + if (tokenBalance != null) ", which pays the fee" else "",
-            before = exact(quote.nativeBefore, NATIVE_DECIMALS, native),
-            after = "at least " + exact(quote.nativeAfterAtLeast, NATIVE_DECIMALS, native),
+            before = exactAmount(quote.nativeBefore, NATIVE_DECIMALS, native),
+            after = "at least " + exactAmount(quote.nativeAfterAtLeast, NATIVE_DECIMALS, native),
             verifiedAt = verifiedAt(quote.balanceBlock),
         )
         val transaction = quote.transaction
@@ -691,10 +557,10 @@ class SendViewModel(
         return SendUiState.Review(
             network = network.displayName,
             from = sender,
-            amount = exact(quote.amount, option.decimals, option.symbol),
-            asset = choice(option),
+            amount = exactAmount(quote.amount, option.decimals, option.symbol),
+            asset = option.choice(),
             recipient = recipientItem(step.request.to, model.accounts, option),
-            maxFee = exact(quote.maxFee, NATIVE_DECIMALS, native),
+            maxFee = exactAmount(quote.maxFee, NATIVE_DECIMALS, native),
             feeDetail = "${levelName(quote.level)} fee: ${grouped(transaction.gasLimit)} gas × at most " +
                 "${transaction.maxFeePerGas.formatUnits(GWEI_DECIMALS)} gwei, from the verified fee history " +
                 "up to block ${grouped(quote.feeBlock)}. Only what the block charges is paid.",
@@ -708,125 +574,43 @@ class SendViewModel(
             pending = pendingText(quote, option),
             refreshing = step.refreshing,
             signing = step.signing,
-            notSent = step.notSent?.let(::notSentItem),
+            notSent = step.notSent?.let { notSentItem(it.broadcast, it.unverified, what = "transfer") },
         )
     }
 
     /** What this account's earlier transfers, not mined yet, may still take, when anything. */
-    private fun pendingText(quote: TransferQuote, option: Option): String? {
+    private fun pendingText(quote: TransferQuote, option: AssetOption): String? {
         val native = network.nativeSymbol
         val parts = listOfNotNull(
-            quote.pendingTokenAmount?.takeUnless { it.isZero }?.let { exact(it, option.decimals, option.symbol) },
-            quote.pendingCost.takeUnless { it.isZero }?.let { "up to " + exact(it, NATIVE_DECIMALS, native) },
+            quote.pendingTokenAmount?.takeUnless { it.isZero }?.let { exactAmount(it, option.decimals, option.symbol) },
+            quote.pendingCost.takeUnless { it.isZero }?.let { "up to " + exactAmount(it, NATIVE_DECIMALS, native) },
         )
         if (parts.isEmpty()) return null
         return "Earlier transfers from this account, not mined yet, may still take ${parts.joinToString(" and ")}: " +
             "the balance after counts it."
     }
 
-    private fun choice(option: Option) = AssetChoice(
-        symbol = option.symbol,
-        name = option.name,
-        icon = option.icon,
-        balance = option.balanceText,
-        contract = option.contract?.let(Eip55::format),
-        verifiedAt = option.verifiedAt,
-        warning = option.warning,
-    )
-
-    private fun recipientItem(found: RecipientLookup.Found, accounts: List<Account>, asset: Option?): RecipientItem {
-        val inWallet = accounts.firstOrNull { it.address == found.address }
-        return RecipientItem(
-            address = Eip55.format(found.address),
-            name = found.name,
-            resolvedAt = found.blockNumber?.let { "Resolved at finalized block ${grouped(it)}" },
-            label = inWallet?.label,
-            note = when (found.address) {
+    private fun recipientItem(found: RecipientLookup.Found, accounts: List<Account>, asset: AssetOption?) =
+        recipientItem(found, accounts) { address ->
+            when (address) {
                 from -> "The account you send from: only the fee is spent."
                 asset?.contract -> "The token's own contract: nothing sent to it can ever be moved out."
                 else -> null
-            },
-        )
-    }
+            }
+        }
 
     /** The compose step's transfer, when it is complete and the recipient is known: what a quote is asked for. */
     private fun requestOf(model: Model): Request? {
         if (model.sender !is Sender.From) return null
-        val lookup = model.lookup as? Lookup.Done ?: return null
+        val lookup = model.lookup as? RecipientState.Done ?: return null
         if (lookup.text != model.inputs.to.trim()) return null
         val to = lookup.result as? RecipientLookup.Found ?: return null
         val option = model.selected ?: return null
-        val amount = amountOf(model.inputs.amount, option).units ?: return null
+        val amount = typedAmount(model.inputs.amount, option).units ?: return null
         return Request(model.inputs, to, option, amount)
     }
 
-    /** What the recipient field says under [text], and whether that is an error. */
-    private fun toNote(text: String, lookup: Lookup?): Pair<String?, Boolean> = when (lookup) {
-        null, Lookup.Empty -> null to false
-        is Lookup.Resolving -> "Resolving the name with verified calls…" to false
-        is Lookup.Done -> when (val result = lookup.result) {
-            is RecipientLookup.Found -> null to false
-            RecipientLookup.NotAnAddress -> when {
-                '.' in text -> NOT_A_NAME to true
-                // Not while an address or a name is still being typed.
-                text.length < ADDRESS_LENGTH && HEX_SO_FAR.matches(text) -> null to false
-                !text.startsWith("0x", ignoreCase = true) && LABEL_SO_FAR.matches(text) ->
-                    "A name ends in its domain, as in name.eth." to false
-                else -> NOT_AN_ADDRESS to true
-            }
-            RecipientLookup.ChecksumMismatch -> CHECKSUM to true
-            RecipientLookup.ZeroAddress -> ZERO_ADDRESS to true
-            RecipientLookup.OffchainOnly -> OFFCHAIN to true
-            RecipientLookup.NoAddress -> "This name has no address." to true
-            is RecipientLookup.Unavailable -> nameUnavailable(result.reason) to true
-        }
-    }
-
-    /** An amount typed, in [option]'s smallest units, or why it is none (null while still being typed). */
-    private class Amount(val units: UInt256?, val error: String?)
-
-    private fun amountOf(text: String, option: Option?): Amount {
-        val typed = text.trim()
-        if (typed.isEmpty() || option == null) return Amount(null, null)
-        val units = UInt256.parseUnits(typed, option.decimals)
-        return when {
-            units == null -> Amount(null, amountError(typed, option))
-            units.isZero -> Amount(null, "Enter an amount above zero.")
-            else -> Amount(units, null)
-        }
-    }
-
-    private fun amountError(typed: String, option: Option): String? {
-        val fraction = typed.substringAfter('.', missingDelimiterValue = "")
-        return when {
-            // "5." on its way to "5.5".
-            option.decimals > 0 && typed.endsWith('.') &&
-                UInt256.parseUnits(typed.dropLast(1), option.decimals) != null -> null
-            ',' in typed -> "Use a dot for the decimals: 0.5, not 0,5."
-            DECIMAL.matches(typed) && fraction.length > option.decimals -> if (option.decimals == 0) {
-                "${option.symbol} has no decimals: whole numbers only."
-            } else {
-                "${option.symbol} has ${option.decimals} decimals: at most ${option.decimals} digits after the dot."
-            }
-            DECIMAL.matches(typed) -> "That is more than any balance can be."
-            else -> "Not an amount: digits, with a dot for the decimals (0.5)."
-        }
-    }
-
-    /**
-     * What [amount] of [option] is worth in [currency], as a hint beside the amount: the verified
-     * balance's value scaled to the amount — the same price, display only, never part of the
-     * amount (CLAUDE.md, *Data sources*).
-     */
-    private fun hint(amount: UInt256?, option: Option?, currency: DisplayCurrency): String? {
-        amount ?: return null
-        val valued = option?.valuation as? Valuation.Valued ?: return null
-        val balance = option.balance?.takeUnless { it.isZero } ?: return null
-        val share = amount.toDecimal().toDouble() / balance.toDecimal().toDouble()
-        return valuationText(valued.copy(amount = valued.amount * share), currency, network)?.let { "≈ $it" }
-    }
-
-    private fun refusal(quoting: TransferQuoting, option: Option): String = when (quoting) {
+    private fun refusal(quoting: TransferQuoting, option: AssetOption): String = when (quoting) {
         is TransferQuoting.Quoted -> error("a quote is no refusal")
         TransferQuoting.ToZeroAddress -> ZERO_ADDRESS
         TransferQuoting.ToTokenContract -> "${option.symbol}'s own contract: nothing sent to it can ever be moved " +
@@ -860,110 +644,27 @@ class SendViewModel(
         }
     }
 
-    private fun notSignedText(signing: Signing): String = when (signing) {
-        Signing.WrongPassword -> "That is not the wallet password. Nothing was signed."
-        Signing.Cancelled ->
-            "The fingerprint or face check was dismissed. Nothing was signed: try again, or use the wallet password."
-        is Signing.BiometricsUnusable -> when (signing.reason) {
-            BiometricUnusable.OFF -> "A fingerprint or face cannot open this account's key: use the wallet password."
-            BiometricUnusable.INVALIDATED ->
-                "Biometric unlock stopped working: the enrolled fingerprints or faces changed. Use the wallet " +
-                    "password; Settings → Security turns it on again."
-            BiometricUnusable.LOCKED_OUT ->
-                "Too many failed attempts: biometrics are locked for now. Use the wallet password."
-            BiometricUnusable.SENSOR_UNAVAILABLE -> "The sensor cannot be used right now: use the wallet password."
-            BiometricUnusable.NO_PROMPT -> "The fingerprint or face check could not be shown: use the wallet password."
-        }
-        Signing.NoKey -> "This device holds no key for this account, so nothing was signed."
-        Signing.Unavailable -> "The key store cannot open this account's key on this device. Nothing was signed."
-        is Signing.Signed -> SEND_FAILED // a signature is not a reason not to have signed
-    }
-
-    /** Whether the biometric prompt is still worth offering after [signing] refused one. */
-    private fun biometricsStillOffered(signing: Signing): Boolean = when (signing) {
-        is Signing.BiometricsUnusable -> signing.reason == BiometricUnusable.SENSOR_UNAVAILABLE ||
-            signing.reason == BiometricUnusable.NO_PROMPT
-        else -> true
-    }
-
-    private fun notSentItem(notSent: NotSent): NotSentItem = when (val broadcast = notSent.broadcast) {
-        // Not "can never be mined" when unverified: that is a verified verdict, and this one could not be checked.
-        is Broadcast.Rejected -> if (notSent.unverified) {
-            NotSentItem(
-                "Rejected this time (${broadcast.detail}), and whether the first broadcast reached a block after " +
-                    "all cannot be verified right now. Try again sends the same signed transfer and checks again; " +
-                    "do not send a new one meanwhile.",
-                canRetry = true,
-            )
-        } else {
-            NotSentItem(
-                "Signed, but not sent: judged on verified state, it can never be mined as signed " +
-                    "(${broadcast.detail}). Sending it again would not change that.",
-                canRetry = false,
-            )
-        }
-        is Broadcast.Refused -> NotSentItem(
-            "Signed, but not sent: the light client does not relay it (${broadcast.detail}).",
-            canRetry = false,
-        )
-        is Broadcast.Unavailable -> NotSentItem(
-            "Signed, but not sent: no peer took it right now" + (broadcast.detail?.let { " ($it)" } ?: "") +
-                ". Try again sends the same signed transfer, not a new one.",
-            canRetry = true,
-        )
-        is Broadcast.Sent -> NotSentItem("Sent.", canRetry = false) // not a NotSent verdict
-    }
-
-    private fun nameUnavailable(reason: ReadUnavailable): String = when (reason) {
-        ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so the name cannot be resolved."
-        ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the name cannot be resolved."
-        ReadUnavailable.UNPROVEN -> "The name could not be resolved with verified calls this time."
-        ReadUnavailable.REFUSED -> "The light client on this device cannot resolve names."
-    }
-
     private fun levelName(level: FeeLevel): String = when (level) {
         FeeLevel.SLOW -> "Slow"
         FeeLevel.NORMAL -> "Normal"
         FeeLevel.FAST -> "Fast"
     }
 
-    /** [units] in whole units with [decimals], exact: what the review shows and what is signed. */
-    private fun exact(units: UInt256, decimals: Int, symbol: String) = "${units.formatUnits(decimals)} $symbol"
-
     private fun verifiedAt(block: Long?) = block?.let { "verified at block ${grouped(it)}" } ?: "verified"
-
-    private fun block(number: Long) = "block ${grouped(number)}"
 
     private companion object {
         /** The oldest a quote may be at the tap that signs it; an older one is made again first. */
         val QUOTE_MAX_AGE = 60.seconds
 
         const val STALE_QUOTE = "The quote was over a minute old, so it was made again: check it, then sign."
-        const val NATIVE_DECIMALS = 18
         const val GWEI_DECIMALS = 9
-        const val ADDRESS_LENGTH = 42
-
-        /** How long the typing must pause before a name is resolved. */
-        const val NAME_PAUSE_MS = 600L
-        const val CHECKING = "Checking…"
-        val HEX_SO_FAR = Regex("^(0|0[xX][0-9a-fA-F]*)$")
-        val LABEL_SO_FAR = Regex("^[A-Za-z0-9-]+$")
-        val DECIMAL = Regex("^(0|[1-9][0-9]*)(\\.[0-9]+)?$")
-
-        const val NOT_AN_ADDRESS = "Not an address: an address is 0x and 40 hexadecimal digits."
-        const val NOT_A_NAME =
-            "Not an ENS name Serotine can resolve: for now, names of letters (a–z), digits and hyphens."
-        const val CHECKSUM = "The capitals do not match this address's checksum: check it for a typo."
-        const val ZERO_ADDRESS =
-            "The zero address: nobody holds its key, so whatever is sent to it is lost. It is refused."
-        const val OFFCHAIN =
-            "Only an off-chain gateway gives this name's address, and Serotine asks none: it cannot be resolved here."
         const val SEND_FAILED =
             "Serotine could not finish this transfer. Check the account's balance before you send again."
         const val LIST_UNAVAILABLE =
             "Your account list cannot be read right now, so nothing can be sent. Serotine keeps trying."
         const val NOT_IN_WALLET = "This account is not in your wallet any more."
-        const val SAFE = "Sending from a Safe takes a Safe transaction its owners sign, which Serotine cannot make yet."
+        const val SAFE =
+            "Sending from a Safe takes a Safe transaction its owners sign: Send on the Safe's own screen proposes one."
         const val WATCH_ONLY =
             "This account is watch-only: its key is not on this device, so nothing can be sent from it."
     }

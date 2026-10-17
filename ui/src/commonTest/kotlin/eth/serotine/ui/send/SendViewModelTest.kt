@@ -61,6 +61,7 @@ import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.components.NotSentItem
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred

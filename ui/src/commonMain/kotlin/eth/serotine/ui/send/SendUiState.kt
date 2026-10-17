@@ -1,7 +1,8 @@
 package eth.serotine.ui.send
 
-import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.UnlockStep
 
 /**
  * Everything the Send screen renders (docs/wallet-ux.md, screens 7 and 8): the transfer being
@@ -35,9 +36,10 @@ sealed interface SendUiState {
      * asking again may help. [accounts] are the wallet's other accounts, to pick one as the
      * recipient. [amount] is typed in token units ([amountError] why it is no amount), with
      * [amountHint] its value in the display currency (display only) and [canMax] when the whole
-     * verified balance can be filled in. [fee] is the chosen level. [quoting] while the quote for
-     * the review is made, and [error] why the last one was refused; [canReview] when it can be
-     * asked for.
+     * verified balance can be filled in. [fee] is the chosen level (null where there is none to
+     * choose: a Safe's proposal, whose execution the executing account pays for). [quoting] while
+     * the quote for the review is made, and [error] why the last one was refused; [canReview] when
+     * it can be asked for.
      */
     data class Compose(
         override val network: String,
@@ -47,7 +49,7 @@ sealed interface SendUiState {
         val to: String,
         val accounts: List<AccountChoice>,
         val amount: String,
-        val fee: FeeLevel,
+        val fee: FeeLevel?,
         val assetNote: String? = null,
         val recipient: RecipientItem? = null,
         val toNote: String? = null,
@@ -146,19 +148,3 @@ data class RecipientItem(
  * the block the balance before was verified at ([verifiedAt]).
  */
 data class BalanceChange(val what: String, val before: String, val after: String, val verifiedAt: String)
-
-/**
- * How the review is signed: with the wallet [password] being typed, or, when [biometrics], with a
- * fingerprint or face, the password the fallback. [error] says why the last try signed nothing.
- */
-data class UnlockStep(
-    val password: WalletPassword = WalletPassword.EMPTY,
-    val biometrics: Boolean = false,
-    val error: String? = null,
-)
-
-/**
- * A transfer signed but not broadcast: [message] why, and [canRetry] when sending the same signed
- * bytes again may get it out (no peer took it), never a new signature.
- */
-data class NotSentItem(val message: String, val canRetry: Boolean)

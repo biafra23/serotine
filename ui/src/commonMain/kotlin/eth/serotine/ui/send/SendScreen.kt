@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -23,7 +22,6 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,10 +48,8 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -62,7 +58,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
+import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers
@@ -250,56 +248,81 @@ private fun ComposeContent(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Heading("From")
-        FromLine(state.from)
-        Heading("Asset")
-        Column {
-            state.assets.forEach { asset ->
-                AssetOption(asset, selected = asset == state.asset, enabled = !state.quoting) {
-                    onAssetChange(asset.contract)
-                }
-            }
-            state.assetNote?.let { Note(it) }
+        TransferFormFields(state, onAssetChange, onToChange, onPickAccount, onRetryLookup, onAmountChange, onMax)
+        state.fee?.let { fee ->
+            Heading("Fee")
+            FeeChoice(fee, enabled = !state.quoting, onFeeChange)
+            Note("The fee is paid in the network's own currency; the review shows the most it can be.")
         }
-        Heading("To")
-        RecipientField(state, onToChange)
-        state.recipient?.let { RecipientCard(it) }
-        if (state.canRetryLookup) {
-            TextButton(onClick = onRetryLookup) { Text("Try again") }
-        }
-        if (state.accounts.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                state.accounts.forEach { account ->
-                    AssistChip(
-                        onClick = { onPickAccount(account.address) },
-                        enabled = !state.quoting,
-                        label = { Text("${account.label} · ${shortAddress(account.address)}") },
-                        leadingIcon = { Blockie(account.address, size = 18.dp) },
-                    )
-                }
-            }
-        }
-        Heading("Amount")
-        AmountField(state, onAmountChange, onMax)
-        Heading("Fee")
-        FeeChoice(state.fee, enabled = !state.quoting, onFeeChange)
-        Note("The fee is paid in the network's own currency; the review shows the most it can be.")
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            onClick = onReview,
-            enabled = state.canReview,
-            modifier = Modifier.align(Alignment.End).testTag(SEND_REVIEW_TAG),
-        ) {
-            if (state.quoting) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.size(8.dp))
-                Text("Checking on chain…")
-            } else {
-                Text("Review")
+        ReviewButton(state, onReview, Modifier.align(Alignment.End))
+    }
+}
+
+/**
+ * The transfer form's fields (docs/wallet-ux.md, screen 7) — from, asset, to and amount — as Send
+ * and a Safe's proposal of a transfer both draw them, in the caller's column.
+ */
+@Composable
+internal fun TransferFormFields(
+    state: SendUiState.Compose,
+    onAssetChange: (String?) -> Unit,
+    onToChange: (String) -> Unit,
+    onPickAccount: (String) -> Unit,
+    onRetryLookup: () -> Unit,
+    onAmountChange: (String) -> Unit,
+    onMax: () -> Unit,
+) {
+    Heading("From")
+    FromLine(state.from)
+    Heading("Asset")
+    Column {
+        state.assets.forEach { asset ->
+            AssetOption(asset, selected = asset == state.asset, enabled = !state.quoting) {
+                onAssetChange(asset.contract)
             }
+        }
+        state.assetNote?.let { Note(it) }
+    }
+    Heading("To")
+    RecipientField(state, onToChange)
+    state.recipient?.let { RecipientCard(it) }
+    if (state.canRetryLookup) {
+        TextButton(onClick = onRetryLookup) { Text("Try again") }
+    }
+    if (state.accounts.isNotEmpty()) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            state.accounts.forEach { account ->
+                AssistChip(
+                    onClick = { onPickAccount(account.address) },
+                    enabled = !state.quoting,
+                    label = { Text("${account.label} · ${shortAddress(account.address)}") },
+                    leadingIcon = { Blockie(account.address, size = 18.dp) },
+                )
+            }
+        }
+    }
+    Heading("Amount")
+    AmountField(state, onAmountChange, onMax)
+}
+
+/** Review, which quotes the form's transfer: "Checking on chain…" while it does. */
+@Composable
+internal fun ReviewButton(state: SendUiState.Compose, onReview: () -> Unit, modifier: Modifier = Modifier) {
+    Button(
+        onClick = onReview,
+        enabled = state.canReview,
+        modifier = modifier.testTag(SEND_REVIEW_TAG),
+    ) {
+        if (state.quoting) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.size(8.dp))
+            Text("Checking on chain…")
+        } else {
+            Text("Review")
         }
     }
 }
@@ -349,7 +372,7 @@ private fun RecipientField(state: SendUiState.Compose, onToChange: (String) -> U
 
 /** The recipient in full, with what is known of it: the name it was resolved from, its name in the wallet. */
 @Composable
-private fun RecipientCard(recipient: RecipientItem) {
+internal fun RecipientCard(recipient: RecipientItem) {
     Surface(
         Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -477,19 +500,9 @@ private fun ReviewContent(
         HorizontalDivider()
         val notSent = state.notSent
         if (notSent != null) {
-            NotSentContent(notSent, state.signing, onRetry)
+            NotSentFields(notSent, state.signing, onRetry)
         } else {
             UnlockContent(state, onPasswordChange, onSign, onSignWithBiometrics)
-        }
-    }
-}
-
-@Composable
-private fun NotSentContent(notSent: NotSentItem, retrying: Boolean, onRetry: () -> Unit) {
-    Text(notSent.message, color = MaterialTheme.colorScheme.error)
-    if (notSent.canRetry) {
-        Button(onClick = onRetry, enabled = !retrying) {
-            if (retrying) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Try again")
         }
     }
 }
@@ -502,61 +515,24 @@ private fun UnlockContent(
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
 ) {
-    // Only while the password field is shown: rule 8's protections of a screen that takes it.
-    val captureBlocked = protectFromScreenCapture()
-    val unlock = state.unlock
-    if (unlock.biometrics) {
-        FilledTonalButton(
-            onClick = onSignWithBiometrics,
-            enabled = state.canSignWithBiometrics,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Sign with fingerprint or face")
-        }
-        Note("Or with the wallet password:")
-    }
-    OutlinedTextField(
-        value = unlock.password.text,
-        onValueChange = onPasswordChange,
-        modifier = Modifier.fillMaxWidth().testTag(SEND_PASSWORD_TAG),
-        enabled = !state.signing,
-        label = { Text("Wallet password") },
-        supportingText = unlock.error?.let { error -> { Text(error) } },
-        isError = unlock.error != null,
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(
-            autoCorrectEnabled = false,
-            keyboardType = KeyboardType.Password,
-            imeAction = ImeAction.Done,
-        ),
-        keyboardActions = KeyboardActions(onDone = { onSign() }),
+    UnlockFields(
+        unlock = state.unlock,
+        signing = state.signing,
+        canSign = state.canSign,
+        canSignWithBiometrics = state.canSignWithBiometrics,
+        signLabel = "Sign and send",
+        signingLabel = "Signing and sending…",
+        onPasswordChange = onPasswordChange,
+        onSign = onSign,
+        onSignWithBiometrics = onSignWithBiometrics,
+        passwordTag = SEND_PASSWORD_TAG,
+        signTag = SEND_SIGN_TAG,
     )
-    Button(
-        onClick = onSign,
-        enabled = state.canSign,
-        modifier = Modifier.fillMaxWidth().testTag(SEND_SIGN_TAG),
-    ) {
-        if (state.signing) {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.size(8.dp))
-            Text("Signing and sending…")
-        } else {
-            Text("Sign and send")
-        }
-    }
-    if (!captureBlocked) {
-        Text(
-            "Screenshots and screen recordings of this window cannot be blocked here. Make sure nothing is " +
-                "recording your screen.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
 }
 
+/** The account a transfer is from: its blockie, its name and its short address. */
 @Composable
-private fun FromLine(from: SendFrom) {
+internal fun FromLine(from: SendFrom) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         AccountAvatar(from.address, size = 32.dp)
         Column {
@@ -570,12 +546,14 @@ private fun FromLine(from: SendFrom) {
     }
 }
 
+/** A section's heading on the transfer screens. */
 @Composable
-private fun Heading(text: String) {
+internal fun Heading(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
 }
 
+/** A small note on the transfer screens. */
 @Composable
-private fun Note(text: String) {
+internal fun Note(text: String) {
     Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
