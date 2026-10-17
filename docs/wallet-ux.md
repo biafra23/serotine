@@ -199,8 +199,9 @@ upgrades*).
     - Turning it on asks for the wallet password here, under the screen
       protections of a screen that takes the password, and drops it when the
       screen is left. Turning it off asks nothing: it deletes a way in.
-    - After a change of the enrolled biometrics it reads as off, until it is
-      turned on again.
+    - After a change of the enrolled biometrics it reads "Stopped working",
+      with the switch still on: turning it off deletes the invalidated key,
+      and turning it on again makes a new one.
 
 ## Prices
 

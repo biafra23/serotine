@@ -80,6 +80,10 @@ class AndroidBiometricKey(
     } catch (e: UserNotAuthenticatedException) {
         // A locked device (setUnlockedDeviceRequired): nothing changed, the key is fine.
         false
+    } catch (e: ProviderException) {
+        // The Keystore daemon failing to answer (KeyStoreConnectException, a RuntimeException)
+        // tells nothing about the key: a use of it then fails on its own.
+        false
     }
 
     @Synchronized
@@ -115,13 +119,15 @@ class AndroidBiometricKey(
             return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
         } catch (e: UnrecoverableKeyException) {
             return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
-        } catch (e: GeneralSecurityException) {
+        } catch (e: Exception) {
+            // GeneralSecurityException, and the Keystore's system failures, which cross as a
+            // ProviderException (a RuntimeException): never thrown past the port.
             return BiometricUnwrap.Failed
         }
         return when (val result = prompter.authenticate(cipher, reason)) {
             is PromptResult.Authenticated -> try {
                 BiometricUnwrap.Dek(result.cipher.doFinal(wrapped))
-            } catch (e: GeneralSecurityException) {
+            } catch (e: Exception) {
                 BiometricUnwrap.Failed
             }
             PromptResult.Cancelled -> BiometricUnwrap.Cancelled
