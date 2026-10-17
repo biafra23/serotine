@@ -174,8 +174,23 @@ that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
 **What exists today**: the key-store port
-`KeyStore` in `:domain`, implemented by `EnvelopeKeyStore` in
-`eth.serotine.data.keys`.
+`KeyStore` and the signer port `Signer` in `:domain`, both implemented by
+`EnvelopeKeyStore` in `eth.serotine.data.keys`.
+
+- **Create.** `newMnemonic()` makes a 12-word BIP-39 mnemonic from 128 bits of
+  the platform's secure randomness (`EnvelopeCrypto.randomBytes`), zeroing the
+  entropy. Nothing is stored: the words travel to Create account's screen under
+  the mnemonic exception, are shown once, three of them are asked back, and they
+  are stored by the import below.
+- **Sign.** `sign(account, digest, password)` opens the account's envelope
+  (`<address>.seed`) with the password and the hardware secret, derives the first
+  account's key and refuses a key that does not derive the account it is filed
+  under. It signs the 32-byte digest as given, never hashed again, with
+  libsecp256k1 (a low s, RFC 6979's nonce) and finds the recovery id by
+  recovering the public key. The seed, the key and the password's bytes are
+  zeroed before it returns (rule 7); a wrong password, a missing key and an
+  envelope this device cannot open are results, never exceptions. Its consumers
+  arrive with sending (part 9) and Safe transactions (part 10).
 
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
@@ -311,8 +326,8 @@ its KDoc and returns it as a result the UI shows as state.
   until its host covers the window, the screen says that capture cannot be
   blocked.
 - **Not yet.**
-  - Signing is the next consumer of the envelope. Until then nothing opens
-    one except to check the password.
+  - The biometric path (rule 3) and Settings → Security come with the next
+    part of `feature/wallet-ux`.
   - A way back when no envelope opens any more (a lost Keystore key, a
     forgotten password) comes with the wallet's reset and recovery flows.
 

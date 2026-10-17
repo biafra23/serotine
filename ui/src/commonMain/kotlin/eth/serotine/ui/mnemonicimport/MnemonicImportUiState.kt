@@ -2,6 +2,7 @@ package eth.serotine.ui.mnemonicimport
 
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.KeyProtection
 
 /**
  * Everything the seed-phrase screen renders: the dedicated seed UiState of the mnemonic
@@ -67,3 +68,20 @@ sealed interface PasswordStep {
     /** The key store does not work on this device: nothing can be added. */
     data object Unavailable : PasswordStep
 }
+
+/** How [this] protects a stored seed, display-ready: what the seed screens say under the password. */
+internal val KeyProtection.protectionText: String
+    get() = when (this) {
+        KeyProtection.HARDWARE ->
+            "The seed is stored encrypted under your wallet password and a key in this device's " +
+                "secure hardware: both are needed to open it, and a copy of it is useless elsewhere."
+        KeyProtection.SOFTWARE_KEY_STORE ->
+            "The seed is stored encrypted under your wallet password and this device's key store, " +
+                "which is not in secure hardware here (an emulator, or a device without it)."
+        KeyProtection.PASSWORD_ONLY ->
+            "The seed is stored encrypted under your wallet password alone: Serotine uses no hardware " +
+                "key store on this computer. Choose a strong password."
+        KeyProtection.PASSWORD_ONLY_TPM_NOT_USED ->
+            "The seed is stored encrypted under your wallet password alone: Serotine does not use this " +
+                "computer's TPM yet, even if it has one. Choose a strong password."
+    }

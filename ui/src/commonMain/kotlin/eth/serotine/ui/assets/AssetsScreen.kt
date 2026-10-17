@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,6 +73,7 @@ fun AssetsRoute(
     viewModel: AssetsViewModel,
     onWatchAddress: () -> Unit,
     onImportPhrase: () -> Unit,
+    onCreateAccount: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -81,6 +83,7 @@ fun AssetsRoute(
         state = state,
         onWatchAddress = onWatchAddress,
         onImportPhrase = onImportPhrase,
+        onCreateAccount = onCreateAccount,
         onAccountAction = { action ->
             if (action is AccountAction.Copy) copy(action.address) else onAccountAction(action)
         },
@@ -91,7 +94,8 @@ fun AssetsRoute(
 /**
  * The Assets screen as a pure function of [state]; stateless, so a test can render any
  * state directly. Its floating action button fans out into Watch address ([onWatchAddress])
- * and Import recovery phrase ([onImportPhrase]); a row's tap and its long-press menu (a
+ * Import recovery phrase ([onImportPhrase]) and Create account ([onCreateAccount]); a row's tap
+ * and its long-press menu (a
  * right click on desktop) ask [onAccountAction].
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -100,6 +104,7 @@ fun AssetsScreen(
     state: AssetsUiState,
     onWatchAddress: () -> Unit,
     onImportPhrase: () -> Unit,
+    onCreateAccount: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -119,6 +124,7 @@ fun AssetsScreen(
                     actions = listOf(
                         SpeedDialAction("Watch address", SerotineIcons.Visibility, onWatchAddress),
                         SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onImportPhrase),
+                        SpeedDialAction("Create account", Icons.Filled.Add, onCreateAccount),
                     ),
                     description = "Add account",
                 )

@@ -1,13 +1,18 @@
 package eth.serotine.data.keys
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.Signing
+import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -354,5 +359,65 @@ class EnvelopeKeyStoreTest {
             store.importMnemonic(Mnemonic(List(12) { "test" }.joinToString(" ")), password),
         )
         assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
+    }
+
+    // --- Signing.
+
+    private val digest = Digest.of("0x" + "5a".repeat(32))
+
+    /** Whether [signature] is [digest] signed by the key of [address], and has a low s. */
+    private fun signs(signature: Signature, address: Address): Boolean {
+        val compact = (signature.r + signature.s).fromHex()
+        val publicKey = Secp256k1.ecdsaRecover(compact, digest.hex.fromHex(), signature.recoveryId)
+        val hash = org.kotlincrypto.hash.sha3.Keccak256().digest(publicKey.copyOfRange(1, 65))
+        val recovered = Address.of("0x" + hash.copyOfRange(12, 32).toHex())
+        val halfOrder = java.math.BigInteger("7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0", 16)
+        return recovered == address && java.math.BigInteger(signature.s, 16) <= halfOrder
+    }
+
+    @Test
+    fun aStoredAccountsKeySignsTheDigestAsGivenAndNothingElse() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+
+        val signed = store.sign(hardhatAddress, digest, password)
+
+        assertIs<Signing.Signed>(signed)
+        assertTrue(signs(signed.signature, hardhatAddress), "recovers the account, with a low s")
+        // libsecp256k1's nonce is RFC 6979's: the same digest, the same signature.
+        assertEquals(signed, store.sign(hardhatAddress, digest, password))
+    }
+
+    @Test
+    fun aWrongPasswordOrAnAccountWithoutAKeySignsNothing() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+
+        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, WalletPassword("not the password")))
+        assertEquals(Signing.NoKey, store.sign(abandonAddress, digest, password))
+    }
+
+    @Test
+    fun anEnvelopeUnderAnotherAccountsNameSignsNothing() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        // The hardhat seed, put under the abandon account's name: its key does not derive that account.
+        envelopeOf(hardhatAddress).copyTo(envelopeOf(abandonAddress))
+
+        assertEquals(Signing.Unavailable, store.sign(abandonAddress, digest, password))
+    }
+
+    @Test
+    fun aNewMnemonicIsTwelveValidWordsAndStoresNothing() = runTest {
+        val store = store()
+
+        val created = store.newMnemonic()
+
+        assertIs<NewMnemonic.Created>(created)
+        assertEquals(12, created.mnemonic.words.size)
+        assertEquals(null, Bip39.problemWith(created.mnemonic.words))
+        assertEquals("Mnemonic(redacted)", created.mnemonic.toString())
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
+        assertTrue(created.mnemonic.text != (store.newMnemonic() as NewMnemonic.Created).mnemonic.text)
     }
 }

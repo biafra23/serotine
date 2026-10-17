@@ -58,6 +58,7 @@ class AssetsScreenTest {
                     state,
                     onWatchAddress = { adds += "watch" },
                     onImportPhrase = { adds += "import" },
+                    onCreateAccount = { adds += "create" },
                     onAccountAction = { actions += it },
                 )
             }
