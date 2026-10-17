@@ -29,6 +29,7 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -452,9 +453,11 @@ class SendViewModelTest {
         assertEquals(listOf("correct horse battery"), signer.passwords)
         assertEquals(daily.address, signer.asked.single().first)
         assertContentEquals(record.signed.raw, broadcaster.sent.single(), "what was signed is what was sent")
-        assertEquals(savings.address, record.to)
-        assertEquals(TransferAsset.Native, record.asset)
-        assertEquals(UInt256.of(100_000_000_000_000_000L), record.amount, "the amount typed, in wei")
+        assertEquals(
+            SentAction.Transfer(savings.address, TransferAsset.Native, UInt256.of(100_000_000_000_000_000L)),
+            record.action,
+            "the amount typed, in wei",
+        )
         assertEquals(7, record.nonce)
     }
 

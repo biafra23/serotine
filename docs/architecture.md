@@ -32,18 +32,24 @@ rule in code.
 
 - `:domain` depends on nothing of ours and on no framework. Its libraries are
   coroutines' `Flow` and kotlincrypto's Keccak-256, which the transaction
-  encoding hashes with (the EIP-1559 signing digest, the transaction hash),
-  both pure Kotlin on every target. It has no Android target on purpose: Android
+  encoding hashes with (the EIP-1559 signing digest, the transaction hash, a
+  Safe transaction's EIP-712 hash), both pure Kotlin on every target. It has
+  no Android target on purpose: Android
   consumers resolve its JVM variant, as they do kotlinx-coroutines, so nothing
   in it can ever import `android.*` (and that variant emits Java 17 class
-  files, since Android dexes it).
+  files, since Android dexes it). What it cannot do in pure Kotlin it asks a
+  port for: secp256k1 recovery (`SignatureRecovery`), JSON
+  (`SigningRequestCodec`).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
   `KeyStore` and `Signer`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
   `DisplayCurrencySetting`, `SentTransfers`, and `NativeBalances`, `TokenBalances`,
   `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient`,
   `NetworkUpgrades`, and for sending `TransactionInputs`, `Broadcaster`,
-  `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine) and
-  owns every data source.
+  `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine; for a
+  Safe's transactions `SafeTxQueue` and `SigningRequestCodec`
+  (`eth.serotine.data.safe`), `SignatureRecovery` (`eth.serotine.data.keys`,
+  libsecp256k1) and `SafeApprovals`, over the engine) and owns every data
+  source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
@@ -65,10 +71,10 @@ review finding, whatever it saves.
 
 | package | contents |
 |---|---|
-| `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
+| `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`, `SafeTx` and its `SigningRequest`) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
-| `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe`, `settings`, `transfers`, `files`) |
+| `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `files`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `transferstatus` follows a transfer once sent) |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu) and the display helpers they share (EIP-55, amounts, the light client's line, the seed screens' password step); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |

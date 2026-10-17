@@ -194,7 +194,33 @@ its KDoc and returns it as a result the UI shows as state.
   (docs/wallet-ux.md, screens 7 to 9) is its first consumer: the review takes
   the password under rule 8's protections, or offers the biometric prompt where
   the path is on, and the signer signs the quoted transaction's EIP-1559 digest.
-  Safe transactions follow in a later part of `feature/wallet-ux`.
+  A Safe transaction's approval or execution is such a transaction too.
+- **What a Safe owner signs** (`SignSafeTx`; docs/wallet-ux.md, *Co-signing a
+  Safe transaction*). The same `sign(owner, digest, unlock)`, with the Safe
+  transaction's EIP-712 hash as the digest: computed here from the raw
+  `SafeTx` fields, the Safe's address and the chain id (the domain of Safe
+  1.3.0 on, the only versions the app recognises), and signed as it is, with
+  no `eth_sign` prefix. The signature travels as `r ‖ s ‖ v`, `v` = 27 + the
+  recovery id, which is what the Safe's `checkSignatures` and an EIP-712
+  signer elsewhere produce for that hash. Before anything signs:
+  - the owner is a current owner of the Safe, as its verified storage lists
+    them, and the nonce is not one the Safe has passed;
+  - a delegate call is refused: the Safe would run the target's code as
+    itself, and no preview can say what that code does;
+  - so are gas and refund terms (`safeTxGas`, `baseGas`, `gasPrice`,
+    `gasToken`, `refundReceiver` other than zero): a refund can pay the Safe's
+    funds to whoever it names, bounded only by what the Safe holds, and a
+    `safeTxGas` lets a failing call use up the nonce;
+  - the key store's signature is recovered (`SignatureRecovery`, libsecp256k1)
+    and kept only when it recovers to the owner, as a co-signer's is.
+
+  Nothing about what is signed comes from the request's sender: the screen
+  shows what the fields decode to (`SafeTxAction`), and the hash is this
+  device's own. That is the independent second view of *What key storage does
+  not do* below; it is still the app's view, and for a Safe holding value not
+  the sole check. An owner may approve the hash on chain instead
+  (`approveHash`, an ordinary transaction from its account), which needs no
+  signature to travel at all.
 - **Biometric unlock** (rules 3 to 5), the user's opt-in in Settings → Security,
   on Android:
   - `HW_bio` is `AndroidBiometricKey`: an RSA-2048 pair in the Keystore,

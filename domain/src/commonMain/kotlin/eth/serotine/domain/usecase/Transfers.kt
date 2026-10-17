@@ -8,24 +8,20 @@ import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.hasValidChecksum
-import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.FeeLevel
-import eth.serotine.domain.repository.FeeReading
-import eth.serotine.domain.repository.GasEstimate
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
-import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
-import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TransactionInputs
@@ -106,12 +102,13 @@ sealed interface RecipientLookup {
  * A transfer quoted for review (docs/wallet-ux.md, screen 8): the unsigned [transaction] that
  * moves [amount] of [asset] from [from] to [to] at [level]'s fees, the most its fee can be
  * ([maxFee], gas limit × fee cap), and the balances it leaves — [nativeBefore], what this
- * wallet's own transfers not mined yet may still take of it ([pendingCost]), the least the
+ * wallet's own transactions not mined yet may still take of it ([pendingCost]), the least the
  * native balance can be after ([nativeAfterAtLeast]), and for a token its balance before, what
- * those transfers still move of it ([pendingTokenAmount]) and its balance after, both of them
- * counted. Every figure comes from verified state, each at its own block: the native balance
- * at [balanceBlock], the token's at [tokenBalanceBlock], the fees from the history up to
- * [feeBlock], and the transfer run as a verified call from the sender at [simulationBlock].
+ * this wallet's transfers of it not mined yet still move ([pendingTokenAmount]) and its balance
+ * after, both of them counted. Every figure comes from verified state, each at its own block:
+ * the native balance at [balanceBlock], the token's at [tokenBalanceBlock], the fees from the
+ * history up to [feeBlock], and the transfer run as a verified call from the sender at
+ * [simulationBlock].
  *
  * Only [QuoteTransfer] makes one, and nothing copies it: what [SendTransfer] signs is its
  * [transaction], so a display field changed beside it would show one transfer and sign another.
@@ -137,22 +134,34 @@ data class TransferQuote internal constructor(
     val tokenBalanceBlock: Long?,
     val feeBlock: Long,
     val simulationBlock: Long?,
-)
+) {
+    /** The quote of the transaction itself, which [SendTransfer] signs. */
+    internal val call: CallQuote
+        get() = CallQuote(
+            from = from,
+            level = level,
+            transaction = transaction,
+            maxFee = maxFee,
+            nativeBefore = nativeBefore,
+            pendingCost = pendingCost,
+            nativeAfterAtLeast = nativeAfterAtLeast,
+            balanceBlock = balanceBlock,
+            feeBlock = feeBlock,
+            simulationBlock = simulationBlock,
+        )
+}
 
 /**
- * Quotes a transfer: the sender's next nonce, the fees at [FeeLevel], the gas it takes, the
- * balances it needs, and the transfer run as a verified call from the sender, which must not
- * revert. Nothing is quoted on anything less than verified state, and an amount is in the
- * asset's smallest unit: prices never reach a transaction (CLAUDE.md, *Data sources*). On
- * [network] only, its chain id signed into the transaction.
+ * Quotes a transfer: the balances it needs, and the transaction that makes it, quoted as every
+ * transaction from an account this wallet holds is ([CallQuoter]: the sender's next nonce
+ * behind its own transactions not mined yet, the fees at [FeeLevel], the gas it takes, and the
+ * transfer run as a verified call from the sender, which must not revert). Nothing is quoted on
+ * anything less than verified state, and an amount is in the asset's smallest unit: prices never
+ * reach a transaction (CLAUDE.md, *Data sources*). On [network] only, its chain id signed into
+ * the transaction.
  *
- * The sender's own transfers a peer took and no block has yet ([SentTransfers]) count: the
- * nonce is never below the last of them plus one, and what they may still take of the native
- * balance, and of the token's, is not available to this one. Those mined since are forgotten,
- * and so are those a peer took more than [RECORD_LIFETIME_SECONDS] ago and still not mined: the
- * network's transaction pools have dropped them by then (geth's default lifetime), and kept they
- * would hold every later transfer behind a nonce no block takes. Only one transaction per nonce
- * can be mined, so taking such a nonce again can never pay twice. [clock] is in unix seconds.
+ * What the sender's transfers of the same token not mined yet still move ([SentTransfers]) is
+ * not this one's to move either. [clock] is in unix seconds.
  */
 class QuoteTransfer(
     private val inputs: TransactionInputs,
@@ -162,6 +171,7 @@ class QuoteTransfer(
     private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
 ) {
+    private val quoter = CallQuoter(inputs, sentTransfers, network, clock)
 
     /** [amount] of [asset] from [from] to [to], at [level]'s fees. */
     suspend operator fun invoke(
@@ -184,11 +194,9 @@ class QuoteTransfer(
         val native = async { nativeBalances.observeBalance(from).first() }
         val tokenBalance = token?.let { async { tokenBalances.observeBalance(from, it.address).first() } }
 
-        val nativeBefore = when (val reading = native.await()) {
-            is BalanceReading.Verified -> (reading.wei.toUInt256OrNull() ?: return@coroutineScope UNPROVEN) to
-                reading.blockNumber
-            BalanceReading.Syncing -> return@coroutineScope TransferQuoting.Syncing
-            is BalanceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
+        val nativeBefore = when (val read = NativeRead.of(native.await())) {
+            is NativeRead.Before -> read
+            is NativeRead.NotRead -> return@coroutineScope read.refusal.asTransferQuoting()
         }
         var tokenBlock: Long? = null
         val tokenBefore = when (val reading = tokenBalance?.await()) {
@@ -202,64 +210,18 @@ class QuoteTransfer(
             is TokenBalanceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
         }
         if (tokenBefore != null && tokenBefore < amount) return@coroutineScope TransferQuoting.InsufficientToken
-        if (token == null && nativeBefore.first < amount) return@coroutineScope TransferQuoting.InsufficientFunds
-        // Past the cheap checks: the nonces and the fee history, alongside the estimate and the run.
-        val nonce = async { inputs.nonce(from) }
-        val mined = async { inputs.minedNonce(from) }
-        val recorded = async { sentTransfers.observe().first() }
-        val fees = async { inputs.fees() }
-
-        val gas = when (val estimate = inputs.estimateGas(from, txTo, value, data)) {
-            // The engine's, priced under the fork the chain runs: on Sepolia's Amsterdam a plain
-            // transfer takes less than the 21000 it did before (EIP-2780), so no floor is added.
-            is GasEstimate.Estimated -> estimate.gas
-            is GasEstimate.Reverted -> return@coroutineScope TransferQuoting.Reverts(blockNumber = null)
-            // The EVM's words: about what the sender can pay, or something else it cannot do.
-            is GasEstimate.Infeasible -> return@coroutineScope if (aboutFunds(estimate.detail)) {
-                TransferQuoting.InsufficientFunds
-            } else {
-                TransferQuoting.Infeasible(estimate.detail)
-            }
-            is GasEstimate.Refused -> return@coroutineScope TransferQuoting.Refused
-            is GasEstimate.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(estimate.reason)
+        if (token == null && nativeBefore.wei < amount) return@coroutineScope TransferQuoting.InsufficientFunds
+        // A token that returns false refused the transfer as surely as one that reverts.
+        val accepts: (String) -> Boolean = { returned ->
+            token == null || returned.isEmpty() || returned.any { it != '0' }
         }
-        val simulationBlock = when (val simulation = inputs.simulate(from, txTo, value, data)) {
-            is Simulation.Succeeded -> {
-                // A token that returns false refused the transfer as surely as one that reverts.
-                if (token != null && simulation.returnHex.isNotEmpty() && simulation.returnHex.all { it == '0' }) {
-                    return@coroutineScope TransferQuoting.Reverts(simulation.blockNumber)
-                }
-                simulation.blockNumber
-            }
-            is Simulation.Reverted -> return@coroutineScope TransferQuoting.Reverts(simulation.blockNumber)
-            Simulation.Refused -> return@coroutineScope TransferQuoting.Refused
-            is Simulation.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(simulation.reason)
+        val (call, unmined) = when (val quoting = quoter.quote(from, txTo, value, data, level, nativeBefore, accepts)) {
+            is CallQuoting.Quoted -> quoting
+            is CallQuoting.Refused -> return@coroutineScope quoting.refusal.asTransferQuoting()
         }
-        val quote = when (val reading = fees.await()) {
-            is FeeReading.Quoted -> reading.quote
-            is FeeReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
-        }
-        val pendingNonce = when (val reading = nonce.await()) {
-            is NonceReading.Read -> reading.nonce
-            is NonceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
-        }
-        val minedCount = when (val reading = mined.await()) {
-            is NonceReading.Read -> reading.nonce
-            is NonceReading.Unavailable -> return@coroutineScope TransferQuoting.Unavailable(reading.reason)
-        }
-        // This wallet's own sends not mined yet: a record that cannot be read leaves the engine's.
-        val expiredBefore = clock() - RECORD_LIFETIME_SECONDS
-        val unmined = (recorded.await() as? SentTransferList.Loaded)?.transfers.orEmpty()
-            .filter { it.account == from && it.nonce >= minedCount && it.sentAt >= expiredBefore }
-        // Never below the mined count either: the two counts may come from two heads.
-        val next = maxOf(pendingNonce, minedCount, (unmined.maxOfOrNull { it.nonce } ?: -1) + 1)
-        sentTransfers.prune(from, minedCount, expiredBefore)
-        val pendingCost = unmined.sumOrNull { it.maxCost } ?: return@coroutineScope TransferQuoting.InsufficientFunds
-        val available = nativeBefore.first.minusOrNull(pendingCost)
-            ?: return@coroutineScope TransferQuoting.InsufficientFunds
         val pendingToken = token?.let { sending ->
-            unmined.filter { (it.asset as? TransferAsset.Erc20Token)?.token?.address == sending.address }
-                .sumOrNull { it.amount } ?: return@coroutineScope TransferQuoting.InsufficientToken
+            unmined.mapNotNull { it.tokenAmount(sending.address) }.sumOrNull()
+                ?: return@coroutineScope TransferQuoting.InsufficientToken
         }
         // What the token's earlier transfers move is not this one's to move: kept, the later one
         // would pass the run at the head and revert once they are mined, its fee paid all the same.
@@ -267,11 +229,6 @@ class QuoteTransfer(
             before.minusOrNull(pendingToken ?: UInt256.ZERO)?.takeIf { it >= amount }
                 ?: return@coroutineScope TransferQuoting.InsufficientToken
         }
-        // An engine answer this large is no answer: the use case never throws over it.
-        val maxFeePerGas = quote.maxFeePerGasOrNull(level) ?: return@coroutineScope UNPROVEN
-        val maxFee = maxFeePerGas.timesOrNull(UInt256.of(gas)) ?: return@coroutineScope UNPROVEN
-        val nativeCost = maxFee.plusOrNull(value) ?: return@coroutineScope TransferQuoting.InsufficientFunds
-        if (available < nativeCost) return@coroutineScope TransferQuoting.InsufficientFunds
         TransferQuoting.Quoted(
             TransferQuote(
                 from = from,
@@ -279,27 +236,18 @@ class QuoteTransfer(
                 asset = asset,
                 amount = amount,
                 level = level,
-                transaction = Eip1559Transaction(
-                    chainId = network.chainId,
-                    nonce = next,
-                    maxPriorityFeePerGas = quote.tip(level),
-                    maxFeePerGas = maxFeePerGas,
-                    gasLimit = gas,
-                    to = txTo,
-                    value = value,
-                    data = data,
-                ),
-                maxFee = maxFee,
-                nativeBefore = nativeBefore.first,
-                nativeAfterAtLeast = available - nativeCost,
-                pendingCost = pendingCost,
+                transaction = call.transaction,
+                maxFee = call.maxFee,
+                nativeBefore = call.nativeBefore,
+                nativeAfterAtLeast = call.nativeAfterAtLeast,
+                pendingCost = call.pendingCost,
                 tokenBefore = tokenBefore,
                 pendingTokenAmount = pendingToken,
                 tokenAfter = tokenAvailable?.let { it - amount },
-                balanceBlock = nativeBefore.second,
+                balanceBlock = call.balanceBlock,
                 tokenBalanceBlock = tokenBlock,
-                feeBlock = quote.blockNumber,
-                simulationBlock = simulationBlock,
+                feeBlock = call.feeBlock,
+                simulationBlock = call.simulationBlock,
             ),
         )
     }
@@ -307,19 +255,20 @@ class QuoteTransfer(
 
 private val UNPROVEN = TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN)
 
-/**
- * How long a recorded transfer that no block took holds its nonce: three hours, the lifetime
- * geth's transaction pool gives a transaction before it drops it.
- */
-const val RECORD_LIFETIME_SECONDS: Long = 3 * 60 * 60
+/** What this transaction moves of the token at [token]: its amount when it is a transfer of that token. */
+private fun SentTransfer.tokenAmount(token: Address): UInt256? = (action as? SentAction.Transfer)
+    ?.takeIf { (it.asset as? TransferAsset.Erc20Token)?.token?.address == token }
+    ?.amount
 
-/** The sum of [of] over the transfers, or null when it overflows 256 bits. */
-private inline fun List<SentTransfer>.sumOrNull(of: (SentTransfer) -> UInt256): UInt256? =
-    fold(UInt256.ZERO as UInt256?) { sum, transfer -> sum?.plusOrNull(of(transfer)) }
-
-/** Whether an infeasible estimate's [detail] (geth's words) is about the sender's funds. */
-private fun aboutFunds(detail: String): Boolean =
-    "insufficient funds" in detail || "exceeds allowance" in detail
+/** This refusal of the transaction as the transfer's. */
+private fun CallRefusal.asTransferQuoting(): TransferQuoting = when (this) {
+    CallRefusal.InsufficientFunds -> TransferQuoting.InsufficientFunds
+    is CallRefusal.Infeasible -> TransferQuoting.Infeasible(detail)
+    is CallRefusal.Reverts -> TransferQuoting.Reverts(blockNumber)
+    CallRefusal.Refused -> TransferQuoting.Refused
+    CallRefusal.Syncing -> TransferQuoting.Syncing
+    is CallRefusal.Unavailable -> TransferQuoting.Unavailable(reason)
+}
 
 /** The outcome of [QuoteTransfer]. */
 sealed interface TransferQuoting {
@@ -384,39 +333,26 @@ class SendTransfer(
      * the same one, and only one of the two can ever be mined. The broadcast and the record are one
      * step a cancellation cannot cut in half; a record that cannot be saved does not undo the send.
      */
-    suspend operator fun invoke(quote: TransferQuote, unlock: Unlock): TransferSending {
-        val transaction = quote.transaction
-        val signature = when (val signed = signer.sign(quote.from, transaction.signingDigest(), unlock)) {
-            is Signing.Signed -> signed.signature
-            else -> return TransferSending.NotSigned(signed)
-        }
-        val transfer = SentTransfer(
-            account = quote.from,
-            nonce = transaction.nonce,
-            signed = SignedTransfer(transaction.encodeSigned(signature)),
-            to = quote.to,
-            asset = quote.asset,
-            amount = quote.amount,
-            maxCost = quote.maxFee.plusOrNull(transaction.value) ?: quote.maxFee,
-            sentAt = clock(),
-        )
-        return withContext(NonCancellable) {
-            when (val broadcast = broadcaster.send(transfer.signed.raw)) {
-                is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
-                else -> TransferSending.NotSent(broadcast, transfer)
-            }
-        }
-    }
+    suspend operator fun invoke(quote: TransferQuote, unlock: Unlock): TransferSending = signAndSend(
+        signer,
+        broadcaster,
+        sentTransfers,
+        quote.call,
+        SentAction.Transfer(quote.to, quote.asset, quote.amount),
+        clock,
+        unlock,
+    )
 }
 
 /**
- * Broadcasts a transfer signed but not sent again, byte for byte: what one is retried with,
+ * Broadcasts a transaction signed but not sent again, byte for byte: what one is retried with,
  * never a new quote, which could take the next nonce while the first one is still on its way
  * and pay twice. A retry refused as rejected may be the first broadcast's own doing: no peer
  * answered then, yet one took it, and a block has since used its nonce. So a rejection is
- * checked against the transfer's verified receipt ([receipts]) before it is believed: a
- * transfer already in a block is sent, one whose receipt cannot be verified right now is
- * [TransferSending.RejectionUnverified]. [clock] is in unix seconds.
+ * checked against the transaction's verified receipt ([receipts]) before it is believed: a
+ * transaction already in a block is sent, one whose receipt cannot be verified right now is
+ * [TransferSending.RejectionUnverified]. A transfer's, or a Safe transaction's approval or
+ * execution alike. [clock] is in unix seconds.
  */
 class RebroadcastTransfer(
     private val broadcaster: Broadcaster,
@@ -440,16 +376,9 @@ class RebroadcastTransfer(
 }
 
 /**
- * [transfer], which a peer took: recorded with the moment it was taken ([clock], unix seconds),
- * which its lifetime in the network's pools runs from, and [TransferSending.Sent] by its hash.
+ * The outcome of [SendTransfer], and of every other transaction this wallet signs and sends
+ * ([ApproveSafeTxOnChain], [ExecuteSafeTx]).
  */
-private suspend fun sent(sentTransfers: SentTransfers, transfer: SentTransfer, clock: () -> Long): TransferSending {
-    sentTransfers.record(transfer.copy(sentAt = clock()))
-    // The hash is the raw bytes' own: what the receipt is looked up by.
-    return TransferSending.Sent(transfer.hash)
-}
-
-/** The outcome of [SendTransfer]. */
 sealed interface TransferSending {
 
     /** Broadcast; [hash] is its transaction hash. */
@@ -483,7 +412,7 @@ sealed interface TransferSending {
 }
 
 /**
- * A sent transfer (docs/wallet-ux.md, screen 9): what was sent, from its record (null when the
+ * A sent transaction (docs/wallet-ux.md, screen 9): what was sent, from its record (null when the
  * record has none: an older install, an unreadable record), and where it stands, as its verified
  * receipt says.
  */

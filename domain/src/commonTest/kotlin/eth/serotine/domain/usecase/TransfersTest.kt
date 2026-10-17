@@ -26,6 +26,7 @@ import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
@@ -225,9 +226,7 @@ class TransfersTest {
             account = alice,
             nonce = 7,
             signed = SignedTransfer(byteArrayOf(2, 1)),
-            to = bob,
-            asset = TransferAsset.Native,
-            amount = UInt256.of(100_000_000_000_000_000L),
+            action = SentAction.Transfer(bob, TransferAsset.Native, UInt256.of(100_000_000_000_000_000L)),
             maxCost = UInt256.of(900_000_000_000_000_000L), // 0.9 of the 1 ETH balance
             sentAt = 1_800_000_000,
         )
@@ -254,8 +253,8 @@ class TransfersTest {
     @Test
     fun anOwnTransferNoBlockTookInTimeHoldsItsNonceNoLonger() = runTest {
         val earlier = SentTransfer(
-            alice, 7, SignedTransfer(byteArrayOf(2, 1)), bob, TransferAsset.Native, UInt256.ONE, UInt256.ONE,
-            sentAt = now - RECORD_LIFETIME_SECONDS - 1,
+            alice, 7, SignedTransfer(byteArrayOf(2, 1)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.ONE, sentAt = now - RECORD_LIFETIME_SECONDS - 1,
         )
         sent.transfers.value = listOf(earlier)
 
@@ -283,8 +282,9 @@ class TransfersTest {
     @Test
     fun whatAnOwnTokenTransferStillMovesIsNotAvailableToTheNext() = runTest {
         val earlier = SentTransfer(
-            alice, 7, SignedTransfer(byteArrayOf(2, 1)), bob, TransferAsset.Erc20Token(usdc),
-            amount = UInt256.of(4_000_000), maxCost = UInt256.ONE, sentAt = now,
+            alice, 7, SignedTransfer(byteArrayOf(2, 1)),
+            SentAction.Transfer(bob, TransferAsset.Erc20Token(usdc), amount = UInt256.of(4_000_000)),
+            maxCost = UInt256.ONE, sentAt = now,
         )
         sent.transfers.value = listOf(earlier)
         val usdcAsset = TransferAsset.Erc20Token(usdc)
@@ -323,12 +323,14 @@ class TransfersTest {
         assertEquals(SignedTransfer(quote.transaction.encodeSigned(signature)), record.signed)
         assertEquals(quote.maxFee + UInt256.ONE, record.maxCost)
         assertEquals(1_800_000_123, record.sentAt)
+        assertEquals(SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE), record.action)
     }
 
     @Test
     fun aSentTransferIsSeenWithItsRecordAndItsReceipt() = runTest {
         val record = SentTransfer(
-            alice, 7, SignedTransfer(byteArrayOf(2, 9)), bob, TransferAsset.Native, UInt256.ONE, UInt256.ONE, 1,
+            alice, 7, SignedTransfer(byteArrayOf(2, 9)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.ONE, 1,
         )
         sent.transfers.value = listOf(record)
         val receipts = object : ReceiptTracker {

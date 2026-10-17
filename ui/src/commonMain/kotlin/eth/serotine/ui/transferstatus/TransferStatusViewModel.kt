@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.usecase.ObserveSentTransfer
@@ -83,17 +84,22 @@ class TransferStatusViewModel(
         StatusStep("Included", StepState.FAILED, "In block ${grouped(block)}, its receipt verified: it reverted")
     }
 
-    private fun summary(transfer: SentTransfer): SentSummary {
-        val (symbol, decimals, icon) = when (val asset = transfer.asset) {
+    /**
+     * What [transfer] sent, when it is a transfer: this screen is Send's. A Safe transaction's
+     * approval or execution is not opened here (Send makes none); its screens say what it did.
+     */
+    private fun summary(transfer: SentTransfer): SentSummary? {
+        val sent = transfer.action as? SentAction.Transfer ?: return null
+        val (symbol, decimals, icon) = when (val asset = sent.asset) {
             TransferAsset.Native -> Triple(network.nativeSymbol, NATIVE_DECIMALS, network.nativeIcon)
             is TransferAsset.Erc20Token ->
                 Triple(displaySymbol(asset.token.symbol), asset.token.decimals, asset.token.icon)
         }
         return SentSummary(
-            amount = "${transfer.amount.formatUnits(decimals)} $symbol",
+            amount = "${sent.amount.formatUnits(decimals)} $symbol",
             symbol = symbol,
             icon = icon,
-            to = Eip55.format(transfer.to),
+            to = Eip55.format(sent.to),
             from = Eip55.format(transfer.account),
         )
     }

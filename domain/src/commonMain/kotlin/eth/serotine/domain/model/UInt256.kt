@@ -132,6 +132,12 @@ class UInt256 private constructor(
     /** This amount as [Wei]. */
     fun toWei(): Wei = Wei.of(toDecimal())
 
+    /** This number as a [Long], or null when it is above [Long.MAX_VALUE] (2^63 - 1). */
+    fun toLongOrNull(): Long? {
+        if ((2 until LIMBS).any { limbs[it] != 0 } || limbs[1] < 0) return null
+        return (limb(1) shl LIMB_BITS) or limb(0)
+    }
+
     override fun equals(other: Any?): Boolean = other is UInt256 && limbs.contentEquals(other.limbs)
 
     override fun hashCode(): Int = limbs.contentHashCode()

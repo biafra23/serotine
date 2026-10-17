@@ -262,4 +262,14 @@ class UInt256Test {
         assertEquals(Wei.of(max), u(max).toWei())
         assertEquals(Wei.of("0"), UInt256.ZERO.toWei())
     }
+
+    @Test
+    fun convertsToALongWhenItFitsOne() {
+        assertEquals(0L, UInt256.ZERO.toLongOrNull())
+        assertEquals(4_294_967_296L, UInt256.of(4_294_967_296L).toLongOrNull())
+        assertEquals(Long.MAX_VALUE, UInt256.of(Long.MAX_VALUE).toLongOrNull())
+        assertNull(u("9223372036854775808").toLongOrNull(), "2^63")
+        assertNull(u("18446744073709551616").toLongOrNull(), "2^64")
+        assertNull(u(max).toLongOrNull())
+    }
 }

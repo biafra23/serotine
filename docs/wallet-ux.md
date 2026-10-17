@@ -204,15 +204,52 @@ upgrades*).
 16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
     owners are shown with blockies, a "this device" mark on the ones held
     here, and the threshold; the modules and guard follow them.
+    - Queue lists this device's pending transactions in nonce order, from
+      the Safe's verified nonce on: one whose nonce the Safe has passed is
+      gone (`ObserveSafeTxQueue`), and the file drops it at the next
+      proposal, import or signature. Two at one nonce (a transfer and its
+      rejection) are both listed; only one can ever run.
+    - Send from a Safe proposes a transfer (`ProposeSafeTx`): native or
+      ERC-20, a plain call with no refund, at the Safe's verified nonce or
+      the first after those queued from it without a gap (one queued far
+      ahead, as an imported request can be, moves nothing). The Safe's balance less what the
+      transactions queued before it move must cover it, and the Safe's call
+      is run as a verified call from the Safe; the review says when the
+      engine would not run it. Nothing is queued until an owner held here
+      signs it, so a proposal given up leaves no nonce taken.
 17. **Safe transaction**
-    - The action, decoded here from the raw transaction (a transfer, an owner
-      change, or "unknown call" with its data), and the Safe nonce.
-      `delegatecall` is marked as such.
-    - A refund, when `gasPrice` is not zero: the most it can cost the Safe,
-      in which token (`gasToken`), and who receives it (`refundReceiver`).
-    - Each owner's state: signed, approved on chain, or missing.
-    - Share request (QR or text) · Approve on chain · Execute, once the
-      threshold is met.
+    - The action, decoded here from the raw transaction (`SafeTxAction`): a
+      native or ERC-20 transfer, a change of the Safe's settings (an owner
+      added, removed or swapped, the threshold, a module, the guard, the
+      fallback handler), a rejection (the Safe calling
+      itself with nothing: it uses up the nonce), or a contract call with its
+      selector; and the Safe nonce, with how many run before it.
+    - `delegatecall` is marked as such and decoded no further: the Safe runs
+      the target's code as itself. This wallet shows it and does not sign,
+      approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
+      another wallet through MultiSend arrives as one. Allowing a pinned
+      MultiSendCallOnly is the owner's decision.
+    - Gas and refund terms, when any of `safeTxGas`, `baseGas`, `gasPrice`,
+      `gasToken` or `refundReceiver` is not zero: shown, and marked as what
+      this wallet does not sign, approve or execute
+      (`SafeTxRefusal.GasTerms`), as it proposes none. A refund pays
+      `(gas used + baseGas) × gasPrice` in `gasToken` to `refundReceiver`,
+      bounded only by what the Safe holds (for ether the gas price is capped,
+      `baseGas` is not), and with a gas price the call gets exactly
+      `safeTxGas`; a `safeTxGas` without one lets a failing call use up the
+      nonce. Allowing some of these terms is the owner's decision.
+    - Each owner's state (`ReadSafeTxOwners`): signed (a signature that
+      recovers to it over the hash computed here), approved on chain (a
+      verified `approvedHashes`), missing, or not verifiable now; a signature
+      of an address that is no owner now counts for nobody.
+    - Share request (QR or text) · Sign (an owner held here) · Approve on
+      chain · Execute, once the threshold is met. Execute may be sent from
+      any account held here, an owner's counting as its own confirmation;
+      only the Safe's next nonce can be executed, and an approval or
+      execution sent and not mined yet is not offered again, from any
+      account held here. What is shown and shared carries the signatures of the
+      Safe's current owners only, so another device never refuses it for an
+      owner removed since.
 
 ### Settings tab
 
@@ -385,25 +422,53 @@ Applied:
   JSON object with the chain id, the Safe, the `SafeTx` fields (`to`,
   `value`, `data`, `operation`, `safeTxGas`, `baseGas`, `gasPrice`,
   `gasToken`, `refundReceiver`, `nonce`) and the signatures collected so far.
-  It carries no label, summary or hash for the receiver to trust.
+  It carries no label, summary or hash for the receiver to trust. Version 1
+  (`JsonSigningRequestCodec`):
+
+  ```
+  {"v":1,"chainId":11155111,"safe":"0x…","tx":{"to":"0x…","value":"0","data":"0x…",
+   "operation":0,"safeTxGas":"0","baseGas":"0","gasPrice":"0","gasToken":"0x…",
+   "refundReceiver":"0x…","nonce":"4"},"signatures":[{"owner":"0x…","signature":"0x…"}]}
+  ```
+
+  - One line, in this key order; addresses and bytes lower-case hex with
+    `0x`; every uint256, the nonce included, a decimal string without a
+    leading zero; each signature `r ‖ s ‖ v` (65 bytes, `v` 27 or 28, a low
+    `s`) of the raw hash; one per owner, in ascending owner order.
+  - Decoded only when the text, less the whitespace around it, is exactly
+    the encoding of what it decodes to: a second value of a key, an unknown
+    field, a comment, another form of a number cannot ride along. Another
+    `v` is "a newer version", another chain "not Sepolia"; anything else,
+    and text over 140,000 characters or nested deeper than the format, is
+    "not a signing request".
 - **It travels as one QR code**, or as text through the platform's share
-  sheet when it is too large for one. Nothing else leaves the device: the
-  queue of pending transactions and signatures is kept locally.
-- **The receiving device checks it against the chain** before showing it:
+  sheet when it is too large for one. A USDC transfer with one signature is
+  702 bytes, a version-21 QR code at error correction M; each further
+  signature adds 202 (904 for a 2-of-3 Safe's second signer). Nothing else
+  leaves the device: the queue of pending transactions and signatures is
+  kept locally (`FileSafeTxQueue`, beside the account list), and a
+  signature is queued only once it has passed the checks below.
+- **The receiving device checks it against the chain** before showing it
+  (`ImportSigningRequest`):
   the chain id is Sepolia; the Safe is detected as a Safe; the nonce is not
   below the Safe's verified nonce; the `SafeTx` hash is computed here; every
   signature is a current owner's over that hash. An ECDSA signature must
   recover to the owner; a contract owner's, such as the passkey signer of a
   hardware P-256 key, must pass a verified EIP-1271 `isValidSignature` call
-  to that owner. A request that fails
+  to that owner (version 1 carries ECDSA signatures only; the passkey owner
+  brings the next version). A request that fails
   any check is refused with the reason. What the screen shows (17) is
   decoded here from those fields.
 - **`approveHash` is the on-chain alternative**: an owner account the user
   holds approves the hash in a transaction, which needs no transport between
-  devices.
-- **Execution** is `execTransaction` sent by an owner EOA the user holds,
+  devices. It is quoted and sent as any transaction from that account is
+  (Send's quote: nonce, fees, a verified run).
+- **Execution** is `execTransaction` sent by an account the user holds,
   once signatures and approvals reach the threshold, followed like a send
-  (9).
+  (9). The executing account, when it is an owner, confirms it by sending it;
+  approvals on chain are read only when the signatures fall short. Its run is
+  the whole execution — the Safe's checks, its guard, the call — as a
+  verified call from that account, and one that would fail is not signed.
 
 ## Not part of this page
 

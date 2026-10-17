@@ -1,10 +1,16 @@
 package eth.serotine.data.transfers
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SafeSignature
+import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,9 +45,7 @@ class FileSentTransfersTest {
             account = account,
             nonce = nonce,
             signed = SignedTransfer(byteArrayOf(2, nonce.toByte(), -1)),
-            to = bob,
-            asset = asset,
-            amount = UInt256.of(1_500_000),
+            action = SentAction.Transfer(bob, asset, UInt256.of(1_500_000)),
             maxCost = UInt256.of(21_000L * 30_000_000_000L),
             sentAt = 1_800_000_000 + nonce,
         )
@@ -87,6 +91,47 @@ class FileSentTransfersTest {
         assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_800_000_009))
 
         assertEquals(listOf(transfer(9), transfer(3, account = bob)), stored())
+    }
+
+    @Test
+    fun aSafeTransactionsApprovalAndExecutionAreRecordedWithTheirRequest() = runTest {
+        val safe = Address.of("0x" + "5a".repeat(20))
+        // A made-up signature, of no key anyone holds.
+        val signature = SafeSignature.Ecdsa(bob, Signature("1".padStart(64, '0'), "2".padStart(64, '0'), 1))
+        val request = SigningRequest.of(
+            Network.SEPOLIA,
+            safe,
+            SafeTx.call(bob, UInt256.of(5), ByteArray(0), nonce = 3),
+            listOf(signature),
+        )
+        val approval = transfer(7).copy(action = SentAction.SafeApproval(request))
+        val execution = transfer(8).copy(action = SentAction.SafeExecution(request))
+
+        record().record(approval)
+        record().record(execution)
+
+        assertEquals(listOf(approval, execution), stored())
+    }
+
+    @Test
+    fun aRecordOfTheFirstFormatReadsAsItWasWritten() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        // What part 11 wrote, before a record could be a Safe transaction's.
+        val v1 = """{"version":1,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
+            """"to":"${bob.hex}","token":null,"amount":"1500000","maxCost":"630000000000000","sentAt":1800000007}]}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString(v1) }
+
+        assertEquals(listOf(transfer(7)), stored())
+    }
+
+    @Test
+    fun aRecordThatIsBothOrNeitherIsDamaged() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val neither = """{"version":2,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
+            """"maxCost":"1","sentAt":1800000007}]}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString(neither) }
+
+        assertEquals(emptyList(), stored())
     }
 
     @Test

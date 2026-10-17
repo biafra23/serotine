@@ -54,16 +54,21 @@ Modules (Gradle):
 - **data** — the adapters behind the ports: `FileAccountRepository` (the
   account list, persisted as a JSON file; `InMemoryAccountRepository` for tests),
   the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
-  seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
+  seeds in envelopes, docs/keys-and-signing.md; and `Secp256k1Recovery`, which
+  finds the address a signature recovers to and holds no key), and the Myotis
+  engine adapter
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
   token metadata, prices and address kinds, the peer-reported network-upgrade
-  advisory, and for sending the nonce, fees, gas, broadcast, receipts and ENS
-  names), whose glue over `io.myotis.api` lives in a `jvmSharedMain` source
+  advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
+  names, and a Safe's owners' approvals on chain), whose glue over
+  `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
   (`eth.serotine.data.upgrade`); the built-in token list and the user's token
   settings (`eth.serotine.data.tokens`); the Chainlink feed table
-  (`eth.serotine.data.prices`); the pinned Safe deployments
-  (`eth.serotine.data.safe`); and the display currency
+  (`eth.serotine.data.prices`); the pinned Safe deployments, the queue of
+  Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
+  the record of sent transactions (`eth.serotine.data.transfers`); and the
+  display currency
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
   engine's AAR.
