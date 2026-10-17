@@ -15,8 +15,8 @@ value class Digest private constructor(val hex: String) {
     companion object {
         private val SHAPE = Regex("^[0-9a-f]{64}$")
 
-        /** [hex] (with or without `0x`, any case) as a digest, or null when it is not 32 bytes of hex. */
-        fun parse(hex: String): Digest? = hex.removePrefix("0x").lowercase().takeIf(SHAPE::matches)?.let(::Digest)
+        /** [hex] (with or without `0x` or `0X`, any case) as a digest, or null when it is not 32 bytes of hex. */
+        fun parse(hex: String): Digest? = hex.lowercase().removePrefix("0x").takeIf(SHAPE::matches)?.let(::Digest)
 
         /** [parse], throwing on bad input. */
         fun of(hex: String): Digest = requireNotNull(parse(hex)) { "not a 32-byte digest: '$hex'" }

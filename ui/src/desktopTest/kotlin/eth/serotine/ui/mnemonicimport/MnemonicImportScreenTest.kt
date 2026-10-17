@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test

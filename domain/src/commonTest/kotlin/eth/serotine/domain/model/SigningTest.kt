@@ -14,6 +14,8 @@ class SigningTest {
     @Test
     fun aDigestIsThirtyTwoBytesOfHexInAnyCaseWithOrWithoutPrefix() {
         assertEquals("ab".repeat(32), Digest.of("0x" + "AB".repeat(32)).hex)
+        assertEquals("ab".repeat(32), Digest.of("0X" + "ab".repeat(32)).hex)
+        assertEquals("ab".repeat(32), Digest.of("ab".repeat(32)).hex)
         assertNull(Digest.parse("ab".repeat(31)))
         assertNull(Digest.parse("zz".repeat(32)))
         assertFailsWith<IllegalArgumentException> { Digest.of("0x") }

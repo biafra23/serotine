@@ -2,7 +2,7 @@ package eth.serotine.ui.createaccount
 
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
-import eth.serotine.ui.mnemonicimport.PasswordStep
+import eth.serotine.ui.components.PasswordStep
 
 /**
  * Everything Create account renders (docs/wallet-ux.md, screen 12): a seed UiState of the

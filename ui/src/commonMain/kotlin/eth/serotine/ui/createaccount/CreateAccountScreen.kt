@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import eth.serotine.ui.mnemonicimport.PasswordStep
+import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers

@@ -11,7 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.Mnemonic
-import eth.serotine.ui.mnemonicimport.PasswordStep
+import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test

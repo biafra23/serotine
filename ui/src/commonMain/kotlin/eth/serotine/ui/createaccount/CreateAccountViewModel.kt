@@ -10,11 +10,11 @@ import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
 import eth.serotine.domain.usecase.NewRecoveryPhrase
+import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.createaccount.CreateAccountUiState.Checking
 import eth.serotine.ui.createaccount.CreateAccountUiState.Securing
 import eth.serotine.ui.createaccount.CreateAccountUiState.Showing
-import eth.serotine.ui.mnemonicimport.PasswordStep
-import eth.serotine.ui.mnemonicimport.protectionText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,7 +67,8 @@ class CreateAccountViewModel(
             }
             state.value = when (made) {
                 // Made after the screen was left: not kept, so never shown later as if fresh.
-                is NewMnemonic.Created -> if (shown) Showing(made.mnemonic) else CreateAccountUiState.Restart(HIDDEN)
+                is NewMnemonic.Created ->
+                    if (shown) Showing(made.mnemonic) else CreateAccountUiState.Restart(NEVER_SHOWN)
                 NewMnemonic.Unavailable -> CreateAccountUiState.Unavailable
             }
         }
@@ -234,5 +235,8 @@ class CreateAccountViewModel(
         const val CHECKED_WORDS = 3
         const val HIDDEN = "The phrase was cleared when the screen was left, before it was stored, and it will " +
             "never be used. Cross out every word of it you wrote down, then start again with a new phrase."
+
+        // The screen was left while the phrase was being made: nothing was shown, nothing to cross out.
+        const val NEVER_SHOWN = "The screen was left before a phrase was shown. Start again for a new one."
     }
 }

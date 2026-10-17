@@ -14,7 +14,7 @@ import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.FakeAccounts
-import eth.serotine.ui.mnemonicimport.PasswordStep
+import eth.serotine.ui.components.PasswordStep
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -189,7 +189,8 @@ class CreateAccountViewModelTest {
         keys.gate!!.complete(Unit)
         runCurrent()
 
-        assertIs<CreateAccountUiState.Restart>(viewModel.uiState.value)
+        val restart = assertIs<CreateAccountUiState.Restart>(viewModel.uiState.value)
+        assertTrue("Cross out" !in restart.message, "no words were shown, so none to cross out")
         viewModel.startOver()
         runCurrent()
         assertIs<CreateAccountUiState.Showing>(viewModel.uiState.value, "the next phrase is made while shown")
