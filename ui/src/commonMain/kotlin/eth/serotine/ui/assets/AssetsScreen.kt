@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,6 +78,7 @@ fun AssetsRoute(
     onWatchAddress: () -> Unit,
     onImportPhrase: () -> Unit,
     onCreateAccount: () -> Unit,
+    onCreateSafe: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -87,6 +89,7 @@ fun AssetsRoute(
         onWatchAddress = onWatchAddress,
         onImportPhrase = onImportPhrase,
         onCreateAccount = onCreateAccount,
+        onCreateSafe = onCreateSafe,
         onAccountAction = { action ->
             if (action is AccountAction.Copy) copy(action.address) else onAccountAction(action)
         },
@@ -96,10 +99,10 @@ fun AssetsRoute(
 
 /**
  * The Assets screen as a pure function of [state]; stateless, so a test can render any
- * state directly. Its floating action button fans out into Watch address ([onWatchAddress])
- * Import recovery phrase ([onImportPhrase]) and Create account ([onCreateAccount]); a row's tap
- * and its long-press menu (a
- * right click on desktop) ask [onAccountAction].
+ * state directly. Its floating action button fans out into Watch address ([onWatchAddress]),
+ * Import recovery phrase ([onImportPhrase]), Create account ([onCreateAccount]) and, once an
+ * account's key is held here to pay for its deployment, Create Safe ([onCreateSafe]); a row's tap
+ * and its long-press menu (a right click on desktop) ask [onAccountAction].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +111,7 @@ fun AssetsScreen(
     onWatchAddress: () -> Unit,
     onImportPhrase: () -> Unit,
     onCreateAccount: () -> Unit,
+    onCreateSafe: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -124,10 +128,13 @@ fun AssetsScreen(
             // No add to offer while the stored list cannot be read: it would be refused.
             if (state !is AssetsUiState.ListUnavailable) {
                 SpeedDialFab(
-                    actions = listOf(
+                    actions = listOfNotNull(
                         SpeedDialAction("Watch address", SerotineIcons.Visibility, onWatchAddress),
                         SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onImportPhrase),
                         SpeedDialAction("Create account", Icons.Filled.Add, onCreateAccount),
+                        // An account held here pays for the deployment (docs/wallet-ux.md, screen 2).
+                        SpeedDialAction("Create Safe", Icons.Filled.Lock, onCreateSafe)
+                            .takeIf { (state as? AssetsUiState.Ready)?.canCreateSafe == true },
                     ),
                     description = "Add account",
                 )

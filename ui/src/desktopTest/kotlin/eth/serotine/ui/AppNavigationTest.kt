@@ -74,6 +74,12 @@ import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
+import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.createsafe.CREATE_SAFE_CONTINUE_TAG
+import eth.serotine.ui.createsafe.CREATE_SAFE_DEPLOY_TAG
+import eth.serotine.ui.createsafe.CREATE_SAFE_NAME_TAG
+import eth.serotine.ui.createsafe.CREATE_SAFE_PASSWORD_TAG
+import eth.serotine.ui.createsafe.CREATE_SAFE_THRESHOLD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
@@ -100,6 +106,7 @@ import eth.serotine.ui.send.SEND_SIGN_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
 import eth.serotine.ui.tokens.TOKENS_ROW_TAG
 import eth.serotine.ui.transferstatus.TRANSFER_HASH_TAG
+import eth.serotine.ui.transferstatus.TRANSFER_SAFE_TAG
 import eth.serotine.ui.update.UPDATE_REQUIRED_TAG
 import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
 import eth.serotine.ui.watch.WATCH_NAME_TAG
@@ -232,7 +239,7 @@ class AppNavigationTest {
             override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
             override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
         },
-        transactionInputs = FakeTransactionInputs(),
+        transactionInputs = FactoryInputs(),
         broadcaster = broadcaster,
         receipts = FakeReceipts(),
         names = FakeNames(),
@@ -242,6 +249,7 @@ class AppNavigationTest {
         signingRequests = codec,
         signatureRecovery = recovery,
         safeApprovals = FakeApprovals(),
+        safeReleases = FakeReleases(),
         network = Network.SEPOLIA,
     )
 
@@ -655,5 +663,52 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithText("Vitalik").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Watch-only").assertIsDisplayed()
         assertEquals(listOf(AccountCustody.Watched), accounts.value.map { it.custody })
+    }
+
+    @Test
+    fun aSafeIsCreatedFromTheFloatingActionButtonAndItsDeploymentFollowed() {
+        accounts.value = listOf(daily, savings)
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        showApp()
+
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Create Safe").performClick()
+        // Over the bar, as every flow that ends in a transaction.
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        rule.onNodeWithText("Create Safe 1/3").assertIsDisplayed()
+        rule.onNodeWithTag(CREATE_SAFE_NAME_TAG).performTextInput("Family vault")
+        rule.onNodeWithText("Savings").performClick()
+        rule.onNodeWithTag(CREATE_SAFE_CONTINUE_TAG).performScrollTo().performClick()
+        rule.onNodeWithText("Create Safe 2/3").assertIsDisplayed()
+        rule.onNodeWithTag(CREATE_SAFE_THRESHOLD_TAG).assertTextEquals("1 of 2")
+        rule.onNodeWithTag(CREATE_SAFE_CONTINUE_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Verified simulation").fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithText("Create Safe 3/3").assertIsDisplayed()
+        rule.onNodeWithTag(CREATE_SAFE_PASSWORD_TAG).performScrollTo().performTextInput("correct horse")
+        rule.onNodeWithTag(CREATE_SAFE_DEPLOY_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        val deployment = sentTransfers.transfers.value.single()
+        val action = deployment.action as SentAction.SafeDeployment
+        assertEquals(listOf(daily.address, savings.address), action.owners)
+        assertEquals("Family vault", action.label)
+        rule.onNodeWithText("Deployment of a Safe").assertIsDisplayed()
+        rule.onNodeWithTag(TRANSFER_SAFE_TAG).assertTextEquals(Eip55.format(action.safe))
+        assertEquals(listOf("correct horse"), signer.passwords)
+        // The signed review is gone from the back stack: Done returns to Assets.
+        assertEquals(listOf("assets", "transfer/{hash}"), screens())
+        rule.onNodeWithText("Done").performScrollTo().performClick()
+        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun withoutAKeyHereNoSafeIsOffered() {
+        accounts.value = listOf(savings)
+        showApp()
+
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Watch address").assertIsDisplayed()
+        rule.onNodeWithText("Create Safe").assertDoesNotExist()
     }
 }

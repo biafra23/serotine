@@ -131,6 +131,34 @@ private fun TransferStatusSafeExecutionPreview() = TransferStatusPreview(
     ),
 )
 
+private val deployment = DeploymentSummary(
+    title = "Deployment of a Safe",
+    safe = "0x2Ca0226086a7C24808217F7F8707827608B17Dc5",
+    signers = "2/3",
+    shape = "2 of 3 owners · Safe 1.4.1",
+    from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    listing = "Added to your wallet once a block has it and the light client verifies the Safe there, while this " +
+        "screen is open; after leaving it, add it with Watch address.",
+)
+
+@Preview
+@Composable
+private fun TransferStatusSafeDeploymentPreview() =
+    TransferStatusPreview(pending.copy(sent = null, deployment = deployment))
+
+@Preview
+@Composable
+private fun TransferStatusSafeListedPreview() = TransferStatusPreview(
+    included.copy(sent = null, deployment = deployment.copy(listing = "Added to your wallet as Family vault.")),
+)
+
+@Preview
+@Composable
+private fun TransferStatusSafeListedDarkPreview() = TransferStatusPreview(
+    included.copy(sent = null, deployment = deployment.copy(listing = "Added to your wallet as Family vault.")),
+    darkTheme = true,
+)
+
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
@@ -141,5 +169,8 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusUnavailablePreview() },
     { TransferStatusNoRecordPreview() },
     { TransferStatusSafeExecutionPreview() },
+    { TransferStatusSafeDeploymentPreview() },
+    { TransferStatusSafeListedPreview() },
+    { TransferStatusSafeListedDarkPreview() },
     { TransferStatusLoadingPreview() },
 )

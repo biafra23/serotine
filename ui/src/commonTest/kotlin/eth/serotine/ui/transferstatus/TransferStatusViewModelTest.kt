@@ -1,5 +1,8 @@
 package eth.serotine.ui.transferstatus
 
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTx
@@ -8,15 +11,24 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.AddressKind
+import eth.serotine.domain.repository.AddressKinds
+import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
+import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.ObserveSentTransfer
+import eth.serotine.domain.usecase.WatchAddress
+import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.MemorySentTransfers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -29,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -50,15 +63,23 @@ class TransferStatusViewModelTest {
     )
     private val sent = MemorySentTransfers()
     private val receipts = FakeReceipts()
+    private val accounts = FakeAccounts()
+    private val kind = MutableStateFlow<KindReading>(KindReading.Verified(AddressKind.Eoa, 9_412_118))
+    private val kinds = object : AddressKinds {
+        override fun observeKind(address: Address): Flow<KindReading> = kind
+    }
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
     private fun TestScope.viewModel(hash: String = record.hash): TransferStatusViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val viewModel = TransferStatusViewModel(hash, ObserveSentTransfer(sent, receipts), Network.SEPOLIA) {
-            "at $it"
-        }
+        val viewModel = TransferStatusViewModel(
+            hash,
+            ObserveSentTransfer(sent, receipts),
+            ListDeployedSafe(kinds, WatchAddress(accounts, kinds)),
+            Network.SEPOLIA,
+        ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
     }
@@ -175,5 +196,83 @@ class TransferStatusViewModelTest {
         assertEquals(listOf(StepState.UNKNOWN, StepState.UNKNOWN), shown.steps.drop(2).map { it.state })
         assertEquals("Where it stands cannot be verified right now: the light client refuses to sync.", shown.note)
         assertEquals(hash, shown.hash)
+    }
+
+    private val safe = Address.of("0x2ca0226086a7c24808217f7f8707827608b17dc5")
+    private val deployment = record.copy(
+        signed = SignedTransfer(byteArrayOf(2, 1, 10)),
+        action = SentAction.SafeDeployment(
+            safe = safe,
+            owners = listOf(record.account, Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359")),
+            threshold = 1,
+            version = "1.4.1",
+            label = "Family vault",
+        ),
+    )
+
+    @Test
+    fun aSafesDeploymentIsListedOnceItsBlockIsVerified() = runTest {
+        sent.transfers.value = listOf(deployment)
+        val viewModel = viewModel(deployment.hash)
+        runCurrent()
+
+        val pending = assertNotNull(viewModel.shown.deployment)
+        assertEquals("Deployment of a Safe", pending.title)
+        assertEquals("0x2Ca0226086a7C24808217F7F8707827608B17Dc5", pending.safe)
+        assertEquals("1/2", pending.signers)
+        assertEquals("1 of 2 owners · Safe 1.4.1", pending.shape)
+        assertEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2", pending.from)
+        assertTrue(pending.listing.startsWith("Added to your wallet once a block has it"))
+        assertNull(viewModel.shown.sent)
+
+        receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
+        runCurrent()
+        assertEquals(
+            "Checking the new Safe with the light client before it is listed…",
+            viewModel.shown.deployment?.listing,
+            "codeless still, at the head the light client verified",
+        )
+        assertEquals(emptyList(), accounts.accounts.value)
+
+        val owners = (deployment.action as SentAction.SafeDeployment).owners
+        kind.value = KindReading.Verified(
+            AddressKind.Safe(SafeState("1.4.1", false, owners, 1, 0, emptyList(), null)),
+            9_412_121,
+        )
+        runCurrent()
+
+        assertEquals("Added to your wallet as Family vault.", viewModel.shown.deployment?.listing)
+        assertEquals(
+            listOf(Account(safe, AccountKind.SAFE, "Family vault", AccountCustody.Watched)),
+            accounts.accounts.value,
+        )
+    }
+
+    @Test
+    fun aDeploymentThatRevertedListsNothing() = runTest {
+        sent.transfers.value = listOf(deployment)
+        val viewModel = viewModel(deployment.hash)
+        receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = false)
+        runCurrent()
+
+        val shown = viewModel.shown
+        assertEquals(
+            "It failed: the deployment reverted in its block, so no Safe was created. Its fee is paid all the same.",
+            shown.note,
+        )
+        assertTrue(shown.deployment!!.listingFailed)
+        assertEquals(emptyList(), accounts.accounts.value)
+    }
+
+    @Test
+    fun somethingElseAtTheAddressIsNotListed() = runTest {
+        sent.transfers.value = listOf(deployment)
+        val viewModel = viewModel(deployment.hash)
+        receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
+        kind.value = KindReading.Verified(AddressKind.Contract, 9_412_121)
+        runCurrent()
+
+        assertTrue(viewModel.shown.deployment!!.listingFailed)
+        assertEquals(emptyList(), accounts.accounts.value)
     }
 }

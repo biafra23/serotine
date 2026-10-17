@@ -44,6 +44,7 @@ import eth.serotine.ui.assets.AccountAction
 import eth.serotine.ui.assets.AssetsRoute
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.createaccount.CreateAccountRoute
+import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.receive.ReceiveRoute
@@ -189,6 +190,7 @@ private fun Destinations(
                     onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
                     onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
                     onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
+                    onCreateSafe = { navController.navigate(Destination.CREATE_SAFE) { launchSingleTop = true } },
                     onAccountAction = { action -> navController.open(action) },
                 )
             }
@@ -277,6 +279,18 @@ private fun Destinations(
                 viewModel = viewModel { graph.createAccountViewModel() },
                 onBack = { navController.leave(Destination.CREATE_ACCOUNT) },
                 onCreated = { navController.leave(Destination.CREATE_ACCOUNT) },
+            )
+        }
+        // A Safe's creation ends in its deployment: then where that stands, and back from it to Assets.
+        composable(Destination.CREATE_SAFE) {
+            CreateSafeRoute(
+                viewModel = viewModel { graph.createSafeViewModel() },
+                onBack = { navController.leave(Destination.CREATE_SAFE) },
+                onSent = { hash ->
+                    navController.navigate("${Destination.TRANSFER}/$hash") {
+                        popUpTo(Destination.CREATE_SAFE) { inclusive = true }
+                    }
+                },
             )
         }
         composable(Destination.MNEMONIC_IMPORT) {
@@ -508,6 +522,7 @@ private object Destination {
     const val ADD_TOKEN = "add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
     const val CREATE_ACCOUNT = "create-account"
+    const val CREATE_SAFE = "create-safe"
     const val SEND = "send"
     const val TRANSFER = "transfer"
     const val SAFE = "safe"

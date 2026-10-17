@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.shortAddress
@@ -45,6 +46,9 @@ const val TRANSFER_STEP_TAG = "transfer-step"
 
 /** Test tag of the transaction hash, for UI tests. */
 const val TRANSFER_HASH_TAG = "transfer-hash"
+
+/** Test tag of the address of the Safe a deployment created, for UI tests. */
+const val TRANSFER_SAFE_TAG = "transfer-safe"
 
 /** Binds [TransferStatusScreen] to its ViewModel; Done and Back end it through [onDone]. */
 @Composable
@@ -141,7 +145,41 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit) {
                 )
             }
         }
-        if (sent == null && safeTx == null) {
+        val deployment = state.deployment
+        if (deployment != null) {
+            Text(deployment.title, style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                AccountAvatar(deployment.safe, size = 40.dp, threshold = deployment.signers)
+                Column {
+                    Text(deployment.shape, style = MaterialTheme.typography.labelMedium)
+                    SelectionContainer {
+                        Text(
+                            deployment.safe,
+                            Modifier.testTag(TRANSFER_SAFE_TAG),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Blockie(deployment.from, size = 24.dp)
+                Text(
+                    "Paid from ${shortAddress(deployment.from)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            Text(
+                deployment.listing,
+                color = if (deployment.listingFailed) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        if (sent == null && safeTx == null && deployment == null) {
             Text(
                 "This device has no record of what was sent: only where the transaction stands is shown.",
                 style = MaterialTheme.typography.bodyMedium,
