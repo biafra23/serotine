@@ -46,11 +46,11 @@ import eth.serotine.ui.components.callRefusalText
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.grouped
-import eth.serotine.ui.components.lookUpSafely
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
+import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.unavailableText
 import eth.serotine.ui.components.verifiedAt
 import kotlinx.coroutines.CancellationException
@@ -198,7 +198,7 @@ class CreateSafeViewModel(
 
     /** The owner typed, resolved: an address at once, a name once the typing paused. */
     private val lookup: Flow<RecipientState> =
-        recipientStates(inputs.map { it.input.trim() to it.lookupAttempt }, resolveRecipient::lookUpSafely)
+        recipientStates(inputs.map { it.input.trim() to it.lookupAttempt }, ::lookUp)
 
     private val model: StateFlow<Model?> = combine(observeAccounts(), inputs, lookup, ::Model).stateIn(
         viewModelScope,
@@ -439,7 +439,7 @@ class CreateSafeViewModel(
         job = viewModelScope.launch { quote(asked, note = null) }
         // Beside the quote, not before it: a change of payer or fee cancels a quote, never this.
         viewModelScope.launch {
-            val biometrics = describeKeyStore.biometricsOn()
+            val biometrics = biometricsOffered()
             step.update { latest ->
                 if (latest is Step.Reviewing && latest.plan == plan) {
                     latest.copy(unlock = latest.unlock.copy(biometrics = biometrics))
@@ -790,6 +790,23 @@ class CreateSafeViewModel(
         SafeDeploymentRefusal.Syncing -> "The light client is not synced yet: try again in a moment."
         is SafeDeploymentRefusal.Unavailable -> unavailableText(refusal.reason)
         is SafeDeploymentRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)
+    }
+
+    private suspend fun lookUp(text: String): RecipientLookup = try {
+        resolveRecipient(recipientText(text))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        RecipientLookup.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
+    }
+
+    /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */
+    private suspend fun biometricsOffered(): Boolean = try {
+        biometricsOn(describeKeyStore())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false // the use case promises not to throw; the backstop: the password still works
     }
 
     private companion object {
