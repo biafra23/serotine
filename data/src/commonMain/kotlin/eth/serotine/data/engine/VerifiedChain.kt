@@ -4,8 +4,8 @@ import eth.serotine.domain.model.Address
 
 /**
  * What the engine adapters need from a verified light client: a [snapshot] of its state,
- * which never blocks, and [proveBalance], which does (it fetches a proof from a peer) and so
- * runs on the adapters' dispatcher, never a caller's thread.
+ * which never blocks, and the proofs ([proveBalance], [proveCode]), which do (they fetch a
+ * proof from a peer) and so run on the adapters' dispatcher, never a caller's thread.
  */
 internal interface VerifiedChain {
 
@@ -17,10 +17,20 @@ internal interface VerifiedChain {
      * null when the engine could not prove it. Blocks, bounded by the engine (about 90 s).
      */
     fun proveBalance(address: Address): ProvenBalance?
+
+    /**
+     * The code at [address] — none for an account without code or one that does not exist —
+     * proven against the light client's beacon-attested state; null when the engine could
+     * not prove it. Blocks, bounded by the engine.
+     */
+    fun proveCode(address: Address): ProvenCode?
 }
 
 /** A balance in decimal wei, proven at [blockNumber], the block the proof anchors to. */
 internal data class ProvenBalance(val wei: String, val blockNumber: Long)
+
+/** Code as lower-case hex without `0x` (empty: none), proven at [blockNumber]. */
+internal data class ProvenCode(val codeHex: String, val blockNumber: Long)
 
 /** The engine's state, or why there is none. */
 internal sealed interface EngineSnapshot {

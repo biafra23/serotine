@@ -11,12 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,6 +42,8 @@ import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.components.SpeedDialAction
+import eth.serotine.ui.components.SpeedDialFab
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
@@ -68,7 +68,8 @@ const val ASSETS_NETWORK_TAG = "assets-network"
 @Composable
 fun AssetsRoute(
     viewModel: AssetsViewModel,
-    onAddAccount: () -> Unit,
+    onWatchAddress: () -> Unit,
+    onImportPhrase: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -76,7 +77,8 @@ fun AssetsRoute(
     val copy = rememberCopyText()
     AssetsScreen(
         state = state,
-        onAddAccount = onAddAccount,
+        onWatchAddress = onWatchAddress,
+        onImportPhrase = onImportPhrase,
         onAccountAction = { action ->
             if (action is AccountAction.Copy) copy(action.address) else onAccountAction(action)
         },
@@ -86,14 +88,16 @@ fun AssetsRoute(
 
 /**
  * The Assets screen as a pure function of [state]; stateless, so a test can render any
- * state directly. Its floating action button asks for [onAddAccount]; a row's tap and its
- * long-press menu (a right click on desktop) ask [onAccountAction].
+ * state directly. Its floating action button fans out into Watch address ([onWatchAddress])
+ * and Import recovery phrase ([onImportPhrase]); a row's tap and its long-press menu (a
+ * right click on desktop) ask [onAccountAction].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AssetsScreen(
     state: AssetsUiState,
-    onAddAccount: () -> Unit,
+    onWatchAddress: () -> Unit,
+    onImportPhrase: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -109,9 +113,13 @@ fun AssetsScreen(
         floatingActionButton = {
             // No add to offer while the stored list cannot be read: it would be refused.
             if (state !is AssetsUiState.ListUnavailable) {
-                FloatingActionButton(onClick = onAddAccount) {
-                    Icon(Icons.Filled.Add, contentDescription = "Add account")
-                }
+                SpeedDialFab(
+                    actions = listOf(
+                        SpeedDialAction("Watch address", SerotineIcons.Visibility, onWatchAddress),
+                        SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onImportPhrase),
+                    ),
+                    description = "Add account",
+                )
             }
         },
         topBar = {
@@ -202,7 +210,7 @@ private fun NoAccounts(modifier: Modifier = Modifier) {
     Column(modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("No accounts yet", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Add an account from its recovery phrase with the + button.",
+            "Add an account with the + button: watch an address, or import a recovery phrase.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )

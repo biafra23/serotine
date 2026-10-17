@@ -88,6 +88,15 @@ consumer developed against an unreleased engine, Myotis's
   reads cannot be verified, the row shows why ("Syncing…", "Sync refused", "Not
   verified", "No light client"), never an older amount. Why a node is down is
   written to stderr, with the engine's own log when it refused to start.
+- **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
+  address for the Watch screen, polled, cached and refused the same way (the
+  two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,
+  labelled with its block. The empty hash means an EOA. Any other hash fetches
+  the code with `VerifiedReads.getCode`, which the engine checks against a
+  proven hash too. The adapter accepts the code only if it hashes to the
+  proof's value: the head may move between the two reads. An EIP-7702
+  delegation designator (`0xef0100` and 20 bytes) makes a delegated EOA, and
+  any other code makes a contract.
 - **The light client's progress.** `EngineLightClient` drives the
   `LightClient` port, and the Assets tab shows it in a strip under the top bar:
   - starting;

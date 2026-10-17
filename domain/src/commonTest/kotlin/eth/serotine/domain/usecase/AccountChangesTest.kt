@@ -82,11 +82,21 @@ class AccountChangesTest {
     }
 
     @Test
-    fun removingAWatchedAccountTouchesNoKey() = runTest {
+    fun removingAWatchedAccountLeavesTheOtherKeysAlone() = runTest {
         assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys)(watched.address))
 
         assertEquals(listOf(keyed), repository.accounts.value)
-        assertEquals(emptyList(), keys.deleted)
+        assertEquals(setOf(keyed.address), keys.stored, "the key store is asked, and holds nothing for it")
+    }
+
+    @Test
+    fun aKeyImportedForAWatchedEntryWhileItIsRemovedGoesWithIt() = runTest {
+        // The removal read the entry as watched; the key arrived before the entry went.
+        keys.stored += watched.address
+
+        assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys)(watched.address))
+        assertEquals(listOf(watched.address), keys.deleted)
+        assertEquals(emptySet(), keys.stored - keyed.address, "no key outlives its account")
     }
 
     @Test

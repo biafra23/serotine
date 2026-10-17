@@ -36,6 +36,7 @@ class SerotineApplication : Application() {
             // a Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers.
             keys = EnvelopeKeyStore(filesDir.resolve("keys").path, AndroidKeystoreSecret()),
             nativeBalances = node.nativeBalances,
+            addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             network = Network.SEPOLIA,
         )

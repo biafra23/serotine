@@ -100,13 +100,19 @@ class FileAccountRepository(
     }
 
     override suspend fun rename(address: Address, label: String): AccountChange =
+        updateEntry(address) { it.copy(label = label) }
+
+    override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
+        updateEntry(address) { it.copy(custody = custody) }
+
+    /** Replaces the entry under [address] with [update] of it, in place; NotFound when there is none. */
+    private suspend fun updateEntry(address: Address, update: (Account) -> Account): AccountChange =
         change(AccountChange.NotSaved) { accounts ->
             val index = accounts.indexOfFirst { it.address == address }
             if (index < 0) {
                 Decision(AccountChange.NotFound)
             } else {
-                val renamed = accounts[index].copy(label = label)
-                Decision(AccountChange.Changed, accounts.toMutableList().apply { set(index, renamed) })
+                Decision(AccountChange.Changed, accounts.toMutableList().apply { set(index, update(get(index))) })
             }
         }
 

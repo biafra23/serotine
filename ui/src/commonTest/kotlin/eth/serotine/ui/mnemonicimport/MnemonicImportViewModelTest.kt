@@ -406,5 +406,9 @@ class MnemonicImportViewModelTest {
         override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
 
         override suspend fun remove(address: Address): AccountChange = error("not used by this test")
+
+        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
+
+            error("not used by this test")
     }
 }

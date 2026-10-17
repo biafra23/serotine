@@ -74,6 +74,18 @@ class ImportMnemonicAccountTest {
     }
 
     @Test
+    fun aWatchedAddressWhosePhraseIsImportedIsHeldFromThenOn() = runTest {
+        val watched = Account(first, AccountKind.EOA, "Savings", AccountCustody.Watched)
+        repository.accounts.value = listOf(watched)
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+
+        val held = watched.copy(custody = AccountCustody.InKeyStore)
+        assertEquals(MnemonicImport.KeyAdded(held), import(mnemonic, password))
+        assertEquals(listOf(held), repository.accounts.value, "the same entry, its name kept")
+    }
+
+    @Test
     fun anAddressAlreadyInTheWalletIsReportedAndLeftAlone() = runTest {
         val existing = Account(first, AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
         repository.accounts.value = listOf(existing)
@@ -216,6 +228,13 @@ class ImportMnemonicAccountTest {
         }
 
         override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+
+        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
+            if (failSaves) return AccountChange.NotSaved
+            if (accounts.value.none { it.address == address }) return AccountChange.NotFound
+            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+            return AccountChange.Changed
+        }
 
         override suspend fun remove(address: Address): AccountChange = error("not used by this test")
     }

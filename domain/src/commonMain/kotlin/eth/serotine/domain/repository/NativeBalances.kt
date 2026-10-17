@@ -32,7 +32,7 @@ sealed interface BalanceReading {
     /** No verified balance can be had right now, for the reason [reason] gives. */
     data class Unavailable(val reason: Reason) : BalanceReading
 
-    /** Why a balance is [Unavailable]. */
+    /** Why a balance, or another verified read ([KindReading]), is unavailable. */
     enum class Reason {
         /**
          * This device has no running light client: the engine does not ship for its ABI or
@@ -46,7 +46,7 @@ sealed interface BalanceReading {
          */
         STALE_ANCHOR,
 
-        /** The light client is synced but could not prove this balance (no peer served the proof). */
+        /** The light client is synced but could not prove this read (no peer served the proof). */
         UNPROVEN,
     }
 }

@@ -2,6 +2,9 @@ package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.data.keys.fromHex
+import eth.serotine.data.keys.toHex
+import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
 import io.myotis.api.BeaconState
@@ -13,6 +16,7 @@ import io.myotis.api.ports.DnsServers
 import io.myotis.engine.Myotis
 import io.myotis.engine.ports.DefaultEnginePorts
 import kotlinx.coroutines.Dispatchers
+import org.kotlincrypto.hash.sha3.Keccak256
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -22,9 +26,9 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances] and [lightClient] to the AppGraph, and owns
- * it for the life of the process: [pause] and [resume] it around the app being in the
- * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
+ * creates it with [start], hands [nativeBalances], [addressKinds] and [lightClient] to the
+ * AppGraph, and owns it for the life of the process: [pause] and [resume] it around the app
+ * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
  * used; nothing below them.
  */
 class MyotisNode private constructor() {
@@ -62,6 +66,9 @@ class MyotisNode private constructor() {
 
     /** Native-currency balances, verified by this node's light client. */
     val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** What is at an address (an account, a delegated one, a contract), verified here. */
+    val addressKinds: AddressKinds = VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
@@ -192,10 +199,30 @@ class MyotisNode private constructor() {
             // A proven absence is a proven zero.
             return ProvenBalance(if (result.exists()) result.balanceWei() ?: return null else "0", result.blockNumber())
         }
+
+        // The code hash comes with the account proof, labelled with its block; the code itself
+        // comes from the verified reads (which check it against a proven hash too) and must
+        // hash to the same value, or the head moved between the two reads and this round is
+        // unproven.
+        override fun proveCode(address: Address): ProvenCode? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val account = handle.requestAccount(address.hex)
+            if (account.failReason() != null || account.verifyMethod() == null) return null
+            val block = account.blockNumber()
+            if (!account.exists()) return ProvenCode("", block)
+            val codeHash = account.codeHashHex()?.removePrefix("0x")?.lowercase() ?: return null
+            if (codeHash == EMPTY_CODE_HASH) return ProvenCode("", block)
+            val code = handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest") ?: return null
+            if (Keccak256().digest(code).toHex() != codeHash) return null
+            return ProvenCode(code.toHex(), block)
+        }
     }
 
     companion object {
         private val POLL_INTERVAL = 4.seconds
+
+        /** Keccak-256 of no code: the code hash of every account without code. */
+        private const val EMPTY_CODE_HASH = "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
 
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds

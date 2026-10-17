@@ -1,6 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
@@ -26,7 +27,17 @@ internal class ListAccountRepository(vararg initial: Account) : AccountRepositor
         if (unreadable) AccountList.Unreadable(AccountList.Reason.READ_FAILED) else AccountList.Loaded(it)
     }
 
-    override suspend fun add(account: Account): AccountAdd = error("not used by these tests")
+    override suspend fun add(account: Account): AccountAdd = when {
+        unreadable || failSaves -> AccountAdd.NotSaved
+        accounts.value.any { it.address == account.address } -> AccountAdd.AlreadyPresent
+        else -> {
+            accounts.value = accounts.value + account
+            AccountAdd.Added
+        }
+    }
+
+    override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
+        change(address) { current -> current.map { if (it.address == address) it.copy(custody = custody) else it } }
 
     override suspend fun rename(address: Address, label: String): AccountChange = change(address) { current ->
         current.map { if (it.address == address) it.copy(label = label) else it }

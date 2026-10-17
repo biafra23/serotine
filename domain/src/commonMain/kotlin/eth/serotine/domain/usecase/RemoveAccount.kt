@@ -1,6 +1,5 @@
 package eth.serotine.domain.usecase
 
-import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
@@ -17,6 +16,10 @@ import kotlinx.coroutines.withContext
  * (re-importing the phrase finds it again) and never an entry that claims a key that is
  * gone. One step that a cancelled caller does not cut in half. The recovery phrase is the
  * only way back for a key, which the screen says before it asks for this.
+ *
+ * The key store is asked whatever the entry's custody was when read: an import can turn a
+ * watched entry into a held one between that read and the removal, and its key must not
+ * outlive the account. For an address it holds no key for it answers NotFound.
  */
 class RemoveAccount(
     private val accounts: AccountRepository,
@@ -32,12 +35,9 @@ class RemoveAccount(
             AccountChange.NotFound -> return@withContext AccountRemoval.NotFound
             AccountChange.NotSaved -> return@withContext AccountRemoval.NotSaved
         }
-        when (account.custody) {
-            AccountCustody.Watched -> AccountRemoval.Removed
-            AccountCustody.InKeyStore -> when (keys.delete(address)) {
-                KeyDeletion.Deleted, KeyDeletion.NotFound -> AccountRemoval.Removed
-                KeyDeletion.Failed -> AccountRemoval.RemovedKeyKept
-            }
+        when (keys.delete(account.address)) {
+            KeyDeletion.Deleted, KeyDeletion.NotFound -> AccountRemoval.Removed
+            KeyDeletion.Failed -> AccountRemoval.RemovedKeyKept
         }
     }
 }

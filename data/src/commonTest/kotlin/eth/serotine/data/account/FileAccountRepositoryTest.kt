@@ -141,6 +141,20 @@ class FileAccountRepositoryTest {
     }
 
     @Test
+    fun aWatchedAccountBecomesHeldAndStaysSoAfterARestart() = runTest {
+        val repository = repository()
+        repository.add(watched)
+
+        assertEquals(AccountChange.Changed, repository.setCustody(watched.address, AccountCustody.InKeyStore))
+        assertEquals(AccountChange.NotFound, repository.setCustody(safe.address, AccountCustody.InKeyStore))
+
+        assertEquals(
+            AccountList.Loaded(listOf(watched.copy(custody = AccountCustody.InKeyStore))),
+            repository().observeAccounts().first(),
+        )
+    }
+
+    @Test
     fun renameAndRemoveOfAnAddressNotInTheListChangeNothing() = runTest {
         val repository = repository()
         repository.add(eoa)

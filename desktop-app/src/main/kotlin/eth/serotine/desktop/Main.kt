@@ -87,6 +87,7 @@ private fun openWallet(dataDir: File) {
                 // not used yet (the owner's rulings of 2026-10-15 and -16).
                 keys = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection()),
                 nativeBalances = node.nativeBalances,
+                addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
                 network = Network.SEPOLIA,
             )

@@ -51,6 +51,9 @@ class InMemoryAccountRepositoryTest {
         assertEquals(AccountChange.Changed, repository.remove(safe.address))
         assertEquals(AccountList.Loaded(listOf(eoa.copy(label = "Spending"))), repository.observeAccounts().first())
 
+        assertEquals(AccountChange.Changed, repository.setCustody(eoa.address, AccountCustody.Watched))
+        val stored = (repository.observeAccounts().first() as AccountList.Loaded).accounts
+        assertEquals(AccountCustody.Watched, stored[0].custody)
         assertEquals(AccountChange.NotFound, repository.rename(safe.address, "Treasury"))
         assertEquals(AccountChange.NotFound, repository.remove(safe.address))
     }

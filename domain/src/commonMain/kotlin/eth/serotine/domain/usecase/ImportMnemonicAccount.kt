@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyImport
@@ -45,9 +46,10 @@ class ImportMnemonicAccount(
         }
 
     /**
-     * The entry under [address]: the existing one, or a new one this call adds. Read and add
-     * are two steps, so another writer can get in between; then the next round reads again
-     * rather than assume what that writer left — an entry, or one already removed again.
+     * The entry under [address]: the existing one (a watched one now held in the key store),
+     * or a new one this call adds. Read and add are two steps, so another writer can get in
+     * between; then the next round reads again rather than assume what that writer left — an
+     * entry, or one already removed again.
      */
     private suspend fun addOrFind(address: Address, protection: KeyProtection): MnemonicImport {
         while (true) {
@@ -55,7 +57,16 @@ class ImportMnemonicAccount(
                 is AccountList.Loaded -> list.accounts
                 is AccountList.Unreadable -> return MnemonicImport.ListNotSaved
             }
-            current.firstOrNull { it.address == address }?.let { return MnemonicImport.AlreadyAdded(it) }
+            current.firstOrNull { it.address == address }?.let { existing ->
+                if (existing.custody == AccountCustody.InKeyStore) return MnemonicImport.AlreadyAdded(existing)
+                // A watched address whose key the user has now: it is held, not watched, from here on.
+                when (accounts.setCustody(address, AccountCustody.InKeyStore)) {
+                    AccountChange.Changed ->
+                        return MnemonicImport.KeyAdded(existing.copy(custody = AccountCustody.InKeyStore))
+                    AccountChange.NotSaved -> return MnemonicImport.ListNotSaved
+                    AccountChange.NotFound -> Unit // removed meanwhile: read again
+                }
+            }
             val account = Account(address, AccountKind.EOA, nextFreeLabel(current), AccountCustody.InKeyStore)
             when (accounts.add(account)) {
                 AccountAdd.Added -> return MnemonicImport.Added(account, protection)
@@ -65,10 +76,6 @@ class ImportMnemonicAccount(
         }
     }
 
-    private fun nextFreeLabel(current: List<Account>): String {
-        val taken = current.mapTo(HashSet()) { it.label }
-        return generateSequence(current.size + 1) { it + 1 }.map { "Account $it" }.first { it !in taken }
-    }
 }
 
 /** The outcome of [ImportMnemonicAccount]. */
@@ -82,6 +89,12 @@ sealed interface MnemonicImport {
      * now (an account added before keys were kept gets its key this way).
      */
     data class AlreadyAdded(val account: Account) : MnemonicImport
+
+    /**
+     * The words' first account was in the wallet as a watched address, [account]; its key is
+     * stored now, and the account is held in the key store from here on.
+     */
+    data class KeyAdded(val account: Account) : MnemonicImport
 
     /** The words are not a BIP-39 mnemonic, for the reason [problem] gives; nothing changed. */
     data class Invalid(val problem: MnemonicProblem) : MnemonicImport

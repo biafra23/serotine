@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Address
 internal class FakeChain : VerifiedChain {
     var snapshot: EngineSnapshot = EngineSnapshot.Booting
     val proofs = mutableMapOf<Address, ProvenBalance>()
+    val codes = mutableMapOf<Address, ProvenCode>()
     val proofRequests = mutableListOf<Address>()
     var failure: Exception? = null
 
@@ -19,6 +20,12 @@ internal class FakeChain : VerifiedChain {
         failure?.let { throw it }
         proofRequests += address
         return proofs[address]
+    }
+
+    override fun proveCode(address: Address): ProvenCode? {
+        failure?.let { throw it }
+        proofRequests += address
+        return codes[address]
     }
 }
 

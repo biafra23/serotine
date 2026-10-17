@@ -125,6 +125,8 @@ class MnemonicImportViewModel(
 
     private fun Entering.after(result: MnemonicImport): MnemonicImportUiState = when (result) {
         is MnemonicImport.Added -> Imported(result.account.label)
+        // A watched address whose key is stored now: the import did what was asked.
+        is MnemonicImport.KeyAdded -> Imported(result.account.label)
         is MnemonicImport.AlreadyAdded -> copy(
             error = "“${result.account.label}” is in the wallet already; its key is stored on this device now.",
         )
