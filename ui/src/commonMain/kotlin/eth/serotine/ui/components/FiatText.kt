@@ -43,31 +43,50 @@ private fun withUnit(currency: DisplayCurrency, number: String): String = when (
     DisplayCurrency.ETH, DisplayCurrency.BTC -> "$number ${currency.code}"
 }
 
-/** What a row says of an asset's [value]: its value, or why there is none; null while there is no balance to value. */
-internal fun valuationText(value: Valuation?, currency: DisplayCurrency): String? = when (value) {
+/**
+ * What a row says of an asset's [value] in [currency]: its value, or why there is none; null
+ * while there is no balance to value. On a [network] whose prices are a testnet's, every value
+ * says so (CLAUDE.md, *Data sources*).
+ */
+internal fun valuationText(value: Valuation?, currency: DisplayCurrency, network: Network): String? = when (value) {
     null -> null
     Valuation.Checking -> "Checking price…"
-    is Valuation.Valued ->
-        formatFiat(value.amount, currency) + if (value.stale) " · price ${age(value.ageSeconds)} old" else ""
+    is Valuation.Valued -> listOfNotNull(
+        formatFiat(value.amount, currency),
+        "price ${age(value.ageSeconds)} old".takeIf { value.stale },
+        "testnet prices".takeIf { network.testnet },
+    ).joinToString(" · ")
     is Valuation.NoPrice -> "No price"
     is Valuation.Unavailable -> "Price not verified"
+    Valuation.NoRate -> "No ${currency.code} rate"
 }
 
-/** A [total]'s value, or "Checking…" while nothing of it is known yet. */
-internal fun totalText(total: Total, currency: DisplayCurrency): String =
-    if (!total.complete && total.amount == 0.0) "Checking…" else formatFiat(total.amount, currency)
+/**
+ * A [total]'s value in [currency], or why nothing of it can be shown: still being read, no
+ * rate for the currency, or nothing verifiable right now.
+ */
+internal fun totalText(total: Total, currency: DisplayCurrency): String = when {
+    total.valued > 0 -> formatFiat(total.amount, currency)
+    !total.complete -> "Checking…"
+    total.noRate -> "No ${currency.code} rate"
+    total.unverified > 0 && total.leftOut == 0 -> "Not verified"
+    else -> formatFiat(0.0, currency)
+}
 
 /**
  * What a total leaves out, display-ready: that its prices are a testnet's on [network], how
- * many assets it left out for having no fresh price, and that it is not complete yet.
+ * many held assets it left out for having no fresh price, how many balances or prices cannot
+ * be verified right now, that [currency] has no rate, and that it is not complete yet.
  */
-internal fun totalNote(total: Total, network: Network): String = listOfNotNull(
+internal fun totalNote(total: Total, network: Network, currency: DisplayCurrency): String = listOfNotNull(
     "Testnet prices".takeIf { network.testnet },
     when (total.leftOut) {
         0 -> null
         1 -> "1 asset without a price"
         else -> "${total.leftOut} assets without a price"
     },
+    total.unverified.takeIf { it > 0 }?.let { "$it not verified" },
+    "no verified ${currency.code} rate".takeIf { total.noRate },
     "still checking".takeIf { !total.complete },
 ).joinToString(" · ").replaceFirstChar { it.uppercase() }
 

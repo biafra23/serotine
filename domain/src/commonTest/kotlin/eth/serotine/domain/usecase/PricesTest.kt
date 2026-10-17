@@ -10,6 +10,7 @@ import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.CurrencyChoice
 import eth.serotine.domain.repository.FeedReading
@@ -117,7 +118,7 @@ class PricesTest {
 
         val value = accountValue(holder).first { it.total.complete && it.tokens.size == 2 }
 
-        assertEquals(Total(3_250.0, leftOut = 1, complete = true), value.total) // UNI has no feed
+        assertEquals(Total(3_250.0, valued = 2, leftOut = 1), value.total) // UNI has no feed
         assertEquals(Valuation.NoPrice(NoPriceReason.NO_FEED), value.tokens[1].value)
     }
 
@@ -130,14 +131,53 @@ class PricesTest {
         val value = accountValue(holder).first { it.total.complete && it.tokens.size == 2 }
 
         assertEquals(DisplayCurrency.EUR, value.currency)
-        assertEquals(Total(2_400.0, leftOut = 2, complete = true), value.total) // 3000 USD / 1.25
+        assertEquals(Total(2_400.0, valued = 1, leftOut = 2), value.total) // 3000 USD / 1.25
     }
 
     @Test
     fun aBalanceOrPriceStillBeingReadMakesTheTotalIncomplete() = runTest {
         native.of(holder).value = BalanceReading.Verified(Wei.of("1"), 9)
 
-        assertFalse(accountValue(holder).first().total.complete)
+        val first = accountValue(holder).first()
+        assertFalse(first.tokensRead, "the token holdings are not read yet")
+        assertFalse(first.total.complete)
+    }
+
+    @Test
+    fun whatCannotBeVerifiedIsCountedAsSuchNotAsPendingOrUnpriced() = runTest {
+        pricesAndBalances()
+        native.of(holder).value = BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        feeds.of(PriceId("USDC")).value = FeedReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        val value = accountValue(holder).first { it.tokensRead && it.tokens.all { t -> t.value != null } }
+
+        assertEquals(Total(0.0, leftOut = 1, unverified = 2), value.total) // ETH and USDC; UNI has no feed
+    }
+
+    @Test
+    fun aCurrencyWithoutARateRightNowIsSaidOnceNotBlamedOnEachAsset() = runTest {
+        pricesAndBalances()
+        setting.choose(DisplayCurrency.EUR)
+        feeds.of(EUR).value = FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED)
+
+        val value = accountValue(holder).first { it.total.complete && it.tokens.size == 2 }
+
+        assertEquals(Valuation.NoRate, value.nativeValue)
+        assertEquals(Valuation.NoPrice(NoPriceReason.NO_FEED), value.tokens[1].value, "UNI has no feed either way")
+        assertEquals(Total(0.0, leftOut = 1, noRate = true), value.total)
+    }
+
+    @Test
+    fun aPortfolioStillValuedInThePreviousCurrencyIsIncomplete() = runTest {
+        pricesAndBalances()
+        val accounts = ListAccountRepository(Account(holder, AccountKind.EOA, "Daily", AccountCustody.Watched))
+        val portfolio = Portfolio(
+            AccountList.Loaded(accounts.accounts.value),
+            mapOf(holder to accountValue(holder).first { it.total.complete && it.tokens.size == 2 }),
+            DisplayCurrency.EUR,
+        )
+
+        assertEquals(Total.PENDING, portfolio.total, "a USD value is not added to a EUR total")
     }
 
     @Test
@@ -149,6 +189,6 @@ class PricesTest {
 
         val read = portfolio().first { it.total.complete && it.values[holder]?.tokens?.size == 2 }
 
-        assertEquals(Total(3_250.0, leftOut = 1, complete = true), read.total)
+        assertEquals(Total(3_250.0, valued = 2, leftOut = 1), read.total)
     }
 }

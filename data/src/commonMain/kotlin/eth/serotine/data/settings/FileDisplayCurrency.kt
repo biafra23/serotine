@@ -16,7 +16,8 @@ import kotlinx.serialization.json.Json
 /**
  * [DisplayCurrencySetting] kept in the file at [path] (a [VersionedJsonFile]). A currency this
  * build does not know, written by a newer one, reads as no choice; a damaged file is set
- * aside, and one that cannot be read is [CurrencyChoice.Unreadable].
+ * aside, saying so until another choice is made ([CurrencyChoice.Chosen.setAside]), and one
+ * that cannot be read is [CurrencyChoice.Unreadable].
  */
 class FileDisplayCurrency(
     path: String,
@@ -41,7 +42,11 @@ class FileDisplayCurrency(
 
     override fun observe(): Flow<CurrencyChoice> = file.observe().map { read ->
         when (read) {
-            is VersionedJsonFile.Read.Loaded -> CurrencyChoice.Chosen(read.value.currency)
+            // Said until a choice is made again: then nothing is missing any more.
+            is VersionedJsonFile.Read.Loaded -> {
+                val chosen = read.value.currency
+                CurrencyChoice.Chosen(chosen, setAside = read.damagedSetAside && chosen == null)
+            }
             is VersionedJsonFile.Read.Unreadable -> CurrencyChoice.Unreadable
         }
     }

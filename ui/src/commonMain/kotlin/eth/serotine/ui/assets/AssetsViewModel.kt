@@ -71,7 +71,7 @@ class AssetsViewModel(
                     items,
                     notice = if (list.damagedListSetAside) DAMAGED_SET_ASIDE else null,
                     total = total?.let { totalText(it, portfolio.currency) },
-                    totalNote = total?.let { totalNote(it, network) }?.ifEmpty { null },
+                    totalNote = total?.let { totalNote(it, network, portfolio.currency) }?.ifEmpty { null },
                 )
             }
         }

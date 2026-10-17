@@ -150,7 +150,10 @@ class AssetsViewModelTest {
         val ready = viewModel.uiState.value as AssetsUiState.Ready
         assertEquals("¥937,500", ready.total)
         assertEquals("Testnet prices", ready.totalNote)
-        assertEquals(listOf("¥781,250", "¥156,250"), ready.accounts.map { it.value })
+        assertEquals(
+            listOf("¥781,250 · testnet prices", "¥156,250 · testnet prices"),
+            ready.accounts.map { it.value },
+        )
     }
 
     @Test

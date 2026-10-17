@@ -46,7 +46,7 @@ data class Portfolio(
             val loaded = (accounts as? AccountList.Loaded)?.accounts.orEmpty()
             return loaded.fold(Total.NONE) { sum, account ->
                 val value = values[account.address]
-                sum + if (value != null && value.currency == currency) value.total else Total(0.0, 0, complete = false)
+                sum + if (value != null && value.currency == currency) value.total else Total.PENDING
             }
         }
 }

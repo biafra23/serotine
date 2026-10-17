@@ -216,14 +216,17 @@ read through the light client. Applied:
   `updatedAt` on the path is the age shown and the one the stale rule
   applies to, totals included.
 - **Totals add only priced holdings**, and say how many assets they left out.
-  A held asset with no price, or a stale one, is left out and counted; one
-  whose balance or price is still being read, or cannot be verified right
-  now, makes the total incomplete ("still checking") rather than counted.
-  A portfolio total adds the accounts valued in the currency chosen, so a
+  A held asset with no price, or a stale one, is left out and counted; a
+  balance or price that cannot be verified right now is counted as "not
+  verified"; one still being read makes the total incomplete ("still
+  checking"). When the display currency's own rate has no price, that is
+  said once ("No EUR rate"), not as a missing price on every asset. A
+  portfolio total adds the accounts valued in the currency chosen, so a
   change of currency never sums two of them.
 - **On Sepolia every fiat value says "testnet prices"**: Chainlink's Sepolia
   feeds are testnet feeds, and Sepolia's tokens have no market value of
-  their own.
+  their own. Each row's value carries it ("$3,000.00 · testnet prices"), and
+  each total the note right under it.
 - **The trust is in the oracle.** The light client proves what the aggregator
   contract says; it does not make the oracle right. That is the reason a
   price never becomes a signed amount.

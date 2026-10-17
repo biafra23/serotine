@@ -133,7 +133,10 @@ class AccountDetailViewModelTest {
         assertEquals("Testnet prices · 1 asset without a price", ready.totalNote) // UNI has no feed here
         // By value: ETH (3,000), USDC (2,500), then UNI, which has no price.
         assertEquals(listOf("ETH", "USDC", "UNI"), ready.assets.map { it.symbol })
-        assertEquals(listOf("$3,000.00", "$2,500.00", "No price"), ready.assets.map { it.value })
+        assertEquals(
+            listOf("$3,000.00 · testnet prices", "$2,500.00 · testnet prices", "No price"),
+            ready.assets.map { it.value },
+        )
 
         viewModel.sortBy(AssetSort.NAME)
         runCurrent()
@@ -158,7 +161,7 @@ class AccountDetailViewModelTest {
         val ready = viewModel.uiState.value as AccountDetailUiState.Ready
         assertEquals("€0.00", ready.total)
         assertEquals("Testnet prices · 1 asset without a price", ready.totalNote)
-        assertEquals("€2,000.00 · price 2 h old", ready.assets.single().value)
+        assertEquals("€2,000.00 · price 2 h old · testnet prices", ready.assets.single().value)
     }
 
     @Test

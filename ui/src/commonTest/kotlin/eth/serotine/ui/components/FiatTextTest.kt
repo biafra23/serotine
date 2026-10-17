@@ -29,22 +29,35 @@ class FiatTextTest {
     }
 
     @Test
-    fun aRowSaysItsValueOrWhyThereIsNone() {
-        assertEquals("$5.00", valuationText(Valuation.Valued(5.0, 60, stale = false), DisplayCurrency.USD))
+    fun aRowSaysItsValueOrWhyThereIsNoneAndATestnetValueSaysSo() {
+        val usd = DisplayCurrency.USD
         assertEquals(
-            "$5.00 · price 2 h old",
-            valuationText(Valuation.Valued(5.0, 7_200, stale = true), DisplayCurrency.USD),
+            "$5.00 · testnet prices",
+            valuationText(Valuation.Valued(5.0, 60, stale = false), usd, Network.SEPOLIA),
         )
-        assertEquals("No price", valuationText(Valuation.NoPrice(NoPriceReason.NO_FEED), DisplayCurrency.USD))
-        assertEquals(null, valuationText(null, DisplayCurrency.USD))
+        assertEquals(
+            "$5.00 · price 2 h old · testnet prices",
+            valuationText(Valuation.Valued(5.0, 7_200, stale = true), usd, Network.SEPOLIA),
+        )
+        assertEquals("No price", valuationText(Valuation.NoPrice(NoPriceReason.NO_FEED), usd, Network.SEPOLIA))
+        assertEquals("No EUR rate", valuationText(Valuation.NoRate, DisplayCurrency.EUR, Network.SEPOLIA))
+        assertEquals(null, valuationText(null, usd, Network.SEPOLIA))
     }
 
     @Test
-    fun aTotalSaysWhatItLeavesOut() {
+    fun aTotalSaysWhatItLeavesOutAndNeverChecksForever() {
         assertEquals(
-            "Testnet prices · 2 assets without a price · still checking",
-            totalNote(Total(1.0, leftOut = 2, complete = false), Network.SEPOLIA),
+            "Testnet prices · 2 assets without a price · 1 not verified · still checking",
+            totalNote(
+                Total(1.0, valued = 1, leftOut = 2, unverified = 1, complete = false),
+                Network.SEPOLIA,
+                DisplayCurrency.USD,
+            ),
         )
-        assertEquals("Checking…", totalText(Total(0.0, 0, complete = false), DisplayCurrency.USD))
+        assertEquals("Checking…", totalText(Total.PENDING, DisplayCurrency.USD))
+        // Every balance unverifiable (no light client): said, not "Checking…" for ever.
+        assertEquals("Not verified", totalText(Total(0.0, unverified = 2), DisplayCurrency.USD))
+        assertEquals("No EUR rate", totalText(Total(0.0, noRate = true), DisplayCurrency.EUR))
+        assertEquals("$12.00", totalText(Total(12.0, valued = 1, complete = false), DisplayCurrency.USD))
     }
 }

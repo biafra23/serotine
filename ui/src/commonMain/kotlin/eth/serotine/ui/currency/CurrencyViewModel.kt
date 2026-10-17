@@ -25,7 +25,12 @@ class CurrencyViewModel(
     val uiState: StateFlow<CurrencyUiState> = combine(observeDisplayCurrencies(), outcome) { currencies, outcome ->
         CurrencyUiState(
             options = currencies.offered.map { CurrencyOption(it.code, nameOf(it), chosen = it == currencies.chosen) },
-            notice = if (currencies.unreadable) UNREADABLE else outcome.error,
+            notice = when {
+                currencies.unreadable -> UNREADABLE
+                outcome.error != null -> outcome.error
+                currencies.setAside -> SET_ASIDE
+                else -> null
+            },
             canChoose = !currencies.unreadable,
             done = outcome.done,
         )
@@ -52,6 +57,7 @@ class CurrencyViewModel(
 
     private companion object {
         const val NOT_SAVED = "The choice could not be saved. Nothing has changed."
+        const val SET_ASIDE = "Your saved choice of currency was damaged and has been set aside: values are in USD."
         const val UNREADABLE = "Your choice of currency cannot be read right now, so values are in USD and " +
             "nothing can be chosen. Serotine keeps trying."
     }

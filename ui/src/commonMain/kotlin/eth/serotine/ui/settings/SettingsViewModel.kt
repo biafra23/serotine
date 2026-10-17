@@ -43,7 +43,11 @@ class SettingsViewModel(
                 "${known.tokens.size - builtIn} added"
             }
             val tokens = "$builtIn built in · $added"
-            val currency = currencies.chosen.code + if (currencies.unreadable) " (your choice cannot be read)" else ""
+            val currency = currencies.chosen.code + when {
+                currencies.unreadable -> " (your choice cannot be read)"
+                currencies.setAside -> " (your saved choice was damaged and set aside)"
+                else -> ""
+            }
             SettingsUiState(network.displayName, item, APP_VERSION, tokens, currency)
         }
         .stateIn(

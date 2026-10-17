@@ -59,6 +59,20 @@ class VerifiedPriceFeedsTest {
     }
 
     @Test
+    fun theSameRoundTurnsStaleAsTheVerifiedHeadMovesOn() = runTest {
+        answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 9_400), 9))
+        val feeds = feeds()
+        suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        assertEquals(false, reading().stale)
+
+        // An hour and more later, no new round: read again at the new head, and stale.
+        chain.snapshot = running(head = 310, headTimestamp = 13_100)
+        val later = reading()
+        assertEquals(3_700, later.ageSeconds)
+        assertEquals(true, later.stale)
+    }
+
+    @Test
     fun whatIsNoPriceSaysWhy() = runTest {
         val feeds = feeds()
         suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing }

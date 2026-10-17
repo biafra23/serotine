@@ -18,8 +18,11 @@ interface DisplayCurrencySetting {
 
 /** What [DisplayCurrencySetting.observe] emits. */
 sealed interface CurrencyChoice {
-    /** The [currency] chosen, or null while none has been. */
-    data class Chosen(val currency: DisplayCurrency?) : CurrencyChoice
+    /**
+     * The [currency] chosen, or null while none has been; [setAside] when no choice is left
+     * because the stored one was damaged and set aside.
+     */
+    data class Chosen(val currency: DisplayCurrency?, val setAside: Boolean = false) : CurrencyChoice
 
     /** A choice is stored but cannot be read; nothing can be chosen until it can. */
     data object Unreadable : CurrencyChoice

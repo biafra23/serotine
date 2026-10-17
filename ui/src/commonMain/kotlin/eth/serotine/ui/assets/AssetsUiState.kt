@@ -102,7 +102,7 @@ data class AccountItem(
             control = Control.of(account.kind, account.custody),
             balance = balance?.let { balanceText(it, network) } ?: "Checking…",
             balanceVerified = balance is BalanceReading.Verified,
-            value = valuationText(value, currency),
+            value = valuationText(value, currency, network),
         )
     }
 }

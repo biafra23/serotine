@@ -64,4 +64,14 @@ class FileDisplayCurrencyTest {
         assertEquals(CurrencyChoice.Unreadable, setting.observe().first())
         assertEquals(false, setting.choose(DisplayCurrency.GBP))
     }
+
+    @Test
+    fun aDamagedChoiceIsSetAsideAndSaidUntilAnotherIsMade() = runTest {
+        write("""{"version":1,"currency":""")
+        val setting = setting()
+
+        assertEquals(CurrencyChoice.Chosen(null, setAside = true), setting.observe().first())
+        setting.choose(DisplayCurrency.GBP)
+        assertEquals(CurrencyChoice.Chosen(DisplayCurrency.GBP), setting.observe().first())
+    }
 }

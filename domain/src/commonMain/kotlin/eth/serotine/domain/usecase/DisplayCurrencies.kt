@@ -20,7 +20,12 @@ class ObserveDisplayCurrencies(
     operator fun invoke(): Flow<DisplayCurrencies> = setting.observe().map { choice ->
         val offered = offered(feeds)
         val chosen = (choice as? CurrencyChoice.Chosen)?.currency?.takeIf { it in offered }
-        DisplayCurrencies(chosen ?: DisplayCurrency.USD, offered, unreadable = choice is CurrencyChoice.Unreadable)
+        DisplayCurrencies(
+            chosen ?: DisplayCurrency.USD,
+            offered,
+            unreadable = choice is CurrencyChoice.Unreadable,
+            setAside = (choice as? CurrencyChoice.Chosen)?.setAside == true,
+        )
     }
 }
 
@@ -34,13 +39,15 @@ class SetDisplayCurrency(
 }
 
 /**
- * The [chosen] display currency, the [offered] ones in their order, and whether the stored
- * choice cannot be read ([unreadable]: [chosen] is then USD, and nothing can be chosen).
+ * The [chosen] display currency, the [offered] ones in their order, whether the stored choice
+ * cannot be read ([unreadable]: [chosen] is then USD, and nothing can be chosen), and whether
+ * it was damaged and set aside, so [chosen] is USD until another is chosen ([setAside]).
  */
 data class DisplayCurrencies(
     val chosen: DisplayCurrency,
     val offered: List<DisplayCurrency>,
     val unreadable: Boolean = false,
+    val setAside: Boolean = false,
 )
 
 private fun offered(feeds: PriceFeeds): List<DisplayCurrency> =
