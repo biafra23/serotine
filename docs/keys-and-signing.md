@@ -182,15 +182,54 @@ its KDoc and returns it as a result the UI shows as state.
   entropy. Nothing is stored: the words travel to Create account's screen under
   the mnemonic exception, are shown there alone, three of them are asked back,
   and they are stored by the import below.
-- **Sign.** `sign(account, digest, password)` opens the account's envelope
-  (`<address>.seed`) with the password and the hardware secret, derives the first
-  account's key and refuses a key that does not derive the account it is filed
-  under. It signs the 32-byte digest as given, never hashed again, with
-  libsecp256k1 (a low s, RFC 6979's nonce) and finds the recovery id by
-  recovering the public key. The seed, the key and the password's bytes are
+- **Sign.** `sign(account, digest, unlock)` opens the account's envelope
+  (`<address>.seed`), with the password and the hardware secret
+  (`Unlock.WithPassword`) or with the DEK the biometric path unwraps
+  (`Unlock.WithBiometrics`, below), derives the first account's key and refuses
+  a key that does not derive the account it is filed under. It signs the
+  32-byte digest as given, never hashed again, with libsecp256k1 (a low s, RFC
+  6979's nonce) and finds the recovery id by recovering the public key. The seed, the key and the password's bytes are
   zeroed before it returns (rule 7); a wrong password, a missing key and an
   envelope this device cannot open are results, never exceptions. Its consumers
   arrive with sending and Safe transactions, later parts of `feature/wallet-ux`.
+- **Biometric unlock** (rules 3 to 5), the user's opt-in in Settings → Security,
+  on Android:
+  - `HW_bio` is `AndroidBiometricKey`: an RSA-2048 pair in the Keystore,
+    StrongBox first and the TEE otherwise. Its private half decrypts only after
+    a per-use strong biometric (`setUserAuthenticationParameters(0,
+    AUTH_BIOMETRIC_STRONG)`, the `-1` duration on API 29), only on an unlocked
+    device (`setUnlockedDeviceRequired`), and it is invalidated when the enrolled
+    biometrics change. A key the Keystore does not keep in secure hardware is
+    deleted, and the path is not offered (rule 5).
+  - `enableBiometrics(password, confirmation)` opens each envelope with the
+    wallet password to reach its DEK, makes the key anew and files each DEK
+    wrapped by its public half (RSA-OAEP, SHA-256 with MGF1-SHA-1) as
+    `<address>.bio`. Wrapping needs no biometric, so the path is then proven
+    once: one wrap opened through the prompt must give back its DEK. Only then
+    is it on; a dismissed or failed proof turns it off again. The key and the
+    wraps are made as one step and undone together; a crash in between leaves
+    wraps the next enable or disable sweeps away. A key imported while the path
+    is on is wrapped too. The password path is untouched.
+  - What the device cannot offer is said before the password is asked: no
+    strong sensor, nothing enrolled, only weak biometrics, or a key store
+    outside secure hardware (the password path's key tells, rule 5). While the
+    biometric key exists the path reads as on, usable right now or not, so
+    that it can always be turned off.
+  - `sign(…, Unlock.WithBiometrics(reason))` decrypts the wrap through the
+    platform's `BiometricPrompt` with the cipher as its `CryptoObject`, so only a
+    match the hardware accepts unlocks it. The prompt is the host's
+    (`PlatformBiometricPrompter`, on the activity in front), says the caller's
+    reason, and offers "Use the password" as the way out.
+  - `disableBiometrics()` deletes the key, then the wraps (rule 4). The last key
+    deleted takes the path with it, as it takes the wallet password.
+  - A dismissed or timed-out prompt, a key invalidated by re-enrolment, a
+    locked-out or busy sensor and an account stored before the path was on are
+    results the signing screen turns into "use the password".
+  - The key store's calls take turns, `describe()` included: the biometric
+    key's check opens a Keystore operation, which must not compete with the one
+    a pending prompt holds (StrongBox has few).
+  - The desktop and iOS have no biometric path yet, and their Security screen
+    says so.
 
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
@@ -306,10 +345,12 @@ its KDoc and returns it as a result the UI shows as state.
   hardware secret whether its key exists before anything could create one.
   When envelopes sealed with that kind of secret exist but the key does not,
   the key store reports itself unavailable instead of making a new key, whose
-  secret would only answer "wrong password"; signing answers unavailable for
-  the same reason, before the envelope is touched. This covers a Keystore key lost
-  in an OS upgrade or a cleared key store, and a deleted enclave state. The
-  way back is the reset and recovery flows.
+  secret would only answer "wrong password"; signing with the password answers
+  unavailable for the same reason, before the envelope is touched. Signing with
+  a biometric does not need that key (its own key unwraps the DEK), so it still
+  works. This covers a Keystore key lost in an OS upgrade or a cleared key
+  store, and a deleted enclave state. The way back is the reset and recovery
+  flows.
 - **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
   Until then the key store reports itself unavailable there.
 - **What never leaves a call.**
@@ -334,8 +375,11 @@ its KDoc and returns it as a result the UI shows as state.
   on while its phrase is shown and checked (`KeepScreenOn()`; Android's
   `keepScreenOn`), because a display that times out is a screen left.
 - **Not yet.**
-  - The biometric path (rule 3) and Settings → Security come with the next
-    part of `feature/wallet-ux`.
+  - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`) and on
+    iOS, and the opt-in on the seed screens at the first key (Settings →
+    Security is where it is turned on today).
+  - Changing the wallet password, which re-wraps every envelope's DEK as one
+    step a crash cannot leave half done.
   - A way back when no envelope opens any more (a lost Keystore key, a
     forgotten password) comes with the wallet's reset and recovery flows.
 

@@ -5,11 +5,14 @@ import android.app.Application
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import eth.serotine.android.keys.ForegroundActivity
+import eth.serotine.android.keys.PlatformBiometricPrompter
 import eth.serotine.android.upgrade.AndroidUpgradeNotifier
 import eth.serotine.android.upgrade.UpgradeCheckJob
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.keys.AndroidBiometricKey
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.settings.FileDisplayCurrency
@@ -63,7 +66,12 @@ class SerotineApplication : Application() {
             accounts = FileAccountRepository(filesDir.resolve("accounts.json").path),
             // Imported seeds in envelopes under the app's private files, the hardware factor
             // a Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers.
-            keys = EnvelopeKeyStore(filesDir.resolve("keys").path, AndroidKeystoreSecret()),
+            // The biometric path's key prompts on the activity in front.
+            keys = EnvelopeKeyStore(
+                filesDir.resolve("keys").path,
+                AndroidKeystoreSecret(),
+                biometricKey = AndroidBiometricKey(this, PlatformBiometricPrompter { foreground.current }),
+            ),
             nativeBalances = node.nativeBalances,
             tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
             tokenBalances = node.tokenBalances,
@@ -100,8 +108,12 @@ class SerotineApplication : Application() {
         following = null
     }
 
+    /** The activity in front, for the biometric prompt. */
+    private val foreground = ForegroundActivity()
+
     override fun onCreate() {
         super.onCreate()
+        registerActivityLifecycleCallbacks(foreground)
         registerActivityLifecycleCallbacks(HoldWhileVisible())
         scope.launch { UpgradeCheckJob.schedule(this@SerotineApplication) }
     }

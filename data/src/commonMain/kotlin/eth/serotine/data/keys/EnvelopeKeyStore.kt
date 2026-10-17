@@ -5,6 +5,10 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.BiometricChange
+import eth.serotine.domain.repository.BiometricUnavailable
+import eth.serotine.domain.repository.BiometricUnlock
+import eth.serotine.domain.repository.BiometricUnusable
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -13,6 +17,7 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.repository.Unlock
 import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -44,15 +49,23 @@ import kotlinx.serialization.json.Json
  * (rule 8) is the host's part: Android's backup rules, the desktop's backup exclusion. A
  * file that cannot be read, or that this device must not open, is reported and passed over,
  * never trusted. It makes Create account's new mnemonics ([newMnemonic]) and signs with a
- * stored account's key ([sign]), the one place that key exists. Work runs on [dispatcher];
- * calls are serialized within the process.
+ * stored account's key ([sign]), the one place that key exists.
+ *
+ * [biometricKey] is the biometric path's second hardware key where the platform has one
+ * (rules 3 and 4): while it is on, each envelope's DEK is also wrapped by it
+ * (`<address>.bio`, [BiometricWraps]), and [sign] can open an envelope with a strong
+ * biometric instead of the password. Turning it off deletes the key and the wraps. Work runs
+ * on [dispatcher]; calls are serialized within the process.
  */
 class EnvelopeKeyStore(
     private val directory: String,
     private val hardware: HardwareSecret?,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val withoutHardware: KeyProtection = KeyProtection.PASSWORD_ONLY,
+    private val biometricKey: BiometricKey? = null,
 ) : KeyStore, Signer {
+
+    private val wraps = BiometricWraps(directory)
 
     init {
         require(withoutHardware in PASSWORD_ONLY_KINDS) { "without hardware the protection is password-only" }
@@ -62,18 +75,26 @@ class EnvelopeKeyStore(
 
     private fun protection(): KeyProtection = hardware?.protection ?: withoutHardware
 
-    override suspend fun describe(): KeyStoreDescription = withContext(dispatcher) {
-        try {
-            if (!EnvelopeCrypto.available()) return@withContext KeyStoreDescription.Unavailable
+    // Under the lock too: the biometric key's check opens a Keystore operation, which must not
+    // compete with the one a pending prompt holds (StrongBox has few).
+    override suspend fun describe(): KeyStoreDescription = lock.withLock {
+        withContext(dispatcher) { describeHere() }
+    }
+
+    private fun describeHere(): KeyStoreDescription {
+        return try {
+            if (!EnvelopeCrypto.available()) return KeyStoreDescription.Unavailable
             // The hardware first: when it fails, that is the one thing worth reporting. And
             // whether its key exists before anything could create it (protection may).
             val provisioned = hardware?.isProvisioned() ?: true
             val envelopes = envelopes()
-            if (hardwareKeyLost(provisioned, envelopes)) return@withContext KeyStoreDescription.Unavailable
+            if (hardwareKeyLost(provisioned, envelopes)) return KeyStoreDescription.Unavailable
             val protection = protection()
-            KeyStoreDescription.Ready(passwordSet = envelopes.isNotEmpty(), protection = protection)
-        } catch (e: CancellationException) {
-            throw e
+            KeyStoreDescription.Ready(
+                passwordSet = envelopes.isNotEmpty(),
+                protection = protection,
+                biometrics = biometricUnlock(protection),
+            )
         } catch (e: Throwable) {
             // Throwable: the platform's key store is native code, which fails with Errors.
             report("the key store cannot be described (${e::class.simpleName})")
@@ -122,31 +143,22 @@ class EnvelopeKeyStore(
 
     /**
      * Signs [digest] with the first account's key of the seed sealed under [account]'s name,
-     * which must derive [account]: the seed, the key and the password's bytes exist only in
-     * this call, in byte arrays zeroed before it returns (rule 7). secp256k1 runs in native code
-     * (libsecp256k1); its signature has a low s, and the recovery id is found by recovering the
-     * public key it names.
+     * which must derive [account]. The envelope opens as [unlock] says: through the password
+     * path, or with the DEK the biometric key unwraps once the user passed its prompt. The seed,
+     * the key, the DEK and the password's bytes exist only in this call, in byte arrays zeroed
+     * before it returns (rule 7). secp256k1 runs in native code (libsecp256k1); its signature has
+     * a low s, and the recovery id is found by recovering the public key it names.
      */
-    override suspend fun sign(account: Address, digest: Digest, password: WalletPassword): Signing =
+    override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
         lock.withLock {
             withContext(dispatcher) {
                 if (!EnvelopeCrypto.available()) return@withContext Signing.Unavailable
-                var passwordBytes = ByteArray(0)
                 try {
                     val file = Path(directory, "${account.hex}$SEED_SUFFIX")
                     if (!SystemFileSystem.exists(file)) return@withContext Signing.NoKey
-                    // A lost hardware key is said, not taken for a wrong password.
-                    if (hardware?.isProvisioned() == false) {
-                        report("the hardware key the envelopes were sealed with is gone")
-                        return@withContext Signing.Unavailable
-                    }
-                    val sealed = read(file) ?: return@withContext Signing.Unavailable
-                    if (!Envelope.canOpen(sealed, hardware, account.hex)) return@withContext Signing.Unavailable
-                    passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
-                    when (val opened = Envelope.open(sealed, passwordBytes, hardware)) {
-                        Envelope.Opened.WrongPassword -> refusedOrDamaged(account, passwordBytes)
-                        Envelope.Opened.Refused, Envelope.Opened.Verified -> Signing.Unavailable
-                        is Envelope.Opened.Seed -> signWith(opened.bytes, account, digest)
+                    when (unlock) {
+                        is Unlock.WithPassword -> signWithPassword(file, account, digest, unlock.password)
+                        is Unlock.WithBiometrics -> signWithBiometrics(file, account, digest, unlock.reason)
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -155,11 +167,60 @@ class EnvelopeKeyStore(
                     // of the key path is shown.
                     report("the signer failed (${e::class.simpleName})")
                     Signing.Unavailable
-                } finally {
-                    passwordBytes.fill(0)
                 }
             }
         }
+
+    /** [sign] with the wallet password, through the envelope's password path. */
+    private fun signWithPassword(file: Path, account: Address, digest: Digest, password: WalletPassword): Signing {
+        // A lost hardware key is said, not taken for a wrong password.
+        if (hardware?.isProvisioned() == false) {
+            report("the hardware key the envelopes were sealed with is gone")
+            return Signing.Unavailable
+        }
+        val sealed = read(file) ?: return Signing.Unavailable
+        if (!Envelope.canOpen(sealed, hardware, account.hex)) return Signing.Unavailable
+        var passwordBytes = ByteArray(0)
+        try {
+            passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
+            return when (val opened = Envelope.open(sealed, passwordBytes, hardware)) {
+                Envelope.Opened.WrongPassword -> refusedOrDamaged(account, passwordBytes)
+                is Envelope.Opened.Seed -> signWith(opened.bytes, account, digest)
+                else -> Signing.Unavailable
+            }
+        } finally {
+            passwordBytes.fill(0)
+        }
+    }
+
+    /**
+     * [sign] with a strong biometric: the account's wrap is unwrapped by the biometric key, in
+     * the system's prompt saying [reason], and its DEK opens the envelope. The password path is
+     * not touched, so a hardware secret lost from it does not matter here.
+     */
+    private suspend fun signWithBiometrics(file: Path, account: Address, digest: Digest, reason: String): Signing {
+        val key = biometricKey
+        if (key == null || !key.exists()) return Signing.BiometricsUnusable(BiometricUnusable.OFF)
+        // An invalidated key is said by unwrap: a check here would open a Keystore operation more.
+        val sealed = read(file) ?: return Signing.Unavailable
+        if (!Envelope.canOpen(sealed, hardware, account.hex)) return Signing.Unavailable
+        // Stored before the path was on, or its wrap lost: this account opens with the password.
+        val wrapped = wraps.read(account.hex, key.tag) ?: return Signing.BiometricsUnusable(BiometricUnusable.OFF)
+        return when (val unwrapped = key.unwrap(wrapped, reason)) {
+            is BiometricUnwrap.Dek -> {
+                val opened = Envelope.openWithDek(sealed, unwrapped.bytes, hardware, account.hex)
+                if (opened is Envelope.Opened.Seed) {
+                    signWith(opened.bytes, account, digest)
+                } else {
+                    report("the biometric wrap of ${account.hex} does not open its envelope")
+                    Signing.Unavailable
+                }
+            }
+            BiometricUnwrap.Cancelled -> Signing.Cancelled
+            is BiometricUnwrap.Unusable -> Signing.BiometricsUnusable(unwrapped.reason)
+            BiometricUnwrap.Failed -> Signing.Unavailable
+        }
+    }
 
     /**
      * The account's envelope refused [password]: a wrong password, or a damaged file, which a
@@ -209,11 +270,186 @@ class EnvelopeKeyStore(
             try {
                 if (!SystemFileSystem.exists(file)) return@withContext KeyDeletion.NotFound
                 SystemFileSystem.delete(file)
+                wraps.delete(address.hex)
+                // With the last key goes the wallet password, and the biometric path with it:
+                // the next import starts a wallet afresh. The key is deleted either way.
+                if (envelopes().isEmpty()) turnOffQuietly()
                 KeyDeletion.Deleted
             } catch (e: Exception) {
                 report("could not delete the envelope of ${address.hex} (${e::class.simpleName})")
                 KeyDeletion.Failed
             }
+        }
+    }
+
+    /**
+     * Opens every envelope with [password] to reach its DEK, makes the biometric key anew, files
+     * each DEK wrapped by it, and proves the path once through the prompt saying [confirmation]
+     * ([confirm]). A password no envelope opens is wrong after at most [MAX_PASSWORD_CHECKS]
+     * tries; an envelope that refuses it while another opens is damaged and gets no wrap. What the
+     * device cannot offer is said before the password is asked of the envelopes. The key and the
+     * wraps are made as one step a cancelled caller cannot cut in half, and undone together when a
+     * wrap cannot be written or the proof fails; a crash in between leaves wraps that the next
+     * enable or disable sweeps away.
+     */
+    override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
+        lock.withLock {
+            withContext(dispatcher) {
+                val key = biometricKey ?: return@withContext BiometricChange.NotOnThisDevice
+                if (!EnvelopeCrypto.available()) return@withContext BiometricChange.Failed
+                var passwordBytes = ByteArray(0)
+                val deks = mutableListOf<Pair<String, ByteArray>>()
+                var touched = false
+                try {
+                    key.unavailable()?.let { return@withContext BiometricChange.Unavailable(it) }
+                    if (protection() == KeyProtection.SOFTWARE_KEY_STORE) {
+                        return@withContext BiometricChange.Unavailable(BiometricUnavailable.NOT_IN_SECURE_HARDWARE)
+                    }
+                    val provisioned = hardware?.isProvisioned() ?: true
+                    val envelopes = envelopes()
+                    if (envelopes.isEmpty()) return@withContext BiometricChange.NoKeys
+                    if (hardwareKeyLost(provisioned, envelopes)) return@withContext BiometricChange.Failed
+                    passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
+                    val refused = mutableListOf<String>()
+                    for (envelope in envelopes) {
+                        when (val opened = Envelope.dek(envelope.sealed, passwordBytes, hardware)) {
+                            is Envelope.Opened.Dek -> deks += envelope.address to opened.bytes
+                            Envelope.Opened.WrongPassword -> refused += envelope.address
+                            else -> report("the envelope of ${envelope.address} cannot be opened")
+                        }
+                        // As the import: a password that opened none of the first few is wrong.
+                        if (deks.isEmpty() && refused.size >= MAX_PASSWORD_CHECKS) break
+                    }
+                    if (deks.isEmpty()) {
+                        val wrong = refused.isNotEmpty()
+                        return@withContext if (wrong) BiometricChange.WrongPassword else BiometricChange.Failed
+                    }
+                    refused.forEach { report("the envelope of $it refuses the wallet password: no biometric wrap") }
+                    touched = true
+                    val made = withContext(NonCancellable) { wrapAll(key, deks) }
+                    if (made != BiometricChange.Enabled) return@withContext made
+                    val (address, dek) = deks.first()
+                    confirm(key, address, dek, confirmation)
+                } catch (e: CancellationException) {
+                    // Cancelled during the proof: the path is not left on unproven.
+                    if (touched) withContext(NonCancellable) { turnOffQuietly() }
+                    throw e
+                } catch (e: Throwable) {
+                    // Throwable: the Keystore and libsodium are native code. Nothing is left half on.
+                    report("the biometric path could not be turned on (${e::class.simpleName})")
+                    if (touched) withContext(NonCancellable) { turnOffQuietly() }
+                    BiometricChange.Failed
+                } finally {
+                    passwordBytes.fill(0)
+                    deks.forEach { (_, dek) -> dek.fill(0) }
+                }
+            }
+        }
+
+    /** A new biometric key, and [deks] wrapped by it, every one or none. */
+    private fun wrapAll(key: BiometricKey, deks: List<Pair<String, ByteArray>>): BiometricChange {
+        wraps.deleteAll()
+        if (!key.create()) return BiometricChange.Unavailable(BiometricUnavailable.NOT_IN_SECURE_HARDWARE)
+        val written = deks.all { (address, dek) -> wraps.write(address, key.tag, key.wrap(dek)) }
+        if (!written) {
+            turnOffQuietly()
+            return BiometricChange.Failed
+        }
+        return BiometricChange.Enabled
+    }
+
+    /**
+     * Proves the new path the way signing will use it: [address]'s wrap opened through the
+     * prompt saying [confirmation] must give back [dek]. Enabling needs no biometric otherwise, so
+     * this is what shows that this device's key decrypts at all (rule 3's binding, the padding,
+     * StrongBox). Anything else turns the path off again.
+     */
+    private suspend fun confirm(
+        key: BiometricKey,
+        address: String,
+        dek: ByteArray,
+        confirmation: String,
+    ): BiometricChange {
+        val wrapped = wraps.read(address, key.tag)
+        val outcome = when (val unwrapped = wrapped?.let { key.unwrap(it, confirmation) }) {
+            is BiometricUnwrap.Dek -> {
+                val same = unwrapped.bytes.contentEquals(dek)
+                unwrapped.bytes.fill(0)
+                if (same) return BiometricChange.Enabled
+                report("the biometric key does not give back what it wrapped")
+                BiometricChange.NotConfirmed
+            }
+            BiometricUnwrap.Cancelled -> BiometricChange.Cancelled
+            is BiometricUnwrap.Unusable, BiometricUnwrap.Failed -> BiometricChange.NotConfirmed
+            null -> BiometricChange.Failed
+        }
+        withContext(NonCancellable) { turnOffQuietly() }
+        return outcome
+    }
+
+    override suspend fun disableBiometrics(): BiometricChange = lock.withLock {
+        withContext(dispatcher + NonCancellable) {
+            if (biometricKey == null) return@withContext BiometricChange.NotOnThisDevice
+            try {
+                turnBiometricsOff()
+                BiometricChange.Disabled
+            } catch (e: Throwable) {
+                report("the biometric key could not be deleted (${e::class.simpleName})")
+                BiometricChange.Failed
+            }
+        }
+    }
+
+    /**
+     * The biometric key deleted, then its wraps: once the key is gone they open nothing, so a
+     * wrap that cannot be deleted is reported and harmless.
+     */
+    private fun turnBiometricsOff() {
+        biometricKey?.delete()
+        if (!wraps.deleteAll()) report("a biometric wrap could not be deleted; its key is gone")
+    }
+
+    /** [turnBiometricsOff] where a failure must not hide the outcome being reported. */
+    private fun turnOffQuietly() {
+        try {
+            turnBiometricsOff()
+        } catch (e: Throwable) {
+            report("the biometric key could not be deleted (${e::class.simpleName})")
+        }
+    }
+
+    /**
+     * The biometric path as [describe] reports it. While its key exists the path is on, usable
+     * right now or not, so that it can always be turned off (rule 4); a key store outside secure
+     * hardware here means the biometric key would be too, so the path is not offered (rule 5).
+     */
+    private fun biometricUnlock(protection: KeyProtection): BiometricUnlock {
+        val key = biometricKey ?: return BiometricUnlock.NotOnThisDevice
+        // The biometric path failing never takes the password path down with it.
+        val exists = try {
+            key.exists()
+        } catch (e: Throwable) {
+            report("the biometric key cannot be described (${e::class.simpleName})")
+            return BiometricUnlock.Unavailable(BiometricUnavailable.NO_HARDWARE)
+        }
+        if (exists) {
+            val invalidated = try {
+                key.isInvalidated()
+            } catch (e: Throwable) {
+                report("the biometric key cannot be checked (${e::class.simpleName})")
+                false
+            }
+            return if (invalidated) BiometricUnlock.Invalidated else BiometricUnlock.On
+        }
+        return try {
+            when {
+                protection == KeyProtection.SOFTWARE_KEY_STORE ->
+                    BiometricUnlock.Unavailable(BiometricUnavailable.NOT_IN_SECURE_HARDWARE)
+                else -> key.unavailable()?.let(BiometricUnlock::Unavailable) ?: BiometricUnlock.Off
+            }
+        } catch (e: Throwable) {
+            report("the biometric sensor cannot be described (${e::class.simpleName})")
+            BiometricUnlock.Unavailable(BiometricUnavailable.NO_HARDWARE)
         }
     }
 
@@ -257,8 +493,24 @@ class EnvelopeKeyStore(
             refused.forEach { report("the envelope of $it does not open under the wallet password") }
             if (!verified && !longEnough) return KeyImport.PasswordTooShort
             if (!alreadyStored) {
+                // While the biometric path is on, the new key joins it: its DEK is wrapped too. The
+                // biometric path failing never fails the import: the password still opens it.
+                val key = try {
+                    biometricKey?.takeIf { it.exists() && !it.isInvalidated() }
+                } catch (e: Exception) {
+                    report("the biometric key cannot be asked (${e::class.simpleName}): the new key stays off it")
+                    null
+                }
+                var wrapped: ByteArray? = null
                 // Also over a file of this name that cannot be opened: its seed is at hand.
-                val sealed = Envelope.seal(seed, address, password, hardware, cost(protection))
+                val sealed = Envelope.seal(seed, address, password, hardware, cost(protection)) { dek ->
+                    wrapped = try {
+                        key?.wrap(dek)
+                    } catch (e: Exception) {
+                        report("the new key could not join the biometric path (${e::class.simpleName})")
+                        null
+                    }
+                }
                 val written = withContext(NonCancellable) {
                     try {
                         EnvelopeCrypto.createPrivateDirectory(directory)
@@ -272,6 +524,12 @@ class EnvelopeKeyStore(
                     }
                 }
                 if (!written) return KeyImport.NotSaved
+                withContext(NonCancellable) {
+                    // The new envelope has a new DEK: a wrap left from an earlier one opens nothing.
+                    wraps.delete(address)
+                    // A wrap that is not written leaves this account on the password alone.
+                    wrapped?.let { if (key != null) wraps.write(address, key.tag, it) }
+                }
             }
             return KeyImport.Stored(account, protection)
         } finally {

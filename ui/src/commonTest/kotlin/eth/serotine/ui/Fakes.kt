@@ -11,12 +11,13 @@ import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyStore
-import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
@@ -65,6 +66,11 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
 /** A [KeyStore] whose deletions are recorded, and fail when [failDeletes]. */
 internal class FakeKeys : KeyStore {
     override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
+    override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
+        BiometricChange.NotOnThisDevice
+
+    override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
 
     val deleted = mutableListOf<Address>()
     var failDeletes = false

@@ -42,11 +42,11 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
-import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.KnownUpgrade
@@ -56,6 +56,7 @@ import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
+import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
@@ -144,6 +145,11 @@ class AppNavigationTest {
         },
         keys = object : KeyStore {
             override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
+            override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
+                BiometricChange.NotOnThisDevice
+
+            override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
 
             override suspend fun describe() = KeyStoreDescription.Ready(passwordSet = false, KeyProtection.HARDWARE)
 
@@ -366,6 +372,20 @@ class AppNavigationTest {
         rule.onNodeWithText("OK").performClick()
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun settingsOpensSecurityAndItsBackArrowReturns() {
+        showApp()
+        rule.onNodeWithText("Settings").performClick()
+
+        rule.onNodeWithText("Wallet password · Biometric unlock").performClick()
+        rule.onNodeWithText("Biometric unlock").assertIsDisplayed()
+        // The fake key store is the desktop's: no biometric path, and it says so.
+        rule.onNodeWithText("Not on this device yet", substring = true).assertIsDisplayed()
+
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
     }
 
     @Test

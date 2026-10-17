@@ -49,7 +49,10 @@ rule in code.
   `AppGraph` and hands it to `App`. A port whose adapter is the platform's own
   output rather than a data source — `UpgradeNotifier`, the notifications —
   is implemented in the host itself, since it needs the host's activity, icon
-  or tray; the decision what to show stays a use case in `:domain`.
+  or tray; the decision what to show stays a use case in `:domain`. The same
+  goes for a seam an adapter needs from the host's window: the biometric prompt
+  the key adapter's `BiometricPrompter` asks for is the Android host's
+  `PlatformBiometricPrompter`, shown on the activity in front.
 
 Anything that violates the arrows — a screen reaching for a repository, a use
 case importing a Compose or Android type, `:data` depending on `:ui` — is a

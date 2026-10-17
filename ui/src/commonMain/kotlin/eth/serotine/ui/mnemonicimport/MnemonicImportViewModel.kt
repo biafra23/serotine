@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The seed-phrase screen's ViewModel: holds the words and the wallet password as they are
- * typed and hands them to [ImportMnemonicAccount]. The one ViewModel the [Mnemonic] and the
+ * typed and hands them to [ImportMnemonicAccount]. One of the ViewModels the [Mnemonic] and the
  * [WalletPassword] pass through (CLAUDE.md, *Trust*): it never logs, saves or caches them,
  * and drops them from its state as soon as the screen is not shown — hidden ([onHidden]) or
  * gone from the back stack ([onCleared]).

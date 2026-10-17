@@ -16,6 +16,7 @@ import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -391,6 +392,11 @@ class MnemonicImportViewModelTest {
 
     private class FakeKeyStore : KeyStore {
         override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
+        override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
+            BiometricChange.NotOnThisDevice
+
+        override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
 
         var next = CompletableDeferred<KeyImport>()
         val received = mutableListOf<Mnemonic>()

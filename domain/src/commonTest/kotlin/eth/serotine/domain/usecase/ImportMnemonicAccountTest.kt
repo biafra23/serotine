@@ -11,12 +11,13 @@ import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
-import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewMnemonic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -211,6 +212,11 @@ class ImportMnemonicAccountTest {
 
     private class FakeKeyStore : KeyStore {
         override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
+        override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
+            BiometricChange.NotOnThisDevice
+
+        override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
 
         // Keyed by identity, which is Mnemonic's equality.
         val results = mutableMapOf<Mnemonic, KeyImport>()

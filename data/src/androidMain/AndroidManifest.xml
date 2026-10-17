@@ -6,4 +6,8 @@
          the app's manifest. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- The key store's biometric path (eth.serotine.data.keys.AndroidBiometricKey): whether
+         the device offers strong biometrics, and the prompt that unlocks its key. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 </manifest>

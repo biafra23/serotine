@@ -21,6 +21,7 @@ class SettingsScreenTest {
 
     private var tokensOpened = 0
     private var currencyOpened = 0
+    private var securityOpened = 0
 
     private fun show() = rule.setContent {
         SerotineTheme {
@@ -35,6 +36,7 @@ class SettingsScreenTest {
                 ),
                 onCurrency = { currencyOpened++ },
                 onTokens = { tokensOpened++ },
+                onSecurity = { securityOpened++ },
             )
         }
     }
@@ -53,6 +55,14 @@ class SettingsScreenTest {
 
         rule.onNodeWithText("EUR").performClick()
         assertEquals(1, currencyOpened)
+    }
+
+    @Test
+    fun theSecurityRowOpensThePasswordAndBiometricSettings() {
+        show()
+
+        rule.onNodeWithText("Wallet password · Biometric unlock").performClick()
+        assertEquals(1, securityOpened)
     }
 
     @Test
