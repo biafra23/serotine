@@ -27,6 +27,13 @@ interface SentTransfers {
      * the record could not be saved.
      */
     suspend fun forgetMined(account: Address, minedCount: Long): Boolean
+
+    /**
+     * Forgets the transfer whose transaction hash is [hash]: one whose broadcast was rejected or
+     * refused, so it can never be mined as signed and its nonce is free again. True when nothing
+     * is recorded under [hash]; false when the record could not be saved.
+     */
+    suspend fun forget(hash: String): Boolean
 }
 
 /** What [SentTransfers.observe] holds. */

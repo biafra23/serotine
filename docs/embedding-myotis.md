@@ -218,17 +218,20 @@ verified read.
     memory, gone with the process and expiring; the app's own record of sent
     transfers (`SentTransfers`, kept in `sent-transfers.json` beside the account
     list) covers a restart: `QuoteTransfer` never quotes below its last unmined
-    nonce plus one.
+    nonce plus one. A transfer is recorded once signed, before it is
+    broadcast; a broadcast rejected or refused can never be mined as signed,
+    so its record goes and its nonce is free again, while an unavailable one
+    stays recorded, since it may have reached a peer all the same.
   - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
     50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
     median of its percentile, never below 0.001 gwei and never below the
     slower level's. The next base fee is the history's last; the fee cap is
     twice that plus the tip.
   - The gas is `estimateGasDetailed`, so a revert, an infeasible transfer and
-    a refusal are told apart. It is never taken below the transaction's
-    intrinsic gas (21000 plus Prague's calldata floor): probed on Sepolia, the
-    Rust engine estimates a zero-value transfer at 17433, which every node
-    would refuse.
+    a refusal are told apart. It is the engine's answer as it stands, priced
+    under the fork the chain runs: on Sepolia, Amsterdam since 2026-10-06, a
+    plain transfer estimates below the 21000 of earlier forks (EIP-2780;
+    17433 when probed), so Serotine adds no floor of its own.
   - The simulation is `callDetailed` from the sender at the head, the transfer
     as it will run.
 - **`EngineBroadcaster`** (`Broadcaster`): `sendRawTransactionDetailed`. The

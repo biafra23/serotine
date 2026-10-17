@@ -59,6 +59,11 @@ class FileSentTransfers(
             if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
         }
 
+    override suspend fun forget(hash: String): Boolean = file.change(notSaved = false) { transfers ->
+        val kept = transfers.filterNot { it.hash == hash }
+        if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
+    }
+
     /** The file's layout. [version] comes first and is always written. */
     @Serializable
     private class StoredFile(val version: Int, val transfers: List<StoredTransfer>)

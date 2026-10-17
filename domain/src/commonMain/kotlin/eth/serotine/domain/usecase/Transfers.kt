@@ -203,9 +203,9 @@ class QuoteTransfer(
         val fees = async { inputs.fees() }
 
         val gas = when (val estimate = inputs.estimateGas(from, txTo, value, data)) {
-            // Never below what the transaction needs before it runs: an estimate under it (the Rust
-            // engine's for a zero-value transfer, 17433) would be refused by every node.
-            is GasEstimate.Estimated -> maxOf(estimate.gas, Eip1559Transaction.intrinsicGas(data))
+            // The engine's, priced under the fork the chain runs: on Sepolia's Amsterdam a plain
+            // transfer takes less than the 21000 it did before (EIP-2780), so no floor is added.
+            is GasEstimate.Estimated -> estimate.gas
             is GasEstimate.Reverted -> return@coroutineScope TransferQuoting.Reverts(blockNumber = null)
             // The EVM's words: about what the sender can pay, or something else it cannot do.
             is GasEstimate.Infeasible -> return@coroutineScope if (aboutFunds(estimate.detail)) {
@@ -373,7 +373,7 @@ class SendTransfer(
                 ),
             )
         }
-        return broadcast(broadcaster, signed)
+        return broadcast(broadcaster, sentTransfers, signed)
     }
 }
 
@@ -382,16 +382,28 @@ class SendTransfer(
  * retried with, never a new quote, which could take the next nonce while the first one is
  * still on its way and pay twice.
  */
-class RebroadcastTransfer(private val broadcaster: Broadcaster) {
-    suspend operator fun invoke(signed: SignedTransfer): TransferSending = broadcast(broadcaster, signed)
+class RebroadcastTransfer(private val broadcaster: Broadcaster, private val sentTransfers: SentTransfers) {
+    suspend operator fun invoke(signed: SignedTransfer): TransferSending = broadcast(broadcaster, sentTransfers, signed)
 }
 
-private suspend fun broadcast(broadcaster: Broadcaster, signed: SignedTransfer): TransferSending =
-    when (val broadcast = broadcaster.send(signed.raw)) {
-        // The hash is the raw bytes' own: what the receipt is looked up by.
-        is Broadcast.Sent -> TransferSending.Sent(signed.hash)
-        else -> TransferSending.NotSent(broadcast, signed)
+/**
+ * Broadcasts [signed]. A broadcast rejected or refused can never be mined as signed, so its record
+ * goes with it: kept, its nonce would hold every later transfer of the account behind one that
+ * never comes. An unavailable one stays recorded, since it may have reached a peer all the same.
+ */
+private suspend fun broadcast(
+    broadcaster: Broadcaster,
+    sentTransfers: SentTransfers,
+    signed: SignedTransfer,
+): TransferSending = when (val broadcast = broadcaster.send(signed.raw)) {
+    // The hash is the raw bytes' own: what the receipt is looked up by.
+    is Broadcast.Sent -> TransferSending.Sent(signed.hash)
+    is Broadcast.Rejected, is Broadcast.Refused -> {
+        withContext(NonCancellable) { sentTransfers.forget(signed.hash) }
+        TransferSending.NotSent(broadcast, signed)
     }
+    is Broadcast.Unavailable -> TransferSending.NotSent(broadcast, signed)
+}
 
 /** The outcome of [SendTransfer]. */
 sealed interface TransferSending {

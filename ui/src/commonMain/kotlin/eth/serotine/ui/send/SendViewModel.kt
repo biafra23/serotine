@@ -661,7 +661,7 @@ class SendViewModel(
             label = inWallet?.label,
             note = when (found.address) {
                 from -> "The account you send from: only the fee is spent."
-                asset?.contract -> "The token's own contract: tokens sent to it are usually lost for good."
+                asset?.contract -> "The token's own contract: nothing sent to it can ever be moved out."
                 else -> null
             },
         )
@@ -693,6 +693,7 @@ class SendViewModel(
                 else -> NOT_AN_ADDRESS to true
             }
             RecipientLookup.ChecksumMismatch -> CHECKSUM to true
+            RecipientLookup.ZeroAddress -> ZERO_ADDRESS to true
             RecipientLookup.OffchainOnly -> OFFCHAIN to true
             RecipientLookup.NoAddress -> "This name has no address." to true
             is RecipientLookup.Unavailable -> nameUnavailable(result.reason) to true
@@ -745,6 +746,9 @@ class SendViewModel(
 
     private fun refusal(quoting: TransferQuoting, option: Option): String = when (quoting) {
         is TransferQuoting.Quoted -> error("a quote is no refusal")
+        TransferQuoting.ToZeroAddress -> ZERO_ADDRESS
+        TransferQuoting.ToTokenContract -> "${option.symbol}'s own contract: nothing sent to it can ever be moved " +
+            "out, so it is refused."
         TransferQuoting.NothingToSend -> "There is nothing to send: enter an amount above zero."
         TransferQuoting.InsufficientFunds -> if (option.asset == TransferAsset.Native) {
             "Not enough ${network.nativeSymbol} for this amount and the most the fee can be: send less, to leave " +
@@ -857,6 +861,8 @@ class SendViewModel(
         const val NOT_A_NAME =
             "Not an ENS name Serotine can resolve: for now, names of letters (a–z), digits and hyphens."
         const val CHECKSUM = "The capitals do not match this address's checksum: check it for a typo."
+        const val ZERO_ADDRESS =
+            "The zero address: nobody holds its key, so whatever is sent to it is lost. It is refused."
         const val OFFCHAIN =
             "Only an off-chain gateway gives this name's address, and Serotine asks none: it cannot be resolved here."
         const val SEND_FAILED =

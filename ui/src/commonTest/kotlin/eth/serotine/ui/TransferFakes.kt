@@ -118,6 +118,11 @@ internal class MemorySentTransfers : SentTransfers {
         transfers.value = transfers.value.filterNot { it.account == account && it.nonce < minedCount }
         return true
     }
+
+    override suspend fun forget(hash: String): Boolean {
+        transfers.value = transfers.value.filterNot { it.hash == hash }
+        return true
+    }
 }
 
 /** A [NameResolver] answering from [names], [NameResolution.NoAddress] otherwise; each name asked in [asked]. */

@@ -163,14 +163,15 @@ class TransfersTest {
     }
 
     @Test
-    fun anEstimateBelowTheIntrinsicGasIsRaisedToIt() = runTest {
-        inputs.gas = 17_433 // what the Rust engine estimates for a zero-value transfer
+    fun theEnginesEstimateIsTheGasLimitEvenBelowThe21000OfOldForks() = runTest {
+        // What the Rust engine estimates for a plain transfer on Sepolia's Amsterdam (EIP-2780).
+        inputs.gas = 17_433
 
         val quote = assertIs<TransferQuoting.Quoted>(
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
         ).quote
 
-        assertEquals(21_000, quote.transaction.gasLimit)
+        assertEquals(17_433, quote.transaction.gasLimit)
     }
 
     @Test
@@ -394,6 +395,7 @@ class TransfersTest {
             TransferSending.NotSent(Broadcast.Rejected("nonce too low"), signed),
             SendTransfer(FakeSigner(Signing.Signed(signature)), broadcaster, sent)(quote, unlock),
         )
+        assertEquals(emptyList(), sent.transfers.value, "never mined as signed: its record and its nonce go")
     }
 
     @Test
@@ -407,10 +409,16 @@ class TransfersTest {
         val notSent = assertIs<TransferSending.NotSent>(sending(quote, Unlock.WithBiometrics("Send 1 wei")))
 
         val again = FakeBroadcaster(Broadcast.Sent("0x" + "00".repeat(32)))
-        val sent = assertIs<TransferSending.Sent>(RebroadcastTransfer(again)(notSent.signed))
+        assertEquals(listOf(notSent.signed), sent.transfers.value.map { it.signed }, "kept")
+        val resent = assertIs<TransferSending.Sent>(RebroadcastTransfer(again, sent)(notSent.signed))
 
         assertContentEquals(unavailable.sent.single(), again.sent.single(), "the very bytes, not a new quote")
-        assertEquals(notSent.signed.hash, sent.hash)
+        assertEquals(notSent.signed.hash, resent.hash)
+        assertEquals(1, sent.transfers.value.size, "still recorded once sent")
+
+        val refused = FakeBroadcaster(Broadcast.Refused("not a transaction"))
+        assertIs<TransferSending.NotSent>(RebroadcastTransfer(refused, sent)(notSent.signed))
+        assertEquals(emptyList(), sent.transfers.value, "a refused retry forgets it too")
     }
 
     private inner class FakeInputs : TransactionInputs {
@@ -469,6 +477,11 @@ class TransfersTest {
         override suspend fun forgetMined(account: Address, minedCount: Long): Boolean {
             forgotten += account to minedCount
             transfers.value = transfers.value.filterNot { it.account == account && it.nonce < minedCount }
+            return true
+        }
+
+        override suspend fun forget(hash: String): Boolean {
+            transfers.value = transfers.value.filterNot { it.hash == hash }
             return true
         }
     }

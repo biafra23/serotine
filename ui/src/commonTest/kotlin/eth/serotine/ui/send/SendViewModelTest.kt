@@ -149,7 +149,7 @@ class SendViewModelTest {
             ResolveRecipient(names),
             QuoteTransfer(inputs, balances, tokenBalances, sent, Network.SEPOLIA),
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
-            RebroadcastTransfer(broadcaster),
+            RebroadcastTransfer(broadcaster, sent),
             Network.SEPOLIA,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }

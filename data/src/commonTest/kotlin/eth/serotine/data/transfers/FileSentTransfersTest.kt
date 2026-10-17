@@ -21,6 +21,7 @@ import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FileSentTransfersTest {
@@ -83,6 +84,17 @@ class FileSentTransfersTest {
         store.forgetMined(alice, minedCount = 8)
 
         assertEquals(listOf(transfer(8), transfer(3, account = bob)), stored())
+    }
+
+    @Test
+    fun aTransferNeverBroadcastIsForgottenByItsHashAlone() = runTest {
+        val store = record()
+        listOf(transfer(6), transfer(7)).forEach { store.record(it) }
+
+        assertTrue(store.forget(transfer(6).hash))
+        assertTrue(store.forget("0x" + "00".repeat(32)), "nothing under that hash is nothing to forget")
+
+        assertEquals(listOf(transfer(7)), stored())
     }
 
     @Test
