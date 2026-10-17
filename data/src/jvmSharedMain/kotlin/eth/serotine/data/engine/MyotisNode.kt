@@ -2,6 +2,8 @@ package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.data.keys.fromHex
+import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
 import io.myotis.api.BeaconState
@@ -22,9 +24,9 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances] and [lightClient] to the AppGraph, and owns
- * it for the life of the process: [pause] and [resume] it around the app being in the
- * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
+ * creates it with [start], hands [nativeBalances], [addressKinds] and [lightClient] to the
+ * AppGraph, and owns it for the life of the process: [pause] and [resume] it around the app
+ * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
  * used; nothing below them.
  */
 class MyotisNode private constructor() {
@@ -62,6 +64,9 @@ class MyotisNode private constructor() {
 
     /** Native-currency balances, verified by this node's light client. */
     val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** What is at an address (an account, a delegated one, a contract), verified here. */
+    val addressKinds: AddressKinds = VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
@@ -191,6 +196,17 @@ class MyotisNode private constructor() {
             if (result.failReason() != null || result.verifyMethod() == null) return null
             // A proven absence is a proven zero.
             return ProvenBalance(if (result.exists()) result.balanceWei() ?: return null else "0", result.blockNumber())
+        }
+
+        // The code hash comes with the account proof, labelled with its block; the code itself
+        // from the verified reads; provenCode decides what of it is proven.
+        override fun proveCode(address: Address): ProvenCode? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val account = handle.requestAccount(address.hex)
+            if (account.failReason() != null || account.verifyMethod() == null) return null
+            return provenCode(account.exists(), account.codeHashHex(), account.blockNumber()) {
+                handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest")
+            }
         }
     }
 

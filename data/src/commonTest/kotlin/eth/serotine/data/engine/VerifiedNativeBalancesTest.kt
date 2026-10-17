@@ -129,4 +129,19 @@ class VerifiedNativeBalancesTest {
     private companion object {
         val POLL = 4.seconds
     }
+
+    @Test
+    fun onlyTheMostRecentlyProvenAddressesAreKept() = runTest {
+        chain.snapshot = running(head = 7)
+        val addresses = (0 until 70).map { Address.of("0x" + it.toString(16).padStart(40, '0')) }
+        addresses.forEach { chain.proofs[it] = ProvenBalance("1", 7) }
+        val balances = balances()
+        addresses.forEach { balances.observeBalance(it).first() }
+        chain.proofRequests.clear()
+
+        balances.observeBalance(addresses.last()).first()
+        balances.observeBalance(addresses.first()).first()
+
+        assertEquals(listOf(addresses.first()), chain.proofRequests, "the oldest was let go, the newest kept")
+    }
 }

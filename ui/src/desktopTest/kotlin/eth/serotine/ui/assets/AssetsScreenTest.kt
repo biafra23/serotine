@@ -47,9 +47,18 @@ class AssetsScreenTest {
     )
     private val actions = mutableListOf<AccountAction>()
 
-    private fun show(state: AssetsUiState, onAddAccount: () -> Unit = {}) =
+    private val adds = mutableListOf<String>()
+
+    private fun show(state: AssetsUiState) =
         rule.setContent {
-            SerotineTheme { AssetsScreen(state, onAddAccount = onAddAccount, onAccountAction = { actions += it }) }
+            SerotineTheme {
+                AssetsScreen(
+                    state,
+                    onWatchAddress = { adds += "watch" },
+                    onImportPhrase = { adds += "import" },
+                    onAccountAction = { actions += it },
+                )
+            }
         }
 
     @Test
@@ -154,12 +163,15 @@ class AssetsScreenTest {
     }
 
     @Test
-    fun theFloatingActionButtonAsksToAddAnAccount() {
-        var clicks = 0
-        show(AssetsUiState.Ready("Sepolia", syncing, emptyList()), onAddAccount = { clicks++ })
+    fun theFloatingActionButtonFansOutIntoWatchAndImport() {
+        show(AssetsUiState.Ready("Sepolia", syncing, emptyList()))
 
         rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Watch address").performClick()
+        rule.onNodeWithText("Import recovery phrase").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Import recovery phrase").performClick()
 
-        assertEquals(1, clicks)
+        assertEquals(listOf("watch", "import"), adds)
     }
 }

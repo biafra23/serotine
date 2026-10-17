@@ -4,10 +4,15 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.WalletPassword
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,25 +80,42 @@ class AccountChangesTest {
 
     @Test
     fun removingAnAccountHeldInTheKeyStoreDeletesItsKeyAfterTheEntry() = runTest {
-        assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys)(keyed.address))
+        assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys, WalletChanges())(keyed.address))
 
         assertEquals(listOf(watched), repository.accounts.value)
         assertEquals(listOf(keyed.address), keys.deleted)
     }
 
     @Test
-    fun removingAWatchedAccountTouchesNoKey() = runTest {
-        assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys)(watched.address))
+    fun removingAWatchedAccountLeavesTheOtherKeysAlone() = runTest {
+        assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys, WalletChanges())(watched.address))
 
         assertEquals(listOf(keyed), repository.accounts.value)
-        assertEquals(emptyList(), keys.deleted)
+        assertEquals(emptyList(), keys.deleted, "a watched account has no key to delete")
+    }
+
+    @Test
+    fun anImportAndARemovalOfTheSameAddressNeverInterleave() = runTest {
+        val changes = WalletChanges()
+        keys.importing = watched.address
+        keys.importDelayMillis = 1_000
+        val import = async { ImportMnemonicAccount(keys, repository, changes)(Mnemonic("words"), WalletPassword("pw")) }
+        runCurrent() // the import holds the wallet while it stores the key
+        val removal = async { RemoveAccount(repository, keys, changes)(watched.address) }
+        advanceUntilIdle()
+
+        assertEquals(MnemonicImport.KeyAdded(watched.copy(custody = AccountCustody.InKeyStore)), import.await())
+        // The removal ran after it: it found the entry held, and its key went with it.
+        assertEquals(AccountRemoval.Removed, removal.await())
+        assertEquals(listOf(keyed), repository.accounts.value)
+        assertEquals(setOf(keyed.address), keys.stored, "no key outlives its account, none is lost under one")
     }
 
     @Test
     fun aKeyThatCannotBeDeletedIsReportedWithTheEntryGone() = runTest {
         keys.failDeletes = true
 
-        assertEquals(AccountRemoval.RemovedKeyKept, RemoveAccount(repository, keys)(keyed.address))
+        assertEquals(AccountRemoval.RemovedKeyKept, RemoveAccount(repository, keys, WalletChanges())(keyed.address))
         assertEquals(listOf(watched), repository.accounts.value)
     }
 
@@ -101,16 +123,16 @@ class AccountChangesTest {
     fun anEntryThatCannotBeRemovedKeepsItsKey() = runTest {
         repository.failSaves = true
 
-        assertEquals(AccountRemoval.NotSaved, RemoveAccount(repository, keys)(keyed.address))
+        assertEquals(AccountRemoval.NotSaved, RemoveAccount(repository, keys, WalletChanges())(keyed.address))
         assertEquals(emptyList(), keys.deleted, "the key never goes before the entry")
     }
 
     @Test
     fun removingAnAddressNotInTheWalletChangesNothing() = runTest {
-        assertEquals(AccountRemoval.NotFound, RemoveAccount(repository, keys)(stranger))
+        assertEquals(AccountRemoval.NotFound, RemoveAccount(repository, keys, WalletChanges())(stranger))
         assertEquals(emptyList(), keys.deleted)
 
         repository.unreadable = true
-        assertEquals(AccountRemoval.NotSaved, RemoveAccount(repository, keys)(keyed.address))
+        assertEquals(AccountRemoval.NotSaved, RemoveAccount(repository, keys, WalletChanges())(keyed.address))
     }
 }

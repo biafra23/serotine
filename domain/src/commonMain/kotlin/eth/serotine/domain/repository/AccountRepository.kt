@@ -1,6 +1,7 @@
 package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.Address
 import kotlinx.coroutines.flow.Flow
 
@@ -35,6 +36,14 @@ interface AccountRepository {
      * otherwise.
      */
     suspend fun rename(address: Address, label: String): AccountChange
+
+    /**
+     * Records that the entry under [address] is now held as [custody], keeping everything
+     * else about it ([AccountChange.Changed]); or [AccountChange.NotFound]; or, when the list
+     * cannot be stored or is [AccountList.Unreadable], [AccountChange.NotSaved]. A watched
+     * account becomes [AccountCustody.InKeyStore] when its key is imported. Never throws.
+     */
+    suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange
 
     /**
      * Takes the entry under [address] out of the list ([AccountChange.Changed]); or, when no

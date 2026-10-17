@@ -54,7 +54,8 @@ Modules (Gradle):
   account list, persisted as a JSON file; `InMemoryAccountRepository` for tests),
   the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
   seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
-  (`eth.serotine.data.engine`: `MyotisNode`, verified native balances), whose
+  (`eth.serotine.data.engine`: `MyotisNode`, verified native balances and
+  address kinds), whose
   glue over `io.myotis.api` lives in a `jvmSharedMain` source set the Android
   and desktop targets share. Targets Android + desktop + iOS; the Android
   target is what resolves the engine's AAR.

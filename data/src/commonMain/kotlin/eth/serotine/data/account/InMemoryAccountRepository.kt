@@ -1,6 +1,7 @@
 package eth.serotine.data.account
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
@@ -38,6 +39,11 @@ class InMemoryAccountRepository(initial: List<Account> = emptyList()) : AccountR
 
     override suspend fun rename(address: Address, label: String): AccountChange =
         changeEntry(address) { current -> current.map { if (it.address == address) it.copy(label = label) else it } }
+
+    override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
+        changeEntry(address) { current ->
+            current.map { if (it.address == address) it.copy(custody = custody) else it }
+        }
 
     override suspend fun remove(address: Address): AccountChange =
         changeEntry(address) { current -> current.filterNot { it.address == address } }

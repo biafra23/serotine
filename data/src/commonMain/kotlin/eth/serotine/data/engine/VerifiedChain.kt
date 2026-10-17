@@ -1,11 +1,13 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
+import org.kotlincrypto.hash.sha3.Keccak256
 
 /**
  * What the engine adapters need from a verified light client: a [snapshot] of its state,
- * which never blocks, and [proveBalance], which does (it fetches a proof from a peer) and so
- * runs on the adapters' dispatcher, never a caller's thread.
+ * which never blocks, and the proofs ([proveBalance], [proveCode]), which do (they fetch a
+ * proof from a peer) and so run on the adapters' dispatcher, never a caller's thread.
  */
 internal interface VerifiedChain {
 
@@ -17,10 +19,44 @@ internal interface VerifiedChain {
      * null when the engine could not prove it. Blocks, bounded by the engine (about 90 s).
      */
     fun proveBalance(address: Address): ProvenBalance?
+
+    /**
+     * The code at [address] — none for an account without code or one that does not exist —
+     * proven against the light client's beacon-attested state; null when the engine could
+     * not prove it. Blocks, bounded by the engine.
+     */
+    fun proveCode(address: Address): ProvenCode?
 }
 
 /** A balance in decimal wei, proven at [blockNumber], the block the proof anchors to. */
 internal data class ProvenBalance(val wei: String, val blockNumber: Long)
+
+/** Code as lower-case hex without `0x` (empty: none), proven at [blockNumber]. */
+internal data class ProvenCode(val codeHex: String, val blockNumber: Long)
+
+/** Keccak-256 of no code: the code hash of every account without code. */
+internal const val EMPTY_CODE_HASH = "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+
+/**
+ * The code of an account whose proof (verified at [blockNumber]) says it [exists] with the
+ * code hash [codeHashHex]: none for an absent account or the empty hash; otherwise what
+ * [fetchCode] returns, accepted only when it hashes to the proven value — the head may have
+ * moved between the proof and the read, and code from another block must not carry this
+ * one's label. Null, unproven, when the hash is missing or the code is not the proven code.
+ */
+internal fun provenCode(
+    exists: Boolean,
+    codeHashHex: String?,
+    blockNumber: Long,
+    fetchCode: () -> ByteArray?,
+): ProvenCode? {
+    if (!exists) return ProvenCode("", blockNumber)
+    val codeHash = codeHashHex?.removePrefix("0x")?.lowercase() ?: return null
+    if (codeHash == EMPTY_CODE_HASH) return ProvenCode("", blockNumber)
+    val code = fetchCode() ?: return null
+    if (Keccak256().digest(code).toHex() != codeHash) return null
+    return ProvenCode(code.toHex(), blockNumber)
+}
 
 /** The engine's state, or why there is none. */
 internal sealed interface EngineSnapshot {

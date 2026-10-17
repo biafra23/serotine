@@ -37,7 +37,7 @@ class ImportMnemonicAccountTest {
     private val keys = FakeKeyStore()
     private val password = WalletPassword("correct horse")
     private val repository = FakeAccountRepository()
-    private val import = ImportMnemonicAccount(keys, repository)
+    private val import = ImportMnemonicAccount(keys, repository, WalletChanges())
 
     private fun keyed(address: Address, label: String) =
         Account(address, AccountKind.EOA, label, AccountCustody.InKeyStore)
@@ -71,6 +71,40 @@ class ImportMnemonicAccountTest {
             MnemonicImport.Added(keyed(second, "Account 4"), KeyProtection.HARDWARE),
             result,
         )
+    }
+
+    @Test
+    fun aWatchedAddressWhosePhraseIsImportedIsHeldFromThenOn() = runTest {
+        val watched = Account(first, AccountKind.EOA, "Savings", AccountCustody.Watched)
+        repository.accounts.value = listOf(watched)
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+
+        val held = watched.copy(custody = AccountCustody.InKeyStore)
+        assertEquals(MnemonicImport.KeyAdded(held), import(mnemonic, password))
+        assertEquals(listOf(held), repository.accounts.value, "the same entry, its name kept")
+    }
+
+    @Test
+    fun aWatchedEntryThatCannotBeUpgradedSaysTheListWasNotSaved() = runTest {
+        repository.accounts.value = listOf(Account(first, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        repository.failSaves = true
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password))
+    }
+
+    @Test
+    fun aWatchedEntryRemovedByAnotherWriterBeforeTheUpgradeIsReadAgainAndAdded() = runTest {
+        repository.accounts.value = listOf(Account(first, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        repository.removeBeforeNextCustodyChange = true
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+
+        // Named from the list as it is now (empty), not as it was first read.
+        val expected = MnemonicImport.Added(keyed(first, "Account 1"), KeyProtection.HARDWARE)
+        assertEquals(expected, import(mnemonic, password))
     }
 
     @Test
@@ -196,6 +230,7 @@ class ImportMnemonicAccountTest {
         var refuseNextAdd = false
         var unreadable = false
         var failSaves = false
+        var removeBeforeNextCustodyChange = false
 
         override fun observeAccounts(): Flow<AccountList> = accounts.map {
             if (unreadable) AccountList.Unreadable(AccountList.Reason.READ_FAILED) else AccountList.Loaded(it)
@@ -216,6 +251,17 @@ class ImportMnemonicAccountTest {
         }
 
         override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+
+        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
+            if (failSaves) return AccountChange.NotSaved
+            if (removeBeforeNextCustodyChange) {
+                removeBeforeNextCustodyChange = false
+                accounts.update { list -> list.filterNot { it.address == address } }
+            }
+            if (accounts.value.none { it.address == address }) return AccountChange.NotFound
+            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+            return AccountChange.Changed
+        }
 
         override suspend fun remove(address: Address): AccountChange = error("not used by this test")
     }

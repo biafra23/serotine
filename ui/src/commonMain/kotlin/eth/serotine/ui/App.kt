@@ -43,6 +43,7 @@ import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
 import eth.serotine.ui.settings.SettingsRoute
+import eth.serotine.ui.watch.WatchRoute
 import eth.serotine.ui.theme.SerotineTheme
 
 /**
@@ -140,8 +141,16 @@ private fun Destinations(graph: AppGraph, navController: NavHostController, modi
             composable(Destination.ASSETS) {
                 AssetsRoute(
                     viewModel = viewModel { graph.assetsViewModel() },
-                    onAddAccount = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
+                    onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
+                    onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
                     onAccountAction = { action -> navController.open(action) },
+                )
+            }
+            composable(Destination.WATCH) {
+                WatchRoute(
+                    viewModel = viewModel { graph.watchViewModel() },
+                    onBack = { navController.leave(Destination.WATCH) },
+                    onAdded = { navController.leave(Destination.WATCH) },
                 )
             }
             withAddress(Destination.ACCOUNT, navController) { address ->
@@ -254,6 +263,7 @@ private object Destination {
     const val ASSETS = "assets"
     const val ACCOUNT = "account"
     const val RECEIVE = "receive"
+    const val WATCH = "watch"
     const val RENAME = "rename"
     const val REMOVE = "remove"
     const val SETTINGS = "settings"

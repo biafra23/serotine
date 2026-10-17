@@ -8,7 +8,10 @@ import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.repository.AccountChange
+import eth.serotine.domain.repository.AddressKind
+import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.KeyDeletion
+import eth.serotine.domain.repository.KindReading
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
@@ -17,6 +20,8 @@ import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
 import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
+import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
+import eth.serotine.ui.watch.WATCH_NAME_TAG
 import kotlin.test.assertEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -103,6 +108,11 @@ class AppNavigationTest {
                 return AccountChange.Changed
             }
 
+            override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
+                accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+                return AccountChange.Changed
+            }
+
             override suspend fun remove(address: Address): AccountChange {
                 accounts.update { list -> list.filterNot { it.address == address } }
                 return AccountChange.Changed
@@ -121,6 +131,10 @@ class AppNavigationTest {
         },
         nativeBalances = object : NativeBalances {
             override fun observeBalance(address: Address): Flow<BalanceReading> = flowOf(BalanceReading.Syncing)
+        },
+        addressKinds = object : AddressKinds {
+            override fun observeKind(address: Address): Flow<KindReading> =
+                flowOf(KindReading.Verified(AddressKind.Eoa, 9_412_118))
         },
         lightClient = object : LightClient {
             override fun observeStatus(): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
@@ -155,6 +169,7 @@ class AppNavigationTest {
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
 
         rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Import recovery phrase").performClick()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).performTextInput(
             "one two three four five six seven eight nine ten eleven twelve",
         )
@@ -173,6 +188,7 @@ class AppNavigationTest {
         showApp()
 
         rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Import recovery phrase").performClick()
         rule.onNodeWithContentDescription("Back").performClick()
 
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
@@ -279,5 +295,21 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun anAddressIsWatchedFromTheFloatingActionButton() {
+        showApp()
+
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Watch address").performClick()
+        rule.onNodeWithTag(WATCH_ADDRESS_TAG).performTextInput("0xd8da6bf26964af9d7eed9e03e53415d37aa96045")
+        rule.onNodeWithTag(WATCH_NAME_TAG).performTextInput("Vitalik")
+        rule.waitUntil { rule.onAllNodesWithText("Checked at block 9,412,118").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Add").performClick()
+
+        rule.waitUntil { rule.onAllNodesWithText("Vitalik").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Watch-only").assertIsDisplayed()
+        assertEquals(listOf(AccountCustody.Watched), accounts.value.map { it.custody })
     }
 }

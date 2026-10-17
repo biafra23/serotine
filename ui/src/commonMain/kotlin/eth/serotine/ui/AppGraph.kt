@@ -3,6 +3,7 @@ package eth.serotine.ui
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
@@ -10,10 +11,13 @@ import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.WalletChanges
+import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.assets.AssetsViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
@@ -21,6 +25,7 @@ import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
 import eth.serotine.ui.settings.SettingsViewModel
+import eth.serotine.ui.watch.WatchViewModel
 
 /**
  * The composition root's contract: everything the shared UI needs, handed in as the
@@ -37,11 +42,16 @@ class AppGraph(
     private val keys: KeyStore,
     /** Balances verified by the embedded light client of [network]. */
     private val nativeBalances: NativeBalances,
+    /** What is at an address, verified by that light client. */
+    private val addressKinds: AddressKinds,
     /** That light client's own state. */
     private val lightClient: LightClient,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
+    /** The one [WalletChanges] of the app: imports and removals never interleave. */
+    private val walletChanges = WalletChanges()
+
     fun assetsViewModel(): AssetsViewModel =
         AssetsViewModel(
             ObserveAccounts(accounts),
@@ -60,10 +70,13 @@ class AppGraph(
         RenameAccountViewModel(address, ObserveAccount(accounts), RenameAccount(accounts))
 
     fun removeAccountViewModel(address: Address): RemoveAccountViewModel =
-        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys))
+        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
+
+    fun watchViewModel(): WatchViewModel =
+        WatchViewModel(ObserveAddressKind(addressKinds), ObserveAccount(accounts), WatchAddress(accounts, addressKinds))
 
     fun settingsViewModel(): SettingsViewModel = SettingsViewModel(ObserveLightClient(lightClient), network)
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
-        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts), DescribeKeyStore(keys))
+        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))
 }
