@@ -74,7 +74,9 @@ Safe transaction) is a destination that covers the bar until it ends. A
 Safe's transactions are `safe/{address}/tx/{hash}` (17),
 `safe/{address}/propose` (Send from it, with `?asset=` for a token chosen) and
 `safe/{address}/import`: identifiers only, each screen reading the rest
-through its use cases. The
+through its use cases. Create Safe is `create-safe` (13 to 15, one screen
+with three steps), and its deployment's status `transfer/{hash}` in its
+place. The
 update screen covers everything, the bar included, while a network upgrade
 has left this version unable to follow Sepolia, and gives way to the Assets
 tab's start when it no longer has (docs/embedding-myotis.md, *Network
@@ -96,7 +98,9 @@ upgrades*).
      Safe.
 2. **FAB fan-out**: Watch address (10) · Import recovery phrase (11) · Create
    account (12) · Create Safe (13). Create Safe appears once the user holds
-   an EOA's key: an EOA pays for the deployment.
+   an EOA's key: an EOA pays for the deployment. (Whether any controllable
+   owner key should be enough is the owner's open question, issue #55; built
+   as this line says.)
 3. **Account menu**: Send (absent when watch-only; for a Safe, present once an
    owner of it is held here, and it opens the proposal of a Safe transaction,
    16) · Receive · Copy address · Rename · Remove. Removing an account the user
@@ -170,7 +174,8 @@ upgrades*).
      rejects on verified state is not offered again, and 7 is open again
      for a new one. Nothing is signed twice.
 9. **Send, status**: what was sent (amount, asset, recipient, from this
-   device's record), then Signed → Broadcast → Included (receipt verified,
+   device's record; for a Safe's deployment "Deployment of a Safe", the Safe
+   with its `t/n`, its version and the account that paid), then Signed → Broadcast → Included (receipt verified,
    its block; "it reverted" when it failed, its fee paid) → Finalized (its
    block at or below the engine's finalized head). A receipt that cannot be
    verified right now reads as such, never as pending. Done returns to where
@@ -194,6 +199,21 @@ upgrades*).
     the biometric opt-in (on the first key; still to come, as on 11).
 13. **Create Safe 1/3, owners**: a name; owners from "This device (hardware
     key)", the user's mnemonic accounts and external addresses.
+    - As built (`CreateSafeViewModel`, `PlanSafe`): the name (optional, as a
+      watched account's; at most 40 characters); the wallet's externally
+      owned accounts, held here ("Key on this device") or watched, each with
+      its blockie and a check box, the first held one chosen to start with;
+      and an address or ENS name typed, checked at the input and resolved as
+      Send's recipient is, then added with its blockie, in full, and the name
+      and finalized block it was resolved from. A name is resolved again with
+      every quote of the review (15), as Send's recipient is: one that moved,
+      or cannot be verified again, sends the review back here with the
+      reason, and nothing is quoted or signed for it.
+    - "This device (hardware key)" is listed but not offered: its passkey
+      signer is not built yet, and the row says so. The domain already
+      refuses a device key as the only owner (`SafePlanRefusal.DeviceKeyAlone`).
+    - Refused at this step, each said: no owner, more than 20, the zero
+      address or the owner list's sentinel `0x…01`, an owner twice.
 14. **Create Safe 2/3, threshold and recovery**: a threshold stepper, and only
     the shapes docs/keys-and-signing.md (*Backup and recovery*) allows, its
     reasoning applied to every threshold:
@@ -201,10 +221,62 @@ upgrades*).
     - a threshold equal to the owner count above one (2 of 2, 3 of 3, …)
       only alongside a recovery module: with one owner lost, the rest could
       never reach it, not even to swap the lost one out.
+    - As built: the stepper runs from 1 to the number of owners and starts at
+      1 for up to two owners, a majority short of all of them above (2 of 3,
+      3 of 4). Each value says what it means and how it stands with an owner
+      lost; the rules above are listed under it. No recovery module is
+      pinned, so none is offered, and every n-of-n above one is refused with
+      the reason (`SafePlanRefusal.NeedsRecoveryModule`): 2 of 2 is not
+      offered. Whether that generalization of the keys doc's 2-of-2 rule
+      stands, and which modules come, is the owner's open question (issue
+      #54).
 15. **Create Safe 3/3, review**: the address predicted locally (CREATE2), with
     its blockie and `t/n`; the version, owners and threshold; the deployment
     fee and the account that pays it; Deploy. After deployment the Safe is
     detected like a watched one (*Safes* below) before it is listed.
+    - As built (`QuoteSafeDeployment`, `DeploySafe`): the address in full
+      with its blockie and `t/n`, computed here from the factory, the
+      singleton, the initializer and a fresh random salt nonce, and the
+      factory's verified run returning that same address, with the block it
+      ran at and the block the address held no code at; "Safe 1.4.1"; the
+      owners in full; the paying account, chosen among those held here (an
+      owner held here first), the fee level, the most the fee can be and what
+      it is made of, the payer's balance before → at least after, and what
+      its earlier transactions not mined yet may still take. Then the unlock
+      and Sign and deploy, as 8's.
+    - Refused and said, nothing signed: an address that holds code already, a
+      deployment of it sent and not mined yet, a deployment of a Safe with the
+      same owners (in their order) and threshold sent and not mined yet (a
+      review planned again has another salt, so another address: it would be
+      a second Safe), a run that returns another
+      address (the pin does not match the chain), the payer's funds, a run
+      that reverts, a light client not synced or not verifying.
+    - The quote follows 8's freshness rules (made on entry, on Refresh, on a
+      change of payer or fee, when shown again, and again at the tap when
+      over a minute old), the password goes when the screen is hidden and
+      after each attempt, Back returns to 2/3 (dropping the plan: the next
+      review has another address), and one signed but not broadcast is sent
+      again only as Try again (`RebroadcastTransfer`).
+    - Sent, the status (9) replaces the screen and says "Deployment of a
+      Safe", and where its listing stands; it shows that, and drives
+      nothing. The app lists the Safe itself (`FollowSafeDeployments`, run
+      by `App` whatever screen is open, and again after a restart): for each
+      recorded deployment whose listing has not ended, it waits for the
+      verified receipt, then, when it succeeded, for the light client to
+      prove code at the address (`ListDeployedSafe`), checks that it is a
+      Safe with the owners, in their order, and the threshold deployed, and
+      watches it (`WatchAddress`, which detects it again) under the name
+      given. A deployment that reverted has its address read once
+      (`ListDeployedSafe.afterRevert`): someone else's copy of the same call
+      mined first creates the very same Safe, which is then listed, and said;
+      otherwise the status says this transaction created no Safe. An outcome
+      that is no ending (not verifiable again, the list not saved) is tried
+      again. How it ended is written into the deployment's record
+      (`SentAction.SafeDeployment.listed`), which the record keeps until then
+      (`SentTransfers.prune` drops an unlisted deployment only after
+      `DEPLOYMENT_LIFETIME_SECONDS`, a week), so leaving the status screen,
+      or the app, loses nothing; and a Safe once listed and then removed by
+      the user is not listed again.
 16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
     owners are shown with blockies, a "this device" mark on the ones held
     here, and the threshold; the modules and guard follow them.
@@ -491,6 +563,21 @@ address. Applied:
 - **Creation** deploys Safe 1.4.1 through `SafeProxyFactory.createProxyWithNonce`
   with a `setup` call, from an EOA the user holds. The address is predicted
   locally and shown before the deployment is signed.
+  - The release (`SafeReleases`, pinned in `SafeDeployments`): 1.4.1's L1
+    singleton `0x41675C09…7461a` (Safe{Wallet}'s choice for Ethereum and its
+    testnets) and SafeProxyFactory `0x4e1DCf7A…20ec67`, and the factory's
+    proxy creation code, taken from `@safe-global/safe-contracts`
+    1.4.1-build.0 and checked against the pinned proxy runtime hash and
+    safe-deployments' factory code hash.
+  - `setup`: the owners in their order and the threshold; no module (`to`
+    zero, `data` empty); no fallback handler, since CompatibilityFallbackHandler
+    is not pinned (so the Safe takes no ERC-721/1155 safe transfers and
+    answers no EIP-1271 call until one is set); no payment.
+  - The address: `keccak256(0xff ‖ factory ‖ keccak256(keccak256(initializer)
+    ‖ saltNonce) ‖ keccak256(proxyCreationCode ‖ uint256(singleton)))[12:]`
+    (`SafeCreation`), with vectors re-derived with Foundry's `cast` and the
+    factory's own run on a local node. The factory's verified run on Sepolia
+    must return it before anything is signed.
 - **A hardware P-256 owner** signs through the passkey signer, under
   docs/keys-and-signing.md (*A Safe owned by a hardware P-256 key*).
 

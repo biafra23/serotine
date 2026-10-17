@@ -48,8 +48,9 @@ rule in code.
   `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine; for a
   Safe's transactions `SafeTxQueue` and `SigningRequestCodec`
   (`eth.serotine.data.safe`), `SignatureRecovery` (`eth.serotine.data.keys`,
-  libsecp256k1) and `SafeApprovals`, over the engine) and owns every data
-  source.
+  libsecp256k1) and `SafeApprovals`, over the engine; for creating a Safe
+  `SafeReleases`, the pinned release in `eth.serotine.data.safe`) and owns
+  every data source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
@@ -71,11 +72,11 @@ review finding, whatever it saves.
 
 | package | contents |
 |---|---|
-| `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`, `SafeTx` and its `SigningRequest`) — immutable, validated in `init`/factory |
+| `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`, `SafeTx` and its `SigningRequest`, `SafeRelease`) and the encodings computed here (`SafeCreation`: `setup`, `createProxyWithNonce` and the CREATE2 address) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
-| `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution) |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `files`) |
-| `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `safepropose` is Send from a Safe, on the same transfer form; `transferstatus` follows a transaction once sent; `safetx` is one Safe transaction with its signing, approval and execution steps; `safeimport` imports a signing request) |
+| `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution, a Safe's deployment) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `files`) |
+| `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `safepropose` is Send from a Safe, on the same transfer form; `transferstatus` follows a transaction once sent; `safetx` is one Safe transaction with its signing, approval and execution steps; `safeimport` imports a signing request; `createsafe` holds one screen with three steps, owners, threshold and review) |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu, the transfer form, the unlock that signs, a Safe transaction's decoded action, a signing request shared) and the display helpers and display-ready types they share (EIP-55, amounts, the light client's line, the seed screens' password step, the transfer form's inputs and texts, what a Safe transaction does and why one is refused); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |
 | `eth.serotine.ui.theme` | Material 3 theme |
@@ -112,6 +113,9 @@ review finding, whatever it saves.
   anything else, so `App` creates it in the host's scope and navigates to the
   screen, clearing the back stack (both tabs' stacks included), while an
   update is required, and to the Assets tab's start once it no longer is.
+  `App` also runs the work no screen owns while it is shown:
+  `AppGraph.followSafeDeployments()`, which lists the Safes this wallet
+  deployed whatever screen is open (docs/wallet-ux.md, screen 15).
 - **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
   Each tab is a nested graph. Settings opens over the Assets tab's stack and
@@ -121,7 +125,7 @@ review finding, whatever it saves.
   (`account/{address}`), never an object: the destination's ViewModel loads
   what it shows through its use cases. The bar shows on the tabs' screens; a
   flow that ends in a key operation or a transaction (import, create, send,
-  a Safe transaction) is a destination of its own that covers it, and so is
+  a Safe transaction, create Safe) is a destination of its own that covers it, and so is
   the update screen, outside both tabs. The screens themselves are
   docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives

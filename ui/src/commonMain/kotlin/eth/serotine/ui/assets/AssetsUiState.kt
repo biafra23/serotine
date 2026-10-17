@@ -58,6 +58,13 @@ sealed interface AssetsUiState {
                 "duplicate addresses in the account list: the repository contract is one entry per address"
             }
         }
+
+        /**
+         * Whether Create Safe is offered: once an externally owned account's key is held here, since
+         * one pays for the deployment (docs/wallet-ux.md, screen 2).
+         */
+        val canCreateSafe: Boolean
+            get() = accounts.any { it.kind == AccountKind.EOA && it.control == Control.FULL_CONTROL }
     }
 
     /**

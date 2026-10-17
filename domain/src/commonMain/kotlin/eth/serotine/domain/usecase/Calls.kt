@@ -198,7 +198,7 @@ internal class CallQuoter(
             .filter { it.account == from && it.nonce >= minedCount && it.sentAt >= expiredBefore }
         // Never below the mined count either: the two counts may come from two heads.
         val next = maxOf(pendingNonce, minedCount, (unmined.maxOfOrNull { it.nonce } ?: -1) + 1)
-        sentTransfers.prune(from, minedCount, expiredBefore)
+        sentTransfers.prune(from, minedCount, expiredBefore, clock() - DEPLOYMENT_LIFETIME_SECONDS)
         val insufficient = refused(CallRefusal.InsufficientFunds)
         val pendingCost = unmined.map { it.maxCost }.sumOrNull() ?: return@coroutineScope insufficient
         val available = native.wei.minusOrNull(pendingCost) ?: return@coroutineScope insufficient
@@ -240,6 +240,13 @@ internal class CallQuoter(
  * geth's transaction pool gives a transaction before it drops it.
  */
 const val RECORD_LIFETIME_SECONDS: Long = 3 * 60 * 60
+
+/**
+ * How long the record of a Safe's deployment is kept while its Safe is not listed: a week, for the
+ * app to be opened again after it was sent and list it ([FollowSafeDeployments]). One that cannot
+ * be listed by then is given up.
+ */
+const val DEPLOYMENT_LIFETIME_SECONDS: Long = 7 * 24 * 60 * 60
 
 /** The sum of these numbers, or null when it overflows 256 bits. */
 internal fun Iterable<UInt256>.sumOrNull(): UInt256? = fold(UInt256.ZERO as UInt256?) { sum, it -> sum?.plusOrNull(it) }

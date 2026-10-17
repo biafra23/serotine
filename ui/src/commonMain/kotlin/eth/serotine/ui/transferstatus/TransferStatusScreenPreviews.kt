@@ -131,6 +131,54 @@ private fun TransferStatusSafeExecutionPreview() = TransferStatusPreview(
     ),
 )
 
+private val deployment = DeploymentSummary(
+    title = "Deployment of a Safe",
+    safe = "0x2Ca0226086a7C24808217F7F8707827608B17Dc5",
+    signers = "2/3",
+    shape = "2 of 3 owners · Safe 1.4.1",
+    from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    listing = "Added to your wallet once a block has it and the light client verifies the Safe there, whether " +
+        "this screen is open or not.",
+)
+
+@Preview
+@Composable
+private fun TransferStatusSafeDeploymentPreview() =
+    TransferStatusPreview(pending.copy(sent = null, deployment = deployment))
+
+@Preview
+@Composable
+private fun TransferStatusSafeListedPreview() = TransferStatusPreview(
+    included.copy(sent = null, deployment = deployment.copy(listing = "In your wallet as Family vault.")),
+)
+
+@Preview
+@Composable
+private fun TransferStatusSafeListedDarkPreview() = TransferStatusPreview(
+    included.copy(sent = null, deployment = deployment.copy(listing = "In your wallet as Family vault.")),
+    darkTheme = true,
+)
+
+@Preview
+@Composable
+private fun TransferStatusSafeNotListedPreview() = TransferStatusPreview(
+    pending.copy(
+        sent = null,
+        steps = listOf(
+            signed,
+            broadcast,
+            StatusStep("Included", StepState.FAILED, "In block 8,412,311, its receipt verified: it reverted"),
+            waitingFinal,
+        ),
+        note = "It failed: this transaction reverted in its block and created no Safe itself. Its fee is paid all " +
+            "the same.",
+        deployment = deployment.copy(
+            listing = "This transaction created no Safe, and none is at its address: nothing is added to your wallet.",
+            listingFailed = true,
+        ),
+    ),
+)
+
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
@@ -141,5 +189,9 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusUnavailablePreview() },
     { TransferStatusNoRecordPreview() },
     { TransferStatusSafeExecutionPreview() },
+    { TransferStatusSafeDeploymentPreview() },
+    { TransferStatusSafeListedPreview() },
+    { TransferStatusSafeListedDarkPreview() },
+    { TransferStatusSafeNotListedPreview() },
     { TransferStatusLoadingPreview() },
 )

@@ -16,6 +16,7 @@ import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.SafeReleases
 import eth.serotine.domain.repository.SafeTxQueue
 import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.SignatureRecovery
@@ -28,13 +29,16 @@ import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
+import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
+import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
+import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
@@ -53,8 +57,10 @@ import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.PlanSafe
 import eth.serotine.domain.usecase.ProposeSafeTx
 import eth.serotine.domain.usecase.QuoteSafeApproval
+import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.QuoteSafeExecution
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.ReadSafeTxOwners
@@ -74,6 +80,7 @@ import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.assets.AssetsViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
+import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
@@ -151,6 +158,8 @@ class AppGraph(
     private val signatureRecovery: SignatureRecovery,
     /** Owners' approvals of Safe transactions on chain, verified by that light client. */
     private val safeApprovals: SafeApprovals,
+    /** The Safe release a new Safe on [network] is created from: pinned singleton, factory and proxy code. */
+    private val safeReleases: SafeReleases,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
@@ -251,9 +260,36 @@ class AppGraph(
         network,
     )
 
-    /** Where the transfer [hash] stands. */
-    fun transferStatusViewModel(hash: String): TransferStatusViewModel =
-        TransferStatusViewModel(hash, ObserveSentTransfer(sentTransfers, receipts), network)
+    /** Where the transfer [hash] stands, and for a Safe it deployed, where its listing does. */
+    fun transferStatusViewModel(hash: String): TransferStatusViewModel = TransferStatusViewModel(
+        hash,
+        ObserveSentTransfer(sentTransfers, receipts),
+        ObserveAccounts(accounts),
+        network,
+    )
+
+    /**
+     * Lists every Safe this wallet deployed once the light client proves it, whatever screen is
+     * open ([FollowSafeDeployments]); runs until cancelled. [App] runs it while it is shown.
+     */
+    suspend fun followSafeDeployments() = FollowSafeDeployments(
+        sentTransfers,
+        receipts,
+        accounts,
+        ListDeployedSafe(addressKinds, WatchAddress(accounts, addressKinds)),
+    )()
+
+    /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
+    fun createSafeViewModel(): CreateSafeViewModel = CreateSafeViewModel(
+        ObserveAccounts(accounts),
+        DescribeKeyStore(keys),
+        ResolveRecipient(names),
+        PlanSafe(safeReleases, network),
+        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, network),
+        DeploySafe(signer, broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        network,
+    )
 
     fun receiveViewModel(address: Address): ReceiveViewModel =
         ReceiveViewModel(address, ObserveAccount(accounts), network)

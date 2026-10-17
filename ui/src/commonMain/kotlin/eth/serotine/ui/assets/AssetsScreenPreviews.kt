@@ -65,6 +65,7 @@ private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false) {
             onWatchAddress = {},
             onImportPhrase = {},
             onCreateAccount = {},
+            onCreateSafe = {},
             onAccountAction = {},
         )
     }

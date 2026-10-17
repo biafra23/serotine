@@ -10,10 +10,12 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.prunable
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -25,13 +27,15 @@ import kotlinx.serialization.json.Json
 /**
  * [SentTransfers] kept in the file at [path] (a [VersionedJsonFile]): the signed transactions,
  * each with its signed bytes as hex, which are public once broadcast, and what it does — a
- * transfer's recipient, token and amount, or the Safe transaction an approval or execution was
- * for, in the form a signing request travels in. A damaged file is set aside and the record
- * starts empty; one that cannot be read is [SentTransferList.Unreadable] (a quote then goes by
- * the engine's nonce alone).
+ * transfer's recipient, token and amount, the Safe transaction an approval or execution was
+ * for, in the form a signing request travels in, or the Safe a deployment created (its address,
+ * owners, threshold, version and the name it is listed under). A damaged file is set aside and the
+ * record starts empty; one that cannot be read is [SentTransferList.Unreadable] (a quote then goes
+ * by the engine's nonce alone).
  *
- * Format 2 adds the Safe transactions; a file of format 1 (transfers only) reads as it is and is
- * written as 2 at its next change, which a build that reads only 1 then leaves alone.
+ * Format 2 adds the Safe transactions, format 3 the Safe deployments; a file of an earlier format
+ * reads as it is and is written as 3 at its next change, which a build that reads only an earlier
+ * one then leaves alone.
  */
 class FileSentTransfers(
     path: String,
@@ -62,11 +66,9 @@ class FileSentTransfers(
         Decision(true, next = transfers.filterNot { it.hash == transfer.hash } + transfer)
     }
 
-    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean =
+    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long, unlistedBefore: Long): Boolean =
         file.change(notSaved = false) { transfers ->
-            val kept = transfers.filterNot {
-                it.account == account && (it.nonce < minedCount || it.sentAt < sentBefore)
-            }
+            val kept = transfers.filterNot { it.prunable(account, minedCount, sentBefore, unlistedBefore) }
             if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
         }
 
@@ -75,9 +77,9 @@ class FileSentTransfers(
     private class StoredFile(val version: Int, val transfers: List<StoredTransfer>)
 
     /**
-     * One transaction: a transfer's [to], [token] (null: the native currency) and [amount], or a
-     * Safe transaction's approval or execution ([safe]) — exactly one of the two, else the file
-     * is damaged.
+     * One transaction: a transfer's [to], [token] (null: the native currency) and [amount], a
+     * Safe transaction's approval or execution ([safe]), or a Safe's deployment ([deployment]) —
+     * exactly one of the three, else the file is damaged.
      */
     @Serializable
     private class StoredTransfer(
@@ -88,6 +90,7 @@ class FileSentTransfers(
         val token: StoredToken? = null,
         val amount: String? = null,
         val safe: StoredSafeCall? = null,
+        val deployment: StoredDeployment? = null,
         val maxCost: String,
         val sentAt: Long,
     ) {
@@ -101,6 +104,10 @@ class FileSentTransfers(
         )
 
         private fun action(): SentAction {
+            if (deployment != null) {
+                require(to == null && token == null && amount == null && safe == null) { "a deployment and more" }
+                return deployment.toAction()
+            }
             if (safe != null) {
                 require(to == null && token == null && amount == null) { "a transfer and a Safe call at once" }
                 return safe.toAction()
@@ -140,8 +147,31 @@ class FileSentTransfers(
         }
     }
 
+    /**
+     * A Safe's deployment: the [safe] it creates, of [version], with [owners] and [threshold], listed
+     * as [label], and how its listing ended ([listed], a [SafeListing] name; null: not yet).
+     */
+    @Serializable
+    private class StoredDeployment(
+        val safe: String,
+        val owners: List<String>,
+        val threshold: Int,
+        val version: String,
+        val label: String,
+        val listed: String? = null,
+    ) {
+        fun toAction() = SentAction.SafeDeployment(
+            safe = Address.of(safe),
+            owners = owners.map(Address::of),
+            threshold = threshold,
+            version = version,
+            label = label,
+            listed = listed?.let { name -> requireNotNull(SafeListing.entries.firstOrNull { it.name == name }) },
+        )
+    }
+
     private companion object {
-        const val FORMAT_VERSION = 2
+        const val FORMAT_VERSION = 3
         const val APPROVAL = "approval"
         const val EXECUTION = "execution"
         val JSON = Json
@@ -159,9 +189,19 @@ class FileSentTransfers(
                 },
                 amount = send?.amount?.toDecimal(),
                 safe = when (action) {
-                    is SentAction.Transfer -> null
+                    is SentAction.Transfer, is SentAction.SafeDeployment -> null
                     is SentAction.SafeApproval -> safeCall(APPROVAL, action.request)
                     is SentAction.SafeExecution -> safeCall(EXECUTION, action.request)
+                },
+                deployment = (action as? SentAction.SafeDeployment)?.let {
+                    StoredDeployment(
+                        it.safe.hex,
+                        it.owners.map(Address::hex),
+                        it.threshold,
+                        it.version,
+                        it.label,
+                        it.listed?.name,
+                    )
                 },
                 maxCost = transfer.maxCost.toDecimal(),
                 sentAt = transfer.sentAt,

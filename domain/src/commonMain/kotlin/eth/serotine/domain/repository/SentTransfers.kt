@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * The port for the transactions this wallet sent (signed, and taken by a peer) — its transfers,
- * and its approvals and executions of Safe transactions — kept across restarts: what the Send
+ * its approvals and executions of Safe transactions, and its Safes' deployments — kept across
+ * restarts: what the Send
  * status screen (docs/wallet-ux.md, screen 9) shows, and what keeps a new transaction from
  * reusing the nonce of one not mined yet — the engine's own record of its sends lasts only while
  * the process does. Public data only: a signed transaction's bytes are public once broadcast,
@@ -20,16 +21,47 @@ interface SentTransfers {
     /** Every transaction recorded, re-emitted on each change, or that the record cannot be read. */
     fun observe(): Flow<SentTransferList>
 
-    /** Records [transfer], which a peer took; false when it could not be saved. */
+    /**
+     * Records [transfer], which a peer took, in place of any record of the same hash (one record per
+     * transaction: what a Safe's deployment's listing is written back into); false when it could not
+     * be saved.
+     */
     suspend fun record(transfer: SentTransfer): Boolean
 
     /**
      * Forgets [account]'s transactions whose nonce is below [minedCount], its verified count of
      * mined transactions (each of those nonces is used on chain, by that transaction or another),
-     * and those a peer took before [sentBefore] (unix seconds), which no block took in time. False
-     * when the record could not be saved.
+     * and those a peer took before [sentBefore] (unix seconds), which no block took in time — but
+     * for a Safe's deployment whose Safe is not listed yet ([SentAction.SafeDeployment.listed]
+     * null), which is kept until it was taken before [unlistedBefore]: it is the only record of
+     * the Safe's owners and name. [SentTransfer.prunable] is the rule. False when the record could
+     * not be saved.
      */
-    suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean
+    suspend fun prune(account: Address, minedCount: Long, sentBefore: Long, unlistedBefore: Long): Boolean
+}
+
+/**
+ * Whether [SentTransfers.prune] of [account] forgets this transaction: one of [account]'s whose
+ * nonce is below [minedCount] or taken before [sentBefore], unless it is a Safe's deployment not
+ * listed yet, which is forgotten only once taken before [unlistedBefore].
+ */
+fun SentTransfer.prunable(account: Address, minedCount: Long, sentBefore: Long, unlistedBefore: Long): Boolean {
+    if (this.account != account) return false
+    val deployment = action as? SentAction.SafeDeployment
+    if (deployment != null && deployment.listed == null) return sentAt < unlistedBefore
+    return nonce < minedCount || sentAt < sentBefore
+}
+
+/** How the listing of a deployed Safe ended (`FollowSafeDeployments`). */
+enum class SafeListing {
+    /** The Safe is in the wallet: listed, or there already. */
+    LISTED,
+
+    /** The deployment reverted, and no code is at the address: no Safe was created. */
+    NO_SAFE,
+
+    /** The address holds something other than the Safe planned: not listed. */
+    NOT_THE_SAFE,
 }
 
 /** What [SentTransfers.observe] holds. */
@@ -89,4 +121,20 @@ sealed interface SentAction {
      * them) are in the signed bytes.
      */
     data class SafeExecution(val request: SigningRequest) : SentAction
+
+    /**
+     * The deployment of a new Safe at [safe] through its release's proxy factory
+     * (`createProxyWithNonce`): of Safe [version], with [owners] in their order and [threshold],
+     * to be listed in the wallet as [label] (blank: named as a watched account is) once the light
+     * client proves it, and how that ended ([listed]; null: not yet). It moves nothing of the
+     * account's but the fee.
+     */
+    data class SafeDeployment(
+        val safe: Address,
+        val owners: List<Address>,
+        val threshold: Int,
+        val version: String,
+        val label: String,
+        val listed: SafeListing? = null,
+    ) : SentAction
 }

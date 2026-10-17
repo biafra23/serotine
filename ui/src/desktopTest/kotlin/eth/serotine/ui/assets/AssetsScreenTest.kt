@@ -61,6 +61,7 @@ class AssetsScreenTest {
                     onWatchAddress = { adds += "watch" },
                     onImportPhrase = { adds += "import" },
                     onCreateAccount = { adds += "create" },
+                    onCreateSafe = { adds += "safe" },
                     onAccountAction = { actions += it },
                 )
             }

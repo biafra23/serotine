@@ -33,6 +33,7 @@ import eth.serotine.domain.repository.SafeTxQueueList
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.prunable
 import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
@@ -200,14 +201,17 @@ internal class MemorySentTransfers : SentTransfers {
     override fun observe(): Flow<SentTransferList> = transfers.map { SentTransferList.Loaded(it) }
 
     override suspend fun record(transfer: SentTransfer): Boolean {
-        transfers.value += transfer
+        transfers.value = transfers.value.filterNot { it.hash == transfer.hash } + transfer
         return true
     }
 
-    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean {
-        transfers.value = transfers.value.filterNot {
-            it.account == account && (it.nonce < minedCount || it.sentAt < sentBefore)
-        }
+    override suspend fun prune(
+        account: Address,
+        minedCount: Long,
+        sentBefore: Long,
+        unlistedBefore: Long,
+    ): Boolean {
+        transfers.value = transfers.value.filterNot { it.prunable(account, minedCount, sentBefore, unlistedBefore) }
         return true
     }
 }

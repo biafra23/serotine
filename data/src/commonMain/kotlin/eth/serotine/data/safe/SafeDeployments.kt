@@ -1,7 +1,9 @@
 package eth.serotine.data.safe
 
+import eth.serotine.data.keys.fromHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SafeRelease
 
 /**
  * A canonical Safe singleton: its [version] ("1.4.1"), whether it is the L2 variant ([l2]),
@@ -20,11 +22,30 @@ internal data class SafeSingleton(val version: String, val l2: Boolean, val modu
  * each proxy hash as the code a verified create call of the factory's `proxyCreationCode()`
  * returns (1.3.0's also from its `proxyRuntimeCode()`, the same). The eip155 deployments of
  * 1.3.0 have the same code as the canonical ones.
+ *
+ * A new Safe is created from [Table.creation] (docs/wallet-ux.md, *Safes*: creation): Safe 1.4.1,
+ * its L1 singleton (Safe{Wallet}'s choice for Ethereum and its testnets) and its SafeProxyFactory,
+ * with no fallback handler (CompatibilityFallbackHandler is not pinned here, so `setup` installs
+ * none). The factory's proxy creation code is `SafeProxy`'s `bytecode` in the npm package
+ * `@safe-global/safe-contracts` 1.4.1-build.0
+ * (`build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json`), the build the canonical
+ * deployment came from: the runtime code it deploys hashes to the 1.4.1 proxy hash below, read on
+ * Sepolia, and that package's SafeProxyFactory runtime code hashes to the factory's code hash in
+ * safe-global/safe-deployments (`src/assets/v1.4.1/safe_proxy_factory.json`, `0x50c3cdc4…`). It
+ * is only what is expected: a deployment is quoted only when the factory's verified run returns
+ * the address computed from it.
  */
 internal object SafeDeployments {
 
-    /** The proxy code hashes and singletons of one network. */
-    class Table(val proxyCodeHashes: Set<String>, val singletons: Map<Address, SafeSingleton>)
+    /**
+     * The proxy code hashes and singletons of one network, and the release a new Safe is created
+     * from there ([creation], null: none).
+     */
+    class Table(
+        val proxyCodeHashes: Set<String>,
+        val singletons: Map<Address, SafeSingleton>,
+        val creation: SafeRelease?,
+    )
 
     /** The deployments of [network]. */
     fun of(network: Network): Table = when (network) {
@@ -50,8 +71,33 @@ internal object SafeDeployments {
             singleton("0xff51a5898e281db6dfc7855790607438df2ca44b", "1.5.0", l2 = false, moduleGuard = true),
             singleton("0xedd160febbd92e350d4d398fb636302fccd67c7e", "1.5.0", l2 = true, moduleGuard = true),
         ),
+        creation = SafeRelease(
+            version = "1.4.1",
+            l2 = false,
+            singleton = Address.of("0x41675c099f32341bf84bfc5382af534df5c7461a"),
+            proxyFactory = Address.of("0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67"),
+            proxyCreationCode = PROXY_CREATION_CODE_1_4_1.fromHex(),
+            fallbackHandler = Address.ZERO,
+        ),
     )
 
     private fun singleton(address: String, version: String, l2: Boolean, moduleGuard: Boolean = false) =
         Address.of(address) to SafeSingleton(version, l2, moduleGuard)
 }
+
+/**
+ * `type(SafeProxy).creationCode` of Safe 1.4.1's SafeProxyFactory: 486 bytes, the constructor and
+ * then, at offset 0x119, the 171 bytes of runtime code it deploys (see [SafeDeployments]).
+ */
+private const val PROXY_CREATION_CODE_1_4_1 =
+    "608060405234801561001057600080fd5b506040516101e63803806101e6833981810160405260208110156100335760" +
+    "0080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ff" +
+    "ffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000" +
+    "000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191" +
+    "505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff0219169083" +
+    "73ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ff" +
+    "ffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000" +
+    "000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e600081" +
+    "14156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a" +
+    "82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e2061646472657373207072" +
+    "6f7669646564"

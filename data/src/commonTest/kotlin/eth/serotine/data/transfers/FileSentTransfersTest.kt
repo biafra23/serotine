@@ -10,6 +10,7 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
@@ -88,9 +89,30 @@ class FileSentTransfersTest {
         }
 
         // Signed at 1_800_000_000 + nonce: 8 is too old, 9 is not.
-        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_800_000_009))
+        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_800_000_009, unlistedBefore = 0))
 
         assertEquals(listOf(transfer(9), transfer(3, account = bob)), stored())
+    }
+
+    @Test
+    fun aDeploymentWhoseSafeIsNotListedYetOutlivesItsNonceUntilItsOwnBound() = runTest {
+        val store = record()
+        val unlisted = transfer(6).copy(
+            action = SentAction.SafeDeployment(Address.of("0x" + "5a".repeat(20)), listOf(alice), 1, "1.4.1", "Vault"),
+        )
+        val listed = transfer(7).copy(
+            action = (unlisted.action as SentAction.SafeDeployment).copy(listed = SafeListing.LISTED),
+        )
+        store.record(unlisted)
+        store.record(listed)
+
+        // Both mined and old: the listed one goes; the unlisted one stays, its owners and name with it.
+        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_900_000_000, unlistedBefore = 1_800_000_006))
+        assertEquals(listOf(unlisted), stored())
+
+        // Past its own bound, it goes too.
+        assertTrue(store.prune(alice, minedCount = 8, sentBefore = 1_900_000_000, unlistedBefore = 1_800_000_007))
+        assertEquals(emptyList(), stored())
     }
 
     @Test
@@ -111,6 +133,38 @@ class FileSentTransfersTest {
         record().record(execution)
 
         assertEquals(listOf(approval, execution), stored())
+    }
+
+    @Test
+    fun aSafesDeploymentIsRecordedWithWhatItCreates() = runTest {
+        val deployment = transfer(7).copy(
+            action = SentAction.SafeDeployment(
+                safe = Address.of("0x" + "5a".repeat(20)),
+                owners = listOf(alice, bob),
+                threshold = 1,
+                version = "1.4.1",
+                label = "Treasury",
+            ),
+        )
+        val ended = transfer(8).copy(
+            action = (deployment.action as SentAction.SafeDeployment).copy(listed = SafeListing.NO_SAFE),
+        )
+
+        record().record(deployment)
+        record().record(ended)
+
+        assertEquals(listOf(deployment, ended), stored())
+    }
+
+    @Test
+    fun aRecordOfTheSecondFormatReadsAsItWasWritten() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        // What part 14 wrote, before a record could be a Safe's deployment.
+        val v2 = """{"version":2,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
+            """"to":"${bob.hex}","token":null,"amount":"1500000","maxCost":"630000000000000","sentAt":1800000007}]}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString(v2) }
+
+        assertEquals(listOf(transfer(7)), stored())
     }
 
     @Test

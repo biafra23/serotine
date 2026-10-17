@@ -14,6 +14,7 @@ import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
+import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -139,6 +140,8 @@ private fun openWallet(dataDir: File) {
                 signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
                 signatureRecovery = Secp256k1Recovery(),
                 safeApprovals = node.safeApprovals,
+                // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
+                safeReleases = PinnedSafeReleases(),
                 network = Network.SEPOLIA,
             )
         }

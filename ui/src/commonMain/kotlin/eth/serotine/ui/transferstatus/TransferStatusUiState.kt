@@ -15,9 +15,10 @@ sealed interface TransferStatusUiState {
 
     /**
      * The transaction [hash]: what was sent ([sent] for a transfer, [safeTx] for a Safe
-     * transaction's approval or execution; both null when this device has no record of it), its
-     * [steps] in order, and [note], what to know about where it stands (a failure, or that it
-     * cannot be verified right now), or null. [finished] once its block is finalized.
+     * transaction's approval or execution, [deployment] for a Safe's deployment; all null when this
+     * device has no record of it), its [steps] in order, and [note], what to know about where it
+     * stands (a failure, or that it cannot be verified right now), or null. [finished] once its
+     * block is finalized.
      */
     data class Shown(
         override val network: String,
@@ -27,6 +28,7 @@ sealed interface TransferStatusUiState {
         val note: String? = null,
         val finished: Boolean = false,
         val safeTx: SafeTxSummary? = null,
+        val deployment: DeploymentSummary? = null,
     ) : TransferStatusUiState
 }
 
@@ -48,6 +50,22 @@ data class SentSummary(
  * and the EIP-55 [from], the account that sent it.
  */
 data class SafeTxSummary(val title: String, val safe: String, val nonce: String, val from: String)
+
+/**
+ * What a Safe's deployment created, from this device's record: [title] ("Deployment of a Safe"),
+ * the EIP-55 [safe] address with its [signers] badge ("2/3"), its [shape] ("2 of 3 owners · Safe
+ * 1.4.1"), the EIP-55 [from], the account that paid, and [listing], where the Safe's listing in
+ * the wallet stands — [listingFailed] when it was not, and will not be, listed from here.
+ */
+data class DeploymentSummary(
+    val title: String,
+    val safe: String,
+    val signers: String,
+    val shape: String,
+    val from: String,
+    val listing: String,
+    val listingFailed: Boolean = false,
+)
 
 /** One step of a transfer: its [label] ("Included"), where it stands ([state]) and its [detail] (its block). */
 data class StatusStep(val label: String, val state: StepState, val detail: String?)
