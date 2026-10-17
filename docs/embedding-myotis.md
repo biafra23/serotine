@@ -92,7 +92,9 @@ consumer developed against an unreleased engine, Myotis's
   `balanceOf(holder)` through `VerifiedReads.callDetailed`, polled and cached
   like the rest, through `ProvenReads`. It is labelled with the block the
   engine names (`-1`, none, when it does not). `REVERTED` is a verified "not a
-  token", and `UNAVAILABLE` or `REFUSED` is unproven.
+  token". `REFUSED`, and `INFEASIBLE` for a plain call, are a permanent refusal
+  (`ReadUnavailable.REFUSED`, "cannot be read on this device"). `UNAVAILABLE`
+  is unproven, retried at the next head.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,

@@ -33,7 +33,7 @@ class VerifiedTokenBalancesTest {
     @Test
     fun aVerifiedWordIsTheBalanceLabelledWithItsBlock() = runTest {
         // 1,250 USDC: 1_250_000_000 units at six decimals.
-        chain.calls[usdc to calldata] = ProvenCall("0".repeat(56) + "4a817c80", reverted = false, blockNumber = 9)
+        chain.calls[usdc to calldata] = CallOutcome.Returned("0".repeat(56) + "4a817c80", blockNumber = 9)
 
         assertEquals(
             TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 9),
@@ -43,7 +43,7 @@ class VerifiedTokenBalancesTest {
 
     @Test
     fun aBlockTheEngineDidNotNameIsNoBlock() = runTest {
-        chain.calls[usdc to calldata] = ProvenCall("0".repeat(64), reverted = false, blockNumber = null)
+        chain.calls[usdc to calldata] = CallOutcome.Returned("0".repeat(64), blockNumber = null)
 
         val reading = balances().observeBalance(holder, usdc).first() as TokenBalanceReading.Verified
         assertEquals(TokenUnits.of("0"), reading.units)
@@ -52,10 +52,10 @@ class VerifiedTokenBalancesTest {
 
     @Test
     fun aRevertOrSomethingThatIsNoWordIsNotAToken() = runTest {
-        chain.calls[usdc to calldata] = ProvenCall("", reverted = true, blockNumber = 9)
+        chain.calls[usdc to calldata] = CallOutcome.Reverted(blockNumber = 9)
         assertEquals(TokenBalanceReading.NotAToken, balances().observeBalance(holder, usdc).first())
 
-        chain.calls[usdc to calldata] = ProvenCall("00", reverted = false, blockNumber = 9)
+        chain.calls[usdc to calldata] = CallOutcome.Returned("00", blockNumber = 9)
         assertEquals(TokenBalanceReading.NotAToken, balances().observeBalance(holder, usdc).first())
     }
 
@@ -78,5 +78,39 @@ class VerifiedTokenBalancesTest {
         )
         assertNull(Abi.uint256("0x" + "0".repeat(62)), "no 0x, exactly one word")
         assertNull(Abi.uint256("0".repeat(128)), "two words are no amount")
+    }
+
+    @Test
+    fun aRefusalIsSaidAsSuchNotAsUnproven() = runTest {
+        chain.calls[usdc to calldata] = CallOutcome.Refused
+
+        assertEquals(
+            TokenBalanceReading.Unavailable(ReadUnavailable.REFUSED),
+            balances().observeBalance(holder, usdc).first(),
+        )
+    }
+
+    @Test
+    fun eachHolderAndTokenIsItsOwnReading() = runTest {
+        val other = Address.of("0x" + "cd".repeat(20))
+        val link = Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789")
+        fun word(n: Int) = n.toString(16).padStart(64, '0')
+        chain.calls[usdc to Abi.balanceOf(holder).toHex()] = CallOutcome.Returned(word(1), 9)
+        chain.calls[usdc to Abi.balanceOf(other).toHex()] = CallOutcome.Returned(word(2), 9)
+        chain.calls[link to Abi.balanceOf(holder).toHex()] = CallOutcome.Returned(word(3), 9)
+        chain.calls[link to Abi.balanceOf(other).toHex()] = CallOutcome.Returned(word(4), 9)
+        val balances = balances()
+
+        val read = listOf(holder to usdc, other to usdc, holder to link, other to link).map { (who, token) ->
+            (balances.observeBalance(who, token).first() as TokenBalanceReading.Verified).units.decimal
+        }
+        assertEquals(listOf("1", "2", "3", "4"), read)
+    }
+
+    @Test
+    fun aStateTheEngineCannotReportIsNoStateYet() = runTest {
+        chain.failure = IllegalStateException("the native library failed")
+
+        assertEquals(TokenBalanceReading.Syncing, balances().observeBalance(holder, usdc).first())
     }
 }

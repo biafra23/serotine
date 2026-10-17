@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -99,7 +98,6 @@ fun AccountDetailRoute(
         onCopy = rememberCopyText(),
         onRename = onRename,
         onRemove = onRemove,
-        onSort = viewModel::sortBy,
         modifier = modifier,
     )
 }
@@ -118,7 +116,6 @@ fun AccountDetailScreen(
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
-    onSort: (AssetSort) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -168,7 +165,7 @@ fun AccountDetailScreen(
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
                 )
-                is AccountDetailUiState.Ready -> Details(state, onReceive, copy, onSort)
+                is AccountDetailUiState.Ready -> Details(state, onReceive, copy)
             }
         }
     }
@@ -179,7 +176,6 @@ private fun Details(
     state: AccountDetailUiState.Ready,
     onReceive: () -> Unit,
     onCopy: (String) -> Unit,
-    onSort: (AssetSort) -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -205,6 +201,14 @@ private fun Details(
                     ControlBadge(state.control)
                     if (state.kind == AccountKind.SAFE) Text("Safe", style = MaterialTheme.typography.labelMedium)
                 }
+                // Right under the amount it dates, so it cannot be read as the tokens' block.
+                state.balanceNote?.let { note ->
+                    Text(
+                        note,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         // In full, as docs/wallet-ux.md's screen 4 has it, with Copy beside it.
@@ -228,33 +232,25 @@ private fun Details(
                 Text("Receive")
             }
         }
-        Assets(state, onSort)
-        listOfNotNull(state.balanceNote, state.tokensBlockNote).forEach { note ->
-            Text(note, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Assets(state)
     }
 }
 
-/** The asset rows (docs/wallet-ux.md, screen 4), with their order and what is not known yet. */
+/**
+ * The asset rows (docs/wallet-ux.md, screen 4), each with the block its amount was verified
+ * at, and what is not known yet about the other tokens.
+ */
 @Composable
-private fun Assets(state: AccountDetailUiState.Ready, onSort: (AssetSort) -> Unit) {
+private fun Assets(state: AccountDetailUiState.Ready) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Sort", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-            AssetSort.entries.forEach { order ->
-                FilterChip(
-                    selected = state.sort == order,
-                    onClick = { onSort(order) },
-                    label = { Text(order.label) },
-                )
-            }
-        }
         state.assets.forEach { asset ->
             ListItem(
                 modifier = Modifier.testTag(ACCOUNT_ASSET_TAG),
                 leadingContent = { TokenIcon(asset.icon, asset.symbol) },
                 headlineContent = { Text(asset.symbol) },
-                supportingContent = { Text(asset.name) },
+                supportingContent = {
+                    Text(asset.verifiedAt?.let { "${asset.name} · verified at $it" } ?: asset.name)
+                },
                 trailingContent = {
                     Text(
                         asset.amount,

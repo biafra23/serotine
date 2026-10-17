@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.TokenUnits
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import kotlinx.coroutines.CoroutineDispatcher
@@ -13,7 +14,8 @@ import kotlin.time.Duration
  * [TokenBalances] over a verified light client: the token contract's `balanceOf(holder)` run
  * as a verified call ([VerifiedChain.call]), polled, cached and refused as [ProvenReads]
  * describes. A call that reverts, or returns anything but one word, is a verified "not a
- * token" ([TokenBalanceReading.NotAToken]); one the engine cannot answer is unproven.
+ * token" ([TokenBalanceReading.NotAToken]); one the engine refuses for good is
+ * [ReadUnavailable.REFUSED]; one it cannot answer right now is unproven.
  */
 class VerifiedTokenBalances internal constructor(
     chain: VerifiedChain?,
@@ -26,9 +28,14 @@ class VerifiedTokenBalances internal constructor(
 
     /** A proven balance, or null for a verified answer that is no amount. */
     private val reads = ProvenReads<Key, TokenUnits?>(chain, dispatcher, pollInterval) { verified, key ->
-        verified.call(key.token, Abi.balanceOf(key.holder))?.let { call ->
-            val units = if (call.reverted) null else Abi.uint256(call.returned)?.let(TokenUnits::parse)
-            EngineReading.Proven(units, call.blockNumber ?: UNKNOWN_BLOCK)
+        when (val outcome = verified.call(key.token, Abi.balanceOf(key.holder))) {
+            is CallOutcome.Returned -> EngineReading.Proven(
+                Abi.uint256(outcome.hex)?.let(TokenUnits::parse),
+                outcome.blockNumber ?: UNKNOWN_BLOCK,
+            )
+            is CallOutcome.Reverted -> EngineReading.Proven(null, outcome.blockNumber ?: UNKNOWN_BLOCK)
+            CallOutcome.Refused -> EngineReading.Unavailable(ReadUnavailable.REFUSED)
+            null -> null
         }
     }
 

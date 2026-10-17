@@ -224,13 +224,13 @@ address. Applied:
   Aave's faucet tokens (DAI, USDT, WBTC, AAVE) are not their issuers', so all
   of them are added by address. It is checked twice against the contract's
   `symbol()` and `decimals()`: by the PR that adds it, which shows the values
-  read, and by the app with verified calls when it first lists the token; an
-  entry that disagrees with its contract is not shown, and Settings → Tokens
-  says why.
-- **Icons are bundled** as Compose resources: vector drawables from the CC0
-  `cryptocurrency-icons` set, or, for a built-in token that set lacks, from a
-  source whose licence allows bundling, each with its provenance and licence
-  notice. A token the user adds gets a monogram of its symbol. Nothing is
+  read, and by the app with verified calls when it first lists the token (that
+  second check arrives with Settings → Tokens). An entry that disagrees with
+  its contract is not shown, and Settings → Tokens says why.
+- **Icons are bundled** as Compose `ImageVector`s, converted from the SVGs of
+  the CC0 `cryptocurrency-icons` set at a pinned commit, with their provenance
+  and licence stated (`TokenIcons`); the built-in list keeps to tokens that set
+  has an icon for. A token the user adds gets a monogram of its symbol. Nothing is
   fetched to draw a token.
 - **A token the user adds** is read from its contract (`symbol()`, `name()`,
   `decimals()`, verified) and labelled as the contract's claim. One whose

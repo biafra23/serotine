@@ -1,7 +1,6 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.keys.fromHex
-import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
@@ -9,7 +8,6 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.TokenBalances
 import io.myotis.api.BeaconState
-import io.myotis.api.CallResult
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
 import io.myotis.api.LifecycleState
@@ -215,18 +213,10 @@ class MyotisNode private constructor() {
             }
         }
 
-        // callDetailed tells a revert (a verified answer) from no answer, and names the block
-        // the call ran against when it can (-1 when it does not).
-        override fun call(to: Address, data: ByteArray): ProvenCall? {
+        override fun call(to: Address, data: ByteArray): CallOutcome? {
             val handle = (state as? State.Running)?.handle ?: return null
             val contract = to.hex.removePrefix("0x").fromHex()
-            val result = handle.reads().callDetailed(null, contract, data, null, "latest", null)
-            val block = result.blockNumber().takeIf { it >= 0 }
-            return when (result.status()) {
-                CallResult.Status.OK -> ProvenCall((result.data() ?: ByteArray(0)).toHex(), reverted = false, block)
-                CallResult.Status.REVERTED -> ProvenCall("", reverted = true, block)
-                else -> null
-            }
+            return callOutcome(handle.reads().callDetailed(null, contract, data, null, "latest", null))
         }
     }
 

@@ -81,30 +81,22 @@ class AccountDetailScreenTest {
     }
 
     @Test
-    fun theAssetsAreListedWithTheirSortAndWhatIsNotKnownYet() {
-        var sorted: AssetSort? = null
-        rule.setContent {
-            SerotineTheme {
-                AccountDetailScreen(
-                    ready.copy(
-                        assets = listOf(
-                            AssetRow("ETH", "Ether", "1.5 ETH", "eth", verified = true),
-                            AssetRow("USDC", "USDC", "1250 USDC", "usdc", verified = true),
-                            AssetRow("XYZ", "Some token", "3 XYZ", null, verified = true),
-                        ),
-                        tokensNote = "Checking 1 token",
-                    ),
-                    {}, {}, {}, {}, {},
-                    onSort = { sorted = it },
-                )
-            }
-        }
+    fun theAssetsAreListedEachWithItsBlockAndWhatIsNotKnownYet() {
+        show(
+            ready.copy(
+                assets = listOf(
+                    AssetRow("ETH", "Ether", "1.5 ETH", "eth", verified = true, verifiedAt = "block 9"),
+                    AssetRow("USDC", "USDC", "1250 USDC", "usdc", verified = true, verifiedAt = "block 12"),
+                    AssetRow("XYZ", "Some token", "3 XYZ", null, verified = true),
+                ),
+                tokensNote = "Checking 1 token",
+            ),
+        )
 
         rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG).assertCountEquals(3)
         rule.onNodeWithText("1250 USDC").assertIsDisplayed()
+        rule.onNodeWithText("USDC · verified at block 12").assertIsDisplayed()
         rule.onNodeWithText("XY").assertIsDisplayed() // the monogram of a token without an icon
         rule.onNodeWithText("Checking 1 token").assertIsDisplayed()
-        rule.onNodeWithText("Amount").performClick()
-        assertEquals(AssetSort.AMOUNT, sorted)
     }
 }

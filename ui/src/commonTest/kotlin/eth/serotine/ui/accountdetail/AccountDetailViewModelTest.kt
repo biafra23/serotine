@@ -77,7 +77,6 @@ class AccountDetailViewModelTest {
                 balanceVerified = false,
                 balanceNote = null,
                 assets = listOf(AssetRow("ETH", "Ether", "Syncing…", "eth", verified = false)),
-                sort = AssetSort.NAME,
                 tokensNote = "Checking 3 tokens",
             ),
             viewModel.uiState.value,
@@ -120,34 +119,29 @@ class AccountDetailViewModelTest {
     }
 
     @Test
-    fun heldTokensAreRowsSortedByNameOrAmountAndTheRestIsANote() = runTest {
+    fun heldTokensAreRowsWithTheirOwnBlockAndTheRestIsANote() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
         balances.of(daily.address).value = BalanceReading.Verified(Wei.of("3204100000000000000"), 9)
         // 1,250 USDC; no LINK; UNI not verified.
         tokenBalances.of(daily.address, usdc.address).value =
-            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 9)
+            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 12)
         tokenBalances.of(daily.address, link.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 9)
         tokenBalances.of(daily.address, uni.address).value =
             TokenBalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
         runCurrent()
 
-        val byName = viewModel.uiState.value as AccountDetailUiState.Ready
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        // Each row names its own block: here the token's is a later one than the native's.
         assertEquals(
             listOf(
-                AssetRow("ETH", "Ether", "3.2041 ETH", "eth", verified = true),
-                AssetRow("USDC", "USDC", "1250 USDC", "usdc", verified = true),
+                AssetRow("ETH", "Ether", "3.2041 ETH", "eth", verified = true, verifiedAt = "block 9"),
+                AssetRow("USDC", "USDC", "1250 USDC", "usdc", verified = true, verifiedAt = "block 12"),
             ),
-            byName.assets,
+            ready.assets,
         )
-        assertEquals("1 token not verified", byName.tokensNote)
-        assertEquals("Tokens verified at block 9", byName.tokensBlockNote)
-
-        viewModel.sortBy(AssetSort.AMOUNT)
-        runCurrent()
-        val byAmount = viewModel.uiState.value as AccountDetailUiState.Ready
-        assertEquals(listOf("USDC", "ETH"), byAmount.assets.map { it.symbol })
+        assertEquals("1 token not verified", ready.tokensNote)
     }
 
     @Test
@@ -163,5 +157,19 @@ class AccountDetailViewModelTest {
 
         val ready = viewModel.uiState.value as AccountDetailUiState.Ready
         assertEquals("1 token did not answer as a token", ready.tokensNote)
+    }
+
+    @Test
+    fun aRefusedTokenIsNotCalledUnverified() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        listOf(usdc, link, uni).forEach {
+            tokenBalances.of(daily.address, it.address).value = TokenBalanceReading.Unavailable(ReadUnavailable.REFUSED)
+        }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals("3 tokens cannot be read on this device", ready.tokensNote)
     }
 }

@@ -46,8 +46,11 @@ internal class ProvenReads<K, T>(
     private val chain: VerifiedChain?,
     private val dispatcher: CoroutineDispatcher,
     private val pollInterval: Duration,
-    /** The fact about a key and the block its proof anchors to, or null when unproven. Blocks. */
-    private val prove: (VerifiedChain, K) -> EngineReading.Proven<T>?,
+    /**
+     * The fact about a key and the block its proof anchors to; a refusal ([EngineReading.Unavailable]);
+     * or null when unproven. Blocks.
+     */
+    private val prove: (VerifiedChain, K) -> EngineReading<T>?,
 ) {
     /** The last proof per key, with the head it was fetched at. */
     private val proofs = mutableMapOf<K, Pair<Long, EngineReading.Proven<T>>>()
@@ -57,12 +60,20 @@ internal class ProvenReads<K, T>(
         val chain = chain ?: return flowOf(EngineReading.Unavailable(ReadUnavailable.NO_ENGINE))
         return flow {
             while (true) {
-                val snapshot = chain.snapshot()
+                // Throwable: the snapshot crosses JNA too. A state that cannot be read is no
+                // state yet, as the light client's own adapter treats it.
+                val snapshot = try {
+                    chain.snapshot()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    null
+                }
                 if (snapshot == EngineSnapshot.Down) {
                     emit(EngineReading.Unavailable(ReadUnavailable.NO_ENGINE))
                     return@flow
                 }
-                emit(readingAt(chain, key, snapshot))
+                emit(if (snapshot == null) EngineReading.Syncing else readingAt(chain, key, snapshot))
                 delay(pollInterval)
             }
         }.distinctUntilChanged().flowOn(dispatcher)
@@ -84,6 +95,7 @@ internal class ProvenReads<K, T>(
             // Error (UnsatisfiedLinkError), not an Exception.
             null
         } ?: return EngineReading.Unavailable(ReadUnavailable.UNPROVEN)
+        if (proven !is EngineReading.Proven) return proven // a refusal: an answer, not a proof to keep
         proofsLock.withLock {
             proofs.remove(key) // re-inserted last: the map's order is the order of proving
             proofs[key] = head to proven

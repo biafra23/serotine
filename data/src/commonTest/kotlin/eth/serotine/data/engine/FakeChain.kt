@@ -30,9 +30,9 @@ internal class FakeChain : VerifiedChain {
     }
 
     /** Answers per contract and calldata (hex), as a test sets them. */
-    val calls = mutableMapOf<Pair<Address, String>, ProvenCall>()
+    val calls = mutableMapOf<Pair<Address, String>, CallOutcome>()
 
-    override fun call(to: Address, data: ByteArray): ProvenCall? {
+    override fun call(to: Address, data: ByteArray): CallOutcome? {
         failure?.let { throw it }
         return calls[to to data.toHex()]
     }

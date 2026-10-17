@@ -12,10 +12,9 @@ sealed interface AccountDetailUiState {
     /**
      * The account: its [label], its EIP-55 [address], what the user can do with it
      * ([control]) and its native [balance], verified at the block [balanceNote] names when
-     * [balanceVerified], or why there is none; its [assets] in [sort] order — the native
-     * currency and every known token it holds — and [tokensNote], what is not known yet
-     * about the other tokens ("Checking 3 tokens…"), or null; [tokensBlockNote], where the
-     * token amounts shown were verified.
+     * [balanceVerified], or why there is none; its [assets] — the native currency, then every
+     * known token it holds — and [tokensNote], what is not known yet about the other tokens
+     * ("Checking 3 tokens"), or null.
      */
     data class Ready(
         val label: String,
@@ -26,9 +25,7 @@ sealed interface AccountDetailUiState {
         val balanceVerified: Boolean,
         val balanceNote: String?,
         val assets: List<AssetRow> = emptyList(),
-        val sort: AssetSort = AssetSort.NAME,
         val tokensNote: String? = null,
-        val tokensBlockNote: String? = null,
     ) : AccountDetailUiState
 
     /** The account is not in the wallet (removed): the screen leaves. */
@@ -40,8 +37,9 @@ sealed interface AccountDetailUiState {
 
 /**
  * One asset row (docs/wallet-ux.md, screen 4): its [symbol] and [name], the [amount] held —
- * verified when [verified], otherwise why there is none — and the bundled [icon] key (null:
- * a monogram).
+ * verified when [verified], otherwise why there is none — the block it was verified at
+ * ([verifiedAt], "block 11,932,144"; null when not verified or not named), and the bundled
+ * [icon] key (null: a monogram).
  */
 data class AssetRow(
     val symbol: String,
@@ -49,13 +47,5 @@ data class AssetRow(
     val amount: String,
     val icon: String?,
     val verified: Boolean,
+    val verifiedAt: String? = null,
 )
-
-/** How the asset rows are ordered. Value joins with prices. */
-enum class AssetSort(val label: String) {
-    /** Alphabetically by symbol. */
-    NAME("Name"),
-
-    /** The largest holding first, in each asset's own units; unverified ones last. */
-    AMOUNT("Amount"),
-}

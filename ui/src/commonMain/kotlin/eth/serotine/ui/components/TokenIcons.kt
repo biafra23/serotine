@@ -9,11 +9,13 @@ import androidx.compose.ui.unit.dp
 
 /**
  * The bundled icons of the built-in tokens (docs/wallet-ux.md, *Tokens*), by icon key:
- * converted from spothq/cryptocurrency-icons, `svg/color/<key>.svg` (CC0 1.0 Universal,
+ * converted from spothq/cryptocurrency-icons, `svg/color/<key>.svg` at commit
+ * 1a63530be6e374711a8554f31b17e4cb92c25fa5 (CC0 1.0 Universal,
  * https://github.com/spothq/cryptocurrency-icons), each circle and path kept with its
- * colour, opacity and fill rule. Nothing is fetched to draw a token: a CDN would learn
- * which tokens the user holds (CLAUDE.md, *Data sources*). A token without an icon here is
- * drawn as a monogram.
+ * colour, opacity and fill rule, and every number of the path data spelled out (SVG lets an
+ * arc's flags run into the next number, which Compose's path parser does not split).
+ * Nothing is fetched to draw a token: a CDN would learn which tokens the user holds
+ * (CLAUDE.md, *Data sources*). A token without an icon here is drawn as a monogram.
  */
 object TokenIcons {
 

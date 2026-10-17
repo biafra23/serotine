@@ -50,4 +50,10 @@ enum class ReadUnavailable {
 
     /** The light client is synced but could not prove this read (no peer served the proof). */
     UNPROVEN,
+
+    /**
+     * The engine will not answer this read on this build, and asking again changes nothing
+     * (the Myotis engine's REFUSED, say past a fork it cannot execute).
+     */
+    REFUSED,
 }
