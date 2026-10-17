@@ -12,6 +12,8 @@ import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.TokenAdd
 import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.displayName
+import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -105,7 +107,7 @@ class AddTokenViewModel(
             outcome.value = when (val result = addToken(address)) {
                 is TokenAdd.Added -> Outcome(done = true)
                 is TokenAdd.AlreadyKnown ->
-                    Outcome(error = "The wallet knows this token already, as ${result.token.symbol}.")
+                    Outcome(error = "The wallet knows this token already, as ${displaySymbol(result.token.symbol)}.")
                 TokenAdd.NotAToken -> Outcome(error = NOT_A_TOKEN)
                 is TokenAdd.NotVerified -> Outcome(error = "The contract cannot be read right now. Nothing was added.")
                 TokenAdd.NotSaved -> Outcome(error = "The token could not be saved. Nothing was added.")
@@ -114,7 +116,9 @@ class AddTokenViewModel(
     }
 
     private fun cardOf(address: Address, known: KnownTokenList, reading: MetadataReading?): TokenCard {
-        known.tokens.firstOrNull { it.token.address == address }?.let { return TokenCard.Known(it.token.symbol) }
+        known.tokens.firstOrNull { it.token.address == address }?.let {
+            return TokenCard.Known(displaySymbol(it.token.symbol))
+        }
         return when (reading) {
             null, MetadataReading.Syncing -> if (reading == null) TokenCard.Checking else TokenCard.Unavailable(SYNCING)
             MetadataReading.NotAToken -> TokenCard.Unavailable(NOT_A_TOKEN)
@@ -129,13 +133,15 @@ class AddTokenViewModel(
             )
             is MetadataReading.Verified -> TokenCard.Claim(
                 address = Eip55.format(address),
-                symbol = reading.symbol,
-                name = reading.name,
+                symbol = displaySymbol(reading.symbol),
+                name = displayName(reading.name),
                 decimals = reading.decimals,
                 checkedAt = reading.blockNumber?.let { "Read from the contract at block ${grouped(it)}" }
                     ?: "Read from the contract",
                 warning = known.tokens.firstOrNull { it.token.symbol.equals(reading.symbol, ignoreCase = true) }
-                    ?.let { "Not the ${it.token.symbol} the wallet lists: another contract calls itself that" },
+                    ?.let {
+                        "Not the ${displaySymbol(it.token.symbol)} the wallet lists: another contract calls itself that"
+                    },
             )
         }
     }

@@ -12,6 +12,8 @@ import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.TokenOrigin
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.displayName
+import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -59,15 +61,19 @@ class TokensViewModel(
     }
 
     private fun item(known: KnownToken) = TokenItem(
-        symbol = known.token.symbol,
-        name = known.token.name,
+        symbol = displaySymbol(known.token.symbol),
+        name = displayName(known.token.name),
         address = Eip55.format(known.token.address),
         icon = known.token.icon,
         builtIn = known.origin == TokenOrigin.BUILT_IN,
         status = status(known),
         problem = known.check is BuiltInCheck.Disagrees,
         hidden = known.hidden,
-        warning = if (known.sharesBuiltInSymbol) "Not the built-in ${known.token.symbol}: another contract" else null,
+        warning = if (known.sharesBuiltInSymbol) {
+            "Not the built-in ${displaySymbol(known.token.symbol)}: another contract"
+        } else {
+            null
+        },
     )
 
     private fun status(known: KnownToken): String = when (val check = known.check) {

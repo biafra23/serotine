@@ -105,8 +105,11 @@ consumer developed against an unreleased engine, Myotis's
   are kept for the rest of the process (the 256 most recent): a token's
   description is read once, not at every head. "Not a token" ends the read
   but is not kept, since the contract may not be deployed at that head yet.
-  Text a contract returns loses its control and format characters (bidi
-  overrides, zero-width ones), so none can reorder a line or hide in a symbol.
+  Text a contract returns loses, code point by code point, whatever renders
+  as nothing or moves text: controls, separators, format characters of any
+  plane (bidi overrides, zero-width ones, tags), the rest of Unicode's
+  default-ignorable set (variation selectors, the Hangul fillers) and the
+  blank Braille cell, so none can reorder a line or hide in a symbol.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,

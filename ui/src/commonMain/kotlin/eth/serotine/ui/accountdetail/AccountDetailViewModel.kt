@@ -18,6 +18,8 @@ import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.balanceText
+import eth.serotine.ui.components.displayName
+import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -103,14 +105,18 @@ class AccountDetailViewModel(
             if (verified.units.isZero) return@mapNotNull null
             val token = holding.token
             AssetRow(
-                symbol = token.symbol,
-                name = token.name,
-                amount = formatUnits(verified.units.decimal, token.decimals, token.symbol),
+                symbol = displaySymbol(token.symbol),
+                name = displayName(token.name),
+                amount = formatUnits(verified.units.decimal, token.decimals, displaySymbol(token.symbol)),
                 icon = token.icon,
                 verified = true,
                 verifiedAt = verified.blockNumber?.let(::block),
                 contract = Eip55.format(token.address),
-                warning = "Not the built-in ${token.symbol}: another contract".takeIf { holding.sharesBuiltInSymbol },
+                warning = if (holding.sharesBuiltInSymbol) {
+                    "Not the built-in ${displaySymbol(token.symbol)}: another contract"
+                } else {
+                    null
+                },
             )
         }
         return listOf(nativeRow) + tokenRows.sortedBy { it.symbol.lowercase() }

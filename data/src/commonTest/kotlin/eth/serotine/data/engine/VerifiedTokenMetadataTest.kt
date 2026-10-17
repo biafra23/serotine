@@ -111,6 +111,19 @@ class VerifiedTokenMetadataTest {
         assertEquals("A B", Abi.text(string("A\u0007\nB".replace("\n", " "))), "control characters are dropped")
         assertEquals("USDC", Abi.text(string("US\u200BDC")), "a zero-width space cannot hide in a symbol")
         assertEquals("abc", Abi.text(string("\u202Eabc\u2066\uFEFF\u2028")), "nor can a bidi override or a separator")
+    }
+
+    @Test
+    fun whatRendersAsNothingIsDroppedWhateverItsCategory() {
+        listOf(
+            "US\u034FDC", // combining grapheme joiner (Mn)
+            "USDC\uFE0F", // variation selector (Mn)
+            "\u3164USDC\uFFA0", // Hangul fillers (Lo)
+            "US\u2800DC", // blank Braille cell (So)
+            "USDC\uDB40\uDC41", // U+E0041, a tag character beyond the BMP (Cf)
+            "US\uD834\uDD73DC", // U+1D173, a musical format character beyond the BMP (Cf)
+        ).forEach { assertEquals("USDC", Abi.visible(it), it) }
+        assertEquals("\uD83D\uDE80 Moon", Abi.visible("\uD83D\uDE80 Moon"), "what is visible beyond the BMP stays")
         assertNull(Abi.text("00"), "neither a word nor a string")
         assertNull(Abi.text(word(32) + word(1_000_000) + "00".repeat(32)), "a length beyond the answer")
         assertNull(Abi.text(word(32) + word(2) + "ff" + "fe" + "00".repeat(30)), "not UTF-8")

@@ -27,10 +27,10 @@ internal object Abi {
     /**
      * The text [returnedHex] holds: an ABI `string` (its offset, its length, its bytes), or, as
      * some early tokens answer `symbol()` and `name()`, one `bytes32` word padded with zero
-     * bytes. Null when it is neither, or not valid UTF-8. Control characters, format characters
-     * (bidirectional overrides, zero-width ones) and line separators are dropped: what a
-     * contract says can never move text on screen, nor hide a character in a symbol, which
-     * would let "US\u200BDC" pass for USDC where symbols are compared.
+     * bytes. Null when it is neither, or not valid UTF-8. What renders as nothing or moves text
+     * is dropped ([visible]): what a contract says can never move text on screen, nor hide a
+     * character in a symbol, which would let "US\u200BDC" pass for USDC where symbols are
+     * compared.
      */
     fun text(returnedHex: String): String? {
         if (returnedHex.length % 2 != 0 || !returnedHex.all { it in HEX }) return null
@@ -47,7 +47,37 @@ internal object Abi {
         }
         val decoded = raw.decodeToString(throwOnInvalidSequence = false)
         if ('\uFFFD' in decoded) return null
-        return decoded.filterNot { it.isISOControl() || it.category in INVISIBLE }
+        return visible(decoded)
+    }
+
+    /**
+     * [text] without the code points that render as nothing or move text: controls, line and
+     * paragraph separators, format characters of any plane (bidirectional overrides, zero-width
+     * ones, the tag characters), the rest of Unicode's Default_Ignorable_Code_Point set (the
+     * combining grapheme joiner, variation selectors, the Hangul fillers) and the blank
+     * Braille cell. Read by code point, so a character beyond the BMP is judged whole.
+     * Lookalikes from other scripts remain: a token is known by its address.
+     */
+    internal fun visible(text: String): String = buildString {
+        var i = 0
+        while (i < text.length) {
+            val pair = text[i].isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate()
+            val codePoint = if (pair) {
+                0x10000 + ((text[i].code - 0xD800) shl 10) + (text[i + 1].code - 0xDC00)
+            } else {
+                text[i].code
+            }
+            val width = if (pair) 2 else 1
+            if (!invisible(codePoint)) append(text, i, i + width)
+            i += width
+        }
+    }
+
+    private fun invisible(codePoint: Int): Boolean {
+        if (INVISIBLE_RANGES.any { codePoint in it }) return true
+        if (codePoint > 0xFFFF) return false
+        val char = codePoint.toChar()
+        return char.isISOControl() || char.isSurrogate() || char.category in INVISIBLE_CATEGORIES
     }
 
     /** The word at [at] as a small non-negative Int, or null when it is larger than any offset or length can be. */
@@ -79,7 +109,20 @@ internal object Abi {
         return digits.reverse().toString()
     }
 
-    private val INVISIBLE = setOf(CharCategory.FORMAT, CharCategory.LINE_SEPARATOR, CharCategory.PARAGRAPH_SEPARATOR)
+    private val INVISIBLE_CATEGORIES =
+        setOf(CharCategory.FORMAT, CharCategory.LINE_SEPARATOR, CharCategory.PARAGRAPH_SEPARATOR)
+
+    /**
+     * Default_Ignorable_Code_Point (Unicode's DerivedCoreProperties), the format characters
+     * beyond the BMP, whose category a [Char] cannot tell, and U+2800 BRAILLE PATTERN BLANK.
+     */
+    private val INVISIBLE_RANGES = listOf(
+        0x00AD..0x00AD, 0x034F..0x034F, 0x061C..0x061C, 0x115F..0x1160, 0x17B4..0x17B5,
+        0x180B..0x180F, 0x200B..0x200F, 0x202A..0x202E, 0x2060..0x206F, 0x2800..0x2800,
+        0x3164..0x3164, 0xFE00..0xFE0F, 0xFEFF..0xFEFF, 0xFFA0..0xFFA0, 0xFFF0..0xFFF8,
+        0x110BD..0x110BD, 0x110CD..0x110CD, 0x13430..0x1343F, 0x1BCA0..0x1BCA3, 0x1D173..0x1D17A,
+        0xE0000..0xE0FFF,
+    )
 
     private const val WORD = 32
     private const val WORD_HEX_DIGITS = 64

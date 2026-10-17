@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 
-/** [UserTokens] held in memory; [unreadable] and [failSaves] make it fail. */
+/**
+ * [UserTokens] held in memory; [failSaves] makes every change fail, and setting [settings] to
+ * [TokenSettings.Unreadable] makes them unreadable.
+ */
 internal class MemoryUserTokens : UserTokens {
     val settings = MutableStateFlow<TokenSettings>(TokenSettings.Loaded(emptyList(), emptySet()))
     var failSaves = false
