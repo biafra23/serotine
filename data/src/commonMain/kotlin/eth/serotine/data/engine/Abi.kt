@@ -2,12 +2,20 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.keys.fromHex
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 
 /** The few pieces of the contract ABI the engine adapters speak: calldata in, words out. */
 internal object Abi {
 
     /** `balanceOf(address)`: the selector and [holder] as one left-padded word. */
     fun balanceOf(holder: Address): ByteArray = ("70a08231" + "0".repeat(24) + holder.hex.removePrefix("0x")).fromHex()
+
+    /**
+     * A Safe's `approvedHashes(address,bytes32)`: the selector, [owner] as a left-padded word and
+     * [hash] as the second.
+     */
+    fun approvedHashes(owner: Address, hash: Digest): ByteArray =
+        ("7d832974" + "0".repeat(24) + owner.hex.removePrefix("0x") + hash.hex).fromHex()
 
     /**
      * The one uint256 word [returnedHex] (lower-case hex, no `0x`) holds, as a decimal integer;
