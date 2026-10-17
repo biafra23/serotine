@@ -89,4 +89,18 @@ sealed interface SentAction {
      * them) are in the signed bytes.
      */
     data class SafeExecution(val request: SigningRequest) : SentAction
+
+    /**
+     * The deployment of a new Safe at [safe] through its release's proxy factory
+     * (`createProxyWithNonce`): of Safe [version], with [owners] in their order and [threshold],
+     * to be listed in the wallet as [label] (blank: named as a watched account is) once the light
+     * client proves it. It moves nothing of the account's but the fee.
+     */
+    data class SafeDeployment(
+        val safe: Address,
+        val owners: List<Address>,
+        val threshold: Int,
+        val version: String,
+        val label: String,
+    ) : SentAction
 }

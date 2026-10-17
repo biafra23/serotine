@@ -2,10 +2,16 @@ package eth.serotine.data.safe
 
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SafeCreation
+import eth.serotine.domain.model.UInt256
 import org.kotlincrypto.hash.sha3.Keccak256
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 /** The pins against the real SafeProxy runtime code, so a typo'd hash cannot pass for one. */
 class SafeDeploymentsTest {
@@ -45,5 +51,50 @@ class SafeDeploymentsTest {
 
         assertEquals(setOf("1.5.0"), singletons.filter { it.moduleGuard }.map { it.version }.toSet())
         assertEquals(setOf("1.3.0", "1.4.1", "1.5.0"), singletons.map { it.version }.toSet())
+    }
+
+    @Test
+    fun aNewSafeIsOneThatDetectionRecognises() {
+        val table = SafeDeployments.of(Network.SEPOLIA)
+        val release = assertNotNull(PinnedSafeReleases().forCreation(Network.SEPOLIA))
+
+        assertEquals("1.4.1", release.version)
+        assertFalse(release.l2)
+        assertEquals(SafeSingleton("1.4.1", l2 = false), table.singletons[release.singleton])
+        assertEquals(Address.of("0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67"), release.proxyFactory)
+        assertEquals(Address.ZERO, release.fallbackHandler, "no fallback handler is pinned, so none is installed")
+    }
+
+    @Test
+    fun theProxyCreationCodeDeploysThePinnedProxyRuntimeCode() {
+        val code = assertNotNull(PinnedSafeReleases().forCreation(Network.SEPOLIA)).proxyCreationCode
+        // The constructor's CODECOPY: 0xab bytes from offset 0x119, then RETURN (`60ab80610119 6000396000f3`).
+        val runtime = code.copyOfRange(0x119, 0x119 + 0xab)
+
+        assertEquals(486, code.size)
+        assertEquals(runtimeCode.getValue("1.4.1"), runtime.toHex())
+        assertTrue(Keccak256().digest(runtime).toHex() in SafeDeployments.of(Network.SEPOLIA).proxyCodeHashes)
+        // keccak256 of the whole creation code, as `cast keccak` gives it for the npm artifact's `bytecode`.
+        assertEquals(
+            "1856e0ee08399d74e0ea0b03adca210aeade6f748969ac023cdcb4dd62dcaf5f",
+            Keccak256().digest(code).toHex(),
+        )
+    }
+
+    @Test
+    fun thePinnedReleasePredictsTheAddressCastComputes() {
+        val release = assertNotNull(PinnedSafeReleases().forCreation(Network.SEPOLIA))
+        val owners = listOf(
+            Address.of("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"),
+            Address.of("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"),
+            Address.of("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"),
+        )
+        val initializer = SafeCreation.setup(owners, 2, release.fallbackHandler)
+
+        // The vector of domain's SafeCreationTest: `cast compute-address` over the same creation code.
+        assertEquals(
+            Address.of("0x2Ca0226086a7C24808217F7F8707827608B17Dc5"),
+            SafeCreation.proxyAddress(release, initializer, UInt256.of(1_760_000_000_000)),
+        )
     }
 }

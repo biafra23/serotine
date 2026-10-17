@@ -114,6 +114,34 @@ class FileSentTransfersTest {
     }
 
     @Test
+    fun aSafesDeploymentIsRecordedWithWhatItCreates() = runTest {
+        val deployment = transfer(7).copy(
+            action = SentAction.SafeDeployment(
+                safe = Address.of("0x" + "5a".repeat(20)),
+                owners = listOf(alice, bob),
+                threshold = 1,
+                version = "1.4.1",
+                label = "Treasury",
+            ),
+        )
+
+        record().record(deployment)
+
+        assertEquals(listOf(deployment), stored())
+    }
+
+    @Test
+    fun aRecordOfTheSecondFormatReadsAsItWasWritten() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        // What part 14 wrote, before a record could be a Safe's deployment.
+        val v2 = """{"version":2,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
+            """"to":"${bob.hex}","token":null,"amount":"1500000","maxCost":"630000000000000","sentAt":1800000007}]}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString(v2) }
+
+        assertEquals(listOf(transfer(7)), stored())
+    }
+
+    @Test
     fun aRecordOfTheFirstFormatReadsAsItWasWritten() = runTest {
         SystemFileSystem.createDirectories(directory)
         // What part 11 wrote, before a record could be a Safe transaction's.

@@ -110,7 +110,7 @@ class TransferStatusViewModel(
         val (title, request) = when (val action = transfer.action) {
             is SentAction.SafeApproval -> "Approval of a Safe transaction" to action.request
             is SentAction.SafeExecution -> "Execution of a Safe transaction" to action.request
-            is SentAction.Transfer -> return null
+            is SentAction.Transfer, is SentAction.SafeDeployment -> return null
         }
         return SafeTxSummary(
             title = title,

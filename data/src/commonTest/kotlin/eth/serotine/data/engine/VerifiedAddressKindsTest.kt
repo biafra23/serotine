@@ -31,6 +31,7 @@ class VerifiedAddressKindsTest {
     private val safes = SafeDeployments.Table(
         proxyCodeHashes = setOf(Keccak256().digest(proxyCode.fromHex()).toHex()),
         singletons = mapOf(singleton to SafeSingleton("1.4.1", l2 = false)),
+        creation = null,
     )
 
     private fun TestScope.kinds() =
