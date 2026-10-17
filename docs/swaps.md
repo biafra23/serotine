@@ -24,7 +24,7 @@ disagree, CLAUDE.md wins and this page is fixed.
 |---|---|---|
 | Who has to be up | Ethereum peers | CoW's order API, its auction and at least one solver CoW DAO has allow-listed |
 | Who can refuse a swap | No one: the contracts are open to every caller | The API (it keeps a deny-list of accounts) and the solvers (none has to fill) |
-| The quote | A verified call: QuoterV2 run in the engine's local EVM over proven state | CoW's own estimate, which the light client cannot prove |
+| The quote | A verified call: QuoterV2 run in the engine's local EVM over proven state | CoW's own estimate, net of its fee, which the light client cannot prove |
 | What enforces the signed minimum | The router: `amountOutMinimum`, or the call reverts | The settlement contract: the order's `buyAmount`, or it does not settle |
 | MEV | The transaction is gossiped to the public mempool, so a sandwich can take up to the slippage tolerance | A batch auction: the user's order never sits in the public mempool |
 | Gas | The account pays it in ETH | Taken out of the price; ETH only for an approval |
@@ -41,10 +41,13 @@ signed.
 
 - **Amounts are token units** (docs/wallet-ux.md, *Rules every screen
   follows*). The user enters the amount to sell in the token's units.
-  - The signed minimum comes from a quote, never from a Chainlink price. A
-    quote is a pool's own answer, run for this exact amount.
-  - So a quote is the same kind of value as Send's verified simulation, and
-    the ruling that a price never reaches a signature (CLAUDE.md, *Data
+  - The signed minimum never comes from a Chainlink price.
+    - On Uniswap it is the pool's own verified quote for this exact amount,
+      less the tolerance. That is the same kind of value as Send's verified
+      simulation.
+    - On CoW it is never below a floor made of that verified quote (*The
+      signed minimum*); CoW's estimate can only raise it.
+  - So the ruling that a price never reaches a signature (CLAUDE.md, *Data
     sources*) stands unchanged.
   - Fiat values stay hints beside the amounts.
 - **Only tokens the wallet knows.** These are the built-in tokens, the ones
@@ -53,8 +56,8 @@ signed.
   the wallet has not listed.
 - **The proceeds go to the account itself.** No other recipient is offered:
   sending somewhere else is Send's job.
-- **Slippage.** The signed minimum is the quote × (1 − tolerance), rounded
-  down. The default and the bounds are the owner's (*Open questions*).
+- **Slippage.** The tolerance applied to a verified quote, rounded down. The
+  default and the bounds are the owner's (*Open questions*).
 - **Approvals are their own transaction, for the exact amount.**
   - When the account's allowance for the venue's spender does not cover the
     amount, the swap review starts with an approval step: "Allow
@@ -66,33 +69,65 @@ signed.
     whose `approve` reverts from one non-zero value to another (USDT's kind)
     shows that in the approval's verified run, and the step then approves
     zero first.
+  - An allowance left over by a swap that never ran moves nothing on its
+    own:
+    - SwapRouter02 pulls only from the account that calls it.
+    - CoW's vault relayer pulls only for an order the account signed.
   - Unlimited approvals and Permit2 are the owner's decision (*Open
     questions*).
-- **Freshness**, as Send's quote (docs/wallet-ux.md, screen 8):
+- **Freshness, for a swap from an account held here**, as Send's quote
+  (docs/wallet-ux.md, screen 8):
   - A quote is made when the review is entered, again on Refresh, and when
     the screen is shown again after it was not. It is made again at the tap
     that would sign it when it is over a minute old.
-  - At the tap that signs, the exact transaction or order is run again at the
-    current head. When it still succeeds, what the user saw is what is
+  - At the tap that signs a Uniswap swap, the exact transaction is run again
+    at the current head. When it still succeeds, what the user saw is what is
     signed. When it does not (the minimum no longer met), it is quoted again
     and shown, not signed.
+  - At the tap that signs a CoW order, the verified floor is quoted again.
+    When it has risen above the minimum shown, the order is made again and
+    shown, not signed.
+  - A Safe's swap has its own rules (*A Safe's swap*).
 - **The record.** `SentAction` gains an approval and a swap: the venue, the
-  token sold and its amount, the token bought and the signed minimum. The
-  status screen (9) says "Swap of 100 USDC for at least 4.2 LINK" and, once
-  known, the amount received:
-  - Uniswap: the token's `Transfer` log to the account in the verified
-    receipt;
-  - CoW: the settlement's `Trade` log, or "at least" the minimum while that
-    log cannot be read.
+  token sold and its amount, the token bought and the signed minimum. A
+  signed CoW order is recorded as soon as it is signed (*A signed order is
+  live until it is proven dead*).
+  - The status screen (9) says "Swap of 100 USDC for at least 4.2 LINK" and,
+    once known, the amount received.
+  - On Uniswap that amount comes from the verified receipt: the token's
+    `Transfer` log to the account. For ETH out, it is WETH's `Withdrawal` log
+    from the router, since unwrapped ETH comes with no `Transfer` log.
+  - On CoW it comes from the settlement's `Trade` log (*An order, step by
+    step*). While that log cannot be read, the status says "at least" the
+    minimum.
 - **Native ETH** goes in and out through WETH, as each venue does it (below).
-- **A Safe swaps through the co-signing queue** (docs/wallet-ux.md,
-  *Co-signing a Safe transaction*). The approval and the swap are two Safe
-  transactions at consecutive nonces, because a MultiSend batch is a delegate
-  call, which this wallet refuses (issue #57).
-  - Screen 17 decodes each from its raw call to a pinned contract, never
-    from a description: "Swap 100 USDC for at least 4.2 LINK on Uniswap".
-  - The swap's verified run needs the approval executed first, so it says
-    "Not simulated" until then.
+
+## A Safe's swap
+
+A Safe swaps through the co-signing queue (docs/wallet-ux.md, *Co-signing a
+Safe transaction*), on Uniswap only until CoW's pre-signature is built
+(*Later on CoW*).
+
+- **Two transactions.** The approval and the swap are two Safe transactions
+  at consecutive nonces. A MultiSend batch would be a delegate call, which
+  this wallet refuses (issue #57).
+- **Decoded here.** Screen 17 decodes each from its raw call to a pinned
+  contract, never from a description: "Swap 100 USDC for at least 4.2 LINK on
+  Uniswap".
+- **The minimum and the deadline are fixed when the swap is proposed.**
+  - Re-quoting at a later owner's tap would change the `SafeTx` hash and void
+    the signatures already collected, so it is not done.
+  - The deadline is longer than an account's ten minutes, since collecting
+    signatures by QR code takes time: 24 hours proposed, the owner's decision
+    (*Open questions*).
+- **Each owner sees the current state**: the minimum signed, and what the
+  swap would return now in a verified run, said as met or not met.
+- **Execute runs only while the swap still succeeds.** Its verified run must
+  succeed: deadline not passed, minimum met.
+  - The swap's run needs the approval executed first, so until then it says
+    "Not simulated".
+  - A swap whose run fails is not executed. The owners replace it at its
+    nonce (a new proposal, or a rejection), as for any Safe transaction.
 
 ## Uniswap (built first)
 
@@ -147,9 +182,10 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
 - **One call:** `SwapRouter02.multicall(deadline, data)`, where `data` holds
   `exactInputSingle` (or `exactInput`) with the recipient, `amountIn`,
   `amountOutMinimum` (the signed minimum) and no price limit.
-  - **The deadline** is the verified head's timestamp plus ten minutes,
-    never the device's clock (as the price rules measure age:
-    docs/wallet-ux.md, *Prices*).
+  - **The deadline**, for an account held here, is the verified head's
+    timestamp plus ten minutes, never the device's clock (as the price rules
+    measure age: docs/wallet-ux.md, *Prices*). A Safe's is longer (*A Safe's
+    swap*).
   - **Selling ETH:** the token in is WETH9 and the transaction's value is
     `amountIn`; the router wraps it.
   - **Buying ETH:** the recipient is the router itself (`ADDRESS_THIS`), and
@@ -167,6 +203,11 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
     chain data both;
   - the most the fee can be, and the balances of both tokens and of ETH
     before and after.
+- **A hint, display-only.** The pool's spot price can be moved within a
+  block just as the quote can. When the quote's rate is far from the
+  Chainlink values the screen already shows, the review says so. On Sepolia
+  the testnet feeds and the test pools do not track each other, so there the
+  hint says that and no more. It never changes an amount.
 - **MEV.** The transaction sits in the public mempool, where it can be
   sandwiched by up to the tolerance.
   - On Sepolia this does not matter. On mainnet, once it is allowed, the
@@ -189,17 +230,21 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
 
 ### An order, step by step
 
-1. **The quote.** `POST /api/v1/quote` with the tokens, the amount to sell,
-   the account and `kind: sell`. The answer is CoW's estimate, shown as "CoW's
-   quote (not verified)".
+1. **The quote.** `POST /api/v1/quote` with the tokens, the account, `kind:
+   sell` and `sellAmountBeforeFee`, the amount the user sells.
+   - The answer's `buyAmount` is CoW's estimate, net of the network fee CoW
+     takes out of the trade.
+   - It is shown as "CoW's quote (not verified)".
 2. **The order is built here**, never taken from the API. Its fields:
-   - `sellToken`, `buyToken`, `sellAmount`;
+   - `sellToken`, `buyToken`, `sellAmount` (the whole amount the user
+     sells);
    - `receiver`: the account;
    - `buyAmount`: the signed minimum (*The signed minimum*, below);
    - `validTo`: the verified head's timestamp plus a few minutes (*Open
      questions*);
    - `appData`: the hash of a pinned app-data document;
-   - `feeAmount`: 0 (the API's spec: "Expected to be 0");
+   - `feeAmount`: 0 (the API's spec, `OrderParameters`: "When creating an
+     order, this should be set to zero");
    - `kind`: sell; `partiallyFillable`: false;
    - `sellTokenBalance` and `buyTokenBalance`: `erc20`.
 3. **The digest** is GPv2's EIP-712 hash of that order under the domain
@@ -212,16 +257,30 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
      one more digest the domain computes, as the `SafeTx` hash is.
 4. **The submission.**
    - The order's UID is computed here: digest ‖ owner ‖ `validTo`.
+   - The order, its UID and its signature are recorded before anything is
+     sent.
    - `POST /api/v1/orders` sends the order, its signature
      (`signingScheme: eip712`) and the full app-data document.
    - The UID the API returns must be the one computed here. Any other UID is
      a failed submission.
+   - Whatever the POST returns, the order is now live (*A signed order is
+     live until it is proven dead*).
 5. **The fill is read on chain, never from the API.**
-   - `GPv2Settlement.filledAmount(uid)`, a verified call, says whether the
-     order settled: zero is unfilled, the sell amount is filled, and the
-     maximum `uint256` is invalidated.
-   - The `Trade` log, read with `getLogs` where the engine's log index covers
-     the block, says how much was bought.
+   - The settlement contract records an order's fill in
+     `filledAmount(uid)`: zero, the sell amount once filled, or the maximum
+     `uint256` once invalidated. That value alone does not settle every case:
+     - `freeFilledAmountStorage` lets a settlement reset it to zero once
+       `validTo` has passed;
+     - `invalidateOrder` writes the maximum whether the order filled before
+       or not.
+
+     So the fill is read at a block where neither can have happened (*A
+     signed order is live until it is proven dead*).
+   - How much was bought is in the settlement's `Trade` log, found in the
+     verified receipts of the block that filled it (`getBlockReceipts`). That
+     block is found by reading `filledAmount` at the blocks of the order's
+     window. `getLogs` needs a log index that the engine does not keep by
+     default (`VerifiedReads.getLogs`), so it is not relied on.
    - The API's order status is shown as CoW's report only.
 6. **The approval** is of the pinned `GPv2VaultRelayer` for the exact sell
    amount, its own transaction as above, mined before the order is signed.
@@ -238,54 +297,99 @@ They are pinned with their code hashes, as Uniswap's are.
 
 ### The signed minimum
 
-- **`buyAmount` = max(CoW's quote, the verified Uniswap quote) × (1 −
-  tolerance).**
-  - CoW's servers can then make an order fail to fill, but never fill it
-    worse than the Uniswap fallback less the tolerance.
-  - A CoW quote above Uniswap's is CoW's promise to keep. When it cannot, the
-    order goes unfilled and the swap falls back.
-- **A pair with no Uniswap route** has only CoW's estimate behind its
-  minimum. Whether to offer it signed on that estimate alone, with a warning,
-  or not to offer it on CoW at all, is the owner's decision (*Open
-  questions*). Until decided, such a pair is not offered.
+CoW's estimate is net of its fee. Uniswap's quote is not: there the account
+pays the gas in ETH on top. So the two are compared net.
+
+- **The Uniswap net** is the verified Uniswap quote less that swap's expected
+  network fee (its estimate × the Normal level's fee), converted into the
+  bought token by a verified quote of that much WETH. That conversion is a
+  pool's answer for an exact amount, not a price.
+  - When the bought token is ETH or WETH, nothing is converted.
+  - When there is no route to convert through, the Uniswap net is the quote
+    itself. CoW is then held to the stricter floor, and a small swap goes to
+    Uniswap.
+- **The floor** is the Uniswap net × (1 − tolerance).
+- **CoW is used when its estimate reaches the floor.** The order's
+  `buyAmount` is then max(CoW's estimate × (1 − tolerance), the floor).
+  - CoW's servers can therefore make an order fail to fill, but never fill
+    it below the floor.
+  - An estimate below the floor means that, by CoW's own account, Uniswap
+    gives more. The swap then goes to Uniswap at once, rather than through
+    an order that waits out its validity.
+- **A pair with no Uniswap route** has no floor, only CoW's estimate.
+  Whether to offer it signed on that estimate alone, with a warning, or not
+  to offer it on CoW at all, is the owner's decision (*Open questions*).
+  Until decided, such a pair is not offered.
 
 ### CoW first, Uniswap as the fallback
 
 The venue is chosen for each swap when its review is made.
 
-- **Before anything is signed**, the swap goes to Uniswap when CoW:
-  - does not answer within 10 seconds;
-  - answers with an HTTP error;
-  - answers with something the app cannot decode, or that fails a check
-    (another UID, an unknown error shape);
-  - refuses the quote (no liquidity, an unsupported token, the account
+- **Before anything is signed**, the swap goes to Uniswap when CoW's quote:
+  - does not come within 10 seconds;
+  - comes back as an HTTP error;
+  - cannot be decoded;
+  - is refused (no liquidity, an unsupported token, the account
     deny-listed);
-  - or when the account sells native ETH, until CoW's ETH-flow contract is
-    pinned (*Later on CoW*).
+  - or falls below the floor.
+
+  The swap also goes to Uniswap when the account sells native ETH, until
+  CoW's ETH-flow contract is pinned (*Later on CoW*).
 
   The review says which venue it uses and why: "CoW did not answer, so this
   swap uses Uniswap".
-- **After an order is posted**, a fallback must first make sure that order
-  can never fill. Otherwise both could execute when the balance covers both.
-  The order is dead only once:
-  - `validTo` is before the verified head's timestamp and `filledAmount(uid)`
-    is still zero; or
-  - the account has invalidated it on chain (`invalidateOrder(uid)`, a
-    transaction), and `filledAmount(uid)` reads the maximum.
 
-  An off-chain cancellation through the API is not enough: a solver may
-  already hold the order. Only then does the Uniswap review open. The
-  approval of the vault relayer is left as it is (it pulls nothing without an
-  order signed by the account) and said.
-- **An order that fills ends the swap**, read on chain as above, whatever the
-  API says.
+### A signed order is live until it is proven dead
+
+Once a signature exists, anyone who holds it can submit the order until
+`validTo`. That includes CoW after a POST that timed out, failed with a 5xx,
+or returned another UID. A fallback that runs while the order can still fill
+could swap the same tokens twice.
+
+- **Only an order that provably never left the device is dropped at once.**
+  That is a POST that never connected (no DNS answer, connection refused); its
+  signature is then discarded. Every other order is live, whatever the POST
+  returned.
+- **A live order is kept across restarts.** It sits in a record of its own
+  beside `sent-transfers.json`: the order, its UID, its signature, the account
+  and how far its proof has come.
+- **Send and a new swap hold back what a live order may still take** of the
+  sold token, as they do for a transfer not mined yet
+  (docs/embedding-myotis.md, *Sending*).
+- **An order is proven dead in one of two ways, each decided only at a
+  finalized block**, so that no reorganization can bring a fill back:
+  - *Expired.* Take the last block whose timestamp is at or below `validTo`.
+    `filledAmount(uid)` is read at that block once it is finalized. Zero
+    proves the order never filled: no settlement can fill it after
+    `validTo`, and none can free its storage up to that block.
+  - *Invalidated.* The account calls `invalidateOrder(uid)`, a transaction,
+    to stop waiting. Then:
+    - `filledAmount(uid)` is read at the parent of the invalidation's block;
+    - the invalidation block's verified receipts are searched for a `Trade`
+      with the UID, a settlement earlier in the same block.
+
+    Zero and no such `Trade` prove the order never filled. Both reads wait
+    until that block is finalized.
+- **An off-chain cancellation through the API proves nothing**: a solver may
+  already hold the order. It is not built.
+- **The outcomes.**
+  - *Filled* ends the swap, read on chain as above, whatever the API says.
+  - *Proven dead and unfilled* opens the Uniswap review for the same swap.
+  - *Not provable* is said as such, and no fallback is offered: for example,
+    a past block outside the window the engine serves after the app was
+    closed for long. The balance shows what happened, and a new swap is the
+    user's own decision.
+- **The wait.** On Sepolia a block is final about 13 minutes after it is
+  made. A fallback after a posted order therefore waits for `validTo` plus
+  finality, and the status says so. Whether a margin of a few blocks may
+  stand in for finality is the owner's decision (*Open questions*).
 
 ### What CoW learns, and how the app talks to it
 
 - **What CoW learns.** Over HTTPS to `api.cow.fi`: the account's address, the
-  pair, the amounts and the device's IP address. Tor is issue #25's subject.
-  This is the content of the *Data sources* ruling that lands before CoW's
-  code (CLAUDE.md).
+  pair, the amounts and the device's IP address. This is the content of the
+  *Data sources* ruling that lands before CoW's code (CLAUDE.md). Keeping the
+  IP address from CoW (Tor, for one) is a question of its own.
 - **No API key.** The base URL is pinned per `Network`.
 - **Ktor** is the HTTP client (CLAUDE.md, *Platform & language direction*).
   It is the app's first, so its engine on each platform is part 6's
@@ -294,9 +398,11 @@ The venue is chosen for each swap when its review is made.
   - `POST /api/v1/quote`;
   - `POST /api/v1/orders`, with the full app-data document, so no separate
     `PUT /api/v1/app_data` is needed;
-  - `GET /api/v1/orders/{UID}`, for CoW's report;
-  - `DELETE /api/v1/orders`, an off-chain cancellation offered as a courtesy
-    and never relied on.
+  - `GET /api/v1/orders/{UID}`, for CoW's report.
+
+  An off-chain cancellation (`DELETE /api/v1/orders`) would need a second
+  EIP-712 signature (`OrderCancellations`) and proves nothing (above), so it
+  is not used.
 
 ### How often CoW's API changes
 
@@ -333,17 +439,19 @@ route being unavailable, never to a wrong swap:
 1. **Everything that matters is built and checked here:**
    - the order and its UID;
    - the domain separator, against the chain;
-   - the minimum, against the verified Uniswap quote;
-   - the fill, on chain.
+   - the floor, from verified quotes;
+   - the fill, on chain at a finalized block.
 
-   The API delivers the order and offers a quote no one trusts.
+   The API delivers the order and offers an estimate no one trusts.
 2. **Lenient decoding of the few fields used.** Unknown fields are ignored,
    and only the fields the app reads are required. Requests carry only
    required fields.
-3. **An answer that does not decode or check means CoW is unavailable**, and
-   the swap goes to Uniswap. A change shows up as "CoW gave an answer this
-   version does not understand", not as silence. The next app update brings
-   CoW back.
+3. **A quote that does not decode or check means CoW is unavailable**, and
+   the swap goes to Uniswap before anything is signed.
+   - A change shows up as "CoW gave an answer this version does not
+     understand", not as silence. The next app update brings CoW back.
+   - A change that breaks the POST after signing costs a wait for the order
+     to be proven dead, never a second swap.
 4. **A network test, `@Ignore`d by default** (CLAUDE.md, *Conventions*),
    quotes against `api.cow.fi/sepolia` and decodes the answer. Whether a
    scheduled workflow runs it and watches `openapi.yml` for changes to the
@@ -355,6 +463,8 @@ route being unavailable, never to a wrong swap:
   the vault relayer and call `setPreSignature(uid, true)`, then the order is
   posted with `signingScheme: presign` and the Safe as its owner.
   - It is not gasless.
+  - The order's validity has to cover the co-signing, as *A Safe's swap*
+    says for its deadline.
   - An EIP-1271 signature would need a fallback handler, which Serotine's
     Safes do not have (docs/wallet-ux.md, *Safes*; issue #63).
 - **Selling native ETH** goes through CoW's ETH-flow contract: an order
@@ -385,18 +495,22 @@ follows the checklist in docs/architecture.md.
    - The status (9) for a swap.
    - A Swap button on the account detail (4) and "Swap ‹symbol›" in the asset
      menu (5), absent when watch-only.
-4. **Safe swaps** through the queue: two Safe transactions, decoded on 17.
+4. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
+   with the minimum and deadline fixed at the proposal.
 5. **CoW, domain.**
    - The GPv2 order, its EIP-712 digest and UID, the pinned app-data
      document.
-   - The signed-minimum rule, and the states of a posted order that decide
-     a fallback.
+   - The floor and the signed minimum.
+   - The live order's record and its states, and the hold-back in Send's
+     quote.
 6. **CoW, adapter.**
    - CLAUDE.md's *Data sources* ruling first.
-   - The Ktor client and the four calls, decoded leniently.
-   - `filledAmount` and the `Trade` log over the engine.
+   - The Ktor client and the three calls, decoded leniently.
+   - `filledAmount` at a given block, and the `Trade` log from verified block
+     receipts, over the engine.
 7. **The venue.** CoW first and Uniswap as the fallback, on the review and
-   the status, with the reason said.
+   the status, with the reason said, and the proof that a posted order is
+   dead before a fallback.
 8. **Later:** a Safe's pre-signed CoW order, ETH flow, Uniswap v4.
 
 ## Open questions
@@ -411,10 +525,15 @@ on issue #69 until answered.
    impact above some level need a second confirmation?
 3. **Approvals.** The exact amount (one approval per swap), unlimited, or
    Permit2?
-4. **A CoW order's validity.** A few minutes, 5 proposed: long enough for
-   CoW's auctions, short enough to wait out before a fallback.
-5. **Uniswap v4 hooks.** Pools without hooks only, or pinned hooks?
-6. **CoW's data-source ruling.** What it may learn, what the app data says
-   (nothing beyond the required fields, proposed), and Tor later (#25).
-7. **Mainnet**, once allowed: a Uniswap swap in the public mempool, bounded
+4. **A CoW order's validity, and the wait before a fallback.** A few
+   minutes, 5 proposed, decided at a finalized block (about 13 more minutes
+   on Sepolia). Or a margin of a few blocks in place of finality, which is
+   faster and wrong only after a deeper reorganization.
+5. **A Safe's swap deadline.** 24 hours proposed, long enough to collect the
+   signatures; the minimum guards the rate meanwhile.
+6. **Uniswap v4 hooks.** Pools without hooks only, or pinned hooks?
+7. **CoW's data-source ruling.** What it may learn, what the app data says
+   (nothing beyond the required fields, proposed), and whether to keep the
+   IP address from it.
+8. **Mainnet**, once allowed: a Uniswap swap in the public mempool, bounded
    by its minimum, with no private relay.

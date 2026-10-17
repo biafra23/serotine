@@ -661,13 +661,11 @@ discussion that produced this note.
   stays unwired.
 - docs/wallet-ux.md applies these three rulings to the screens.
 - **Swaps: Uniswap first, then CoW Protocol, preferred while its servers
-  work** (owner's direction, 2026-10-18; docs/swaps.md, issue #69). Uniswap
-  is used through its contracts alone: pinned, quoted with verified calls,
-  and sent like any transaction. CoW's order API is an off-chain service:
-  what it learns and how its answers are shown is ruled here before its code
-  lands, and no swap rests on an answer from it that the chain does not
-  confirm. When CoW does not answer, or answers in a way the app cannot
-  check, the swap uses Uniswap.
+  work, with Uniswap as the fallback** (owner's direction, 2026-10-18;
+  docs/swaps.md, issue #69). Uniswap's contracts are chain data like any
+  other: pinned, read with verified calls, and sent to like any transaction.
+  CoW's order API is an off-chain service, and its ruling (what it learns,
+  how its answers are shown) is recorded here before its code lands.
 - **Open decisions, each recorded here before its code lands**: the dApp
   connection protocol (WalletConnect's relay is an off-chain service, and a
   request that arrives through it is untrusted input, decoded and shown as
