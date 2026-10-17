@@ -55,12 +55,18 @@ class ResolveRecipient(private val names: NameResolver) {
         val text = input.trim()
         Address.parse(text)?.let { address ->
             if (!hasValidChecksum(text)) return RecipientLookup.ChecksumMismatch
+            if (address == Address.ZERO) return RecipientLookup.ZeroAddress
             return RecipientLookup.Found(address, name = null, blockNumber = null)
         }
         // A name before the 0x test: "0xfoo.eth" is a name.
         if ('.' !in text) return RecipientLookup.NotAnAddress
         return when (val resolved = names.resolve(text)) {
-            is NameResolution.Resolved -> RecipientLookup.Found(resolved.address, resolved.name, resolved.blockNumber)
+            // ENS's zero address is a name with no address set, not a recipient.
+            is NameResolution.Resolved -> if (resolved.address == Address.ZERO) {
+                RecipientLookup.NoAddress
+            } else {
+                RecipientLookup.Found(resolved.address, resolved.name, resolved.blockNumber)
+            }
             NameResolution.NoAddress -> RecipientLookup.NoAddress
             NameResolution.NotAName -> RecipientLookup.NotAnAddress
             NameResolution.OffchainOnly -> RecipientLookup.OffchainOnly
@@ -80,6 +86,9 @@ sealed interface RecipientLookup {
 
     /** An address in mixed case whose EIP-55 checksum fails: a typo, refused. */
     data object ChecksumMismatch : RecipientLookup
+
+    /** The zero address: what is sent to it is lost for good, so it is refused. */
+    data object ZeroAddress : RecipientLookup
 
     /**
      * A name whose address only an off-chain gateway (CCIP-Read) gives: an off-chain source no
@@ -149,9 +158,13 @@ class QuoteTransfer(
         amount: UInt256,
         level: FeeLevel,
     ): TransferQuoting = coroutineScope {
+        val token = (asset as? TransferAsset.Erc20Token)?.token
+        // Recipients that can never give it back, refused here as well as at the typed text: this
+        // is the one maker of quotes, whichever way the recipient was chosen.
+        if (to == Address.ZERO) return@coroutineScope TransferQuoting.ToZeroAddress
+        if (token != null && to == token.address) return@coroutineScope TransferQuoting.ToTokenContract
         // Nothing to move is nothing to pay a fee for.
         if (amount.isZero) return@coroutineScope TransferQuoting.NothingToSend
-        val token = (asset as? TransferAsset.Erc20Token)?.token
         val txTo = token?.address ?: to
         val value = if (token == null) amount else UInt256.ZERO
         val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
@@ -262,6 +275,15 @@ sealed interface TransferQuoting {
 
     /** [quote] is ready for review. */
     data class Quoted(val quote: TransferQuote) : TransferQuoting
+
+    /** The recipient is the zero address: nobody holds its key, so the amount would be lost for good. */
+    data object ToZeroAddress : TransferQuoting
+
+    /**
+     * A token sent to the token's own contract: most tokens accept it and nobody can move it out
+     * again, so it is refused.
+     */
+    data object ToTokenContract : TransferQuoting
 
     /** The amount is zero: there is nothing to send, and no fee is worth paying for it. */
     data object NothingToSend : TransferQuoting

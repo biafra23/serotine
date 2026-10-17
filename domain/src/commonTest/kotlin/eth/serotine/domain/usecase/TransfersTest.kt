@@ -186,6 +186,26 @@ class TransfersTest {
     }
 
     @Test
+    fun aRecipientThatCanNeverGiveItBackIsRefused() = runTest {
+        val names = object : NameResolver {
+            override suspend fun resolve(name: String): NameResolution = NameResolution.Resolved(name, Address.ZERO, 77)
+        }
+        val resolve = ResolveRecipient(names)
+        assertEquals(RecipientLookup.ZeroAddress, resolve("0x" + "00".repeat(20)))
+        assertEquals(RecipientLookup.NoAddress, resolve("burn.eth"), "ENS's zero address is no address set")
+
+        assertEquals(
+            TransferQuoting.ToZeroAddress,
+            quoteTransfer(alice, Address.ZERO, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
+        assertEquals(
+            TransferQuoting.ToTokenContract,
+            quoteTransfer(alice, usdc.address, TransferAsset.Erc20Token(usdc), UInt256.ONE, FeeLevel.NORMAL),
+        )
+        assertEquals(0, inputs.simulated.size + inputs.nonces + inputs.feeHistories, "nothing asked of the chain")
+    }
+
+    @Test
     fun aZeroAmountIsNothingToSend() = runTest {
         assertEquals(
             TransferQuoting.NothingToSend,

@@ -115,7 +115,9 @@ upgrades*).
    - From: the account, fixed.
    - Asset: the account's assets, the one from 5 preselected.
    - To: an address, an ENS name or one of the user's accounts; the blockie
-     appears once the input parses as an address or resolves.
+     appears once the input parses as an address or resolves. The zero
+     address, and for a token the token's own contract, are refused: nobody
+     can ever move out what is sent there.
    - Amount, with Max and a fiat hint.
    - Fee: Slow | Normal | Fast, from the verified fee history.
 8. **Send, review**
