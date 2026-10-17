@@ -59,7 +59,8 @@ Modules (Gradle):
   lives in a `jvmSharedMain` source set the Android and desktop targets share;
   the built-in token list and the user's token settings
   (`eth.serotine.data.tokens`); the Chainlink feed table
-  (`eth.serotine.data.prices`); and the display currency
+  (`eth.serotine.data.prices`); the pinned Safe deployments
+  (`eth.serotine.data.safe`); and the display currency
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
   engine's AAR.

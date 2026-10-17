@@ -5,9 +5,10 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * The port for what is at an address on chain — an account a key controls, one that has
- * delegated its code (EIP-7702), or a contract — as the embedded light client proves it from
- * the address's code. :data implements it over the Myotis engine (`eth.serotine.data.engine`),
- * on the one network the app works on; nothing else may answer it (CLAUDE.md, *Trust*).
+ * delegated its code (EIP-7702), a Safe, or another contract — as the embedded light client
+ * proves it from the address's code and storage. :data implements it over the Myotis engine
+ * (`eth.serotine.data.engine`), on the one network the app works on; nothing else may answer
+ * it (CLAUDE.md, *Trust*).
  */
 interface AddressKinds {
     /**
@@ -35,9 +36,32 @@ sealed interface AddressKind {
      */
     data class DelegatedEoa(val delegate: Address) : AddressKind
 
-    /** Any other code: a contract. A Safe is one of these until Safes are detected. */
+    /**
+     * A Safe{Wallet} account (docs/wallet-ux.md, *Safes*): a pinned Safe proxy's code, whose
+     * singleton is a pinned canonical Safe, with the [state] its storage holds.
+     */
+    data class Safe(val state: SafeState) : AddressKind
+
+    /** Any other code: a contract, a Safe proxy of a singleton not pinned among them. */
     data object Contract : AddressKind
 }
+
+/**
+ * A Safe's state, as its verified storage holds it: its singleton's [version] ("1.4.1") and
+ * whether it is the L2 variant ([l2]), its [owners] in their on-chain order, the [threshold]
+ * of their signatures a transaction needs, its [nonce], the enabled [modules] — each of which
+ * can move the Safe's funds without the owners' signatures — and its [guard], which checks
+ * every transaction (null: none).
+ */
+data class SafeState(
+    val version: String,
+    val l2: Boolean,
+    val owners: List<Address>,
+    val threshold: Int,
+    val nonce: Long,
+    val modules: List<Address>,
+    val guard: Address?,
+)
 
 /** One answer of [AddressKinds.observeKind]. */
 sealed interface KindReading {
@@ -45,7 +69,7 @@ sealed interface KindReading {
     /** The light client has no verified head yet. */
     data object Syncing : KindReading
 
-    /** The address holds [kind] at block [blockNumber], verified by the light client. */
+    /** The address holds [kind] at block [blockNumber], verified by the light client (a Safe's state too). */
     data class Verified(val kind: AddressKind, val blockNumber: Long) : KindReading
 
     /** No verified answer can be had right now, for the reason [reason] gives. */

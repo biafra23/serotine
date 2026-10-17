@@ -263,7 +263,7 @@ private fun accountMenu(address: String, act: (AccountAction) -> Unit): List<Men
 @Composable
 private fun AccountRow(account: AccountItem) {
     ListItem(
-        leadingContent = { AccountAvatar(account.address) },
+        leadingContent = { SafeAwareAvatar(account) },
         headlineContent = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(account.label)
@@ -295,4 +295,21 @@ private fun AccountRow(account: AccountItem) {
             }
         },
     )
+}
+
+/** An account's blockie; a Safe's carries its verified threshold of its owners ("2/3"). */
+@Composable
+private fun SafeAwareAvatar(account: AccountItem) {
+    Box {
+        AccountAvatar(account.address)
+        account.signers?.let { signers ->
+            Surface(
+                Modifier.align(Alignment.BottomEnd),
+                shape = MaterialTheme.shapes.extraSmall,
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Text(signers, Modifier.padding(horizontal = 3.dp), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
 }

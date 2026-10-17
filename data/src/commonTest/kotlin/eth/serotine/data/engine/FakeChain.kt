@@ -36,6 +36,31 @@ internal class FakeChain : VerifiedChain {
         failure?.let { throw it }
         return calls[to to data.toHex()]
     }
+
+    /** Proven storage words per contract, slot and mapping key, as a test sets them; unset: proven empty. */
+    val slots = mutableMapOf<Triple<Address, Long, Address?>, String>()
+
+    /** The block every storage proof is labelled with, or per slot in [slotBlocks]. */
+    var slotBlock = 9L
+    val slotBlocks = mutableMapOf<Triple<Address, Long, Address?>, Long>()
+
+    /** Storage words per contract and 32-byte slot (hex), as a test sets them; unset: empty. */
+    val storage = mutableMapOf<Pair<Address, String>, String>()
+
+    /** Slots no proof is had for: unproven. */
+    val unprovenSlots = mutableSetOf<Triple<Address, Long, Address?>>()
+
+    override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
+        failure?.let { throw it }
+        val key = Triple(address, slot, holder)
+        if (key in unprovenSlots) return null
+        return ProvenSlot(slots[key] ?: "0".repeat(64), slotBlocks[key] ?: slotBlock)
+    }
+
+    override fun storageAt(address: Address, slot: ByteArray): String? {
+        failure?.let { throw it }
+        return storage[address to slot.toHex()] ?: "0".repeat(64)
+    }
 }
 
 /** A running engine's snapshot; by default synced, awake, fresh and with proof peers. */

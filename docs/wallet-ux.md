@@ -292,7 +292,11 @@ address. Applied:
   2 walked from the sentinel `0x1` with storage proofs, the threshold is slot
   4 and the nonce slot 5. The modules (slot 1's list) and the guard are read
   too, because a module can move funds without the owners' signatures.
-  Anything that does not match is "another contract", never a Safe.
+  Anything that does not match is "another contract", never a Safe. The
+  pins (`SafeDeployments`) cover 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the
+  SafeProxy runtime code of each factory. A Safe's control badge follows its
+  verified owners: as many held here as its threshold is full control, fewer
+  is co-signer, none is watch-only, and so is a Safe not read yet.
 - **Creation** deploys Safe 1.4.1 through `SafeProxyFactory.createProxyWithNonce`
   with a `setup` call, from an EOA the user holds. The address is predicted
   locally and shown before the deployment is signed.

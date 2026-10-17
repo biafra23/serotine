@@ -9,10 +9,14 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -48,8 +52,12 @@ class WatchViewModelTest {
 
     private fun TestScope.viewModel(): WatchViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val viewModel =
-            WatchViewModel(ObserveAddressKind(kinds), ObserveAccount(accounts), WatchAddress(accounts, kinds))
+        val viewModel = WatchViewModel(
+            ObserveAddressKind(kinds),
+            ObserveAccount(accounts),
+            ObserveAccounts(accounts),
+            WatchAddress(accounts, kinds),
+        )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
     }
@@ -121,8 +129,12 @@ class WatchViewModelTest {
         val syncing = object : AddressKinds {
             override fun observeKind(address: Address): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
         }
-        val viewModel =
-            WatchViewModel(ObserveAddressKind(kinds), ObserveAccount(accounts), WatchAddress(accounts, syncing))
+        val viewModel = WatchViewModel(
+            ObserveAddressKind(kinds),
+            ObserveAccount(accounts),
+            ObserveAccounts(accounts),
+            WatchAddress(accounts, syncing),
+        )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
         runCurrent()
@@ -184,7 +196,12 @@ class WatchViewModelTest {
         }
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel =
-            WatchViewModel(ObserveAddressKind(kinds), ObserveAccount(accounts), WatchAddress(accounts, gatedKinds))
+            WatchViewModel(
+                ObserveAddressKind(kinds),
+                ObserveAccount(accounts),
+                ObserveAccounts(accounts),
+                WatchAddress(accounts, gatedKinds),
+            )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
         viewModel.onNameChange("Vitalik")
@@ -230,5 +247,36 @@ class WatchViewModelTest {
             "Not an address: an address is 0x and 40 hexadecimal digits.",
             viewModel.uiState.value.addressError,
         )
+    }
+
+    @Test
+    fun aVerifiedSafeShowsItsOwnersAndTheControlItWillGetAndCanBeAdded() = runTest {
+        val bob = Address.of("0x" + "22".repeat(20))
+        val module = Address.of("0x" + "33".repeat(20))
+        val state = SafeState("1.4.1", l2 = true, listOf(daily.address, bob), 2, 3, listOf(module), guard = null)
+        reading.value = KindReading.Verified(AddressKind.Safe(state), 9_412_118)
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+
+        assertEquals(
+            Detection.Safe(
+                address = vitalik,
+                title = "Safe 1.4.1 (L2)",
+                signers = "2 of 2 owners",
+                owners = listOf(Eip55.format(daily.address), Eip55.format(bob)),
+                modules = listOf(Eip55.format(module)),
+                guard = null,
+                checkedAt = "Checked at block 9,412,118",
+                // Daily's key is held here: one of the two that must sign.
+                control = Control.CO_SIGNER,
+            ),
+            viewModel.uiState.value.detection,
+        )
+        assertTrue(viewModel.uiState.value.canAdd)
+
+        viewModel.add()
+        runCurrent()
+        assertEquals(AccountKind.SAFE, accounts.accounts.value.last().kind)
     }
 }

@@ -135,7 +135,24 @@ consumer developed against an unreleased engine, Myotis's
   proven hash too. The adapter accepts the code only if it hashes to the
   proof's value: the head may move between the two reads. An EIP-7702
   delegation designator (`0xef0100` and 20 bytes) makes a delegated EOA, and
-  any other code makes a contract.
+  any other code makes a contract — or a Safe, below.
+- **Verified Safes.** Code whose Keccak-256 is a pinned SafeProxy runtime
+  hash (`SafeDeployments`, per network) is read further, with storage proofs
+  (`ChainHandle.getStorageProof`, a mapping entry by its key):
+  - slot 0 must name a pinned canonical singleton, whose version it takes;
+  - the owners are the list of the mapping at slot 2, walked from the
+    sentinel `0x1` back to it, as many as slot 3 counts;
+  - the threshold (slot 4) is between 1 and that many;
+  - slot 5 holds the nonce, and slot 1's list the modules;
+  - the guard is the word at `keccak256("guard_manager.guard.address")`, a
+    verified `VerifiedReads.getStorageAt`.
+
+  Every proof must anchor to one block, which labels the reading; a read the
+  head moved under is made again at the next head. A list that does not lead
+  back to the sentinel, an unknown singleton or a Safe not set up is "another
+  contract". The pins were read on Sepolia on 2026-10-17: each singleton's
+  `VERSION()` as a verified call, each proxy hash from a verified create call
+  of its factory's `proxyCreationCode()`.
 - **The light client's progress.** `EngineLightClient` drives the
   `LightClient` port, and the Assets tab shows it in a strip under the top bar:
   - starting;

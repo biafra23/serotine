@@ -2,6 +2,8 @@ package eth.serotine.ui.accountdetail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.BalanceReading
@@ -12,6 +14,8 @@ import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
@@ -24,11 +28,17 @@ import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -42,6 +52,7 @@ class AccountDetailViewModel(
     address: Address,
     observeAccount: ObserveAccount,
     observeAccountValue: ObserveAccountValue,
+    observeSafe: ObserveSafe,
     private val setTokenHidden: SetTokenHidden,
     private val network: Network,
 ) : ViewModel() {
@@ -49,26 +60,44 @@ class AccountDetailViewModel(
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
 
-    /** What the last Hide token did, until the screen has said it. */
-    private val message = MutableStateFlow<String?>(null)
+    /** What the user chose to see, and what the last Hide token did until the screen has said it. */
+    private data class View(
+        val sort: AssetSort = AssetSort.VALUE,
+        val segment: DetailSegment = DetailSegment.ASSETS,
+        val message: String? = null,
+    )
 
-    private val sort = MutableStateFlow(AssetSort.VALUE)
+    private val view = MutableStateFlow(View())
+
+    private val lookup = observeAccount(address)
+
+    /** A Safe's verified state; read for a Safe only, none for any other account. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val safe = lookup.map { (it as? AccountLookup.Found)?.account?.kind == AccountKind.SAFE }
+        .distinctUntilChanged()
+        .flatMapLatest { isSafe ->
+            if (isSafe) observeSafe(address).map<SafeReading, SafeReading?> { it } else flowOf(null)
+        }
 
     val uiState: StateFlow<AccountDetailUiState> =
-        combine(observeAccount(address), observeAccountValue(address), sort, message) { lookup, value, order, said ->
+        combine(lookup, observeAccountValue(address), safe, view) { lookup, value, safe, view ->
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = lookup.account.label,
                     address = display,
                     kind = lookup.account.kind,
-                    control = Control.of(lookup.account.kind, lookup.account.custody),
+                    // A Safe's control is its verified owners'; until they are read, watch-only.
+                    control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
+                        ?: Control.of(lookup.account.kind, lookup.account.custody),
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
-                    assets = sorted(rows(value), order),
-                    sort = order,
+                    assets = sorted(rows(value), view.sort),
+                    sort = view.sort,
                     tokensNote = tokensNote(value),
                     pricesNote = PRICES + if (network.testnet) ", testnet prices" else "",
-                    message = said,
+                    message = view.message,
+                    safe = safe?.let(::safeDetails),
+                    segment = view.segment,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
@@ -82,7 +111,12 @@ class AccountDetailViewModel(
 
     /** Orders the rows by [order]. */
     fun sortBy(order: AssetSort) {
-        sort.value = order
+        view.update { it.copy(sort = order) }
+    }
+
+    /** Shows a Safe's [segment]. */
+    fun show(segment: DetailSegment) {
+        view.update { it.copy(segment = segment) }
     }
 
     /**
@@ -92,17 +126,48 @@ class AccountDetailViewModel(
     fun hideToken(contract: String, symbol: String) {
         val token = Address.parse(contract) ?: return
         viewModelScope.launch {
-            message.value = when (setTokenHidden(token, hidden = true)) {
+            val said = when (setTokenHidden(token, hidden = true)) {
                 TokenChange.Changed, TokenChange.AlreadyPresent -> "$symbol hidden. Settings → Tokens shows it again."
                 TokenChange.NotFound, TokenChange.NotSaved ->
                     "$symbol could not be hidden: the token settings cannot be saved right now."
             }
+            view.update { it.copy(message = said) }
         }
     }
 
     /** The screen has said [AccountDetailUiState.Ready.message]. */
     fun messageShown() {
-        message.value = null
+        view.update { it.copy(message = null) }
+    }
+
+    /** A Safe's verified owners, display-ready, or why there are none to show. */
+    private fun safeDetails(reading: SafeReading): SafeDetails = when (reading) {
+        SafeReading.Checking -> SafeDetails.Checking
+        is SafeReading.Verified -> {
+            val state = reading.state
+            val inWallet = reading.ownersInWallet.associateBy { it.address }
+            SafeDetails.Shown(
+                title = "Safe ${state.version}" + (if (state.l2) " (L2)" else "") + " · nonce ${state.nonce}",
+                signers = "${state.threshold} of ${state.owners.size} owners must sign",
+                owners = state.owners.map { owner ->
+                    val account = inWallet[owner]
+                    OwnerRow(Eip55.format(owner), account?.label, account?.custody == AccountCustody.InKeyStore)
+                },
+                modules = state.modules.map(Eip55::format),
+                guard = state.guard?.let(Eip55::format),
+                checkedAt = "Verified at ${block(reading.blockNumber)}",
+            )
+        }
+        SafeReading.NotASafe ->
+            SafeDetails.Unavailable("This address no longer holds a recognised Safe: its owners are not shown.")
+        is SafeReading.Unavailable -> SafeDetails.Unavailable(
+            when (reading.reason) {
+                ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so the owners cannot be read."
+                ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the owners cannot be read."
+                ReadUnavailable.UNPROVEN -> "No peer has proven the Safe's storage yet. Serotine keeps trying."
+                ReadUnavailable.REFUSED -> "The light client on this device cannot read this Safe's storage."
+            },
+        )
     }
 
     /**

@@ -11,11 +11,15 @@ import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.AddressKind
+import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -23,6 +27,8 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.ui.FakeFeeds
@@ -61,6 +67,10 @@ class AssetsViewModelTest {
     private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
     private var now = 1_792_100_000L
     private val feeds = FakeFeeds()
+    private val kind = MutableStateFlow<KindReading>(KindReading.Syncing)
+    private val kinds = object : AddressKinds {
+        override fun observeKind(address: Address): Flow<KindReading> = kind
+    }
     private val currency = MemoryCurrencySetting()
 
     private fun viewModel(): AssetsViewModel {
@@ -77,6 +87,7 @@ class AssetsViewModelTest {
         )
         return AssetsViewModel(
             ObservePortfolio(ObserveAccounts(repository), value, currencies),
+            ObserveSafes(repository, ObserveSafe(kinds, repository)),
             ObserveLightClient(lightClient),
             Network.SEPOLIA,
             clock = { now },
@@ -323,6 +334,27 @@ class AssetsViewModelTest {
         )
         assertEquals(Control.WATCH_ONLY, item.control)
         assertEquals("Checking…", item.balance)
+    }
+
+    @Test
+    fun aVerifiedSafeShowsItsThresholdOfOwnersAndTheControlTheKeysHeldHereGive() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(treasury, daily)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        val before = (viewModel.uiState.value as AssetsUiState.Ready).accounts.first()
+        assertEquals(Control.WATCH_ONLY, before.control, "not read yet: never more than watch-only")
+        assertEquals(null, before.signers)
+
+        val other = Address.of("0x" + "ee".repeat(20))
+        val state = SafeState("1.4.1", l2 = false, listOf(daily.address, other), 1, 0, emptyList(), guard = null)
+        kind.value = KindReading.Verified(AddressKind.Safe(state), 9)
+        runCurrent()
+
+        val row = (viewModel.uiState.value as AssetsUiState.Ready).accounts.first()
+        assertEquals("1/2", row.signers)
+        assertEquals(Control.FULL_CONTROL, row.control, "Daily's key is held here, and one signature is enough")
     }
 
     private class FakeAccountRepository : AccountRepository {

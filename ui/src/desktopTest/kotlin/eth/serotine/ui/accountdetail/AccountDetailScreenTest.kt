@@ -48,6 +48,7 @@ class AccountDetailScreenTest {
                 onHideToken = { contract, symbol -> events += "hide $symbol $contract" },
                 onMessageShown = { events += "message shown" },
                 onSort = { events += "sort $it" },
+                onSegment = { events += "segment $it" },
             )
         }
     }
@@ -157,5 +158,33 @@ class AccountDetailScreenTest {
         show(ready.copy(message = said))
 
         rule.onNodeWithText(said).assertIsDisplayed()
+    }
+
+    @Test
+    fun aSafesOwnersAreBehindTheirSegmentWithTheOnesHeldHereMarked() {
+        show(
+            ready.copy(
+                kind = AccountKind.SAFE,
+                safe = SafeDetails.Shown(
+                    title = "Safe 1.4.1 · nonce 12",
+                    signers = "2 of 2 owners must sign",
+                    owners = listOf(
+                        OwnerRow("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2", "Daily", heldHere = true),
+                        OwnerRow("0x3333333333333333333333333333333333333333", null, heldHere = false),
+                    ),
+                    modules = listOf("0x4444444444444444444444444444444444444444"),
+                    guard = null,
+                    checkedAt = "Verified at block 9,412,118",
+                ),
+                segment = DetailSegment.OWNERS,
+            ),
+        )
+
+        rule.onNodeWithText("2 of 2 owners must sign").assertIsDisplayed()
+        rule.onNodeWithText("This device").assertIsDisplayed()
+        rule.onNodeWithText("Not in this wallet").assertIsDisplayed()
+        rule.onNodeWithText("Modules: each can move this Safe's funds without the owners' signatures.").assertExists()
+        rule.onNodeWithText("Assets").performClick()
+        assertEquals(listOf("segment ASSETS"), events)
     }
 }

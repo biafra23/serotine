@@ -1,7 +1,9 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.keys.fromHex
+import eth.serotine.data.keys.toHex
 import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
@@ -69,8 +71,9 @@ class MyotisNode private constructor(network: Network) {
     /** Native-currency balances, verified by this node's light client. */
     val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL)
 
-    /** What is at an address (an account, a delegated one, a contract), verified here. */
-    val addressKinds: AddressKinds = VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL)
+    /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
+    val addressKinds: AddressKinds =
+        VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL, SafeDeployments.of(network))
 
     /** What a token contract says about itself, as verified calls. */
     val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -227,10 +230,31 @@ class MyotisNode private constructor(network: Network) {
             val contract = to.hex.removePrefix("0x").fromHex()
             return callOutcome(handle.reads().callDetailed(null, contract, data, null, "latest", null))
         }
+
+        // Accepted only with a verified storage proof and a verdict, as balances are; a proven
+        // empty slot is a proven zero.
+        override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val result = handle.getStorageProof(address.hex, slot, holder?.hex)
+            if (result.failReason() != null || !result.storageProofValid() || result.verifyMethod() == null) return null
+            val value = if (result.exists()) result.valueHex()?.removePrefix("0x")?.lowercase() ?: return null else ""
+            return value.padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
+                ?.let { ProvenSlot(it, result.peerBlockNumber()) }
+        }
+
+        override fun storageAt(address: Address, slot: ByteArray): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val contract = address.hex.removePrefix("0x").fromHex()
+            val word = handle.reads().getStorageAt(contract, slot, "latest") ?: return null
+            return word.toHex().padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
+        }
     }
 
     companion object {
         private val POLL_INTERVAL = 4.seconds
+
+        /** A storage word's hex digits. */
+        private const val WORD_HEX_DIGITS = 64
 
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds

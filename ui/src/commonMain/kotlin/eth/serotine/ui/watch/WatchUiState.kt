@@ -1,5 +1,7 @@
 package eth.serotine.ui.watch
 
+import eth.serotine.ui.components.Control
+
 /**
  * Everything the Watch address screen renders (docs/wallet-ux.md, screen 10): what is typed
  * ([address], [name]), why the address cannot be read ([addressError]), what the light client
@@ -16,9 +18,9 @@ data class WatchUiState(
     /** Added: the screen leaves. */
     val done: Boolean = false,
 ) {
-    /** Only a verified account can be added, and one add at a time. */
+    /** Only a verified account or Safe can be added, and one add at a time. */
     val canAdd: Boolean
-        get() = detection is Detection.Account && !adding
+        get() = (detection is Detection.Account || detection is Detection.Safe) && !adding
 }
 
 /** The detection card: what is at the typed address, display-ready. */
@@ -34,7 +36,24 @@ sealed interface Detection {
      */
     data class Account(val address: String, val checkedAt: String, val delegate: String?) : Detection
 
-    /** A contract, which cannot be watched (yet). */
+    /**
+     * A Safe at the EIP-55 [address], verified at the block [checkedAt] names: its [title]
+     * ("Safe 1.4.1"), who must sign ([signers]: "2 of 3 owners"), its EIP-55 [owners], its
+     * [modules] — each can move its funds without the owners — and its [guard] (null: none),
+     * and the [control] the account will get, by the owners' keys held here.
+     */
+    data class Safe(
+        val address: String,
+        val title: String,
+        val signers: String,
+        val owners: List<String>,
+        val modules: List<String>,
+        val guard: String?,
+        val checkedAt: String,
+        val control: Control,
+    ) : Detection
+
+    /** A contract that is not a recognised Safe, which cannot be watched. */
     data class Contract(val message: String) : Detection
 
     /** The address is in the wallet already, as [label]. */
