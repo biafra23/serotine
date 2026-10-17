@@ -39,8 +39,9 @@ internal sealed interface EngineReading<out T> {
  * head gets it at once instead of fetching it again; the [MAX_CACHED] most recently proven
  * keys are kept, so keys only looked at (the Watch screen) do not pile up. A device without
  * an engine ([chain] null) and an engine that is down answer [ReadUnavailable.NO_ENGINE]
- * once and stop, and so does a key the engine refuses ([ReadUnavailable.REFUSED]). Whatever [prove] throws, and a null from it, become
- * [ReadUnavailable.UNPROVEN]: no answer from anywhere else stands in.
+ * once and stop, and so does a key the engine refuses ([ReadUnavailable.REFUSED]).
+ * Whatever [prove] throws, and a null from it, become [ReadUnavailable.UNPROVEN]: no answer
+ * from anywhere else stands in.
  */
 internal class ProvenReads<K, T>(
     private val chain: VerifiedChain?,
