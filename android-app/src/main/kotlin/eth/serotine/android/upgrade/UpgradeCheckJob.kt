@@ -16,9 +16,10 @@ import java.util.concurrent.TimeUnit
  * network and a battery that is not low, it keeps the engine awake for [CHECK_WINDOW_MS],
  * long enough for peers to report an upgrade, and the process's own follower of those
  * reports ([SerotineApplication.holdEngine]) notifies the user. Once peers have confirmed an
- * upgrade activated and the user has been told, it ends at once: all is said, and only an
- * update changes it. Persisted, so it survives a reboot; JobScheduler, not a foreground
- * service, since it is short and bounded.
+ * upgrade activated and the user has been told, all is said and only an update changes it:
+ * the run ends at once and cancels the job, which the next process start schedules again (a
+ * launch, a reboot, the update itself). Persisted, so it survives a reboot; JobScheduler, not
+ * a foreground service, since it is short and bounded.
  */
 class UpgradeCheckJob : JobService() {
 
@@ -50,6 +51,7 @@ class UpgradeCheckJob : JobService() {
             if (current !== run) return@whenUpgradeCheckWanted
             if (!wanted) {
                 run.finish()
+                getSystemService(JobScheduler::class.java)?.cancel(JOB_ID)
                 return@whenUpgradeCheckWanted
             }
             app.holdEngine()

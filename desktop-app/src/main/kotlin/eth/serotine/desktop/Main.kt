@@ -22,6 +22,7 @@ import java.awt.GraphicsEnvironment
 import java.io.File
 import java.io.IOException
 import java.lang.ref.Reference
+import kotlin.coroutines.cancellation.CancellationException
 import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import kotlin.concurrent.thread
@@ -88,7 +89,17 @@ private fun openWallet(dataDir: File) {
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
     val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
     application(exitProcessOnExit = false) {
-        LaunchedEffect(Unit) { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
+        LaunchedEffect(Unit) {
+            // A failure in the notices ends them, never the wallet (as on Android): the window
+            // still shows every warning, and the next start follows the reports again.
+            try {
+                FollowUpgradeReports(node.networkUpgrades, upgradeNotices)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: upgrade notices stopped: $e")
+            }
+        }
         val graph = remember {
             AppGraph(
                 accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
