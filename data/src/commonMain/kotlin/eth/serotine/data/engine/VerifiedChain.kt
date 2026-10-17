@@ -124,6 +124,8 @@ internal sealed interface EngineSnapshot {
         val headAgeMs: Long,
         val wsBoundPeriods: Long,
         val upgrade: NetworkUpgrade? = null,
+        /** The beacon-finalized block's number (0: none yet). */
+        val finalizedBlock: Long = 0,
     ) : EngineSnapshot {
 
         /**

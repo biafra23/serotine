@@ -47,7 +47,8 @@ Modules (Gradle):
 
 - **domain** — entities and value objects (`Account`, `Address`, `AccountKind`),
   the ports (`AccountRepository`, …) and the use cases (`ObserveAccounts`, …).
-  Pure Kotlin + coroutines' `Flow`; targets desktop JVM + iOS and deliberately
+  Pure Kotlin + coroutines' `Flow` (and kotlincrypto's Keccak-256 for the
+  transaction encoding); targets desktop JVM + iOS and deliberately
   NO Android target (Android consumers resolve its JVM variant, so nothing in it
   can ever import `android.*`).
 - **data** — the adapters behind the ports: `FileAccountRepository` (the
@@ -56,7 +57,8 @@ Modules (Gradle):
   seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
   token metadata, prices and address kinds, the peer-reported network-upgrade
-  advisory), whose glue over `io.myotis.api` lives in a `jvmSharedMain` source
+  advisory, and for sending the nonce, fees, gas, broadcast, receipts and ENS
+  names), whose glue over `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
   (`eth.serotine.data.upgrade`); the built-in token list and the user's token
   settings (`eth.serotine.data.tokens`); the Chainlink feed table

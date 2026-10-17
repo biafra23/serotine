@@ -19,6 +19,9 @@ value class Address private constructor(val hex: String) {
     companion object {
         private val SHAPE = Regex("^0x[0-9a-fA-F]{40}$")
 
+        /** The zero address: nobody holds its key, so nothing sent to it ever comes back. */
+        val ZERO: Address = Address("0x" + "0".repeat(40))
+
         /** The address [text] spells, or null when it is not one. Surrounding whitespace is ignored. */
         fun parse(text: String): Address? =
             text.trim().takeIf(SHAPE::matches)?.let { Address(it.lowercase()) }

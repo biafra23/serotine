@@ -1,6 +1,7 @@
 // :domain — the wallet's language: entities, value objects, the ports (repository
 // interfaces) the use cases need, and the use cases themselves. Pure Kotlin with
-// coroutines' Flow as its only dependency: no Android, no Compose, no Myotis
+// coroutines' Flow and KotlinCrypto's pure-Kotlin Keccak-256 as its only
+// dependencies: no Android, no Compose, no Myotis
 // types (the engine is reached through a port that :data implements over
 // io.myotis.api). The dependency rule of docs/architecture.md: everything may
 // depend on this module, this module depends on nothing of ours.
@@ -36,6 +37,9 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(libs.kotlinx.coroutines.core)
+            // Keccak-256, pure Kotlin on every target: an EIP-1559 transaction's signing digest
+            // and its transaction hash are Keccak-256 (model/Eip1559Transaction.kt).
+            implementation(libs.kotlincrypto.sha3)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
