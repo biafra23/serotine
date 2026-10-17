@@ -13,14 +13,14 @@ import eth.serotine.domain.usecase.TokenAdd
 import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.grouped
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -43,24 +43,41 @@ class AddTokenViewModel(
     private val outcome = MutableStateFlow(Outcome())
     private val input = typed.map { Eip55.parse(it) }.distinctUntilChanged()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val card = input.flatMapLatest { parsed ->
-        when (parsed) {
-            is AddressInput.Valid -> combine(
-                observeKnownTokens(),
-                observeTokenMetadata(parsed.address)
-                    .map<MetadataReading, MetadataReading?> { it }
-                    .onStart { emit(null) },
-            ) { known, reading -> cardOf(parsed.address, known, reading) }
-            else -> flowOf(null)
+    /**
+     * The card of the address last typed, with that address. A new address does not wait for
+     * the last one's read to end (a verified call can take long): that read is cancelled and
+     * left to finish on its own, and a card it might still produce names its own address,
+     * which is then not the one typed.
+     */
+    private val card: Flow<Pair<Address, TokenCard>?> = channelFlow {
+        var current: Job? = null
+        input.collect { parsed ->
+            current?.cancel()
+            if (parsed is AddressInput.Valid) {
+                current = launch {
+                    combine(
+                        observeKnownTokens(),
+                        observeTokenMetadata(parsed.address)
+                            .map<MetadataReading, MetadataReading?> { it }
+                            .onStart { emit(null) },
+                    ) { known, reading -> parsed.address to cardOf(parsed.address, known, reading) }
+                        .collect { send(it) }
+                }
+            } else {
+                current = null
+                send(null)
+            }
         }
     }
 
     val uiState: StateFlow<AddTokenUiState> = combine(typed, input, card, outcome) { text, parsed, card, outcome ->
+        val typedAddress = (parsed as? AddressInput.Valid)?.address
         AddTokenUiState(
             address = text,
             addressError = addressError(text, parsed),
-            card = card,
+            // Only the typed address's card: until it has one, it is being read.
+            card = card?.takeIf { (address, _) -> address == typedAddress }?.second
+                ?: TokenCard.Checking.takeIf { typedAddress != null },
             adding = outcome.adding,
             error = outcome.error,
             done = outcome.done,
@@ -74,9 +91,14 @@ class AddTokenViewModel(
         outcome.value = Outcome()
     }
 
-    /** Adds the token, once; [AddToken] reads the contract again first. */
+    /**
+     * Adds the token, once, and only the one whose card is shown: the card must be the typed
+     * address's. [AddToken] reads the contract again first.
+     */
     fun add() {
         val address = (Eip55.parse(typed.value) as? AddressInput.Valid)?.address ?: return
+        val shown = uiState.value.card as? TokenCard.Claim ?: return
+        if (Address.parse(shown.address) != address) return
         if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
         outcome.value = Outcome(adding = true)
         viewModelScope.launch {
@@ -97,7 +119,13 @@ class AddTokenViewModel(
             null, MetadataReading.Syncing -> if (reading == null) TokenCard.Checking else TokenCard.Unavailable(SYNCING)
             MetadataReading.NotAToken -> TokenCard.Unavailable(NOT_A_TOKEN)
             is MetadataReading.Unavailable -> TokenCard.Unavailable(
-                if (reading.reason == ReadUnavailable.REFUSED) REFUSED else UNPROVEN,
+                when (reading.reason) {
+                    ReadUnavailable.NO_ENGINE ->
+                        "There is no light client on this device, so the contract cannot be read."
+                    ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the contract cannot be read."
+                    ReadUnavailable.UNPROVEN -> "No peer has proven the contract's answers yet. Serotine keeps trying."
+                    ReadUnavailable.REFUSED -> "The light client on this device cannot read this contract."
+                },
             )
             is MetadataReading.Verified -> TokenCard.Claim(
                 address = Eip55.format(address),
@@ -124,7 +152,5 @@ class AddTokenViewModel(
         const val ADDRESS_LENGTH = 42
         const val NOT_A_TOKEN = "This address does not answer as a token."
         const val SYNCING = "The light client is not synced yet. The contract is read as soon as it is."
-        const val UNPROVEN = "No peer has proven the contract's answers yet. Serotine keeps trying."
-        const val REFUSED = "The light client on this device cannot read this contract."
     }
 }

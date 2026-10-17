@@ -28,7 +28,12 @@ class SettingsViewModel(
     val uiState: StateFlow<SettingsUiState> =
         combine(observeLightClient().asItems(clock), observeKnownTokens()) { item, known ->
             val builtIn = known.tokens.count { it.origin == TokenOrigin.BUILT_IN }
-            val tokens = "$builtIn built in · ${known.tokens.size - builtIn} added"
+            val added = if (known.settingsUnavailable) {
+                "added ones cannot be read"
+            } else {
+                "${known.tokens.size - builtIn} added"
+            }
+            val tokens = "$builtIn built in · $added"
             SettingsUiState(network.displayName, item, APP_VERSION, tokens)
         }
         .stateIn(

@@ -11,6 +11,7 @@ import eth.serotine.domain.repository.UserTokens
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onSubscription
 
 /** [UserTokens] held in memory; [unreadable] and [failSaves] make it fail. */
 internal class MemoryUserTokens : UserTokens {
@@ -47,13 +48,17 @@ internal class MemoryUserTokens : UserTokens {
     }
 }
 
-/** [TokenMetadata] whose reading per token a test sets; [MetadataReading.Syncing] until then. */
+/**
+ * [TokenMetadata] whose reading per token a test sets; [MetadataReading.Syncing] until then.
+ * [asked] counts the subscriptions.
+ */
 internal class FakeMetadata : TokenMetadata {
     private val readings = mutableMapOf<Address, MutableStateFlow<MetadataReading>>()
+    var asked = 0
 
     fun of(token: Address) = readings.getOrPut(token) { MutableStateFlow(MetadataReading.Syncing) }
 
-    override fun observe(token: Address): Flow<MetadataReading> = of(token)
+    override fun observe(token: Address): Flow<MetadataReading> = of(token).onSubscription { asked++ }
 }
 
 /** A [TokenCatalog] of the built-in [tokens]. */

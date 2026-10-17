@@ -28,8 +28,11 @@ interface UserTokens {
 
 /** What [UserTokens.observe] emits. */
 sealed interface TokenSettings {
-    /** The [added] tokens, in the order added, and the [hidden] addresses. */
-    data class Loaded(val added: List<Token>, val hidden: Set<Address>) : TokenSettings
+    /**
+     * The [added] tokens, in the order added, and the [hidden] addresses; [setAside] once the
+     * stored settings were damaged and set aside, so these started over.
+     */
+    data class Loaded(val added: List<Token>, val hidden: Set<Address>, val setAside: Boolean = false) : TokenSettings
 
     /** The stored settings exist but cannot be read; nothing can be changed until they can. */
     data object Unreadable : TokenSettings

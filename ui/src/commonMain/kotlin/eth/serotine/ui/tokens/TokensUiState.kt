@@ -2,10 +2,15 @@ package eth.serotine.ui.tokens
 
 /**
  * Everything Settings → Tokens renders (docs/wallet-ux.md, screens 18 and 20): every token the
- * wallet knows, and [notice], why the settings cannot be changed right now, or what the last
- * change could not do.
+ * wallet knows; [notice], why the settings cannot be changed right now, what the last change
+ * could not do, or that damaged settings were set aside; and whether they can be changed at
+ * all ([canChange]: not while they cannot be read, when every change would be refused).
  */
-data class TokensUiState(val items: List<TokenItem> = emptyList(), val notice: String? = null)
+data class TokensUiState(
+    val items: List<TokenItem> = emptyList(),
+    val notice: String? = null,
+    val canChange: Boolean = true,
+)
 
 /**
  * One known token: its [symbol], [name], EIP-55 contract [address] and icon key ([icon]; null:

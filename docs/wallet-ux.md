@@ -239,10 +239,14 @@ address. Applied:
 - **A token the user adds** is read from its contract (`symbol()`, `name()`,
   `decimals()`, verified) and labelled as the contract's claim, with the block
   it was read at. One whose symbol is a built-in token's is marked as not that
-  token. An address the wallet already knows, or that does not answer as a
-  token, cannot be added, and nothing is added without a verified answer. The
-  added tokens and the hidden ones are the user's settings, kept in a file of
-  their own (`tokens.json`, beside the account list).
+  token, on the Add card, in Settings → Tokens and on every account row. An
+  address the wallet already knows, or that does not answer as a token,
+  cannot be added, and nothing is added without a verified answer. The added
+  tokens and the hidden ones are the user's settings, kept in a file of their
+  own (`tokens.json`, beside the account list). While that file cannot be
+  read, nothing can be changed and the account screens say that hidden tokens
+  show and added ones are missing; a damaged one is set aside, and Settings →
+  Tokens says the settings started over.
 - **Hiding** a token takes it off every account's rows, from the asset menu
   (5) or Settings → Tokens, which shows it again. A built-in token can only be
   hidden; an added one can also be removed.

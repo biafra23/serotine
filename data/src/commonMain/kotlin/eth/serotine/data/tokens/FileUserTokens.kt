@@ -18,8 +18,9 @@ import kotlinx.serialization.json.Json
 /**
  * [UserTokens] kept in the file at [path] (a [VersionedJsonFile]): the tokens added by
  * address, as their contracts described themselves when added, and the hidden addresses.
- * A damaged file is set aside and the settings start empty; one that cannot be read is
- * [TokenSettings.Unreadable], and nothing changes until it can be read.
+ * A damaged file is set aside and the settings start empty, saying so
+ * ([TokenSettings.Loaded.setAside]); one that cannot be read is [TokenSettings.Unreadable],
+ * and nothing changes until it can be read.
  */
 class FileUserTokens(
     path: String,
@@ -51,7 +52,7 @@ class FileUserTokens(
 
     override fun observe(): Flow<TokenSettings> = file.observe().map { read ->
         when (read) {
-            is VersionedJsonFile.Read.Loaded -> read.value
+            is VersionedJsonFile.Read.Loaded -> read.value.copy(setAside = read.damagedSetAside)
             is VersionedJsonFile.Read.Unreadable -> TokenSettings.Unreadable
         }
     }

@@ -3,8 +3,11 @@ package eth.serotine.ui
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -45,12 +48,14 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_BALANCE_TAG
+import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
@@ -59,6 +64,7 @@ import eth.serotine.ui.mnemonicimport.MNEMONIC_REPEAT_TAG
 import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
 import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
+import eth.serotine.ui.tokens.TOKENS_ROW_TAG
 import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
 import eth.serotine.ui.watch.WATCH_NAME_TAG
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +104,9 @@ class AppNavigationTest {
     private val deletedKeys = mutableListOf<Address>()
     private var failKeyDeletes = false
     private val navController = mutableListOf<NavHostController>()
+    private val tokenMetadata = FakeMetadata()
+    private val userTokens = MemoryUserTokens()
+
     private val graph = AppGraph(
         accounts = object : AccountRepository {
             override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
@@ -143,8 +152,8 @@ class AppNavigationTest {
             override fun observeBalance(holder: Address, token: Address): Flow<TokenBalanceReading> =
                 flowOf(TokenBalanceReading.Syncing)
         },
-        tokenMetadata = FakeMetadata(),
-        userTokens = MemoryUserTokens(),
+        tokenMetadata = tokenMetadata,
+        userTokens = userTokens,
         addressKinds = object : AddressKinds {
             override fun observeKind(address: Address): Flow<KindReading> =
                 flowOf(KindReading.Verified(AddressKind.Eoa, 9_412_118))
@@ -308,6 +317,26 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNT_BALANCE_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aTokenIsAddedFromSettingsAndTheScreenReturnsToTheList() {
+        val eurc = "0x08210F9170F89Ab7658F0B5E3fF39b0E03C594D4"
+        tokenMetadata.of(Address.of(eurc)).value = MetadataReading.Verified("EURC", "Euro Coin", 6, 9_412_118)
+        showApp()
+
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithText("0 built in · 0 added").performClick()
+        rule.onNodeWithText("Add token").performClick()
+        rule.onNodeWithTag(ADD_TOKEN_ADDRESS_TAG).performTextInput(eurc)
+        rule.waitUntil { rule.onAllNodesWithText("Euro Coin · EURC").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasText("Add token") and hasClickAction()).performClick()
+
+        // Back on the list, which has the token; Settings counts it.
+        rule.waitUntil { rule.onAllNodesWithTag(TOKENS_ROW_TAG).fetchSemanticsNodes().size == 1 }
+        rule.onNodeWithText("Added: as its contract describes itself").assertIsDisplayed()
+        rule.runOnIdle { navController.single().popBackStack() }
+        rule.onNodeWithText("0 built in · 1 added").assertIsDisplayed()
     }
 
     @Test

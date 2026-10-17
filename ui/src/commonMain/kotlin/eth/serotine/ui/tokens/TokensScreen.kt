@@ -97,10 +97,13 @@ fun TokensScreen(
         floatingActionButton = {
             // The content overload: the icon-and-text one leaves its label out of the
             // button's merged semantics, so a screen reader would say only "Button".
-            ExtendedFloatingActionButton(onClick = onAddToken) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(12.dp))
-                Text("Add token")
+            // Nothing to add while the settings cannot be read: it would be refused.
+            if (state.canChange) {
+                ExtendedFloatingActionButton(onClick = onAddToken) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Add token")
+                }
             }
         },
     ) { padding ->
@@ -111,6 +114,7 @@ fun TokensScreen(
             state.items.forEach { item ->
                 TokenRow(
                     item,
+                    canChange = state.canChange,
                     onCopy = {
                         onCopy(item.address)
                         scope.launch { snackbar.showSnackbar("Contract address copied") }
@@ -122,7 +126,8 @@ fun TokensScreen(
             Text(
                 "A token is known by its contract address. Added tokens are described as their " +
                     "contracts describe themselves; nothing is fetched from a token list.",
-                Modifier.padding(16.dp),
+                // Room under it for the floating button, which would cover the last row's menu.
+                Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -131,7 +136,13 @@ fun TokensScreen(
 }
 
 @Composable
-private fun TokenRow(item: TokenItem, onCopy: () -> Unit, onSetHidden: (Boolean) -> Unit, onRemove: () -> Unit) {
+private fun TokenRow(
+    item: TokenItem,
+    canChange: Boolean,
+    onCopy: () -> Unit,
+    onSetHidden: (Boolean) -> Unit,
+    onRemove: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     ListItem(
         modifier = Modifier.testTag(TOKENS_ROW_TAG),
@@ -173,12 +184,12 @@ private fun TokenRow(item: TokenItem, onCopy: () -> Unit, onSetHidden: (Boolean)
                 ActionDropdown(
                     actions = listOfNotNull(
                         MenuAction("Copy contract", SerotineIcons.ContentCopy, onClick = onCopy),
-                        if (item.hidden) {
-                            MenuAction("Show token", SerotineIcons.Visibility) { onSetHidden(false) }
-                        } else {
-                            MenuAction("Hide token", SerotineIcons.Visibility) { onSetHidden(true) }
+                        when {
+                            !canChange -> null
+                            item.hidden -> MenuAction("Show token", SerotineIcons.Visibility) { onSetHidden(false) }
+                            else -> MenuAction("Hide token", SerotineIcons.Visibility) { onSetHidden(true) }
                         },
-                        if (item.builtIn) {
+                        if (item.builtIn || !canChange) {
                             null
                         } else {
                             MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove)

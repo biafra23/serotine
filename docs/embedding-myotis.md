@@ -100,9 +100,13 @@ consumer developed against an unreleased engine, Myotis's
   built-in entry and for Add token, labelled with the block of the
   `decimals()` call. `decimals()` and `symbol()` must answer: a revert, an
   answer that is not a number or an ABI string, or decimals above 77 is a
-  verified "not a token". A missing `name()` is the symbol. Any refusal is
-  `REFUSED`. A final answer, a refusal included, is kept for the rest of the
-  process: a token's description is read once, not at every head.
+  verified "not a token". A missing `name()` is the symbol. A refused call is
+  `REFUSED` at once, without the calls after it. A description and a refusal
+  are kept for the rest of the process (the 256 most recent): a token's
+  description is read once, not at every head. "Not a token" ends the read
+  but is not kept, since the contract may not be deployed at that head yet.
+  Text a contract returns loses its control and format characters (bidi
+  overrides, zero-width ones), so none can reorder a line or hide in a symbol.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,

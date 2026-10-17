@@ -33,7 +33,7 @@ fun SettingsRoute(viewModel: SettingsViewModel, onTokens: () -> Unit, modifier: 
 /** The Settings tab as a pure function of [state]; Tokens opens through [onTokens]. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(state: SettingsUiState, onTokens: () -> Unit = {}, modifier: Modifier = Modifier) {
+fun SettingsScreen(state: SettingsUiState, onTokens: () -> Unit, modifier: Modifier = Modifier) {
     Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Section("Display")

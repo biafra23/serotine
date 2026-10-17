@@ -5,11 +5,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
+import kotlin.test.assertEquals
 
 /** Renders the stateless [SettingsScreen] headless. */
 class SettingsScreenTest {
@@ -17,11 +19,24 @@ class SettingsScreenTest {
     @get:Rule
     val rule = createComposeRule()
 
+    private var tokensOpened = 0
+
     private fun show() = rule.setContent {
         SerotineTheme {
             val lightClient = LightClientItem("Verified at block 9,412,118 · 8 s ago", null, false)
-            SettingsScreen(SettingsUiState("Sepolia", lightClient, APP_VERSION))
+            SettingsScreen(
+                SettingsUiState("Sepolia", lightClient, APP_VERSION, tokens = "3 built in · 1 added"),
+                onTokens = { tokensOpened++ },
+            )
         }
+    }
+
+    @Test
+    fun theTokensRowSaysWhatTheWalletKnowsAndOpensTheList() {
+        show()
+
+        rule.onNodeWithText("3 built in · 1 added").performClick()
+        assertEquals(1, tokensOpened)
     }
 
     @Test

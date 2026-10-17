@@ -197,9 +197,31 @@ class AccountDetailViewModelTest {
             TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 12)
         runCurrent()
 
-        viewModel.hideToken("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238")
+        viewModel.hideToken("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "USDC")
         runCurrent()
 
-        assertEquals(listOf("ETH"), (viewModel.uiState.value as AccountDetailUiState.Ready).assets.map { it.symbol })
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf("ETH"), ready.assets.map { it.symbol })
+        assertEquals("USDC hidden. Settings → Tokens shows it again.", ready.message)
+        viewModel.messageShown()
+        assertEquals(null, (viewModel.uiState.value as AccountDetailUiState.Ready).message)
+    }
+
+    @Test
+    fun aHideThatCannotBeSavedSaysSoAndKeepsTheRow() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 12)
+        userTokens.failSaves = true
+        runCurrent()
+
+        viewModel.hideToken("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "USDC")
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf("ETH", "USDC"), ready.assets.map { it.symbol })
+        assertEquals("USDC could not be hidden: the token settings cannot be saved right now.", ready.message)
     }
 }

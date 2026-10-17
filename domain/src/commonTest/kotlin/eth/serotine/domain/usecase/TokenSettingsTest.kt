@@ -6,13 +6,17 @@ import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.repository.TokenSettings
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** [ObserveKnownTokens], [AddToken], [SetTokenHidden] and [RemoveToken] over fake ports. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class TokenSettingsTest {
 
     private val usdc = Token(Address.of("0x" + "1c".repeat(20)), "USDC", "USDC", 6, "usdc")
@@ -61,6 +65,27 @@ class TokenSettingsTest {
         userTokens.settings.value = TokenSettings.Unreadable
 
         assertTrue(known().first().settingsUnavailable)
+    }
+
+    @Test
+    fun settingsSetAsideAreSaid() = runTest {
+        userTokens.settings.value = TokenSettings.Loaded(emptyList(), emptySet(), setAside = true)
+
+        assertTrue(known().first().settingsSetAside)
+    }
+
+    @Test
+    fun aSettingsChangeDoesNotCheckTheBuiltInEntriesAgain() = runTest {
+        val seen = mutableListOf<KnownTokenList>()
+        backgroundScope.launch { known().collect { seen += it } }
+        runCurrent()
+        assertEquals(2, metadata.asked) // one check per built-in entry
+
+        userTokens.setHidden(link.address, hidden = true)
+        runCurrent()
+
+        assertEquals(2, metadata.asked)
+        assertTrue(seen.last().tokens.single { it.token == link }.hidden)
     }
 
     @Test

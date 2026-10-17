@@ -57,8 +57,9 @@ Modules (Gradle):
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
   token metadata and address kinds), whose glue over `io.myotis.api` lives in a
   `jvmSharedMain` source set the Android and desktop targets share; and the
-  built-in token list and the user's token settings (`eth.serotine.data.tokens`). Targets Android + desktop + iOS; the Android
-  target is what resolves the engine's AAR.
+  built-in token list and the user's token settings (`eth.serotine.data.tokens`).
+  Targets Android + desktop + iOS; the Android target is what resolves the
+  engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
   `<Feature>ViewModel`, `<Feature>UiState`; `components` for what several

@@ -3,6 +3,7 @@ package eth.serotine.ui.tokens
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.MetadataReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenSettings
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.RemoveToken
@@ -90,5 +91,28 @@ class TokensViewModelTest {
         userTokens.settings.value = TokenSettings.Unreadable
         runCurrent()
         assertEquals(true, viewModel.uiState.value.notice?.startsWith("Your token settings cannot be read"))
+        assertEquals(false, viewModel.uiState.value.canChange)
+    }
+
+    @Test
+    fun settingsSetAsideAreSaidAndCanBeChanged() = runTest {
+        userTokens.settings.value = TokenSettings.Loaded(emptyList(), emptySet(), setAside = true)
+        val viewModel = viewModel()
+        runCurrent()
+
+        assertEquals(true, viewModel.uiState.value.notice?.startsWith("Your token settings were damaged"))
+        assertEquals(true, viewModel.uiState.value.canChange)
+    }
+
+    @Test
+    fun aRefusedCheckIsSaidToBeForGood() = runTest {
+        val viewModel = viewModel()
+        metadata.of(usdc.address).value = MetadataReading.Unavailable(ReadUnavailable.REFUSED)
+        runCurrent()
+
+        assertEquals(
+            "Built in · its contract cannot be checked on this device",
+            viewModel.uiState.value.items[0].status,
+        )
     }
 }

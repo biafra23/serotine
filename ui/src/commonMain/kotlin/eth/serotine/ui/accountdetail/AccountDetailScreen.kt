@@ -100,6 +100,7 @@ fun AccountDetailRoute(
         onRename = onRename,
         onRemove = onRemove,
         onHideToken = viewModel::hideToken,
+        onMessageShown = viewModel::messageShown,
         modifier = modifier,
     )
 }
@@ -118,11 +119,20 @@ fun AccountDetailScreen(
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
-    onHideToken: (String) -> Unit = {},
+    onHideToken: (contract: String, symbol: String) -> Unit,
+    onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val message = (state as? AccountDetailUiState.Ready)?.message
+    val shown by rememberUpdatedState(onMessageShown)
+    LaunchedEffect(message) {
+        if (message != null) {
+            snackbar.showSnackbar(message)
+            shown()
+        }
+    }
     val copy: (String) -> Unit = { address ->
         onCopy(address)
         scope.launch { snackbar.showSnackbar("Address copied") }
@@ -176,12 +186,7 @@ fun AccountDetailScreen(
                         onCopy(contract)
                         scope.launch { snackbar.showSnackbar("Contract address copied") }
                     },
-                    onHideToken = { asset ->
-                        asset.contract?.let(onHideToken)
-                        scope.launch {
-                            snackbar.showSnackbar("${asset.symbol} hidden. Settings → Tokens shows it again.")
-                        }
-                    },
+                    onHideToken = { asset -> asset.contract?.let { onHideToken(it, asset.symbol) } },
                 )
             }
         }
@@ -298,7 +303,12 @@ private fun AssetItem(asset: AssetRow) {
         leadingContent = { TokenIcon(asset.icon, asset.symbol) },
         headlineContent = { Text(asset.symbol) },
         supportingContent = {
-            Text(asset.verifiedAt?.let { "${asset.name} · verified at $it" } ?: asset.name)
+            Column {
+                Text(asset.verifiedAt?.let { "${asset.name} · verified at $it" } ?: asset.name)
+                asset.warning?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
         },
         trailingContent = {
             Text(

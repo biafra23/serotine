@@ -7,17 +7,20 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.TokenHolding
+import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -29,8 +32,9 @@ import kotlinx.coroutines.launch
 /**
  * The account detail screen's ViewModel: the account under [address], its verified native
  * balance on [network] and what it holds of each known token, as [AccountDetailUiState]. Its
- * one intent is hiding a token ([hideToken]); what else the user does from the screen is
- * navigation (Receive, Rename, Remove) or the clipboard, which the route handles.
+ * one intent is hiding a token ([hideToken], said through [messageShown]); what else the user
+ * does from the screen is navigation (Receive, Rename, Remove) or the clipboard, which the
+ * route handles.
  */
 class AccountDetailViewModel(
     address: Address,
@@ -46,13 +50,16 @@ class AccountDetailViewModel(
         .onStart { emit(null) }
 
     // Like the balance, it never holds the screen back: the header shows before the catalog does.
-    private val holdings = observeTokenHoldings(address).onStart { emit(emptyList()) }
+    private val holdings = observeTokenHoldings(address).onStart { emit(TokenHoldings(emptyList())) }
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
 
+    /** What the last Hide token did, until the screen has said it. */
+    private val message = MutableStateFlow<String?>(null)
+
     val uiState: StateFlow<AccountDetailUiState> =
-        combine(observeAccount(address), balance, holdings) { lookup, reading, held ->
+        combine(observeAccount(address), balance, holdings, message) { lookup, reading, held, said ->
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = lookup.account.label,
@@ -62,8 +69,9 @@ class AccountDetailViewModel(
                     balance = reading?.let { balanceText(it, network) } ?: "Checking…",
                     balanceVerified = reading is BalanceReading.Verified,
                     balanceNote = (reading as? BalanceReading.Verified)?.let { "Verified at ${block(it.blockNumber)}" },
-                    assets = assets(reading, held),
+                    assets = assets(reading, held.holdings),
                     tokensNote = tokensNote(held),
+                    message = said,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
@@ -102,14 +110,18 @@ class AccountDetailViewModel(
                 verified = true,
                 verifiedAt = verified.blockNumber?.let(::block),
                 contract = Eip55.format(token.address),
+                warning = "Not the built-in ${token.symbol}: another contract".takeIf { holding.sharesBuiltInSymbol },
             )
         }
         return listOf(nativeRow) + tokenRows.sortedBy { it.symbol.lowercase() }
     }
 
-    /** What is not known (yet) about the tokens no row shows: still being checked, or why not. */
-    private fun tokensNote(holdings: List<TokenHolding>): String? {
-        val readings = holdings.map { it.reading }
+    /**
+     * What is not known (yet) about the tokens no row shows: still being checked, or why not;
+     * and that the user's token settings cannot be read, so the rows ignore them.
+     */
+    private fun tokensNote(held: TokenHoldings): String? {
+        val readings = held.holdings.map { it.reading }
         val checking = readings.count { it == null || it == TokenBalanceReading.Syncing }
         val refused = readings.count { (it as? TokenBalanceReading.Unavailable)?.reason == ReadUnavailable.REFUSED }
         val unverified = readings.count { it is TokenBalanceReading.Unavailable } - refused
@@ -119,21 +131,38 @@ class AccountDetailViewModel(
             unverified.takeIf { it > 0 }?.let { "${tokens(it)} not verified" },
             refused.takeIf { it > 0 }?.let { "${tokens(it)} cannot be read on this device" },
             notTokens.takeIf { it > 0 }?.let { "${tokens(it)} did not answer as a token" },
+            SETTINGS_UNAVAILABLE.takeIf { held.settingsUnavailable },
         )
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")?.replaceFirstChar { it.uppercase() }
     }
 
     private fun tokens(count: Int) = if (count == 1) "1 token" else "$count tokens"
 
-    /** Hides the token at [contract] from every account; Settings → Tokens shows it again. */
-    fun hideToken(contract: String) {
+    /**
+     * Hides the token at [contract], shown as [symbol], from every account; Settings → Tokens
+     * shows it again. How that went is the state's [AccountDetailUiState.Ready.message].
+     */
+    fun hideToken(contract: String, symbol: String) {
         val address = Address.parse(contract) ?: return
-        viewModelScope.launch { setTokenHidden(address, hidden = true) }
+        viewModelScope.launch {
+            message.value = when (setTokenHidden(address, hidden = true)) {
+                TokenChange.Changed, TokenChange.AlreadyPresent -> "$symbol hidden. Settings → Tokens shows it again."
+                TokenChange.NotFound, TokenChange.NotSaved ->
+                    "$symbol could not be hidden: the token settings cannot be saved right now."
+            }
+        }
+    }
+
+    /** The screen has said [AccountDetailUiState.Ready.message]. */
+    fun messageShown() {
+        message.value = null
     }
 
     private fun block(number: Long) = "block ${grouped(number)}"
 
     private companion object {
         const val LIST_UNAVAILABLE = "Your account list cannot be read right now. Serotine keeps trying."
+        const val SETTINGS_UNAVAILABLE =
+            "your token settings cannot be read right now: hidden tokens show, added ones are missing"
     }
 }

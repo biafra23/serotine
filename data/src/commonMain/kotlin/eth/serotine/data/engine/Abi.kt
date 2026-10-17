@@ -27,8 +27,10 @@ internal object Abi {
     /**
      * The text [returnedHex] holds: an ABI `string` (its offset, its length, its bytes), or, as
      * some early tokens answer `symbol()` and `name()`, one `bytes32` word padded with zero
-     * bytes. Null when it is neither, or not valid UTF-8; control characters are dropped, so
-     * what a contract says can never move text on screen.
+     * bytes. Null when it is neither, or not valid UTF-8. Control characters, format characters
+     * (bidirectional overrides, zero-width ones) and line separators are dropped: what a
+     * contract says can never move text on screen, nor hide a character in a symbol, which
+     * would let "US\u200BDC" pass for USDC where symbols are compared.
      */
     fun text(returnedHex: String): String? {
         if (returnedHex.length % 2 != 0 || !returnedHex.all { it in HEX }) return null
@@ -45,7 +47,7 @@ internal object Abi {
         }
         val decoded = raw.decodeToString(throwOnInvalidSequence = false)
         if ('\uFFFD' in decoded) return null
-        return decoded.filterNot { it.isISOControl() }
+        return decoded.filterNot { it.isISOControl() || it.category in INVISIBLE }
     }
 
     /** The word at [at] as a small non-negative Int, or null when it is larger than any offset or length can be. */
@@ -76,6 +78,8 @@ internal object Abi {
         }
         return digits.reverse().toString()
     }
+
+    private val INVISIBLE = setOf(CharCategory.FORMAT, CharCategory.LINE_SEPARATOR, CharCategory.PARAGRAPH_SEPARATOR)
 
     private const val WORD = 32
     private const val WORD_HEX_DIGITS = 64

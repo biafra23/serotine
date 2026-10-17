@@ -75,10 +75,28 @@ class VerifiedTokenMetadataTest {
     }
 
     @Test
-    fun aRefusalEndsTheReading() = runTest {
+    fun notATokenIsAskedAgainByTheNextSubscriber() = runTest {
+        // Before the contract is deployed at the verified head: an empty answer.
+        answer(Abi.DECIMALS, CallOutcome.Returned("", 9))
+        answer(Abi.SYMBOL, CallOutcome.Returned("", 9))
+        answer(Abi.NAME, CallOutcome.Returned("", 9))
+        val metadata = metadata()
+        assertEquals(listOf<MetadataReading>(MetadataReading.NotAToken), metadata.observe(token).toList())
+
+        chain.snapshot = running(head = 10)
+        answer(Abi.DECIMALS, CallOutcome.Returned(word(6), 10))
+        answer(Abi.SYMBOL, CallOutcome.Returned(string("EURC"), 10))
+        answer(Abi.NAME, CallOutcome.Returned(string("Euro Coin"), 10))
+        assertEquals(
+            listOf<MetadataReading>(MetadataReading.Verified("EURC", "Euro Coin", 6, 10)),
+            metadata.observe(token).toList(),
+        )
+    }
+
+    @Test
+    fun aRefusalEndsTheReadingAndNoOtherCallIsMade() = runTest {
         answer(Abi.DECIMALS, CallOutcome.Refused)
-        answer(Abi.SYMBOL, CallOutcome.Refused)
-        answer(Abi.NAME, CallOutcome.Refused)
+        // symbol() and name() unanswered: unproven, were they asked.
 
         assertEquals(
             listOf<MetadataReading>(MetadataReading.Unavailable(ReadUnavailable.REFUSED)),
@@ -91,6 +109,8 @@ class VerifiedTokenMetadataTest {
         assertEquals("EURC", Abi.text(string("EURC")))
         assertEquals("MKR", Abi.text("MKR".encodeToByteArray().copyOf(32).toHex()))
         assertEquals("A B", Abi.text(string("A\u0007\nB".replace("\n", " "))), "control characters are dropped")
+        assertEquals("USDC", Abi.text(string("US\u200BDC")), "a zero-width space cannot hide in a symbol")
+        assertEquals("abc", Abi.text(string("\u202Eabc\u2066\uFEFF\u2028")), "nor can a bidi override or a separator")
         assertNull(Abi.text("00"), "neither a word nor a string")
         assertNull(Abi.text(word(32) + word(1_000_000) + "00".repeat(32)), "a length beyond the answer")
         assertNull(Abi.text(word(32) + word(2) + "ff" + "fe" + "00".repeat(30)), "not UTF-8")

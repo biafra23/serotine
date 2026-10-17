@@ -19,10 +19,12 @@ import kotlin.time.Duration
 /**
  * [TokenMetadata] over a verified light client: a contract's `symbol()`, `name()` and
  * `decimals()` as verified calls ([VerifiedChain.call]), polled through [ProvenReads] until
- * they are answered, then kept for the life of the process — a token's description is read
- * once, not at every head. `symbol()` and `decimals()` must answer; `name()` may be missing
- * (some tokens have none) and is then the symbol. A revert, an answer that is no text or no
- * small number, or decimals no amount can be shown at, is a verified "not a token".
+ * they are answered. A token's description, and a refusal, are then kept for the life of the
+ * process (the [MAX_ANSWERED] most recent): read once, not at every head. `symbol()` and
+ * `decimals()` must answer; `name()` may be missing (some tokens have none) and is then the
+ * symbol. A revert, an answer that is no text or no small number, or decimals no amount can
+ * be shown at, is a verified "not a token" — ending the flow, but not kept: the contract may
+ * not be deployed yet at the head it was read at, so the next subscriber asks again.
  */
 class VerifiedTokenMetadata internal constructor(
     chain: VerifiedChain?,
@@ -31,17 +33,20 @@ class VerifiedTokenMetadata internal constructor(
 ) : TokenMetadata {
 
     private val reads = ProvenReads<Address, MetadataReading>(chain, dispatcher, pollInterval) { verified, token ->
-        val decimals = verified.call(token, Abi.DECIMALS) ?: return@ProvenReads null
-        val symbol = verified.call(token, Abi.SYMBOL) ?: return@ProvenReads null
-        val name = verified.call(token, Abi.NAME) ?: return@ProvenReads null
-        if (listOf(decimals, symbol, name).any { it == CallOutcome.Refused }) {
-            return@ProvenReads EngineReading.Unavailable(ReadUnavailable.REFUSED)
+        // In order, each ending the read: unproven (null), or refused, which is for good — so a
+        // refused call is not followed by the others, and is not taken for an unproven one.
+        val outcomes = mutableListOf<CallOutcome>()
+        for (selector in listOf(Abi.DECIMALS, Abi.SYMBOL, Abi.NAME)) {
+            val outcome = verified.call(token, selector) ?: return@ProvenReads null
+            if (outcome == CallOutcome.Refused) return@ProvenReads EngineReading.Unavailable(ReadUnavailable.REFUSED)
+            outcomes += outcome
         }
+        val (decimals, symbol, name) = outcomes
         val block = (decimals as? CallOutcome.Returned)?.blockNumber
         EngineReading.Proven(described(decimals, symbol, name, block), block ?: UNKNOWN_BLOCK)
     }
 
-    /** The final answers, per token, for the life of the process. */
+    /** The answers kept, per token, the most recent last. */
     private val answered = mutableMapOf<Address, MetadataReading>()
     private val answeredLock = Mutex()
 
@@ -58,7 +63,7 @@ class VerifiedTokenMetadata internal constructor(
                     is EngineReading.Unavailable -> MetadataReading.Unavailable(reading.reason)
                 }
             }
-            .onEach { if (it.isFinal()) answeredLock.withLock { answered[token] = it } }
+            .onEach { if (it.isKept()) keep(token, it) }
             .transformWhile { reading ->
                 emit(reading)
                 !reading.isFinal()
@@ -66,9 +71,18 @@ class VerifiedTokenMetadata internal constructor(
         emitAll(readings)
     }
 
-    private fun MetadataReading.isFinal() =
-        this is MetadataReading.Verified || this == MetadataReading.NotAToken ||
-            this == MetadataReading.Unavailable(ReadUnavailable.REFUSED)
+    private suspend fun keep(token: Address, reading: MetadataReading) = answeredLock.withLock {
+        answered.remove(token) // re-inserted last: the map's order is the order of answering
+        answered[token] = reading
+        if (answered.size > MAX_ANSWERED) answered.remove(answered.keys.first())
+    }
+
+    /** An answer that ends the flow: a description, "not a token", or a refusal. */
+    private fun MetadataReading.isFinal() = this == MetadataReading.NotAToken || isKept()
+
+    /** An answer kept for the next subscriber: one that cannot change while the process runs. */
+    private fun MetadataReading.isKept() =
+        this is MetadataReading.Verified || this == MetadataReading.Unavailable(ReadUnavailable.REFUSED)
 
     private fun described(
         decimals: CallOutcome,
@@ -88,5 +102,8 @@ class VerifiedTokenMetadata internal constructor(
     private companion object {
         /** What [ProvenReads] is given for a call whose block the engine did not name. */
         const val UNKNOWN_BLOCK = -1L
+
+        /** Answers kept: far more tokens than a wallet lists, and the addresses typed into Add token. */
+        const val MAX_ANSWERED = 256
     }
 }

@@ -1,6 +1,5 @@
 package eth.serotine.domain.usecase
 
-import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.ReadUnavailable
@@ -27,37 +26,46 @@ class ObserveKnownTokens(
     private val userTokens: UserTokens,
     private val metadata: TokenMetadata,
 ) {
-    @OptIn(ExperimentalCoroutinesApi::class)
+    /**
+     * The list, re-emitted when the built-in list, a check or the settings change. A change of
+     * the settings (a token hidden, added or removed) does not start the checks again.
+     */
     operator fun invoke(): Flow<KnownTokenList> =
-        combine(catalog.observeTokens(), userTokens.observe()) { builtIn, settings -> builtIn to settings }
-            .flatMapLatest { (builtIn, settings) ->
-                val loaded = settings as? TokenSettings.Loaded
-                val hidden = loaded?.hidden.orEmpty()
-                val builtInSymbols = builtIn.mapTo(HashSet()) { it.symbol.lowercase() }
-                val added = loaded?.added.orEmpty()
-                    .filter { token -> builtIn.none { it.address == token.address } }
-                    .map { token ->
-                        KnownToken(
-                            token,
-                            TokenOrigin.ADDED,
-                            check = null,
-                            hidden = token.address in hidden,
-                            sharesBuiltInSymbol = token.symbol.lowercase() in builtInSymbols,
-                        )
-                    }
-                val checks = builtIn.map { token -> checkOf(token).map { check -> token to check } }
-                val unavailable = settings is TokenSettings.Unreadable
-                if (checks.isEmpty()) {
-                    flowOf(KnownTokenList(added, settingsUnavailable = unavailable))
-                } else {
-                    combine(checks) { checked ->
-                        val listed = checked.map { (token, check) ->
-                            KnownToken(token, TokenOrigin.BUILT_IN, check, token.address in hidden, false)
-                        }
-                        KnownTokenList(listed + added, settingsUnavailable = unavailable)
-                    }
-                }
+        combine(checkedBuiltIns(), userTokens.observe()) { checked, settings ->
+            val loaded = settings as? TokenSettings.Loaded
+            val hidden = loaded?.hidden.orEmpty()
+            val builtInSymbols = checked.mapTo(HashSet()) { (token, _) -> token.symbol.lowercase() }
+            val listed = checked.map { (token, check) ->
+                KnownToken(token, TokenOrigin.BUILT_IN, check, token.address in hidden, sharesBuiltInSymbol = false)
             }
+            val added = loaded?.added.orEmpty()
+                .filter { token -> checked.none { (builtIn, _) -> builtIn.address == token.address } }
+                .map { token ->
+                    KnownToken(
+                        token,
+                        TokenOrigin.ADDED,
+                        check = null,
+                        hidden = token.address in hidden,
+                        sharesBuiltInSymbol = token.symbol.lowercase() in builtInSymbols,
+                    )
+                }
+            KnownTokenList(
+                listed + added,
+                settingsUnavailable = settings is TokenSettings.Unreadable,
+                settingsSetAside = loaded?.setAside == true,
+            )
+        }
+
+    /** Each built-in entry with its check, re-checked only when the built-in list changes. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun checkedBuiltIns(): Flow<List<Pair<Token, BuiltInCheck>>> =
+        catalog.observeTokens().flatMapLatest { builtIn ->
+            if (builtIn.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                combine(builtIn.map { token -> checkOf(token).map { check -> token to check } }) { it.toList() }
+            }
+        }
 
     /** What the contract of the built-in [token] says, compared with what it is listed as. */
     private fun checkOf(token: Token): Flow<BuiltInCheck> = metadata.observe(token.address)
@@ -77,14 +85,19 @@ class ObserveKnownTokens(
         .onStart { emit(BuiltInCheck.Checking) }
 }
 
-/** What [ObserveKnownTokens] emits: the [tokens], and whether the user's settings could not be read. */
-data class KnownTokenList(val tokens: List<KnownToken>, val settingsUnavailable: Boolean = false) {
+/**
+ * What [ObserveKnownTokens] emits: the [tokens]; whether the user's settings cannot be read
+ * ([settingsUnavailable]: their added tokens are then missing); and whether damaged settings
+ * were set aside, so the ones shown started over ([settingsSetAside]).
+ */
+data class KnownTokenList(
+    val tokens: List<KnownToken>,
+    val settingsUnavailable: Boolean = false,
+    val settingsSetAside: Boolean = false,
+) {
     /** The tokens rows show: not hidden, and not a built-in entry its contract contradicts. */
     val shown: List<Token>
         get() = tokens.filter { it.shown }.map { it.token }
-
-    /** Whether [address] is a token the wallet knows, built in or added. */
-    fun knows(address: Address): Boolean = tokens.any { it.token.address == address }
 }
 
 /**

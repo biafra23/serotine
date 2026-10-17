@@ -14,7 +14,7 @@ sealed interface AccountDetailUiState {
      * ([control]) and its native [balance], verified at the block [balanceNote] names when
      * [balanceVerified], or why there is none; its [assets] — the native currency, then every
      * known token it holds — and [tokensNote], what is not known yet about the other tokens
-     * ("Checking 3 tokens"), or null.
+     * ("Checking 3 tokens"), or null; [message], how hiding a token went, until it is said.
      */
     data class Ready(
         val label: String,
@@ -26,6 +26,7 @@ sealed interface AccountDetailUiState {
         val balanceNote: String?,
         val assets: List<AssetRow> = emptyList(),
         val tokensNote: String? = null,
+        val message: String? = null,
     ) : AccountDetailUiState
 
     /** The account is not in the wallet (removed): the screen leaves. */
@@ -39,8 +40,9 @@ sealed interface AccountDetailUiState {
  * One asset row (docs/wallet-ux.md, screen 4): its [symbol] and [name], the [amount] held —
  * verified when [verified], otherwise why there is none — the block it was verified at
  * ([verifiedAt], "block 11,932,144"; null when not verified or not named), the bundled
- * [icon] key (null: a monogram), and a token's EIP-55 [contract] (null for the native
- * currency), which its long-press menu copies and hides.
+ * [icon] key (null: a monogram), a token's EIP-55 [contract] (null for the native
+ * currency), which its long-press menu copies and hides, and [warning], set when an added
+ * token's symbol is a built-in token's, which it is not.
  */
 data class AssetRow(
     val symbol: String,
@@ -50,4 +52,5 @@ data class AssetRow(
     val verified: Boolean,
     val verifiedAt: String? = null,
     val contract: String? = null,
+    val warning: String? = null,
 )

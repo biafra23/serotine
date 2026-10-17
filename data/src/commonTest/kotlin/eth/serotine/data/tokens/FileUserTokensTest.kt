@@ -74,4 +74,17 @@ class FileUserTokensTest {
         assertEquals(TokenSettings.Unreadable, tokens.observe().first())
         assertEquals(TokenChange.NotSaved, tokens.add(eurc))
     }
+
+    @Test
+    fun aDamagedFileIsSetAsideAndTheEmptySettingsSaySo() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":1,"added":[{"address":"x"}]}""") }
+        val tokens = tokens()
+
+        assertEquals(TokenSettings.Loaded(emptyList(), emptySet(), setAside = true), tokens.observe().first())
+        assertEquals(1, SystemFileSystem.list(directory).count { it.name.startsWith("tokens.json.damaged-") })
+        // Still said after a change writes the new file.
+        tokens.add(eurc)
+        assertEquals(TokenSettings.Loaded(listOf(eurc), emptySet(), setAside = true), tokens.observe().first())
+    }
 }

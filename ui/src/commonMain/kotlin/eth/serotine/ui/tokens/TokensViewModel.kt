@@ -3,6 +3,7 @@ package eth.serotine.ui.tokens
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.BuiltInCheck
 import eth.serotine.domain.usecase.KnownToken
@@ -31,7 +32,13 @@ class TokensViewModel(
     val uiState: StateFlow<TokensUiState> = combine(observeKnownTokens(), lastChange) { known, change ->
         TokensUiState(
             items = known.tokens.map(::item),
-            notice = if (known.settingsUnavailable) SETTINGS_UNAVAILABLE else change,
+            notice = when {
+                known.settingsUnavailable -> SETTINGS_UNAVAILABLE
+                change != null -> change
+                known.settingsSetAside -> SETTINGS_SET_ASIDE
+                else -> null
+            },
+            canChange = !known.settingsUnavailable,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TokensUiState())
 
@@ -74,10 +81,17 @@ class TokensViewModel(
             } else {
                 "Not shown: its contract says ${check.saidSymbol} with ${check.saidDecimals} decimals"
             }
-        is BuiltInCheck.Unavailable -> "Built in · its contract cannot be checked right now"
+        is BuiltInCheck.Unavailable ->
+            if (check.reason == ReadUnavailable.REFUSED) {
+                "Built in · its contract cannot be checked on this device"
+            } else {
+                "Built in · its contract cannot be checked right now"
+            }
     }
 
     private companion object {
+        const val SETTINGS_SET_ASIDE =
+            "Your token settings were damaged and have been set aside: the tokens you added and hid start over."
         const val SETTINGS_UNAVAILABLE =
             "Your token settings cannot be read right now, so nothing can be added, hidden or removed. " +
                 "Serotine keeps trying."
