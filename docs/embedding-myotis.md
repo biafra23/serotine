@@ -200,6 +200,45 @@ consumer developed against an unreleased engine, Myotis's
   released Serotine was ever without the permission, so this is a development
   trap, not a user path.
 
+## Sending
+
+Part 11 of `feature/wallet-ux` adds the engine's half of a transfer: four
+adapters over `VerifiedReads` and `EnsApi`, behind domain ports, all on a
+`TransactingChain` seam that extends `VerifiedChain`. The screens come with
+the next part. Every call is made only while the light client can verify reads
+at its head, on the adapters' dispatcher. An engine that fails, or a
+`CancellationException` its own code throws, is no answer, as for every
+verified read.
+
+- **`EngineTransactionInputs`** (`TransactionInputs`):
+  - The nonce is `getTransactionCount(address, "pending")`: the verified count
+    plus the sends this node made that are not mined yet, so a second transfer
+    right after a first does not reuse its nonce.
+  - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
+    50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
+    median of its percentile, never below 0.001 gwei and never below the
+    slower level's. The next base fee is the history's last; the fee cap is
+    twice that plus the tip.
+  - The gas is `estimateGasDetailed`, so a revert, an infeasible transfer and
+    a refusal are told apart.
+  - The simulation is `callDetailed` from the sender at the head, the transfer
+    as it will run.
+- **`EngineBroadcaster`** (`Broadcaster`): `sendRawTransactionDetailed`. The
+  engine judges a send on verified state before it gossips it, and its verdict
+  (sent, rejected with geth's reason, refused, unavailable) is passed on.
+- **`EngineReceipts`** (`ReceiptTracker`): `getTransactionReceipt` every poll,
+  verified against the including block's receipts root. A receipt at or below
+  the engine's finalized block (`StatusSnapshot.finalizedBlockNumber`) ends the
+  watch as finalized.
+- **`EngineNames`** (`NameResolver`): `ens().resolveAddress(name,
+  EnsRoot.FINALIZED)` and nothing fresher. `PEER_HEAD` would be a peer's claim,
+  and `AUTO` falls back to it, so an answer not `verified` is no answer.
+
+The transaction itself is the domain's: `Eip1559Transaction` builds the
+signing digest the signer signs and the raw bytes the broadcaster sends, and
+`QuoteTransfer` and `SendTransfer` (`:domain`) put the four together with the
+balances and the signer. What is signed is exactly what the quote shows.
+
 ## Network upgrades
 
 A hard fork the engine's build does not implement is the one thing that ends

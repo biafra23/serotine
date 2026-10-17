@@ -30,17 +30,20 @@ rule in code.
 
 **Dependencies point inward, and only inward.**
 
-- `:domain` depends on nothing of ours and on no framework (coroutines' `Flow`
-  is the one library in it). It has no Android target on purpose: Android
+- `:domain` depends on nothing of ours and on no framework. Its libraries are
+  coroutines' `Flow` and kotlincrypto's Keccak-256, which the transaction
+  encoding hashes with (the EIP-1559 signing digest, the transaction hash),
+  both pure Kotlin on every target. It has no Android target on purpose: Android
   consumers resolve its JVM variant, as they do kotlinx-coroutines, so nothing
   in it can ever import `android.*` (and that variant emits Java 17 class
   files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
   `KeyStore`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
   `DisplayCurrencySetting`, and `NativeBalances`, `TokenBalances`,
-  `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient` and
-  `NetworkUpgrades` over the embedded Myotis engine) and owns every data
-  source.
+  `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient`,
+  `NetworkUpgrades`, and for sending `TransactionInputs`, `Broadcaster`,
+  `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine) and
+  owns every data source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
