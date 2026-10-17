@@ -69,7 +69,9 @@ sealed interface AssetsUiState {
  * [balanceVerified], and otherwise says why there is none ("Checking…", "Syncing…", "Not
  * verified"): never a number from anywhere else. [value] is that balance in the display
  * currency, or why it has none ("No price"; null while the balance is not verified). For a
- * Safe, [signers] is its verified threshold of its owners ("2/3"; null until verified).
+ * Safe, [signers] is its verified threshold of its owners ("2/3"; null until verified), and
+ * [kindNote] what the row says of its kind ("Safe", or "Not a recognised Safe" once its
+ * address no longer verifies as one); null for any other account.
  */
 data class AccountItem(
     val label: String,
@@ -80,6 +82,7 @@ data class AccountItem(
     val balanceVerified: Boolean,
     val value: String? = null,
     val signers: String? = null,
+    val kindNote: String? = null,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -110,6 +113,11 @@ data class AccountItem(
             balanceVerified = balance is BalanceReading.Verified,
             value = value?.let { (valuation, currency) -> valuationText(valuation, currency, network) },
             signers = (safe as? SafeReading.Verified)?.let { "${it.state.threshold}/${it.state.owners.size}" },
+            kindNote = when {
+                account.kind != AccountKind.SAFE -> null
+                safe == SafeReading.NotASafe -> "Not a recognised Safe"
+                else -> "Safe"
+            },
         )
     }
 }

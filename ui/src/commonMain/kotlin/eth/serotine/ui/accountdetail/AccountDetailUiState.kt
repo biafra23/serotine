@@ -60,7 +60,7 @@ sealed interface SafeDetails {
     /**
      * Verified at the block [checkedAt] names: its [title] ("Safe 1.4.1 · nonce 12"), who must
      * sign ([signers]: "2 of 3 owners must sign"), its [owners], its [modules] — each can move
-     * its funds without the owners — and its [guard] (null: none).
+     * its funds without the owners — and its [guard] and [moduleGuard] (null: none).
      */
     data class Shown(
         val title: String,
@@ -69,6 +69,7 @@ sealed interface SafeDetails {
         val modules: List<String>,
         val guard: String?,
         val checkedAt: String,
+        val moduleGuard: String? = null,
     ) : SafeDetails
 
     /** Nothing verified to show right now, for the reason [message] gives. */

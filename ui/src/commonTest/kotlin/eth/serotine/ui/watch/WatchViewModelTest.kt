@@ -10,7 +10,6 @@ import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
-import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.WatchAddress
@@ -54,7 +53,6 @@ class WatchViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = WatchViewModel(
             ObserveAddressKind(kinds),
-            ObserveAccount(accounts),
             ObserveAccounts(accounts),
             WatchAddress(accounts, kinds),
         )
@@ -131,7 +129,6 @@ class WatchViewModelTest {
         }
         val viewModel = WatchViewModel(
             ObserveAddressKind(kinds),
-            ObserveAccount(accounts),
             ObserveAccounts(accounts),
             WatchAddress(accounts, syncing),
         )
@@ -198,7 +195,6 @@ class WatchViewModelTest {
         val viewModel =
             WatchViewModel(
                 ObserveAddressKind(kinds),
-                ObserveAccount(accounts),
                 ObserveAccounts(accounts),
                 WatchAddress(accounts, gatedKinds),
             )

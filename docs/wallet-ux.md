@@ -290,8 +290,9 @@ address. Applied:
   0 (the singleton) must be a pinned canonical singleton for the network
   (1.3.0, 1.4.1 or 1.5.0, L1 or L2); the owners are the linked list in slot
   2 walked from the sentinel `0x1` with storage proofs, the threshold is slot
-  4 and the nonce slot 5. The modules (slot 1's list) and the guard are read
-  too, because a module can move funds without the owners' signatures.
+  4 and the nonce slot 5. The modules (slot 1's list), the guard and, from
+  1.5.0, the module guard are read too, because a module can move funds
+  without the owners' signatures.
   Anything that does not match is "another contract", never a Safe. The
   pins (`SafeDeployments`) cover 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the
   SafeProxy runtime code of each factory. A Safe's control badge follows its

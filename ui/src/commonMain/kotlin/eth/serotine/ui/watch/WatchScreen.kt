@@ -247,6 +247,12 @@ private fun SafeCard(safe: Detection.Safe) {
             style = MaterialTheme.typography.bodySmall,
         )
     }
+    safe.moduleGuard?.let { guard ->
+        Text(
+            "A module guard checks the modules' transactions: ${shortAddress(guard)}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         ControlBadge(safe.control)
         Text("Detected from verified code and storage", style = MaterialTheme.typography.labelMedium)

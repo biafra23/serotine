@@ -185,4 +185,47 @@ class VerifiedAddressKindsTest {
             kinds().observeKind(address).first { it !is KindReading.Syncing },
         )
     }
+
+    @Test
+    fun aSafeWithoutModulesHasNoneWhetherItsListWasSetUpOrNot() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        chain.slots[Triple(address, 1L, sentinel)] = word(sentinel) // set up, empty
+        chain.slots.remove(Triple(address, 1L, module))
+        suspend fun modules() = kinds().observeKind(address).first { it !is KindReading.Syncing }
+            .let { ((it as KindReading.Verified).kind as AddressKind.Safe).state.modules }
+        assertEquals(emptyList(), modules())
+
+        chain.slots.remove(Triple(address, 1L, sentinel)) // never set up
+        assertEquals(emptyList(), modules())
+    }
+
+    @Test
+    fun aSafeIsProvenAgainOnlyEveryFewHeads() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        val kinds = kinds()
+        kinds.observeKind(address).first { it !is KindReading.Syncing }
+        val asked = chain.proofRequests.size
+
+        // The next head: the reading stands, nothing is asked again.
+        chain.snapshot = running(head = 10)
+        val standing = kinds.observeKind(address).first { it !is KindReading.Syncing } as KindReading.Verified
+        assertEquals(9, standing.blockNumber)
+        assertEquals(asked, chain.proofRequests.size)
+
+        // Five heads on: read again, and labelled with its new block.
+        chain.snapshot = running(head = 14)
+        chain.slotBlock = 14
+        val again = kinds.observeKind(address).first { it !is KindReading.Syncing } as KindReading.Verified
+        assertEquals(14, again.blockNumber)
+    }
+
+    @Test
+    fun theGuardSlotsAreTheHashesSafeKeepsThemAt() {
+        assertEquals(
+            "4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8",
+            VerifiedAddressKinds.GUARD_SLOT.toHex(),
+        )
+    }
 }

@@ -24,9 +24,12 @@ import kotlin.time.Duration
  * whose slot 0 names a pinned singleton, and whose storage holds a set-up Safe: its owners, the
  * linked list of the mapping at slot 2 walked from the sentinel `0x1`, as many as slot 3
  * counts, a threshold (slot 4) of at most that many, its nonce (slot 5), its modules (the list
- * at slot 1) and its guard. Every slot is a storage proof, and all of them must anchor to one
- * block, the one the reading is labelled with: a read the head moved under is made again at
- * the next. Anything that does not match is a contract, never a Safe.
+ * at slot 1), its guard and its module guard. Every numbered slot is a storage proof, and all
+ * of them must anchor to one block, the one the reading is labelled with: a read the head
+ * moved under is made again at the next. The guards are kept at hashed slots no storage proof
+ * names, so they are verified reads at the head, which may be a head later than that label.
+ * Anything that does not match is a contract, never a Safe. A reading is proven again every
+ * [KEPT_FOR_HEADS] heads: a Safe takes a dozen proofs, and its owners rarely change.
  */
 class VerifiedAddressKinds internal constructor(
     chain: VerifiedChain?,
@@ -35,7 +38,14 @@ class VerifiedAddressKinds internal constructor(
     private val safes: SafeDeployments.Table,
 ) : AddressKinds {
 
-    private val reads = ProvenReads<Address, AddressKind>(chain, dispatcher, pollInterval) { verified, address ->
+    // A Safe takes a dozen proofs and its owners rarely change: proven again every few heads,
+    // and always labelled with the block it was read at.
+    private val reads = ProvenReads<Address, AddressKind>(
+        chain,
+        dispatcher,
+        pollInterval,
+        KEPT_FOR_HEADS,
+    ) { verified, address ->
         val code = verified.proveCode(address) ?: return@ProvenReads null
         when (val kind = kindOf(code.codeHex)) {
             AddressKind.Contract ->
@@ -73,19 +83,40 @@ class VerifiedAddressKinds internal constructor(
                 Walk.Broken -> return proven(AddressKind.Contract)
                 is Walk.Entries -> walked.addresses
             }
-            // Not a block-labelled proof, but a verified read; only an address or none is a guard.
-            val guardWord = chain.storageAt(safe, GUARD_SLOT) ?: return null
-            val guard = if (guardWord.all { it == '0' }) {
-                null
-            } else {
-                addressIn(guardWord) ?: return proven(AddressKind.Contract)
+            // Not block-labelled proofs (their slots are hashes, no number names them) but verified
+            // reads at the head; only an address or none is a guard.
+            val guard = when (val read = guardAt(GUARD_SLOT)) {
+                Guard.Unproven -> return null
+                Guard.Broken -> return proven(AddressKind.Contract)
+                is Guard.At -> read.address
+            }
+            val moduleGuard = when (val read = guardAt(MODULE_GUARD_SLOT)) {
+                Guard.Unproven -> return null
+                Guard.Broken -> return proven(AddressKind.Contract)
+                is Guard.At -> read.address
             }
             // Not set up (no owners, no threshold) or not consistent: a contract, not a Safe.
             if (owners.isEmpty() || ownerCount != owners.size.toLong() || threshold !in 1..owners.size.toLong()) {
                 return proven(AddressKind.Contract)
             }
-            val state = SafeState(singleton.version, singleton.l2, owners, threshold.toInt(), nonce, modules, guard)
+            val state = SafeState(
+                singleton.version,
+                singleton.l2,
+                owners,
+                threshold.toInt(),
+                nonce,
+                modules,
+                guard,
+                moduleGuard,
+            )
             return proven(AddressKind.Safe(state))
+        }
+
+        /** The guard kept at [slot]: an address, none, or a word that is no address. */
+        private fun guardAt(slot: ByteArray): Guard {
+            val word = chain.storageAt(safe, slot) ?: return Guard.Unproven
+            if (word.all { it == '0' }) return Guard.At(null)
+            return addressIn(word)?.let { Guard.At(it) } ?: Guard.Broken
         }
 
         /** [kind], labelled with the one block every slot was proven at; null when they differ. */
@@ -110,6 +141,13 @@ class VerifiedAddressKinds internal constructor(
                 if (next.all { it == '0' }) return Walk.Broken
             }
         }
+    }
+
+    /** What reading a guard gave: one or none ([At]), or that it could not be read, or that it is no address. */
+    private sealed interface Guard {
+        data class At(val address: Address?) : Guard
+        data object Unproven : Guard
+        data object Broken : Guard
     }
 
     /** What walking a list gave: its entries, or that a proof failed, or that the list is no list. */
@@ -139,8 +177,12 @@ class VerifiedAddressKinds internal constructor(
         private const val THRESHOLD_SLOT = 4L
         private const val NONCE_SLOT = 5L
 
-        /** `keccak256("guard_manager.guard.address")`, where a Safe keeps its guard. */
-        private val GUARD_SLOT = "4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8".fromHex()
+        /** Where a Safe keeps its guard (1.3.0 on), and its module guard (1.5.0 on). */
+        internal val GUARD_SLOT = Keccak256().digest("guard_manager.guard.address".encodeToByteArray())
+        internal val MODULE_GUARD_SLOT = Keccak256().digest("module_manager.module_guard.address".encodeToByteArray())
+
+        /** Heads a kind's proof stands: about a minute of Sepolia blocks. */
+        private const val KEPT_FOR_HEADS = 5L
 
         /** The lists' sentinel, `0x…01`. */
         private val SENTINEL = Address.of("0x" + "0".repeat(39) + "1")

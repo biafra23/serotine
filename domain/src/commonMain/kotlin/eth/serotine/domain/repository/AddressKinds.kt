@@ -50,8 +50,8 @@ sealed interface AddressKind {
  * A Safe's state, as its verified storage holds it: its singleton's [version] ("1.4.1") and
  * whether it is the L2 variant ([l2]), its [owners] in their on-chain order, the [threshold]
  * of their signatures a transaction needs, its [nonce], the enabled [modules] — each of which
- * can move the Safe's funds without the owners' signatures — and its [guard], which checks
- * every transaction (null: none).
+ * can move the Safe's funds without the owners' signatures — its [guard], which checks every
+ * transaction, and its [moduleGuard] (1.5.0 on), which checks the modules' (null: none).
  */
 data class SafeState(
     val version: String,
@@ -61,6 +61,7 @@ data class SafeState(
     val nonce: Long,
     val modules: List<Address>,
     val guard: Address?,
+    val moduleGuard: Address? = null,
 )
 
 /** One answer of [AddressKinds.observeKind]. */

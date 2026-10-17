@@ -380,6 +380,12 @@ private fun SafeOwners(safe: SafeDetails) {
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+                safe.moduleGuard?.let {
+                    Text(
+                        "A module guard checks the modules' transactions: ${shortAddress(it)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 Text(
                     safe.checkedAt,
                     style = MaterialTheme.typography.labelSmall,

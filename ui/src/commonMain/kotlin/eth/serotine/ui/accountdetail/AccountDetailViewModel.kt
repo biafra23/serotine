@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -69,7 +70,9 @@ class AccountDetailViewModel(
 
     private val view = MutableStateFlow(View())
 
+    // Collected once, by both the Safe's reading and the state.
     private val lookup = observeAccount(address)
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), replay = 1)
 
     /** A Safe's verified state; read for a Safe only, none for any other account. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -156,6 +159,7 @@ class AccountDetailViewModel(
                 modules = state.modules.map(Eip55::format),
                 guard = state.guard?.let(Eip55::format),
                 checkedAt = "Verified at ${block(reading.blockNumber)}",
+                moduleGuard = state.moduleGuard?.let(Eip55::format),
             )
         }
         SafeReading.NotASafe ->

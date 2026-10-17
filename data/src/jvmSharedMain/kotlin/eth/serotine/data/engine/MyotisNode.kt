@@ -232,14 +232,23 @@ class MyotisNode private constructor(network: Network) {
         }
 
         // Accepted only with a verified storage proof and a verdict, as balances are; a proven
-        // empty slot is a proven zero.
+        // empty slot is a proven zero. Labelled with the beacon anchor the proof matched (its
+        // optimistic or finalized block), never a peer's say-so; a header-chain match proves
+        // the peer's block itself, walked up to the attested one.
         override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
             val handle = (state as? State.Running)?.handle ?: return null
             val result = handle.getStorageProof(address.hex, slot, holder?.hex)
-            if (result.failReason() != null || !result.storageProofValid() || result.verifyMethod() == null) return null
+            if (result.failReason() != null || !result.storageProofValid() || !result.beaconChainVerified()) return null
+            val block = when {
+                result.verifyMethod() == null -> return null
+                result.matchedBeaconSlot() == result.optimisticSlot() -> result.optimisticBlockNumber()
+                result.matchedBeaconSlot() == result.finalizedSlot() -> result.finalizedBlockNumber()
+                result.verifyMethod() == "headerChain" -> result.peerBlockNumber()
+                else -> return null
+            }
             val value = if (result.exists()) result.valueHex()?.removePrefix("0x")?.lowercase() ?: return null else ""
-            return value.padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
-                ?.let { ProvenSlot(it, result.peerBlockNumber()) }
+            return value.padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS && block > 0 }
+                ?.let { ProvenSlot(it, block) }
         }
 
         override fun storageAt(address: Address, slot: ByteArray): String? {

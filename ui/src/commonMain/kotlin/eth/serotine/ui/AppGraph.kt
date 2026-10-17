@@ -115,7 +115,6 @@ class AppGraph(
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(
         ObserveAddressKind(addressKinds),
-        ObserveAccount(accounts),
         ObserveAccounts(accounts),
         WatchAddress(accounts, addressKinds),
     )

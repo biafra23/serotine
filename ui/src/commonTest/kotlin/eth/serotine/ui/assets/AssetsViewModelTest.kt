@@ -106,6 +106,7 @@ class AssetsViewModelTest {
             Control.WATCH_ONLY,
             balance,
             verified,
+            kindNote = "Safe",
         )
 
     @AfterTest
@@ -354,7 +355,16 @@ class AssetsViewModelTest {
 
         val row = (viewModel.uiState.value as AssetsUiState.Ready).accounts.first()
         assertEquals("1/2", row.signers)
+        assertEquals("Safe", row.kindNote)
         assertEquals(Control.FULL_CONTROL, row.control, "Daily's key is held here, and one signature is enough")
+
+        // The address no longer verifies as a Safe: said, and no more than watch-only.
+        kind.value = KindReading.Verified(AddressKind.Contract, 10)
+        runCurrent()
+        val after = (viewModel.uiState.value as AssetsUiState.Ready).accounts.first()
+        assertEquals("Not a recognised Safe", after.kindNote)
+        assertEquals(Control.WATCH_ONLY, after.control)
+        assertEquals(null, after.signers)
     }
 
     private class FakeAccountRepository : AccountRepository {

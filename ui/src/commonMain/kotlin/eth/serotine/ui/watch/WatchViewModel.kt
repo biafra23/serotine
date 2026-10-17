@@ -10,9 +10,7 @@ import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
-import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AddressWatch
-import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.RenameAccount
@@ -44,7 +42,6 @@ import kotlinx.coroutines.launch
  */
 class WatchViewModel(
     observeAddressKind: ObserveAddressKind,
-    observeAccount: ObserveAccount,
     observeAccounts: ObserveAccounts,
     private val watchAddress: WatchAddress,
 ) : ViewModel() {
@@ -66,12 +63,12 @@ class WatchViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val detection = input.flatMapLatest { parsed ->
         when (parsed) {
+            // The one list says whether the address is in the wallet already, and, for a Safe,
+            // which of its owners' keys are held here.
             is AddressInput.Valid -> combine(
-                observeAccount(parsed.address),
+                observeAccounts(),
                 observeAddressKind(parsed.address).map<KindReading, KindReading?> { it }.onStart { emit(null) },
-                // For a Safe: which of its owners' keys are held here.
-                observeAccounts().map { (it as? AccountList.Loaded)?.accounts.orEmpty() },
-            ) { lookup, reading, accounts -> detectionOf(parsed.address, lookup, reading, accounts) }
+            ) { list, reading -> detectionOf(parsed.address, list, reading) }
             else -> flowOf(null)
         }
     }
@@ -131,14 +128,20 @@ class WatchViewModel(
         }
     }
 
+    private fun detectionOf(address: Address, list: AccountList, reading: KindReading?): Detection {
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        return detectionOf(address, list, accounts.firstOrNull { it.address == address }, reading, accounts)
+    }
+
     private fun detectionOf(
         address: Address,
-        lookup: AccountLookup,
+        list: AccountList,
+        inWallet: Account?,
         reading: KindReading?,
         accounts: List<Account>,
     ): Detection = when {
-        lookup is AccountLookup.Found -> Detection.InWallet(lookup.account.label)
-        lookup is AccountLookup.ListUnavailable ->
+        inWallet != null -> Detection.InWallet(inWallet.label)
+        list is AccountList.Unreadable ->
             Detection.Unavailable("Your account list cannot be read right now, so nothing can be added.")
         reading == null -> Detection.Checking
         reading is KindReading.Syncing ->
@@ -177,6 +180,7 @@ class WatchViewModel(
             guard = state.guard?.let(Eip55::format),
             checkedAt = checkedAt(verified),
             control = Control.of(state.control(state.ownersHeld(accounts).size)),
+            moduleGuard = state.moduleGuard?.let(Eip55::format),
         )
 
     /** Why the typed text is no address, once that is clear: not while the user is still typing one. */
