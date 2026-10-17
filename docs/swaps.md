@@ -84,14 +84,16 @@ signed.
     at the current head. When it still succeeds, what the user saw is what is
     signed. When it does not (the minimum no longer met), it is quoted again
     and shown, not signed.
-  - At the tap that signs a CoW order, the verified floor is quoted again.
-    When it has risen above the minimum shown, the order is made again and
-    shown, not signed.
+  - At the tap that signs a CoW order, the Uniswap net is quoted again. When
+    it has risen above CoW's estimate, the review is made again (on Uniswap,
+    if that is now the better venue) and shown, not signed.
   - A Safe's swap has its own rules (*A Safe's swap*).
-- **The record.** `SentAction` gains an approval and a swap: the venue, the
-  token sold and its amount, the token bought and the signed minimum. A
-  signed CoW order is recorded as soon as it is signed (*A signed order is
-  live until it is proven dead*).
+- **The record.**
+  - `SentAction` gains an approval and a Uniswap swap: the token sold and its
+    amount, the token bought and the signed minimum.
+  - A CoW order is no transaction (no nonce, no signed bytes), so it gets a
+    record of its own instead, from the moment it is signed (*A signed order
+    is live until it is proven dead*).
   - The status screen (9) says "Swap of 100 USDC for at least 4.2 LINK" and,
     once known, the amount received.
   - On Uniswap that amount comes from the verified receipt: the token's
@@ -128,6 +130,15 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
     "Not simulated".
   - A swap whose run fails is not executed. The owners replace it at its
     nonce (a new proposal, or a rejection), as for any Safe transaction.
+- **A minimum that has fallen behind the market is said at Execute.** Over
+  hours the rate can move in the Safe's favour. A sandwich can then take
+  everything between what the swap returns now and the signed minimum, not
+  only the tolerance.
+  - When the verified run returns more than the minimum by over the
+    tolerance, Execute says how much the swap leaves open and offers to
+    propose it again with a fresh minimum.
+  - Whether it may still be executed as signed is the owner's decision
+    (*Open questions*).
 
 ## Uniswap (built first)
 
@@ -209,7 +220,9 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
   the testnet feeds and the test pools do not track each other, so there the
   hint says that and no more. It never changes an amount.
 - **MEV.** The transaction sits in the public mempool, where it can be
-  sandwiched by up to the tolerance.
+  sandwiched by up to the tolerance. That bound holds for an account's swap,
+  quoted moments before it is sent. A Safe's swap can lose more (*A Safe's
+  swap*).
   - On Sepolia this does not matter. On mainnet, once it is allowed, the
     review says so.
   - A private relay (Flashbots Protect, MEV Blocker) is an HTTP endpoint no
@@ -301,21 +314,28 @@ CoW's estimate is net of its fee. Uniswap's quote is not: there the account
 pays the gas in ETH on top. So the two are compared net.
 
 - **The Uniswap net** is the verified Uniswap quote less that swap's expected
-  network fee (its estimate × the Normal level's fee), converted into the
-  bought token by a verified quote of that much WETH. That conversion is a
-  pool's answer for an exact amount, not a price.
+  network fee, converted into the bought token by a verified quote of that
+  much WETH.
+  - The expected fee is the swap's gas estimate × (the next base fee + the
+    Normal level's tip). It is not the fee cap, which would overstate it.
+  - The conversion is a pool's answer for an exact amount, not a price.
   - When the bought token is ETH or WETH, nothing is converted.
   - When there is no route to convert through, the Uniswap net is the quote
-    itself. CoW is then held to the stricter floor, and a small swap goes to
-    Uniswap.
-- **The floor** is the Uniswap net × (1 − tolerance).
-- **CoW is used when its estimate reaches the floor.** The order's
-  `buyAmount` is then max(CoW's estimate × (1 − tolerance), the floor).
-  - CoW's servers can therefore make an order fail to fill, but never fill
-    it below the floor.
-  - An estimate below the floor means that, by CoW's own account, Uniswap
-    gives more. The swap then goes to Uniswap at once, rather than through
-    an order that waits out its validity.
+    itself. CoW is then held to the stricter comparison, and a small swap
+    goes to Uniswap.
+  - When the fee is more than the swap returns, the net is zero or less. No
+    floor stands then, so the swap goes to Uniswap, whose review says that
+    the fee is more than the swap buys.
+- **CoW is used when its estimate is at least the Uniswap net.** The order's
+  `buyAmount` is then CoW's estimate × (1 − tolerance).
+  - Every order keeps its whole tolerance: an order signed at CoW's own
+    estimate would most likely not fill, and its swap would wait out its
+    validity before falling back.
+  - **The floor** is the Uniswap net × (1 − tolerance), and the signed
+    minimum is never below it. CoW's servers can therefore make an order
+    fail to fill, but never fill it below the floor.
+  - An estimate below the Uniswap net means that, by CoW's own account,
+    Uniswap gives more. The swap then goes to Uniswap at once.
 - **A pair with no Uniswap route** has no floor, only CoW's estimate.
   Whether to offer it signed on that estimate alone, with a warning, or not
   to offer it on CoW at all, is the owner's decision (*Open questions*).
@@ -331,7 +351,7 @@ The venue is chosen for each swap when its review is made.
   - cannot be decoded;
   - is refused (no liquidity, an unsupported token, the account
     deny-listed);
-  - or falls below the floor.
+  - or falls below the Uniswap net.
 
   The swap also goes to Uniswap when the account sells native ETH, until
   CoW's ETH-flow contract is pinned (*Later on CoW*).
@@ -356,6 +376,10 @@ could swap the same tokens twice.
 - **Send and a new swap hold back what a live order may still take** of the
   sold token, as they do for a transfer not mined yet
   (docs/embedding-myotis.md, *Sending*).
+  - The hold-back ends once a finalized block's timestamp is past `validTo`,
+    or an invalidation is finalized: after that the order can take nothing.
+  - Whether it filled does not matter for the hold-back, because the balance
+    already shows any fill.
 - **An order is proven dead in one of two ways, each decided only at a
   finalized block**, so that no reorganization can bring a fill back:
   - *Expired.* Take the last block whose timestamp is at or below `validTo`.
@@ -370,6 +394,10 @@ could swap the same tokens twice.
 
     Zero and no such `Trade` prove the order never filled. Both reads wait
     until that block is finalized.
+
+    This holds only for an invalidation mined at or before `validTo`. Mined
+    later, a settlement may already have freed the storage of an order that
+    filled, so the expired route decides instead.
 - **An off-chain cancellation through the API proves nothing**: a solver may
   already hold the order. It is not built.
 - **The outcomes.**
@@ -529,8 +557,10 @@ on issue #69 until answered.
    minutes, 5 proposed, decided at a finalized block (about 13 more minutes
    on Sepolia). Or a margin of a few blocks in place of finality, which is
    faster and wrong only after a deeper reorganization.
-5. **A Safe's swap deadline.** 24 hours proposed, long enough to collect the
-   signatures; the minimum guards the rate meanwhile.
+5. **A Safe's swap deadline, and a minimum that has fallen behind.** 24 hours
+   proposed, long enough to collect the signatures. At Execute, when the swap
+   returns more than its minimum by over the tolerance: warn and offer to
+   propose it again (proposed), or refuse to execute it as signed?
 6. **Uniswap v4 hooks.** Pools without hooks only, or pinned hooks?
 7. **CoW's data-source ruling.** What it may learn, what the app data says
    (nothing beyond the required fields, proposed), and whether to keep the
