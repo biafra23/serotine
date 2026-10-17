@@ -1,4 +1,4 @@
-package eth.serotine.ui.home
+package eth.serotine.ui.components
 
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei

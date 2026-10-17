@@ -1,9 +1,11 @@
 package eth.serotine.data.account
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import kotlinx.coroutines.CancellationException
@@ -32,16 +34,20 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * [AccountRepository] kept in the file at [path], so the accounts survive a restart:
- * addresses, kinds and labels, never key material. [path] is a plain string, so no
- * file-system library type leaves this module.
+ * addresses, kinds, labels and how each is held, never key material. [path] is a plain
+ * string, so no file-system library type leaves this module.
  *
  * Writing: the whole list, as one versioned JSON document, into a temporary file of its own
  * that is then moved over the file in one step. A crash during a write leaves the previous
  * list. A power loss in that moment can do worse: kotlinx-io exposes no fsync, so the
  * rename can reach the disk before the data, and the next start then finds a damaged file
- * (below). Each add reads the file again first. One process writes the file: Android runs
- * one, and the desktop host holds a per-user instance lock; were a second one to write it,
- * it could lose a change only within that one add.
+ * (below). Each change reads the file again first. One process writes the file: Android
+ * runs one, and the desktop host holds a per-user instance lock; were a second one to write
+ * it, it could lose a change only within that one change.
+ *
+ * Format 2 records each account's custody. A format-1 file, written before watched accounts
+ * existed, held only accounts added from a recovery phrase, so its entries read as
+ * [AccountCustody.InKeyStore]; the next change writes the file as format 2.
  *
  * Reading, which never destroys or hides the stored list:
  * - no file: an empty list;
@@ -85,26 +91,60 @@ class FileAccountRepository(
         if (stale()) lock.withLock { if (stale()) state.value = load() }
     }
 
-    override suspend fun add(account: Account): AccountAdd = lock.withLock {
+    override suspend fun add(account: Account): AccountAdd = change(AccountAdd.NotSaved) { accounts ->
+        if (accounts.any { it.address == account.address }) {
+            Decision(AccountAdd.AlreadyPresent)
+        } else {
+            Decision(AccountAdd.Added, accounts + account)
+        }
+    }
+
+    override suspend fun rename(address: Address, label: String): AccountChange =
+        change(AccountChange.NotSaved) { accounts ->
+            val index = accounts.indexOfFirst { it.address == address }
+            if (index < 0) {
+                Decision(AccountChange.NotFound)
+            } else {
+                val renamed = accounts[index].copy(label = label)
+                Decision(AccountChange.Changed, accounts.toMutableList().apply { set(index, renamed) })
+            }
+        }
+
+    override suspend fun remove(address: Address): AccountChange = change(AccountChange.NotSaved) { accounts ->
+        if (accounts.none { it.address == address }) {
+            Decision(AccountChange.NotFound)
+        } else {
+            Decision(AccountChange.Changed, accounts.filterNot { it.address == address })
+        }
+    }
+
+    /** What a change makes of the list: the [answer], and the list to store, or none to store nothing. */
+    private class Decision<R>(val answer: R, val next: List<Account>? = null)
+
+    /**
+     * Reads the file again under the lock and lets [decide] make the change on what it holds,
+     * then stores the result; [notSaved] when the file cannot be read or written.
+     */
+    private suspend fun <R> change(notSaved: R, decide: (List<Account>) -> Decision<R>): R = lock.withLock {
         val current = when (val read = load()) {
             is AccountList.Unreadable -> {
                 state.value = read
-                return AccountAdd.NotSaved
+                return notSaved
             }
             // A notice that the stored list was set aside outlives later reads of the new file.
             is AccountList.Loaded -> read.copy(damagedListSetAside = read.damagedListSetAside || setAsideBefore())
         }
         state.value = current
-        if (current.accounts.any { it.address == account.address }) return AccountAdd.AlreadyPresent
-        val next = current.copy(accounts = current.accounts + account)
+        val decision = decide(current.accounts)
+        val next = decision.next ?: return decision.answer
         // Not cancellable: a write that completes must also be what everyone observes, or a
         // caller cancelled mid-move would leave the file and the observed list apart.
         withContext(NonCancellable) {
-            if (write(next.accounts)) {
-                state.value = next
-                AccountAdd.Added
+            if (write(next)) {
+                state.value = current.copy(accounts = next)
+                decision.answer
             } else {
-                AccountAdd.NotSaved
+                notSaved
             }
         }
     }
@@ -130,7 +170,8 @@ class FileAccountRepository(
             return@withContext AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT)
         }
         val accounts = try {
-            STRICT.decodeFromString(StoredAccounts.serializer(), text).accounts.map { it.toAccount() }
+            val stored = STRICT.decodeFromString(StoredAccounts.serializer(), text)
+            stored.accounts.map { it.toAccount(stored.version) }
         } catch (e: Exception) {
             null
         }
@@ -181,11 +222,35 @@ class FileAccountRepository(
     private class StoredAccounts(val version: Int, val accounts: List<StoredAccount>)
 
     @Serializable
-    private class StoredAccount(val address: String, val kind: String, val label: String) {
-        constructor(account: Account) : this(account.address.hex, account.kind.name, account.label)
+    private class StoredAccount(
+        val address: String,
+        val kind: String,
+        val label: String,
+        /** [WATCHED] or [IN_KEY_STORE]; absent in format 1, whose accounts all came from a recovery phrase. */
+        val custody: String? = null,
+    ) {
+        constructor(account: Account) : this(
+            account.address.hex,
+            account.kind.name,
+            account.label,
+            when (account.custody) {
+                AccountCustody.Watched -> WATCHED
+                AccountCustody.InKeyStore -> IN_KEY_STORE
+            },
+        )
 
-        /** Throws on anything [Account] would not accept: the whole file is then damaged. */
-        fun toAccount(): Account = Account(Address.of(address), AccountKind.valueOf(kind), label)
+        /** Throws on anything [Account] would not accept, in a file of [version]: the whole file is then damaged. */
+        fun toAccount(version: Int): Account = Account(
+            Address.of(address),
+            AccountKind.valueOf(kind),
+            label,
+            when {
+                version == 1 && custody == null -> AccountCustody.InKeyStore
+                custody == WATCHED -> AccountCustody.Watched
+                custody == IN_KEY_STORE -> AccountCustody.InKeyStore
+                else -> error("an account without a known custody")
+            },
+        )
     }
 
     /** Just the version, read leniently, to tell a newer format from a damaged file. */
@@ -193,7 +258,10 @@ class FileAccountRepository(
     private class StoredVersion(val version: Int = FORMAT_VERSION)
 
     private companion object {
-        const val FORMAT_VERSION = 1
+        /** 2 since watched accounts: each entry records its custody. */
+        const val FORMAT_VERSION = 2
+        const val WATCHED = "watched"
+        const val IN_KEY_STORE = "key-store"
         val RETRY_INTERVAL = 5.seconds
         val STRICT = Json
         val LENIENT = Json { ignoreUnknownKeys = true }

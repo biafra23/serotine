@@ -200,6 +200,17 @@ its KDoc and returns it as a result the UI shows as state.
     never trusted. (The tag names the kind, not the device: another phone's
     envelope passes this check and then fails as a wrong password.) A
     damaged envelope of the account being imported is sealed again.
+- **Deletion.** `delete(address)` deletes the account's envelope when the
+  account is removed from the wallet; the use case removes the account from
+  the list first, so a failure in between leaves a key without an account
+  (importing the phrase again finds it), never an account whose key is gone.
+  It asks for no password: it takes nothing from someone who could clear the
+  app's data anyway. It is a plain file delete, so the ciphertext may stay on
+  the storage until the blocks are reused. With the last envelope the wallet
+  password goes too, and the next import sets a new one. (Proposed with part 2
+  of `feature/wallet-ux`: whether deleting a key needs the password first is
+  the owner's ruling, recorded in CLAUDE.md, before that branch reaches
+  `main`.)
 - **The password.**
   - The first import sets the wallet password: at least eight characters,
     refused by the adapter otherwise. Every later import must give the same

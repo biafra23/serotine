@@ -89,7 +89,7 @@ consumer developed against an unreleased engine, Myotis's
   verified", "No light client"), never an older amount. Why a node is down is
   written to stderr, with the engine's own log when it refused to start.
 - **The light client's progress.** `EngineLightClient` drives the
-  `LightClient` port, and Home shows it in a strip under the top bar:
+  `LightClient` port, and the Assets tab shows it in a strip under the top bar:
   - starting;
   - bootstrapping from the checkpoint;
   - verifying sync-committee periods (*n of m*);

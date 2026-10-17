@@ -1,11 +1,13 @@
-package eth.serotine.ui.home
+package eth.serotine.ui.assets
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BalanceReading
@@ -15,6 +17,9 @@ import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LightClientItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -34,7 +39,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class HomeViewModelTest {
+class AssetsViewModelTest {
 
     private val repository = FakeAccountRepository()
     private val balances = FakeBalances()
@@ -42,7 +47,7 @@ class HomeViewModelTest {
     private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
     private var now = 1_792_100_000L
 
-    private fun viewModel() = HomeViewModel(
+    private fun viewModel() = AssetsViewModel(
         ObserveAccounts(repository),
         ObserveNativeBalance(balances),
         ObserveLightClient(lightClient),
@@ -50,8 +55,19 @@ class HomeViewModelTest {
         clock = { now },
     )
 
-    private val treasury = Account(Address.of("0x" + "ab".repeat(20)), AccountKind.SAFE, "Treasury")
-    private val daily = Account(Address.of("0x" + "cd".repeat(20)), AccountKind.EOA, "Daily")
+    private val treasury =
+        Account(Address.of("0x" + "ab".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
+    private val daily = Account(Address.of("0x" + "cd".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+
+    private fun treasuryItem(balance: String, verified: Boolean) =
+        AccountItem(
+            "Treasury",
+            Eip55.format(treasury.address),
+            AccountKind.SAFE,
+            Control.WATCH_ONLY,
+            balance,
+            verified,
+        )
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -63,19 +79,19 @@ class HomeViewModelTest {
         val viewModel = viewModel()
 
         // Nothing collects yet: WhileSubscribed has not started the upstream.
-        assertEquals(HomeUiState.Loading("Sepolia", starting), viewModel.uiState.value)
+        assertEquals(AssetsUiState.Loading("Sepolia", starting), viewModel.uiState.value)
 
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
-        assertEquals(HomeUiState.Ready("Sepolia", starting, emptyList()), viewModel.uiState.value)
+        assertEquals(AssetsUiState.Ready("Sepolia", starting, emptyList()), viewModel.uiState.value)
 
         repository.accounts = listOf(treasury)
         runCurrent()
         assertEquals(
-            HomeUiState.Ready(
+            AssetsUiState.Ready(
                 "Sepolia",
                 starting,
-                listOf(AccountItem("Treasury", treasury.address.hex, AccountKind.SAFE, "Syncing…", false)),
+                listOf(treasuryItem("Syncing…", verified = false)),
             ),
             viewModel.uiState.value,
         )
@@ -83,8 +99,8 @@ class HomeViewModelTest {
         balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("2500000000000000000"), 9)
         runCurrent()
         assertEquals(
-            AccountItem("Treasury", treasury.address.hex, AccountKind.SAFE, "2.5 ETH", true),
-            (viewModel.uiState.value as HomeUiState.Ready).accounts.single(),
+            treasuryItem("2.5 ETH", verified = true),
+            (viewModel.uiState.value as AssetsUiState.Ready).accounts.single(),
         )
     }
 
@@ -98,7 +114,7 @@ class HomeViewModelTest {
         balances.of(daily.address).value = BalanceReading.Unavailable(BalanceReading.Reason.UNPROVEN)
         runCurrent()
 
-        val rows = (viewModel.uiState.value as HomeUiState.Ready).accounts
+        val rows = (viewModel.uiState.value as AssetsUiState.Ready).accounts
         assertEquals(listOf("Syncing…", "Not verified"), rows.map { it.balance })
     }
 
@@ -140,7 +156,7 @@ class HomeViewModelTest {
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
 
-        val row = (viewModel.uiState.value as HomeUiState.Ready).accounts.single()
+        val row = (viewModel.uiState.value as AssetsUiState.Ready).accounts.single()
         assertEquals("Checking…", row.balance)
         assertEquals(false, row.balanceVerified)
     }
@@ -154,7 +170,7 @@ class HomeViewModelTest {
         repository.list.value = AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT)
         runCurrent()
         assertEquals(
-            HomeUiState.ListUnavailable(
+            AssetsUiState.ListUnavailable(
                 "Sepolia",
                 starting,
                 "Your account list was saved by a newer version of Serotine. Update the app to see it.",
@@ -167,14 +183,14 @@ class HomeViewModelTest {
         runCurrent()
         assertEquals(
             "Your saved account list was damaged and has been set aside. Add your accounts again.",
-            (viewModel.uiState.value as HomeUiState.Ready).notice,
+            (viewModel.uiState.value as AssetsUiState.Ready).notice,
         )
 
         // Accounts added since the list was set aside: the notice stays, beside their balances.
         repository.list.value = AccountList.Loaded(listOf(treasury), damagedListSetAside = true)
         balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 9)
         runCurrent()
-        val ready = viewModel.uiState.value as HomeUiState.Ready
+        val ready = viewModel.uiState.value as AssetsUiState.Ready
         assertEquals(
             "Your saved account list was damaged and has been set aside. Add your accounts again.",
             ready.notice,
@@ -189,26 +205,53 @@ class HomeViewModelTest {
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
-        assertEquals(HomeUiState.ListUnavailable::class, viewModel.uiState.value::class)
+        assertEquals(AssetsUiState.ListUnavailable::class, viewModel.uiState.value::class)
 
         balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("2500000000000000000"), 9)
         repository.list.value = AccountList.Loaded(listOf(treasury))
         runCurrent()
 
-        val ready = viewModel.uiState.value as HomeUiState.Ready
+        val ready = viewModel.uiState.value as AssetsUiState.Ready
         assertEquals(listOf("2.5 ETH"), ready.accounts.map { it.balance })
         assertEquals(null, ready.notice)
     }
 
     @Test
-    fun accountItemShortensTheAddressForTheRow() {
+    fun accountItemShowsTheChecksummedAddressShortenedForTheRow() {
         val item = AccountItem.from(
-            Account(Address.of("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"), AccountKind.EOA, "Vitalik"),
+            Account(
+                Address.of("0xd8da6bf26964af9d7eed9e03e53415d37aa96045"),
+                AccountKind.EOA,
+                "Vitalik",
+                AccountCustody.InKeyStore,
+            ),
             BalanceReading.Syncing,
             Network.SEPOLIA,
         )
-        assertEquals("0xd8da…6045", item.shortAddress)
-        assertEquals("0xd8da6bf26964af9d7eed9e03e53415d37aa96045", item.address)
+        assertEquals("0xd8dA…6045", item.shortAddress)
+        assertEquals("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", item.address)
+        assertEquals(Control.FULL_CONTROL, item.control)
+    }
+
+    @Test
+    fun aSafeIsNeverShownWithMoreControlThanIsKnown() {
+        val item = AccountItem.from(
+            Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Family", AccountCustody.InKeyStore),
+            null,
+            Network.SEPOLIA,
+        )
+        assertEquals(Control.WATCH_ONLY, item.control)
+    }
+
+    @Test
+    fun aWatchedAccountIsWatchOnly() {
+        val item = AccountItem.from(
+            Account(Address.of("0x" + "ee".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched),
+            null,
+            Network.SEPOLIA,
+        )
+        assertEquals(Control.WATCH_ONLY, item.control)
+        assertEquals("Checking…", item.balance)
     }
 
     private class FakeAccountRepository : AccountRepository {
@@ -220,6 +263,8 @@ class HomeViewModelTest {
             }
         override fun observeAccounts(): Flow<AccountList> = list
         override suspend fun add(account: Account): AccountAdd = error("not used by this test")
+        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
     }
 
     private class FakeLightClient : LightClient {

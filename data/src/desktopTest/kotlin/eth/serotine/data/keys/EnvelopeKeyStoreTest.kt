@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
@@ -61,6 +62,34 @@ class EnvelopeKeyStoreTest {
             directory.list()!!.toList(),
             "one envelope, no temporary left behind",
         )
+    }
+
+    @Test
+    fun deletingAKeyRemovesItsEnvelopeAndWithTheLastOneThePassword() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.importMnemonic(abandon, password)
+
+        assertEquals(KeyDeletion.Deleted, store.delete(hardhatAddress))
+        assertFalse(envelopeOf(hardhatAddress).exists())
+        assertEquals(KeyDeletion.NotFound, store.delete(hardhatAddress))
+        assertEquals(KeyStoreDescription.Ready(passwordSet = true, KeyProtection.PASSWORD_ONLY), store.describe())
+
+        assertEquals(KeyDeletion.Deleted, store.delete(abandonAddress))
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
+        // No envelope left to check a password against: the next import sets a new one.
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, WalletPassword("another password")))
+    }
+
+    @Test
+    fun aKeyThatCannotBeDeletedIsReportedAndStaysStored() = runTest {
+        val store = store()
+        // What the file system refuses to delete: a non-empty directory under the envelope's name.
+        envelopeOf(hardhatAddress).mkdirs()
+        envelopeOf(hardhatAddress).resolve("in-the-way").writeText("x")
+
+        assertEquals(KeyDeletion.Failed, store.delete(hardhatAddress))
+        assertTrue(envelopeOf(hardhatAddress).exists())
     }
 
     @Test

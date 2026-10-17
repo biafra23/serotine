@@ -1,9 +1,19 @@
-package eth.serotine.ui.home
+package eth.serotine.ui.components
 
 import eth.serotine.domain.repository.LightClientStatus
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.ExperimentalTime
 
 /**
- * The light client's state as the Home screen's status strip shows it: [text] always;
+ * The light client's state as the status strip shows it (Assets, Settings): [text] always;
  * [progress] (0 to 1) when there is a fraction to show, null for an open-ended wait; and
  * [working] while the client is on its way to serving verified reads.
  */
@@ -70,9 +80,28 @@ data class LightClientItem(val text: String, val progress: Float?, val working: 
             seconds < 7_200 -> "${seconds / 60} min"
             else -> "${seconds / 3_600} h"
         }
+    }
+}
 
-        /** 11922744 → "11,922,744". */
-        private fun grouped(number: Long): String =
-            number.toString().reversed().chunked(3).joinToString(",").reversed()
+/**
+ * These states as the strip shows them, dated by [clock] (unix seconds): re-dated every
+ * second while one shows a head block's age, unchanged otherwise.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun Flow<LightClientStatus>.asItems(clock: () -> Long): Flow<LightClientItem> = flatMapLatest { status ->
+    val dated = status is LightClientStatus.Synced && status.headTimestamp != null ||
+        status is LightClientStatus.WaitingForProofPeers && status.headTimestamp != null
+    val ticks = if (dated) everySecond else flowOf(Unit)
+    ticks.map { LightClientItem.from(status, clock()) }
+}
+
+/** Now, in unix seconds: the clock the screens date the head block against. */
+@OptIn(ExperimentalTime::class)
+fun epochSecondsNow(): Long = Clock.System.now().epochSeconds
+
+private val everySecond = flow {
+    while (true) {
+        emit(Unit)
+        delay(1.seconds)
     }
 }

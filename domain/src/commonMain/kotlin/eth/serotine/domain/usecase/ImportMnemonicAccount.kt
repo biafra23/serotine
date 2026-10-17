@@ -1,6 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
@@ -22,7 +23,7 @@ import kotlinx.coroutines.withContext
  * then the account list, so an account never appears whose key was not stored; and the two
  * as one step that a cancelled caller does not cut in half, since a stored key whose
  * account was never added would set the wallet password behind the user's back. The account
- * is an [AccountKind.EOA] named "Account N": N is one more than the number of accounts,
+ * is an [AccountKind.EOA] held in the key store, named "Account N": N is one more than the number of accounts,
  * raised past any such name already taken. One of the two use cases the [Mnemonic] passes
  * through (CLAUDE.md, *Trust*): it hands the words and the [WalletPassword] to the key store
  * and keeps nothing of either.
@@ -55,7 +56,7 @@ class ImportMnemonicAccount(
                 is AccountList.Unreadable -> return MnemonicImport.ListNotSaved
             }
             current.firstOrNull { it.address == address }?.let { return MnemonicImport.AlreadyAdded(it) }
-            val account = Account(address, AccountKind.EOA, nextFreeLabel(current))
+            val account = Account(address, AccountKind.EOA, nextFreeLabel(current), AccountCustody.InKeyStore)
             when (accounts.add(account)) {
                 AccountAdd.Added -> return MnemonicImport.Added(account, protection)
                 AccountAdd.NotSaved -> return MnemonicImport.ListNotSaved

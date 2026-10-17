@@ -30,6 +30,15 @@ interface KeyStore {
      * inside this call. Never throws.
      */
     suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport
+
+    /**
+     * Deletes the key of [address], the envelope its seed is sealed in, so that nothing on
+     * this device can sign for it any more ([KeyDeletion.Deleted]); [KeyDeletion.NotFound]
+     * when there is none. Once the last one is gone no wallet password is set: the next
+     * import sets one. No password is asked: deleting takes nothing from someone who could
+     * clear the app's data anyway, and the recovery phrase restores the key. Never throws.
+     */
+    suspend fun delete(address: Address): KeyDeletion
 }
 
 /** The outcome of [KeyStore.describe]. */
@@ -81,4 +90,16 @@ sealed interface KeyImport {
 
     /** The envelope could not be written. Nothing was stored. */
     data object NotSaved : KeyImport
+}
+
+/** The outcome of [KeyStore.delete]. */
+sealed interface KeyDeletion {
+    /** The key is gone from this device. */
+    data object Deleted : KeyDeletion
+
+    /** This device holds no key for the address. */
+    data object NotFound : KeyDeletion
+
+    /** The key could not be deleted (the file system refused); it is still stored. */
+    data object Failed : KeyDeletion
 }
