@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class Bip39Test {
 
@@ -61,5 +62,28 @@ class Bip39Test {
     @Test
     fun aPassphraseThatNeedsNormalizationIsRefusedNotStretched() {
         assertFailsWith<IllegalArgumentException> { Bip39.seed(List(12) { "abandon" }, passphrase = "café") }
+    }
+
+    @Test
+    fun entropyBecomesTheWordsOfTheReferenceVectors() {
+        // trezor/python-mnemonic vectors.json: the entropy of the first four English vectors.
+        mapOf(
+            "00".repeat(16) to List(11) { "abandon" }.joinToString(" ") + " about",
+            "7f".repeat(16) to "legal winner thank year wave sausage worth useful legal winner thank yellow",
+            "80".repeat(16) to "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+            "ff".repeat(16) to "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+        ).forEach { (entropy, words) ->
+            assertEquals(words, Bip39.wordsOf(entropy.fromHex()).joinToString(" "))
+            assertTrue(TestVectors.bip39.any { it.mnemonic == words }, "a published vector")
+        }
+    }
+
+    @Test
+    fun theWordsOfAnyEntropyAreAValidMnemonic() {
+        repeat(32) {
+            val words = Bip39.wordsOf(kotlin.random.Random.nextBytes(16))
+            assertEquals(12, words.size)
+            assertEquals(null, Bip39.problemWith(words))
+        }
     }
 }

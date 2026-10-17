@@ -13,6 +13,7 @@ import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.KeyStoreDescription
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -64,6 +65,8 @@ internal class ListAccountRepository(vararg initial: Account) : AccountRepositor
  * fail; an import stores the key of [importing], after [importDelayMillis].
  */
 internal class RecordingKeyStore(stored: List<Address>) : KeyStore {
+    override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
     val stored = stored.toMutableSet()
     val deleted = mutableListOf<Address>()
     var failDeletes = false

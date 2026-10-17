@@ -1,13 +1,19 @@
 package eth.serotine.data.keys
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.Signer
+import eth.serotine.domain.repository.Signing
+import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +29,7 @@ import kotlinx.io.readString
 import kotlinx.serialization.json.Json
 
 /**
- * [KeyStore] in the key adapter: each imported seed sealed in its own envelope ([Envelope]),
+ * [KeyStore] and [Signer] in the key adapter: each imported seed sealed in its own envelope ([Envelope]),
  * one file per account (`<address>.seed`) under [directory]. [hardware] is this device's
  * hardware secret, or null on a computer without one; [withoutHardware] is then what the key
  * store reports, [KeyProtection.PASSWORD_ONLY] or, on a computer whose TPM is not used yet,
@@ -37,14 +43,16 @@ import kotlinx.serialization.json.Json
  * ([EnvelopeCrypto.writeDurably]); keeping [directory] out of backups and device transfers
  * (rule 8) is the host's part: Android's backup rules, the desktop's backup exclusion. A
  * file that cannot be read, or that this device must not open, is reported and passed over,
- * never trusted. Work runs on [dispatcher]; calls are serialized within the process.
+ * never trusted. It makes Create account's new mnemonics ([newMnemonic]) and signs with a
+ * stored account's key ([sign]), the one place that key exists. Work runs on [dispatcher];
+ * calls are serialized within the process.
  */
 class EnvelopeKeyStore(
     private val directory: String,
     private val hardware: HardwareSecret?,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val withoutHardware: KeyProtection = KeyProtection.PASSWORD_ONLY,
-) : KeyStore {
+) : KeyStore, Signer {
 
     init {
         require(withoutHardware in PASSWORD_ONLY_KINDS) { "without hardware the protection is password-only" }
@@ -95,6 +103,102 @@ class EnvelopeKeyStore(
                 }
             }
         }
+
+    override suspend fun newMnemonic(): NewMnemonic = withContext(dispatcher) {
+        if (!EnvelopeCrypto.available()) return@withContext NewMnemonic.Unavailable
+        val entropy = EnvelopeCrypto.randomBytes(NEW_MNEMONIC_ENTROPY_BYTES)
+        try {
+            // The words leave the adapter under the mnemonic exception, as the one type they travel as.
+            NewMnemonic.Created(Mnemonic(Bip39.wordsOf(entropy).joinToString(" ")))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            report("a new mnemonic could not be made (${e::class.simpleName})")
+            NewMnemonic.Unavailable
+        } finally {
+            entropy.fill(0)
+        }
+    }
+
+    /**
+     * Signs [digest] with the first account's key of the seed sealed under [account]'s name,
+     * which must derive [account]: the seed, the key and the password's bytes exist only in
+     * this call, in byte arrays zeroed before it returns (rule 7). secp256k1 runs in native code
+     * (libsecp256k1); its signature has a low s, and the recovery id is found by recovering the
+     * public key it names.
+     */
+    override suspend fun sign(account: Address, digest: Digest, password: WalletPassword): Signing =
+        lock.withLock {
+            withContext(dispatcher) {
+                if (!EnvelopeCrypto.available()) return@withContext Signing.Unavailable
+                var passwordBytes = ByteArray(0)
+                try {
+                    val file = Path(directory, "${account.hex}$SEED_SUFFIX")
+                    if (!SystemFileSystem.exists(file)) return@withContext Signing.NoKey
+                    // A lost hardware key is said, not taken for a wrong password.
+                    if (hardware?.isProvisioned() == false) {
+                        report("the hardware key the envelopes were sealed with is gone")
+                        return@withContext Signing.Unavailable
+                    }
+                    val sealed = read(file) ?: return@withContext Signing.Unavailable
+                    if (!Envelope.canOpen(sealed, hardware, account.hex)) return@withContext Signing.Unavailable
+                    passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
+                    when (val opened = Envelope.open(sealed, passwordBytes, hardware)) {
+                        Envelope.Opened.WrongPassword -> refusedOrDamaged(account, passwordBytes)
+                        Envelope.Opened.Refused, Envelope.Opened.Verified -> Signing.Unavailable
+                        is Envelope.Opened.Seed -> signWith(opened.bytes, account, digest)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // Throwable: libsodium, libsecp256k1 and the key store are native code. Nothing
+                    // of the key path is shown.
+                    report("the signer failed (${e::class.simpleName})")
+                    Signing.Unavailable
+                } finally {
+                    passwordBytes.fill(0)
+                }
+            }
+        }
+
+    /**
+     * The account's envelope refused [password]: a wrong password, or a damaged file, which a
+     * GCM tag cannot tell apart. Another envelope that opens under it, all being under the one
+     * wallet password, says the file is damaged; as the import does, at most two more are asked.
+     */
+    private fun refusedOrDamaged(account: Address, password: ByteArray): Signing {
+        val others = envelopes().filter { it.address != account.hex }.take(MAX_PASSWORD_CHECKS - 1)
+        if (others.none { Envelope.verify(it.sealed, password, hardware) == Envelope.Opened.Verified }) {
+            return Signing.WrongPassword
+        }
+        report("the envelope of ${account.hex} does not open under the wallet password")
+        return Signing.Unavailable
+    }
+
+    /** [digest] signed by the first account's key of [seed], which must derive [account]; zeroes [seed]. */
+    private fun signWith(seed: ByteArray, account: Address, digest: Digest): Signing {
+        var key = ByteArray(0)
+        val message = digest.hex.fromHex()
+        try {
+            key = Bip32.derive(seed, FIRST_ETHEREUM_ACCOUNT)
+            // The envelope's name is the address it was sealed under; the key must be that account's.
+            if (addressOf(key) != account) {
+                report("the envelope of ${account.hex} does not hold its key")
+                return Signing.Unavailable
+            }
+            val compact = Secp256k1.sign(message, key)
+            val publicKey = Secp256k1.pubkeyCreate(key)
+            val recoveryId = (0..1).firstOrNull { id ->
+                Secp256k1.ecdsaRecover(compact, message, id).contentEquals(publicKey)
+            } ?: return Signing.Unavailable
+            return Signing.Signed(
+                Signature(compact.copyOfRange(0, 32).toHex(), compact.copyOfRange(32, 64).toHex(), recoveryId),
+            )
+        } finally {
+            key.fill(0)
+            seed.fill(0)
+        }
+    }
 
     // A plain delete: the file system may keep the bytes until it reuses the blocks, which
     // leaves ciphertext that still needs the password and, on a device with one, the
@@ -256,6 +360,9 @@ class EnvelopeKeyStore(
         val PASSWORD_ONLY_COST = Envelope.Cost(opsLimit = 4, memLimitBytes = 256L * 1024 * 1024)
 
         const val SEED_SUFFIX = ".seed"
+
+        /** 128 bits: a 12-word mnemonic, as the wallets the user may restore it into make. */
+        const val NEW_MNEMONIC_ENTROPY_BYTES = 16
 
         val PASSWORD_ONLY_KINDS = setOf(KeyProtection.PASSWORD_ONLY, KeyProtection.PASSWORD_ONLY_TPM_NOT_USED)
 
