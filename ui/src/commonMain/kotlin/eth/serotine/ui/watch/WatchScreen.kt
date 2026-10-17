@@ -34,6 +34,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.ControlBadge
@@ -244,15 +245,5 @@ private fun SafeCard(safe: Detection.Safe) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         ControlBadge(safe.control)
         Text("Detected from verified code and storage", style = MaterialTheme.typography.labelMedium)
-    }
-}
-
-/** An address with its blockie, after what it is ([what], if said). */
-@Composable
-private fun AddressLine(address: String, what: String? = null) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        Blockie(address, size = 20.dp)
-        Text(shortAddress(address), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
     }
 }

@@ -294,4 +294,3 @@ private fun AccountRow(account: AccountItem) {
         },
     )
 }
-

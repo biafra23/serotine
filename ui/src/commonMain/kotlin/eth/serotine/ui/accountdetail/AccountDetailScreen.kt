@@ -52,7 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
-import eth.serotine.ui.components.Blockie
+import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
@@ -377,16 +377,6 @@ private fun SafeOwners(safe: SafeDetails) {
                 )
             }
         }
-    }
-}
-
-/** An address with its blockie, after what it is ([what], if said). */
-@Composable
-private fun AddressLine(address: String, what: String? = null) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        Blockie(address, size = 20.dp)
-        Text(shortAddress(address), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
     }
 }
 

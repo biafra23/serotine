@@ -266,6 +266,7 @@ class WatchViewModelTest {
                 checkedAt = "Checked at block 9,412,118",
                 // Daily's key is held here: one of the two that must sign.
                 control = Control.CO_SIGNER,
+                threshold = "2/2",
             ),
             viewModel.uiState.value.detection,
         )

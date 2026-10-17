@@ -181,6 +181,7 @@ class WatchViewModel(
             checkedAt = checkedAt(verified),
             control = Control.of(state.control(state.ownersHeld(accounts).size)),
             moduleGuard = state.moduleGuard?.let(Eip55::format),
+            threshold = "${state.threshold}/${state.owners.size}",
         )
 
     /** Why the typed text is no address, once that is clear: not while the user is still typing one. */

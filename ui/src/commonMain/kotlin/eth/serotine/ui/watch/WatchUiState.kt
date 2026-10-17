@@ -40,7 +40,8 @@ sealed interface Detection {
      * A Safe at the EIP-55 [address], verified at the block [checkedAt] names: its [title]
      * ("Safe 1.4.1"), who must sign ([signers]: "2 of 3 owners"), its EIP-55 [owners], its
      * [modules] — each can move its funds without the owners — its [guard] and [moduleGuard]
-     * (null: none), and the [control] the account will get, by the owners' keys held here.
+     * (null: none), the [control] the account will get, by the owners' keys held here, and the
+     * [threshold] badge its blockie carries ("2/3").
      */
     data class Safe(
         val address: String,
@@ -52,11 +53,8 @@ sealed interface Detection {
         val checkedAt: String,
         val control: Control,
         val moduleGuard: String? = null,
-    ) : Detection {
-        /** The threshold of the owners, as a Safe's blockie carries it ("2/3"). */
-        val threshold: String
-            get() = signers.substringBefore(" of ") + "/" + owners.size
-    }
+        val threshold: String = "",
+    ) : Detection
 
     /** A contract that is not a recognised Safe, which cannot be watched. */
     data class Contract(val message: String) : Detection

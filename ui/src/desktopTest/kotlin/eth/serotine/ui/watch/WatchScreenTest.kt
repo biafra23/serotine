@@ -122,6 +122,7 @@ class WatchScreenTest {
                     checkedAt = "Checked at block 9,412,118",
                     control = Control.CO_SIGNER,
                     moduleGuard = "0x6666666666666666666666666666666666666666",
+                    threshold = "2/3",
                 ),
             ),
         )
