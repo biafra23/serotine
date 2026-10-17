@@ -60,6 +60,9 @@ const val ASSETS_LIGHT_CLIENT_TAG = "assets-light-client"
 /** Test tag of the label naming the network the app works on, for UI tests. */
 const val ASSETS_NETWORK_TAG = "assets-network"
 
+/** Test tag of the portfolio's total, for UI tests. */
+const val ASSETS_TOTAL_TAG = "assets-total"
+
 /**
  * Binds [AssetsScreen] to its ViewModel: the only composable that knows the ViewModel
  * exists. Copy is done here, on the platform's clipboard; every other action is
@@ -133,6 +136,7 @@ fun AssetsScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             LightClientStrip(state.lightClient)
+            (state as? AssetsUiState.Ready)?.let { ready -> ready.total?.let { PortfolioTotal(it, ready.totalNote) } }
             (state as? AssetsUiState.Ready)?.notice?.let { notice ->
                 Text(
                     notice,
@@ -144,6 +148,17 @@ fun AssetsScreen(
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Rows(state, act)
             }
+        }
+    }
+}
+
+/** The portfolio's total in the display currency, and what it leaves out (docs/wallet-ux.md, screen 1). */
+@Composable
+private fun PortfolioTotal(total: String, note: String?) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(total, Modifier.testTag(ASSETS_TOTAL_TAG), style = MaterialTheme.typography.headlineMedium)
+        note?.let {
+            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -260,15 +275,24 @@ private fun AccountRow(account: AccountItem) {
             Text(if (account.kind == AccountKind.SAFE) "${account.shortAddress} · Safe" else account.shortAddress)
         },
         trailingContent = {
-            Text(
-                account.balance,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (account.balanceVerified) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    account.balance,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (account.balanceVerified) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                account.value?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
     )
 }

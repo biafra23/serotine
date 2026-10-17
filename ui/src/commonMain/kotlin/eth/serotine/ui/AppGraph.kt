@@ -4,9 +4,11 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
+import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
@@ -15,22 +17,28 @@ import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
+import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.SetDisplayCurrency
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.assets.AssetsViewModel
+import eth.serotine.ui.currency.CurrencyViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
@@ -62,6 +70,10 @@ class AppGraph(
     private val tokenMetadata: TokenMetadata,
     /** The tokens the user added and hid. */
     private val userTokens: UserTokens,
+    /** Prices from the network's pinned Chainlink feeds, verified by that light client. */
+    private val priceFeeds: PriceFeeds,
+    /** The user's choice of display currency. */
+    private val displayCurrency: DisplayCurrencySetting,
     /** What is at an address, verified by that light client. */
     private val addressKinds: AddressKinds,
     /** That light client's own state. */
@@ -74,21 +86,13 @@ class AppGraph(
 
     fun assetsViewModel(): AssetsViewModel =
         AssetsViewModel(
-            ObserveAccounts(accounts),
-            ObserveNativeBalance(nativeBalances),
+            ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
             ObserveLightClient(lightClient),
             network,
         )
 
     fun accountDetailViewModel(address: Address): AccountDetailViewModel =
-        AccountDetailViewModel(
-            address,
-            ObserveAccount(accounts),
-            ObserveNativeBalance(nativeBalances),
-            ObserveTokenHoldings(knownTokens(), tokenBalances),
-            SetTokenHidden(userTokens),
-            network,
-        )
+        AccountDetailViewModel(address, ObserveAccount(accounts), accountValue(), SetTokenHidden(userTokens), network)
 
     fun receiveViewModel(address: Address): ReceiveViewModel =
         ReceiveViewModel(address, ObserveAccount(accounts), network)
@@ -103,7 +107,10 @@ class AppGraph(
         WatchViewModel(ObserveAddressKind(addressKinds), ObserveAccount(accounts), WatchAddress(accounts, addressKinds))
 
     fun settingsViewModel(): SettingsViewModel =
-        SettingsViewModel(ObserveLightClient(lightClient), knownTokens(), network)
+        SettingsViewModel(ObserveLightClient(lightClient), knownTokens(), displayCurrencies(), network)
+
+    fun currencyViewModel(): CurrencyViewModel =
+        CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency))
 
     fun tokensViewModel(): TokensViewModel =
         TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens))
@@ -116,6 +123,16 @@ class AppGraph(
         )
 
     private fun knownTokens() = ObserveKnownTokens(tokenCatalog, userTokens, tokenMetadata)
+
+    private fun displayCurrencies() = ObserveDisplayCurrencies(priceFeeds, displayCurrency)
+
+    private fun accountValue() = ObserveAccountValue(
+        ObserveNativeBalance(nativeBalances),
+        ObserveTokenHoldings(knownTokens(), tokenBalances),
+        ObserveUsdPrice(priceFeeds),
+        displayCurrencies(),
+        network,
+    )
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
         MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))

@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AccountAdd
@@ -15,9 +16,21 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeMetadata
+import eth.serotine.ui.FakeTokenBalances
+import eth.serotine.ui.FakeTokenCatalog
+import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
@@ -47,14 +60,28 @@ class AssetsViewModelTest {
     private val lightClient = FakeLightClient()
     private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
     private var now = 1_792_100_000L
+    private val feeds = FakeFeeds()
+    private val currency = MemoryCurrencySetting()
 
-    private fun viewModel() = AssetsViewModel(
-        ObserveAccounts(repository),
-        ObserveNativeBalance(balances),
-        ObserveLightClient(lightClient),
-        Network.SEPOLIA,
-        clock = { now },
-    )
+    private fun viewModel(): AssetsViewModel {
+        val currencies = ObserveDisplayCurrencies(feeds, currency)
+        val value = ObserveAccountValue(
+            ObserveNativeBalance(balances),
+            ObserveTokenHoldings(
+                ObserveKnownTokens(FakeTokenCatalog(), MemoryUserTokens(), FakeMetadata()),
+                FakeTokenBalances(),
+            ),
+            ObserveUsdPrice(feeds),
+            currencies,
+            Network.SEPOLIA,
+        )
+        return AssetsViewModel(
+            ObservePortfolio(ObserveAccounts(repository), value, currencies),
+            ObserveLightClient(lightClient),
+            Network.SEPOLIA,
+            clock = { now },
+        )
+    }
 
     private val treasury =
         Account(Address.of("0x" + "ab".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
@@ -93,6 +120,8 @@ class AssetsViewModelTest {
                 "Sepolia",
                 starting,
                 listOf(treasuryItem("Syncing…", verified = false)),
+                total = "Checking…",
+                totalNote = "Testnet prices · still checking",
             ),
             viewModel.uiState.value,
         )
@@ -100,8 +129,49 @@ class AssetsViewModelTest {
         balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("2500000000000000000"), 9)
         runCurrent()
         assertEquals(
-            treasuryItem("2.5 ETH", verified = true),
+            treasuryItem("2.5 ETH", verified = true).copy(value = "Checking price…"),
             (viewModel.uiState.value as AssetsUiState.Ready).accounts.single(),
+        )
+    }
+
+    @Test
+    fun aRowIsAlwaysShownInTheCurrencyItsValueWasComputedIn() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(treasury)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 9)
+        feeds.answer("ETH", 2_000.0)
+        feeds.answer("EUR", 1.25)
+        runCurrent()
+        val before = (viewModel.uiState.value as AssetsUiState.Ready).accounts.single().value
+        assertEquals("$2,000.00 · testnet prices", before)
+
+        currency.choose(DisplayCurrency.EUR)
+        runCurrent()
+        val values = (viewModel.uiState.value as AssetsUiState.Ready).accounts.map { it.value }
+        assertEquals(listOf("€1,600.00 · testnet prices"), values, "never $2,000 marked €")
+    }
+
+    @Test
+    fun theHeaderTotalsEveryAccountInTheChosenCurrency() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(treasury, daily)
+        currency.choose(DisplayCurrency.JPY)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("2500000000000000000"), 9)
+        balances.of(daily.address).value = BalanceReading.Verified(Wei.of("500000000000000000"), 9)
+        feeds.answer("ETH", 2_000.0)
+        feeds.answer("JPY", 0.0064) // USD per yen
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AssetsUiState.Ready
+        assertEquals("¥937,500", ready.total)
+        assertEquals("Testnet prices", ready.totalNote)
+        assertEquals(
+            listOf("¥781,250 · testnet prices", "¥156,250 · testnet prices"),
+            ready.accounts.map { it.value },
         )
     }
 

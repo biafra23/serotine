@@ -39,6 +39,7 @@ import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.assets.AccountAction
 import eth.serotine.ui.assets.AssetsRoute
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
@@ -190,7 +191,15 @@ private fun Destinations(graph: AppGraph, navController: NavHostController, modi
             composable(Destination.SETTINGS) {
                 SettingsRoute(
                     viewModel { graph.settingsViewModel() },
+                    onCurrency = { navController.navigate(Destination.CURRENCY) { launchSingleTop = true } },
                     onTokens = { navController.navigate(Destination.TOKENS) { launchSingleTop = true } },
+                )
+            }
+            composable(Destination.CURRENCY) {
+                CurrencyRoute(
+                    viewModel { graph.currencyViewModel() },
+                    onBack = { navController.leave(Destination.CURRENCY) },
+                    onChosen = { navController.leave(Destination.CURRENCY) },
                 )
             }
             composable(Destination.TOKENS) {
@@ -286,6 +295,7 @@ private object Destination {
     const val RENAME = "rename"
     const val REMOVE = "remove"
     const val SETTINGS = "settings"
+    const val CURRENCY = "currency"
     const val TOKENS = "tokens"
     const val ADD_TOKEN = "add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"

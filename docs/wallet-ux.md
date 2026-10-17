@@ -95,7 +95,7 @@ Safe transaction) is a destination that covers the bar until it ends.
      Copy, the control badge.
    - Send and Receive buttons.
    - Sort: Value | Name. Under Value, assets without a price follow the
-     priced ones, by name.
+     priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
      long press opens 5.
    - Footnote: the price source ("Chainlink, testnet prices") and the block
@@ -173,7 +173,11 @@ Safe transaction) is a destination that covers the bar until it ends.
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the
-    ones with a pinned feed on the network (*Prices* below).
+    ones with a pinned feed on the network (*Prices* below): on Sepolia every
+    one but CHF, which has no feed there. A stored choice the network does
+    not offer reads as USD. It is a file of its own
+    (`display-currency.json`), and values only: no amount is entered or
+    signed in it.
 20. **Add token by address**: the contract's address, then its symbol, name
     and decimals read from the contract and labelled as its claim, with the
     monogram icon it will get.
@@ -185,17 +189,23 @@ read through the light client. Applied:
 
 - **A feed table per network**: price id → feed address, the currency it
   quotes in, its decimals and its heartbeat, pinned in code from Chainlink's
-  feed directory. A token names its price id; a token without one has no
-  price. The pins say what is expected; the contract is the source of truth.
-- **A price is a verified call** of `latestRoundData()` and `decimals()`
-  together, at the verified head (one Multicall3 call where it can be). The
-  feed address is a proxy whose aggregator Chainlink can swap, and
-  `decimals()` answers from the aggregator, so it is read every time: one
-  that differs from the pinned value is no price, and the screen that would
-  show the price says why. A non-positive answer is no price. An
-  `updatedAt` older than the feed's heartbeat, measured against the verified
-  head's block timestamp and never the device's clock, is stale: shown with
-  its age and left out of totals, like no price.
+  feed directory (`ChainlinkFeeds`). A token names its price id; a token
+  without one has no price. The pins say what is expected; the contract is
+  the source of truth. On Sepolia the table has ETH, BTC, LINK, USDC, EUR,
+  GBP and JPY, each against USD; UNI has no Sepolia feed, so it has no price,
+  and neither has a token the user adds.
+- **A price is a verified call** of `latestRoundData()` and `decimals()`,
+  each at the verified head it is made at (two calls for now; one Multicall3
+  call once its code hash is pinned, as for balances). The feed address is a
+  proxy whose aggregator Chainlink can swap, and `decimals()` answers from the
+  aggregator, so it is read every time: one that differs from the pinned
+  value is no price, and the row that would show the price says why ("No
+  price: its feed changed"). A non-positive answer is no price, and so is a
+  round dated more than two minutes after the head. An `updatedAt` older than
+  the feed's heartbeat and ten minutes' grace (a heartbeat update lands a
+  little after the heartbeat), measured against the time of the verified
+  head the read started at and never the device's clock, is stale: shown
+  with its age and left out of totals, like no price.
 - **Every price goes through USD.** A feed quoted in another currency is
   converted with that currency's own USD feed first (an X/ETH answer through
   ETH/USD). A display currency other than USD divides the USD value by its
@@ -208,9 +218,20 @@ read through the light client. Applied:
   `updatedAt` on the path is the age shown and the one the stale rule
   applies to, totals included.
 - **Totals add only priced holdings**, and say how many assets they left out.
+  A held asset with no price, or a stale one, is left out and counted; a
+  balance or price that cannot be verified right now is counted as "not
+  verified"; one still being read makes the total incomplete ("still
+  checking"). When the display currency's own rate has no price, that is
+  said once ("No EUR rate"), not as a missing price on every asset. An
+  amount of the display currency itself (ETH shown in ETH) is its own
+  value, with no feed asked. A portfolio total adds the accounts valued in
+  the currency chosen, so a change of currency never sums two of them, and
+  counts what it leaves out per account: one unpriced token held in two
+  accounts is two holdings left out.
 - **On Sepolia every fiat value says "testnet prices"**: Chainlink's Sepolia
   feeds are testnet feeds, and Sepolia's tokens have no market value of
-  their own.
+  their own. Each row's value carries it ("$3,000.00 · testnet prices"), and
+  each total the note right under it.
 - **The trust is in the oracle.** The light client proves what the aggregator
   contract says; it does not make the oracle right. That is the reason a
   price never becomes a signed amount.

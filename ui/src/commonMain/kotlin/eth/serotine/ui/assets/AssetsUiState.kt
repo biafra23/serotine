@@ -2,13 +2,16 @@ package eth.serotine.ui.assets
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.components.valuationText
 
 /**
  * Everything the Assets screen renders, as one immutable value: the screen is a pure
@@ -28,13 +31,17 @@ sealed interface AssetsUiState {
     /**
      * The managed accounts, possibly none; one row per address (the list keys rows on it).
      * [notice] tells the user, display-ready, when the stored list was damaged and set aside,
-     * so these are only the accounts added since.
+     * so these are only the accounts added since. [total] is the portfolio's in the display
+     * currency ("$3,250.00", or "Checking…"; null with no accounts) and [totalNote] what it
+     * leaves out ("Testnet prices · 1 asset without a price").
      */
     data class Ready(
         override val network: String,
         override val lightClient: LightClientItem,
         val accounts: List<AccountItem>,
         val notice: String? = null,
+        val total: String? = null,
+        val totalNote: String? = null,
     ) : AssetsUiState {
         init {
             require(accounts.distinctBy { it.address }.size == accounts.size) {
@@ -59,7 +66,8 @@ sealed interface AssetsUiState {
  * One account as the list shows it: display strings only, derived once from the domain
  * model. [address] is EIP-55 checksummed. [balance] is a verified amount ("0.5 ETH") when
  * [balanceVerified], and otherwise says why there is none ("Checking…", "Syncing…", "Not
- * verified"): never a number from anywhere else.
+ * verified"): never a number from anywhere else. [value] is that balance in the display
+ * currency, or why it has none ("No price"; null while the balance is not verified).
  */
 data class AccountItem(
     val label: String,
@@ -68,6 +76,7 @@ data class AccountItem(
     val control: Control,
     val balance: String,
     val balanceVerified: Boolean,
+    val value: String? = null,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -75,14 +84,16 @@ data class AccountItem(
 
     companion object {
         /**
-         * [account] with its [balance], or with none read yet ([balance] null); [address] is
-         * its EIP-55 form, which a caller that re-renders the row per balance computes once.
+         * [account] with its [balance], or with none read yet ([balance] null), and that
+         * balance's [value] with the currency it is in (null before it is valued); [address]
+         * is its EIP-55 form, which a caller that re-renders the row per balance computes once.
          */
         fun from(
             account: Account,
             balance: BalanceReading?,
             network: Network,
             address: String = Eip55.format(account.address),
+            value: Pair<Valuation?, DisplayCurrency>? = null,
         ): AccountItem = AccountItem(
             label = account.label,
             address = address,
@@ -90,6 +101,7 @@ data class AccountItem(
             control = Control.of(account.kind, account.custody),
             balance = balance?.let { balanceText(it, network) } ?: "Checking…",
             balanceVerified = balance is BalanceReading.Verified,
+            value = value?.let { (valuation, currency) -> valuationText(valuation, currency, network) },
         )
     }
 }

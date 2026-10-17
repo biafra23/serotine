@@ -10,6 +10,7 @@ import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
+import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.domain.model.Network
@@ -93,6 +94,8 @@ private fun openWallet(dataDir: File) {
                 tokenBalances = node.tokenBalances,
                 tokenMetadata = node.tokenMetadata,
                 userTokens = FileUserTokens(dataDir.resolve("tokens.json").path),
+                priceFeeds = node.priceFeeds,
+                displayCurrency = FileDisplayCurrency(dataDir.resolve("display-currency.json").path),
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
                 network = Network.SEPOLIA,

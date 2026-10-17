@@ -4,9 +4,10 @@ import kotlin.jvm.JvmInline
 
 /**
  * An ERC-20 token the wallet shows balances of: its contract [address], the [symbol],
- * [name] and [decimals] it is listed with, and the key of its bundled [icon] (null: drawn as
- * a monogram). For a built-in token those are pinned and were checked against the contract
- * when it was listed (CLAUDE.md, *Data sources*).
+ * [name] and [decimals] it is listed with, the key of its bundled [icon] (null: drawn as a
+ * monogram) and the [priceId] of its price feed (null: it has no price). For a built-in token
+ * those are pinned and were checked against the contract when it was listed (CLAUDE.md,
+ * *Data sources*); a token the user adds has neither icon nor price.
  */
 data class Token(
     val address: Address,
@@ -14,6 +15,7 @@ data class Token(
     val name: String,
     val decimals: Int,
     val icon: String?,
+    val priceId: PriceId? = null,
 ) {
     init {
         require(symbol.isNotBlank()) { "a token needs a symbol" }
