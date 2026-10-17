@@ -272,6 +272,50 @@ broadcast keeps its signed bytes (`SignedTransfer`), and a retry
 (`RebroadcastTransfer`) sends those bytes again rather than quoting anew, which
 could take the next nonce while the first is still on its way.
 
+The quote and the send are not a transfer's alone: `CallQuoter` and
+`signAndSend` (internal to `:domain`'s use cases) quote and send any
+transaction from an account the wallet holds, a Safe transaction's approval
+or execution included, with the same nonce record, fees, estimate, verified
+run and receipt check on a rejected retry. `SentTransfers` records what each
+one did (`SentAction`: a transfer, or a Safe transaction's approval or
+execution), and its nonce and most cost hold a later one back whatever it did.
+
+## Safe transactions
+
+A Safe transaction is the domain's too (`SafeTx`, its EIP-712 hash, the
+`execTransaction` and `approveHash` calldata; docs/wallet-ux.md, *Co-signing
+a Safe transaction*). What the engine adds:
+
+- **The Safe's state** is the verified inspection above (`VerifiedAddressKinds`):
+  owners, threshold and nonce, each storage-proven at one block. A request,
+  a signature or an execution is checked against it.
+- **Approvals on chain** are `VerifiedSafeApprovals` (`SafeApprovals`): the
+  Safe's own getter `approvedHashes(owner, hash)` as a verified call
+  (`callDetailed`, no sender) at the head, labelled with the block the engine
+  names. A word other than zero is an approval; a revert or an answer that is
+  not one word is no answer. The mapping is two levels deep, which
+  `getStorageProof` cannot name, so it is a call rather than a proof.
+- **What is simulated, and how.** No state override is used, though the API
+  has them (`callWithOverrides`, gated by `supportsStateOverrides()`): an
+  answer under an override is the caller's hypothesis, not a chain fact.
+  - A proposal (`ProposeSafeTx`) runs the Safe's call alone, as a verified
+    call *from the Safe's address* at the head (`TransactionInputs.simulate`).
+    Not run there: the Safe's own checks (the owners' signatures do not exist
+    yet; the nonce) and its guard. An engine that will not run a call from an
+    address with code answers `Simulation.Refused`, and the proposal says it
+    is not simulated rather than failing.
+  - An execution (`QuoteSafeExecution`) runs all of it: `execTransaction`
+    with the signatures it will carry, as a verified call from the executing
+    account, estimated with `estimateGasDetailed` as any transaction is. The
+    Safe's signature and nonce checks, its guard and the call itself are in
+    that run. It must return `true`: `false` is a call that failed under a
+    non-zero `safeTxGas` or gas price, which would still use up the nonce.
+  - An approval (`QuoteSafeApproval`) runs `approveHash` from the owner, which
+    the Safe reverts for anyone else.
+- **The co-signing medium is no engine read.** A signing request travels as
+  text between devices (`JsonSigningRequestCodec`), and signatures are
+  checked with libsecp256k1 (`Secp256k1Recovery`), not with the engine.
+
 ## Network upgrades
 
 A hard fork the engine's build does not implement is the one thing that ends

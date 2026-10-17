@@ -39,7 +39,9 @@ interface TransactionInputs {
 
     /**
      * The same transaction run as a verified call from [from] against the head: what the
-     * review shows before anything is signed, and a revert stops there.
+     * review shows before anything is signed, and a revert stops there. [from] may be a
+     * contract's address — a Safe's call run as the Safe makes it — and an engine that will not
+     * run a call from one answers [Simulation.Refused].
      */
     suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation
 }
