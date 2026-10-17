@@ -82,8 +82,10 @@ sealed interface SentAction {
     data class SafeApproval(val request: SigningRequest) : SentAction
 
     /**
-     * The execution (`execTransaction`) of [request]'s Safe transaction with the signatures it
-     * carries, sent to its Safe: what it moves is the Safe's, and the account pays the fee.
+     * The execution (`execTransaction`) of [request]'s Safe transaction, sent to its Safe: what it
+     * moves is the Safe's, and the account pays the fee. [request] is the transaction as it was
+     * queued; the confirmations it was executed with (as many as the threshold, approvals among
+     * them) are in the signed bytes.
      */
     data class SafeExecution(val request: SigningRequest) : SentAction
 }

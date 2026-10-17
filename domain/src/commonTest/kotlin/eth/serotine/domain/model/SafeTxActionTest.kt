@@ -87,6 +87,11 @@ class SafeTxActionTest {
             SafeTxAction.ContractCall(bob, UInt256.ZERO, "694e80c3", 36),
             SafeTxAction.of(safe, call(bob, data = threshold.hexToBytes())),
         )
+        // And a token's transfer called on the Safe itself is no token transfer.
+        assertEquals(
+            SafeTxAction.ContractCall(safe, UInt256.ZERO, "a9059cbb", 68),
+            SafeTxAction.of(safe, call(safe, data = Erc20.transferData(bob, UInt256.ONE))),
+        )
     }
 
     @Test

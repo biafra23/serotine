@@ -189,6 +189,51 @@ class SafeTxSigningTest {
     }
 
     @Test
+    fun aForgedSignatureInTheOwnersNameNeitherStandsForItNorKeepsItFromSigning() = runTest {
+        val strangers = world.request(usdcTransfer(4), world.stranger).signatures.single().signature
+        val forged = SigningRequest.of(
+            Network.SEPOLIA,
+            world.safe,
+            usdcTransfer(4),
+            listOf(SafeSignature.Ecdsa(world.alice.address, strangers)),
+        )
+
+        val signed = assertIs<SafeTxSigning.Signed>(sign(forged, world.alice.address, unlock))
+
+        assertEquals(world.request(usdcTransfer(4), world.alice.address), signed.request)
+    }
+
+    @Test
+    fun aSignatureOfAnOwnerRemovedSinceIsNeitherSharedNorShown() = runTest {
+        world.queue.save(world.request(usdcTransfer(4), world.carol))
+        world.state = world.state.copy(owners = listOf(world.alice.address, world.bob.address))
+
+        val signed = assertIs<SafeTxSigning.Signed>(sign(world.request(usdcTransfer(4)), world.alice.address, unlock))
+        val queued = assertIs<SafeTxQueueReading.Loaded>(
+            ObserveSafeTxQueue(world.queue, world.observeSafe, Network.SEPOLIA)(world.safe).first(),
+        )
+
+        // Shared with Carol's, another device would refuse the whole request.
+        assertEquals(listOf(world.alice.address), signed.request.signers)
+        assertEquals(listOf(world.alice.address), queued.transactions.single().request.signers)
+    }
+
+    @Test
+    fun aRequestQueuedFarAheadDoesNotPushAProposalBehindIt() = runTest {
+        // Imported with no signature at an absurd nonce: it can only run once the gap is filled.
+        world.queue.save(world.request(usdcTransfer(1_000, amount = 4_000_000)))
+        world.queue.save(world.request(usdcTransfer(4)))
+
+        val proposal = assertIs<SafeTxProposing.Proposed>(
+            propose(world.safe, world.recipient, TransferAsset.Erc20Token(usdc), UInt256.of(2_000_000)),
+        ).proposal
+
+        assertEquals(5, proposal.request.nonce)
+        assertEquals(1, proposal.queuedAhead)
+        assertEquals(UInt256.of(1_500_000), proposal.queuedAmount, "the one at 4 alone")
+    }
+
+    @Test
     fun aSignatureThatRecoversToAnotherAddressIsNeverKept() = runTest {
         world.signer.signAs = world.bob.address
 

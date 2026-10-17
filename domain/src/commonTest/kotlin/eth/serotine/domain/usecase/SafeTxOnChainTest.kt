@@ -200,6 +200,26 @@ class SafeTxOnChainTest {
     }
 
     @Test
+    fun aSafeTxGasWithoutAGasPriceIsNotExecutedHere() = runTest {
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        fun withGas(safeTxGas: Long, gasPrice: Long) = SafeTx(
+            payment.to, payment.value, ByteArray(0), SafeOperation.CALL, UInt256.of(safeTxGas), UInt256.ZERO,
+            UInt256.of(gasPrice), Address.ZERO, Address.ZERO, nonce = 4,
+        )
+
+        // Its call gets what gas is left, may fail without reverting, and the run has more gas.
+        assertEquals(
+            SafeExecutionQuoting.Refused(SafeTxRefusal.SafeTxGasUncheckable),
+            quoteExecution(world.request(withGas(50_000, 0), world.carol), world.alice.address, FeeLevel.NORMAL),
+        )
+        assertEquals(emptyList(), world.inputs.simulated)
+        // With a gas price, its call gets exactly its safeTxGas whatever the limit: the run tells.
+        assertIs<SafeExecutionQuoting.Quoted>(
+            quoteExecution(world.request(withGas(50_000, 1), world.carol), world.alice.address, FeeLevel.NORMAL),
+        )
+    }
+
+    @Test
     fun anExecutionOrApprovalHoldsItsNonceAndItsCostLikeATransfer() = runTest {
         world.inputs.simulation = Simulation.Succeeded(executed, 100)
         val first = assertIs<SafeExecutionQuoting.Quoted>(

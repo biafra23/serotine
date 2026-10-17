@@ -15,6 +15,7 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SafeTxQueue
 import eth.serotine.domain.repository.SafeTxQueueList
 import eth.serotine.domain.repository.SignatureRecovery
@@ -92,6 +93,14 @@ sealed interface SafeTxRefusal {
     /** [confirmations] of the Safe's owners confirm it, fewer than its [threshold]. */
     data class ThresholdNotMet(val confirmations: Int, val threshold: Int) : SafeTxRefusal
 
+    /**
+     * Its `safeTxGas` is not zero and its gas price is: the Safe then gives its call whatever gas
+     * is left, and a call that runs out does not revert the execution — it returns false and the
+     * nonce is used up. The verified run has more gas than the execution is sent with, so it
+     * cannot tell; this wallet does not execute it (another may, with a gas limit of its choice).
+     */
+    data object SafeTxGasUncheckable : SafeTxRefusal
+
     /** The light client has no verified head yet. */
     data object Syncing : SafeTxRefusal
 
@@ -160,6 +169,13 @@ internal fun SignatureRecovery.valid(request: SigningRequest, owners: List<Addre
     request.signatures.filter { it.owner in owners && recover(request.hash, it.signature) == it.owner }
 
 /**
+ * [request] with only the signatures [valid] keeps: what is shown and shared of it, so that a
+ * signature of an owner removed since it was queued never makes another device refuse it.
+ */
+internal fun SignatureRecovery.validOnly(request: SigningRequest, owners: List<Address>): SigningRequest =
+    SigningRequest.of(request.network, request.safe, request.tx, valid(request, owners))
+
+/**
  * Imports a signing request that came from another device as text (CLAUDE.md, *Data sources*:
  * no off-chain service), and checks it against the chain before anything of it is believed:
  * the text decodes strictly ([SigningRequestCodec]) for the network the app works on; the Safe
@@ -197,7 +213,9 @@ class ImportSigningRequest(
         recovery.check(request, state.owners)?.let { return SigningRequestImport.Refused(it) }
         queue.prune(request.safe, state.nonce)
         val saved = queue.save(request)
-        return SigningRequestImport.Imported(DecodedSafeTx.of(saved ?: request), safe, saved = saved != null)
+        // Shown and shared with what the Safe accepts now of what was queued here before.
+        val queued = recovery.validOnly(saved ?: request, state.owners)
+        return SigningRequestImport.Imported(DecodedSafeTx.of(queued), safe, saved = saved != null)
     }
 }
 
@@ -249,13 +267,16 @@ class SignSafeTx(
         fun refused(refusal: SafeTxRefusal) = SafeTxSigning.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         if (request.tx.operation == SafeOperation.DELEGATECALL) return refused(SafeTxRefusal.DelegateCall)
-        if (owner in request.signers) return refused(SafeTxRefusal.AlreadySigned(owner))
         val state = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (owner !in state.owners) return refused(SafeTxRefusal.NotAnOwner(owner))
+        // Of the signatures the request carries, only the checked ones count: a forged one in the
+        // owner's name neither stands for it nor keeps it from signing.
+        val valid = recovery.valid(request, state.owners)
+        if (valid.any { it.owner == owner }) return refused(SafeTxRefusal.AlreadySigned(owner))
         val signature = when (val signing = signer.sign(owner, request.hash, unlock)) {
             is Signing.Signed -> signing.signature
             else -> return SafeTxSigning.NotSigned(signing)
@@ -263,14 +284,13 @@ class SignSafeTx(
         // The key store's signature is checked like a co-signer's: one that recovers to another
         // address is never kept, nor shared.
         if (recovery.recover(request.hash, signature) != owner) return refused(SafeTxRefusal.BadSignature(owner))
-        // What is queued is checked: of the signatures the request carried, the current owners'
-        // that recover to them, with this one.
-        val valid = recovery.valid(request, state.owners)
+        // What is queued is checked: the carried signatures that count, with this one.
         val signed = SigningRequest.of(request.network, request.safe, request.tx, valid)
             .withSignatures(listOf(SafeSignature.Ecdsa(owner, signature)))
         queue.prune(request.safe, state.nonce)
         val saved = queue.save(signed)
-        return SafeTxSigning.Signed(saved ?: signed, saved = saved != null)
+        // Shown and shared with what the Safe accepts now of what was queued here before.
+        return SafeTxSigning.Signed(recovery.validOnly(saved ?: signed, state.owners), saved = saved != null)
     }
 }
 
@@ -293,7 +313,9 @@ sealed interface SafeTxSigning {
 /**
  * Proposes a transfer from a Safe (docs/wallet-ux.md, screen 17): [amount] of [asset] to a
  * recipient, as a plain call with no refund ([SafeTx.call]) at the Safe's next nonce — its
- * verified nonce, or the one after the last transaction queued for it ([SafeTxQueue]). Nothing
+ * verified nonce, or the first after the transactions queued for it from that nonce on without a
+ * gap ([SafeTxQueue]): one queued further ahead, which cannot run before the gap is filled, moves
+ * nothing, so a request imported at an absurd nonce cannot push every proposal behind it. Nothing
  * is proposed on less than verified state: the Safe's state ([ObserveSafe]) and its balance of
  * the asset, of which what the transactions queued before it may move (decoded from their raw
  * fields) is not this one's to move.
@@ -341,9 +363,12 @@ class ProposeSafeTx(
             val safeNonce = reading.state.nonce
             // A queue that cannot be read leaves the Safe's nonce: two transactions at one nonce
             // are two proposals, only one of which can ever run.
-            val ahead = (queued.await() as? SafeTxQueueList.Loaded)?.requests.orEmpty()
+            val pending = (queued.await() as? SafeTxQueueList.Loaded)?.requests.orEmpty()
                 .filter { it.network == network && it.nonce >= safeNonce }
-            val nonce = maxOf(safeNonce, (ahead.maxOfOrNull { it.nonce } ?: -1) + 1)
+            val taken = pending.mapTo(HashSet()) { it.nonce }
+            var nonce = safeNonce
+            while (nonce in taken) nonce++
+            val ahead = pending.filter { it.nonce < nonce }
             // What the ones before it move of the asset is not this one's to move.
             val queuedAmount = ahead.map { it.moves(token?.address) }.sumOrNull()
                 ?: return@coroutineScope insufficient(token != null)
@@ -485,8 +510,9 @@ sealed interface SafeTxProposing {
 /**
  * The transactions queued for the Safe at [safe] (docs/wallet-ux.md, screen 16, Queue), each
  * decoded here from its raw fields, in nonce order. Once the Safe's state is verified, those whose
- * nonce it has passed are left out, and [SafeTxQueueReading.Loaded.safeNonce] says its nonce.
- * On [network] only.
+ * nonce it has passed are left out, so are the signatures of owners it no longer has (what is
+ * shared from here is then what another device accepts), and
+ * [SafeTxQueueReading.Loaded.safeNonce] says its nonce. On [network] only.
  */
 class ObserveSafeTxQueue(
     private val queue: SafeTxQueue,
@@ -498,15 +524,21 @@ class ObserveSafeTxQueue(
             when (list) {
                 SafeTxQueueList.Unreadable -> SafeTxQueueReading.Unreadable
                 is SafeTxQueueList.Loaded -> {
-                    val safeNonce = (reading as? SafeReading.Verified)?.state?.nonce
+                    val state = (reading as? SafeReading.Verified)?.state
                     val pending = list.requests
-                        .filter { it.network == network && (safeNonce == null || it.nonce >= safeNonce) }
+                        .filter { it.network == network && (state == null || it.nonce >= state.nonce) }
                         .sortedBy { it.nonce }
-                    SafeTxQueueReading.Loaded(pending.map(DecodedSafeTx::of), safeNonce)
+                        // Each was checked when it was queued; an owner removed since counts no more.
+                        .map { request -> state?.let { request.signedByOwnersOf(it) } ?: request }
+                    SafeTxQueueReading.Loaded(pending.map(DecodedSafeTx::of), state?.nonce)
                 }
             }
         }
 }
+
+/** This request with only the signatures of [state]'s current owners. */
+private fun SigningRequest.signedByOwnersOf(state: SafeState): SigningRequest =
+    SigningRequest.of(network, safe, tx, signatures.filter { it.owner in state.owners })
 
 /** One answer of [ObserveSafeTxQueue]. */
 sealed interface SafeTxQueueReading {

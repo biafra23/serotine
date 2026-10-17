@@ -239,10 +239,14 @@ data class SafeExecutionQuote internal constructor(
  * ([CallQuoter]), and its run is the whole of it — the Safe's checks of the signatures and the
  * nonce, its guard, and the call itself — as a verified call from [executor] at the head, with no
  * state override: a revert, or an execution that returns false (a call that failed under a
- * non-zero safeTxGas or gas price, which would use up the nonce), stops it here; so does an
- * execution of it [executor] sent before and no block has yet. Any account the wallet holds can
- * execute: the Safe asks nothing of the sender but the gas. On [network] only; [clock] is in unix
- * seconds.
+ * non-zero gas price, which would use up the nonce), stops it here; so does an execution of it
+ * [executor] sent before and no block has yet. The run has the engine's gas, not the limit the
+ * execution is signed with, which is what the Safe's call gets when it has a `safeTxGas` and no
+ * gas price: such a call could pass the run and fail on chain, so that one is refused
+ * ([SafeTxRefusal.SafeTxGasUncheckable]). With neither, a call that fails reverts the execution,
+ * and the estimate finds a limit it passes at; with a gas price, the call gets exactly its
+ * `safeTxGas` whatever the limit. Any account the wallet holds can execute: the Safe asks
+ * nothing of the sender but the gas. On [network] only; [clock] is in unix seconds.
  */
 class QuoteSafeExecution(
     private val observeSafe: ObserveSafe,
@@ -260,6 +264,9 @@ class QuoteSafeExecution(
         fun refused(refusal: SafeTxRefusal) = SafeExecutionQuoting.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         if (request.tx.operation == SafeOperation.DELEGATECALL) return refused(SafeTxRefusal.DelegateCall)
+        if (!request.tx.safeTxGas.isZero && request.tx.gasPrice.isZero) {
+            return refused(SafeTxRefusal.SafeTxGasUncheckable)
+        }
         val state = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
@@ -346,9 +353,9 @@ sealed interface SafeExecutionQuoting {
  * Sends a reviewed execution ([SafeExecutionQuote]): its transaction signed by the executor's
  * key as [unlock] opens it and broadcast, exactly as quoted, and recorded once a peer took it as
  * the execution of its request ([SentAction.SafeExecution]) — what keeps its nonce, and what its
- * status shows (docs/wallet-ux.md: followed like a send, screen 9). As every transaction this
- * wallet sends ([SendTransfer]); a retry goes through [RebroadcastTransfer]. [clock] is in unix
- * seconds.
+ * status is followed by ([ObserveSentTransfer]: its record and its verified receipt, as a send's;
+ * docs/wallet-ux.md, screen 9). As every transaction this wallet sends ([SendTransfer]); a retry
+ * goes through [RebroadcastTransfer]. [clock] is in unix seconds.
  */
 class ExecuteSafeTx(
     private val signer: Signer,

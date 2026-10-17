@@ -211,7 +211,8 @@ upgrades*).
       rejection) are both listed; only one can ever run.
     - Send from a Safe proposes a transfer (`ProposeSafeTx`): native or
       ERC-20, a plain call with no refund, at the Safe's verified nonce or
-      the one after the last queued. The Safe's balance less what the
+      the first after those queued from it without a gap (one queued far
+      ahead, as an imported request can be, moves nothing). The Safe's balance less what the
       transactions queued before it move must cover it, and the Safe's call
       is run as a verified call from the Safe; the review says when the
       engine would not run it. Nothing is queued until an owner held here
@@ -241,7 +242,13 @@ upgrades*).
       chain · Execute, once the threshold is met. Execute may be sent from
       any account held here, an owner's counting as its own confirmation;
       only the Safe's next nonce can be executed, and an approval or
-      execution sent and not mined yet is not offered again.
+      execution sent and not mined yet is not offered again. A transaction
+      with a `safeTxGas` and no gas price is not executed here: its call
+      could fail at the signed gas limit without reverting, which the
+      verified run cannot test (docs/embedding-myotis.md, *Safe
+      transactions*). What is shown and shared carries the signatures of the
+      Safe's current owners only, so another device never refuses it for an
+      owner removed since.
 
 ### Settings tab
 

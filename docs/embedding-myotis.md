@@ -309,7 +309,15 @@ a Safe transaction*). What the engine adds:
     account, estimated with `estimateGasDetailed` as any transaction is. The
     Safe's signature and nonce checks, its guard and the call itself are in
     that run. It must return `true`: `false` is a call that failed under a
-    non-zero `safeTxGas` or gas price, which would still use up the nonce.
+    non-zero gas price, which would still use up the nonce. The run has the
+    engine's gas, not the limit the execution is signed with (`callDetailed`
+    takes none), and that limit is what the Safe's call gets when the
+    transaction has a `safeTxGas` and no gas price: a call that runs out
+    there returns `false` instead of reverting, so it can pass the run and
+    fail on chain. Such a transaction is not executed here
+    (`SafeTxRefusal.SafeTxGasUncheckable`). With both zero a failing call
+    reverts the execution and the estimate finds a limit it passes at; with a
+    gas price the call gets exactly `safeTxGas` whatever the limit.
   - An approval (`QuoteSafeApproval`) runs `approveHash` from the owner, which
     the Safe reverts for anyone else.
 - **The co-signing medium is no engine read.** A signing request travels as

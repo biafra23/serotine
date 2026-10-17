@@ -65,8 +65,12 @@ sealed interface SafeTxAction {
                 return if (tx.to == safe && tx.value.isZero) Rejection else NativeTransfer(tx.to, tx.value)
             }
             if (tx.value.isZero) {
-                if (tx.to == safe) settingsChange(data)?.let { return SettingsChange(it) }
-                Erc20.transferOf(data)?.let { return TokenTransfer(tx.to, it.to, it.amount) }
+                // A call of the Safe on itself is one of its own functions, or no transfer at all.
+                if (tx.to == safe) {
+                    settingsChange(data)?.let { return SettingsChange(it) }
+                } else {
+                    Erc20.transferOf(data)?.let { return TokenTransfer(tx.to, it.to, it.amount) }
+                }
             }
             return ContractCall(tx.to, tx.value, selector, data.size)
         }
