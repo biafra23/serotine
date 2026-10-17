@@ -50,6 +50,8 @@ class AccountDetailScreenTest {
                 onMessageShown = { events += "message shown" },
                 onSort = { events += "sort $it" },
                 onSegment = { events += "segment $it" },
+                onOpenSafeTx = { events += "open $it" },
+                onImportRequest = { events += "import" },
             )
         }
     }
@@ -219,5 +221,57 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Modules: each can move this Safe's funds without the owners' signatures.").assertExists()
         rule.onNodeWithText("Assets").performClick()
         assertEquals(listOf("segment ASSETS"), events)
+    }
+
+    @Test
+    fun aSafesQueueListsItsTransactionsOpensOneAndImportsARequest() {
+        val hash = "0x" + "3c".repeat(32)
+        show(
+            ready.copy(
+                kind = AccountKind.SAFE,
+                control = Control.CO_SIGNER,
+                safe = SafeDetails.Checking,
+                segment = DetailSegment.QUEUE,
+                queue = SafeQueue.Shown(
+                    listOf(
+                        QueueRow(hash, "Send 40 USDC", null, "Nonce 12 · next", "1 of 2 signatures"),
+                        QueueRow(
+                            "0x" + "4d".repeat(32),
+                            "Delegate call",
+                            null,
+                            "Nonce 13 · 1 before it",
+                            "0 of 2 signatures",
+                            refusal = "Not signed here: a delegate call",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        rule.onNodeWithText("Queue (2)").assertIsDisplayed()
+        rule.onAllNodesWithTag(ACCOUNT_QUEUE_ROW_TAG).assertCountEquals(2)
+        rule.onNodeWithText("Nonce 12 · next · 1 of 2 signatures").assertIsDisplayed()
+        rule.onNodeWithText("Not signed here: a delegate call").assertIsDisplayed()
+        rule.onNodeWithText("Send 40 USDC").performClick()
+        rule.onNodeWithText("Import a request").performClick()
+        // A Safe with an owner held here sends: Send proposes a Safe transaction.
+        rule.onNodeWithText("Send").performClick()
+        assertEquals(listOf("open $hash", "import", "send null"), events)
+    }
+
+    @Test
+    fun aQueueThatCannotBeReadSaysSo() {
+        show(
+            ready.copy(
+                kind = AccountKind.SAFE,
+                safe = SafeDetails.Checking,
+                segment = DetailSegment.QUEUE,
+                queue = SafeQueue.Unavailable("This device's queue of Safe transactions cannot be read right now."),
+            ),
+        )
+
+        rule.onNodeWithText("This device's queue of Safe transactions cannot be read right now.").assertIsDisplayed()
+        rule.onNodeWithText("Queue").assertIsDisplayed()
+        rule.onNodeWithText("Send").assertDoesNotExist()
     }
 }

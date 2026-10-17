@@ -3,6 +3,14 @@ package eth.serotine.ui.send
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.AccountChoice
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
+import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -30,26 +38,33 @@ private val friend =
 private val accounts = listOf(AccountChoice("Savings", SAVINGS), AccountChoice("Treasury", FRIEND))
 
 private val empty = SendUiState.Compose(
-    network = "Sepolia",
-    from = from,
-    assets = listOf(ether, usdc),
-    asset = ether,
-    to = "",
-    accounts = accounts,
-    amount = "",
+    form = TransferForm(
+        network = "Sepolia",
+        from = from,
+        assets = listOf(ether, usdc),
+        asset = ether,
+        to = "",
+        accounts = accounts,
+        amount = "",
+        canMax = true,
+    ),
     fee = FeeLevel.NORMAL,
-    canMax = true,
 )
 
-private val composed = empty.copy(
-    asset = usdc,
-    to = "friend-example.eth",
-    recipient = friend,
-    amount = "40",
-    amountHint = "≈ $40.00 · testnet prices",
-    fee = FeeLevel.FAST,
-    canReview = true,
-)
+private val composed = empty.with(fee = FeeLevel.FAST) {
+    it.copy(
+        asset = usdc,
+        to = "friend-example.eth",
+        recipient = friend,
+        amount = "40",
+        amountHint = "≈ $40.00 · testnet prices",
+        canReview = true,
+    )
+}
+
+/** This form step with [edit] applied to its form and the fee [fee]. */
+private fun SendUiState.Compose.with(fee: FeeLevel = this.fee, edit: (TransferForm) -> TransferForm = { it }) =
+    copy(form = edit(form), fee = fee)
 
 private val review = SendUiState.Review(
     network = "Sepolia",
@@ -128,65 +143,77 @@ private fun SendComposedTokenToNamePreview() = SendPreview(composed)
 @Preview
 @Composable
 private fun SendComposeResolvingPreview() = SendPreview(
-    empty.copy(to = "friend-example.eth", toNote = "Resolving the name with verified calls…", amount = "0.1"),
+    empty.with {
+        it.copy(to = "friend-example.eth", toNote = "Resolving the name with verified calls…", amount = "0.1")
+    },
 )
 
 @Preview
 @Composable
 private fun SendComposeInputErrorsPreview() = SendPreview(
-    empty.copy(
-        to = "0x5aaEb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-        toNote = "The capitals do not match this address's checksum: check it for a typo.",
-        toError = true,
-        amount = "0,5",
-        amountError = "Use a dot for the decimals: 0.5, not 0,5.",
-    ),
+    empty.with {
+        it.copy(
+            to = "0x5aaEb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+            toNote = "The capitals do not match this address's checksum: check it for a typo.",
+            toError = true,
+            amount = "0,5",
+            amountError = "Use a dot for the decimals: 0.5, not 0,5.",
+        )
+    },
 )
 
 @Preview
 @Composable
 private fun SendComposeNameUnavailablePreview() = SendPreview(
-    empty.copy(
-        to = "friend-example.eth",
-        toNote = "The name could not be resolved with verified calls this time.",
-        toError = true,
-        canRetryLookup = true,
-    ),
+    empty.with {
+        it.copy(
+            to = "friend-example.eth",
+            toNote = "The name could not be resolved with verified calls this time.",
+            toError = true,
+            canRetryLookup = true,
+        )
+    },
 )
 
 @Preview
 @Composable
 private fun SendComposeQuotingPreview() = SendPreview(
-    empty.copy(
-        to = SAVINGS,
-        recipient = RecipientItem(SAVINGS, label = "Savings"),
-        amount = "0.1",
-        amountHint = "≈ $250.00 · testnet prices",
-        quoting = true,
-    ),
+    empty.with {
+        it.copy(
+            to = SAVINGS,
+            recipient = RecipientItem(SAVINGS, label = "Savings"),
+            amount = "0.1",
+            amountHint = "≈ $250.00 · testnet prices",
+            quoting = true,
+        )
+    },
 )
 
 @Preview
 @Composable
 private fun SendComposeRefusedPreview() = SendPreview(
-    empty.copy(
-        to = SAVINGS,
-        recipient = RecipientItem(SAVINGS, label = "Savings"),
-        amount = "1.25",
-        amountHint = "≈ $3,125.00 · testnet prices",
-        error = "Not enough ETH for this amount and the most the fee can be: send less, to leave room for the " +
-            "fee. Transfers not mined yet count too.",
-        canReview = true,
-    ),
+    empty.with {
+        it.copy(
+            to = SAVINGS,
+            recipient = RecipientItem(SAVINGS, label = "Savings"),
+            amount = "1.25",
+            amountHint = "≈ $3,125.00 · testnet prices",
+            error = "Not enough ETH for this amount and the most the fee can be: send less, to leave room for the " +
+                "fee. Transfers not mined yet count too.",
+            canReview = true,
+        )
+    },
 )
 
 @Preview
 @Composable
 private fun SendComposeTokenNotFoundPreview() = SendPreview(
-    empty.copy(
-        asset = null,
-        assetNote = "The token asked for is not among this account's tokens: choose another asset.",
-    ),
+    empty.with {
+        it.copy(
+            asset = null,
+            assetNote = "The token asked for is not among this account's tokens: choose another asset.",
+        )
+    },
 )
 
 @Preview

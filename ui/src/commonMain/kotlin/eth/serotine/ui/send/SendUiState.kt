@@ -1,7 +1,13 @@
 package eth.serotine.ui.send
 
-import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.TransferForm
+import eth.serotine.ui.components.UnlockStep
 
 /**
  * Everything the Send screen renders (docs/wallet-ux.md, screens 7 and 8): the transfer being
@@ -27,39 +33,13 @@ sealed interface SendUiState {
     data class CannotSend(override val network: String, val message: String) : SendUiState
 
     /**
-     * Screen 7. [from] is fixed. [assets] are the account's: its native currency and the tokens
-     * it holds, each with its verified balance; [asset] the chosen one (null while the one asked
-     * for is not known yet, or is not among them: [assetNote] says which). [to] is the recipient as
-     * typed; [recipient] what it is once it parses as an address or resolves as a name, and
-     * [toNote] what the field says under it — an error when [toError], with [canRetryLookup] when
-     * asking again may help. [accounts] are the wallet's other accounts, to pick one as the
-     * recipient. [amount] is typed in token units ([amountError] why it is no amount), with
-     * [amountHint] its value in the display currency (display only) and [canMax] when the whole
-     * verified balance can be filled in. [fee] is the chosen level. [quoting] while the quote for
-     * the review is made, and [error] why the last one was refused; [canReview] when it can be
-     * asked for.
+     * Screen 7: the transfer [form] (from, asset, to, amount; docs/wallet-ux.md, screen 7) and the
+     * [fee] level chosen, the one thing Send asks beyond the form.
      */
-    data class Compose(
-        override val network: String,
-        val from: SendFrom,
-        val assets: List<AssetChoice>,
-        val asset: AssetChoice?,
-        val to: String,
-        val accounts: List<AccountChoice>,
-        val amount: String,
-        val fee: FeeLevel,
-        val assetNote: String? = null,
-        val recipient: RecipientItem? = null,
-        val toNote: String? = null,
-        val toError: Boolean = false,
-        val canRetryLookup: Boolean = false,
-        val amountError: String? = null,
-        val amountHint: String? = null,
-        val canMax: Boolean = false,
-        val quoting: Boolean = false,
-        val error: String? = null,
-        val canReview: Boolean = false,
-    ) : SendUiState
+    data class Compose(val form: TransferForm, val fee: FeeLevel) : SendUiState {
+        override val network: String
+            get() = form.network
+    }
 
     /**
      * Screen 8: a verified quote of the transfer. [amount] is exact, in [asset]'s units with its
@@ -104,61 +84,3 @@ sealed interface SendUiState {
     /** Broadcast: [hash] is the transaction's, which the status screen follows. */
     data class Sent(override val network: String, val hash: String) : SendUiState
 }
-
-/** The account sent from: its [label] and EIP-55 [address]. */
-data class SendFrom(val label: String, val address: String)
-
-/**
- * One asset the account can send: its [symbol], [name] and bundled [icon] (null: a monogram), a
- * token's EIP-55 [contract] (null for the network's currency), the [balance] held ("1.5 ETH",
- * or why there is none yet), the block it was verified at ([verifiedAt], "block 9,412,118"), and
- * [warning] for a token the user added whose symbol is a built-in token's.
- */
-data class AssetChoice(
-    val symbol: String,
-    val name: String,
-    val icon: String?,
-    val balance: String,
-    val contract: String? = null,
-    val verifiedAt: String? = null,
-    val warning: String? = null,
-)
-
-/** One of the wallet's accounts, offered as the recipient: its [label] and EIP-55 [address]. */
-data class AccountChoice(val label: String, val address: String)
-
-/**
- * The recipient: its EIP-55 [address], in full wherever it is confirmed; the ENS [name] it was
- * resolved from, if any, and [resolvedAt], the finalized block it was resolved at; its [label]
- * when it is one of the wallet's accounts; and [note], what to know about it ("The account you
- * send from").
- */
-data class RecipientItem(
-    val address: String,
-    val name: String? = null,
-    val resolvedAt: String? = null,
-    val label: String? = null,
-    val note: String? = null,
-)
-
-/**
- * One balance of the verified simulation: [what] ("ETH balance"), [before] and [after] it, and
- * the block the balance before was verified at ([verifiedAt]).
- */
-data class BalanceChange(val what: String, val before: String, val after: String, val verifiedAt: String)
-
-/**
- * How the review is signed: with the wallet [password] being typed, or, when [biometrics], with a
- * fingerprint or face, the password the fallback. [error] says why the last try signed nothing.
- */
-data class UnlockStep(
-    val password: WalletPassword = WalletPassword.EMPTY,
-    val biometrics: Boolean = false,
-    val error: String? = null,
-)
-
-/**
- * A transfer signed but not broadcast: [message] why, and [canRetry] when sending the same signed
- * bytes again may get it out (no peer took it), never a new signature.
- */
-data class NotSentItem(val message: String, val canRetry: Boolean)

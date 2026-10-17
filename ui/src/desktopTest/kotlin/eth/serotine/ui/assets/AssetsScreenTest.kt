@@ -124,6 +124,21 @@ class AssetsScreenTest {
         assertEquals(listOf(AccountAction.Receive(savings.address), AccountAction.Send(daily.address)), actions)
     }
 
+    @Test
+    fun sendFromASafeWithAnOwnerHeldHereProposesASafeTransaction() {
+        val treasury = savings.copy(label = "Treasury", kind = AccountKind.SAFE, control = Control.CO_SIGNER)
+        val watched = daily.copy(label = "Watched Safe", kind = AccountKind.SAFE, control = Control.WATCH_ONLY)
+        show(AssetsUiState.Ready("Sepolia", syncing, listOf(watched, treasury)))
+
+        rule.onNodeWithText("Watched Safe").performTouchInput { longClick() }
+        rule.onNodeWithText("Send").assertDoesNotExist()
+        rule.onNodeWithText("Receive").performClick()
+        rule.onNodeWithText("Treasury").performTouchInput { longClick() }
+        rule.onNodeWithText("Send").performClick()
+
+        assertEquals(listOf(AccountAction.Receive(watched.address), AccountAction.Propose(treasury.address)), actions)
+    }
+
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun aRightClickOpensTheSameMenu() {

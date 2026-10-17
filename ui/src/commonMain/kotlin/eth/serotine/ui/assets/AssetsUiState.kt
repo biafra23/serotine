@@ -99,12 +99,15 @@ data class AccountItem(
         get() = shortAddress(address)
 
     /**
-     * Whether Send is offered: for an account whose key is held here. Never for a watch-only one
-     * (docs/wallet-ux.md, *Control is a badge*), and not yet for a Safe, whose transfers are Safe
-     * transactions its owners sign.
+     * Whether Send is offered: for an account whose key is held here, and for a Safe with owners
+     * held here, whose Send proposes a Safe transaction its owners sign. Never for a watch-only one
+     * (docs/wallet-ux.md, *Control is a badge*).
      */
     val canSend: Boolean
-        get() = kind == AccountKind.EOA && control == Control.FULL_CONTROL
+        get() = when (kind) {
+            AccountKind.EOA -> control == Control.FULL_CONTROL
+            AccountKind.SAFE -> control != Control.WATCH_ONLY
+        }
 
     companion object {
         /**
@@ -147,8 +150,11 @@ sealed interface AccountAction {
     /** Open its detail screen (a tap). */
     data class Open(override val address: String) : AccountAction
 
-    /** Send from it; offered only when [AccountItem.canSend]. */
+    /** Send from it; offered only when [AccountItem.canSend], for an account that is no Safe. */
     data class Send(override val address: String) : AccountAction
+
+    /** Send from a Safe: propose a Safe transaction; offered only when [AccountItem.canSend]. */
+    data class Propose(override val address: String) : AccountAction
 
     /** Show its address to receive to. */
     data class Receive(override val address: String) : AccountAction

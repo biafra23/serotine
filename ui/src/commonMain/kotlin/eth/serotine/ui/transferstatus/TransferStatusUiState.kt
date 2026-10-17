@@ -14,7 +14,8 @@ sealed interface TransferStatusUiState {
     data class Loading(override val network: String) : TransferStatusUiState
 
     /**
-     * The transfer [hash]: what was sent ([sent], null when this device has no record of it), its
+     * The transaction [hash]: what was sent ([sent] for a transfer, [safeTx] for a Safe
+     * transaction's approval or execution; both null when this device has no record of it), its
      * [steps] in order, and [note], what to know about where it stands (a failure, or that it
      * cannot be verified right now), or null. [finished] once its block is finalized.
      */
@@ -25,6 +26,7 @@ sealed interface TransferStatusUiState {
         val steps: List<StatusStep>,
         val note: String? = null,
         val finished: Boolean = false,
+        val safeTx: SafeTxSummary? = null,
     ) : TransferStatusUiState
 }
 
@@ -39,6 +41,13 @@ data class SentSummary(
     val to: String,
     val from: String,
 )
+
+/**
+ * What an approval or an execution of a Safe transaction did, from this device's record: [title]
+ * ("Approval of a Safe transaction"), the EIP-55 [safe] it is of and its [nonce] ("Safe nonce 4"),
+ * and the EIP-55 [from], the account that sent it.
+ */
+data class SafeTxSummary(val title: String, val safe: String, val nonce: String, val from: String)
 
 /** One step of a transfer: its [label] ("Included"), where it stands ([state]) and its [detail] (its block). */
 data class StatusStep(val label: String, val state: StepState, val detail: String?)

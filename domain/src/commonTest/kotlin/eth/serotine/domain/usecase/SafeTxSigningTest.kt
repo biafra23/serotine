@@ -125,6 +125,16 @@ class SafeTxSigningTest {
     }
 
     @Test
+    fun aRequestImportedForOneSafeIsRefusedWhenItIsAnotherSafesAndNothingIsKept() = runTest {
+        val text = world.codec.encode(world.request(usdcTransfer(4), world.carol))
+        val other = Address.of("0x" + "6b".repeat(20))
+
+        assertEquals(SigningRequestImport.Refused(SafeTxRefusal.OtherSafe(world.safe)), import(text, safe = other))
+        assertEquals(emptyList(), world.queue.requests.value)
+        assertIs<SigningRequestImport.Imported>(import(text, safe = world.safe))
+    }
+
+    @Test
     fun aDelegateCallIsShownForWhatItIsAndNeverSigned() = runTest {
         val tx = SafeTx(
             usdc.address, UInt256.ZERO, Erc20.transferData(world.recipient, UInt256.ONE), SafeOperation.DELEGATECALL,

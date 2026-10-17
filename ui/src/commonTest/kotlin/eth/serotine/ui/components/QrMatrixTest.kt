@@ -3,6 +3,8 @@ package eth.serotine.ui.components
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * The QR port against the reference: each vector is what Project Nayuki's QR Code generator
@@ -210,5 +212,17 @@ class QrMatrixTest {
     fun moreThanTheLargestCodeHoldsIsRefused() {
         assertFailsWith<IllegalArgumentException> { QrMatrix.encode(ByteArray(2_954)) }
         assertEquals(40, QrMatrix.encode(ByteArray(2_953), QrMatrix.Ecc.LOW).version)
+    }
+
+    @Test
+    fun whatFitsOneCodeIsWhatEncodeTakes() {
+        assertTrue(QrMatrix.fits(2_331))
+        assertEquals(40, QrMatrix.encode(ByteArray(2_331)).version)
+        assertFalse(QrMatrix.fits(2_332))
+        assertFailsWith<IllegalArgumentException> { QrMatrix.encode(ByteArray(2_332)) }
+        assertTrue(QrMatrix.fits(2_953, QrMatrix.Ecc.LOW))
+        assertFalse(QrMatrix.fits(2_954, QrMatrix.Ecc.LOW))
+        // A USDC transfer with one signature, as docs/wallet-ux.md counts it: a version-21 code.
+        assertTrue(QrMatrix.fits(702))
     }
 }

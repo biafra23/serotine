@@ -63,18 +63,22 @@ class TransferStatusViewModel(
         }
         val failed = (progress as? TransactionProgress.Included)?.succeeded == false ||
             (progress as? TransactionProgress.Finalized)?.succeeded == false
+        val transfer = status.transfer
         return TransferStatusUiState.Shown(
             network = network.displayName,
             hash = hash,
-            sent = status.transfer?.let(::summary),
+            sent = transfer?.let(::summary),
             steps = listOf(signed, broadcast, included, finalized),
             note = when {
                 progress is TransactionProgress.Unavailable -> unavailable(progress.reason)
-                failed ->
+                failed && transfer?.action is SentAction.Transfer ->
                     "It failed: the transfer reverted in its block, so nothing was moved. Its fee is paid all the same."
+                failed -> "It failed: the transaction reverted in its block, so it did nothing. Its fee is paid all " +
+                    "the same."
                 else -> null
             },
             finished = progress is TransactionProgress.Finalized,
+            safeTx = transfer?.let(::safeTxSummary),
         )
     }
 
@@ -84,10 +88,7 @@ class TransferStatusViewModel(
         StatusStep("Included", StepState.FAILED, "In block ${grouped(block)}, its receipt verified: it reverted")
     }
 
-    /**
-     * What [transfer] sent, when it is a transfer: this screen is Send's. A Safe transaction's
-     * approval or execution is not opened here (Send makes none); its screens say what it did.
-     */
+    /** What [transfer] sent, when it is a transfer. */
     private fun summary(transfer: SentTransfer): SentSummary? {
         val sent = transfer.action as? SentAction.Transfer ?: return null
         val (symbol, decimals, icon) = when (val asset = sent.asset) {
@@ -100,6 +101,21 @@ class TransferStatusViewModel(
             symbol = symbol,
             icon = icon,
             to = Eip55.format(sent.to),
+            from = Eip55.format(transfer.account),
+        )
+    }
+
+    /** What [transfer] did, when it is an approval or an execution of a Safe transaction. */
+    private fun safeTxSummary(transfer: SentTransfer): SafeTxSummary? {
+        val (title, request) = when (val action = transfer.action) {
+            is SentAction.SafeApproval -> "Approval of a Safe transaction" to action.request
+            is SentAction.SafeExecution -> "Execution of a Safe transaction" to action.request
+            is SentAction.Transfer -> return null
+        }
+        return SafeTxSummary(
+            title = title,
+            safe = Eip55.format(request.safe),
+            nonce = "Safe nonce ${request.nonce}",
             from = Eip55.format(transfer.account),
         )
     }

@@ -2,7 +2,9 @@ package eth.serotine.ui.transferstatus
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -124,6 +126,42 @@ class TransferStatusViewModelTest {
     }
 
     @Test
+    fun anApprovalOrAnExecutionOfASafeTransactionSaysWhatItIsOfWhichSafeAndNonce() = runTest {
+        val safe = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
+        val request = SigningRequest.of(
+            Network.SEPOLIA,
+            safe,
+            SafeTx.call(Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"), UInt256.of(1), ByteArray(0), 12),
+        )
+        val approval =
+            record.copy(signed = SignedTransfer(byteArrayOf(2, 1, 8)), action = SentAction.SafeApproval(request))
+        val execution =
+            record.copy(signed = SignedTransfer(byteArrayOf(2, 1, 7)), action = SentAction.SafeExecution(request))
+        sent.transfers.value = listOf(approval, execution)
+
+        val approved = viewModel(approval.hash)
+        val executed = viewModel(execution.hash)
+        receipts.of(execution.hash).value = TransactionProgress.Included(9_412_120, succeeded = false)
+        runCurrent()
+
+        assertNull(approved.shown.sent)
+        assertEquals(
+            SafeTxSummary(
+                "Approval of a Safe transaction",
+                "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+                "Safe nonce 12",
+                "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
+            ),
+            approved.shown.safeTx,
+        )
+        assertEquals("Execution of a Safe transaction", executed.shown.safeTx?.title)
+        assertEquals(
+            "It failed: the transaction reverted in its block, so it did nothing. Its fee is paid all the same.",
+            executed.shown.note,
+        )
+    }
+
+    @Test
     fun aReceiptThatCannotBeVerifiedReadsAsSuchAndAMissingRecordStillShowsTheSteps() = runTest {
         val hash = "0x" + "ab".repeat(32)
         val viewModel = viewModel(hash)
@@ -132,6 +170,7 @@ class TransferStatusViewModelTest {
 
         val shown = viewModel.shown
         assertNull(shown.sent, "no record on this device")
+        assertNull(shown.safeTx)
         assertEquals(StatusStep("Signed", StepState.DONE, null), shown.steps[0])
         assertEquals(listOf(StepState.UNKNOWN, StepState.UNKNOWN), shown.steps.drop(2).map { it.state })
         assertEquals("Where it stands cannot be verified right now: the light client refuses to sync.", shown.note)

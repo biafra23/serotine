@@ -37,6 +37,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.assets.AccountAction
@@ -48,6 +49,9 @@ import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
+import eth.serotine.ui.safeimport.SafeImportRoute
+import eth.serotine.ui.safepropose.SafeProposeRoute
+import eth.serotine.ui.safetx.SafeTxRoute
 import eth.serotine.ui.security.SecurityRoute
 import eth.serotine.ui.send.SendRoute
 import eth.serotine.ui.settings.SettingsRoute
@@ -201,9 +205,12 @@ private fun Destinations(
                     onBack = { navController.leave(Destination.ACCOUNT) },
                     onGone = { navController.leave(Destination.ACCOUNT) },
                     onSend = { contract -> navController.send(address.hex, contract) },
+                    onPropose = { contract -> navController.propose(address.hex, contract) },
                     onReceive = { navController.open(AccountAction.Receive(address.hex)) },
                     onRename = { navController.open(AccountAction.Rename(address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(address.hex)) },
+                    onOpenSafeTx = { hash -> navController.openSafeTx(address, hash) },
+                    onImportRequest = { navController.importRequest(address) },
                 )
             }
             withAddress(Destination.RECEIVE, navController) { address ->
@@ -308,6 +315,63 @@ private fun Destinations(
                 LaunchedEffect(Unit) { navController.popBackStack(SEND_ROUTE, inclusive = true) }
             }
         }
+        // A Safe's transactions: proposing one, importing one, and one of them; over the bar too,
+        // as each ends in a signature or a transaction.
+        composable(
+            SAFE_PROPOSE_ROUTE,
+            arguments = listOf(
+                navArgument(ASSET) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val asked = entry.savedStateHandle.get<String>(ASSET)
+            val asset = asked?.let(Address::parse)
+            if (address != null && (asked == null || asset != null)) {
+                SafeProposeRoute(
+                    viewModel = viewModel { graph.safeProposeViewModel(address, asset) },
+                    onBack = { navController.popBackStack(SAFE_PROPOSE_ROUTE, inclusive = true) },
+                    // Signed and queued: the transaction's screen, and back from it to where Send was opened.
+                    onProposed = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_PROPOSE_ROUTE) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SAFE_PROPOSE_ROUTE, inclusive = true) }
+            }
+        }
+        composable(SAFE_IMPORT_ROUTE) { entry ->
+            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            if (address != null) {
+                SafeImportRoute(
+                    viewModel = viewModel { graph.safeImportViewModel(address) },
+                    onBack = { navController.popBackStack(SAFE_IMPORT_ROUTE, inclusive = true) },
+                    onImported = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_IMPORT_ROUTE) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SAFE_IMPORT_ROUTE, inclusive = true) }
+            }
+        }
+        composable(SAFE_TX_ROUTE) { entry ->
+            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val hash = entry.savedStateHandle.get<String>(HASH)?.lowercase()?.takeIf(TRANSACTION_HASH::matches)
+                ?.let(Digest::parse)
+            if (address != null && hash != null) {
+                SafeTxRoute(
+                    viewModel = viewModel { graph.safeTxViewModel(address, hash) },
+                    onBack = { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) },
+                    // Back from the status goes where the transaction was opened from, not to a signed review.
+                    onSent = { sent ->
+                        navController.navigate("${Destination.TRANSFER}/$sent") {
+                            popUpTo(SAFE_TX_ROUTE) { inclusive = true }
+                        }
+                    },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) }
+            }
+        }
         composable(TRANSFER_ROUTE) { entry ->
             val hash = entry.savedStateHandle.get<String>(HASH)?.lowercase()?.takeIf(TRANSACTION_HASH::matches)
             if (hash != null) {
@@ -330,6 +394,7 @@ private fun Destinations(
 private fun NavController.open(action: AccountAction) {
     val route = when (action) {
         is AccountAction.Send -> return send(action.address, asset = null)
+        is AccountAction.Propose -> return propose(action.address, asset = null)
         is AccountAction.Open -> Destination.ACCOUNT
         is AccountAction.Receive -> Destination.RECEIVE
         is AccountAction.Rename -> Destination.RENAME
@@ -354,6 +419,37 @@ private fun NavController.send(address: String, asset: String?) {
     val from = Address.parse(address) ?: return
     val token = asset?.let { Address.parse(it) ?: return }
     navigate("${Destination.SEND}/${from.hex}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
+}
+
+/**
+ * Opens Send from the Safe at [address] — the proposal of a Safe transaction — with the token at
+ * [asset] chosen (null: the network's currency); both in lower case, as identifiers.
+ */
+private fun NavController.propose(address: String, asset: String?) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == SAFE_PROPOSE_ROUTE) return
+    val safe = Address.parse(address) ?: return
+    val token = asset?.let { Address.parse(it) ?: return }
+    navigate("${Destination.SAFE}/${safe.hex}/${Destination.PROPOSE}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
+}
+
+/** Opens Import a request for the Safe at [safe]. */
+private fun NavController.importRequest(safe: Address) {
+    if (currentDestination?.route == SAFE_IMPORT_ROUTE) return
+    navigate("${Destination.SAFE}/${safe.hex}/${Destination.IMPORT}")
+}
+
+/**
+ * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe at [safe]; in place of the
+ * destination [replacing] when set (the proposal or import that led to it), so back from it returns
+ * to where that was opened from.
+ */
+private fun NavController.openSafeTx(safe: Address, hash: String, replacing: String? = null) {
+    if (replacing == null && currentDestination?.route == SAFE_TX_ROUTE) return
+    val digest = Digest.parse(hash) ?: return
+    navigate("${Destination.SAFE}/${safe.hex}/${Destination.SAFE_TX}/0x${digest.hex}") {
+        if (replacing != null) popUpTo(replacing) { inclusive = true }
+    }
 }
 
 /**
@@ -414,6 +510,10 @@ private object Destination {
     const val CREATE_ACCOUNT = "create-account"
     const val SEND = "send"
     const val TRANSFER = "transfer"
+    const val SAFE = "safe"
+    const val SAFE_TX = "tx"
+    const val PROPOSE = "propose"
+    const val IMPORT = "import"
     const val UPDATE_REQUIRED = "update-required"
 }
 
@@ -423,7 +523,7 @@ private const val ADDRESS = "address"
 /** Send's optional route argument: the contract of the token chosen. */
 private const val ASSET = "asset"
 
-/** The transfer status's route argument: the transaction hash. */
+/** The transfer status's and a Safe transaction's route argument: the transaction hash. */
 private const val HASH = "hash"
 
 /** Send from an account, with a token chosen or not. */
@@ -432,7 +532,16 @@ private const val SEND_ROUTE = "${Destination.SEND}/{$ADDRESS}?$ASSET={$ASSET}"
 /** Where a transfer stands, by its hash. */
 private const val TRANSFER_ROUTE = "${Destination.TRANSFER}/{$HASH}"
 
-/** A transaction hash as a route carries it: `0x` and 64 lower-case hex digits. */
+/** A Safe's transaction, by the Safe and the transaction's hash. */
+private const val SAFE_TX_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.SAFE_TX}/{$HASH}"
+
+/** Send from a Safe: a Safe transaction proposed, with a token chosen or not. */
+private const val SAFE_PROPOSE_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.PROPOSE}?$ASSET={$ASSET}"
+
+/** Import a signing request for a Safe. */
+private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.IMPORT}"
+
+/** A transaction hash (a Safe transaction's too) as a route carries it: `0x` and 64 lower-case hex digits. */
 private val TRANSACTION_HASH = Regex("^0x[0-9a-f]{64}$")
 
 /** From this width on, the tabs are a rail at the side instead of a bar at the bottom. */

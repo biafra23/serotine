@@ -5,10 +5,16 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
+import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
+import eth.serotine.domain.model.SafeOperation
+import eth.serotine.domain.model.SafeSignature
+import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
+import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
@@ -23,6 +29,7 @@ import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.SetTokenHidden
@@ -30,9 +37,11 @@ import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
+import eth.serotine.ui.FakeRecovery
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemorySafeTxQueue
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
@@ -51,6 +60,9 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountDetailViewModelTest {
@@ -74,6 +86,8 @@ class AccountDetailViewModelTest {
     private val tokenBalances = FakeTokenBalances()
     private val feeds = FakeFeeds()
     private val currency = MemoryCurrencySetting()
+    private val queue = MemorySafeTxQueue()
+    private val recovery = FakeRecovery()
     private val kind = MutableStateFlow<KindReading>(KindReading.Syncing)
     private val kinds = object : AddressKinds {
         override fun observeKind(address: Address): Flow<KindReading> = kind
@@ -90,6 +104,8 @@ class AccountDetailViewModelTest {
             Network.SEPOLIA,
         ),
         ObserveSafe(kinds, accounts),
+        ObserveSafeTxQueue(queue, ObserveSafe(kinds, accounts), recovery, Network.SEPOLIA),
+        ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
         Network.SEPOLIA,
     )
@@ -348,6 +364,82 @@ class AccountDetailViewModelTest {
     }
 
     @Test
+    fun aSafesQueueListsItsTransactionsInNonceOrderWithTheirSignaturesAndWhatIsNotSignedHere() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, treasury)
+        val carol = Address.of("0x" + "33".repeat(20))
+        val friend = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
+        val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 12, emptyList(), guard = null)
+        kind.value = KindReading.Verified(AddressKind.Safe(state), 9_412_118)
+        // Queued out of order; one signed by Carol, and a delegate call nobody here signs.
+        val usdcTransfer =
+            SafeTx.call(usdc.address, UInt256.ZERO, Erc20.transferData(friend, UInt256.of(40_000_000)), 13)
+        val ether = SafeTx.call(friend, UInt256.of(100_000_000_000_000_000), ByteArray(0), 12)
+        val delegate = SafeTx(
+            to = friend,
+            value = UInt256.ZERO,
+            data = ByteArray(4) { 1 },
+            operation = SafeOperation.DELEGATECALL,
+            safeTxGas = UInt256.ZERO,
+            baseGas = UInt256.ZERO,
+            gasPrice = UInt256.ZERO,
+            gasToken = Address.ZERO,
+            refundReceiver = Address.ZERO,
+            nonce = 14,
+        )
+        val signed = SigningRequest.of(Network.SEPOLIA, treasury.address, usdcTransfer)
+        queue.requests.value = listOf(
+            signed.withSignatures(listOf(SafeSignature.Ecdsa(carol, recovery.sign(carol, signed.hash)))),
+            SigningRequest.of(Network.SEPOLIA, treasury.address, ether),
+            SigningRequest.of(Network.SEPOLIA, treasury.address, delegate),
+            // Its nonce is passed: it is gone from the queue shown.
+            SigningRequest.of(Network.SEPOLIA, treasury.address, SafeTx.call(friend, UInt256.of(1), ByteArray(0), 11)),
+        )
+        val viewModel = viewModel(treasury.address)
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        viewModel.show(DetailSegment.QUEUE)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(DetailSegment.QUEUE, ready.segment)
+        val rows = (ready.queue as SafeQueue.Shown).rows
+        assertEquals(listOf("Send 0.1 ETH", "Send 40 USDC", "Delegate call"), rows.map { it.action })
+        assertEquals(
+            listOf("Nonce 12 · next", "Nonce 13 · 1 before it", "Nonce 14 · 2 before it"),
+            rows.map { it.nonce },
+        )
+        assertEquals(
+            listOf("0 of 2 signatures", "1 of 2 signatures", "0 of 2 signatures").map { "$it on this device" },
+            rows.map { it.signatures },
+        )
+        assertEquals(listOf(null, null, "Not signed here: a delegate call"), rows.map { it.refusal })
+        assertEquals("0x" + SigningRequest.of(Network.SEPOLIA, treasury.address, ether).hash.hex, rows.first().hash)
+        assertEquals(Eip55.format(friend), rows.first().about)
+        assertEquals(null, (ready.queue as SafeQueue.Shown).note)
+        assertTrue(ready.canSend, "an owner is held here: Send proposes a Safe transaction")
+    }
+
+    @Test
+    fun aQueueThatCannotBeReadSaysSoAndAWatchOnlySafeOffersNoSend() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, treasury)
+        val carol = Address.of("0x" + "33".repeat(20))
+        val state = SafeState("1.4.1", l2 = false, listOf(carol), 1, 3, emptyList(), guard = null)
+        kind.value = KindReading.Verified(AddressKind.Safe(state), 9_412_118)
+        queue.unreadable.value = true
+        val viewModel = viewModel(treasury.address)
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertIs<SafeQueue.Unavailable>(ready.queue)
+        assertEquals(Control.WATCH_ONLY, ready.control)
+        assertFalse(ready.canSend)
+    }
+
+    @Test
     fun anAccountThatIsNoSafeHasNoOwnersToShow() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = viewModel()
@@ -355,6 +447,7 @@ class AccountDetailViewModelTest {
         runCurrent()
 
         assertEquals(null, (viewModel.uiState.value as AccountDetailUiState.Ready).safe)
+        assertEquals(null, (viewModel.uiState.value as AccountDetailUiState.Ready).queue)
     }
 
     @Test
@@ -377,6 +470,8 @@ class AccountDetailViewModelTest {
                 Network.SEPOLIA,
             ),
             ObserveSafe(slow, accounts),
+            ObserveSafeTxQueue(queue, ObserveSafe(slow, accounts), recovery, Network.SEPOLIA),
+            ObserveKnownTokens(catalog, userTokens, metadata),
             SetTokenHidden(userTokens),
             Network.SEPOLIA,
         )

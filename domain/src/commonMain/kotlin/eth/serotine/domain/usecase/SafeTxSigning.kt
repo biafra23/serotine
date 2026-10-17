@@ -55,6 +55,12 @@ sealed interface SafeTxRefusal {
     data object NotASafe : SafeTxRefusal
 
     /**
+     * A request for the Safe at [safe], not the one it was imported for: it is imported from that
+     * Safe's own screen, so that a transaction never appears under a Safe it cannot touch.
+     */
+    data class OtherSafe(val safe: Address) : SafeTxRefusal
+
+    /**
      * The transaction's nonce is below the Safe's verified nonce, [safeNonce]: that nonce is used
      * on chain, by this transaction or another, so it can never run.
      */
@@ -216,7 +222,11 @@ class ImportSigningRequest(
     private val queue: SafeTxQueue,
     private val decoding: CoroutineDispatcher = Dispatchers.Default,
 ) {
-    suspend operator fun invoke(text: String): SigningRequestImport {
+    /**
+     * Imports the request [text] carries. With [safe] set, only a request for that Safe is imported:
+     * one for any other is [SafeTxRefusal.OtherSafe] before the chain is asked or anything is kept.
+     */
+    suspend operator fun invoke(text: String, safe: Address? = null): SigningRequestImport {
         val request = when (val decoded = withContext(decoding) { codec.decode(text) }) {
             is SigningRequestDecoding.Decoded -> decoded.request
             SigningRequestDecoding.Malformed -> return SigningRequestImport.Refused(SafeTxRefusal.Malformed)
@@ -225,18 +235,21 @@ class ImportSigningRequest(
             is SigningRequestDecoding.WrongChain ->
                 return SigningRequestImport.Refused(SafeTxRefusal.WrongChain(decoded.chainId))
         }
-        val safe = when (val check = observeSafe.check(request.safe)) {
+        if (safe != null && request.safe != safe) {
+            return SigningRequestImport.Refused(SafeTxRefusal.OtherSafe(request.safe))
+        }
+        val reading = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading
             is SafeCheck.Refused -> return SigningRequestImport.Refused(check.refusal)
         }
-        val state = safe.state
+        val state = reading.state
         if (request.nonce < state.nonce) return SigningRequestImport.Refused(SafeTxRefusal.NonceUsed(state.nonce))
         recovery.check(request, state.owners)?.let { return SigningRequestImport.Refused(it) }
         queue.prune(request.safe, state.nonce)
         val saved = queue.save(request)
         // Shown and shared with what the Safe accepts now of what was queued here before.
         val queued = recovery.validOnly(saved ?: request, state.owners)
-        return SigningRequestImport.Imported(DecodedSafeTx.of(queued), safe, saved = saved != null)
+        return SigningRequestImport.Imported(DecodedSafeTx.of(queued), reading, saved = saved != null)
     }
 }
 

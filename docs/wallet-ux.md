@@ -70,7 +70,11 @@ The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
 one `NavHost`, and switching tabs keeps the user's place (docs/architecture.md). The light
 client's status strip stays at the top of Assets. A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
-Safe transaction) is a destination that covers the bar until it ends. The
+Safe transaction) is a destination that covers the bar until it ends. A
+Safe's transactions are `safe/{address}/tx/{hash}` (17),
+`safe/{address}/propose` (Send from it, with `?asset=` for a token chosen) and
+`safe/{address}/import`: identifiers only, each screen reading the rest
+through its use cases. The
 update screen covers everything, the bar included, while a network upgrade
 has left this version unable to follow Sepolia, and gives way to the Assets
 tab's start when it no longer has (docs/embedding-myotis.md, *Network
@@ -93,11 +97,11 @@ upgrades*).
 2. **FAB fan-out**: Watch address (10) · Import recovery phrase (11) · Create
    account (12) · Create Safe (13). Create Safe appears once the user holds
    an EOA's key: an EOA pays for the deployment.
-3. **Account menu**: Send (absent when watch-only, and for a Safe until Safe
-   transactions exist: its transfers are those) · Receive · Copy address ·
-   Rename · Remove. Removing an account the user holds a key for says that
-   only its recovery phrase brings it back; the key store deletes an envelope
-   only once no remaining account derives from it.
+3. **Account menu**: Send (absent when watch-only; for a Safe, present once an
+   owner of it is held here, and it opens the proposal of a Safe transaction,
+   16) · Receive · Copy address · Rename · Remove. Removing an account the user
+   holds a key for says that only its recovery phrase brings it back; the key
+   store deletes an envelope only once no remaining account derives from it.
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
@@ -208,15 +212,46 @@ upgrades*).
       the Safe's verified nonce on: one whose nonce the Safe has passed is
       gone (`ObserveSafeTxQueue`), and the file drops it at the next
       proposal, import or signature. Two at one nonce (a transfer and its
-      rejection) are both listed; only one can ever run.
-    - Send from a Safe proposes a transfer (`ProposeSafeTx`): native or
+      rejection) are both listed; only one can ever run. Each row is what it
+      does as decoded here ("Send 40 USDC", a token the wallet does not know
+      in its smallest units, an added token that takes a built-in token's
+      symbol marked "Not the built-in USDC: another contract"), with the
+      blockie of the address it names, its nonce and how many run before it
+      ("Nonce 13 · 1 before it"), its signatures against the threshold ("1
+      of 2 signatures on this device": those this device holds and the Safe
+      accepts now; approvals on chain show on 17), and "Not signed here" with
+      the reason for a delegate call or gas terms.
+      While the Safe cannot be verified, the rows say that neither its nonce
+      nor the signatures are checked. A tap opens 17.
+    - Import a request (above the rows): the text another owner's Share
+      request gave, pasted, then `ImportSigningRequest`, for this Safe only (a
+      request for another Safe is refused, `SafeTxRefusal.OtherSafe`, before
+      anything is kept). Every refusal is said under the field; one that
+      passes is queued and 17 opens for it, in place of the import. Scanning
+      its QR code is not built: no camera is wired in yet, and the screen says
+      to paste the text.
+    - Send from a Safe (the header's button and the account menu, both only
+      while an owner of it is held here) proposes a transfer
+      (`ProposeSafeTx`): 7's form, from the Safe, with no fee to choose —
+      whoever executes it pays — native or
       ERC-20, a plain call with no refund, at the Safe's verified nonce or
       the first after those queued from it without a gap (one queued far
       ahead, as an imported request can be, moves nothing). The Safe's balance less what the
       transactions queued before it move must cover it, and the Safe's call
       is run as a verified call from the Safe; the review says when the
-      engine would not run it. Nothing is queued until an owner held here
-      signs it, so a proposal given up leaves no nonce taken.
+      engine would not run it ("Not simulated"). The review shows the Safe
+      transaction decoded here, its Safe nonce and how many queued here run
+      before it, and the Safe's balance before, what those move, and after,
+      with its block. It is proposed again on Refresh, when the screen is shown
+      again, and at the tap that signs it when it is over a minute old, as 8's
+      quote is. An owner held here, chosen when there are several, signs it
+      (`SignSafeTx`, the password or the biometric prompt as on 8); it is then
+      queued and 17 opens for it, in place of the proposal. Nothing is queued
+      until an owner held here signs it, so a proposal given up leaves no
+      nonce taken. A proposal the queue cannot save once signed is shared
+      from the review (its QR code and text), not lost. The review stands on
+      its proposal while the Safe's reading or the account list is not
+      there; a refresh or the signature checks the Safe again.
 17. **Safe transaction**
     - The action, decoded here from the raw transaction (`SafeTxAction`): a
       native or ERC-20 transfer, a change of the Safe's settings (an owner
@@ -224,6 +259,14 @@ upgrades*).
       fallback handler), a rejection (the Safe calling
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
+    - A change that weakens the Safe carries a warning wherever it is shown
+      (16's row, 17, the Sign step, the biometric prompt): a module enabled
+      (it moves funds without the owners) or disabled, a guard set or
+      removed (its limits, allowlist or delay stop), a fallback handler set
+      (it answers EIP-1271 for the Safe: one that accepts every signature
+      lets anyone spend what the Safe approved, through Permit2, permits or
+      orders). They are signed like any other change; refusing some of them
+      is a policy for the owner to decide.
     - `delegatecall` is marked as such and decoded no further: the Safe runs
       the target's code as itself. This wallet shows it and does not sign,
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
@@ -250,6 +293,44 @@ upgrades*).
       account held here. What is shown and shared carries the signatures of the
       Safe's current owners only, so another device never refuses it for an
       owner removed since.
+    - As built (`SafeTxViewModel`, by the Safe and the transaction's hash):
+      the Safe's blockie with `t/n`, its name and address; the action card,
+      every address in full with its blockie; the Safe nonce and how many
+      run before it; the hash computed here; the gas and refund terms, when
+      any, and the refusal; then each owner's row (blockie, name, "This
+      device", its stand and its block), the threshold and the
+      confirmations, read again on Check again, whenever the request's
+      signatures change and when the screen is shown again.
+    - Share request opens the request's text (`EncodeSigningRequest`) as one
+      QR code when it fits one (else it says to share the text), with Copy
+      text and, where the platform has a share sheet, Share. It is offered
+      only while the Safe is verified: what is shared then carries only
+      signatures its current owners made, checked here.
+    - Sign opens a step: the owner held here who signs, when there are
+      several, and the unlock of 8. The signed request is queued; one the
+      queue cannot save stays on the screen, to be shared before it is left.
+    - Approve on chain, offered while the confirmations fall short, and
+      Execute review the EOA transaction as 8 reviews a transfer: the
+      account that sends it (an owner held here first; for Execute, any
+      account held here whose sending reaches the threshold), the fee level,
+      the most the fee can be, the account's balance before and after, the
+      verified run, and for Execute the confirmations it is executed with. An
+      approval the confirmations made needless meanwhile says so and is not
+      signed. Each step offers only what the owners read for the request as
+      it is now say: a new signature reads them again before anything is
+      offered on it.
+      The quote follows 8's freshness rules and its Back, and one signed but
+      not broadcast is sent again only as Try again, through
+      `RebroadcastTransfer`; a quote made or refreshed while the screen was
+      hidden is made again before it is signed. A step signing goes on when
+      the transaction leaves the queue meanwhile; one that does not ends,
+      its password with it. Sent, the status (9) replaces the screen, and
+      says "Approval of a Safe transaction" or "Execution of a Safe
+      transaction", with the Safe and its nonce.
+    - Remove from this device asks first, then takes it out of the queue:
+      a signature already shared stays valid elsewhere until the Safe's
+      nonce passes it. One the Safe's nonce has passed says it ran, or that
+      another transaction used its nonce.
 
 ### Settings tab
 

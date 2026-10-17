@@ -85,4 +85,27 @@ class TransferStatusScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
     }
+
+    @Test
+    fun anExecutionOfASafeTransactionSaysWhatItIsAndOfWhichSafe() {
+        show(
+            TransferStatusUiState.Shown(
+                network = "Sepolia",
+                hash = hash,
+                sent = null,
+                steps = listOf(StatusStep("Signed", StepState.DONE, "On this device")),
+                safeTx = SafeTxSummary(
+                    "Execution of a Safe transaction",
+                    "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+                    "Safe nonce 12",
+                    "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+                ),
+            ),
+        )
+
+        rule.onNodeWithText("Execution of a Safe transaction").assertIsDisplayed()
+        rule.onNodeWithText("Safe · Safe nonce 12").assertIsDisplayed()
+        rule.onNodeWithText("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB").assertIsDisplayed()
+        rule.onNodeWithText("This device has no record of what was sent", substring = true).assertDoesNotExist()
+    }
 }

@@ -296,6 +296,13 @@ class QrMatrix private constructor(
 
     companion object {
         /**
+         * Whether [size] bytes fit one QR Code at [ecc]: what [encode] takes without throwing (at
+         * MEDIUM, 2331 bytes in a version-40 code).
+         */
+        fun fits(size: Int, ecc: Ecc = Ecc.MEDIUM): Boolean =
+            size < (1 shl 16) && 4 + 16 + size * 8 <= numDataCodewords(MAX_VERSION, ecc) * 8
+
+        /**
          * [data] as a QR Code at [ecc] or above; throws when it is more than a version-40 code
          * holds (2953 bytes at LOW).
          */
