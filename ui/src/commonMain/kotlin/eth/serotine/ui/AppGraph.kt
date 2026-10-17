@@ -35,6 +35,7 @@ import eth.serotine.domain.usecase.DisableBiometricUnlock
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
+import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.ListDeployedSafe
@@ -259,13 +260,24 @@ class AppGraph(
         network,
     )
 
-    /** Where the transfer [hash] stands; a Safe it deployed is listed once the light client proves it. */
+    /** Where the transfer [hash] stands, and for a Safe it deployed, where its listing does. */
     fun transferStatusViewModel(hash: String): TransferStatusViewModel = TransferStatusViewModel(
         hash,
         ObserveSentTransfer(sentTransfers, receipts),
-        ListDeployedSafe(addressKinds, WatchAddress(accounts, addressKinds)),
+        ObserveAccounts(accounts),
         network,
     )
+
+    /**
+     * Lists every Safe this wallet deployed once the light client proves it, whatever screen is
+     * open ([FollowSafeDeployments]); runs until cancelled. [App] runs it while it is shown.
+     */
+    suspend fun followSafeDeployments() = FollowSafeDeployments(
+        sentTransfers,
+        receipts,
+        accounts,
+        ListDeployedSafe(addressKinds, WatchAddress(accounts, addressKinds)),
+    )()
 
     /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
     fun createSafeViewModel(): CreateSafeViewModel = CreateSafeViewModel(

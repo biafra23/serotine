@@ -156,22 +156,26 @@ internal sealed interface ResolvedAgain {
 /**
  * [found] resolved again by [lookUp] when it came from a name: what is signed is the address the
  * name has now, and one that moved is said, not signed. One typed as an address stands as it is.
+ * [said] words why it changed: for the name, and whether it could not be verified again
+ * ([unverifiable]) rather than moved; a recipient's words unless a caller has its own.
  */
 internal suspend fun resolveAgain(
     found: RecipientLookup.Found,
     lookUp: suspend (String) -> RecipientLookup,
+    said: (name: String, unverifiable: Boolean) -> String = ::recipientChanged,
 ): ResolvedAgain {
     val name = found.name ?: return ResolvedAgain.Same(found)
     val again = lookUp(name)
     if (again is RecipientLookup.Found && again.address == found.address) return ResolvedAgain.Same(again)
-    return ResolvedAgain.Changed(
-        if (again is RecipientLookup.Unavailable) {
-            "“$name” could not be resolved with verified calls again just now, so nothing can be " +
-                "signed for it: review it again in a moment."
-        } else {
-            "“$name” no longer resolves to the address shown: check the recipient."
-        },
-    )
+    return ResolvedAgain.Changed(said(name, again is RecipientLookup.Unavailable))
+}
+
+/** Why a recipient's [name] is not signed for again: it could not be verified again ([unverifiable]), or it moved. */
+private fun recipientChanged(name: String, unverifiable: Boolean): String = if (unverifiable) {
+    "“$name” could not be resolved with verified calls again just now, so nothing can be " +
+        "signed for it: review it again in a moment."
+} else {
+    "“$name” no longer resolves to the address shown: check the recipient."
 }
 
 /**

@@ -10,10 +10,12 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.prunable
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -64,11 +66,9 @@ class FileSentTransfers(
         Decision(true, next = transfers.filterNot { it.hash == transfer.hash } + transfer)
     }
 
-    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long): Boolean =
+    override suspend fun prune(account: Address, minedCount: Long, sentBefore: Long, unlistedBefore: Long): Boolean =
         file.change(notSaved = false) { transfers ->
-            val kept = transfers.filterNot {
-                it.account == account && (it.nonce < minedCount || it.sentAt < sentBefore)
-            }
+            val kept = transfers.filterNot { it.prunable(account, minedCount, sentBefore, unlistedBefore) }
             if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
         }
 
@@ -147,7 +147,10 @@ class FileSentTransfers(
         }
     }
 
-    /** A Safe's deployment: the [safe] it creates, of [version], with [owners] and [threshold], listed as [label]. */
+    /**
+     * A Safe's deployment: the [safe] it creates, of [version], with [owners] and [threshold], listed
+     * as [label], and how its listing ended ([listed], a [SafeListing] name; null: not yet).
+     */
     @Serializable
     private class StoredDeployment(
         val safe: String,
@@ -155,6 +158,7 @@ class FileSentTransfers(
         val threshold: Int,
         val version: String,
         val label: String,
+        val listed: String? = null,
     ) {
         fun toAction() = SentAction.SafeDeployment(
             safe = Address.of(safe),
@@ -162,6 +166,7 @@ class FileSentTransfers(
             threshold = threshold,
             version = version,
             label = label,
+            listed = listed?.let { name -> requireNotNull(SafeListing.entries.firstOrNull { it.name == name }) },
         )
     }
 
@@ -189,7 +194,14 @@ class FileSentTransfers(
                     is SentAction.SafeExecution -> safeCall(EXECUTION, action.request)
                 },
                 deployment = (action as? SentAction.SafeDeployment)?.let {
-                    StoredDeployment(it.safe.hex, it.owners.map(Address::hex), it.threshold, it.version, it.label)
+                    StoredDeployment(
+                        it.safe.hex,
+                        it.owners.map(Address::hex),
+                        it.threshold,
+                        it.version,
+                        it.label,
+                        it.listed?.name,
+                    )
                 },
                 maxCost = transfer.maxCost.toDecimal(),
                 sentAt = transfer.sentAt,

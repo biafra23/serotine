@@ -4,27 +4,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
-import eth.serotine.domain.usecase.DeployedSafeListing
-import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.SentTransferStatus
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.platform.formatDateTime
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 /**
  * The transfer status screen's ViewModel (docs/wallet-ux.md, screen 9): the transfer [hash] on
@@ -32,79 +28,27 @@ import kotlinx.coroutines.launch
  * ([ObserveSentTransfer]), as [TransferStatusUiState]. [formatTime] dates the broadcast a peer
  * took in the user's own time zone. No intents: the screen's only action, Done, is navigation.
  *
- * A Safe's deployment is listed in the wallet from here ([ListDeployedSafe]) once its receipt
- * says a block took it and it succeeded: the Safe is detected like a watched one first
- * (docs/wallet-ux.md, screen 15). That runs while the screen is open; one left before has its
- * Safe added with Watch address, as the screen says.
+ * A Safe's deployment is listed in the wallet by `FollowSafeDeployments`, which the app runs
+ * whatever screen is open (docs/wallet-ux.md, screen 15); this screen only shows where that
+ * stands, from the deployment's record and the account list ([ObserveAccounts]).
  */
 class TransferStatusViewModel(
     private val hash: String,
     observeSentTransfer: ObserveSentTransfer,
-    private val listDeployedSafe: ListDeployedSafe,
+    observeAccounts: ObserveAccounts,
     private val network: Network,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
-    /** Where the listing of a deployed Safe stands. */
-    private sealed interface Listing {
-        data object Idle : Listing
+    val uiState: StateFlow<TransferStatusUiState> =
+        combine(observeSentTransfer(hash), observeAccounts(), ::render).stateIn(
+            viewModelScope,
+            // Back after the timeout, no old step stands as current.
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            TransferStatusUiState.Loading(network.displayName),
+        )
 
-        data object Running : Listing
-
-        data class Done(val listing: DeployedSafeListing) : Listing
-
-        /** The use case failed, against its promise: the user adds the Safe with Watch address. */
-        data object Broken : Listing
-    }
-
-    private val listing = MutableStateFlow<Listing>(Listing.Idle)
-    private var listingJob: Job? = null
-
-    val uiState: StateFlow<TransferStatusUiState> = combine(
-        observeSentTransfer(hash).onEach(::listOnceMined),
-        listing,
-        ::render,
-    ).stateIn(
-        viewModelScope,
-        // Back after the timeout, no old step stands as current.
-        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-        TransferStatusUiState.Loading(network.displayName),
-    )
-
-    /**
-     * Lists the Safe [status] deployed once its receipt is verified, once: when it succeeded, as
-     * soon as the light client proves the Safe (the use case waits for that, and tries again itself
-     * while it cannot verify it); when it reverted, if the address, read once, holds the Safe
-     * planned all the same — someone's copy of the same call mined first creates the very same Safe.
-     */
-    private fun listOnceMined(status: SentTransferStatus) {
-        val deployment = status.transfer?.action as? SentAction.SafeDeployment ?: return
-        val succeeded = succeeded(status.progress) ?: return
-        if (listing.value != Listing.Idle || listingJob?.isActive == true) return
-        listing.value = Listing.Running
-        listingJob = viewModelScope.launch {
-            listing.value = try {
-                Listing.Done(
-                    if (succeeded) listDeployedSafe(deployment) else listDeployedSafe.afterRevert(deployment),
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // The use case promises not to throw; the backstop ends it, since a finalized receipt
-                // is never read again.
-                Listing.Broken
-            }
-        }
-    }
-
-    /** Whether the verified receipt says it succeeded (true) or reverted (false); null before it has one. */
-    private fun succeeded(progress: TransactionProgress): Boolean? = when (progress) {
-        is TransactionProgress.Included -> progress.succeeded
-        is TransactionProgress.Finalized -> progress.succeeded
-        else -> null
-    }
-
-    private fun render(status: SentTransferStatus, listing: Listing): TransferStatusUiState.Shown {
+    private fun render(status: SentTransferStatus, list: AccountList): TransferStatusUiState.Shown {
         val progress = status.progress
         // Broadcast: this screen opens for a transfer a peer took, and its record says when.
         val signed = StatusStep("Signed", StepState.DONE, status.transfer?.let { "On this device" })
@@ -147,7 +91,7 @@ class TransferStatusViewModel(
             },
             finished = progress is TransactionProgress.Finalized,
             safeTx = transfer?.let(::safeTxSummary),
-            deployment = transfer?.let { deploymentSummary(it, progress, failed, listing) },
+            deployment = transfer?.let { deploymentSummary(it, progress, failed, list) },
         )
     }
 
@@ -156,7 +100,7 @@ class TransferStatusViewModel(
         transfer: SentTransfer,
         progress: TransactionProgress,
         failed: Boolean,
-        listing: Listing,
+        list: AccountList,
     ): DeploymentSummary? {
         val deployment = transfer.action as? SentAction.SafeDeployment ?: return null
         val owners = deployment.owners.size
@@ -167,27 +111,23 @@ class TransferStatusViewModel(
         } else {
             ""
         }
-        val (text, listingFailed) = when {
-            listing is Listing.Done -> when (val done = listing.listing) {
-                is DeployedSafeListing.Listed -> "${copied}Added to your wallet as ${done.account.label}." to false
-                is DeployedSafeListing.AlreadyInWallet -> "${copied}In your wallet as ${done.account.label}." to false
-                DeployedSafeListing.NoSafe ->
-                    "This transaction created no Safe, and none is at its address: nothing is added to your " +
-                        "wallet." to true
-                is DeployedSafeListing.NotVerified -> "Whether a Safe is at its address all the same cannot be " +
-                    "verified right now: check it later with Watch address." to true
-                DeployedSafeListing.NotTheSafe -> "The address does not hold the Safe deployed, as the light " +
-                    "client verifies it, so it was not added to your wallet." to true
-                DeployedSafeListing.NotSaved -> "Your account list cannot be saved right now, so the Safe was not " +
-                    "added: add it with Watch address." to true
+        // The name it has in the wallet now, or the one it was to be listed under.
+        val label = (list as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == deployment.safe }?.label
+            ?: deployment.label
+        val mined = progress is TransactionProgress.Included || progress is TransactionProgress.Finalized
+        val (text, listingFailed) = when (deployment.listed) {
+            SafeListing.LISTED -> "${copied}In your wallet as $label." to false
+            SafeListing.NO_SAFE ->
+                "This transaction created no Safe, and none is at its address: nothing is added to your wallet." to
+                    true
+            SafeListing.NOT_THE_SAFE -> "The address does not hold the Safe deployed, as the light client " +
+                "verifies it, so it was not added to your wallet." to true
+            null -> when {
+                failed -> "Checking whether a Safe is at its address all the same…" to false
+                mined -> "Checking the new Safe with the light client before it is listed…" to false
+                else -> "Added to your wallet once a block has it and the light client verifies the Safe there, " +
+                    "whether this screen is open or not." to false
             }
-            listing == Listing.Broken -> "Serotine could not finish listing the new Safe: add it with Watch " +
-                "address." to true
-            failed -> "Checking whether a Safe is at its address all the same…" to false
-            listing == Listing.Running || succeeded(progress) != null ->
-                "Checking the new Safe with the light client before it is listed…" to false
-            else -> "Added to your wallet once a block has it and the light client verifies the Safe there, while " +
-                "this screen is open; after leaving it, add it with Watch address." to false
         }
         return DeploymentSummary(
             title = "Deployment of a Safe",

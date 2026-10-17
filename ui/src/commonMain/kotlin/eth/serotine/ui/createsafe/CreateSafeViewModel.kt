@@ -38,6 +38,7 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
+import eth.serotine.ui.components.ResolvedAgain
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.biometricsOn
@@ -50,6 +51,7 @@ import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
+import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.unavailableText
 import eth.serotine.ui.components.verifiedAt
@@ -515,15 +517,17 @@ class CreateSafeViewModel(
     /** Why [owner]'s name is no longer the address it was added as, or null when it still is. */
     private suspend fun movedName(owner: Typed): String? {
         val name = owner.name ?: return null
-        val again = lookUp(name)
-        return when {
-            again is RecipientLookup.Found && again.address == owner.address -> null
-            again is RecipientLookup.Unavailable ->
+        val found = RecipientLookup.Found(owner.address, name, owner.resolvedAt)
+        val again = resolveAgain(found, ::lookUp) { _, unverifiable ->
+            if (unverifiable) {
                 "“$name” could not be resolved with verified calls again just now, so no Safe is deployed " +
                     "with it as an owner: review it again in a moment."
-            else -> "“$name” no longer resolves to the address added as an owner, " +
-                "${Eip55.format(owner.address)}: check the owner, then take it out and add it again."
+            } else {
+                "“$name” no longer resolves to the address added as an owner, ${Eip55.format(owner.address)}: " +
+                    "check the owner, then take it out and add it again."
+            }
         }
+        return (again as? ResolvedAgain.Changed)?.message
     }
 
     private fun sameRequest(a: Step.Reviewing, b: Step.Reviewing) =

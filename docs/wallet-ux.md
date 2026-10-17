@@ -258,19 +258,25 @@ upgrades*).
       review has another address), and one signed but not broadcast is sent
       again only as Try again (`RebroadcastTransfer`).
     - Sent, the status (9) replaces the screen and says "Deployment of a
-      Safe". Once its receipt says a block took it and it succeeded, the
-      Safe is listed through `ListDeployedSafe`: it waits until the light
-      client proves code at the address, checks that it is a Safe with the
-      owners and threshold deployed, then watches it (`WatchAddress`, which
-      detects it again, and is tried again while that cannot be verified)
-      under the name given. That runs while the status screen is open; one
-      left before has its Safe added with Watch address, as the screen says.
-      A deployment whose receipt says it reverted had its address read once
+      Safe", and where its listing stands; it shows that, and drives
+      nothing. The app lists the Safe itself (`FollowSafeDeployments`, run
+      by `App` whatever screen is open, and again after a restart): for each
+      recorded deployment whose listing has not ended, it waits for the
+      verified receipt, then, when it succeeded, for the light client to
+      prove code at the address (`ListDeployedSafe`), checks that it is a
+      Safe with the owners, in their order, and the threshold deployed, and
+      watches it (`WatchAddress`, which detects it again) under the name
+      given. A deployment that reverted has its address read once
       (`ListDeployedSafe.afterRevert`): someone else's copy of the same call
       mined first creates the very same Safe, which is then listed, and said;
-      otherwise the status says this transaction created no Safe. Nothing
-      waits for code there. Should the listing fail against its use case's
-      promise, the status says to add the Safe with Watch address.
+      otherwise the status says this transaction created no Safe. An outcome
+      that is no ending (not verifiable again, the list not saved) is tried
+      again. How it ended is written into the deployment's record
+      (`SentAction.SafeDeployment.listed`), which the record keeps until then
+      (`SentTransfers.prune` drops an unlisted deployment only after
+      `DEPLOYMENT_LIFETIME_SECONDS`, a week), so leaving the status screen,
+      or the app, loses nothing; and a Safe once listed and then removed by
+      the user is not listed again.
 16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
     owners are shown with blockies, a "this device" mark on the ones held
     here, and the threshold; the modules and guard follow them.

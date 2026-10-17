@@ -113,6 +113,9 @@ review finding, whatever it saves.
   anything else, so `App` creates it in the host's scope and navigates to the
   screen, clearing the back stack (both tabs' stacks included), while an
   update is required, and to the Assets tab's start once it no longer is.
+  `App` also runs the work no screen owns while it is shown:
+  `AppGraph.followSafeDeployments()`, which lists the Safes this wallet
+  deployed whatever screen is open (docs/wallet-ux.md, screen 15).
 - **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
   Each tab is a nested graph. Settings opens over the Assets tab's stack and

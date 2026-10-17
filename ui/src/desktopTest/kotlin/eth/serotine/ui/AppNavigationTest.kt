@@ -69,6 +69,7 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
+import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
@@ -165,6 +166,10 @@ class AppNavigationTest {
     private val carol = Address.of("0x" + "33".repeat(20))
     private val broadcaster = FakeBroadcaster()
     private val sentTransfers = MemorySentTransfers()
+    private val receipts = FakeReceipts()
+
+    /** The Safes deployed in this test, as the light client proves them once their code is there. */
+    private val deployed = MutableStateFlow<Map<Address, SafeState>>(emptyMap())
     private val graph = AppGraph(
         accounts = object : AccountRepository {
             override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
@@ -226,7 +231,9 @@ class AppNavigationTest {
                 val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 4, emptyList(), null)
                 flowOf(KindReading.Verified(AddressKind.Safe(state), 9_412_118))
             } else {
-                flowOf(KindReading.Verified(AddressKind.Eoa, 9_412_118))
+                deployed.map { safes ->
+                    KindReading.Verified(safes[address]?.let { AddressKind.Safe(it) } ?: AddressKind.Eoa, 9_412_118)
+                }
             }
         },
         lightClient = object : LightClient {
@@ -241,7 +248,7 @@ class AppNavigationTest {
         },
         transactionInputs = FactoryInputs(),
         broadcaster = broadcaster,
-        receipts = FakeReceipts(),
+        receipts = receipts,
         names = FakeNames(),
         signer = signer,
         sentTransfers = sentTransfers,
@@ -696,10 +703,22 @@ class AppNavigationTest {
         rule.onNodeWithText("Deployment of a Safe").assertIsDisplayed()
         rule.onNodeWithTag(TRANSFER_SAFE_TAG).assertTextEquals(Eip55.format(action.safe))
         assertEquals(listOf("correct horse"), signer.passwords)
-        // The signed review is gone from the back stack: Done returns to Assets.
+        // The signed review is gone from the back stack: Done returns to Assets, right away.
         assertEquals(listOf("assets", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+
+        // Mined and proven with the status screen long gone: the Safe is listed all the same.
+        receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
+        deployed.value = mapOf(
+            action.safe to SafeState("1.4.1", l2 = false, action.owners, 1, 0, emptyList(), null),
+        )
+        rule.waitUntil { accounts.value.any { it.address == action.safe } }
+        assertEquals(
+            Account(action.safe, AccountKind.SAFE, "Family vault", AccountCustody.Watched),
+            accounts.value.last(),
+        )
+        rule.onNodeWithText("Family vault").assertIsDisplayed()
     }
 
     @Test

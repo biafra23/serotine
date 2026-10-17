@@ -219,6 +219,14 @@ private fun CreateSafeNotSentPreview() = CreateSafePreview(
 
 @Preview
 @Composable
+private fun CreateSafeReviewSigningPreview() = CreateSafePreview(review.copy(signing = true))
+
+@Preview
+@Composable
+private fun CreateSafeSentPreview() = CreateSafePreview(CreateSafeUiState.Sent("Sepolia", "0x" + "5e".repeat(32)))
+
+@Preview
+@Composable
 private fun CreateSafeCannotCreatePreview() = CreateSafePreview(
     CreateSafeUiState.CannotCreate(
         "Sepolia",
@@ -247,6 +255,8 @@ internal val createSafeScreenPreviews: List<@Composable () -> Unit> = listOf(
     { CreateSafeReviewRefusedPreview() },
     { CreateSafeReviewBiometricsPreview() },
     { CreateSafeNotSentPreview() },
+    { CreateSafeReviewSigningPreview() },
+    { CreateSafeSentPreview() },
     { CreateSafeCannotCreatePreview() },
     { CreateSafeLoadingPreview() },
 )
