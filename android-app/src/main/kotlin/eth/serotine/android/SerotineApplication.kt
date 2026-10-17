@@ -15,6 +15,9 @@ import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.AndroidBiometricKey
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.keys.Secp256k1Recovery
+import eth.serotine.data.safe.FileSafeTxQueue
+import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -94,6 +97,12 @@ class SerotineApplication : Application() {
             // The transfers signed here, with their signed bytes (public once broadcast, no key in
             // them), beside the account list in the app's private files.
             sentTransfers = FileSentTransfers(filesDir.resolve("sent-transfers.json").path),
+            // The Safe transactions waiting for their owners, with the signatures collected (public
+            // data, no key in them), beside the account list in the app's private files.
+            safeTxQueue = FileSafeTxQueue(filesDir.resolve("safe-tx-queue.json").path),
+            signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
+            signatureRecovery = Secp256k1Recovery(),
+            safeApprovals = node.safeApprovals,
             network = Network.SEPOLIA,
         )
     }

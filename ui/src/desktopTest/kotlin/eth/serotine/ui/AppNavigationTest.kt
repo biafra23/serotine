@@ -1,6 +1,7 @@
 package eth.serotine.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
@@ -34,7 +35,11 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.model.SafeSignature
+import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AccountAdd
@@ -59,10 +64,13 @@ import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.SafeState
+import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
@@ -72,6 +80,17 @@ import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_REPEAT_TAG
 import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
 import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
+import eth.serotine.ui.safeimport.IMPORT_REQUEST_BUTTON_TAG
+import eth.serotine.ui.safeimport.IMPORT_REQUEST_FIELD_TAG
+import eth.serotine.ui.safepropose.PROPOSE_AMOUNT_REVIEWED_TAG
+import eth.serotine.ui.safepropose.PROPOSE_PASSWORD_TAG
+import eth.serotine.ui.safepropose.PROPOSE_SIGN_TAG
+import eth.serotine.ui.safetx.SAFE_TX_HASH_TAG
+import eth.serotine.ui.safetx.SAFE_TX_PASSWORD_TAG
+import eth.serotine.ui.safetx.SAFE_TX_QR_TAG
+import eth.serotine.ui.safetx.SAFE_TX_REQUEST_TAG
+import eth.serotine.ui.safetx.SAFE_TX_SHARE_TAG
+import eth.serotine.ui.safetx.SAFE_TX_SIGN_TAG
 import eth.serotine.ui.send.SEND_AMOUNT_REVIEWED_TAG
 import eth.serotine.ui.send.SEND_AMOUNT_TAG
 import eth.serotine.ui.send.SEND_PASSWORD_TAG
@@ -129,7 +148,14 @@ class AppNavigationTest {
     private val report = MutableStateFlow<NetworkUpgrade?>(null)
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
     private val nativeBalance = MutableStateFlow<BalanceReading>(BalanceReading.Syncing)
-    private val signer = FakeSigner()
+    private val recovery = FakeRecovery()
+    private val signer = FakeSigner(recovery)
+    private val safeTxQueue = MemorySafeTxQueue()
+    private val codec = FakeCodec()
+
+    /** Treasury's Safe: Daily and Carol own it, both must sign, and it is at nonce 4. */
+    private val treasuryAddress = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
+    private val carol = Address.of("0x" + "33".repeat(20))
     private val broadcaster = FakeBroadcaster()
     private val sentTransfers = MemorySentTransfers()
     private val graph = AppGraph(
@@ -189,8 +215,12 @@ class AppNavigationTest {
         priceFeeds = FakeFeeds(),
         displayCurrency = MemoryCurrencySetting(),
         addressKinds = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> =
+            override fun observeKind(address: Address): Flow<KindReading> = if (address == treasuryAddress) {
+                val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 4, emptyList(), null)
+                flowOf(KindReading.Verified(AddressKind.Safe(state), 9_412_118))
+            } else {
                 flowOf(KindReading.Verified(AddressKind.Eoa, 9_412_118))
+            }
         },
         lightClient = object : LightClient {
             override fun observeStatus(): Flow<LightClientStatus> = status
@@ -208,6 +238,10 @@ class AppNavigationTest {
         names = FakeNames(),
         signer = signer,
         sentTransfers = sentTransfers,
+        safeTxQueue = safeTxQueue,
+        signingRequests = codec,
+        signatureRecovery = recovery,
+        safeApprovals = FakeApprovals(),
         network = Network.SEPOLIA,
     )
 
@@ -223,6 +257,15 @@ class AppNavigationTest {
         AccountKind.EOA,
         "Savings",
         AccountCustody.Watched,
+    )
+
+    private val treasury = Account(treasuryAddress, AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+
+    /** 0.1 ETH from Treasury to Savings at its nonce, 4. */
+    private val queued = SigningRequest.of(
+        Network.SEPOLIA,
+        treasuryAddress,
+        SafeTx.call(savings.address, UInt256.of(100_000_000_000_000_000), ByteArray(0), 4),
     )
 
     /** What the window (desktop) or the activity (Android) provides the [App] with. */
@@ -480,6 +523,109 @@ class AppNavigationTest {
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(1, broadcaster.sent.size)
         // The signed review is gone from the back stack: Done returns to the account.
+        assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
+        rule.onNodeWithText("Done").performScrollTo().performClick()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun aSafesQueuedTransactionOpensFromItsQueueAndIsSharedAsARequest() {
+        accounts.value = listOf(daily, treasury)
+        safeTxQueue.requests.value = listOf(queued)
+        showApp()
+
+        rule.onNodeWithText("Treasury").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Queue (1)").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Queue (1)").performClick()
+        rule.onAllNodesWithTag(ACCOUNT_QUEUE_ROW_TAG).assertCountEquals(1)
+        rule.onNodeWithText("Send 0.1 ETH").performClick()
+
+        rule.waitUntil { rule.onAllNodesWithTag(SAFE_TX_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag(SAFE_TX_HASH_TAG).performScrollTo().assertTextEquals("0x" + queued.hash.hex)
+        // A Safe transaction covers the bar, as every flow that ends in a signature or a transaction.
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        rule.onNodeWithTag(SAFE_TX_SHARE_TAG).performScrollTo().performClick()
+
+        rule.onNodeWithTag(SAFE_TX_QR_TAG).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag(SAFE_TX_REQUEST_TAG).performScrollTo().assertTextEquals(codec.encode(queued))
+        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun sendFromASafeProposesATransferThatAnOwnerHeldHereSignsAndQueues() {
+        accounts.value = listOf(daily, treasury)
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        showApp()
+
+        rule.onNodeWithText("Treasury").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Co-signer").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Send").performClick()
+        rule.onNodeWithText("Send from a Safe").assertIsDisplayed()
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        rule.onNodeWithText("Daily · 0x8f3A…91c2").performScrollTo().performClick()
+        rule.onNodeWithTag(SEND_AMOUNT_TAG).performScrollTo().performTextInput("0.1")
+        rule.onNodeWithTag(SEND_REVIEW_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(PROPOSE_AMOUNT_REVIEWED_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithTag(PROPOSE_AMOUNT_REVIEWED_TAG).assertTextEquals("0.1 ETH")
+        rule.onNodeWithText("Safe nonce 4").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag(PROPOSE_PASSWORD_TAG).performScrollTo().performTextInput("correct horse")
+        rule.onNodeWithTag(PROPOSE_SIGN_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(SAFE_TX_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        val proposed = safeTxQueue.requests.value.single()
+        assertEquals(listOf(daily.address), proposed.signers)
+        rule.onNodeWithTag(SAFE_TX_HASH_TAG).performScrollTo().assertTextEquals("0x" + proposed.hash.hex)
+        assertEquals(listOf("correct horse"), signer.passwords)
+        // The proposal is gone from the back stack: back from the transaction returns to the Safe.
+        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+    }
+
+    @Test
+    fun aRequestImportedFromAnotherDeviceOpensItsTransaction() {
+        accounts.value = listOf(daily, treasury)
+        showApp()
+        val signature = SafeSignature.Ecdsa(carol, recovery.sign(carol, queued.hash))
+        val text = codec.encode(queued.withSignatures(listOf(signature)))
+
+        rule.onNodeWithText("Treasury").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Queue (0)").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Queue (0)").performClick()
+        rule.onNodeWithText("Import a request").performClick()
+        rule.onNodeWithTag(IMPORT_REQUEST_FIELD_TAG).performTextInput(text)
+        rule.onNodeWithTag(IMPORT_REQUEST_BUTTON_TAG).performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(SAFE_TX_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithTag(SAFE_TX_HASH_TAG).performScrollTo().assertTextEquals("0x" + queued.hash.hex)
+        assertEquals(listOf(carol), safeTxQueue.requests.value.single().signers)
+        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+    }
+
+    @Test
+    fun anApprovalOnChainIsSentFromTheTransactionToWhereItStands() {
+        accounts.value = listOf(daily, treasury)
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        safeTxQueue.requests.value = listOf(queued)
+        showApp()
+
+        rule.onNodeWithText("Treasury").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Queue (1)").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Queue (1)").performClick()
+        rule.onNodeWithText("Send 0.1 ETH").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Approve on chain").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Approve on chain").performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(SAFE_TX_PASSWORD_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag(SAFE_TX_PASSWORD_TAG).performScrollTo().performTextInput("correct horse")
+        rule.onNodeWithTag(SAFE_TX_SIGN_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithText("Approval of a Safe transaction").assertIsDisplayed()
+        val approval = sentTransfers.transfers.value.single()
+        assertEquals(SentAction.SafeApproval(queued), approval.action)
+        rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(approval.hash)
+        // The signed review is gone from the back stack: Done returns to the Safe.
         assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()

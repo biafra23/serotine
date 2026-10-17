@@ -86,6 +86,25 @@ private val treasury = AccountDetailUiState.Ready(
     ),
     kindNote = "Safe",
     threshold = "2/3",
+    queue = SafeQueue.Shown(
+        rows = listOf(
+            QueueRow(
+                hash = "0x" + "3c".repeat(32),
+                action = "Send 40 USDC",
+                about = SAVINGS,
+                nonce = "Nonce 12 · next",
+                signatures = "1 of 2 signatures",
+            ),
+            QueueRow(
+                hash = "0x" + "4d".repeat(32),
+                action = "Delegate call",
+                about = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+                nonce = "Nonce 13 · 1 before it",
+                signatures = "0 of 2 signatures",
+                refusal = "Not signed here: a delegate call",
+            ),
+        ),
+    ),
 )
 
 @Composable
@@ -103,6 +122,8 @@ private fun AccountDetailPreview(state: AccountDetailUiState, darkTheme: Boolean
             onMessageShown = {},
             onSort = {},
             onSegment = {},
+            onOpenSafeTx = {},
+            onImportRequest = {},
         )
     }
 }
@@ -162,6 +183,43 @@ private fun AccountDetailSafeOwnersPreview() = AccountDetailPreview(treasury.cop
 
 @Preview
 @Composable
+private fun AccountDetailSafeQueuePreview() = AccountDetailPreview(treasury.copy(segment = DetailSegment.QUEUE))
+
+@Preview
+@Composable
+private fun AccountDetailSafeQueueDarkPreview() =
+    AccountDetailPreview(treasury.copy(segment = DetailSegment.QUEUE), darkTheme = true)
+
+@Preview
+@Composable
+private fun AccountDetailSafeQueueEmptyPreview() = AccountDetailPreview(
+    treasury.copy(segment = DetailSegment.QUEUE, queue = SafeQueue.Shown(rows = emptyList())),
+)
+
+@Preview
+@Composable
+private fun AccountDetailSafeQueueUnverifiedPreview() = AccountDetailPreview(
+    treasury.copy(
+        segment = DetailSegment.QUEUE,
+        queue = (treasury.queue as SafeQueue.Shown).copy(
+            note = "The Safe cannot be verified right now, so neither its nonce nor these signatures are checked.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun AccountDetailSafeQueueUnreadablePreview() = AccountDetailPreview(
+    treasury.copy(
+        segment = DetailSegment.QUEUE,
+        queue = SafeQueue.Unavailable(
+            "This device's queue of Safe transactions cannot be read right now. Serotine keeps trying.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
 private fun AccountDetailSafeReadingPreview() = AccountDetailPreview(
     treasury.copy(
         control = Control.WATCH_ONLY,
@@ -201,6 +259,11 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailByNameWithImpostorPreview() },
     { AccountDetailSafeAssetsPreview() },
     { AccountDetailSafeOwnersPreview() },
+    { AccountDetailSafeQueuePreview() },
+    { AccountDetailSafeQueueDarkPreview() },
+    { AccountDetailSafeQueueEmptyPreview() },
+    { AccountDetailSafeQueueUnverifiedPreview() },
+    { AccountDetailSafeQueueUnreadablePreview() },
     { AccountDetailSafeReadingPreview() },
     { AccountDetailNotASafePreview() },
     { AccountDetailLoadingPreview() },

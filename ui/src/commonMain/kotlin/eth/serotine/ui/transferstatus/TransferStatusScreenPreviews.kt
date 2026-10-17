@@ -117,6 +117,20 @@ private fun TransferStatusNoRecordPreview() = TransferStatusPreview(
 @Composable
 private fun TransferStatusLoadingPreview() = TransferStatusPreview(TransferStatusUiState.Loading("Sepolia"))
 
+@Preview
+@Composable
+private fun TransferStatusSafeExecutionPreview() = TransferStatusPreview(
+    pending.copy(
+        sent = null,
+        safeTx = SafeTxSummary(
+            title = "Execution of a Safe transaction",
+            safe = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+            nonce = "Safe nonce 12",
+            from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        ),
+    ),
+)
+
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
@@ -126,5 +140,6 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusFailedPreview() },
     { TransferStatusUnavailablePreview() },
     { TransferStatusNoRecordPreview() },
+    { TransferStatusSafeExecutionPreview() },
     { TransferStatusLoadingPreview() },
 )

@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.LightClientItem
@@ -267,8 +268,9 @@ private fun AccountList(
 private fun accountMenu(account: AccountItem, act: (AccountAction) -> Unit): List<MenuAction> {
     val address = account.address
     return listOfNotNull(
-        MenuAction("Send", Icons.AutoMirrored.Filled.Send) { act(AccountAction.Send(address)) }
-            .takeIf { account.canSend },
+        MenuAction("Send", Icons.AutoMirrored.Filled.Send) {
+            act(if (account.kind == AccountKind.SAFE) AccountAction.Propose(address) else AccountAction.Send(address))
+        }.takeIf { account.canSend },
         MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(address)) },
         MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(address)) },
         MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(address)) },

@@ -6,16 +6,22 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
+import eth.serotine.domain.usecase.DecodedSafeTx
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.SafeReading
+import eth.serotine.domain.usecase.SafeTxQueueReading
+import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
@@ -23,8 +29,10 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
 import eth.serotine.ui.components.displaySymbol
+import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
@@ -46,15 +54,21 @@ import kotlinx.coroutines.launch
 /**
  * The account detail screen's ViewModel: the account under [address], what it holds and what
  * that is worth in the display currency ([ObserveAccountValue]), on [network], as
- * [AccountDetailUiState]. Its intents are the order of the rows ([sortBy]) and hiding a token
+ * [AccountDetailUiState]; for a Safe also its verified owners ([ObserveSafe]) and the
+ * transactions queued for them on this device ([ObserveSafeTxQueue], decoded here, a token
+ * transfer's amount in the units of a token the wallet knows: [ObserveKnownTokens]). Its intents
+ * are the order of the rows ([sortBy]), the segment shown ([show]) and hiding a token
  * ([hideToken], said through [messageShown]); what else the user does from the screen is
- * navigation (Receive, Rename, Remove) or the clipboard, which the route handles.
+ * navigation (Send, Receive, Rename, Remove, a queued transaction, Import a request) or the
+ * clipboard, which the route handles.
  */
 class AccountDetailViewModel(
     address: Address,
     observeAccount: ObserveAccount,
     observeAccountValue: ObserveAccountValue,
     observeSafe: ObserveSafe,
+    observeSafeTxQueue: ObserveSafeTxQueue,
+    observeKnownTokens: ObserveKnownTokens,
     private val setTokenHidden: SetTokenHidden,
     private val network: Network,
 ) : ViewModel() {
@@ -75,21 +89,41 @@ class AccountDetailViewModel(
     private val lookup = observeAccount(address)
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), replay = 1)
 
+    private val isSafe = lookup.map { (it as? AccountLookup.Found)?.account?.kind == AccountKind.SAFE }
+        .distinctUntilChanged()
+
     /** A Safe's verified state; read for a Safe only, none for any other account. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val safe = lookup.map { (it as? AccountLookup.Found)?.account?.kind == AccountKind.SAFE }
-        .distinctUntilChanged()
-        .flatMapLatest { isSafe ->
-            // Never holding the screen back: a Safe's read takes a dozen proofs.
-            if (isSafe) {
-                observeSafe(address).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
-            } else {
-                flowOf(null)
-            }
+    private val safe = isSafe.flatMapLatest { isSafe ->
+        // Never holding the screen back: a Safe's read takes a dozen proofs.
+        if (isSafe) {
+            observeSafe(address).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
+        } else {
+            flowOf(null)
         }
+    }
+
+    /** A Safe's queue, with the tokens its transfers are shown in; none for any other account. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val queue = isSafe.flatMapLatest { isSafe ->
+        if (isSafe) {
+            combine(observeSafeTxQueue(address), observeKnownTokens()) { reading, tokens ->
+                QueueView.Read(reading, tokens.forDecoding())
+            }.onStart<QueueView> { emit(QueueView.Checking) }
+        } else {
+            flowOf(QueueView.None)
+        }
+    }
+
+    /** What the queue segment is drawn from. */
+    private sealed interface QueueView {
+        data object None : QueueView
+        data object Checking : QueueView
+        data class Read(val reading: SafeTxQueueReading, val tokens: List<Token>) : QueueView
+    }
 
     val uiState: StateFlow<AccountDetailUiState> =
-        combine(lookup, observeAccountValue(address), safe, view) { lookup, value, safe, view ->
+        combine(lookup, observeAccountValue(address), safe, queue, view) { lookup, value, safe, queue, view ->
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = lookup.account.label,
@@ -114,6 +148,7 @@ class AccountDetailViewModel(
                     },
                     threshold = (safe as? SafeReading.Verified)
                         ?.let { "${it.state.threshold}/${it.state.owners.size}" },
+                    queue = queueOf(queue, safe),
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
@@ -154,6 +189,45 @@ class AccountDetailViewModel(
     /** The screen has said [AccountDetailUiState.Ready.message]. */
     fun messageShown() {
         view.update { it.copy(message = null) }
+    }
+
+    /** A Safe's queue, display-ready, or none for another account. */
+    private fun queueOf(view: QueueView, safe: SafeReading?): SafeQueue? = when (view) {
+        QueueView.None -> null
+        QueueView.Checking -> SafeQueue.Checking
+        is QueueView.Read -> when (val reading = view.reading) {
+            SafeTxQueueReading.Unreadable -> SafeQueue.Unavailable(QUEUE_UNREADABLE)
+            is SafeTxQueueReading.Loaded -> {
+                val threshold = (safe as? SafeReading.Verified)?.state?.threshold
+                SafeQueue.Shown(
+                    rows = reading.transactions.map { queueRow(it, reading.safeNonce, threshold, view.tokens) },
+                    note = if (reading.safeNonce == null) QUEUE_UNVERIFIED else null,
+                )
+            }
+        }
+    }
+
+    private fun queueRow(tx: DecodedSafeTx, safeNonce: Long?, threshold: Int?, tokens: List<Token>): QueueRow {
+        val request = tx.request
+        val action = safeTxActionItem(tx.action, request.nonce, tokens, network)
+        val signed = request.signatures.size
+        return QueueRow(
+            hash = "0x" + request.hash.hex,
+            action = action.title,
+            about = action.addresses.firstOrNull()?.address,
+            nonce = "Nonce ${request.nonce}" + when {
+                safeNonce == null -> ""
+                request.nonce == safeNonce -> " · next"
+                else -> " · ${request.nonce - safeNonce} before it"
+            },
+            signatures = threshold?.let { "$signed of $it signatures" }
+                ?: if (signed == 1) "1 signature" else "$signed signatures",
+            refusal = when (tx.refusal) {
+                SafeTxRefusal.DelegateCall -> "Not signed here: a delegate call"
+                SafeTxRefusal.GasTerms -> "Not signed here: it carries gas or refund terms"
+                else -> null
+            },
+        )
     }
 
     /** A Safe's verified owners, display-ready, or why there are none to show. */
@@ -270,6 +344,10 @@ class AccountDetailViewModel(
     private companion object {
         const val PRICES = "Prices: Chainlink feeds, read through the light client"
         const val LIST_UNAVAILABLE = "Your account list cannot be read right now. Serotine keeps trying."
+        const val QUEUE_UNREADABLE =
+            "This device's queue of Safe transactions cannot be read right now. Serotine keeps trying."
+        const val QUEUE_UNVERIFIED =
+            "The Safe cannot be verified right now, so neither its nonce nor these signatures are checked."
         const val SETTINGS_UNAVAILABLE =
             "your token settings cannot be read right now: hidden tokens show, added ones are missing"
     }

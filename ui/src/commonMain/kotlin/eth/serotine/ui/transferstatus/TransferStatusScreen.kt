@@ -119,7 +119,29 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit) {
                     fontFamily = FontFamily.Monospace,
                 )
             }
-        } else {
+        }
+        val safeTx = state.safeTx
+        if (safeTx != null) {
+            Text(safeTx.title, style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Blockie(safeTx.safe, size = 32.dp)
+                Column {
+                    Text("Safe · ${safeTx.nonce}", style = MaterialTheme.typography.labelMedium)
+                    SelectionContainer {
+                        Text(safeTx.safe, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Blockie(safeTx.from, size = 24.dp)
+                Text(
+                    "From ${shortAddress(safeTx.from)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+        }
+        if (sent == null && safeTx == null) {
             Text(
                 "This device has no record of what was sent: only where the transaction stands is shown.",
                 style = MaterialTheme.typography.bodyMedium,

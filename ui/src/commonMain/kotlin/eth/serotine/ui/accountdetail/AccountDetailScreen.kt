@@ -1,5 +1,6 @@
 package eth.serotine.ui.accountdetail
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -51,9 +53,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.AddressLine
+import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
@@ -75,11 +79,15 @@ const val ACCOUNT_OWNERS_TAG = "account-owners"
 /** Test tag of each asset row, for UI tests. */
 const val ACCOUNT_ASSET_TAG = "account-asset"
 
+/** Test tag of each queued Safe transaction, for UI tests. */
+const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
+
 /**
  * Binds [AccountDetailScreen] to its ViewModel. An account that leaves the wallet while the
  * screen is shown (removed from here or elsewhere) ends the screen through [onGone] — once
  * the screen is the one in front: under the remove dialog it waits, so the dialog can say
- * how the removal went before both close.
+ * how the removal went before both close. Send is [onSend] from an account and [onPropose]
+ * from a Safe, whose transfers are Safe transactions its owners sign.
  */
 @Composable
 fun AccountDetailRoute(
@@ -87,9 +95,12 @@ fun AccountDetailRoute(
     onBack: () -> Unit,
     onGone: () -> Unit,
     onSend: (contract: String?) -> Unit,
+    onPropose: (contract: String?) -> Unit,
     onReceive: () -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
+    onOpenSafeTx: (hash: String) -> Unit,
+    onImportRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -101,10 +112,11 @@ fun AccountDetailRoute(
     LaunchedEffect(leave) {
         if (leave) gone()
     }
+    val isSafe = (state as? AccountDetailUiState.Ready)?.kind == AccountKind.SAFE
     AccountDetailScreen(
         state = state,
         onBack = onBack,
-        onSend = onSend,
+        onSend = { contract -> if (isSafe) onPropose(contract) else onSend(contract) },
         onReceive = onReceive,
         onCopy = rememberCopyText(),
         onRename = onRename,
@@ -113,16 +125,19 @@ fun AccountDetailRoute(
         onMessageShown = viewModel::messageShown,
         onSort = viewModel::sortBy,
         onSegment = viewModel::show,
+        onOpenSafeTx = onOpenSafeTx,
+        onImportRequest = onImportRequest,
         modifier = modifier,
     )
 }
 
 /**
- * One account (docs/wallet-ux.md, screen 4) as a pure function of [state]: its blockie,
+ * One account (docs/wallet-ux.md, screens 4 and 16) as a pure function of [state]: its blockie,
  * balance, address and control, Send (where it can send) and Receive as buttons, and Copy,
  * Rename and Remove in the top bar's menu, so none of them depends on the long press of the
  * account list. [onSend] opens Send with the token at a contract chosen, or the network's
- * currency (null).
+ * currency (null). A Safe's Queue opens a transaction through [onOpenSafeTx] by its hash, and
+ * Import a request through [onImportRequest].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,6 +153,8 @@ fun AccountDetailScreen(
     onMessageShown: () -> Unit,
     onSort: (AssetSort) -> Unit,
     onSegment: (DetailSegment) -> Unit,
+    onOpenSafeTx: (hash: String) -> Unit,
+    onImportRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -207,6 +224,8 @@ fun AccountDetailScreen(
                     onHideToken = { asset -> asset.contract?.let { onHideToken(it, asset.symbol) } },
                     onSort = onSort,
                     onSegment = onSegment,
+                    onOpenSafeTx = onOpenSafeTx,
+                    onImportRequest = onImportRequest,
                 )
             }
         }
@@ -223,6 +242,8 @@ private fun Details(
     onHideToken: (AssetRow) -> Unit,
     onSort: (AssetSort) -> Unit,
     onSegment: (DetailSegment) -> Unit,
+    onOpenSafeTx: (String) -> Unit,
+    onImportRequest: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -282,12 +303,16 @@ private fun Details(
             }
         }
         val safe = state.safe
-        if (safe != null) SegmentChoice(state.segment, onSegment)
-        if (safe != null && state.segment == DetailSegment.OWNERS) {
-            SafeOwners(safe)
-        } else {
-            SortChoice(state.sort, onSort)
-            Assets(state, onSend, onCopyContract, onHideToken)
+        if (safe != null) SegmentChoice(state.segment, state.queue, onSegment)
+        val queue = state.queue
+        when {
+            safe != null && state.segment == DetailSegment.OWNERS -> SafeOwners(safe)
+            queue != null && state.segment == DetailSegment.QUEUE ->
+                SafeQueueList(queue, onOpenSafeTx, onImportRequest)
+            else -> {
+                SortChoice(state.sort, onSort)
+                Assets(state, onSend, onCopyContract, onHideToken)
+            }
         }
     }
 }
@@ -331,20 +356,82 @@ private fun Assets(
     }
 }
 
-/** A Safe's Assets | Owners (docs/wallet-ux.md, screen 16; its queue comes with Safe transactions). */
+/** A Safe's Assets | Owners | Queue (n) (docs/wallet-ux.md, screen 16). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SegmentChoice(segment: DetailSegment, onSegment: (DetailSegment) -> Unit) {
+private fun SegmentChoice(segment: DetailSegment, queue: SafeQueue?, onSegment: (DetailSegment) -> Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         DetailSegment.entries.forEachIndexed { index, choice ->
             SegmentedButton(
                 selected = segment == choice,
                 onClick = { onSegment(choice) },
                 shape = SegmentedButtonDefaults.itemShape(index, DetailSegment.entries.size),
-                label = { Text(if (choice == DetailSegment.ASSETS) "Assets" else "Owners") },
+                label = {
+                    Text(
+                        when (choice) {
+                            DetailSegment.ASSETS -> "Assets"
+                            DetailSegment.OWNERS -> "Owners"
+                            DetailSegment.QUEUE -> (queue as? SafeQueue.Shown)?.let { "Queue (${it.rows.size})" }
+                                ?: "Queue"
+                        },
+                    )
+                },
             )
         }
     }
+}
+
+/**
+ * A Safe's transactions waiting for its owners on this device, in nonce order (docs/wallet-ux.md,
+ * screen 16): each with what it does, its nonce, its signatures and why this wallet will not sign
+ * it, if it will not; a tap opens it. Import a request brings in one from another device.
+ */
+@Composable
+private fun SafeQueueList(queue: SafeQueue, onOpenSafeTx: (String) -> Unit, onImportRequest: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = onImportRequest) {
+            Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Import a request")
+        }
+        when (queue) {
+            SafeQueue.Checking -> Text("Reading this device's queue…")
+            is SafeQueue.Unavailable -> Text(queue.message, color = MaterialTheme.colorScheme.error)
+            is SafeQueue.Shown -> {
+                if (queue.rows.isEmpty()) {
+                    Text(
+                        "Nothing queued on this device. Send proposes a transaction; Import a request brings in " +
+                            "one another owner shared.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                queue.rows.forEach { row -> QueueItem(row) { onOpenSafeTx(row.hash) } }
+                queue.note?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+                Text(
+                    "Signatures as this device has them; approvals made on chain show on each transaction.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.testTag(ACCOUNT_QUEUE_ROW_TAG).clickable(onClick = onClick),
+        leadingContent = { row.about?.let { Blockie(it, size = 32.dp) } },
+        headlineContent = { Text(row.action) },
+        supportingContent = {
+            Column {
+                Text("${row.nonce} · ${row.signatures}")
+                row.refusal?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+    )
 }
 
 /**

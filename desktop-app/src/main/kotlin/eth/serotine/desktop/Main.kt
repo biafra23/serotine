@@ -9,8 +9,11 @@ import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
+import eth.serotine.data.safe.FileSafeTxQueue
+import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -131,6 +134,11 @@ private fun openWallet(dataDir: File) {
                 signer = keyStore,
                 // The transfers signed here, with their signed bytes (public once broadcast).
                 sentTransfers = FileSentTransfers(dataDir.resolve("sent-transfers.json").path),
+                // The Safe transactions waiting for their owners, with the signatures collected (public).
+                safeTxQueue = FileSafeTxQueue(dataDir.resolve("safe-tx-queue.json").path),
+                signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
+                signatureRecovery = Secp256k1Recovery(),
+                safeApprovals = node.safeApprovals,
                 network = Network.SEPOLIA,
             )
         }
