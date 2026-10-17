@@ -10,6 +10,7 @@ import eth.serotine.domain.repository.ApprovalReading
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.SafeState
@@ -260,7 +261,7 @@ class QuoteSafeExecution(
     private val recovery: SignatureRecovery,
     private val approvals: SafeApprovals,
     private val nativeBalances: NativeBalances,
-    inputs: TransactionInputs,
+    private val inputs: TransactionInputs,
     private val sentTransfers: SentTransfers,
     private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
@@ -278,7 +279,7 @@ class QuoteSafeExecution(
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (request.nonce > state.nonce) return refused(SafeTxRefusal.NotNext(state.nonce))
         // Sent already from any account here, and in no block yet: the nonce is the Safe's, not the sender's.
-        if (sentAndUnmined(request)) return refused(SafeTxRefusal.AlreadySent)
+        sentAndUnmined(request)?.let { return refused(it) }
         val signatures = when (val confirmed = confirmations(request, state, executor)) {
             is Confirmed.Enough -> confirmed.signatures
             is Confirmed.Refused -> return refused(confirmed.refusal)
@@ -297,14 +298,24 @@ class QuoteSafeExecution(
     }
 
     /**
-     * Whether an execution of [request] that an account of this wallet sent is recorded and not
-     * mined: within its pool lifetime ([RECORD_LIFETIME_SECONDS]), since the Safe's nonce is still
-     * the request's (checked before), so no block has run it.
+     * [SafeTxRefusal.AlreadySent] when an execution of [request] that an account of this wallet
+     * sent is recorded and not mined: within its pool lifetime ([RECORD_LIFETIME_SECONDS]), and
+     * its sender's verified count of mined transactions not past it. One that a block took and
+     * that reverted (an owner swapped meanwhile, a guard's refusal) leaves the Safe's nonce as it
+     * was and blocks nothing: the sender's count has passed it. A count that cannot be verified
+     * now is the refusal it is ([SafeTxRefusal.Unavailable]). Null when nothing is pending.
      */
-    private suspend fun sentAndUnmined(request: SigningRequest): Boolean {
+    private suspend fun sentAndUnmined(request: SigningRequest): SafeTxRefusal? {
         val since = clock() - RECORD_LIFETIME_SECONDS
-        val recorded = (sentTransfers.observe().first() as? SentTransferList.Loaded)?.transfers.orEmpty()
-        return recorded.any { it.sentAt >= since && it.executes(request) }
+        val sent = (sentTransfers.observe().first() as? SentTransferList.Loaded)?.transfers.orEmpty()
+            .filter { it.sentAt >= since && it.executes(request) }
+        for (execution in sent) {
+            when (val mined = inputs.minedNonce(execution.account)) {
+                is NonceReading.Read -> if (execution.nonce >= mined.nonce) return SafeTxRefusal.AlreadySent
+                is NonceReading.Unavailable -> return SafeTxRefusal.Unavailable(mined.reason)
+            }
+        }
+        return null
     }
 
     /** As many confirmations of [request] by [state]'s owners as its threshold, or why there are not. */
