@@ -4,7 +4,7 @@ import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
-import eth.serotine.domain.repository.BalanceReading.Reason
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
@@ -104,24 +104,24 @@ class VerifiedNativeBalancesTest {
         val balances = balances()
 
         chain.snapshot = running(phase = Phase.STALE_ANCHOR)
-        assertEquals(BalanceReading.Unavailable(Reason.STALE_ANCHOR), balances.observeBalance(address).first())
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.STALE_ANCHOR), balances.observeBalance(address).first())
 
         chain.snapshot = running(head = 3) // no proof for the address: the engine could not prove it
-        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), balances.observeBalance(address).first())
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(address).first())
 
         chain.proofs[address] = ProvenBalance("not a number", 3)
-        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), balances.observeBalance(address).first())
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(address).first())
     }
 
     @Test
     fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
         chain.snapshot = EngineSnapshot.Down
         assertEquals(
-            listOf<BalanceReading>(BalanceReading.Unavailable(Reason.NO_ENGINE)),
+            listOf<BalanceReading>(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)),
             balances().observeBalance(address).toList(),
         )
         assertEquals(
-            listOf<BalanceReading>(BalanceReading.Unavailable(Reason.NO_ENGINE)),
+            listOf<BalanceReading>(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)),
             VerifiedNativeBalances(null, StandardTestDispatcher(testScheduler), POLL).observeBalance(address).toList(),
         )
     }

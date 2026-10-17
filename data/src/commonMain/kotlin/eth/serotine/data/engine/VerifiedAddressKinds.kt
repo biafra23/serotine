@@ -21,7 +21,7 @@ class VerifiedAddressKinds internal constructor(
     pollInterval: Duration,
 ) : AddressKinds {
 
-    private val reads = ProvenReads(chain, dispatcher, pollInterval) { verified, address ->
+    private val reads = ProvenReads<Address, AddressKind>(chain, dispatcher, pollInterval) { verified, address ->
         verified.proveCode(address)?.let { EngineReading.Proven(kindOf(it.codeHex), it.blockNumber) }
     }
 

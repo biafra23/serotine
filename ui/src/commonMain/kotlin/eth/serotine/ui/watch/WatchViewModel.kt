@@ -6,6 +6,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AddressWatch
 import eth.serotine.domain.usecase.ObserveAccount
@@ -129,11 +130,11 @@ class WatchViewModel(
             Detection.Unavailable("The light client is not synced yet. The address is checked as soon as it is.")
         reading is KindReading.Unavailable -> Detection.Unavailable(
             when (reading.reason) {
-                BalanceReading.Reason.NO_ENGINE ->
+                ReadUnavailable.NO_ENGINE ->
                     "There is no light client on this device, so the address cannot be checked."
-                BalanceReading.Reason.STALE_ANCHOR ->
+                ReadUnavailable.STALE_ANCHOR ->
                     "The light client refuses to sync, so the address cannot be checked."
-                BalanceReading.Reason.UNPROVEN -> "No peer has proven this address's code yet. Serotine keeps trying."
+                ReadUnavailable.UNPROVEN -> "No peer has proven this address's code yet. Serotine keeps trying."
             },
         )
         else -> {

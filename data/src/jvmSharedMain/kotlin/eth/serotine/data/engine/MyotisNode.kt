@@ -1,12 +1,15 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.keys.fromHex
+import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
-import eth.serotine.data.keys.fromHex
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.TokenBalances
 import io.myotis.api.BeaconState
+import io.myotis.api.CallResult
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
 import io.myotis.api.LifecycleState
@@ -24,10 +27,10 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances], [addressKinds] and [lightClient] to the
- * AppGraph, and owns it for the life of the process: [pause] and [resume] it around the app
- * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
- * used; nothing below them.
+ * creates it with [start], hands [nativeBalances], [tokenBalances], [addressKinds] and
+ * [lightClient] to the AppGraph, and owns it for the life of the process: [pause] and
+ * [resume] it around the app being in the background, [shutdown] on exit. Only
+ * `io.myotis.api` and the library's default ports are used; nothing below them.
  */
 class MyotisNode private constructor() {
 
@@ -67,6 +70,9 @@ class MyotisNode private constructor() {
 
     /** What is at an address (an account, a delegated one, a contract), verified here. */
     val addressKinds: AddressKinds = VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
@@ -206,6 +212,20 @@ class MyotisNode private constructor() {
             if (account.failReason() != null || account.verifyMethod() == null) return null
             return provenCode(account.exists(), account.codeHashHex(), account.blockNumber()) {
                 handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest")
+            }
+        }
+
+        // callDetailed tells a revert (a verified answer) from no answer, and names the block
+        // the call ran against when it can (-1 when it does not).
+        override fun call(to: Address, data: ByteArray): ProvenCall? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val contract = to.hex.removePrefix("0x").fromHex()
+            val result = handle.reads().callDetailed(null, contract, data, null, "latest", null)
+            val block = result.blockNumber().takeIf { it >= 0 }
+            return when (result.status()) {
+                CallResult.Status.OK -> ProvenCall((result.data() ?: ByteArray(0)).toHex(), reverted = false, block)
+                CallResult.Status.REVERTED -> ProvenCall("", reverted = true, block)
+                else -> null
             }
         }
     }

@@ -30,23 +30,24 @@ sealed interface BalanceReading {
     data class Verified(val wei: Wei, val blockNumber: Long) : BalanceReading
 
     /** No verified balance can be had right now, for the reason [reason] gives. */
-    data class Unavailable(val reason: Reason) : BalanceReading
+    data class Unavailable(val reason: ReadUnavailable) : BalanceReading
 
-    /** Why a balance, or another verified read ([KindReading]), is unavailable. */
-    enum class Reason {
-        /**
-         * This device has no running light client: the engine does not ship for its ABI or
-         * platform, or it failed to start.
-         */
-        NO_ENGINE,
+}
 
-        /**
-         * The light client refuses to sync: its best trust anchor is older than the
-         * weak-subjectivity bound, and accepting that risk is the user's decision.
-         */
-        STALE_ANCHOR,
+/** Why a verified read — a balance, an address's kind, a token balance — has no answer right now. */
+enum class ReadUnavailable {
+    /**
+     * This device has no running light client: the engine does not ship for its ABI or
+     * platform, or it failed to start.
+     */
+    NO_ENGINE,
 
-        /** The light client is synced but could not prove this read (no peer served the proof). */
-        UNPROVEN,
-    }
+    /**
+     * The light client refuses to sync: its best trust anchor is older than the
+     * weak-subjectivity bound, and accepting that risk is the user's decision.
+     */
+    STALE_ANCHOR,
+
+    /** The light client is synced but could not prove this read (no peer served the proof). */
+    UNPROVEN,
 }

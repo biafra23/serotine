@@ -21,7 +21,7 @@ class VerifiedNativeBalances internal constructor(
     pollInterval: Duration,
 ) : NativeBalances {
 
-    private val reads = ProvenReads(chain, dispatcher, pollInterval) { verified, address ->
+    private val reads = ProvenReads<Address, Wei>(chain, dispatcher, pollInterval) { verified, address ->
         verified.proveBalance(address)?.let { proven ->
             Wei.parse(proven.wei)?.let { EngineReading.Proven(it, proven.blockNumber) }
         }

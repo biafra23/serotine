@@ -88,6 +88,11 @@ consumer developed against an unreleased engine, Myotis's
   reads cannot be verified, the row shows why ("Syncing…", "Sync refused", "Not
   verified", "No light client"), never an older amount. Why a node is down is
   written to stderr, with the engine's own log when it refused to start.
+- **Verified token balances.** `VerifiedTokenBalances` runs each token's
+  `balanceOf(holder)` through `VerifiedReads.callDetailed`, polled and cached
+  like the rest, through `ProvenReads`. It is labelled with the block the
+  engine names (`-1`, none, when it does not). `REVERTED` is a verified "not a
+  token", and `UNAVAILABLE` or `REFUSED` is unproven.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,

@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -18,8 +20,10 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -50,6 +54,7 @@ import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -58,6 +63,9 @@ const val ACCOUNT_BALANCE_TAG = "account-balance"
 
 /** Test tag of the account's full address, for UI tests. */
 const val ACCOUNT_ADDRESS_TAG = "account-address"
+
+/** Test tag of each asset row, for UI tests. */
+const val ACCOUNT_ASSET_TAG = "account-asset"
 
 /**
  * Binds [AccountDetailScreen] to its ViewModel. An account that leaves the wallet while the
@@ -91,6 +99,7 @@ fun AccountDetailRoute(
         onCopy = rememberCopyText(),
         onRename = onRename,
         onRemove = onRemove,
+        onSort = viewModel::sortBy,
         modifier = modifier,
     )
 }
@@ -109,6 +118,7 @@ fun AccountDetailScreen(
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
+    onSort: (AssetSort) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -158,15 +168,23 @@ fun AccountDetailScreen(
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
                 )
-                is AccountDetailUiState.Ready -> Details(state, onReceive, copy)
+                is AccountDetailUiState.Ready -> Details(state, onReceive, copy, onSort)
             }
         }
     }
 }
 
 @Composable
-private fun Details(state: AccountDetailUiState.Ready, onReceive: () -> Unit, onCopy: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+private fun Details(
+    state: AccountDetailUiState.Ready,
+    onReceive: () -> Unit,
+    onCopy: (String) -> Unit,
+    onSort: (AssetSort) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             AccountAvatar(state.address, size = 56.dp)
             Column {
@@ -210,7 +228,47 @@ private fun Details(state: AccountDetailUiState.Ready, onReceive: () -> Unit, on
                 Text("Receive")
             }
         }
+        Assets(state, onSort)
         state.balanceNote?.let { note ->
+            Text(note, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** The asset rows (docs/wallet-ux.md, screen 4), with their order and what is not known yet. */
+@Composable
+private fun Assets(state: AccountDetailUiState.Ready, onSort: (AssetSort) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Sort", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+            AssetSort.entries.forEach { order ->
+                FilterChip(
+                    selected = state.sort == order,
+                    onClick = { onSort(order) },
+                    label = { Text(order.label) },
+                )
+            }
+        }
+        state.assets.forEach { asset ->
+            ListItem(
+                modifier = Modifier.testTag(ACCOUNT_ASSET_TAG),
+                leadingContent = { TokenIcon(asset.icon, asset.symbol) },
+                headlineContent = { Text(asset.symbol) },
+                supportingContent = { Text(asset.name) },
+                trailingContent = {
+                    Text(
+                        asset.amount,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (asset.verified) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                },
+            )
+        }
+        state.tokensNote?.let { note ->
             Text(note, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

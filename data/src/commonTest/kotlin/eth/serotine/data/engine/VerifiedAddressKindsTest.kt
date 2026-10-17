@@ -4,17 +4,17 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AddressKind
-import eth.serotine.domain.repository.BalanceReading.Reason
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import org.kotlincrypto.hash.sha3.Keccak256
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
-import org.kotlincrypto.hash.sha3.Keccak256
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class VerifiedAddressKindsTest {
@@ -50,13 +50,13 @@ class VerifiedAddressKindsTest {
     @Test
     fun whatCannotBeProvenIsSaidSo() = runTest {
         chain.snapshot = running(head = 9)
-        assertEquals(KindReading.Unavailable(Reason.UNPROVEN), kinds().observeKind(address).first())
+        assertEquals(KindReading.Unavailable(ReadUnavailable.UNPROVEN), kinds().observeKind(address).first())
 
         chain.snapshot = EngineSnapshot.Booting
         assertEquals(KindReading.Syncing, kinds().observeKind(address).first())
 
         assertEquals(
-            KindReading.Unavailable(Reason.NO_ENGINE),
+            KindReading.Unavailable(ReadUnavailable.NO_ENGINE),
             VerifiedAddressKinds(null, StandardTestDispatcher(testScheduler), 4.seconds).observeKind(address).first(),
         )
     }

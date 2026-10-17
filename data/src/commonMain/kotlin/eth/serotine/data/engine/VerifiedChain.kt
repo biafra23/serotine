@@ -26,7 +26,21 @@ internal interface VerifiedChain {
      * not prove it. Blocks, bounded by the engine.
      */
     fun proveCode(address: Address): ProvenCode?
+
+    /**
+     * [data] called on the contract at [to], from no sender, run against the light client's
+     * beacon-attested state; null when the engine could not answer verified. Blocks, bounded
+     * by the engine.
+     */
+    fun call(to: Address, data: ByteArray): ProvenCall?
 }
+
+/**
+ * A verified call's outcome: what it returned, as lower-case hex without `0x`, or that it
+ * [reverted] (a verified answer too); against the state of [blockNumber], null when the
+ * engine did not say.
+ */
+internal data class ProvenCall(val returned: String, val reverted: Boolean, val blockNumber: Long?)
 
 /** A balance in decimal wei, proven at [blockNumber], the block the proof anchors to. */
 internal data class ProvenBalance(val wei: String, val blockNumber: Long)

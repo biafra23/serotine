@@ -1,6 +1,7 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
+import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 
 /** A [VerifiedChain] whose snapshot and proofs a test sets. */
@@ -26,6 +27,14 @@ internal class FakeChain : VerifiedChain {
         failure?.let { throw it }
         proofRequests += address
         return codes[address]
+    }
+
+    /** Answers per contract and calldata (hex), as a test sets them. */
+    val calls = mutableMapOf<Pair<Address, String>, ProvenCall>()
+
+    override fun call(to: Address, data: ByteArray): ProvenCall? {
+        failure?.let { throw it }
+        return calls[to to data.toHex()]
     }
 }
 

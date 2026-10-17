@@ -1,36 +1,18 @@
 package eth.serotine.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.longClick
-import androidx.compose.ui.test.performTextClearance
-import androidx.compose.ui.test.performTouchInput
-import eth.serotine.domain.model.AccountCustody
-import eth.serotine.domain.model.AccountKind
-import eth.serotine.domain.repository.AccountChange
-import eth.serotine.domain.repository.AddressKind
-import eth.serotine.domain.repository.AddressKinds
-import eth.serotine.domain.repository.KeyDeletion
-import eth.serotine.domain.repository.KindReading
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.rememberNavController
-import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
-import eth.serotine.ui.accountdetail.ACCOUNT_BALANCE_TAG
-import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
-import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
-import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
-import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
-import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
-import eth.serotine.ui.watch.WATCH_NAME_TAG
-import kotlin.test.assertEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -38,26 +20,47 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.AddressKind
+import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.repository.TokenBalances
+import eth.serotine.domain.repository.TokenCatalog
+import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_BALANCE_TAG
+import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_REPEAT_TAG
+import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
+import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
+import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
+import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
+import eth.serotine.ui.watch.WATCH_NAME_TAG
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -72,6 +75,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
+import kotlin.test.assertEquals
 
 /** The shared [App] end to end, over fake ports: the tabs, the account screens and their dialogs. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -131,6 +135,13 @@ class AppNavigationTest {
         },
         nativeBalances = object : NativeBalances {
             override fun observeBalance(address: Address): Flow<BalanceReading> = flowOf(BalanceReading.Syncing)
+        },
+        tokenCatalog = object : TokenCatalog {
+            override fun observeTokens(): Flow<List<Token>> = flowOf(emptyList())
+        },
+        tokenBalances = object : TokenBalances {
+            override fun observeBalance(holder: Address, token: Address): Flow<TokenBalanceReading> =
+                flowOf(TokenBalanceReading.Syncing)
         },
         addressKinds = object : AddressKinds {
             override fun observeKind(address: Address): Flow<KindReading> =

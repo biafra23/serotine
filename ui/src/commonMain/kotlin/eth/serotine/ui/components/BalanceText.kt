@@ -3,6 +3,8 @@ package eth.serotine.ui.components
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.ReadUnavailable
+import kotlin.math.pow
 
 /** Decimal places of ether and of every EVM chain's native currency. */
 private const val NATIVE_DECIMALS = 18
@@ -12,25 +14,37 @@ private const val NATIVE_DECIMALS = 18
  * a row never shows more than the account holds. A balance too small for [places] shows as
  * "< 0.0001", never as zero.
  */
-internal fun formatNative(wei: Wei, symbol: String, places: Int = 4): String {
-    val digits = wei.decimal.padStart(NATIVE_DECIMALS + 1, '0')
-    val whole = digits.dropLast(NATIVE_DECIMALS)
-    val fraction = digits.takeLast(NATIVE_DECIMALS).take(places).trimEnd('0')
+internal fun formatNative(wei: Wei, symbol: String, places: Int = 4): String =
+    formatUnits(wei.decimal, NATIVE_DECIMALS, symbol, places)
+
+/**
+ * [units] (a non-negative decimal integer in a token's smallest unit) in whole units of
+ * [symbol] at [decimals] decimal places, truncated to [places] of them, never rounded up; a
+ * non-zero amount too small for [places] shows as "< 0.0001", never as zero.
+ */
+internal fun formatUnits(units: String, decimals: Int, symbol: String, places: Int = 4): String {
+    val digits = units.padStart(decimals + 1, '0')
+    val whole = digits.dropLast(decimals)
+    val fraction = digits.takeLast(decimals).take(places).trimEnd('0')
     return when {
         fraction.isNotEmpty() -> "$whole.$fraction $symbol"
-        whole == "0" && wei.decimal != "0" -> "< 0.${"0".repeat(places - 1)}1 $symbol"
+        whole == "0" && units != "0" -> "< 0.${"0".repeat(places - 1)}1 $symbol"
         else -> "$whole $symbol"
     }
 }
+
+/** [units] at [decimals] decimal places as a number, for ordering rows by amount; not for display. */
+internal fun unitsAsNumber(units: String, decimals: Int): Double =
+    units.toDouble() / 10.0.pow(decimals)
 
 /** What an account row says for [reading] on [network]: an amount, or why there is none. */
 internal fun balanceText(reading: BalanceReading, network: Network): String = when (reading) {
     is BalanceReading.Verified -> formatNative(reading.wei, network.nativeSymbol)
     BalanceReading.Syncing -> "Syncing…"
     is BalanceReading.Unavailable -> when (reading.reason) {
-        BalanceReading.Reason.NO_ENGINE -> "No light client"
-        BalanceReading.Reason.STALE_ANCHOR -> "Sync refused"
-        BalanceReading.Reason.UNPROVEN -> "Not verified"
+        ReadUnavailable.NO_ENGINE -> "No light client"
+        ReadUnavailable.STALE_ANCHOR -> "Sync refused"
+        ReadUnavailable.UNPROVEN -> "Not verified"
     }
 }
 

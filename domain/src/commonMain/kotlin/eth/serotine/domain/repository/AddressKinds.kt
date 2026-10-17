@@ -49,5 +49,5 @@ sealed interface KindReading {
     data class Verified(val kind: AddressKind, val blockNumber: Long) : KindReading
 
     /** No verified answer can be had right now, for the reason [reason] gives. */
-    data class Unavailable(val reason: BalanceReading.Reason) : KindReading
+    data class Unavailable(val reason: ReadUnavailable) : KindReading
 }

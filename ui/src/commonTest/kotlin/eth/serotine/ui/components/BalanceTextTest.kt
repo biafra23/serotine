@@ -3,7 +3,7 @@ package eth.serotine.ui.components
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
-import eth.serotine.domain.repository.BalanceReading.Reason
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -33,8 +33,19 @@ class BalanceTextTest {
     fun everyReadingHasAText() {
         assertEquals("Syncing…", balanceText(BalanceReading.Syncing, Network.SEPOLIA))
         assertEquals("0.5 ETH", balanceText(BalanceReading.Verified(Wei.of("500000000000000000"), 1), Network.SEPOLIA))
-        assertEquals("No light client", balanceText(BalanceReading.Unavailable(Reason.NO_ENGINE), Network.SEPOLIA))
-        assertEquals("Sync refused", balanceText(BalanceReading.Unavailable(Reason.STALE_ANCHOR), Network.SEPOLIA))
-        assertEquals("Not verified", balanceText(BalanceReading.Unavailable(Reason.UNPROVEN), Network.SEPOLIA))
+        fun text(reason: ReadUnavailable) = balanceText(BalanceReading.Unavailable(reason), Network.SEPOLIA)
+        assertEquals("No light client", text(ReadUnavailable.NO_ENGINE))
+        assertEquals("Sync refused", text(ReadUnavailable.STALE_ANCHOR))
+        assertEquals("Not verified", balanceText(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), Network.SEPOLIA))
+    }
+
+    @Test
+    fun tokenUnitsAreShownAtTheirOwnDecimals() {
+        assertEquals("1250 USDC", formatUnits("1250000000", 6, "USDC"))
+        assertEquals("0.5 LINK", formatUnits("500000000000000000", 18, "LINK"))
+        assertEquals("12 RAW", formatUnits("12", 0, "RAW"))
+        assertEquals("< 0.0001 USDC", formatUnits("1", 6, "USDC"))
+        assertEquals("0 USDC", formatUnits("0", 6, "USDC"))
+        assertEquals(1250.0, unitsAsNumber("1250000000", 6))
     }
 }

@@ -36,8 +36,9 @@ rule in code.
   in it can ever import `android.*` (and that variant emits Java 17 class
   files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
-  `KeyStore`, and `NativeBalances`, `AddressKinds` and `LightClient` over the
-  embedded Myotis engine) and owns every data source.
+  `KeyStore`, `TokenCatalog`, and `NativeBalances`, `TokenBalances`,
+  `AddressKinds` and `LightClient` over the embedded Myotis engine) and owns
+  every data source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
@@ -56,7 +57,7 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`; later `tokens`, `prices`, `safe`) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `tokens`; later `prices`, `safe`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu) and the display helpers they share (EIP-55, amounts, the light client's line); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, the clipboard, the share sheet) |

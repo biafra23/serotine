@@ -3,6 +3,7 @@ package eth.serotine.data.engine
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -40,7 +41,7 @@ class MyotisNodeSepoliaTest {
                 // Past "not verified" (a proof no peer has served yet); a refusal ends it at once.
                 node.nativeBalances.observeBalance(address).first {
                     it is BalanceReading.Verified ||
-                        (it is BalanceReading.Unavailable && it.reason != BalanceReading.Reason.UNPROVEN)
+                        (it is BalanceReading.Unavailable && it.reason != ReadUnavailable.UNPROVEN)
                 }
             }
             println("Sepolia balance of $address: $reading")

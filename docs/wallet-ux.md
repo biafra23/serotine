@@ -218,7 +218,11 @@ The ruling (CLAUDE.md, *Data sources*, 2026-10-16): a built-in list, more by
 address. Applied:
 
 - **A built-in entry** is its address, symbol, name, decimals, icon key and
-  price id, keyed by network. It is checked twice against the contract's
+  price id, keyed by network. On Sepolia the list is USDC, LINK and UNI: the
+  issuers' own test deployments of tokens with an icon in the CC0 set (the
+  owner's choice, 2026-10-17). EURC, WETH and PYUSD have no CC0 icon, and
+  Aave's faucet tokens (DAI, USDT, WBTC, AAVE) are not their issuers', so all
+  of them are added by address. It is checked twice against the contract's
   `symbol()` and `decimals()`: by the PR that adds it, which shows the values
   read, and by the app with verified calls when it first lists the token; an
   entry that disagrees with its contract is not shown, and Settings → Tokens
@@ -231,9 +235,13 @@ address. Applied:
 - **A token the user adds** is read from its contract (`symbol()`, `name()`,
   `decimals()`, verified) and labelled as the contract's claim. One whose
   symbol is a built-in token's is marked as not that token.
-- **Balances are verified `balanceOf` calls**, batched through Multicall3's
-  `aggregate3` in one verified call where Multicall3's code is at its
-  canonical address, one call per token otherwise.
+- **Balances are verified `balanceOf` calls**, one per token and account,
+  each labelled with the block it ran against. A call that reverts, or returns
+  anything but one word, is a verified "not a token", not a zero. With a short
+  list that is enough. Once the list grows, the calls are batched through
+  Multicall3's `aggregate3`. Its code hash on Sepolia is
+  `0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891`,
+  proven 2026-10-17, and is pinned before any batch trusts it.
 - **Only known tokens show.** An account lists the built-in tokens it holds
   and the ones the user added, minus the hidden ones. Finding other tokens
   an address holds takes an indexer, which the *Trust* rules exclude.
