@@ -9,6 +9,9 @@ import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveUpgradeWarning
+import eth.serotine.ui.platform.formatDateTime
+import eth.serotine.ui.update.UpgradeBannerItem
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,17 +29,21 @@ import kotlin.time.ExperimentalTime
 
 /**
  * The Home screen's ViewModel: turns the domain's account stream, each account's verified
- * balance and the light client's state into [HomeUiState], on the [network] the composition
- * root runs the app on. It holds no platform reference and exposes state only through
- * [uiState]; user intents, once the screen has any, become methods here that call use cases.
+ * balance, the light client's state and any network upgrade this version does not support
+ * into [HomeUiState], on the [network] the composition root runs the app on. It holds no
+ * platform reference and exposes state only through [uiState]; user intents, once the screen
+ * has any, become methods here that call use cases.
  */
 class HomeViewModel(
     observeAccounts: ObserveAccounts,
     observeNativeBalance: ObserveNativeBalance,
     observeLightClient: ObserveLightClient,
+    observeUpgradeWarning: ObserveUpgradeWarning,
     network: Network,
     /** Now, in unix seconds: what the strip dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
+    /** How the banner dates an upgrade (unix seconds). */
+    formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
     /** What the account list gives the screen: rows (with any notice), or why there are none. */
@@ -87,10 +94,15 @@ class HomeViewModel(
         ticks.map { LightClientItem.from(status, clock()) }
     }
 
-    val uiState: StateFlow<HomeUiState> = combine(rows, strip) { rows, lightClient ->
+    /** The upgrade banner, none until the first warning: Home never waits for it. */
+    private val upgrade = observeUpgradeWarning()
+        .map { UpgradeBannerItem.from(it, network, formatTime) }
+        .onStart { emit(null) }
+
+    val uiState: StateFlow<HomeUiState> = combine(rows, strip, upgrade) { rows, lightClient, upgrade ->
         when (rows) {
-            is Rows.Shown -> HomeUiState.Ready(network.displayName, lightClient, rows.items, rows.notice)
-            is Rows.Unavailable -> HomeUiState.ListUnavailable(network.displayName, lightClient, rows.message)
+            is Rows.Shown -> HomeUiState.Ready(network.displayName, lightClient, rows.items, rows.notice, upgrade)
+            is Rows.Unavailable -> HomeUiState.ListUnavailable(network.displayName, lightClient, rows.message, upgrade)
         }
     }
         .stateIn(

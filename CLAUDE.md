@@ -54,10 +54,12 @@ Modules (Gradle):
   account list, persisted as a JSON file; `InMemoryAccountRepository` for tests),
   the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
   seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
-  (`eth.serotine.data.engine`: `MyotisNode`, verified native balances), whose
-  glue over `io.myotis.api` lives in a `jvmSharedMain` source set the Android
-  and desktop targets share. Targets Android + desktop + iOS; the Android
-  target is what resolves the engine's AAR.
+  (`eth.serotine.data.engine`: `MyotisNode`, verified native balances, the
+  peer-reported network-upgrade advisory), whose glue over `io.myotis.api`
+  lives in a `jvmSharedMain` source set the Android and desktop targets
+  share, and the record of a known upgrade (`eth.serotine.data.upgrade`).
+  Targets Android + desktop + iOS; the Android target is what resolves the
+  engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
   `<Feature>ViewModel`, `<Feature>UiState`; the theme; `App` with the one
@@ -68,7 +70,9 @@ Modules (Gradle):
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
   adapters and renders `App`. The desktop one runs once per user: it holds an
-  `InstanceLock` on its data directory for the process's lifetime.
+  `InstanceLock` on its data directory for the process's lifetime. A port
+  whose adapter is the platform's own output (`UpgradeNotifier`: Android's
+  notifications and alarm, the desktop's tray) is implemented in the host.
 
 **The dependency rule: arrows point inward only.** `:domain` depends on nothing
 of ours; `:ui` and `:data` depend on `:domain`; the hosts depend on `:ui` and
@@ -523,6 +527,20 @@ discussion that produced this note.
   anchors are sync-committee signatures and its embedded accumulators) or shown
   as not available. No JSON-RPC provider, no indexer API and no "temporary"
   fallback supplies chain state, in any build type.
+- **Network-upgrade warnings are peer reports, and say so** (owner's request,
+  2026-10-17: warn ahead of a breaking hard fork, notify even while the app
+  is closed, and after it do nothing but ask for the update). The engine's
+  upgrade advisory is derived from what peers announce and is not verified:
+  the one thing the wallet shows about the network that the light client
+  does not prove. It is never chain state — no balance, nonce or transaction
+  depends on it, nothing in verification reads it — and every text showing
+  it says peers report it. Only the light client's own state may make the app
+  claim it cannot follow the network: the update screen, which replaces every
+  other, needs an activation peers confirmed (not merely an announced time
+  passing) AND a light client that is not verifying (not synced, or a stale
+  head), Myotis's rule for its hosts. On peers' word alone the app shows a
+  banner and notifications, never that screen (docs/embedding-myotis.md,
+  *Network upgrades*).
 - **A parameter that can change the answer must be APPLIED or REFUSED — never
   accepted and silently ignored** (Myotis rule, learned the hard way in its
   #314). A well-formed result computed against something other than what the

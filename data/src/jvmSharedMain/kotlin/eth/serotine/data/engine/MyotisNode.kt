@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkUpgrades
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
@@ -22,10 +23,10 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances] and [lightClient] to the AppGraph, and owns
- * it for the life of the process: [pause] and [resume] it around the app being in the
- * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
- * used; nothing below them.
+ * creates it with [start], hands [nativeBalances], [lightClient] and [networkUpgrades] to the
+ * AppGraph, and owns it for the life of the process: [pause] and [resume] it around the app
+ * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default
+ * ports are used; nothing below them.
  */
 class MyotisNode private constructor() {
 
@@ -75,6 +76,9 @@ class MyotisNode private constructor() {
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
+
+    /** Network upgrades this build does not support, as peers report them to this node. */
+    val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
@@ -202,7 +206,22 @@ class MyotisNode private constructor() {
     }
 
     private inner class HandleChain : VerifiedChain {
+
+        /**
+         * The last snapshot read and when (System.nanoTime). Every adapter, and each of its
+         * subscribers, polls on its own: those that ask within [SNAPSHOT_REUSE_NS] of one read
+         * share it, so they cost the engine one status call, not one each.
+         */
+        @Volatile
+        private var lastRead: TimedSnapshot? = null
+
         override fun snapshot(): EngineSnapshot {
+            val now = System.nanoTime()
+            lastRead?.let { if (now - it.atNanos < SNAPSHOT_REUSE_NS) return it.snapshot }
+            return read().also { lastRead = TimedSnapshot(now, it) }
+        }
+
+        private fun read(): EngineSnapshot {
             val running = when (val current = state) {
                 State.Booting -> return EngineSnapshot.Booting
                 State.Down -> return EngineSnapshot.Down
@@ -236,6 +255,7 @@ class MyotisNode private constructor() {
                 headTimestamp = headTimestamp,
                 headAgeMs = status.verifiedHeadAgeMs(),
                 wsBoundPeriods = status.wsBoundPeriods(),
+                upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
             )
         }
 
@@ -251,8 +271,13 @@ class MyotisNode private constructor() {
         }
     }
 
+    private class TimedSnapshot(val atNanos: Long, val snapshot: EngineSnapshot)
+
     companion object {
         private val POLL_INTERVAL = 4.seconds
+
+        /** How long one status read serves other pollers: well under the fastest poll (1 s). */
+        private const val SNAPSHOT_REUSE_NS = 500_000_000L
 
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds

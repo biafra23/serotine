@@ -14,6 +14,8 @@ import androidx.compose.ui.test.performClick
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.theme.SerotineTheme
+import eth.serotine.ui.update.UPGRADE_BANNER_TAG
+import eth.serotine.ui.update.UpgradeBannerItem
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -67,6 +69,30 @@ class HomeScreenTest {
         show(HomeUiState.Loading("Sepolia", syncing))
 
         rule.onNodeWithTag(HOME_NETWORK_TAG).assertTextEquals("Sepolia")
+    }
+
+    @Test
+    fun anUpgradeBannerIsShownUnderTheStripWithTheWayToTheUpdate() {
+        val banner = UpgradeBannerItem(
+            "Network upgrade ahead: update Serotine",
+            "Peers announce a Sepolia network upgrade on Nov 6, 2026 that this version does not support.",
+            "Reported by peers in 5 networks, not verified · fork id 0x6c1d9423",
+            urgent = false,
+        )
+        show(HomeUiState.Ready("Sepolia", syncing, emptyList(), upgrade = banner))
+
+        rule.onNodeWithTag(UPGRADE_BANNER_TAG).assertIsDisplayed()
+        rule.onNodeWithText(banner.text).assertIsDisplayed()
+        rule.onNodeWithText(banner.details).assertIsDisplayed()
+        rule.onNodeWithText("Get the update").assertIsDisplayed()
+        rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+    }
+
+    @Test
+    fun noUpgradeNoBanner() {
+        show(HomeUiState.Ready("Sepolia", syncing, emptyList()))
+
+        rule.onNodeWithTag(UPGRADE_BANNER_TAG).assertDoesNotExist()
     }
 
     @Test

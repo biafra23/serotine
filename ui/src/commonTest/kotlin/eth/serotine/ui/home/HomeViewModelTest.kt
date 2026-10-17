@@ -4,23 +4,31 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.KnownUpgrade
+import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveUpgradeWarning
+import eth.serotine.domain.usecase.UpgradeWarning
+import eth.serotine.ui.update.UpgradeBannerItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -39,6 +47,7 @@ class HomeViewModelTest {
     private val repository = FakeAccountRepository()
     private val balances = FakeBalances()
     private val lightClient = FakeLightClient()
+    private val upgrades = FakeNetworkUpgrades()
     private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
     private var now = 1_792_100_000L
 
@@ -46,8 +55,10 @@ class HomeViewModelTest {
         ObserveAccounts(repository),
         ObserveNativeBalance(balances),
         ObserveLightClient(lightClient),
+        ObserveUpgradeWarning(upgrades, NoRecord, lightClient) { now },
         Network.SEPOLIA,
         clock = { now },
+        formatTime = { "<$it>" },
     )
 
     private val treasury = Account(Address.of("0x" + "ab".repeat(20)), AccountKind.SAFE, "Treasury")
@@ -201,6 +212,25 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun anUpgradePeersReportIsABannerAboveTheList() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals(null, viewModel.uiState.value.upgrade)
+
+        val ahead = NetworkUpgrade(NetworkUpgrade.Phase.SCHEDULED, now + 86_400, "0x6c1d9423", 5)
+        upgrades.report.value = ahead
+        runCurrent()
+
+        assertEquals(
+            UpgradeBannerItem.from(UpgradeWarning.Ahead(ahead), Network.SEPOLIA) { "<$it>" },
+            viewModel.uiState.value.upgrade,
+        )
+        assertEquals("Network upgrade ahead: update Serotine", viewModel.uiState.value.upgrade?.title)
+    }
+
+    @Test
     fun accountItemShortensTheAddressForTheRow() {
         val item = AccountItem.from(
             Account(Address.of("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"), AccountKind.EOA, "Vitalik"),
@@ -220,6 +250,16 @@ class HomeViewModelTest {
             }
         override fun observeAccounts(): Flow<AccountList> = list
         override suspend fun add(account: Account): AccountAdd = error("not used by this test")
+    }
+
+    private class FakeNetworkUpgrades : NetworkUpgrades {
+        val report = MutableStateFlow<NetworkUpgrade?>(null)
+        override fun observeUpgrade(): Flow<NetworkUpgrade?> = report
+    }
+
+    private object NoRecord : KnownUpgradeStore {
+        override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
+        override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
     }
 
     private class FakeLightClient : LightClient {

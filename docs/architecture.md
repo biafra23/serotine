@@ -36,14 +36,18 @@ each rule in code.
   in it can ever import `android.*` (and that variant emits Java 17 class
   files, since Android dexes it).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
-  `KeyStore`, and `NativeBalances` and `LightClient` over the embedded Myotis
-  engine) and owns every data source.
+  `KeyStore`, `KnownUpgradeStore`, and `NativeBalances`, `LightClient` and
+  `NetworkUpgrades` over the embedded Myotis engine) and owns every data
+  source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
   which adapter implements which port. Each has one composition root
   (`SerotineApplication` on Android, `main()` on desktop) that builds an
-  `AppGraph` and hands it to `App`.
+  `AppGraph` and hands it to `App`. A port whose adapter is the platform's own
+  output rather than a data source — `UpgradeNotifier`, the notifications —
+  is implemented in the host itself, since it needs the host's activity, icon
+  or tray; the decision what to show stays a use case in `:domain`.
 
 Anything that violates the arrows — a screen reaching for a repository, a use
 case importing a Compose or Android type, `:data` depending on `:ui` — is a
@@ -56,9 +60,9 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`; later `safe`) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`; later `safe`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
-| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture) |
+| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, dates in the user's locale) |
 | `eth.serotine.ui.theme` | Material 3 theme |
 | `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
 
@@ -88,7 +92,10 @@ review finding, whatever it saves.
   the destination's back-stack entry owns it: it survives configuration
   changes while the screen is on the back stack and is cleared when the
   screen is popped. Routes say where the user wants to go through callbacks
-  (`onAddAccount`, `onBack`); only `App` holds the `NavController`.
+  (`onAddAccount`, `onBack`); only `App` holds the `NavController`. The one
+  exception is the update screen: its ViewModel decides whether the app shows
+  anything else, so `App` creates it in the host's scope and navigates to the
+  screen, clearing the back stack, while an update is required.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference
