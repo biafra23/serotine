@@ -648,3 +648,6 @@ Still the owner's decisions (CLAUDE.md, docs/keys-and-signing.md and issue
 - recovery modules beyond offering one when a Safe is created;
 - the dApp connection protocol;
 - any network other than Sepolia.
+
+Swapping tokens has a page of its own, docs/swaps.md (issue #69). The swap
+screens there are numbered from 22.
