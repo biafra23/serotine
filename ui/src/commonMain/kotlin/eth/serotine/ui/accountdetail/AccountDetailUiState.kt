@@ -12,7 +12,9 @@ sealed interface AccountDetailUiState {
     /**
      * The account: its [label], its EIP-55 [address], what the user can do with it
      * ([control]) and its native [balance], verified at the block [balanceNote] names when
-     * [balanceVerified], or why there is none.
+     * [balanceVerified], or why there is none; its [assets] — the native currency, then every
+     * known token it holds — and [tokensNote], what is not known yet about the other tokens
+     * ("Checking 3 tokens"), or null.
      */
     data class Ready(
         val label: String,
@@ -22,6 +24,8 @@ sealed interface AccountDetailUiState {
         val balance: String,
         val balanceVerified: Boolean,
         val balanceNote: String?,
+        val assets: List<AssetRow> = emptyList(),
+        val tokensNote: String? = null,
     ) : AccountDetailUiState
 
     /** The account is not in the wallet (removed): the screen leaves. */
@@ -30,3 +34,18 @@ sealed interface AccountDetailUiState {
     /** The stored list cannot be read right now, for the reason [message] gives. */
     data class Unavailable(val message: String) : AccountDetailUiState
 }
+
+/**
+ * One asset row (docs/wallet-ux.md, screen 4): its [symbol] and [name], the [amount] held —
+ * verified when [verified], otherwise why there is none — the block it was verified at
+ * ([verifiedAt], "block 11,932,144"; null when not verified or not named), and the bundled
+ * [icon] key (null: a monogram).
+ */
+data class AssetRow(
+    val symbol: String,
+    val name: String,
+    val amount: String,
+    val icon: String?,
+    val verified: Boolean,
+    val verifiedAt: String? = null,
+)

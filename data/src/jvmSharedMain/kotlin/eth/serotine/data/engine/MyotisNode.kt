@@ -1,11 +1,12 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.keys.fromHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
-import eth.serotine.data.keys.fromHex
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.TokenBalances
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
@@ -24,10 +25,10 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances], [addressKinds] and [lightClient] to the
- * AppGraph, and owns it for the life of the process: [pause] and [resume] it around the app
- * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
- * used; nothing below them.
+ * creates it with [start], hands [nativeBalances], [tokenBalances], [addressKinds] and
+ * [lightClient] to the AppGraph, and owns it for the life of the process: [pause] and
+ * [resume] it around the app being in the background, [shutdown] on exit. Only
+ * `io.myotis.api` and the library's default ports are used; nothing below them.
  */
 class MyotisNode private constructor() {
 
@@ -67,6 +68,9 @@ class MyotisNode private constructor() {
 
     /** What is at an address (an account, a delegated one, a contract), verified here. */
     val addressKinds: AddressKinds = VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
@@ -207,6 +211,12 @@ class MyotisNode private constructor() {
             return provenCode(account.exists(), account.codeHashHex(), account.blockNumber()) {
                 handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest")
             }
+        }
+
+        override fun call(to: Address, data: ByteArray): CallOutcome? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val contract = to.hex.removePrefix("0x").fromHex()
+            return callOutcome(handle.reads().callDetailed(null, contract, data, null, "latest", null))
         }
     }
 

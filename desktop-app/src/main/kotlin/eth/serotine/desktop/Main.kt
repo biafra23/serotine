@@ -10,6 +10,7 @@ import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
+import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
@@ -87,6 +88,8 @@ private fun openWallet(dataDir: File) {
                 // not used yet (the owner's rulings of 2026-10-15 and -16).
                 keys = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection()),
                 nativeBalances = node.nativeBalances,
+                tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
+                tokenBalances = node.tokenBalances,
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
                 network = Network.SEPOLIA,

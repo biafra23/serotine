@@ -10,6 +10,7 @@ import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.AppGraph
 
@@ -36,6 +37,8 @@ class SerotineApplication : Application() {
             // a Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers.
             keys = EnvelopeKeyStore(filesDir.resolve("keys").path, AndroidKeystoreSecret()),
             nativeBalances = node.nativeBalances,
+            tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
+            tokenBalances = node.tokenBalances,
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             network = Network.SEPOLIA,

@@ -11,6 +11,7 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.flow.first
 
 /**
@@ -74,7 +75,7 @@ sealed interface AddressWatch {
      * The light client cannot prove the address's kind right now: still syncing ([reason]
      * null), or for the [reason] given. Nothing changed.
      */
-    data class NotVerified(val reason: BalanceReading.Reason?) : AddressWatch
+    data class NotVerified(val reason: ReadUnavailable?) : AddressWatch
 
     /** The name is longer than [RenameAccount.MAX_LABEL_LENGTH]; nothing changed. */
     data object NameTooLong : AddressWatch

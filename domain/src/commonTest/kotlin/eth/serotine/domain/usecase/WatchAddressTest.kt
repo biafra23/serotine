@@ -8,6 +8,7 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -61,8 +62,8 @@ class WatchAddressTest {
         reading = KindReading.Syncing
         assertEquals(AddressWatch.NotVerified(null), watch(address, ""))
 
-        reading = KindReading.Unavailable(BalanceReading.Reason.UNPROVEN)
-        assertEquals(AddressWatch.NotVerified(BalanceReading.Reason.UNPROVEN), watch(address, ""))
+        reading = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        assertEquals(AddressWatch.NotVerified(ReadUnavailable.UNPROVEN), watch(address, ""))
         assertEquals(listOf(daily), repository.accounts.value)
     }
 

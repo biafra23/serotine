@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
@@ -22,8 +23,8 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.onStart
@@ -111,7 +112,7 @@ class AssetsViewModelTest {
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
 
-        balances.of(daily.address).value = BalanceReading.Unavailable(BalanceReading.Reason.UNPROVEN)
+        balances.of(daily.address).value = BalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
         runCurrent()
 
         val rows = (viewModel.uiState.value as AssetsUiState.Ready).accounts

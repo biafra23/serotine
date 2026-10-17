@@ -7,6 +7,8 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.TokenBalances
+import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ObserveAccount
@@ -14,6 +16,7 @@ import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.WalletChanges
@@ -42,6 +45,10 @@ class AppGraph(
     private val keys: KeyStore,
     /** Balances verified by the embedded light client of [network]. */
     private val nativeBalances: NativeBalances,
+    /** The tokens the wallet knows on [network]. */
+    private val tokenCatalog: TokenCatalog,
+    /** Token balances verified by that light client. */
+    private val tokenBalances: TokenBalances,
     /** What is at an address, verified by that light client. */
     private val addressKinds: AddressKinds,
     /** That light client's own state. */
@@ -61,7 +68,13 @@ class AppGraph(
         )
 
     fun accountDetailViewModel(address: Address): AccountDetailViewModel =
-        AccountDetailViewModel(address, ObserveAccount(accounts), ObserveNativeBalance(nativeBalances), network)
+        AccountDetailViewModel(
+            address,
+            ObserveAccount(accounts),
+            ObserveNativeBalance(nativeBalances),
+            ObserveTokenHoldings(tokenCatalog, tokenBalances),
+            network,
+        )
 
     fun receiveViewModel(address: Address): ReceiveViewModel =
         ReceiveViewModel(address, ObserveAccount(accounts), network)

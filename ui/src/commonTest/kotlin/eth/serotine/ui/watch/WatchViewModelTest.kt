@@ -8,6 +8,7 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.WatchAddress
@@ -98,7 +99,7 @@ class WatchViewModelTest {
         reading.value = KindReading.Syncing
         runCurrent()
         assertTrue(viewModel.uiState.value.detection is Detection.Unavailable)
-        reading.value = KindReading.Unavailable(BalanceReading.Reason.UNPROVEN)
+        reading.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
         runCurrent()
         assertFalse(viewModel.uiState.value.canAdd)
     }

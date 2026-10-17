@@ -5,12 +5,19 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
+import eth.serotine.ui.FakeTokenBalances
+import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.components.Control
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,9 +42,20 @@ class AccountDetailViewModelTest {
     )
     private val accounts = FakeAccounts(daily)
     private val balances = FakeBalances()
+    private val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc")
+    private val link =
+        Token(Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789"), "LINK", "ChainLink Token", 18, "link")
+    private val uni = Token(Address.of("0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"), "UNI", "Uniswap", 18, "uni")
+    private val catalog = FakeTokenCatalog(usdc, link, uni)
+    private val tokenBalances = FakeTokenBalances()
 
-    private fun viewModel() =
-        AccountDetailViewModel(daily.address, ObserveAccount(accounts), ObserveNativeBalance(balances), Network.SEPOLIA)
+    private fun viewModel() = AccountDetailViewModel(
+        daily.address,
+        ObserveAccount(accounts),
+        ObserveNativeBalance(balances),
+        ObserveTokenHoldings(catalog, tokenBalances),
+        Network.SEPOLIA,
+    )
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -58,6 +76,8 @@ class AccountDetailViewModelTest {
                 balance = "Syncing…",
                 balanceVerified = false,
                 balanceNote = null,
+                assets = listOf(AssetRow("ETH", "Ether", "Syncing…", "eth", verified = false)),
+                tokensNote = "Checking 3 tokens",
             ),
             viewModel.uiState.value,
         )
@@ -96,5 +116,60 @@ class AccountDetailViewModelTest {
             AccountDetailUiState.Unavailable("Your account list cannot be read right now. Serotine keeps trying."),
             viewModel.uiState.value,
         )
+    }
+
+    @Test
+    fun heldTokensAreRowsWithTheirOwnBlockAndTheRestIsANote() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(daily.address).value = BalanceReading.Verified(Wei.of("3204100000000000000"), 9)
+        // 1,250 USDC; no LINK; UNI not verified.
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 12)
+        tokenBalances.of(daily.address, link.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 9)
+        tokenBalances.of(daily.address, uni.address).value =
+            TokenBalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        // Each row names its own block: here the token's is a later one than the native's.
+        assertEquals(
+            listOf(
+                AssetRow("ETH", "Ether", "3.2041 ETH", "eth", verified = true, verifiedAt = "block 9"),
+                AssetRow("USDC", "USDC", "1250 USDC", "usdc", verified = true, verifiedAt = "block 12"),
+            ),
+            ready.assets,
+        )
+        assertEquals("1 token not verified", ready.tokensNote)
+    }
+
+    @Test
+    fun aContractThatIsNoTokenIsSaid() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        listOf(usdc, link, uni).forEach {
+            tokenBalances.of(daily.address, it.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 9)
+        }
+        tokenBalances.of(daily.address, uni.address).value = TokenBalanceReading.NotAToken
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals("1 token did not answer as a token", ready.tokensNote)
+    }
+
+    @Test
+    fun aRefusedTokenIsNotCalledUnverified() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        listOf(usdc, link, uni).forEach {
+            tokenBalances.of(daily.address, it.address).value = TokenBalanceReading.Unavailable(ReadUnavailable.REFUSED)
+        }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals("3 tokens cannot be read on this device", ready.tokensNote)
     }
 }
