@@ -100,6 +100,20 @@ class SecurityViewModelTest {
     }
 
     @Test
+    fun aDisableThatFailsSaysSoAndNotThatItIsOff() = runTest {
+        keys.description = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, BiometricUnlock.On)
+        keys.disabling = BiometricChange.Failed
+        val viewModel = viewModel()
+        runCurrent()
+
+        viewModel.onBiometricsChange(false)
+        runCurrent()
+
+        assertEquals("Biometric unlock could not be turned off. Try again.", viewModel.ready.message)
+        assertTrue(viewModel.ready.biometrics.on, "still on, as the key store says")
+    }
+
+    @Test
     fun leavingTheScreenDropsTheTypedPassword() = runTest {
         val viewModel = viewModel()
         runCurrent()
@@ -164,6 +178,7 @@ class SecurityViewModelTest {
         val enabling = CompletableDeferred<BiometricChange>()
         val passwords = mutableListOf<WalletPassword>()
         var disabled = 0
+        var disabling: BiometricChange = BiometricChange.Disabled
 
         override suspend fun describe(): KeyStoreDescription = description
 
@@ -174,7 +189,7 @@ class SecurityViewModelTest {
 
         override suspend fun disableBiometrics(): BiometricChange {
             disabled++
-            return BiometricChange.Disabled
+            return disabling
         }
 
         override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport =

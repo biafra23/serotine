@@ -18,10 +18,15 @@ internal class FakeBiometricKey(
     var made = 0
     var invalidated = false
     var prompt: BiometricUnwrap? = null
+    var failWrap = false
+    var failDescribe = false
     val reasons = mutableListOf<String>()
     private var secret: ByteArray? = null
 
-    override fun unavailable(): BiometricUnavailable? = unavailable
+    override fun unavailable(): BiometricUnavailable? {
+        if (failDescribe) throw IllegalStateException("the key store is gone")
+        return unavailable
+    }
 
     override fun exists(): Boolean = secret != null
 
@@ -35,7 +40,10 @@ internal class FakeBiometricKey(
         return true
     }
 
-    override fun wrap(dek: ByteArray): ByteArray = mask(dek, checkNotNull(secret) { "no biometric key" })
+    override fun wrap(dek: ByteArray): ByteArray {
+        if (failWrap) throw IllegalStateException("the key store refused")
+        return mask(dek, checkNotNull(secret) { "no biometric key" })
+    }
 
     override suspend fun unwrap(wrapped: ByteArray, reason: String): BiometricUnwrap {
         reasons += reason

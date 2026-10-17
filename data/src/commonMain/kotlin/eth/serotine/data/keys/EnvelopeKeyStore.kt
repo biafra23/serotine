@@ -452,8 +452,12 @@ class EnvelopeKeyStore(
                     }
                 }
                 if (!written) return KeyImport.NotSaved
-                // A wrap that is not written leaves this account on the password alone.
-                wrapped?.let { if (key != null) withContext(NonCancellable) { wraps.write(address, key.tag, it) } }
+                withContext(NonCancellable) {
+                    // The new envelope has a new DEK: a wrap left from an earlier one opens nothing.
+                    wraps.delete(address)
+                    // A wrap that is not written leaves this account on the password alone.
+                    wrapped?.let { if (key != null) wraps.write(address, key.tag, it) }
+                }
             }
             return KeyImport.Stored(account, protection)
         } finally {

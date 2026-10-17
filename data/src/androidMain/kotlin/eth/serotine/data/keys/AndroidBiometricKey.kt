@@ -7,6 +7,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
+import android.security.keystore.UserNotAuthenticatedException
 import eth.serotine.domain.repository.BiometricUnavailable
 import eth.serotine.domain.repository.BiometricUnusable
 import java.security.GeneralSecurityException
@@ -72,11 +73,14 @@ class AndroidBiometricKey(
         // A per-use key initializes without a biometric; an invalidated one refuses at once.
         privateKey()?.let(::decrypting)
         false
-    } catch (e: GeneralSecurityException) {
-        // KeyPermanentlyInvalidatedException, or a key the Keystore will not hand out at all
-        // (UnrecoverableKeyException on some devices): unusable either way, and turning the
-        // path off and on mends it.
+    } catch (e: KeyPermanentlyInvalidatedException) {
         true
+    } catch (e: UnrecoverableKeyException) {
+        // A key the Keystore will not hand out at all, as some devices answer for an invalidated one.
+        true
+    } catch (e: UserNotAuthenticatedException) {
+        // A locked device (setUnlockedDeviceRequired): nothing changed, the key is fine.
+        false
     }
 
     @Synchronized

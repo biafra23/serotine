@@ -9,6 +9,7 @@ import eth.serotine.domain.repository.BiometricUnavailable
 import eth.serotine.domain.repository.BiometricUnlock
 import eth.serotine.domain.repository.BiometricUnusable
 import eth.serotine.domain.repository.KeyDeletion
+import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.Signing
@@ -184,6 +185,67 @@ class EnvelopeKeyStoreBiometricsTest {
         wrapOf(abandonAddress).writeText(misfiled)
 
         assertEquals(Signing.Unavailable, store.sign(abandonAddress, digest, biometrics))
+    }
+
+    @Test
+    fun aWrapThatFailsTurnsNothingOn() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        key.failWrap = true
+
+        assertEquals(BiometricChange.Failed, store.enableBiometrics(password))
+
+        assertFalse(key.exists(), "no key without its wraps")
+        assertFalse(wrapOf(hardhatAddress).exists())
+        assertEquals(BiometricUnlock.Off, store.biometrics())
+    }
+
+    @Test
+    fun anImportWhoseWrapFailsIsStoredOnThePasswordAlone() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.enableBiometrics(password)
+        key.failWrap = true
+
+        assertIs<KeyImport.Stored>(store.importMnemonic(abandon, password))
+
+        assertFalse(wrapOf(abandonAddress).exists())
+        assertEquals(Signing.BiometricsUnusable(BiometricUnusable.OFF), store.sign(abandonAddress, digest, biometrics))
+        assertIs<Signing.Signed>(store.sign(abandonAddress, digest, Unlock.WithPassword(password)))
+    }
+
+    @Test
+    fun aNewEnvelopeNeverInheritsAnEarlierOnesWrap() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.importMnemonic(abandon, password)
+        store.enableBiometrics(password)
+        val stale = wrapOf(abandonAddress).readText()
+        store.delete(abandonAddress)
+        // Its wrap left behind (a deletion that failed), then the account imported again.
+        wrapOf(abandonAddress).writeText(stale)
+        key.failWrap = true
+
+        store.importMnemonic(abandon, password)
+
+        assertFalse(wrapOf(abandonAddress).exists(), "the old DEK's wrap is gone with its envelope")
+        assertEquals(Signing.BiometricsUnusable(BiometricUnusable.OFF), store.sign(abandonAddress, digest, biometrics))
+    }
+
+    @Test
+    fun aBiometricKeyThatFailsNeverTakesThePasswordPathDown() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        key.failDescribe = true
+
+        assertEquals(
+            KeyStoreDescription.Ready(
+                passwordSet = true,
+                KeyProtection.PASSWORD_ONLY,
+                BiometricUnlock.Unavailable(BiometricUnavailable.NO_HARDWARE),
+            ),
+            store.describe(),
+        )
     }
 
     @Test

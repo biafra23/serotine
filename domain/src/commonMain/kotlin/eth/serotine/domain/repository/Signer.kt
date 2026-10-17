@@ -65,7 +65,10 @@ sealed interface Signing {
 
 /** Why [Unlock.WithBiometrics] cannot open an envelope. */
 enum class BiometricUnusable {
-    /** The biometric path is off, or this account's key was stored without it. */
+    /**
+     * The biometric path is off, or not on this platform at all (the desktop, iOS until its app),
+     * or this account's key was stored without it.
+     */
     OFF,
 
     /** A change of the enrolled biometrics invalidated the path's key (rule 3). */

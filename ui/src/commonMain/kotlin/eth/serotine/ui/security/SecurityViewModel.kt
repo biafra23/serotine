@@ -51,7 +51,8 @@ class SecurityViewModel(
         state.value = ready.copy(changing = true, message = null)
         viewModelScope.launch {
             val result = safely { disableBiometricUnlock() }
-            refresh(messageOf(result))
+            // Here a failure means the key may still be there: the refresh shows where it stands.
+            refresh(if (result == BiometricChange.Failed) NOT_TURNED_OFF else messageOf(result))
         }
     }
 
@@ -164,6 +165,7 @@ class SecurityViewModel(
 
     private companion object {
         const val WRONG_PASSWORD = "That is not the wallet password."
+        const val NOT_TURNED_OFF = "Biometric unlock could not be turned off. Try again."
         const val NO_KEYS = "Off. Store a key first: biometric unlock opens stored keys."
         const val NOT_ON_THIS_DEVICE =
             "Not on this device yet: Serotine has no biometric unlock here, so signing asks for the wallet password."
