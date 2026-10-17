@@ -39,7 +39,7 @@ internal sealed interface EngineReading<out T> {
  * head gets it at once instead of fetching it again; the [MAX_CACHED] most recently proven
  * keys are kept, so keys only looked at (the Watch screen) do not pile up. A device without
  * an engine ([chain] null) and an engine that is down answer [ReadUnavailable.NO_ENGINE]
- * once and stop. Whatever [prove] throws, and a null from it, become
+ * once and stop, and so does a key the engine refuses ([ReadUnavailable.REFUSED]). Whatever [prove] throws, and a null from it, become
  * [ReadUnavailable.UNPROVEN]: no answer from anywhere else stands in.
  */
 internal class ProvenReads<K, T>(
@@ -73,7 +73,10 @@ internal class ProvenReads<K, T>(
                     emit(EngineReading.Unavailable(ReadUnavailable.NO_ENGINE))
                     return@flow
                 }
-                emit(if (snapshot == null) EngineReading.Syncing else readingAt(chain, key, snapshot))
+                val reading = if (snapshot == null) EngineReading.Syncing else readingAt(chain, key, snapshot)
+                emit(reading)
+                // A refusal is for good on this build: asking again on every tick changes nothing.
+                if (reading == REFUSED) return@flow
                 delay(pollInterval)
             }
         }.distinctUntilChanged().flowOn(dispatcher)
@@ -105,6 +108,8 @@ internal class ProvenReads<K, T>(
     }
 
     private companion object {
+        val REFUSED = EngineReading.Unavailable(ReadUnavailable.REFUSED)
+
         /** Proofs kept: far more than the accounts a wallet shows at once. */
         const val MAX_CACHED = 64
     }

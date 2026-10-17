@@ -4,7 +4,6 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
-import kotlin.math.pow
 
 /** Decimal places of ether and of every EVM chain's native currency. */
 private const val NATIVE_DECIMALS = 18
@@ -32,10 +31,6 @@ internal fun formatUnits(units: String, decimals: Int, symbol: String, places: I
         else -> "$whole $symbol"
     }
 }
-
-/** [units] at [decimals] decimal places as a number, for ordering rows by amount; not for display. */
-internal fun unitsAsNumber(units: String, decimals: Int): Double =
-    units.toDouble() / 10.0.pow(decimals)
 
 /** What an account row says for [reading] on [network]: an amount, or why there is none. */
 internal fun balanceText(reading: BalanceReading, network: Network): String = when (reading) {

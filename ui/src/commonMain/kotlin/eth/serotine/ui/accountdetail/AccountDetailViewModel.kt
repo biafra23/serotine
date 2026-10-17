@@ -42,7 +42,8 @@ class AccountDetailViewModel(
         .map<BalanceReading, BalanceReading?> { it }
         .onStart { emit(null) }
 
-    private val holdings = observeTokenHoldings(address)
+    // Like the balance, it never holds the screen back: the header shows before the catalog does.
+    private val holdings = observeTokenHoldings(address).onStart { emit(emptyList()) }
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)

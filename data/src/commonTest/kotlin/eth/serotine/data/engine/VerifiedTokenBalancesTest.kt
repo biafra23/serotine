@@ -7,6 +7,7 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -81,13 +82,21 @@ class VerifiedTokenBalancesTest {
     }
 
     @Test
-    fun aRefusalIsSaidAsSuchNotAsUnproven() = runTest {
+    fun aRefusalIsSaidOnceAndNotAskedAgain() = runTest {
         chain.calls[usdc to calldata] = CallOutcome.Refused
+        var asked = 0
+        val counting = object : VerifiedChain by chain {
+            override fun call(to: Address, data: ByteArray): CallOutcome? {
+                asked++
+                return chain.call(to, data)
+            }
+        }
 
-        assertEquals(
-            TokenBalanceReading.Unavailable(ReadUnavailable.REFUSED),
-            balances().observeBalance(holder, usdc).first(),
-        )
+        val readings = VerifiedTokenBalances(counting, StandardTestDispatcher(testScheduler), 4.seconds)
+            .observeBalance(holder, usdc).toList()
+
+        assertEquals(listOf<TokenBalanceReading>(TokenBalanceReading.Unavailable(ReadUnavailable.REFUSED)), readings)
+        assertEquals(1, asked, "the flow ends: a permanent refusal is not asked again every tick")
     }
 
     @Test

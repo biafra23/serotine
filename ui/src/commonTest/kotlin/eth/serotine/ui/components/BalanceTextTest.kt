@@ -46,6 +46,5 @@ class BalanceTextTest {
         assertEquals("12 RAW", formatUnits("12", 0, "RAW"))
         assertEquals("< 0.0001 USDC", formatUnits("1", 6, "USDC"))
         assertEquals("0 USDC", formatUnits("0", 6, "USDC"))
-        assertEquals(1250.0, unitsAsNumber("1250000000", 6))
     }
 }
