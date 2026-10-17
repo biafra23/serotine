@@ -30,9 +30,12 @@ sealed interface PromptResult {
     /** Too many failed attempts: the system locked biometrics for now. */
     data object LockedOut : PromptResult
 
+    /** The sensor could not be used just now: busy, unable to process, a vendor error. */
+    data object SensorUnavailable : PromptResult
+
     /** No screen of the app is in front to show the prompt on. */
     data object NoWindow : PromptResult
 
-    /** The prompt failed for another reason. */
+    /** The prompt failed for another reason (an answer without the unlocked cipher). */
     data object Failed : PromptResult
 }

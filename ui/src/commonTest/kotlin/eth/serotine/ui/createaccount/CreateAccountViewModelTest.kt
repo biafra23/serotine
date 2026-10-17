@@ -253,7 +253,7 @@ class CreateAccountViewModelTest {
 
         override suspend fun delete(address: Address): KeyDeletion = error("not used by these tests")
 
-        override suspend fun enableBiometrics(password: WalletPassword): BiometricChange =
+        override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
             BiometricChange.NotOnThisDevice
 
         override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice

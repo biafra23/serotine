@@ -63,7 +63,25 @@ private fun SecurityWrongPasswordPreview() =
 
 @Preview
 @Composable
+private fun SecurityTurningOnPreview() = SecurityPreview(
+    off.copy(enabling = PasswordPrompt(WalletPassword("made-up preview password"), working = true), changing = true),
+)
+
+@Preview
+@Composable
 private fun SecurityOnPreview() = SecurityPreview(on)
+
+@Preview
+@Composable
+private fun SecurityInvalidatedPreview() = SecurityPreview(
+    off.copy(
+        biometrics = BiometricRow(
+            "Stopped working: the enrolled fingerprints or faces changed. Turn it off, then on again, to use them.",
+            on = true,
+            canChange = true,
+        ),
+    ),
+)
 
 @Preview
 @Composable
@@ -122,7 +140,9 @@ internal val securityScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SecurityOffDarkPreview() },
     { SecurityAskingPasswordPreview() },
     { SecurityWrongPasswordPreview() },
+    { SecurityTurningOnPreview() },
     { SecurityOnPreview() },
+    { SecurityInvalidatedPreview() },
     { SecurityTurningOffPreview() },
     { SecurityWeakOnlyPreview() },
     { SecurityDesktopPreview() },

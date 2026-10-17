@@ -32,7 +32,8 @@ class PlatformBiometricPrompter(private val foreground: () -> Activity?) : Biome
             val executor = activity.mainExecutor
             val prompt = BiometricPrompt.Builder(activity)
                 .setTitle(activity.getString(R.string.biometric_prompt_title))
-                .setSubtitle(reason)
+                // The description, not the one-line subtitle: what is signed must be read in full.
+                .setDescription(reason)
                 .setConfirmationRequired(true)
                 .setNegativeButton(activity.getString(R.string.biometric_prompt_use_password), executor) { _, _ ->
                     answer(PromptResult.Cancelled)
@@ -60,11 +61,14 @@ class PlatformBiometricPrompter(private val foreground: () -> Activity?) : Biome
                             when (errorCode) {
                                 BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED,
                                 BiometricPrompt.BIOMETRIC_ERROR_CANCELED,
+                                // A face prompt nobody looked at: as good as dismissed.
+                                BiometricPrompt.BIOMETRIC_ERROR_TIMEOUT,
                                 -> PromptResult.Cancelled
                                 BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT,
                                 BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT_PERMANENT,
                                 -> PromptResult.LockedOut
-                                else -> PromptResult.Failed
+                                // The sensor busy, unable to read, gone or erring: the password is the way.
+                                else -> PromptResult.SensorUnavailable
                             },
                         )
                     }

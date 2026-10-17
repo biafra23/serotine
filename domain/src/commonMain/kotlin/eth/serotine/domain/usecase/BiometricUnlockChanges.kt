@@ -10,7 +10,9 @@ import eth.serotine.domain.repository.KeyStore
  * envelope so the biometric path can wrap it. The password path stays as it was.
  */
 class EnableBiometricUnlock(private val keys: KeyStore) {
-    suspend operator fun invoke(password: WalletPassword): BiometricChange = keys.enableBiometrics(password)
+    /** [confirmation] is what the system's prompt says while the new path is proven once. */
+    suspend operator fun invoke(password: WalletPassword, confirmation: String): BiometricChange =
+        keys.enableBiometrics(password, confirmation)
 }
 
 /**

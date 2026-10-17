@@ -77,6 +77,9 @@ enum class BiometricUnusable {
     /** Too many failed attempts: the system locked biometrics for now. */
     LOCKED_OUT,
 
+    /** The sensor could not be used just now (busy, unable to process, a vendor error). */
+    SENSOR_UNAVAILABLE,
+
     /** No screen of the app is in front to show the prompt on. */
     NO_PROMPT,
 }

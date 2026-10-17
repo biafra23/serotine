@@ -14,8 +14,11 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
@@ -39,6 +42,10 @@ class EnvelopeKeyStoreBiometricsTest {
     private val biometrics = Unlock.WithBiometrics("Send 0.1 ETH to 0x5aAe…eAed")
     private val key = FakeBiometricKey()
 
+    private companion object {
+        const val CONFIRM = "Turn on biometric unlock"
+    }
+
     private fun TestScope.store() =
         EnvelopeKeyStore(directory.path, hardware = null, StandardTestDispatcher(testScheduler), biometricKey = key)
 
@@ -57,7 +64,7 @@ class EnvelopeKeyStoreBiometricsTest {
         store.importMnemonic(hardhat, password)
 
         assertEquals(BiometricUnlock.NotOnThisDevice, (store.describe() as KeyStoreDescription.Ready).biometrics)
-        assertEquals(BiometricChange.NotOnThisDevice, store.enableBiometrics(password))
+        assertEquals(BiometricChange.NotOnThisDevice, store.enableBiometrics(password, CONFIRM))
         assertEquals(
             Signing.BiometricsUnusable(BiometricUnusable.OFF),
             store.sign(hardhatAddress, digest, biometrics),
@@ -71,7 +78,7 @@ class EnvelopeKeyStoreBiometricsTest {
         store.importMnemonic(abandon, password)
         assertEquals(BiometricUnlock.Off, store.biometrics())
 
-        assertEquals(BiometricChange.Enabled, store.enableBiometrics(password))
+        assertEquals(BiometricChange.Enabled, store.enableBiometrics(password, CONFIRM))
 
         assertEquals(BiometricUnlock.On, store.biometrics())
         assertTrue(wrapOf(hardhatAddress).exists() && wrapOf(abandonAddress).exists(), "every key wrapped")
@@ -79,7 +86,8 @@ class EnvelopeKeyStoreBiometricsTest {
         val byBiometric = store.sign(hardhatAddress, digest, biometrics)
         assertIs<Signing.Signed>(byBiometric)
         assertEquals(byPassword, byBiometric, "the same key, the same deterministic signature")
-        assertEquals(listOf(biometrics.reason), key.reasons, "the prompt says what is signed")
+        // Proven once when turned on, then the prompt says what is signed.
+        assertEquals(listOf(CONFIRM, biometrics.reason), key.reasons)
         assertIs<Signing.Signed>(store.sign(abandonAddress, digest, biometrics))
     }
 
@@ -88,7 +96,7 @@ class EnvelopeKeyStoreBiometricsTest {
         val store = store()
         store.importMnemonic(hardhat, password)
 
-        assertEquals(BiometricChange.WrongPassword, store.enableBiometrics(WalletPassword("not the password")))
+        assertEquals(BiometricChange.WrongPassword, store.enableBiometrics(WalletPassword("not the password"), CONFIRM))
 
         assertEquals(BiometricUnlock.Off, store.biometrics())
         assertEquals(0, key.made)
@@ -97,7 +105,7 @@ class EnvelopeKeyStoreBiometricsTest {
 
     @Test
     fun withNoKeyStoredThereIsNothingToTurnOn() = runTest {
-        assertEquals(BiometricChange.NoKeys, store().enableBiometrics(password))
+        assertEquals(BiometricChange.NoKeys, store().enableBiometrics(password, CONFIRM))
     }
 
     @Test
@@ -107,23 +115,26 @@ class EnvelopeKeyStoreBiometricsTest {
         key.unavailable = BiometricUnavailable.WEAK_ONLY
 
         assertEquals(BiometricUnlock.Unavailable(BiometricUnavailable.WEAK_ONLY), store.biometrics())
-        assertEquals(BiometricChange.Unavailable(BiometricUnavailable.WEAK_ONLY), store.enableBiometrics(password))
+        assertEquals(
+            BiometricChange.Unavailable(BiometricUnavailable.WEAK_ONLY),
+            store.enableBiometrics(password, CONFIRM),
+        )
 
         key.unavailable = null
         key.inSecureHardware = false
         assertEquals(
             BiometricChange.Unavailable(BiometricUnavailable.NOT_IN_SECURE_HARDWARE),
-            store.enableBiometrics(password),
+            store.enableBiometrics(password, CONFIRM),
         )
-        assertFalse(key.exists(), "a key outside secure hardware is not kept")
-        assertFalse(wrapOf(hardhatAddress).exists())
+        assertFalse(wrapOf(hardhatAddress).exists(), "nothing is wrapped by a key the device refused")
+        assertEquals(BiometricUnlock.Off, store.biometrics())
     }
 
     @Test
     fun aKeyStoredWhileItIsOnJoinsIt() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
 
         store.importMnemonic(abandon, password)
 
@@ -135,7 +146,7 @@ class EnvelopeKeyStoreBiometricsTest {
     fun turnedOffItsKeyAndWrapsAreGoneAndThePasswordStillSigns() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
 
         assertEquals(BiometricChange.Disabled, store.disableBiometrics())
 
@@ -150,7 +161,7 @@ class EnvelopeKeyStoreBiometricsTest {
     fun aDismissedPromptSignsNothing() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
         key.prompt = BiometricUnwrap.Cancelled
 
         assertEquals(Signing.Cancelled, store.sign(hardhatAddress, digest, biometrics))
@@ -160,7 +171,7 @@ class EnvelopeKeyStoreBiometricsTest {
     fun aNewEnrolmentInvalidatesThePathUntilItIsTurnedOnAgain() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
         key.invalidated = true
 
         assertEquals(BiometricUnlock.Invalidated, store.biometrics())
@@ -169,7 +180,7 @@ class EnvelopeKeyStoreBiometricsTest {
             store.sign(hardhatAddress, digest, biometrics),
         )
 
-        assertEquals(BiometricChange.Enabled, store.enableBiometrics(password))
+        assertEquals(BiometricChange.Enabled, store.enableBiometrics(password, CONFIRM))
         assertEquals(BiometricUnlock.On, store.biometrics())
         assertIs<Signing.Signed>(store.sign(hardhatAddress, digest, biometrics))
     }
@@ -179,7 +190,7 @@ class EnvelopeKeyStoreBiometricsTest {
         val store = store()
         store.importMnemonic(hardhat, password)
         store.importMnemonic(abandon, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
         // hardhat's DEK filed as abandon's: it does not open abandon's seed, whose tag binds its address.
         val misfiled = wrapOf(hardhatAddress).readText().replace(hardhatAddress.hex, abandonAddress.hex)
         wrapOf(abandonAddress).writeText(misfiled)
@@ -193,7 +204,7 @@ class EnvelopeKeyStoreBiometricsTest {
         store.importMnemonic(hardhat, password)
         key.failWrap = true
 
-        assertEquals(BiometricChange.Failed, store.enableBiometrics(password))
+        assertEquals(BiometricChange.Failed, store.enableBiometrics(password, CONFIRM))
 
         assertFalse(key.exists(), "no key without its wraps")
         assertFalse(wrapOf(hardhatAddress).exists())
@@ -204,7 +215,7 @@ class EnvelopeKeyStoreBiometricsTest {
     fun anImportWhoseWrapFailsIsStoredOnThePasswordAlone() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
         key.failWrap = true
 
         assertIs<KeyImport.Stored>(store.importMnemonic(abandon, password))
@@ -219,7 +230,7 @@ class EnvelopeKeyStoreBiometricsTest {
         val store = store()
         store.importMnemonic(hardhat, password)
         store.importMnemonic(abandon, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
         val stale = wrapOf(abandonAddress).readText()
         store.delete(abandonAddress)
         // Its wrap left behind (a deletion that failed), then the account imported again.
@@ -249,10 +260,107 @@ class EnvelopeKeyStoreBiometricsTest {
     }
 
     @Test
+    fun aDismissedProofTurnsNothingOn() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        key.prompt = BiometricUnwrap.Cancelled
+
+        assertEquals(BiometricChange.Cancelled, store.enableBiometrics(password, CONFIRM))
+
+        assertFalse(key.exists())
+        assertFalse(wrapOf(hardhatAddress).exists())
+        assertEquals(listOf(CONFIRM), key.reasons, "the prompt said what it was for")
+    }
+
+    @Test
+    fun aProofTheSensorCannotGiveTurnsNothingOn() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        key.prompt = BiometricUnwrap.Unusable(BiometricUnusable.SENSOR_UNAVAILABLE)
+
+        assertEquals(BiometricChange.NotConfirmed, store.enableBiometrics(password, CONFIRM))
+        assertEquals(BiometricUnlock.Off, store.biometrics())
+    }
+
+    @Test
+    fun anEnableCancelledDuringItsProofLeavesThePathOff() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        key.gate = CompletableDeferred()
+
+        val enabling = launch { store.enableBiometrics(password, CONFIRM) }
+        runCurrent()
+        assertTrue(key.exists(), "made, waiting for its proof")
+        enabling.cancel()
+        runCurrent()
+
+        assertFalse(key.exists())
+        assertFalse(wrapOf(hardhatAddress).exists())
+    }
+
+    @Test
+    fun whileItsKeyExistsThePathIsOnAndCanBeTurnedOffEvenWithTheSensorUnusable() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.enableBiometrics(password, CONFIRM)
+        key.unavailable = BiometricUnavailable.NO_HARDWARE
+
+        assertEquals(BiometricUnlock.On, store.biometrics())
+        assertEquals(BiometricChange.Disabled, store.disableBiometrics())
+        assertEquals(BiometricUnlock.Unavailable(BiometricUnavailable.NO_HARDWARE), store.biometrics())
+    }
+
+    @Test
+    fun aSoftwareKeyStoreIsToldBeforeThePasswordIsAsked() = runTest {
+        val store = EnvelopeKeyStore(
+            directory.path,
+            FakeHardware(claims = { KeyProtection.SOFTWARE_KEY_STORE }),
+            StandardTestDispatcher(testScheduler),
+            biometricKey = key,
+        )
+        store.importMnemonic(hardhat, password)
+
+        assertEquals(BiometricUnlock.Unavailable(BiometricUnavailable.NOT_IN_SECURE_HARDWARE), store.biometrics())
+        assertEquals(
+            BiometricChange.Unavailable(BiometricUnavailable.NOT_IN_SECURE_HARDWARE),
+            store.enableBiometrics(password, CONFIRM),
+        )
+        assertEquals(0, key.made, "no key made, no password asked of the envelopes")
+    }
+
+    @Test
+    fun aBiometricKeyThatCannotBeAskedNeverFailsAnImport() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.enableBiometrics(password, CONFIRM)
+        key.failQueries = true
+
+        assertIs<KeyImport.Stored>(store.importMnemonic(abandon, password))
+        assertFalse(wrapOf(abandonAddress).exists())
+    }
+
+    @Test
+    fun aDamagedEnvelopeAmongOthersGetsNoWrapAndTheRestDo() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.importMnemonic(abandon, password)
+        // A flipped digit in hardhat's wrapped DEK: well-formed, so only its tag refuses.
+        val file = directory.resolve("${hardhatAddress.hex}.seed")
+        val dek = Regex("\"dek\":\"([0-9a-f])").find(file.readText())!!.groupValues[1]
+        file.writeText(file.readText().replace("\"dek\":\"$dek", "\"dek\":\"${if (dek == "0") "1" else "0"}"))
+
+        assertEquals(BiometricChange.Enabled, store.enableBiometrics(password, CONFIRM))
+
+        assertFalse(wrapOf(hardhatAddress).exists())
+        assertTrue(wrapOf(abandonAddress).exists())
+        assertEquals(Signing.BiometricsUnusable(BiometricUnusable.OFF), store.sign(hardhatAddress, digest, biometrics))
+    }
+
+    @Test
     fun withTheLastKeyGoesThePath() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
-        store.enableBiometrics(password)
+        store.enableBiometrics(password, CONFIRM)
 
         assertEquals(KeyDeletion.Deleted, store.delete(hardhatAddress))
 

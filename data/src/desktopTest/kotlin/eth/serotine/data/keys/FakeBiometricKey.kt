@@ -2,6 +2,7 @@ package eth.serotine.data.keys
 
 import eth.serotine.domain.repository.BiometricUnavailable
 import eth.serotine.domain.repository.BiometricUnusable
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.random.Random
 
 /**
@@ -20,6 +21,8 @@ internal class FakeBiometricKey(
     var prompt: BiometricUnwrap? = null
     var failWrap = false
     var failDescribe = false
+    var failQueries = false
+    var gate: CompletableDeferred<Unit>? = null
     val reasons = mutableListOf<String>()
     private var secret: ByteArray? = null
 
@@ -28,7 +31,10 @@ internal class FakeBiometricKey(
         return unavailable
     }
 
-    override fun exists(): Boolean = secret != null
+    override fun exists(): Boolean {
+        if (failQueries) throw IllegalStateException("the key store is gone")
+        return secret != null
+    }
 
     override fun isInvalidated(): Boolean = exists() && invalidated
 
@@ -47,6 +53,7 @@ internal class FakeBiometricKey(
 
     override suspend fun unwrap(wrapped: ByteArray, reason: String): BiometricUnwrap {
         reasons += reason
+        gate?.await()
         val secret = secret ?: return BiometricUnwrap.Unusable(BiometricUnusable.OFF)
         if (invalidated) return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
         return prompt ?: BiometricUnwrap.Dek(mask(wrapped, secret))

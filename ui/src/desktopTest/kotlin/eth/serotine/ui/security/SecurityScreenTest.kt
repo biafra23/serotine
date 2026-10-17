@@ -72,7 +72,7 @@ class SecurityScreenTest {
     }
 
     @Test
-    fun anOnSwitchTurnsItOffAndAnUnavailableOneDoesNotMove() {
+    fun anOnSwitchTurnsItOff() {
         show(off.copy(biometrics = BiometricRow("On.", on = true, canChange = true)))
         rule.onNodeWithTag(SECURITY_BIOMETRIC_SWITCH_TAG).assertIsOn().performClick()
         assertEquals(listOf("biometrics false"), events)

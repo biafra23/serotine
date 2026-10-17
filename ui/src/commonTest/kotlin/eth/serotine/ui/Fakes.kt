@@ -67,7 +67,7 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
 internal class FakeKeys : KeyStore {
     override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
 
-    override suspend fun enableBiometrics(password: WalletPassword): BiometricChange =
+    override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
         BiometricChange.NotOnThisDevice
 
     override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice

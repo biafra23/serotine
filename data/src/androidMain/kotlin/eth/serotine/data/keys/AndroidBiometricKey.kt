@@ -50,13 +50,12 @@ class AndroidBiometricKey(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val strong = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             if (strong == BiometricManager.BIOMETRIC_SUCCESS) return null
+            // A strong sensor with nothing enrolled: enrolling a fingerprint there is the way.
+            if (strong == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) return BiometricUnavailable.NOT_ENROLLED
             // Class 2 only (a camera face unlock, say): never good enough (rule 3), and said so.
             val weak = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
-            return when {
-                weak == BiometricManager.BIOMETRIC_SUCCESS -> BiometricUnavailable.WEAK_ONLY
-                strong == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> BiometricUnavailable.NOT_ENROLLED
-                else -> BiometricUnavailable.NO_HARDWARE
-            }
+            val weakOnly = weak == BiometricManager.BIOMETRIC_SUCCESS
+            return if (weakOnly) BiometricUnavailable.WEAK_ONLY else BiometricUnavailable.NO_HARDWARE
         }
         // API 29 knows no classes; a key bound to biometrics opens for a strong one only.
         @Suppress("DEPRECATION")
@@ -127,6 +126,7 @@ class AndroidBiometricKey(
             }
             PromptResult.Cancelled -> BiometricUnwrap.Cancelled
             PromptResult.LockedOut -> BiometricUnwrap.Unusable(BiometricUnusable.LOCKED_OUT)
+            PromptResult.SensorUnavailable -> BiometricUnwrap.Unusable(BiometricUnusable.SENSOR_UNAVAILABLE)
             PromptResult.NoWindow -> BiometricUnwrap.Unusable(BiometricUnusable.NO_PROMPT)
             PromptResult.Failed -> BiometricUnwrap.Failed
         }
@@ -165,9 +165,13 @@ class AndroidBiometricKey(
             .generateKeyPair()
     }
 
-    /** Rule 5: where the Keystore says the key lives. */
+    /**
+     * Rule 5: where the Keystore says the key lives, and that the secure hardware itself, not
+     * the OS, enforces its biometric requirement.
+     */
     private fun inSecureHardware(key: PrivateKey): Boolean {
         val info = KeyFactory.getInstance(key.algorithm, KEYSTORE).getKeySpec(key, KeyInfo::class.java)
+        if (!info.isUserAuthenticationRequirementEnforcedBySecureHardware) return false
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             info.securityLevel == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT ||
                 info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX ||

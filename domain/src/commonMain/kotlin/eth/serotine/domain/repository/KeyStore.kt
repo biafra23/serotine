@@ -54,10 +54,12 @@ interface KeyStore {
      * hardware key that only a per-use strong biometric unlocks, made anew, and each stored key's
      * DEK wrapped by it, so that a signature can be authorized by a fingerprint or a face instead
      * of the password ([Unlock.WithBiometrics]). [password] must be the wallet password: it opens
-     * every envelope to reach its DEK, and nothing is turned on when it does not. The password
-     * path is untouched, and keys stored while the path is on are wrapped too. Never throws.
+     * every envelope to reach its DEK, and nothing is turned on when it does not. The new path is
+     * then proven once, the way signing uses it: one wrap opened through the system's prompt,
+     * which says [confirmation] (display-ready); it is on only when that worked. The password path
+     * is untouched, and keys stored while the path is on are wrapped too. Never throws.
      */
-    suspend fun enableBiometrics(password: WalletPassword): BiometricChange
+    suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange
 
     /**
      * Turns the biometric path off: its hardware key and every wrap made with it are deleted,
@@ -114,13 +116,16 @@ sealed interface BiometricUnlock {
     /** It can be turned on, and is off. */
     data object Off : BiometricUnlock
 
-    /** It is on: a strong biometric can authorize a signature instead of the password. */
+    /**
+     * It is on: its key exists, and a strong biometric can authorize a signature instead of the
+     * password whenever the device's sensor can be used.
+     */
     data object On : BiometricUnlock
 
     /**
      * It was on, and a change of the enrolled biometrics invalidated its key (rule 3): it no
-     * longer opens anything, and turning it off and on again makes a new one. The password still
-     * works.
+     * longer opens anything, and turning it off (which deletes the key) and on again makes a new
+     * one. The password still works.
      */
     data object Invalidated : BiometricUnlock
 }
@@ -158,10 +163,26 @@ sealed interface BiometricChange {
     /** Serotine has no biometric path on this platform yet. Nothing changed. */
     data object NotOnThisDevice : BiometricChange
 
-    /** This device cannot offer it, for [reason]. Nothing changed. */
+    /**
+     * This device cannot offer it, for [reason]. Nothing changed when that was known up front;
+     * when the platform refused the new key ([BiometricUnavailable.NOT_IN_SECURE_HARDWARE] found
+     * only on making it), the biometric path is off.
+     */
     data class Unavailable(val reason: BiometricUnavailable) : BiometricChange
 
-    /** The key store failed. The password path is untouched; the biometric path is off. */
+    /** The prompt that proves the new path was dismissed. The biometric path is off. */
+    data object Cancelled : BiometricChange
+
+    /**
+     * The prompt that proves the new path could not confirm it (the sensor busy or locked out, no
+     * screen in front, the key refusing on this device). The biometric path is off.
+     */
+    data object NotConfirmed : BiometricChange
+
+    /**
+     * The key store failed. The password path is untouched; the biometric path is as
+     * [KeyStore.describe] now reports it.
+     */
     data object Failed : BiometricChange
 }
 

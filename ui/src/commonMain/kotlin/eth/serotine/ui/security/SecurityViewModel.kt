@@ -22,9 +22,10 @@ import kotlinx.coroutines.launch
 /**
  * Settings → Security's ViewModel (docs/wallet-ux.md, screen 21): what the key store says about
  * the wallet password and biometric unlock, and turning biometric unlock on (with the wallet
- * password, which opens each stored key once so the biometric key can wrap it) and off (no
- * password: it deletes a way in). One of the ViewModels the [WalletPassword] passes through: it
- * keeps it only while its field is shown, and never logs or saves it.
+ * password, which opens each stored key once so the biometric key can wrap it, then one
+ * fingerprint or face check that proves it) and off (no password: it deletes a way in). One of
+ * the ViewModels the [WalletPassword] passes through: it keeps it only while its field is shown,
+ * and never logs or saves it.
  */
 class SecurityViewModel(
     private val describeKeyStore: DescribeKeyStore,
@@ -67,13 +68,19 @@ class SecurityViewModel(
         val ready = state.value as? Ready ?: return
         val prompt = ready.enabling ?: return
         if (!prompt.canConfirm) return
-        state.value = ready.copy(enabling = prompt.copy(working = true, error = null))
+        // changing outlives the field: a screen left and come back to still shows it running.
+        state.value = ready.copy(enabling = prompt.copy(working = true, error = null), changing = true)
         viewModelScope.launch {
-            val result = safely { enableBiometricUnlock(prompt.password) }
+            val result = safely { enableBiometricUnlock(prompt.password, CONFIRMATION) }
             if (result == BiometricChange.WrongPassword) {
                 state.update { current ->
-                    val asked = (current as? Ready)?.enabling
-                    if (asked == null) current else current.copy(enabling = PasswordPrompt(error = WRONG_PASSWORD))
+                    when {
+                        current !is Ready -> current
+                        current.enabling != null ->
+                            current.copy(enabling = PasswordPrompt(error = WRONG_PASSWORD), changing = false)
+                        // The field went with the screen: the outcome is said instead.
+                        else -> current.copy(changing = false, message = NOT_TURNED_ON_WRONG_PASSWORD)
+                    }
                 }
             } else {
                 refresh(messageOf(result))
@@ -136,9 +143,10 @@ class SecurityViewModel(
             on = true,
             canChange = true,
         )
+        // Its key still exists: shown on, so that turning it off deletes it, and on again makes a new one.
         BiometricUnlock.Invalidated -> BiometricRow(
-            "Off since the enrolled fingerprints or faces changed: turn it on again to use them.",
-            on = false,
+            "Stopped working: the enrolled fingerprints or faces changed. Turn it off, then on again, to use them.",
+            on = true,
             canChange = true,
         )
     }
@@ -149,7 +157,11 @@ class SecurityViewModel(
         BiometricChange.NoKeys -> NO_KEYS
         BiometricChange.NotOnThisDevice -> NOT_ON_THIS_DEVICE
         is BiometricChange.Unavailable -> textOf(change.reason)
-        BiometricChange.Failed -> "The key store failed. Biometric unlock is off; the wallet password still works."
+        BiometricChange.Cancelled -> "The fingerprint or face check was dismissed, so biometric unlock is off."
+        BiometricChange.NotConfirmed ->
+            "The fingerprint or face check did not go through, so biometric unlock is off. Try again."
+        BiometricChange.Failed ->
+            "The key store failed while turning biometric unlock on. The wallet password still works."
         BiometricChange.WrongPassword -> null
     }
 
@@ -166,6 +178,11 @@ class SecurityViewModel(
     private companion object {
         const val WRONG_PASSWORD = "That is not the wallet password."
         const val NOT_TURNED_OFF = "Biometric unlock could not be turned off. Try again."
+        const val NOT_TURNED_ON_WRONG_PASSWORD =
+            "That was not the wallet password, so biometric unlock was not turned on."
+
+        /** What the system's prompt says while the new path is proven once. */
+        const val CONFIRMATION = "Turn on biometric unlock for your keys"
         const val NO_KEYS = "Off. Store a key first: biometric unlock opens stored keys."
         const val NOT_ON_THIS_DEVICE =
             "Not on this device yet: Serotine has no biometric unlock here, so signing asks for the wallet password."

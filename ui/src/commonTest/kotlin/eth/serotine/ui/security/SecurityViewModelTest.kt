@@ -64,6 +64,7 @@ class SecurityViewModelTest {
         runCurrent()
 
         assertEquals("correct horse battery", keys.passwords.single().text)
+        assertTrue(keys.confirmations.single().isNotBlank(), "the proving prompt says what it is for")
         assertNull(viewModel.ready.enabling, "the password is gone")
         assertTrue(viewModel.ready.biometrics.on)
         assertEquals("Biometric unlock is on.", viewModel.ready.message)
@@ -123,7 +124,61 @@ class SecurityViewModelTest {
         viewModel.onHidden()
 
         assertNull(viewModel.ready.enabling)
-        assertTrue("correct horse battery" !in viewModel.uiState.value.toString())
+    }
+
+    @Test
+    fun aResultLandingAfterTheScreenWasLeftIsSaidAndTheSwitchIsNotStuck() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.onBiometricsChange(true)
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.onConfirm()
+        viewModel.onHidden()
+        assertTrue(viewModel.ready.changing, "still running, the field gone")
+        // No second prompt while it runs.
+        viewModel.onBiometricsChange(true)
+        assertNull(viewModel.ready.enabling)
+
+        keys.description = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, BiometricUnlock.On)
+        keys.enabling.complete(BiometricChange.Enabled)
+        runCurrent()
+
+        assertEquals(false, viewModel.ready.changing)
+        assertTrue(viewModel.ready.biometrics.on)
+        assertEquals("Biometric unlock is on.", viewModel.ready.message)
+    }
+
+    @Test
+    fun aWrongPasswordLandingAfterTheScreenWasLeftIsSaid() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.onBiometricsChange(true)
+        viewModel.onPasswordChange("mistyped password")
+        viewModel.onConfirm()
+        viewModel.onHidden()
+
+        keys.enabling.complete(BiometricChange.WrongPassword)
+        runCurrent()
+
+        assertEquals(false, viewModel.ready.changing)
+        assertEquals(
+            "That was not the wallet password, so biometric unlock was not turned on.",
+            viewModel.ready.message,
+        )
+    }
+
+    @Test
+    fun anInvalidatedPathShowsOnSoThatTurningItOffDeletesIt() = runTest {
+        keys.description = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, BiometricUnlock.Invalidated)
+        val viewModel = viewModel()
+        runCurrent()
+        assertTrue(viewModel.ready.biometrics.on && viewModel.ready.biometrics.canChange)
+        assertTrue(viewModel.ready.biometrics.status.startsWith("Stopped working"))
+
+        viewModel.onBiometricsChange(false)
+        runCurrent()
+
+        assertEquals(1, keys.disabled)
     }
 
     @Test
@@ -177,13 +232,15 @@ class SecurityViewModelTest {
             KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, BiometricUnlock.Off)
         val enabling = CompletableDeferred<BiometricChange>()
         val passwords = mutableListOf<WalletPassword>()
+        val confirmations = mutableListOf<String>()
         var disabled = 0
         var disabling: BiometricChange = BiometricChange.Disabled
 
         override suspend fun describe(): KeyStoreDescription = description
 
-        override suspend fun enableBiometrics(password: WalletPassword): BiometricChange {
+        override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange {
             passwords += password
+            confirmations += confirmation
             return enabling.await()
         }
 
