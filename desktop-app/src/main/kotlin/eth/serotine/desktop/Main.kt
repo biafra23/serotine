@@ -1,5 +1,6 @@
 package eth.serotine.desktop
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -13,13 +14,18 @@ import eth.serotine.data.keys.desktopPasswordOnlyProtection
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
+import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.UpgradeNotices
+import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.App
 import eth.serotine.ui.AppGraph
 import java.awt.GraphicsEnvironment
 import java.io.File
 import java.io.IOException
 import java.lang.ref.Reference
+import kotlin.coroutines.cancellation.CancellationException
 import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import kotlin.concurrent.thread
@@ -28,7 +34,8 @@ import kotlin.system.exitProcess
 /**
  * The desktop composition root: starts the process's one Myotis engine
  * (docs/embedding-myotis.md), builds the [AppGraph] from this platform's adapters and opens
- * the one window on the shared [App]. The window provides the ViewModelStoreOwner the
+ * the one window on the shared [App], and follows the engine's network-upgrade reports into
+ * tray notices for as long as the app runs. The window provides the ViewModelStoreOwner the
  * navigation back stack keeps its screens' ViewModels in. Closing it ends the application
  * loop, and the engine is stopped after that, on the main thread: never on the Swing event
  * thread, which a slow network shutdown would freeze. One instance per user: a second one
@@ -81,7 +88,21 @@ private fun openWallet(dataDir: File) {
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
     // background; without its host library on java.library.path, balances say so.
     val node = MyotisNode.start(Network.SEPOLIA, dataDir.resolve("myotis"))
+    // One record per process, read by the screens and written by the notices; this version's only.
+    val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
+    val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
     application(exitProcessOnExit = false) {
+        LaunchedEffect(Unit) {
+            // A failure in the notices ends them, never the wallet (as on Android): the window
+            // still shows every warning, and the next start follows the reports again.
+            try {
+                FollowUpgradeReports(node.networkUpgrades, upgradeNotices)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: upgrade notices stopped: $e")
+            }
+        }
         val graph = remember {
             AppGraph(
                 accounts = FileAccountRepository(dataDir.resolve("accounts.json").path),
@@ -98,6 +119,8 @@ private fun openWallet(dataDir: File) {
                 displayCurrency = FileDisplayCurrency(dataDir.resolve("display-currency.json").path),
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
+                networkUpgrades = node.networkUpgrades,
+                knownUpgrades = knownUpgrades,
                 network = Network.SEPOLIA,
             )
         }

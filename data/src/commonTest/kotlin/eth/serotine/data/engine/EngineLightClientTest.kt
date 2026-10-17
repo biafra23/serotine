@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.repository.LightClientStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
@@ -95,6 +96,22 @@ class EngineLightClientTest {
         runCurrent()
 
         assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null)), seen)
+        collecting.cancel()
+    }
+
+    @Test
+    fun aCancellationTheEngineThrowsSkipsThePollAndPollingGoesOn() = runTest {
+        val seen = mutableListOf<LightClientStatus>()
+        chain.failure = CancellationException("thrown by the engine's own code")
+        val collecting = launch { client().observeStatus().collect { seen += it } }
+        runCurrent()
+
+        chain.failure = null
+        chain.snapshot = running(head = 5)
+        advanceTimeBy(POLL)
+        runCurrent()
+
+        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null)), seen, "the strip did not freeze")
         collecting.cancel()
     }
 

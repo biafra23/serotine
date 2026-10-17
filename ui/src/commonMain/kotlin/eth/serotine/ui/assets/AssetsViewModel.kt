@@ -10,6 +10,7 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.Portfolio
+import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
@@ -17,15 +18,20 @@ import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
+import eth.serotine.ui.platform.formatDateTime
+import eth.serotine.ui.update.UpgradeBannerItem
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 /**
  * The Assets screen's ViewModel: turns the domain's portfolio — the accounts, what each
- * holds and what it is worth ([ObservePortfolio]) — and the light client's state into
- * [AssetsUiState], on the [network] the composition root runs the app on. It holds no
+ * holds and what it is worth ([ObservePortfolio]) — the light client's state and any network
+ * upgrade this version does not support into [AssetsUiState], on the [network] the
+ * composition root runs the app on. It holds no
  * platform reference and exposes state only through [uiState]; what the user does with an
  * account is navigation, which the screen's route turns into the destination of the screen
  * or dialog that does it.
@@ -34,17 +40,25 @@ class AssetsViewModel(
     observePortfolio: ObservePortfolio,
     observeSafes: ObserveSafes,
     observeLightClient: ObserveLightClient,
+    observeUpgradeWarning: ObserveUpgradeWarning,
     private val network: Network,
     /** Now, in unix seconds: what the strip dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
+    /** How the banner dates an upgrade (unix seconds). */
+    formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
     private val strip = observeLightClient().asItems(clock)
 
+    /** The upgrade banner, none until the first warning: Assets never waits for it. */
+    private val upgrade = observeUpgradeWarning()
+        .map { UpgradeBannerItem.from(it, network, formatTime) }
+        .onStart { emit(null) }
+
     // The checksums once per account, not on every balance reading.
     private val checksums = mutableMapOf<Address, String>()
 
-    val uiState: StateFlow<AssetsUiState> = combine(observePortfolio(), observeSafes(), strip, ::stateOf)
+    val uiState: StateFlow<AssetsUiState> = combine(observePortfolio(), observeSafes(), strip, upgrade, ::stateOf)
         .stateIn(
             scope = viewModelScope,
             // Keeps collecting across a configuration change (the screen re-subscribes within
@@ -61,6 +75,7 @@ class AssetsViewModel(
         portfolio: Portfolio,
         safes: Map<Address, SafeReading>,
         lightClient: LightClientItem,
+        upgrade: UpgradeBannerItem?,
     ): AssetsUiState =
         when (val list = portfolio.accounts) {
             is AccountList.Unreadable -> AssetsUiState.ListUnavailable(
@@ -70,6 +85,7 @@ class AssetsViewModel(
                     AccountList.Reason.NEWER_FORMAT -> NEWER_FORMAT
                     AccountList.Reason.READ_FAILED -> READ_FAILED
                 },
+                upgrade,
             )
             is AccountList.Loaded -> {
                 // A row from the start, "Checking…" until its first reading: an account just
@@ -95,6 +111,7 @@ class AssetsViewModel(
                     notice = if (list.damagedListSetAside) DAMAGED_SET_ASIDE else null,
                     total = total?.let { totalText(it, portfolio.currency) },
                     totalNote = total?.let { totalNote(it, network, portfolio.currency) }?.ifEmpty { null },
+                    upgrade = upgrade,
                 )
             }
         }

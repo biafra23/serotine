@@ -14,7 +14,10 @@ embedded Myotis light client (docs/embedding-myotis.md), and adds an account
 from its seed phrase: its first account, the seed stored encrypted under the
 wallet password and, where the device has one, a key in its secure hardware
 (the Android Keystore, a Mac's Secure Enclave; docs/keys-and-signing.md).
-Signing comes next.
+When peers announce a network upgrade this version does not support, the app
+warns ahead of it, notifies (on Android also while it is closed), and once
+the upgrade has cut it off shows nothing but the way to the update
+(docs/embedding-myotis.md, *Network upgrades*). Signing comes next.
 
 ## Build & run
 

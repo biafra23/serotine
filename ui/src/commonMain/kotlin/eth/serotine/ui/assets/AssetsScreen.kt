@@ -45,6 +45,7 @@ import eth.serotine.ui.components.SpeedDialAction
 import eth.serotine.ui.components.SpeedDialFab
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.platform.rememberCopyText
+import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
 
 /** Test tag of the account list, for UI tests. */
@@ -135,6 +136,7 @@ fun AssetsScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             LightClientStrip(state.lightClient)
+            state.upgrade?.let { UpgradeBanner(it) }
             (state as? AssetsUiState.Ready)?.let { ready -> ready.total?.let { PortfolioTotal(it, ready.totalNote) } }
             (state as? AssetsUiState.Ready)?.notice?.let { notice ->
                 Text(

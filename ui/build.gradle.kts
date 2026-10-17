@@ -163,6 +163,9 @@ kotlin {
                 // Keccak-256 for EIP-55, the checksum every address is shown and typed with
                 // (components/Eip55.kt): presentation, so it is computed here, not in :domain.
                 implementation(libs.kotlincrypto.sha3)
+                // The multiplatform @Preview every screen's previews carry; Android Studio
+                // renders it on the Android target (see ui-tooling below).
+                implementation(compose.components.uiToolingPreview)
             }
         }
         commonTest.dependencies {
@@ -178,6 +181,12 @@ kotlin {
             }
         }
     }
+}
+
+// What Android Studio's preview pane renders with, in the debug variant only. The Android
+// app keeps it out of its APKs (android-app/build.gradle.kts).
+dependencies {
+    debugImplementation(compose.uiTooling)
 }
 
 android {

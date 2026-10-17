@@ -3,6 +3,7 @@ package eth.serotine.data.engine
 import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.NetworkUpgrade
 
 /** A [VerifiedChain] whose snapshot and proofs a test sets. */
 internal class FakeChain : VerifiedChain {
@@ -10,9 +11,11 @@ internal class FakeChain : VerifiedChain {
     val proofs = mutableMapOf<Address, ProvenBalance>()
     val codes = mutableMapOf<Address, ProvenCode>()
     val proofRequests = mutableListOf<Address>()
-    var failure: Exception? = null
+    var failure: Throwable? = null
+    var snapshots = 0
 
     override fun snapshot(): EngineSnapshot {
+        snapshots++
         failure?.let { throw it }
         return snapshot
     }
@@ -81,6 +84,7 @@ internal fun running(
     headTimestamp: Long? = null,
     headAgeMs: Long = 2_000,
     bound: Long = 13,
+    upgrade: NetworkUpgrade? = null,
 ) = EngineSnapshot.Running(
-    phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound,
+    phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound, upgrade,
 )

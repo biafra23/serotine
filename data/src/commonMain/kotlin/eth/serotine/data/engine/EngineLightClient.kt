@@ -3,14 +3,12 @@ package eth.serotine.data.engine
 import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlin.time.Duration
 
 /**
@@ -30,23 +28,7 @@ class EngineLightClient internal constructor(
 
     override fun observeStatus(): Flow<LightClientStatus> {
         val chain = chain ?: return flowOf(LightClientStatus.Unavailable)
-        return flow {
-            while (true) {
-                val snapshot = try {
-                    chain.snapshot()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    null
-                }
-                if (snapshot == EngineSnapshot.Down) {
-                    emit(LightClientStatus.Unavailable)
-                    return@flow
-                }
-                snapshot?.let { emit(statusOf(it)) }
-                delay(pollInterval)
-            }
-        }.distinctUntilChanged().flowOn(dispatcher)
+        return chain.snapshots(pollInterval).map(::statusOf).distinctUntilChanged().flowOn(dispatcher)
     }
 
     private fun statusOf(snapshot: EngineSnapshot): LightClientStatus = when (snapshot) {

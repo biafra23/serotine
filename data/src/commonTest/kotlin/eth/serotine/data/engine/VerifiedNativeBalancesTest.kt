@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
@@ -111,6 +112,50 @@ class VerifiedNativeBalancesTest {
 
         chain.proofs[address] = ProvenBalance("not a number", 3)
         assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(address).first())
+    }
+
+    @Test
+    fun anEngineStateThatFailsToReadIsNotVerifiedAndThePollGoesOn() = runTest {
+        chain.snapshot = running(head = 5)
+        chain.proofs[address] = ProvenBalance("2", 5)
+        val seen = mutableListOf<BalanceReading>()
+        val collecting = launch { balances().observeBalance(address).collect { seen += it } }
+        runCurrent()
+        assertEquals(BalanceReading.Verified(Wei.of("2"), 5), seen.last())
+
+        // The engine's state crosses JNA: a broken native library fails with an Error.
+        chain.failure = Error("native library broken")
+        step(running(head = 6))
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), seen.last(), "not the old amount")
+        // Still failing: one poll per interval, not a busy loop.
+        val before = chain.snapshots
+        step(running(head = 6))
+        assertEquals(before + 1, chain.snapshots)
+
+        chain.failure = null
+        chain.proofs[address] = ProvenBalance("3", 6)
+        step(running(head = 6))
+        assertEquals(BalanceReading.Verified(Wei.of("3"), 6), seen.last(), "still polling")
+        collecting.cancel()
+    }
+
+    @Test
+    fun aCancellationTheEngineThrowsIsAFailureNotTheEndOfThePoll() = runTest {
+        chain.snapshot = running(head = 5)
+        chain.proofs[address] = ProvenBalance("2", 5)
+        val seen = mutableListOf<BalanceReading>()
+        val collecting = launch { balances().observeBalance(address).collect { seen += it } }
+        runCurrent()
+
+        chain.failure = CancellationException("thrown by the engine's own code")
+        step(running(head = 6))
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), seen.last())
+
+        chain.failure = null
+        chain.proofs[address] = ProvenBalance("3", 6)
+        step(running(head = 6))
+        assertEquals(BalanceReading.Verified(Wei.of("3"), 6), seen.last(), "the poll went on")
+        collecting.cancel()
     }
 
     @Test

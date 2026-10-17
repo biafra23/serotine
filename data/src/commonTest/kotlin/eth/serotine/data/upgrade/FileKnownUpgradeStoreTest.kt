@@ -1,0 +1,99 @@
+package eth.serotine.data.upgrade
+
+import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.model.UpgradeNotice.Kind
+import eth.serotine.domain.repository.KnownUpgrade
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.io.buffered
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.writeString
+import kotlin.random.Random
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class FileKnownUpgradeStoreTest {
+
+    private val directory = Path(SystemTemporaryDirectory, "serotine-upgrade-${Random.nextLong().toULong()}")
+    private val file = Path(directory, "upgrade.json")
+
+    private val record = KnownUpgrade(
+        NetworkUpgrade(NetworkUpgrade.Phase.SCHEDULED, 1_791_294_816, "0x6c1d9423", 5),
+        setOf(Kind.ANNOUNCED, Kind.WEEK_AHEAD),
+    )
+
+    private fun TestScope.store(appVersion: String = "0.1.0") =
+        FileKnownUpgradeStore(file.toString(), appVersion, StandardTestDispatcher(testScheduler))
+
+    private fun put(text: String) {
+        SystemFileSystem.createDirectories(directory)
+        SystemFileSystem.sink(file).buffered().use { it.writeString(text) }
+    }
+
+    @AfterTest
+    fun cleanUp() {
+        if (SystemFileSystem.exists(directory)) {
+            SystemFileSystem.list(directory).forEach { SystemFileSystem.delete(it) }
+            SystemFileSystem.delete(directory)
+        }
+    }
+
+    @Test
+    fun noFileIsNoRecord() = runTest {
+        assertEquals(null, store().observe().first())
+    }
+
+    @Test
+    fun aSavedRecordIsObservedAtOnceAndSurvivesARestart() = runTest {
+        val store = store()
+        val seen = mutableListOf<KnownUpgrade?>()
+        backgroundScope.launch { store.observe().collect { seen += it } }
+        runCurrent()
+
+        assertTrue(store.save(record))
+        runCurrent()
+
+        assertEquals(listOf(null, record), seen)
+        assertEquals(record, store().observe().first(), "read back by the next process")
+    }
+
+    @Test
+    fun aRecordAnotherAppVersionWroteIsNone() = runTest {
+        store(appVersion = "0.1.0").save(record)
+
+        assertEquals(null, store(appVersion = "0.2.0").observe().first())
+        // Replaced by the next save, for the version that now runs.
+        store(appVersion = "0.2.0").save(record.copy(shown = emptySet()))
+        assertEquals(record.copy(shown = emptySet()), store(appVersion = "0.2.0").observe().first())
+    }
+
+    @Test
+    fun aDamagedOrUnknownRecordIsNone() = runTest {
+        for (text in listOf("{", """{"version":2,"appVersion":"0.1.0"}""", "[]")) {
+            put(text)
+            assertEquals(null, store().observe().first(), text)
+        }
+        put(
+            """{"version":1,"appVersion":"0.1.0","phase":"SOON","reportingNetworks":1,"shown":[]}""",
+        )
+        assertEquals(null, store().observe().first(), "a phase the domain does not know")
+    }
+
+    @Test
+    fun anUnknownTimeAndForkIdRoundTripAsNull() = runTest {
+        val placed = KnownUpgrade(NetworkUpgrade(NetworkUpgrade.Phase.ACTIVE, null, null, 3), setOf(Kind.ACTIVATED))
+        store().save(placed)
+
+        assertEquals(placed, store().observe().first())
+    }
+}

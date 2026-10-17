@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
@@ -47,6 +48,9 @@ import eth.serotine.ui.renameaccount.RenameAccountRoute
 import eth.serotine.ui.settings.SettingsRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
+import eth.serotine.ui.update.UpdateRequiredRoute
+import eth.serotine.ui.update.UpdateRequiredUiState
+import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchRoute
 
 /**
@@ -55,7 +59,8 @@ import eth.serotine.ui.watch.WatchRoute
  *
  * Two tabs, Assets and Settings, under a bottom bar (a rail on a wide window), around the
  * one [NavHost] (docs/architecture.md). Each tab is a nested graph with its own back stack;
- * a flow that ends in a key operation covers the bar.
+ * a flow that ends in a key operation covers the bar. While a network upgrade has left this
+ * version unable to follow the network, it shows the update screen and nothing else.
  */
 @Composable
 fun App(graph: AppGraph) = App(graph, rememberNavController())
@@ -64,6 +69,8 @@ fun App(graph: AppGraph) = App(graph, rememberNavController())
 @Composable
 internal fun App(graph: AppGraph, navController: NavHostController) {
     SerotineTheme {
+        // Scoped to the host, not to a destination: it decides which destinations there are.
+        val update = viewModel { graph.updateRequiredViewModel() }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
             Tab.entries.firstOrNull { it.graph == destination.route }
@@ -106,7 +113,7 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
                         }
                     },
                 ) { padding ->
-                    Destinations(graph, navController, Modifier.padding(padding).consumeWindowInsets(padding))
+                    Destinations(graph, navController, update, Modifier.padding(padding).consumeWindowInsets(padding))
                 }
             }
         }
@@ -134,8 +141,33 @@ private fun NavController.select(tab: Tab, current: Tab?) {
     }
 }
 
+/**
+ * The one [NavHost]. While [update] says an update is required, its screen replaces every
+ * other: the one navigation no screen asks for (docs/architecture.md).
+ */
 @Composable
-private fun Destinations(graph: AppGraph, navController: NavHostController, modifier: Modifier = Modifier) {
+private fun Destinations(
+    graph: AppGraph,
+    navController: NavHostController,
+    update: UpdateRequiredViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val updateState by update.uiState.collectAsStateWithLifecycle()
+    val updateRequired = updateState is UpdateRequiredUiState.Required
+    // In the NavHost's own composition, so the graph it navigates is set by the time this runs.
+    LaunchedEffect(updateRequired) {
+        if (updateRequired) {
+            // The whole back stack goes: every other screen's ViewModel is cleared, the seed
+            // screen's words with it, and back leaves the app instead of reaching a screen.
+            navController.navigate(Destination.UPDATE_REQUIRED) {
+                popUpTo(navController.graph.id) { inclusive = true }
+            }
+        } else if (navController.currentDestination?.route == Destination.UPDATE_REQUIRED) {
+            navController.navigate(Tab.ASSETS.graph) {
+                popUpTo(Destination.UPDATE_REQUIRED) { inclusive = true }
+            }
+        }
+    }
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is
     // on the back stack, and is cleared when the screen is popped off it.
@@ -225,6 +257,10 @@ private fun Destinations(graph: AppGraph, navController: NavHostController, modi
                 onImported = { navController.leave(Destination.MNEMONIC_IMPORT) },
             )
         }
+        // Outside the tabs too, and alone on the back stack while it is shown.
+        composable(Destination.UPDATE_REQUIRED) {
+            UpdateRequiredRoute(viewModel = update)
+        }
     }
 }
 
@@ -299,6 +335,7 @@ private object Destination {
     const val TOKENS = "tokens"
     const val ADD_TOKEN = "add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
+    const val UPDATE_REQUIRED = "update-required"
 }
 
 /** The route argument every account destination carries. */

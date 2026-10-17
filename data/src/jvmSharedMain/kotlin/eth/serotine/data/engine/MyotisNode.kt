@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
@@ -31,9 +32,10 @@ import kotlin.time.Duration.Companion.seconds
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
  * creates it with [start], hands [nativeBalances], [tokenBalances], [tokenMetadata],
- * [priceFeeds], [addressKinds] and [lightClient] to the AppGraph, and owns it for the life of the process: [pause] and
- * [resume] it around the app being in the background, [shutdown] on exit. Only
- * `io.myotis.api` and the library's default ports are used; nothing below them.
+ * [priceFeeds], [addressKinds], [lightClient] and [networkUpgrades] to the AppGraph, and owns
+ * it for the life of the process: [pause] and [resume] it around the app being in the
+ * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
+ * used; nothing below them.
  */
 class MyotisNode private constructor(network: Network) {
 
@@ -48,8 +50,11 @@ class MyotisNode private constructor(network: Network) {
             val secondsPerSlot: Int,
         ) : State {
             fun stop() {
-                engine.shutdownAll()
-                ports.close()
+                try {
+                    engine.shutdownAll()
+                } finally {
+                    ports.close() // the cache writers close whatever the engine does
+                }
             }
         }
         data object Down : State
@@ -60,6 +65,13 @@ class MyotisNode private constructor(network: Network) {
 
     @Volatile
     private var bootThread: Thread? = null
+
+    /**
+     * Whether the host last asked for networking off. A pause can come before the boot has
+     * finished (the app backgrounded right after launch); the boot applies it then.
+     */
+    @Volatile
+    private var pauseWanted = false
 
     /** Runs pause and resume, which block while the engine tears down or warms up networking. */
     private val control = Executors.newSingleThreadExecutor { task ->
@@ -87,18 +99,36 @@ class MyotisNode private constructor(network: Network) {
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
 
+    /** Network upgrades this build does not support, as peers report them to this node. */
+    val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)
+
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
-     * background. Returns at once; the pause runs on a background thread.
+     * background. Returns at once; the pause runs on a background thread. Asked for while the
+     * engine is still starting, it is applied once the engine runs.
      */
-    fun pause() = onControlThread { it.pause() }
+    fun pause() {
+        pauseWanted = true
+        onControlThread { it.pause() }
+    }
 
     /** Turns networking back on after [pause]; a warm start. Returns at once. */
-    fun resume() = onControlThread { it.resume() }
+    fun resume() {
+        pauseWanted = false
+        onControlThread { it.resume() }
+    }
 
     private fun onControlThread(action: (ChainHandle) -> Unit) {
         try {
-            control.execute { (state as? State.Running)?.handle?.let(action) }
+            control.execute {
+                try {
+                    (state as? State.Running)?.handle?.let(action)
+                } catch (e: Throwable) {
+                    // Throwable: the call crosses JNA. Uncaught on this thread it would end the
+                    // process; the engine keeps its last networking state instead.
+                    System.err.println("Serotine: the engine's networking could not be switched: $e")
+                }
+            }
         } catch (e: RejectedExecutionException) {
             // Shut down already: nothing left to pause or resume.
         }
@@ -148,25 +178,72 @@ class MyotisNode private constructor(network: Network) {
         } catch (e: Throwable) {
             // An engine that refuses the config (an anchor mismatch, a bad data directory)
             // still holds the ports' cache writers: release them before giving up.
-            engine.shutdownAll()
-            ports.close()
+            releaseAfter(e, engine, ports)
             throw e
         }
-        val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
-        val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
-        val started = handle.start()
-        val kept = synchronized(this) {
-            val keep = started && state == State.Booting
-            if (state == State.Booting) state = if (keep) running else State.Down
-            keep
+        // From here until the running state is published, this boot owns the engine: whatever
+        // fails (a native start that throws rather than answering false, reading the network's
+        // timing, draining the log) releases it, since shutdown() finds nothing to stop yet.
+        var owned = true
+        try {
+            val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
+            val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
+            val started = handle.start()
+            // The engine says why only in its own log, which is drained, not printed: drained
+            // before anything stops the engine, so the refusal comes first, ahead of shutdown noise.
+            val refusal = if (started) null else Myotis.drainLogs(ENGINE_LOG_LINES)
+            val kept = synchronized(this) {
+                val keep = started && state == State.Booting
+                if (state == State.Booting) state = if (keep) running else State.Down
+                keep
+            }
+            owned = false
+            if (!kept) running.stop()
+            // A pause asked for during the boot, decided on the control thread: every pause and
+            // resume the host asks for from here on queues there too, so the last one asked for
+            // is the state the engine ends in.
+            if (kept) onControlThread { if (pauseWanted) it.pause() }
+            refusal?.let { report("the engine refused to start $name:\n$it") }
+        } catch (e: Throwable) {
+            if (owned) releaseAfter(e, engine, ports)
+            throw e
         }
-        // The engine says why only in its own log, which is drained, not printed.
-        if (!started) report("the engine refused to start $name:\n" + Myotis.drainLogs(ENGINE_LOG_LINES))
-        if (!kept) running.stop()
+    }
+
+    /**
+     * Stops [engine] and closes [ports] after [cause]: a cleanup that fails too is added to
+     * [cause] instead of hiding it, and the ports close whatever the engine does.
+     */
+    private fun releaseAfter(cause: Throwable, engine: MyotisEngine, ports: DefaultEnginePorts) {
+        try {
+            engine.shutdownAll()
+        } catch (t: Throwable) {
+            cause.addSuppressed(t)
+        }
+        try {
+            ports.close()
+        } catch (t: Throwable) {
+            cause.addSuppressed(t)
+        }
     }
 
     private inner class HandleChain : VerifiedChain {
+
+        /**
+         * The last snapshot read and when (System.nanoTime). Every adapter, and each of its
+         * subscribers, polls on its own: those that ask within [SNAPSHOT_REUSE_NS] of one read
+         * share it, so they cost the engine one status call, not one each.
+         */
+        @Volatile
+        private var lastRead: TimedSnapshot? = null
+
         override fun snapshot(): EngineSnapshot {
+            val now = System.nanoTime()
+            lastRead?.let { if (now - it.atNanos < SNAPSHOT_REUSE_NS) return it.snapshot }
+            return read().also { lastRead = TimedSnapshot(now, it) }
+        }
+
+        private fun read(): EngineSnapshot {
             val running = when (val current = state) {
                 State.Booting -> return EngineSnapshot.Booting
                 State.Down -> return EngineSnapshot.Down
@@ -200,6 +277,7 @@ class MyotisNode private constructor(network: Network) {
                 headTimestamp = headTimestamp,
                 headAgeMs = status.verifiedHeadAgeMs(),
                 wsBoundPeriods = status.wsBoundPeriods(),
+                upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
             )
         }
 
@@ -260,11 +338,16 @@ class MyotisNode private constructor(network: Network) {
         }
     }
 
+    private class TimedSnapshot(val atNanos: Long, val snapshot: EngineSnapshot)
+
     companion object {
         private val POLL_INTERVAL = 4.seconds
 
         /** A storage word's hex digits. */
         private const val WORD_HEX_DIGITS = 64
+
+        /** How long one status read serves other pollers: well under the fastest poll (1 s). */
+        private const val SNAPSHOT_REUSE_NS = 500_000_000L
 
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds

@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Network-upgrade notices (the app asks once, on Android 13 and later), and the daily
+         upgrade check and the reminder alarm surviving a reboot. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:name=".SerotineApplication"
         android:label="@string/app_name"
@@ -18,5 +23,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The reminder alarm, and arming it again after a reboot or an update. Not exported:
+             only the system's own broadcasts and the app's alarm reach it. -->
+        <receiver
+            android:name=".upgrade.UpgradeReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- The daily look for network upgrades while the app is closed. -->
+        <service
+            android:name=".upgrade.UpgradeCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

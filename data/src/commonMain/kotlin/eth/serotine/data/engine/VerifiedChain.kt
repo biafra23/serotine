@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.NetworkUpgrade
 import org.kotlincrypto.hash.sha3.Keccak256
 
 /**
@@ -105,7 +106,11 @@ internal sealed interface EngineSnapshot {
     /** There is no engine, or it failed to start; this is final. */
     data object Down : EngineSnapshot
 
-    /** The engine's report; see `io.myotis.api.StatusSnapshot` for each field. */
+    /**
+     * The engine's report; see `io.myotis.api.StatusSnapshot` for each field. [upgrade] is
+     * its upgrade advisory: an upgrade peers report that this build does not support, null
+     * when none is (peer data, never verified).
+     */
     data class Running(
         val phase: Phase,
         val paused: Boolean,
@@ -118,6 +123,7 @@ internal sealed interface EngineSnapshot {
         val headTimestamp: Long?,
         val headAgeMs: Long,
         val wsBoundPeriods: Long,
+        val upgrade: NetworkUpgrade? = null,
     ) : EngineSnapshot {
 
         /**

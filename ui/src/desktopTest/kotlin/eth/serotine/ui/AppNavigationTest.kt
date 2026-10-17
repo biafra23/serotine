@@ -31,6 +31,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
@@ -46,10 +47,13 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.KnownUpgrade
+import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
@@ -65,6 +69,7 @@ import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
 import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
 import eth.serotine.ui.tokens.TOKENS_ROW_TAG
+import eth.serotine.ui.update.UPDATE_REQUIRED_TAG
 import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
 import eth.serotine.ui.watch.WATCH_NAME_TAG
 import kotlinx.coroutines.Dispatchers
@@ -106,7 +111,8 @@ class AppNavigationTest {
     private val navController = mutableListOf<NavHostController>()
     private val tokenMetadata = FakeMetadata()
     private val userTokens = MemoryUserTokens()
-
+    private val report = MutableStateFlow<NetworkUpgrade?>(null)
+    private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
     private val graph = AppGraph(
         accounts = object : AccountRepository {
             override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
@@ -161,7 +167,14 @@ class AppNavigationTest {
                 flowOf(KindReading.Verified(AddressKind.Eoa, 9_412_118))
         },
         lightClient = object : LightClient {
-            override fun observeStatus(): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
+            override fun observeStatus(): Flow<LightClientStatus> = status
+        },
+        networkUpgrades = object : NetworkUpgrades {
+            override fun observeUpgrade(): Flow<NetworkUpgrade?> = report
+        },
+        knownUpgrades = object : KnownUpgradeStore {
+            override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
+            override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
         },
         network = Network.SEPOLIA,
     )
@@ -205,6 +218,29 @@ class AppNavigationTest {
 
         rule.onNodeWithText("Full control").assertIsDisplayed()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aRequiredUpdateReplacesEveryScreenUntilTheLightClientVerifiesAgain() {
+        showApp()
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertIsDisplayed()
+
+        // Activated by peers' report, and the light client agrees it is not verifying.
+        report.value = NetworkUpgrade(NetworkUpgrade.Phase.ACTIVE, activationTime = null, forkId = null, 4)
+        rule.waitUntil { rule.onAllNodesWithTag(UPDATE_REQUIRED_TAG).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Add account").assertDoesNotExist()
+        // No tab bar either: the update screen is the only one.
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag(UPDATE_REQUIRED_TAG).assertDoesNotExist()
+        rule.onNodeWithText("Network upgrade reported: update Serotine").assertIsDisplayed()
+        rule.onNodeWithText("Settings").assertIsDisplayed()
     }
 
     @Test
