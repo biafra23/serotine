@@ -28,8 +28,10 @@ internal class FakeKnownUpgradeStore : KnownUpgradeStore {
     var failing = false
 
     /**
-     * The caller is cancelled while the record is written: as FileKnownUpgradeStore does under
-     * NonCancellable, the write completes and the cancellation is thrown as the save returns.
+     * The caller is cancelled while the record is written, and this store surfaces it as the
+     * save returns, the record already written: what a store written as a bare
+     * `withContext(Dispatchers.IO)` does. FileKnownUpgradeStore, under NonCancellable, returns
+     * normally instead; UpgradeNotices must hold up under either.
      */
     var cancelledDuringSave = false
 

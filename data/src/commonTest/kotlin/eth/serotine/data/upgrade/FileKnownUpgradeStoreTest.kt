@@ -69,15 +69,18 @@ class FileKnownUpgradeStoreTest {
     }
 
     @Test
-    fun aSaveWhoseCallerIsCancelledDuringTheWriteStillFinishesIt() = runTest {
+    fun aSaveWhoseCallerIsCancelledDuringTheWriteFinishesItAndReturns() = runTest {
         val store = store()
+        var saved: Boolean? = null
         // Run until the write waits for the store's dispatcher, then cancel the caller there.
-        val saving = launch(start = CoroutineStart.UNDISPATCHED) { store.save(record) }
+        val saving = launch(start = CoroutineStart.UNDISPATCHED) { saved = store.save(record) }
         saving.cancel()
         runCurrent()
 
+        // NonCancellable: the write finishes, the save returns normally, and the caller's
+        // cancellation shows at its next suspension, not as the save returns.
+        assertEquals(true, saved)
         assertTrue(saving.isCancelled)
-        // What UpgradeNotices relies on: the record is written and observed, then the save ends.
         assertEquals(record, store.observe().first())
         assertEquals(record, store().observe().first(), "and it is in the file")
     }
