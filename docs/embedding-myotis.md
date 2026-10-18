@@ -151,9 +151,16 @@ consumer developed against an unreleased engine, Myotis's
     1.5.0's module guard the one at
     `keccak256("module_manager.module_guard.address")`.
 
-  A slot proof is labelled with the beacon anchor it matched (the optimistic
-  or finalized block; for a header-chain match, the block walked from), never
-  with a peer's reported head. Every proof must anchor to one block, which
+  A slot proof is used only once the engine tied it to a beacon-attested
+  root (`storageProofBlock`). Matched at the finalized slot it is labelled
+  with the finalized block, at the optimistic slot with the optimistic block;
+  matched at an attested slot between the two, the usual case, with the
+  block the proof anchors to (`peerBlockNumber`, as balances and code are),
+  not below the finalized block. The matched slot is the attested slot the
+  anchor recorded, while the result's optimistic slot is the light client's
+  signature slot, about one past it, so an exact optimistic match seldom
+  happens; a header-chain match is labelled with the block walked from. Any
+  other match is no proof. Every proof must anchor to one block, which
   labels the reading; a read the head moved under is made again at the next
   head. The guards sit at hashed slots, which `getStorageProof` cannot name,
   so they are verified `VerifiedReads.getStorageAt` reads at the head: they

@@ -108,6 +108,14 @@ class WatchViewModelTest {
         reading.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
         runCurrent()
         assertFalse(viewModel.uiState.value.canAdd)
+        // A Safe's code may be proven and its storage not: the text blames neither alone.
+        assertEquals(
+            Detection.Unavailable(
+                "What is at this address could not be verified this time: its code, or for a Safe its owners and " +
+                    "threshold. Serotine keeps trying.",
+            ),
+            viewModel.uiState.value.detection,
+        )
     }
 
     @Test
