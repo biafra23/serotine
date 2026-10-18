@@ -106,10 +106,10 @@ fun AssetsRoute(
  * The Assets screen as a pure function of [state]; stateless, so a test can render any
  * state directly. Its floating action button fans out into Watch address ([onWatchAddress]),
  * Import recovery phrase ([onImportPhrase]), Create account ([onCreateAccount]) and Create Safe
- * ([onCreateSafe]), greyed out until an account's key is held here to pay for its deployment, a
- * tap then saying so with the ways to get one; a row's tap and its long-press menu (a right click
- * on desktop) ask [onAccountAction], its Send greyed out with its reason where it cannot be done
- * (owner ruling, 2026-10-18, #55). [fabExpandedAtStart] opens the button's fan from the start (a
+ * ([onCreateSafe]), greyed out until an account's key is known to be held here to pay for its
+ * deployment (while the list is read, too), a tap then saying why, with the ways to get one; a
+ * row's tap and its long-press menu (a right click on desktop) ask [onAccountAction], its Send
+ * greyed out with its reason where it cannot be done (owner ruling, 2026-10-18, #55). [fabExpandedAtStart] opens the button's fan from the start (a
  * preview).
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -138,9 +138,18 @@ fun AssetsScreen(
         floatingActionButton = {
             // No add to offer while the stored list cannot be read: it would be refused.
             if (state !is AssetsUiState.ListUnavailable) {
-                // An account held here pays for the deployment (docs/wallet-ux.md, screen 2): until then
-                // Create Safe is greyed out, and says so.
-                val createSafeReason = (state as? AssetsUiState.Ready)?.createSafeReason
+                // An account held here pays for the deployment (docs/wallet-ux.md, screen 2): until one
+                // is known to be, Create Safe is greyed out, and says so; the ways to get one only once
+                // the list is read and has none.
+                val createSafeReason = state.createSafeReason
+                val createSafeFixes = if (state is AssetsUiState.Ready) {
+                    listOf(
+                        UnavailableFix("Import recovery phrase", onImportPhrase),
+                        UnavailableFix("Create account", onCreateAccount),
+                    )
+                } else {
+                    emptyList()
+                }
                 SpeedDialFab(
                     actions = listOf(
                         SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress),
@@ -150,14 +159,7 @@ fun AssetsScreen(
                             if (createSafeReason == null) {
                                 onCreateSafe()
                             } else {
-                                unavailable = UnavailableNotice(
-                                    "Create Safe",
-                                    createSafeReason,
-                                    listOf(
-                                        UnavailableFix("Import recovery phrase", onImportPhrase),
-                                        UnavailableFix("Create account", onCreateAccount),
-                                    ),
-                                )
+                                unavailable = UnavailableNotice("Create Safe", createSafeReason, createSafeFixes)
                             }
                         },
                     ),

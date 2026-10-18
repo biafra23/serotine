@@ -441,6 +441,8 @@ class CreateSafeViewModel(
         // A refusal is the threshold step's own to show; it is drawn there already.
         val plan = (planning as? SafePlanning.Planned)?.plan ?: return
         val payers = model.held
+        // None held here any more: the screen says so already (render's CannotCreate, NO_PAYER), and
+        // nothing is planned or quoted until one is.
         if (payers.isEmpty()) return
         // An owner pays when one is held here: the account the user picked first for it.
         val payer = owners.firstOrNull { owner -> payers.any { it.address == owner } } ?: payers.first().address

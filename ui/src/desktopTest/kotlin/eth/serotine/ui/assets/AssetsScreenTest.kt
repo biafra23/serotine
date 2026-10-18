@@ -165,6 +165,32 @@ class AssetsScreenTest {
     }
 
     @Test
+    fun createSafeIsGreyedOutWhileTheAccountsAreStillRead() {
+        val calls = mutableListOf<String>()
+        rule.setContent {
+            SerotineTheme {
+                AssetsScreen(
+                    state = AssetsUiState.Loading("Sepolia", syncing),
+                    onWatchAddress = {},
+                    onImportPhrase = { calls += "import" },
+                    onCreateAccount = { calls += "create account" },
+                    onCreateSafe = { calls += "create safe" },
+                    onAccountAction = {},
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Create Safe")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals("Checking which accounts can pay…")
+        rule.onNodeWithText("Close").performClick()
+
+        assertEquals(emptyList(), calls, "nothing is started before the list is read")
+    }
+
+    @Test
     fun sendFromASafeWithAnOwnerHeldHereProposesASafeTransaction() {
         val treasury = savings.copy(label = "Treasury", kind = AccountKind.SAFE, control = Control.CO_SIGNER)
         val watched = daily.copy(label = "Watched Safe", kind = AccountKind.SAFE, control = Control.WATCH_ONLY)

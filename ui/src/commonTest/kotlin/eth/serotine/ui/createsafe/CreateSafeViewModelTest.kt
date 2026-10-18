@@ -222,6 +222,26 @@ class CreateSafeViewModelTest {
     }
 
     @Test
+    fun aPayerGoneBeforeTheReviewSaysWhyAndNothingIsQuoted() = runTest {
+        val viewModel = viewModel()
+        viewModel.onNameChange("Family vault")
+        viewModel.onToggleOwner(eip55(savings.address))
+        viewModel.onContinue()
+        assertIs<CreateSafeUiState.Threshold>(viewModel.uiState.value)
+
+        // Daily is removed meanwhile: no account here can pay for the deployment any more.
+        accounts.accounts.value = listOf(savings, treasury)
+        viewModel.onContinue()
+        runCurrent()
+
+        val state = assertIs<CreateSafeUiState.CannotCreate>(viewModel.uiState.value, "said, not a dead tap")
+        assertTrue("pay for its deployment" in state.message)
+        accounts.accounts.value = listOf(daily, savings, treasury)
+        runCurrent()
+        assertIs<CreateSafeUiState.Threshold>(viewModel.uiState.value, "still at the threshold: no review was made")
+    }
+
+    @Test
     fun withoutAPinnedReleaseNothingCanBeCreated() = runTest {
         releases.release = null
         val viewModel = viewModel()

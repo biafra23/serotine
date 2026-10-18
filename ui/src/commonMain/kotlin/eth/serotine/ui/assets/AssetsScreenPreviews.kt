@@ -145,6 +145,13 @@ private fun AssetsLoadingPreview() =
 
 @Preview
 @Composable
+private fun AssetsLoadingCreateSafeGreyedOutPreview() = AssetsPreview(
+    AssetsUiState.Loading(network, LightClientItem("Starting the light client…", null, true)),
+    fabExpanded = true,
+)
+
+@Preview
+@Composable
 private fun AssetsListSetAsidePreview() = AssetsPreview(
     AssetsUiState.Ready(
         network,
@@ -207,6 +214,7 @@ internal val assetsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AssetsCreateSafeGreyedOutPreview() },
     { AssetsCreateSafeReasonPreview() },
     { AssetsLoadingPreview() },
+    { AssetsLoadingCreateSafeGreyedOutPreview() },
     { AssetsListSetAsidePreview() },
     { AssetsUpgradeAheadPreview() },
     { AssetsUpgradeActivatedDarkPreview() },

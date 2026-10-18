@@ -30,12 +30,23 @@ sealed interface AssetsUiState {
     /** A network upgrade this version does not support, for the banner under the strip; null when none. */
     val upgrade: UpgradeBannerItem?
 
+    /**
+     * Why Create Safe cannot be done now, display-ready, or null when it can: offered either way,
+     * greyed out while this says why (owner ruling, 2026-10-18, #55). Only [Ready] knows whether an
+     * account here can pay for the deployment.
+     */
+    val createSafeReason: String?
+
     /** The account stream has not emitted yet. */
     data class Loading(
         override val network: String,
         override val lightClient: LightClientItem,
         override val upgrade: UpgradeBannerItem? = null,
-    ) : AssetsUiState
+    ) : AssetsUiState {
+        /** The accounts are not read yet: which of them could pay is not known. */
+        override val createSafeReason: String
+            get() = CREATE_SAFE_CHECKING
+    }
 
     /**
      * The managed accounts, possibly none; one row per address (the list keys rows on it).
@@ -68,7 +79,7 @@ sealed interface AssetsUiState {
             get() = accounts.any { it.kind == AccountKind.EOA && it.control == Control.FULL_CONTROL }
 
         /** Why Create Safe cannot be done now, and how to get there; null when it can. */
-        val createSafeReason: String?
+        override val createSafeReason: String?
             get() = CREATE_SAFE_NEEDS_A_KEY.takeUnless { canCreateSafe }
     }
 
@@ -82,7 +93,11 @@ sealed interface AssetsUiState {
         override val lightClient: LightClientItem,
         val message: String,
         override val upgrade: UpgradeBannerItem? = null,
-    ) : AssetsUiState
+    ) : AssetsUiState {
+        /** Nothing can be added while the list cannot be read: [message] says why. */
+        override val createSafeReason: String
+            get() = message
+    }
 }
 
 /**
@@ -182,6 +197,9 @@ sealed interface AccountAction {
     /** Take it out of the wallet. */
     data class Remove(override val address: String) : AccountAction
 }
+
+/** What Create Safe says while the account list is still being read. */
+internal const val CREATE_SAFE_CHECKING = "Checking which accounts can pay…"
 
 /** What Create Safe says while no account whose key is on this device can pay for the deployment. */
 internal const val CREATE_SAFE_NEEDS_A_KEY = "Creating a Safe needs an account whose key is on this device, to pay " +
