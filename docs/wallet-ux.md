@@ -382,8 +382,11 @@ upgrades*).
     - `delegatecall` is marked as such and decoded no further: the Safe runs
       the target's code as itself. This wallet shows it and does not sign,
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
-      another wallet through MultiSend arrives as one. Whether to allow a
-      pinned MultiSendCallOnly is the owner's open question (issue #57).
+      another wallet through MultiSend arrives as one. By the owner's ruling
+      (2026-10-18, #57) a delegate call is to be co-signed only when its
+      target is the pinned MultiSendCallOnly 1.4.1 and each inner call is
+      decoded and shown. Not built yet (#57): until it is, every delegate
+      call is refused, and the refusal says batches come later.
     - Gas and refund terms, when any of `safeTxGas`, `baseGas`, `gasPrice`,
       `gasToken` or `refundReceiver` is not zero: shown, and marked as what
       this wallet does not sign, approve or execute

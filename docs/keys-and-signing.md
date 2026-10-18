@@ -575,7 +575,9 @@ value:
 1. **Policy on chain, where the app cannot touch it.** A Safe transaction
    guard or module enforcing spending limits, recipient allowlists, a delay
    for large or unusual transactions, no `delegatecall`, and owner changes
-   only behind the delay. A defective app can then do only what the policy
+   only behind the delay. (This wallet itself co-signs a delegate call only
+   to the pinned MultiSendCallOnly 1.4.1, each inner call decoded and shown:
+   owner ruling, 2026-10-18, #57. Not built yet, so it refuses every one.) A defective app can then do only what the policy
    permits, and anything beyond it enters a window where another device can
    veto. This exists because a Safe is a contract; for an EOA the equivalent
    is an EIP-7702 delegation to such an account, and the delegation itself is

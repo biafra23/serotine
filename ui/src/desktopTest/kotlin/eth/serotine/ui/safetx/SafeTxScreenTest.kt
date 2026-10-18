@@ -169,14 +169,15 @@ class SafeTxScreenTest {
     fun aTransactionThisWalletWillNotSignSaysWhyAndOffersNothingToSign() {
         show(
             overview.copy(
-                refusal = "A delegate call: Serotine does not sign, approve or execute one.",
+                refusal = "A delegate call: Serotine does not sign, approve or execute one yet. " +
+                    "Batches through the pinned MultiSendCallOnly come later.",
                 canSign = false,
                 canApprove = false,
                 executeNote = null,
             ),
         )
 
-        rule.onNodeWithText("A delegate call: Serotine does not sign, approve or execute one.").performScrollTo()
+        rule.onNodeWithText("Batches through the pinned MultiSendCallOnly come later.", substring = true).performScrollTo()
             .assertIsDisplayed()
         rule.onNodeWithText("Sign").assertDoesNotExist()
         rule.onNodeWithText("Approve on chain").assertDoesNotExist()

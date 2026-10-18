@@ -82,7 +82,9 @@ sealed interface SafeTxRefusal {
     /**
      * A delegate call: the Safe would run the target's code as itself, and the code could do
      * anything to it, so this wallet neither signs, approves nor executes one (docs/wallet-ux.md,
-     * screen 17). It is shown, decoded as such, and nothing more.
+     * screen 17). It is shown, decoded as such, and nothing more. A batch through the pinned
+     * MultiSendCallOnly 1.4.1, each inner call decoded and shown, is to be co-signed (owner ruling,
+     * 2026-10-18, #57); that is not built yet, so every delegate call is refused until it is.
      */
     data object DelegateCall : SafeTxRefusal
 

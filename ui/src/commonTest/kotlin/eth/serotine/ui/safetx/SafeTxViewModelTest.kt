@@ -317,7 +317,11 @@ class SafeTxViewModelTest {
 
         val state = viewModel.overview
         assertEquals("Delegate call", state.action.title)
-        assertEquals("A delegate call: Serotine does not sign, approve or execute one.", state.refusal)
+        assertEquals(
+            "A delegate call: Serotine does not sign, approve or execute one yet. Batches through the pinned " +
+                "MultiSendCallOnly come later.",
+            state.refusal,
+        )
         assertFalse(state.canSign)
         assertFalse(state.canApprove)
         assertFalse(state.canExecute)

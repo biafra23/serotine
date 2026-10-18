@@ -226,7 +226,8 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
     is SafeTxRefusal.BadSignature ->
         "The signature said to be ${Eip55.format(refusal.owner)}'s is not that owner's over this transaction: " +
             "refused, and nothing of the request is kept."
-    SafeTxRefusal.DelegateCall -> "A delegate call: Serotine does not sign, approve or execute one."
+    SafeTxRefusal.DelegateCall -> "A delegate call: Serotine does not sign, approve or execute one yet. Batches " +
+        "through the pinned MultiSendCallOnly come later."
     is SafeTxRefusal.AlreadySigned -> "${Eip55.format(refusal.owner)} has signed it already."
     SafeTxRefusal.AlreadyApproved -> "This owner has approved it on chain already."
     SafeTxRefusal.AlreadySent ->
