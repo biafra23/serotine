@@ -432,7 +432,8 @@ class MyotisNode private constructor(network: Network, debugLog: ((String) -> Un
     private class TimedSnapshot(val atNanos: Long, val snapshot: EngineSnapshot)
 
     companion object {
-        private val POLL_INTERVAL = 4.seconds
+        /** How often the verified reads poll the engine; internal for `SafeBudgetsTest`. */
+        internal val POLL_INTERVAL = 4.seconds
 
         /** A storage word's hex digits. */
         private const val WORD_HEX_DIGITS = 64

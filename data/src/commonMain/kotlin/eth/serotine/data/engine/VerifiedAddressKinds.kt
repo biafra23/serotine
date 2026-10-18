@@ -37,10 +37,11 @@ import kotlin.time.TimeSource
  * Every numbered slot is a storage proof, and all of them must be of one state, no older than
  * the code's: one verified anchor ([ProofAnchor], the attested slot a proof matched; a block
  * label alone can be a peer's report) and one block, the one the reading is labelled with. That
- * rule has no exception, however often a read is made. Within one read a proof that comes back
- * null or throws (a slow or lost peer) is asked for again, up to [PROOF_TRIES] times in all; a
- * read the head moved under, or one a proof failed in after those tries, is made again, for as
- * long as [SAFE_READ_BUDGET] lasts ([timeSource] measures it, checked between the engine's calls,
+ * rule has no exception, however often a read is made. Every proof that comes back null or throws
+ * (a slow or lost peer), the code's first one included, is asked for again, up to [PROOF_TRIES]
+ * times in all; a read the head moved under, or one a proof failed in after those tries, is made
+ * again, for as long as [SAFE_READ_BUDGET] lasts from the first code proof ([timeSource] measures
+ * it, checked between the engine's calls,
  * which each block and are not cut off; a cancelled read stops at its next call), a moment's
  * pause ([RETRY_PAUSE]) after a failed proof. When the
  * slots were of one state and only the code's anchor did not order before it (a walk against a
@@ -74,11 +75,15 @@ class VerifiedAddressKinds internal constructor(
         keptForHeads = { kind -> if (kind is AddressKind.Safe) SAFE_KEPT_FOR_HEADS else 1 },
         sharedForHeads = SAFE_KEPT_FOR_HEADS,
     ) { verified, address ->
-        val code = verified.proveCode(address) ?: return@ProvenReads null
+        // One budget from the first proof on: the code's, asked for again like every other.
+        val started = timeSource.markNow()
+        val deadline = started + SAFE_READ_BUDGET
+        val code = proof(deadline, { "${address.hex}: the code" }) { verified.proveCode(address) }
+            ?: return@ProvenReads null
         when (val kind = kindOf(code.codeHex)) {
             AddressKind.Contract ->
                 if (codeHash(code.codeHex) in safes.proxyCodeHashes) {
-                    readSafe(verified, address, code)
+                    readSafe(verified, address, code, started, deadline)
                 } else {
                     EngineReading.Proven(kind, code.blockNumber)
                 }
@@ -94,9 +99,13 @@ class VerifiedAddressKinds internal constructor(
      * alone again would meet the same code anchor every time. Code proven again that is no pinned
      * proxy's any more is read as what it is. Null: no read of one state could be had in time.
      */
-    private suspend fun readSafe(chain: VerifiedChain, safe: Address, proven: ProvenCode): EngineReading<AddressKind>? {
-        val started = timeSource.markNow()
-        val deadline = started + SAFE_READ_BUDGET
+    private suspend fun readSafe(
+        chain: VerifiedChain,
+        safe: Address,
+        proven: ProvenCode,
+        started: TimeMark,
+        deadline: TimeMark,
+    ): EngineReading<AddressKind>? {
         var code: ProvenCode? = proven
         var read = 1
         while (true) {
@@ -361,10 +370,10 @@ class VerifiedAddressKinds internal constructor(
 
         /**
          * How long a Safe is read again while its reads fail: a couple of heads' worth, past which
-         * the reading is unproven until the next poll. Kept well inside a one-shot check's wait
-         * (the domain's `SAFE_CHECK_BUDGET`, 45 s): that wait must outlast this budget, the code's
-         * proof before it and one poll interval, or it would cancel the very read it waits on and
-         * never see the next one.
+         * the reading is unproven until the next poll; it runs from the first code proof. Kept well
+         * inside a one-shot check's wait ([eth.serotine.domain.usecase.SAFE_CHECK_BUDGET], 45 s):
+         * that wait must outlast this budget and one poll interval, or it would cancel the very read
+         * it waits on and never see the next one (`SafeBudgetsTest` holds them to it).
          */
         internal val SAFE_READ_BUDGET = 20.seconds
 

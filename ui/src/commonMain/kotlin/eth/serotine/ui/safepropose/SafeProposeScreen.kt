@@ -57,6 +57,7 @@ import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.TransferFormFields
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
 import kotlinx.coroutines.Dispatchers
@@ -170,6 +171,9 @@ fun SafeProposeScreen(
     // In the review, back is to the form; while a signature runs, back waits for it. While the Safe
     // is still checked before it, nothing is signed yet, and back stops the check.
     val busy = review?.signing == true && !review.checking
+    // A check of the Safe can take up to 45 s: a screen that times out meanwhile is a screen left,
+    // which stops it.
+    if (review?.checking == true) KeepScreenOn()
     BackHandler(enabled = review != null) {
         if (!busy) actions.onEdit()
     }

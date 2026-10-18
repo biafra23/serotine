@@ -83,6 +83,7 @@ import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
 import kotlinx.coroutines.Dispatchers
@@ -209,6 +210,9 @@ fun SafeTxScreen(
     // back waits for it: leaving would not stop it, only hide what it did. While the Safe is still
     // checked before a signature, nothing is signed yet, and back stops the check.
     val busy = review?.signing == true || (signing?.signing == true && !signing.checking)
+    // A check of the Safe can take up to 45 s: a screen that times out meanwhile is a screen left,
+    // which stops a check before Sign.
+    if (signing?.checking == true || quoting) KeepScreenOn()
     val leaves = review?.notSent?.canRetry == true
     val inStep = review != null || signing != null || quoting
     BackHandler(enabled = inStep) {

@@ -258,8 +258,9 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
 }
 
 /**
- * What a step says while it checks the Safe on chain (Import, Sign, Approve and Execute): a check
- * that waits out a reading that could not be verified for the next one, up to 45 s.
+ * What a step says while it checks the Safe on chain (Import, Sign, Propose's signature, and
+ * Approve and Execute's quote): a check that waits out a reading that could not be verified for
+ * the next one, up to 45 s. The display is kept on meanwhile ([eth.serotine.ui.platform.KeepScreenOn]).
  */
 internal const val CHECKING_SAFE = "Checking the Safe on chain…"
 

@@ -274,6 +274,7 @@ class VerifiedAddressKindsTest {
     fun aReadTheHeadMovedUnderIsMadeAgainAtOnce() = runTest {
         chain.snapshot = running(head = 9)
         safeStorage()
+        chain.proofTakes = 500.milliseconds // the code and two reads, well within the budget
         // The fourth proof of the first read lands at the next head; the second read is all there.
         chain.slotBlockOfCall = { call -> if (call < 3) 9 else 10 }
 
@@ -435,8 +436,8 @@ class VerifiedAddressKindsTest {
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),
             kinds().observeKind(address).first { it !is KindReading.Syncing },
         )
-        // The code's proof before the read began, then the budget, and no proof asked for past it.
-        assertEquals(1.seconds + VerifiedAddressKinds.SAFE_READ_BUDGET, start.elapsedNow())
+        // The budget, the code's first proof in it, and no proof asked for past it.
+        assertEquals(VerifiedAddressKinds.SAFE_READ_BUDGET, start.elapsedNow())
         assertEquals(true, logged.any { "not read after 2 reads" in it }, "$logged")
     }
 
@@ -451,11 +452,31 @@ class VerifiedAddressKindsTest {
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),
             kinds().observeKind(address).first { it !is KindReading.Syncing },
         )
-        // The code's proof, then five reads of three tries (3 s) each followed by a 1 s pause: the
-        // budget is spent at 20 s, and the sixth read asks for nothing.
-        assertEquals(1.seconds + VerifiedAddressKinds.SAFE_READ_BUDGET, start.elapsedNow())
-        assertEquals(true, logged.any { "read 6: out of time at slot 0" in it }, "$logged")
-        assertEquals(true, logged.any { "not read after 6 reads" in it }, "$logged")
+        // The code's proof (1 s), then four reads of three tries (3 s) each followed by a 1 s pause,
+        // and a fifth whose last try ends the budget at 20 s.
+        assertEquals(VerifiedAddressKinds.SAFE_READ_BUDGET, start.elapsedNow())
+        assertEquals(true, logged.any { "read 5: out of time at slot 0" in it }, "$logged")
+        assertEquals(true, logged.any { "not read after 5 reads" in it }, "$logged")
+    }
+
+    @Test
+    fun theFirstCodeProofIsAskedForAgainLikeEveryOther() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // Null, then a thrown JNA error, then the code.
+        chain.codeOfCall = { call ->
+            when (call) {
+                0 -> null
+                1 -> throw Error("native call failed")
+                else -> ProvenCode(proxyCode, 9, ProofAnchor.Attested(9))
+            }
+        }
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+
+        assertEquals(true, (reading as KindReading.Verified).kind is AddressKind.Safe)
+        assertEquals(3, chain.codeCalls)
+        assertEquals(true, logged.any { "the code unproven, asked again (try 2 of 3)" in it }, "$logged")
     }
 
     @Test
