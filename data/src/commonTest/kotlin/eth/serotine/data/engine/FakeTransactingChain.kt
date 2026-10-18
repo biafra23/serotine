@@ -6,7 +6,7 @@ import eth.serotine.domain.model.Address
 internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : TransactingChain, VerifiedChain by base {
     var nonce: Long? = null
     var feeHistory: String? = null
-    var estimate: EstimateAnswer = EstimateAnswer.Unavailable
+    var estimate: EstimateAnswer = EstimateAnswer.Unavailable()
     var call: CallOutcome? = null
     var send: SendAnswer = SendAnswer.Unavailable(null)
     var receipt: String? = null

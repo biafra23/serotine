@@ -109,8 +109,11 @@ sealed interface GasEstimate {
     /** The engine will not estimate it on this build ([detail]). */
     data class Refused(val detail: String) : GasEstimate
 
-    /** No verified answer right now, for [reason]. */
-    data class Unavailable(val reason: ReadUnavailable) : GasEstimate
+    /**
+     * No verified answer right now, for [reason]; [detail] the engine's own words, when it gives
+     * any (for a log or a report: no screen shows them).
+     */
+    data class Unavailable(val reason: ReadUnavailable, val detail: String? = null) : GasEstimate
 }
 
 /** The outcome of [TransactionInputs.simulate]. */

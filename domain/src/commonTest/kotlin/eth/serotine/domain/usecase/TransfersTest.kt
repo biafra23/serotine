@@ -425,7 +425,7 @@ class TransfersTest {
         )
 
         assertEquals(
-            TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN),
+            TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.FEES),
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
         )
     }
@@ -459,13 +459,22 @@ class TransfersTest {
         )
         native = BalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
         assertEquals(
-            TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN),
+            TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.BALANCE),
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
         )
         native = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
         inputs.fees = FeeReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
         assertEquals(
-            TransferQuoting.Unavailable(ReadUnavailable.STALE_ANCHOR),
+            TransferQuoting.Unavailable(ReadUnavailable.STALE_ANCHOR, QuoteFigure.FEES),
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
+        // Which figure failed is said, so that the screen can name it.
+        inputs.fees = FeeReading.Quoted(
+            FeeQuote(UInt256.of(10 * gwei), FeeLevel.entries.associateWith { UInt256.of(gwei) }, blockNumber = 99),
+        )
+        inputs.estimate = GasEstimate.Unavailable(ReadUnavailable.UNPROVEN, "no proof peer")
+        assertEquals(
+            TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.GAS),
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
         )
     }

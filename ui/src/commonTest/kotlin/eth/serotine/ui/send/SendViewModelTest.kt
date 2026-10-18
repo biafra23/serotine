@@ -20,6 +20,7 @@ import eth.serotine.domain.repository.BiometricUnlock
 import eth.serotine.domain.repository.BiometricUnusable
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
@@ -425,6 +426,13 @@ class SendViewModelTest {
             refusedFor("0.1"),
         )
         inputs.simulation = Simulation.Succeeded("", 100)
+        inputs.estimate = GasEstimate.Unavailable(ReadUnavailable.UNPROVEN, "no proof peer")
+        assertEquals("The gas estimate could not be verified this time: try again.", refusedFor("0.15"))
+        inputs.estimate = GasEstimate.Estimated(21_000)
+        val fees = inputs.fees
+        inputs.fees = FeeReading.Unavailable(ReadUnavailable.UNPROVEN)
+        assertEquals("The fee could not be verified this time: try again.", refusedFor("0.16"))
+        inputs.fees = fees
         inputs.estimate = GasEstimate.Unavailable(ReadUnavailable.STALE_ANCHOR)
         assertEquals("The light client refuses to sync, so nothing can be quoted.", refusedFor("0.2"))
         balances.of(daily.address).value = BalanceReading.Syncing

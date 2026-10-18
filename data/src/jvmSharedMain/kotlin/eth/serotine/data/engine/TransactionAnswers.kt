@@ -12,7 +12,7 @@ internal fun estimateAnswer(result: EstimateResult): EstimateAnswer = when (resu
     EstimateResult.Status.REVERTED -> EstimateAnswer.Reverted(result.revertData()?.toHex().orEmpty())
     EstimateResult.Status.INFEASIBLE -> EstimateAnswer.Infeasible(result.detail().orEmpty())
     EstimateResult.Status.REFUSED -> EstimateAnswer.Refused(result.detail().orEmpty())
-    EstimateResult.Status.UNAVAILABLE, null -> EstimateAnswer.Unavailable
+    EstimateResult.Status.UNAVAILABLE, null -> EstimateAnswer.Unavailable(result.detail())
 }
 
 /** A Myotis broadcast verdict as the adapters read it. */

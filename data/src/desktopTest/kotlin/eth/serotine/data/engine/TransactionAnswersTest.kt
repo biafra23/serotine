@@ -21,7 +21,12 @@ class TransactionAnswersTest {
             estimateAnswer(EstimateResult.infeasible("insufficient funds")),
         )
         assertEquals(EstimateAnswer.Refused("fork"), estimateAnswer(EstimateResult.refused("fork")))
-        assertEquals(EstimateAnswer.Unavailable, estimateAnswer(EstimateResult.unavailable(null)))
+        assertEquals(EstimateAnswer.Unavailable(null), estimateAnswer(EstimateResult.unavailable(null)))
+        // The engine's words are carried, not dropped (for a report; no screen shows them).
+        assertEquals(
+            EstimateAnswer.Unavailable("no proof peer"),
+            estimateAnswer(EstimateResult.unavailable("no proof peer")),
+        )
     }
 
     @Test

@@ -9,6 +9,7 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.BuiltInCheck
 import eth.serotine.domain.usecase.CallRefusal
+import eth.serotine.domain.usecase.QuoteFigure
 import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.SafeTxRefusal
 
@@ -242,7 +243,11 @@ internal fun callRefusalText(refusal: CallRefusal, network: Network): String = w
         refusal.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty() + ". Nothing was signed."
     CallRefusal.Refused -> "The light client on this device cannot quote this transaction."
     CallRefusal.Syncing -> "The light client is not synced yet: try again in a moment."
-    is CallRefusal.Unavailable -> unavailableText(refusal.reason)
+    is CallRefusal.Unavailable -> if (refusal.reason == ReadUnavailable.UNPROVEN) {
+        "${figureText(refusal.figure, "of the quote")} could not be verified this time: try again."
+    } else {
+        unavailableText(refusal.reason)
+    }
     is CallRefusal.EarlierMaybeSent -> EARLIER_MAYBE_SENT
 }
 
@@ -254,6 +259,19 @@ internal fun callRefusalText(refusal: CallRefusal, network: Network): String = w
 internal const val EARLIER_MAYBE_SENT = "An earlier transaction from this account may still be on its way: no " +
     "peer answered when it was broadcast, and no block has it yet. Try it again from its status (Send on this " +
     "account opens it) rather than sign a new one, which could pay twice."
+
+/**
+ * The figure of a quote that could not be verified, as a sentence starts with it ("The fee"), or,
+ * when not said, "A figure" and [ofWhat] ("A figure of the quote").
+ */
+internal fun figureText(figure: QuoteFigure?, ofWhat: String): String = when (figure) {
+    QuoteFigure.BALANCE -> "The account's balance"
+    QuoteFigure.NONCE -> "The account's nonce"
+    QuoteFigure.FEES -> "The fee"
+    QuoteFigure.GAS -> "The gas estimate"
+    QuoteFigure.RUN -> "The verified run of the transaction"
+    null -> "A figure $ofWhat"
+}
 
 /** Why a verified figure could not be had right now, display-ready. */
 internal fun unavailableText(reason: ReadUnavailable): String = when (reason) {

@@ -78,8 +78,11 @@ sealed interface CallRefusal {
     /** The light client has no verified head yet. */
     data object Syncing : CallRefusal
 
-    /** A verified figure could not be had right now, for [reason]. */
-    data class Unavailable(val reason: ReadUnavailable) : CallRefusal
+    /**
+     * A verified figure could not be had right now, for [reason]; [figure] says which one (null:
+     * not said), so that the screen can name it.
+     */
+    data class Unavailable(val reason: ReadUnavailable, val figure: QuoteFigure? = null) : CallRefusal
 
     /**
      * An earlier transaction from the sender, [hash], may still be on its way: its broadcast found
@@ -88,6 +91,24 @@ sealed interface CallRefusal {
      * never replaced by a new one, which could take the next nonce and pay twice.
      */
     data class EarlierMaybeSent(val hash: String) : CallRefusal
+}
+
+/** Which verified figure of a quote could not be had ([CallRefusal.Unavailable], [TransferQuoting.Unavailable]). */
+enum class QuoteFigure {
+    /** The sender's balance (of the network's currency, or of the token sent). */
+    BALANCE,
+
+    /** The sender's nonce: its pending or its mined transaction count. */
+    NONCE,
+
+    /** The fees, from the fee history. */
+    FEES,
+
+    /** The gas the transaction takes, the engine's estimate. */
+    GAS,
+
+    /** The transaction run as a verified call. */
+    RUN,
 }
 
 /** A verified native balance a quote starts from, or why there is none. */
@@ -103,9 +124,9 @@ internal sealed interface NativeRead {
         /** What [reading] gives a quote. */
         fun of(reading: BalanceReading): NativeRead = when (reading) {
             is BalanceReading.Verified -> reading.wei.toUInt256OrNull()?.let { Before(it, reading.blockNumber) }
-                ?: NotRead(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN))
+                ?: NotRead(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.BALANCE))
             BalanceReading.Syncing -> NotRead(CallRefusal.Syncing)
-            is BalanceReading.Unavailable -> NotRead(CallRefusal.Unavailable(reading.reason))
+            is BalanceReading.Unavailable -> NotRead(CallRefusal.Unavailable(reading.reason, QuoteFigure.BALANCE))
         }
     }
 }
@@ -165,7 +186,7 @@ internal class CallQuoter(
         if (maybe.isEmpty()) return null
         val count = when (val mined = inputs.minedNonce(from)) {
             is NonceReading.Read -> mined.nonce
-            is NonceReading.Unavailable -> return CallRefusal.Unavailable(mined.reason)
+            is NonceReading.Unavailable -> return CallRefusal.Unavailable(mined.reason, QuoteFigure.NONCE)
         }
         return maybe.firstOrNull { it.nonce >= count }?.let { CallRefusal.EarlierMaybeSent(it.hash) }
     }
@@ -216,7 +237,8 @@ internal class CallQuoter(
                 },
             )
             is GasEstimate.Refused -> return@cancellingReads refused(CallRefusal.Refused)
-            is GasEstimate.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(estimate.reason))
+            is GasEstimate.Unavailable ->
+                return@cancellingReads refused(CallRefusal.Unavailable(estimate.reason, QuoteFigure.GAS))
         }
         val simulationBlock = when (val simulation = inputs.simulate(from, to, value, data)) {
             is Simulation.Succeeded -> if (accepts(simulation.returnHex)) {
@@ -226,19 +248,23 @@ internal class CallQuoter(
             }
             is Simulation.Reverted -> return@cancellingReads refused(CallRefusal.Reverts(simulation.blockNumber))
             Simulation.Refused -> return@cancellingReads refused(CallRefusal.Refused)
-            is Simulation.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(simulation.reason))
+            is Simulation.Unavailable ->
+                return@cancellingReads refused(CallRefusal.Unavailable(simulation.reason, QuoteFigure.RUN))
         }
         val quote = when (val reading = fees.await()) {
             is FeeReading.Quoted -> reading.quote
-            is FeeReading.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(reading.reason))
+            is FeeReading.Unavailable ->
+                return@cancellingReads refused(CallRefusal.Unavailable(reading.reason, QuoteFigure.FEES))
         }
         val pendingNonce = when (val reading = nonce.await()) {
             is NonceReading.Read -> reading.nonce
-            is NonceReading.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(reading.reason))
+            is NonceReading.Unavailable ->
+                return@cancellingReads refused(CallRefusal.Unavailable(reading.reason, QuoteFigure.NONCE))
         }
         val minedCount = when (val reading = mined.await()) {
             is NonceReading.Read -> reading.nonce
-            is NonceReading.Unavailable -> return@cancellingReads refused(CallRefusal.Unavailable(reading.reason))
+            is NonceReading.Unavailable ->
+                return@cancellingReads refused(CallRefusal.Unavailable(reading.reason, QuoteFigure.NONCE))
         }
         // This wallet's own sends not mined yet, within their lifetime and taken by a peer: a
         // record that cannot be read leaves the engine's.
@@ -250,7 +276,7 @@ internal class CallQuoter(
         val pendingCost = unmined.map { it.maxCost }.sumOrNull() ?: return@cancellingReads insufficient
         val available = native.wei.minusOrNull(pendingCost) ?: return@cancellingReads insufficient
         // An engine answer this large is no answer: the use case never throws over it.
-        val unproven = refused(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN))
+        val unproven = refused(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.FEES))
         val maxFeePerGas = quote.maxFeePerGasOrNull(level) ?: return@cancellingReads unproven
         val maxFee = maxFeePerGas.timesOrNull(UInt256.of(gas)) ?: return@cancellingReads unproven
         val cost = maxFee.plusOrNull(value) ?: return@cancellingReads insufficient

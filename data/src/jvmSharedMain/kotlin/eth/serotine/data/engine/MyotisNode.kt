@@ -400,7 +400,7 @@ class MyotisNode private constructor(network: Network) {
         }
 
         override fun estimateGas(from: Address, to: Address, valueWei: String, data: ByteArray): EstimateAnswer {
-            val handle = (state as? State.Running)?.handle ?: return EstimateAnswer.Unavailable
+            val handle = (state as? State.Running)?.handle ?: return EstimateAnswer.Unavailable("no engine running")
             return estimateAnswer(handle.reads().estimateGasDetailed(from.bytes(), to.bytes(), data, valueWei))
         }
 

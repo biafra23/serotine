@@ -50,6 +50,7 @@ import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
+import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
@@ -707,7 +708,8 @@ class SendViewModel(
         is TransferQuoting.Unavailable -> when (quoting.reason) {
             ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so nothing can be sent."
             ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so nothing can be quoted."
-            ReadUnavailable.UNPROVEN -> "A figure of the quote could not be verified this time: try again."
+            ReadUnavailable.UNPROVEN -> "${figureText(quoting.figure, "of the quote")} could not be verified this " +
+                "time: try again."
             ReadUnavailable.REFUSED -> "The light client on this device cannot quote this transfer."
         }
         is TransferQuoting.EarlierMaybeSent -> "An earlier transaction from this account may still be on its way: " +

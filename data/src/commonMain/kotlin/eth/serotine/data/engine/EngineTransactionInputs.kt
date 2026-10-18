@@ -49,7 +49,7 @@ class EngineTransactionInputs internal constructor(
                 is EstimateAnswer.Reverted -> GasEstimate.Reverted(answer.revertHex)
                 is EstimateAnswer.Infeasible -> GasEstimate.Infeasible(answer.detail)
                 is EstimateAnswer.Refused -> GasEstimate.Refused(answer.detail)
-                EstimateAnswer.Unavailable -> GasEstimate.Unavailable(ReadUnavailable.UNPROVEN)
+                is EstimateAnswer.Unavailable -> GasEstimate.Unavailable(ReadUnavailable.UNPROVEN, answer.detail)
             }
         }
 

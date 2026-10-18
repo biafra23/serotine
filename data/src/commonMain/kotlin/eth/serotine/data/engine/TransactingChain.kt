@@ -49,7 +49,9 @@ internal sealed interface EstimateAnswer {
     data class Reverted(val revertHex: String) : EstimateAnswer
     data class Infeasible(val detail: String) : EstimateAnswer
     data class Refused(val detail: String) : EstimateAnswer
-    data object Unavailable : EstimateAnswer
+
+    /** No answer now; [detail] the engine's words for why, when it gives any. */
+    data class Unavailable(val detail: String? = null) : EstimateAnswer
 }
 
 /** An engine's broadcast verdict. */

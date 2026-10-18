@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.CallRefusal
+import eth.serotine.domain.usecase.QuoteFigure
 import eth.serotine.domain.usecase.SafeTxRefusal
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -141,6 +142,13 @@ class SafeTxTextTest {
         assertEquals(
             "A figure could not be verified this time: try again.",
             safeTxRefusalText(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN), Network.SEPOLIA),
+        )
+        assertEquals(
+            "The fee could not be verified this time: try again.",
+            safeTxRefusalText(
+                SafeTxRefusal.NotQuoted(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.FEES)),
+                Network.SEPOLIA,
+            ),
         )
         assertEquals(
             "An earlier transaction from this account may still be on its way: no peer answered when it was " +

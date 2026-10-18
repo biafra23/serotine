@@ -208,7 +208,8 @@ class QuoteTransfer(
             }
             TokenBalanceReading.Syncing -> return@cancellingReads TransferQuoting.Syncing
             TokenBalanceReading.NotAToken -> return@cancellingReads TransferQuoting.NotAToken
-            is TokenBalanceReading.Unavailable -> return@cancellingReads TransferQuoting.Unavailable(reading.reason)
+            is TokenBalanceReading.Unavailable ->
+                return@cancellingReads TransferQuoting.Unavailable(reading.reason, QuoteFigure.BALANCE)
         }
         if (tokenBefore != null && tokenBefore < amount) return@cancellingReads TransferQuoting.InsufficientToken
         if (token == null && nativeBefore.wei < amount) return@cancellingReads TransferQuoting.InsufficientFunds
@@ -254,7 +255,7 @@ class QuoteTransfer(
     }
 }
 
-private val UNPROVEN = TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN)
+private val UNPROVEN = TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.BALANCE)
 
 /** What this transaction moves of the token at [token]: its amount when it is a transfer of that token. */
 private fun SentTransfer.tokenAmount(token: Address): UInt256? = (action as? SentAction.Transfer)
@@ -268,7 +269,7 @@ private fun CallRefusal.asTransferQuoting(): TransferQuoting = when (this) {
     is CallRefusal.Reverts -> TransferQuoting.Reverts(blockNumber)
     CallRefusal.Refused -> TransferQuoting.Refused
     CallRefusal.Syncing -> TransferQuoting.Syncing
-    is CallRefusal.Unavailable -> TransferQuoting.Unavailable(reason)
+    is CallRefusal.Unavailable -> TransferQuoting.Unavailable(reason, figure)
     is CallRefusal.EarlierMaybeSent -> TransferQuoting.EarlierMaybeSent(hash)
 }
 
@@ -311,8 +312,8 @@ sealed interface TransferQuoting {
     /** The light client has no verified head yet. */
     data object Syncing : TransferQuoting
 
-    /** A verified figure could not be had right now, for [reason]. */
-    data class Unavailable(val reason: ReadUnavailable) : TransferQuoting
+    /** A verified figure could not be had right now, for [reason]; [figure] says which (null: not said). */
+    data class Unavailable(val reason: ReadUnavailable, val figure: QuoteFigure? = null) : TransferQuoting
 
     /**
      * An earlier transaction from the sender, [hash], may still be on its way
