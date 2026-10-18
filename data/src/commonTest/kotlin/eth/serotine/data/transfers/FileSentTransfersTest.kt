@@ -23,6 +23,7 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readString
 import kotlinx.io.writeString
 import kotlin.random.Random
 import kotlin.test.AfterTest
@@ -205,9 +206,15 @@ class FileSentTransfersTest {
         SystemFileSystem.sink(file).buffered().use { it.writeString(text) }
 
         assertEquals(listOf(transfer(7)), stored())
-        // The next change writes what was read: one entry passed over never sets the rest aside.
+        // The file was set aside once, whole, with the entries passed over in it; what was read
+        // took its place, so a later read sets nothing more aside and a write loses nothing.
+        val aside = SystemFileSystem.list(directory).filter { ".damaged-" in it.name }
+        assertEquals(1, aside.size)
+        assertEquals(text, SystemFileSystem.source(aside.single()).buffered().use { it.readString() })
+        assertEquals(listOf(transfer(7)), stored())
         record().record(transfer(9))
         assertEquals(listOf(transfer(7), transfer(9)), stored())
+        assertEquals(1, SystemFileSystem.list(directory).count { ".damaged-" in it.name })
     }
 
     @Test

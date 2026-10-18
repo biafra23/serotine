@@ -44,7 +44,11 @@ import kotlin.time.Duration.Companion.seconds
  *   its own once the file can be read (a lock released, a permission fixed);
  * - a damaged file: set aside under a name of its own (`<file>.damaged-<random>`, never
  *   replacing an earlier one), then [empty], saying so ([Read.Loaded.damagedSetAside]); if it
- *   cannot be set aside, Unreadable.
+ *   cannot be set aside, Unreadable;
+ * - a file [incomplete] says [decode] passed parts of over (entries it could not decode): set
+ *   aside the same way, once, and what was read written in its place, so that nothing passed
+ *   over is lost at the next write; saying so too. If that cannot be done, what was read is
+ *   used all the same, and the file is left as it is until it can.
  *
  * File work runs on [dispatcher], never the caller's thread. Problems are reported on standard
  * output by type only, naming the file as [what]: an exception message could quote the
@@ -58,6 +62,7 @@ internal class VersionedJsonFile<T>(
     private val empty: T,
     private val decode: (version: Int, text: String) -> T,
     private val encode: (T) -> String,
+    private val incomplete: (text: String, value: T) -> Boolean = { _, _ -> false },
 ) {
     /** What the file holds, or why it cannot be read. */
     sealed interface Read<out T> {
@@ -146,8 +151,33 @@ internal class VersionedJsonFile<T>(
         } catch (e: Exception) {
             null
         }
-        if (value != null) return@withContext Read.Loaded(value)
-        setAside()
+        if (value == null) return@withContext setAside()
+        val partly = try {
+            incomplete(text, value)
+        } catch (e: Exception) {
+            false
+        }
+        if (partly) keepAside(value) else Read.Loaded(value)
+    }
+
+    /**
+     * Moves the file [decode] read only part of out of the way, keeping it, and writes [value],
+     * what was read, in its place: the parts passed over stay in the file set aside.
+     */
+    private suspend fun keepAside(value: T): Read<T> {
+        var aside: Path
+        do {
+            aside = Path("$file.damaged-${Random.nextLong().toULong().toString(16)}")
+        } while (SystemFileSystem.exists(aside))
+        return try {
+            SystemFileSystem.atomicMove(file, aside)
+            report("the $what at $file had entries that could not be read; set aside as $aside")
+            write(value)
+            Read.Loaded(value, damagedSetAside = true)
+        } catch (e: Exception) {
+            report("the $what at $file has entries that could not be read; not set aside (${e::class.simpleName})")
+            Read.Loaded(value)
+        }
     }
 
     /** Moves a damaged file out of the way, keeping it; Unreadable when that fails. */

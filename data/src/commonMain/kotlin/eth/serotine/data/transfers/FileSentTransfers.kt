@@ -33,6 +33,8 @@ import kotlinx.serialization.json.JsonElement
  * owners, threshold, version and the name it is listed under), and whether it is only maybe sent.
  * An entry that does not decode (a damaged one, or one of a kind this build does not know) is
  * passed over, as [eth.serotine.data.safe.FileSafeTxQueue] passes one over, and the rest are read;
+ * the file it was in is then set aside once, whole, and what was read written in its place, so
+ * that the entry is kept there rather than lost at the next write;
  * a file that is not one at all is set aside and the record starts empty; one that cannot be read
  * is [SentTransferList.Unreadable] (a quote then goes by the engine's nonce alone).
  *
@@ -52,6 +54,9 @@ class FileSentTransfers(
         formatVersion = FORMAT_VERSION,
         empty = emptyList<SentTransfer>(),
         decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).transfers.mapNotNull(::decoded) },
+        incomplete = { text, transfers ->
+            JSON.decodeFromString(StoredFile.serializer(), text).transfers.size != transfers.size
+        },
         encode = { transfers ->
             val entries = transfers.map { JSON.encodeToJsonElement(StoredTransfer.serializer(), stored(it)) }
             JSON.encodeToString(StoredFile.serializer(), StoredFile(FORMAT_VERSION, entries))
