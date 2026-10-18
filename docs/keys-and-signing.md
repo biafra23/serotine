@@ -294,6 +294,13 @@ its KDoc and returns it as a result the UI shows as state.
   needs no password is the owner's ruling (2026-10-18, #17, recorded in
   CLAUDE.md's *Trust*): the app asks the user to confirm the removal first
   (`RemoveAccountDialog`), and nothing more.
+  - What a deletion that does not finish leaves is the owner's ruling
+    (2026-10-18, #18), decided and not built yet (#73). A key whose deletion
+    the user confirmed but which did not finish is deleted again at the next
+    start: a pending-deletion marker is written before the list entry is
+    removed. Keys left over from a damaged account list are never deleted
+    automatically: the user is offered to restore their accounts with the
+    wallet password. A "start over" reset comes later.
 - **The password.**
   - The first import sets the wallet password: at least eight characters,
     refused by the adapter otherwise. Every later import must give the same
@@ -423,6 +430,10 @@ its KDoc and returns it as a result the UI shows as state.
     step a crash cannot leave half done.
   - A way back when no envelope opens any more (a lost Keystore key, a
     forgotten password) comes with the wallet's reset and recovery flows.
+  - The ruling on a deletion that does not finish (#18, *Deletion* above),
+    not built yet (#73): the pending-deletion marker and the deletion again
+    at the next start, the offer to restore the accounts of leftover keys
+    with the wallet password, and later a "start over" reset.
 
 ## A Safe owned by a hardware P-256 key
 
