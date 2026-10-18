@@ -18,6 +18,7 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readString
 import kotlinx.io.writeString
 import kotlin.random.Random
 import kotlin.test.AfterTest
@@ -116,6 +117,26 @@ class FileSafeTxQueueTest {
         }
 
         assertEquals(listOf(kept), queued())
+    }
+
+    @Test
+    fun aRequestPassedOverIsCopiedAsideBeforeTheQueueIsRewritten() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val codec = JsonSigningRequestCodec(Network.SEPOLIA)
+        val kept = request(5).withSignatures(listOf(byA, byB))
+        val elsewhere = codec.encode(request(4)).replace("11155111", "1")
+        val text = """{"version":1,"requests":[$elsewhere,${codec.encode(kept)}]}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString(text) }
+
+        queue().save(request(6))
+        queue().remove(kept.hash)
+
+        // The request passed over survives in the copy, with the file it was read from; later
+        // writes set nothing more aside.
+        val aside = SystemFileSystem.list(directory).filter { ".damaged-" in it.name }
+        assertEquals(1, aside.size)
+        assertEquals(text, SystemFileSystem.source(aside.single()).buffered().use { it.readString() })
+        assertEquals(listOf(request(6)), queued())
     }
 
     @Test

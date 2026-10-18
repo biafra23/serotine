@@ -22,7 +22,8 @@ import kotlinx.serialization.json.Json
  * signing request travels in ([WireRequest]): the Safe, its chain, the raw transaction and its
  * owners' signatures, all public. A request for a chain no [Network] is, or with a field out of
  * its range, is left out and the others are kept: the signatures they collected cannot be had
- * again without asking their owners. A file that is no queue at all is damaged, set aside, and
+ * again without asking their owners, so the file holding it is first copied aside whole, once,
+ * before anything rewrites it ([VersionedJsonFile]). A file that is no queue at all is damaged, set aside, and
  * the queue starts empty; one that cannot be read is [SafeTxQueueList.Unreadable].
  */
 class FileSafeTxQueue(
@@ -37,6 +38,11 @@ class FileSafeTxQueue(
         formatVersion = FORMAT_VERSION,
         empty = emptyList<SigningRequest>(),
         decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).requests.mapNotNull(::request) },
+        // A request passed over is copied aside with the whole file before the first rewrite, so
+        // the signatures it collected outlive the next save, removal or prune.
+        incomplete = { text, requests ->
+            JSON.decodeFromString(StoredFile.serializer(), text).requests.size != requests.size
+        },
         encode = { requests ->
             JSON.encodeToString(StoredFile.serializer(), StoredFile(FORMAT_VERSION, requests.map(WireRequest::of)))
         },
