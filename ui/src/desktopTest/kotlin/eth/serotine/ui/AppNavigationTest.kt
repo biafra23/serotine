@@ -2,6 +2,9 @@ package eth.serotine.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -15,9 +18,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -71,6 +74,9 @@ import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TransactionProgress
+import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
@@ -78,6 +84,12 @@ import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.assets.NO_ACCOUNTS_HINT
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.SAFE_TX_QR_TAG
+import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
+import eth.serotine.ui.components.SEND_AMOUNT_TAG
+import eth.serotine.ui.components.SEND_RECIPIENT_TAG
+import eth.serotine.ui.components.SEND_REVIEW_TAG
+import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_CONTINUE_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_DEPLOY_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_NAME_TAG
@@ -88,9 +100,6 @@ import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_REPEAT_TAG
 import eth.serotine.ui.receive.RECEIVE_ADDRESS_TAG
-import eth.serotine.domain.usecase.FollowSafeDeployments
-import eth.serotine.domain.usecase.ListDeployedSafe
-import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.renameaccount.RENAME_FIELD_TAG
 import eth.serotine.ui.safeimport.IMPORT_REQUEST_BUTTON_TAG
 import eth.serotine.ui.safeimport.IMPORT_REQUEST_FIELD_TAG
@@ -99,15 +108,10 @@ import eth.serotine.ui.safepropose.PROPOSE_PASSWORD_TAG
 import eth.serotine.ui.safepropose.PROPOSE_SIGN_TAG
 import eth.serotine.ui.safetx.SAFE_TX_HASH_TAG
 import eth.serotine.ui.safetx.SAFE_TX_PASSWORD_TAG
-import eth.serotine.ui.components.SAFE_TX_QR_TAG
-import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.safetx.SAFE_TX_SHARE_TAG
 import eth.serotine.ui.safetx.SAFE_TX_SIGN_TAG
 import eth.serotine.ui.send.SEND_AMOUNT_REVIEWED_TAG
-import eth.serotine.ui.components.SEND_AMOUNT_TAG
 import eth.serotine.ui.send.SEND_PASSWORD_TAG
-import eth.serotine.ui.components.SEND_RECIPIENT_TAG
-import eth.serotine.ui.components.SEND_REVIEW_TAG
 import eth.serotine.ui.send.SEND_SIGN_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
 import eth.serotine.ui.tokens.TOKENS_ROW_TAG
@@ -327,7 +331,8 @@ class AppNavigationTest {
         rule.onNodeWithText(NO_ACCOUNTS_HINT).assertIsDisplayed()
 
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Create Safe").assertDoesNotExist()
+        rule.onNodeWithText("Create Safe")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
         rule.onNodeWithText("Import recovery phrase").performClick()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).performTextInput(
             "one two three four five six seven eight nine ten eleven twelve",
@@ -672,13 +677,15 @@ class AppNavigationTest {
     }
 
     @Test
-    fun aWatchOnlyAccountOffersNoSend() {
+    fun aWatchOnlyAccountShowsSendGreyedOutAndSendsNothing() {
         accounts.value = listOf(savings)
         showApp()
 
         rule.onNodeWithText("Savings").performClick()
         rule.onNodeWithText("Receive").assertIsDisplayed()
-        rule.onNodeWithText("Send").assertDoesNotExist()
+        rule.onNodeWithText("Send").performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
+        assertEquals(listOf("assets", "account/{address}"), screens(), "nothing opened")
     }
 
     @Test
@@ -747,12 +754,21 @@ class AppNavigationTest {
     }
 
     @Test
-    fun withoutAKeyHereNoSafeIsOffered() {
+    fun withoutAKeyHereCreateSafeIsGreyedOutAndSaysWhyWithTheWaysToGetOne() {
         accounts.value = listOf(savings)
         showApp()
 
+        // Owner ruling, 2026-10-18, #55: shown, greyed out, and a tap says what is missing.
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Watch address").assertIsDisplayed()
-        rule.onNodeWithText("Create Safe").assertDoesNotExist()
+        rule.onNodeWithText("Create Safe").performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "Creating a Safe needs an account whose key is on this device, to pay for its deployment. Import or " +
+                "create an account, and fund it, first.",
+        )
+        assertEquals(listOf("assets"), screens(), "nothing opened")
+
+        // Its way out: Create account, straight from the dialog.
+        rule.onNodeWithText("Create account").performClick()
+        assertEquals(listOf("assets", "create-account"), screens())
     }
 }

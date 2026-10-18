@@ -31,8 +31,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -47,6 +49,9 @@ import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.SpeedDialAction
 import eth.serotine.ui.components.SpeedDialFab
+import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableFix
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.update.UpgradeBanner
@@ -100,9 +105,12 @@ fun AssetsRoute(
 /**
  * The Assets screen as a pure function of [state]; stateless, so a test can render any
  * state directly. Its floating action button fans out into Watch address ([onWatchAddress]),
- * Import recovery phrase ([onImportPhrase]), Create account ([onCreateAccount]) and, once an
- * account's key is held here to pay for its deployment, Create Safe ([onCreateSafe]); a row's tap
- * and its long-press menu (a right click on desktop) ask [onAccountAction].
+ * Import recovery phrase ([onImportPhrase]), Create account ([onCreateAccount]) and Create Safe
+ * ([onCreateSafe]), greyed out until an account's key is held here to pay for its deployment, a
+ * tap then saying so with the ways to get one; a row's tap and its long-press menu (a right click
+ * on desktop) ask [onAccountAction], its Send greyed out with its reason where it cannot be done
+ * (owner ruling, 2026-10-18, #55). [fabExpandedAtStart] opens the button's fan from the start (a
+ * preview).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,8 +122,11 @@ fun AssetsScreen(
     onCreateSafe: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
+    fabExpandedAtStart: Boolean = false,
 ) {
     val snackbar = remember { SnackbarHostState() }
+    var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
+    unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
     val scope = rememberCoroutineScope()
     val act: (AccountAction) -> Unit = { action ->
         onAccountAction(action)
@@ -127,16 +138,31 @@ fun AssetsScreen(
         floatingActionButton = {
             // No add to offer while the stored list cannot be read: it would be refused.
             if (state !is AssetsUiState.ListUnavailable) {
+                // An account held here pays for the deployment (docs/wallet-ux.md, screen 2): until then
+                // Create Safe is greyed out, and says so.
+                val createSafeReason = (state as? AssetsUiState.Ready)?.createSafeReason
                 SpeedDialFab(
-                    actions = listOfNotNull(
-                        SpeedDialAction("Watch address", SerotineIcons.Visibility, onWatchAddress),
-                        SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onImportPhrase),
-                        SpeedDialAction("Create account", Icons.Filled.Add, onCreateAccount),
-                        // An account held here pays for the deployment (docs/wallet-ux.md, screen 2).
-                        SpeedDialAction("Create Safe", Icons.Filled.Lock, onCreateSafe)
-                            .takeIf { (state as? AssetsUiState.Ready)?.canCreateSafe == true },
+                    actions = listOf(
+                        SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress),
+                        SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onClick = onImportPhrase),
+                        SpeedDialAction("Create account", Icons.Filled.Add, onClick = onCreateAccount),
+                        SpeedDialAction("Create Safe", Icons.Filled.Lock, unavailable = createSafeReason != null) {
+                            if (createSafeReason == null) {
+                                onCreateSafe()
+                            } else {
+                                unavailable = UnavailableNotice(
+                                    "Create Safe",
+                                    createSafeReason,
+                                    listOf(
+                                        UnavailableFix("Import recovery phrase", onImportPhrase),
+                                        UnavailableFix("Create account", onCreateAccount),
+                                    ),
+                                )
+                            }
+                        },
                     ),
                     description = "Add account",
+                    expandedAtStart = fabExpandedAtStart,
                 )
             }
         },
@@ -162,7 +188,7 @@ fun AssetsScreen(
                 )
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                Rows(state, act)
+                Rows(state, act) { unavailable = it }
             }
         }
     }
@@ -201,7 +227,11 @@ private fun LightClientStrip(item: LightClientItem, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun BoxScope.Rows(state: AssetsUiState, onAccountAction: (AccountAction) -> Unit) {
+private fun BoxScope.Rows(
+    state: AssetsUiState,
+    onAccountAction: (AccountAction) -> Unit,
+    onUnavailable: (UnavailableNotice) -> Unit,
+) {
     when (state) {
         is AssetsUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
         is AssetsUiState.ListUnavailable -> Text(
@@ -215,7 +245,7 @@ private fun BoxScope.Rows(state: AssetsUiState, onAccountAction: (AccountAction)
             if (state.accounts.isEmpty()) {
                 NoAccounts(Modifier.align(Alignment.Center))
             } else {
-                AccountList(state.accounts, onAccountAction)
+                AccountList(state.accounts, onAccountAction, onUnavailable)
             }
     }
 }
@@ -238,12 +268,12 @@ private fun NetworkLabel(network: String, modifier: Modifier = Modifier) {
 
 /**
  * What the empty Assets screen says: every way the + button adds an account, and why Create Safe
- * is not among them yet: an account whose key is on this device pays for its deployment
+ * is greyed out there until an account whose key is on this device can pay for its deployment
  * (docs/wallet-ux.md, screen 2).
  */
 internal const val NO_ACCOUNTS_HINT = "Add an account with the + button: watch an address, import a recovery " +
-    "phrase or create an account. Create Safe appears there once an account's key is on this device, because " +
-    "that account pays for the Safe's deployment."
+    "phrase or create an account. Create Safe is there too, and can be used once an account's key is on this " +
+    "device, because that account pays for the Safe's deployment."
 
 @Composable
 private fun NoAccounts(modifier: Modifier = Modifier) {
@@ -261,12 +291,13 @@ private fun NoAccounts(modifier: Modifier = Modifier) {
 private fun AccountList(
     accounts: List<AccountItem>,
     onAccountAction: (AccountAction) -> Unit,
+    onUnavailable: (UnavailableNotice) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier.fillMaxSize().testTag(ASSETS_ACCOUNT_LIST_TAG)) {
         items(accounts, key = { it.address }) { account ->
             WithActionMenu(
-                actions = accountMenu(account, onAccountAction),
+                actions = accountMenu(account, onAccountAction, onUnavailable),
                 menuLabel = "Actions for ${account.label}",
                 onClick = { onAccountAction(AccountAction.Open(account.address)) },
             ) {
@@ -278,15 +309,25 @@ private fun AccountList(
 }
 
 /**
- * The long-press menu of an account row: docs/wallet-ux.md, screen 3. Send only where the
- * account can send ([AccountItem.canSend]); its detail screen has the same as buttons.
+ * The long-press menu of an account row: docs/wallet-ux.md, screen 3. Send greyed out where the
+ * account cannot send, a tap saying why ([AccountItem.sendReason]); its detail screen has the
+ * same as buttons.
  */
-private fun accountMenu(account: AccountItem, act: (AccountAction) -> Unit): List<MenuAction> {
+private fun accountMenu(
+    account: AccountItem,
+    act: (AccountAction) -> Unit,
+    onUnavailable: (UnavailableNotice) -> Unit,
+): List<MenuAction> {
     val address = account.address
-    return listOfNotNull(
-        MenuAction("Send", Icons.AutoMirrored.Filled.Send) {
-            act(if (account.kind == AccountKind.SAFE) AccountAction.Propose(address) else AccountAction.Send(address))
-        }.takeIf { account.canSend },
+    val sendReason = account.sendReason
+    return listOf(
+        MenuAction("Send", Icons.AutoMirrored.Filled.Send, unavailable = sendReason != null) {
+            when {
+                sendReason != null -> onUnavailable(UnavailableNotice("Send", sendReason))
+                account.kind == AccountKind.SAFE -> act(AccountAction.Propose(address))
+                else -> act(AccountAction.Send(address))
+            }
+        },
         MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(address)) },
         MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(address)) },
         MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(address)) },

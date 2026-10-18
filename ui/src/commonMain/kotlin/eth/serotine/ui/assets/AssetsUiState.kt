@@ -60,11 +60,16 @@ sealed interface AssetsUiState {
         }
 
         /**
-         * Whether Create Safe is offered: once an externally owned account's key is held here, since
-         * one pays for the deployment (docs/wallet-ux.md, screen 2).
+         * Whether Create Safe can be done: once an externally owned account's key is held here, since
+         * one pays for the deployment (docs/wallet-ux.md, screen 2). It is offered either way, greyed
+         * out until then, and a tap on it says [createSafeReason] (owner ruling, 2026-10-18, #55).
          */
         val canCreateSafe: Boolean
             get() = accounts.any { it.kind == AccountKind.EOA && it.control == Control.FULL_CONTROL }
+
+        /** Why Create Safe cannot be done now, and how to get there; null when it can. */
+        val createSafeReason: String?
+            get() = CREATE_SAFE_NEEDS_A_KEY.takeUnless { canCreateSafe }
     }
 
     /**
@@ -106,15 +111,17 @@ data class AccountItem(
         get() = shortAddress(address)
 
     /**
-     * Whether Send is offered: for an account whose key is held here, and for a Safe with owners
-     * held here, whose Send proposes a Safe transaction its owners sign. Never for a watch-only one
-     * (docs/wallet-ux.md, *Control is a badge*).
+     * Whether Send can be done: for an account whose key is held here, and for a Safe with owners
+     * held here, whose Send proposes a Safe transaction its owners sign; never for a watch-only one
+     * (docs/wallet-ux.md, *Control is a badge*). Send is offered either way, greyed out when it
+     * cannot, and a tap on it says [sendReason] (owner ruling, 2026-10-18, #55).
      */
     val canSend: Boolean
-        get() = when (kind) {
-            AccountKind.EOA -> control == Control.FULL_CONTROL
-            AccountKind.SAFE -> control != Control.WATCH_ONLY
-        }
+        get() = sendBlockedReason(kind, control) == null
+
+    /** Why Send cannot be done from this account, and how to get there; null when it can. */
+    val sendReason: String?
+        get() = sendBlockedReason(kind, control)
 
     companion object {
         /**
@@ -174,4 +181,27 @@ sealed interface AccountAction {
 
     /** Take it out of the wallet. */
     data class Remove(override val address: String) : AccountAction
+}
+
+/** What Create Safe says while no account whose key is on this device can pay for the deployment. */
+internal const val CREATE_SAFE_NEEDS_A_KEY = "Creating a Safe needs an account whose key is on this device, to pay " +
+    "for its deployment. Import or create an account, and fund it, first."
+
+/**
+ * Why Send cannot be done from an account of [kind] under [control], and how to get there, or
+ * null when it can: the reason a greyed-out Send says on a tap (owner ruling, 2026-10-18, #55).
+ */
+internal fun sendBlockedReason(kind: AccountKind, control: Control): String? = when (kind) {
+    AccountKind.EOA -> if (control == Control.FULL_CONTROL) {
+        null
+    } else {
+        "This account is watch-only: its key is not on this device, so nothing can be sent from it. Import its " +
+            "recovery phrase to send from it."
+    }
+    AccountKind.SAFE -> if (control != Control.WATCH_ONLY) {
+        null
+    } else {
+        "No owner of this Safe has its key on this device, so nothing can be proposed from it. Import an owner's " +
+            "recovery phrase to propose and sign its transactions."
+    }
 }

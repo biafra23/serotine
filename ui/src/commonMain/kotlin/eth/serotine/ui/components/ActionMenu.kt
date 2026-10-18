@@ -19,11 +19,15 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 
-/** One entry of an item's menu. [destructive] ones are drawn in the error colour. */
+/**
+ * One entry of an item's menu. [destructive] ones are drawn in the error colour; [unavailable]
+ * ones, which miss something they need, greyed out, and [onClick] then says why ([Unavailable]).
+ */
 class MenuAction(
     val label: String,
     val icon: ImageVector?,
     val destructive: Boolean = false,
+    val unavailable: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -68,8 +72,13 @@ fun WithActionMenu(
 fun ActionDropdown(actions: List<MenuAction>, expanded: Boolean, onDismiss: () -> Unit) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         actions.forEach { action ->
-            val color = if (action.destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+            val color = when {
+                action.unavailable -> Unavailable.contentColor()
+                action.destructive -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurface
+            }
             DropdownMenuItem(
+                modifier = Modifier.unavailable(action.unavailable),
                 text = { Text(action.label, color = color) },
                 leadingIcon = action.icon?.let { icon -> { Icon(icon, contentDescription = null, tint = color) } },
                 onClick = {

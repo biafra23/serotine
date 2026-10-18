@@ -150,6 +150,14 @@ and that is the owner's decision, not a drive-by dependency.
   `Dispatchers.setMain` (`ui/src/commonTest`), stateless screens headless with
   `createComposeRule` (`ui/src/desktopTest`). A test that needs a device or
   the network is `@Ignore`d by default and documented.
+- **A missing prerequisite greys an action out, never hides it** (owner
+  ruling, 2026-10-18, #55). An action that is impossible because something it
+  needs is missing is shown disabled, and selecting it (a tap on the greyed
+  item still works) tells the user what is missing and how to get it
+  (`components/Unavailable.kt`: `UnavailableDialog`, with the ways to get it
+  where there are some). The UiState carries the enabled state and a
+  display-ready reason. Only an action that does not apply at all (to that
+  kind of account, in that step) is left out.
 - **Every screen has previews** (owner's request, 2026-10-17), so Android
   Studio renders it: `<Feature>ScreenPreviews.kt` next to the screen, one
   private `@Preview` per state the screen draws differently plus one in the

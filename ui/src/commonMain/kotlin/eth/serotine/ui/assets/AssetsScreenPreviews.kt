@@ -5,6 +5,9 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableFix
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.update.UpgradeBannerItem
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -58,7 +61,7 @@ private val withAccounts = AssetsUiState.Ready(
 )
 
 @Composable
-private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false) {
+private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false, fabExpanded: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
         AssetsScreen(
             state = state,
@@ -67,8 +70,33 @@ private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false) {
             onCreateAccount = {},
             onCreateSafe = {},
             onAccountAction = {},
+            fabExpandedAtStart = fabExpanded,
         )
     }
+}
+
+/** No account whose key is held here: Create Safe greyed out in the open + menu (owner ruling #55). */
+private val noKeyHere = AssetsUiState.Ready(
+    network,
+    LightClientItem("Synced · verified head 9,412,118", null, false),
+    emptyList(),
+)
+
+@Preview
+@Composable
+private fun AssetsCreateSafeGreyedOutPreview() = AssetsPreview(noKeyHere, fabExpanded = true)
+
+@Preview
+@Composable
+private fun AssetsCreateSafeReasonPreview() = SerotineTheme {
+    UnavailableDialog(
+        UnavailableNotice(
+            "Create Safe",
+            CREATE_SAFE_NEEDS_A_KEY,
+            listOf(UnavailableFix("Import recovery phrase") {}, UnavailableFix("Create account") {}),
+        ),
+        onDismiss = {},
+    )
 }
 
 @Preview
@@ -176,6 +204,8 @@ internal val assetsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AssetsAccountsDarkPreview() },
     { AssetsCatchingUpPreview() },
     { AssetsNoAccountsPreview() },
+    { AssetsCreateSafeGreyedOutPreview() },
+    { AssetsCreateSafeReasonPreview() },
     { AssetsLoadingPreview() },
     { AssetsListSetAsidePreview() },
     { AssetsUpgradeAheadPreview() },

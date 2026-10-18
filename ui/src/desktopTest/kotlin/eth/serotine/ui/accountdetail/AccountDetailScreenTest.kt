@@ -1,5 +1,8 @@
 package eth.serotine.ui.accountdetail
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -14,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -124,13 +128,26 @@ class AccountDetailScreenTest {
     }
 
     @Test
-    fun aWatchOnlyAccountHasNoSend() {
+    fun aWatchOnlyAccountShowsSendGreyedOutAndATapSaysWhy() {
         show(ready.copy(assets = listOf(AssetRow("USDC", "USDC", "5 USDC", "usdc", verified = true, contract = "0x1"))))
 
-        rule.onNodeWithText("Send").assertDoesNotExist()
+        // Owner ruling, 2026-10-18, #55: shown, greyed out, and a tap says what is missing.
+        rule.onNodeWithText("Send").assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "This account is watch-only: its key is not on this device, so nothing can be sent from it. Import its " +
+                "recovery phrase to send from it.",
+        )
+        rule.onNodeWithText("Close").performClick()
+        assertEquals(emptyList(), events.filter { it.startsWith("send") }, "nothing sent")
         rule.onNodeWithText("5 USDC").performTouchInput { longClick() }
         rule.onNodeWithText("Hide token").assertIsDisplayed()
-        rule.onNodeWithText("Send USDC").assertDoesNotExist()
+        rule.onNodeWithText("Send USDC")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
+        assertEquals(emptyList(), events.filter { it.startsWith("send") }, "nothing sent")
     }
 
     @Test
@@ -272,6 +289,7 @@ class AccountDetailScreenTest {
 
         rule.onNodeWithText("This device's queue of Safe transactions cannot be read right now.").assertIsDisplayed()
         rule.onNodeWithText("Queue").assertIsDisplayed()
-        rule.onNodeWithText("Send").assertDoesNotExist()
+        rule.onNodeWithText("Send")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
     }
 }

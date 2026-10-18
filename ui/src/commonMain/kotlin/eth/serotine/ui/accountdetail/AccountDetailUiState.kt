@@ -1,6 +1,7 @@
 package eth.serotine.ui.accountdetail
 
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.assets.sendBlockedReason
 import eth.serotine.ui.components.Control
 
 /** Everything the account detail screen renders (docs/wallet-ux.md, screen 4). */
@@ -42,15 +43,17 @@ sealed interface AccountDetailUiState {
     ) : AccountDetailUiState {
 
         /**
-         * Whether Send is offered: for an account whose key is held here, and for a Safe with
-         * owners held here, whose Send proposes a Safe transaction its owners sign. Never for a
-         * watch-only one (docs/wallet-ux.md, *Control is a badge*).
+         * Whether Send can be done: for an account whose key is held here, and for a Safe with
+         * owners held here, whose Send proposes a Safe transaction its owners sign; never for a
+         * watch-only one (docs/wallet-ux.md, *Control is a badge*). Send is shown either way,
+         * greyed out when it cannot, and a tap on it says [sendReason] (owner ruling, 2026-10-18, #55).
          */
         val canSend: Boolean
-            get() = when (kind) {
-                AccountKind.EOA -> control == Control.FULL_CONTROL
-                AccountKind.SAFE -> control != Control.WATCH_ONLY
-            }
+            get() = sendReason == null
+
+        /** Why Send cannot be done from this account, and how to get there; null when it can. */
+        val sendReason: String?
+            get() = sendBlockedReason(kind, control)
     }
 
     /** The account is not in the wallet (removed): the screen leaves. */

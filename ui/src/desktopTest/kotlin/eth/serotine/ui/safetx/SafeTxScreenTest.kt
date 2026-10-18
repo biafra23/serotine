@@ -1,5 +1,8 @@
 package eth.serotine.ui.safetx
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -22,6 +25,7 @@ import eth.serotine.ui.components.SAFE_TX_QR_TAG
 import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
+import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
@@ -122,7 +126,13 @@ class SafeTxScreenTest {
         rule.onNodeWithText("This device").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("1 of 2 confirmations").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("1 of the 2 confirmations it needs to be executed.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Execute").assertDoesNotExist()
+        // Owner ruling, 2026-10-18, #55: shown greyed out, and a tap says why.
+        rule.onNodeWithText("Execute").performScrollTo()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG)
+            .assertTextEquals("1 of the 2 confirmations it needs to be executed.")
+        rule.onNodeWithText("Close").performClick()
 
         rule.onNodeWithText("Sign").performScrollTo().performClick()
         rule.onNodeWithText("Approve on chain").performScrollTo().performClick()

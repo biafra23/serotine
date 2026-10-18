@@ -1,7 +1,10 @@
 package eth.serotine.ui.assets
 
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -19,6 +22,7 @@ import androidx.compose.ui.test.rightClick
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.update.UPGRADE_BANNER_TAG
 import eth.serotine.ui.update.UpgradeBannerItem
@@ -112,17 +116,52 @@ class AssetsScreenTest {
     }
 
     @Test
-    fun sendIsInTheMenuOfAnAccountWhoseKeyIsHeldHereOnly() {
+    fun sendWorksInTheMenuOfAnAccountWhoseKeyIsHeldHereAndElseSaysWhy() {
         show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
 
         rule.onNodeWithText("Savings").performTouchInput { longClick() }
         rule.onNodeWithText("Receive").assertIsDisplayed()
-        rule.onNodeWithText("Send").assertDoesNotExist()
+        // Owner ruling, 2026-10-18, #55: greyed out, and a tap says what is missing.
+        rule.onNodeWithText("Send")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "This account is watch-only: its key is not on this device, so nothing can be sent from it. Import its " +
+                "recovery phrase to send from it.",
+        )
+        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithText("Savings").performTouchInput { longClick() }
         rule.onNodeWithText("Receive").performClick()
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Send").performClick()
 
         assertEquals(listOf(AccountAction.Receive(savings.address), AccountAction.Send(daily.address)), actions)
+    }
+
+    @Test
+    fun createSafeIsAlwaysOfferedAndGreyedOutUntilAKeyIsHeldHere() {
+        val calls = mutableListOf<String>()
+        rule.setContent {
+            SerotineTheme {
+                AssetsScreen(
+                    state = AssetsUiState.Ready("Sepolia", syncing, listOf(savings)),
+                    onWatchAddress = {},
+                    onImportPhrase = { calls += "import" },
+                    onCreateAccount = { calls += "create account" },
+                    onCreateSafe = { calls += "create safe" },
+                    onAccountAction = {},
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Create Safe")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Import recovery phrase").performClick()
+
+        assertEquals(listOf("import"), calls, "the way to a key, never the Safe")
     }
 
     @Test
@@ -132,7 +171,8 @@ class AssetsScreenTest {
         show(AssetsUiState.Ready("Sepolia", syncing, listOf(watched, treasury)))
 
         rule.onNodeWithText("Watched Safe").performTouchInput { longClick() }
-        rule.onNodeWithText("Send").assertDoesNotExist()
+        rule.onNodeWithText("Send")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
         rule.onNodeWithText("Receive").performClick()
         rule.onNodeWithText("Treasury").performTouchInput { longClick() }
         rule.onNodeWithText("Send").performClick()

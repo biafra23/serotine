@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -74,9 +75,13 @@ import eth.serotine.ui.components.QrCode
 import eth.serotine.ui.components.RequestShareContent
 import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.components.Unavailable
+import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
 import kotlinx.coroutines.Dispatchers
@@ -273,6 +278,7 @@ private fun OverviewContent(
     onShareText: ((String) -> Unit)?,
 ) {
     var confirmRemove by remember { mutableStateOf(false) }
+    var unavailable by remember { mutableStateOf<String?>(null) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -337,12 +343,23 @@ private fun OverviewContent(
                 Text("Approve on chain")
             }
         }
-        if (state.canExecute) {
-            Button(onClick = actions.onExecute, enabled = !state.quoting, modifier = Modifier.fillMaxWidth()) {
+        // Execute shown greyed out while it cannot be done, a tap saying why (owner ruling, 2026-10-18,
+        // #55); hidden only while there is no reading to say anything from.
+        val executeReason = state.executeNote.takeUnless { state.canExecute }
+        if (state.canExecute || executeReason != null) {
+            Button(
+                onClick = { if (executeReason == null) actions.onExecute() else unavailable = executeReason },
+                enabled = !state.quoting,
+                modifier = Modifier.fillMaxWidth().unavailable(executeReason != null),
+                colors = if (executeReason == null) ButtonDefaults.buttonColors() else Unavailable.buttonColors(),
+            ) {
                 Text("Execute")
             }
         }
         state.executeNote?.let { Note(it) }
+        unavailable?.let { reason ->
+            UnavailableDialog(UnavailableNotice("Execute", reason), onDismiss = { unavailable = null })
+        }
         if (state.quoting) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -62,8 +63,12 @@ import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.Unavailable
+import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -171,6 +176,13 @@ fun AccountDetailScreen(
         onCopy(address)
         scope.launch { snackbar.showSnackbar("Address copied") }
     }
+    // Send greyed out where it cannot be done: a tap says why (owner ruling, 2026-10-18, #55).
+    var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
+    unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
+    val send: (String?) -> Unit = { contract ->
+        val reason = (state as? AccountDetailUiState.Ready)?.sendReason
+        if (reason == null) onSend(contract) else unavailable = UnavailableNotice("Send", reason)
+    }
     Scaffold(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbar) },
@@ -214,7 +226,7 @@ fun AccountDetailScreen(
                 )
                 is AccountDetailUiState.Ready -> Details(
                     state,
-                    onSend,
+                    send,
                     onReceive,
                     copy,
                     onCopyContract = { contract ->
@@ -289,12 +301,14 @@ private fun Details(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (state.canSend) {
-                FilledTonalButton(onClick = { onSend(null) }) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Send")
-                }
+            FilledTonalButton(
+                onClick = { onSend(null) },
+                modifier = Modifier.unavailable(!state.canSend),
+                colors = if (state.canSend) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Send")
             }
             FilledTonalButton(onClick = onReceive) {
                 Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
@@ -334,8 +348,9 @@ private fun Assets(
             // Long press (right click): docs/wallet-ux.md, screen 5. Each action is also behind a
             // visible button: Send above (the asset chosen there), the others in Settings → Tokens.
             val actions = listOfNotNull(
-                MenuAction("Send ${asset.symbol}", Icons.AutoMirrored.Filled.Send) { onSend(contract) }
-                    .takeIf { state.canSend },
+                MenuAction("Send ${asset.symbol}", Icons.AutoMirrored.Filled.Send, unavailable = !state.canSend) {
+                    onSend(contract)
+                },
                 contract?.let { MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(it) } },
                 contract?.let { MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) } },
             )

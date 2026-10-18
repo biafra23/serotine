@@ -57,8 +57,14 @@ the text wins.
   - *Full control*: an EOA whose key is in this device's key store, or a Safe
     whose owners held here reach its threshold.
   - *Co-signer*: a Safe with some owners held here, fewer than its threshold.
-  - *Watch-only*: nothing held here. Send is absent; Receive and the balances
-    are not.
+  - *Watch-only*: nothing held here. Send is greyed out (a tap says why);
+    Receive and the balances are as for any account.
+- **A missing prerequisite greys an action out, never hides it** (owner
+  ruling, 2026-10-18, #55). An action that cannot be done because something
+  it needs is missing is shown disabled, and a tap on it still works: it says
+  what is missing and how to get it (`UnavailableDialog`, with the ways to
+  get it where there are some). An action that does not apply to a kind of
+  account at all is not shown.
 - **Long press is never the only way.** A long press (a right click on
   desktop) opens an item's menu; every action in it is also reachable from a
   visible control (the detail screen's buttons), and the menu has an
@@ -100,16 +106,16 @@ upgrades*).
    - The FAB (2). A long press on a row opens 3; a tap opens 4, or 16 for a
      Safe.
    - With no account yet, it names every way the FAB adds one (watch,
-     import, create) and says that Create Safe appears there once an
-     account's key is on this device, the account that pays for it.
+     import, create) and says that Create Safe, there too, can be used once
+     an account's key is on this device, the account that pays for it.
 2. **FAB fan-out**: Watch address (10) · Import recovery phrase (11) · Create
-   account (12) · Create Safe (13). Create Safe appears once the user holds
-   an EOA's key: an EOA pays for the deployment. (Whether any controllable
-   owner key should be enough is the owner's open question, issue #55; built
-   as this line says.)
-3. **Account menu**: Send (absent when watch-only; for a Safe, present once an
-   owner of it is held here, and it opens the proposal of a Safe transaction,
-   16) · Receive · Copy address · Rename · Remove. Removing an account the user
+   account (12) · Create Safe (13). Create Safe is always there, and greyed
+   out until the user holds an EOA's key: an EOA pays for the deployment. A
+   tap on it then says so, with Import recovery phrase and Create account
+   as the ways to get one (owner ruling, 2026-10-18, #55).
+3. **Account menu**: Send (greyed out when watch-only, a tap saying why;
+   for a Safe, usable once an owner of it is held here, and it opens the
+   proposal of a Safe transaction, 16) · Receive · Copy address · Rename · Remove. Removing an account the user
    holds a key for says that only its recovery phrase brings it back, and
    asks for a confirmation, not the wallet password (owner ruling,
    2026-10-18, #17). The key store keeps one envelope per account, under its
@@ -119,14 +125,14 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send and Receive buttons (Send absent as in 3).
+   - Send and Receive buttons (Send greyed out as in 3).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
      long press opens 5.
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
-5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; absent as in 3) ·
+5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
    Copy contract address · Hide token. The native currency's row has the menu
    too, with Send alone.
 6. **Receive**: a QR code of the EIP-55 address, "Only send Sepolia assets"
@@ -405,8 +411,9 @@ upgrades*).
       chain · Execute, once the threshold is met. Execute may be sent from
       any account held here, owner or not, which pays for it (owner ruling,
       2026-10-18, #56); an owner's sending counts as its own confirmation.
-      Only the Safe's next nonce can be
-      executed, and an approval or
+      Execute is greyed out, not hidden, while the confirmations fall short or
+      another transaction runs first, a tap saying why (#55). Only the Safe's
+      next nonce can be executed, and an approval or
       execution sent and not mined yet is not offered again, from any
       account held here. What is shown and shared carries the signatures of the
       Safe's current owners only, so another device never refuses it for an
