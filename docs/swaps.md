@@ -27,7 +27,7 @@ disagree, CLAUDE.md wins and this page is fixed.
 | The quote | A verified call: QuoterV2 run in the engine's local EVM over proven state | CoW's own estimate, net of its fee, which the light client cannot prove |
 | What enforces the signed minimum | The router: `amountOutMinimum`, or the call reverts | The settlement contract: the order's `buyAmount`, or it does not settle |
 | MEV | The transaction is gossiped to the public mempool, so a sandwich can take up to the slippage tolerance | A batch auction: the user's order never sits in the public mempool |
-| Gas | The account pays it in ETH | Taken out of the price; ETH only for an approval |
+| Gas | The account pays it in ETH | Taken out of the price; ETH only for an approval, and for a cancellation on chain |
 | What leaves the device | The signed transaction, to peers, like every send | The order, the account's address and the device's IP address, to `api.cow.fi` |
 | On Sepolia | v3 and v4 deployed | Deployed; the API is `https://api.cow.fi/sepolia/api/v1` |
 
@@ -50,10 +50,15 @@ signed.
   - So the ruling that a price never reaches a signature (CLAUDE.md, *Data
     sources*) stands unchanged.
   - Fiat values stay hints beside the amounts.
-- **Only tokens the wallet knows.** These are the built-in tokens, the ones
-  the user added (marked as the contract's claim, as everywhere), native ETH
-  and the network's pinned WETH. A swap never offers a token by an address
-  the wallet has not listed.
+- **Only tokens the wallet lists.** These are native ETH, the built-in tokens
+  and the ones the user added (marked as the contract's claim, as
+  everywhere).
+  - A swap never offers a token by an address the wallet has not listed, so
+    what it buys always shows on Assets and can be sent.
+  - WETH is offered only once the user has added it by address: it is not
+    built in (docs/wallet-ux.md, *Tokens*).
+  - Otherwise the pinned WETH is only a route's middle token and ETH's
+    wrapper, which the router wraps and unwraps within the swap.
 - **The proceeds go to the account itself.** No other recipient is offered:
   sending somewhere else is Send's job.
 - **Slippage.** The tolerance applied to a verified quote, rounded down. The
@@ -89,8 +94,9 @@ signed.
     if that is now the better venue) and shown, not signed.
   - A Safe's swap has its own rules (*A Safe's swap*).
 - **The record.**
-  - `SentAction` gains an approval and a Uniswap swap: the token sold and its
-    amount, the token bought and the signed minimum.
+  - `SentAction` gains an approval, a Uniswap swap (the token sold and its
+    amount, the token bought and the signed minimum) and a CoW order's
+    cancellation on chain.
   - A CoW order is no transaction (no nonce, no signed bytes), so it gets a
     record of its own instead, from the moment it is signed (*A signed order
     is live until it is proven dead*).
@@ -99,9 +105,8 @@ signed.
   - On Uniswap that amount comes from the verified receipt: the token's
     `Transfer` log to the account. For ETH out, it is WETH's `Withdrawal` log
     from the router, since unwrapped ETH comes with no `Transfer` log.
-  - On CoW it comes from the settlement's `Trade` log (*An order, step by
-    step*). While that log cannot be read, the status says "at least" the
-    minimum.
+  - On CoW it comes from the settlement's `Trade` log (*Proving an order's
+    end*). Until that log is found, the status says "at least" the minimum.
 - **Native ETH** goes in and out through WETH, as each venue does it (below).
 
 ## A Safe's swap
@@ -123,11 +128,13 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
     signatures by QR code takes time: 24 hours proposed, the owner's decision
     (*Open questions*).
 - **Each owner sees the current state**: the minimum signed, and what the
-  swap would return now in a verified run, said as met or not met.
+  swap would return now by a verified QuoterV2 quote, said as meeting the
+  minimum or not. The quote needs no allowance.
 - **Execute runs only while the swap still succeeds.** Its verified run must
   succeed: deadline not passed, minimum met.
-  - The swap's run needs the approval executed first, so until then it says
-    "Not simulated".
+  - The run of the swap's execution needs the approval executed first. Until
+    then the execution says "Not simulated", while the quote above still
+    shows the current figure.
   - A swap whose run fails is not executed. The owners replace it at its
     nonce (a new proposal, or a rejection), as for any Safe transaction.
 - **A minimum that has fallen behind the market is said at Execute.** Over
@@ -175,16 +182,21 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
   - `quoteExactInputSingle` for a single pool;
   - `quoteExactInput` with the encoded path (token ‖ fee ‖ token ‖ fee ‖
     token) for one hop.
-- **The largest amount out wins**; on a tie, the route with fewer hops.
+- **The largest amount out, net of the swap's expected fee, wins**; on a tie,
+  the route with fewer hops.
+  - The net is the one the venue choice uses (*The signed minimum*), so a
+    one-hop route that only grosses more does not beat a direct one.
+  - A Safe's swap is paid for by whoever executes it, so it compares routes
+    gross.
 - **Uniswap's routing API is not used**: it is an off-chain service, and its
   answer would be a claim the light client cannot prove. Split routes and
   routes of more than one hop are what this gives up.
 - **The cost.** A quote reads every storage slot the swap touches: the pool's
   state, the tick bitmap words and each initialized tick it crosses. The
   engine proves each slot from peers.
-  - Part 2 measures this on Sepolia and bounds the number of candidates
+  - The Uniswap plan's part 2 measures this on Sepolia and bounds the number of candidates
     quoted per review if it has to.
-  - Part 2 also finds out which built-in tokens have pools on Sepolia at all.
+  - That part also finds out which built-in tokens have pools on Sepolia at all.
 - **Exact input only.** The user says how much to sell. Exact output ("buy
   exactly 5 LINK") can come later.
 
@@ -278,23 +290,15 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
      a failed submission.
    - Whatever the POST returns, the order is now live (*A signed order is
      live until it is proven dead*).
-5. **The fill is read on chain, never from the API.**
-   - The settlement contract records an order's fill in
-     `filledAmount(uid)`: zero, the sell amount once filled, or the maximum
-     `uint256` once invalidated. That value alone does not settle every case:
-     - `freeFilledAmountStorage` lets a settlement reset it to zero once
-       `validTo` has passed;
-     - `invalidateOrder` writes the maximum whether the order filled before
-       or not.
-
-     So the fill is read at a block where neither can have happened (*A
-     signed order is live until it is proven dead*).
-   - How much was bought is in the settlement's `Trade` log, found in the
-     verified receipts of the block that filled it (`getBlockReceipts`). That
-     block is found by reading `filledAmount` at the blocks of the order's
-     window. `getLogs` needs a log index that the engine does not keep by
-     default (`VerifiedReads.getLogs`), so it is not relied on.
-   - The API's order status is shown as CoW's report only.
+5. **The fill is read on chain, never from the API**: the settlement's
+   `Trade` log for the UID, found in verified block receipts (*Proving an
+   order's end*).
+   - From the API, the status shows only the order's off-chain life:
+     accepted, in the auction, expired in CoW's order book. These are labelled
+     as CoW's.
+   - CoW's report of a fill or of its amounts would be a claim about the
+     chain that the light client does not prove (CLAUDE.md, *Trust*), so it
+     is not shown.
 6. **The approval** is of the pinned `GPv2VaultRelayer` for the exact sell
    amount, its own transaction as above, mined before the order is signed.
 
@@ -316,8 +320,17 @@ pays the gas in ETH on top. So the two are compared net.
 - **The Uniswap net** is the verified Uniswap quote less that swap's expected
   network fee, converted into the bought token by a verified quote of that
   much WETH.
-  - The expected fee is the swap's gas estimate × (the next base fee + the
-    Normal level's tip). It is not the fee cap, which would overstate it.
+  - The expected fee is the swap's gas × (the next base fee + the Normal
+    level's tip). It is not the fee cap, which would overstate it.
+  - The gas is QuoterV2's own `gasEstimate` for the route plus a pinned
+    router overhead (the `transferFrom` and the multicall), measured with
+    Foundry's `cast`. `estimateGas` of the real router call cannot be used
+    here: without an allowance for SwapRouter02 it reverts, and `CallQuoter`
+    refuses it. On the CoW path the allowance goes to the vault relayer, and
+    no state override is used (docs/embedding-myotis.md, *Safe
+    transactions*).
+  - Each figure errs low. An overstated fee would lower the net, and with it
+    the floor that bounds what CoW may fill.
   - The conversion is a pool's answer for an exact amount, not a price.
   - When the bought token is ETH or WETH, nothing is converted.
   - When there is no route to convert through, the Uniswap net is the quote
@@ -366,67 +379,113 @@ Once a signature exists, anyone who holds it can submit the order until
 or returned another UID. A fallback that runs while the order can still fill
 could swap the same tokens twice.
 
-- **Only an order that provably never left the device is dropped at once.**
-  That is a POST that never connected (no DNS answer, connection refused); its
-  signature is then discarded. Every other order is live, whatever the POST
-  returned.
+- **An order with no POST attempted is the only one dropped**, with its
+  signature.
+  - Every attempted POST leaves the order live, whatever error the app sees
+    in the end.
+  - An HTTP client can retry a request it already wrote, silently, on a new
+    connection: OkHttp's `retryOnConnectionFailure` is on by default, and so
+    is Ktor's `HttpRequestRetry` when installed. A DNS or connect error can
+    therefore follow an order CoW already holds.
+  - The order POST still runs with no transparent retry, so the error the
+    app sees is the one that happened. A second POST of the same order is
+    refused by CoW as a duplicate of the same UID, which is harmless.
 - **A live order is kept across restarts.** It sits in a record of its own
-  beside `sent-transfers.json`: the order, its UID, its signature, the account
-  and how far its proof has come.
-- **Send and a new swap hold back what a live order may still take** of the
-  sold token, as they do for a transfer not mined yet
-  (docs/embedding-myotis.md, *Sending*).
-  - The hold-back ends once a finalized block's timestamp is past `validTo`,
-    or an invalidation is finalized: after that the order can take nothing.
-  - Whether it filled does not matter for the hold-back, because the balance
-    already shows any fill.
-- **An order is proven dead in one of two ways, each decided only at a
-  finalized block**, so that no reorganization can bring a fill back:
-  - *Expired.* Take the last block whose timestamp is at or below `validTo`.
-    `filledAmount(uid)` is read at that block once it is finalized. Zero
-    proves the order never filled: no settlement can fill it after
-    `validTo`, and none can free its storage up to that block.
-  - *Invalidated.* The account calls `invalidateOrder(uid)`, a transaction,
-    to stop waiting. Then:
-    - `filledAmount(uid)` is read at the parent of the invalidation's block;
-    - the invalidation block's verified receipts are searched for a `Trade`
-      with the UID, a settlement earlier in the same block.
+  beside `sent-transfers.json`. The record holds:
+  - the order, its UID, its signature and the account;
+  - the finalized block when it was signed, where the proof's scan starts;
+  - how far that scan has come.
+- **Send and a new swap hold back the sold amount of a live order**, as they
+  do for a transfer not mined yet (docs/embedding-myotis.md, *Sending*).
+  - The hold-back ends as soon as the order is known to have filled: its
+    `Trade` is found, or `filledAmount(uid)` at the head reads the sell
+    amount. From then on the balance already shows the fill, so holding it
+    back would count it twice.
+  - It also ends once the order can take nothing more: a finalized block is
+    past `validTo`, or the order's cancellation on chain is finalized.
+  - Before `validTo`, a head read of `filledAmount` is a sound hint:
+    nothing can free the order's storage until `validTo` has passed.
 
-    Zero and no such `Trade` prove the order never filled. Both reads wait
-    until that block is finalized.
+### Proving an order's end
 
-    This holds only for an invalidation mined at or before `validTo`. Mined
-    later, a settlement may already have freed the storage of an order that
-    filled, so the expired route decides instead.
+The proof reads no past state. The engine answers its reads from the head
+(`MyotisNode` asks for `"latest"`), and a block number passed to
+`VerifiedReads.getBalance` is answered from the head anyway
+(docs/embedding-myotis.md). A read at the head after `validTo` proves
+nothing either: `freeFilledAmountStorage` lets a settlement reset an expired
+order's `filledAmount` to zero, filled or not.
+
+So the proof is a scan of verified block receipts for a `Trade` that carries
+the order's UID.
+
+- **The scan** reads `getBlockReceipts` for each block, each receipt list
+  verified against its header's receipts root.
+  - It starts at the block that was finalized when the order was signed. A
+    block made after the signature can replace the head of that moment, but
+    never a finalized block.
+  - It ends at an end block, which has to be finalized.
+  - A `Trade` log is permanent, unlike `filledAmount`, and peers keep
+    receipts far longer than state. A pause, the app closed, or Android
+    pausing the engine's networking only delays the scan.
+- **The end block is one of two.**
+  - *Expiry.* The first finalized head whose time is past `validTo`. Its time
+    is the finalized slot's (`StatusSnapshot.finalizedSlot`; genesis + slot ×
+    seconds per slot), the same consensus rule `MyotisNode` applies to the
+    head. No settlement can fill the order in a block past `validTo`.
+  - *Cancellation on chain.* The block of the account's
+    `invalidateOrder(uid)`, once it is finalized. Nothing can settle the
+    order after it, since a fill would overflow the maximum it writes. A
+    settlement earlier in that same block is in the block's receipts, which
+    the scan includes.
+    - The status of a live order offers "Cancel on chain", for a user who
+      does not want to wait for `validTo`. It is a transaction from the
+      account, reviewed and recorded as any (`SentAction`).
+- **The outcomes.**
+  - *A `Trade` found* proves the fill and gives the amount bought. The swap
+    ends there, whatever the API says.
+  - *No `Trade` up to the end block* proves the order never filled, and the
+    Uniswap review opens for the same swap.
+  - *Not provable*: a block whose receipts no peer serves any longer, said as
+    such. No fallback is offered; the balance shows what happened, and a new
+    swap is the user's own decision.
 - **An off-chain cancellation through the API proves nothing**: a solver may
   already hold the order. It is not built.
-- **The outcomes.**
-  - *Filled* ends the swap, read on chain as above, whatever the API says.
-  - *Proven dead and unfilled* opens the Uniswap review for the same swap.
-  - *Not provable* is said as such, and no fallback is offered: for example,
-    a past block outside the window the engine serves after the app was
-    closed for long. The balance shows what happened, and a new swap is the
-    user's own decision.
-- **The wait.** On Sepolia a block is final about 13 minutes after it is
-  made. A fallback after a posted order therefore waits for `validTo` plus
-  finality, and the status says so. Whether a margin of a few blocks may
-  stand in for finality is the owner's decision (*Open questions*).
+- **The wait.** On Sepolia a block is final two to three epochs after it is
+  made, 12.8 to 19.2 minutes. A fallback after a posted order therefore waits
+  for `validTo` plus that range, and the status says so. Whether a margin of
+  a few blocks may stand in for finality is the owner's decision (*Open
+  questions*).
+- **What the engine has to show first**, in a spike before the CoW plan's
+  first part (*The plan*):
+  - `getBlockReceipts` by block number over an order's whole window, and how
+    long peers serve receipts. Nothing in the app calls it yet.
+  - The finalized slot in `StatusSnapshot`, and that it stays in step with
+    the finalized block number.
+
+  No read pinned to a past block is relied on. If one is ever used, a proof
+  not anchored at the block asked for is no answer (CLAUDE.md, *Trust*:
+  applied or refused).
 
 ### What CoW learns, and how the app talks to it
 
 - **What CoW learns.** Over HTTPS to `api.cow.fi`: the account's address, the
-  pair, the amounts and the device's IP address. This is the content of the
-  *Data sources* ruling that lands before CoW's code (CLAUDE.md). Keeping the
-  IP address from CoW (Tor, for one) is a question of its own.
+  pair, the amounts and the device's IP address.
+  - CoW is quoted at every review and every refresh. So it learns every
+    intended swap, including those that end on Uniswap and those the user
+    gives up.
+  - This is the content of the *Data sources* ruling that lands before CoW's
+    code (CLAUDE.md).
+  - Keeping the IP address from CoW (Tor, for one) is a question of its own.
 - **No API key.** The base URL is pinned per `Network`.
 - **Ktor** is the HTTP client (CLAUDE.md, *Platform & language direction*).
-  It is the app's first, so its engine on each platform is part 6's
+  It is the app's first, so its engine on each platform is the CoW plan's
   dependency question.
 - **The calls:**
   - `POST /api/v1/quote`;
   - `POST /api/v1/orders`, with the full app-data document, so no separate
     `PUT /api/v1/app_data` is needed;
-  - `GET /api/v1/orders/{UID}`, for CoW's report.
+  - `GET /api/v1/orders/{UID}`, for the order's off-chain life only (*An
+    order, step by step*, 5).
 
   An off-chain cancellation (`DELETE /api/v1/orders`) would need a second
   EIP-712 signature (`OrderCancellations`) and proves nothing (above), so it
@@ -468,7 +527,7 @@ route being unavailable, never to a wrong swap:
    - the order and its UID;
    - the domain separator, against the chain;
    - the floor, from verified quotes;
-   - the fill, on chain at a finalized block.
+   - the fill, from verified receipts up to a finalized block.
 
    The API delivers the order and offers an estimate no one trusts.
 2. **Lenient decoding of the few fields used.** Unknown fields are ignored,
@@ -501,20 +560,26 @@ route being unavailable, never to a wrong swap:
 
 ## The plan
 
-The plan is a multi-PR plan on `feature/swaps`, branched from `main` once
-`feature/wallet-ux` has merged (CLAUDE.md, *Multi-PR plans*). Each part
-follows the checklist in docs/architecture.md.
+Two multi-PR plans, the second after the first, so that Uniswap swaps can
+reach `main` without waiting for CoW's ruling (CLAUDE.md, *Multi-PR plans*:
+the final PR opens only when every planned part is merged). Both branch from
+`main` once `feature/wallet-ux` has merged. Whether they are two plans or one
+is the owner's decision (*Open questions*). Each part follows the checklist
+in docs/architecture.md.
 
-1. **Uniswap, domain.**
+**`feature/swaps-uniswap`**
+
+1. **Domain.**
    - The pin type, and the ABI of `getPool`, `liquidity`, `slot0`, QuoterV2,
      `SwapRouter02.multicall`, `exactInputSingle`, `exactInput` and
      `unwrapWETH9`.
    - The route candidates, the slippage arithmetic, and `SentAction`'s
      approval and swap.
    - Vectors made with Foundry's `cast`.
-2. **Uniswap, adapters.**
+2. **Adapters.**
    - The Sepolia pins with their code hashes, pool discovery and quotes over
      the engine.
+   - The router overhead pinned for the gas figure.
    - How long a quote takes, and which built-in tokens have pools on
      Sepolia.
 3. **Swap screens.**
@@ -525,21 +590,30 @@ follows the checklist in docs/architecture.md.
      menu (5), absent when watch-only.
 4. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
    with the minimum and deadline fixed at the proposal.
-5. **CoW, domain.**
+
+**`feature/swaps-cow`**, once CoW's *Data sources* ruling is recorded in
+CLAUDE.md
+
+1. **Domain.**
    - The GPv2 order, its EIP-712 digest and UID, the pinned app-data
      document.
-   - The floor and the signed minimum.
-   - The live order's record and its states, and the hold-back in Send's
-     quote.
-6. **CoW, adapter.**
-   - CLAUDE.md's *Data sources* ruling first.
-   - The Ktor client and the three calls, decoded leniently.
-   - `filledAmount` at a given block, and the `Trade` log from verified block
-     receipts, over the engine.
-7. **The venue.** CoW first and Uniswap as the fallback, on the review and
-   the status, with the reason said, and the proof that a posted order is
-   dead before a fallback.
-8. **Later:** a Safe's pre-signed CoW order, ETH flow, Uniswap v4.
+   - The Uniswap net, the floor and the signed minimum.
+   - The live order's record and its states, the hold-back in Send's quote,
+     and the cancellation on chain as a `SentAction`.
+   - Before this part: a spike that shows the engine's half of the proof
+     (*Proving an order's end*, "What the engine has to show first").
+2. **Adapter.**
+   - The Ktor client and the three calls, decoded leniently, with no
+     transparent retry of the order POST.
+   - The receipt scan for an order's `Trade`, over the engine.
+3. **The venue.**
+   - CoW first and Uniswap as the fallback, on the review and the status,
+     with the reason said.
+   - The proof that a posted order has ended before any fallback, and
+     "Cancel on chain".
+
+Not part of either plan, and plans of their own when the owner wants them: a
+Safe's pre-signed CoW order, CoW's ETH flow, and Uniswap v4.
 
 ## Open questions
 
@@ -554,16 +628,23 @@ on issue #69 until answered.
 3. **Approvals.** The exact amount (one approval per swap), unlimited, or
    Permit2?
 4. **A CoW order's validity, and the wait before a fallback.** A few
-   minutes, 5 proposed, decided at a finalized block (about 13 more minutes
-   on Sepolia). Or a margin of a few blocks in place of finality, which is
-   faster and wrong only after a deeper reorganization.
+   minutes, 5 proposed, then proven at a finalized block, 12.8 to 19.2 more
+   minutes on Sepolia. Or a margin of a few blocks in place of finality,
+   which is faster and wrong only after a deeper reorganization.
 5. **A Safe's swap deadline, and a minimum that has fallen behind.** 24 hours
    proposed, long enough to collect the signatures. At Execute, when the swap
    returns more than its minimum by over the tolerance: warn and offer to
    propose it again (proposed), or refuse to execute it as signed?
 6. **Uniswap v4 hooks.** Pools without hooks only, or pinned hooks?
-7. **CoW's data-source ruling.** What it may learn, what the app data says
-   (nothing beyond the required fields, proposed), and whether to keep the
-   IP address from it.
+7. **CoW's data-source ruling.** It covers four things:
+   - what CoW may learn, including every intended swap it is asked to quote;
+   - what the app data says (nothing beyond the required fields, proposed);
+   - whether to keep the IP address from it;
+   - what of its answers is shown. The order's off-chain life only is
+     proposed. CoW's report of a fill would be a claim about the chain the
+     light client does not prove.
 8. **Mainnet**, once allowed: a Uniswap swap in the public mempool, bounded
    by its minimum, with no private relay.
+9. **One plan or two.** Two (proposed): Uniswap reaches `main` on its own
+   branch, and CoW follows on another once its ruling is made. Or one
+   `feature/swaps` that reaches `main` only with CoW.
