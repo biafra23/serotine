@@ -459,6 +459,35 @@ class SafeTxViewModelTest {
     }
 
     @Test
+    fun theFeeHistoryIsAskedForAsTheScreenOpens() = runTest {
+        viewModel(queued(world.request(world.ether(4))))
+        runCurrent()
+
+        assertEquals(1, world.inputs.feeReads, "warm by Approve or Execute")
+    }
+
+    @Test
+    fun aRetryOfAnApprovalMaybeSentTurnedAwayKeepsTryAgainAndBackClosed() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        world.broadcaster.answers += Broadcast.Unavailable("no peers")
+        world.broadcaster.answers += Broadcast.Rejected("already known")
+        viewModel.startApproval()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        viewModel.retry()
+        runCurrent()
+
+        val notSent = assertIs<eth.serotine.ui.components.NotSentItem>(viewModel.review.notSent)
+        assertTrue(notSent.canRetry, "still maybe sent: the same bytes may be tried again")
+        assertTrue(notSent.message.startsWith("Turned away this time (the peer said: already known)."))
+        viewModel.back()
+        assertIs<SafeTxUiState.Review>(viewModel.uiState.value, "only Try again may send those bytes")
+    }
+
+    @Test
     fun aBroadcastNoPeerTookIsRetriedWithItsOwnBytesAndBackWaitsForIt() = runTest {
         funded()
         val viewModel = viewModel(queued(world.request(world.ether(4))))

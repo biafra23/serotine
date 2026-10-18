@@ -177,7 +177,8 @@ class SafeTxScreenTest {
             ),
         )
 
-        rule.onNodeWithText("Batches through the pinned MultiSendCallOnly come later.", substring = true).performScrollTo()
+        rule.onNodeWithText("Batches through the pinned MultiSendCallOnly come later.", substring = true)
+            .performScrollTo()
             .assertIsDisplayed()
         rule.onNodeWithText("Sign").assertDoesNotExist()
         rule.onNodeWithText("Approve on chain").assertDoesNotExist()

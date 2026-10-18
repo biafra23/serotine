@@ -632,6 +632,26 @@ class SendViewModelTest {
     }
 
     @Test
+    fun aRetryOfATransferMaybeSentTurnedAwayKeepsTryAgainAndBackClosed() = runTest {
+        broadcaster.answers += Broadcast.Unavailable("no peer")
+        broadcaster.answers += Broadcast.Rejected("already known")
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.sign()
+        runCurrent()
+
+        viewModel.retry()
+        runCurrent()
+
+        val notSent = assertIs<NotSentItem>(viewModel.review.notSent)
+        assertTrue(notSent.canRetry, "the record is still maybe sent: the same bytes may be tried again")
+        assertTrue(notSent.message.startsWith("Turned away this time (the peer said: already known)."))
+        viewModel.edit()
+        assertIs<SendUiState.Review>(viewModel.uiState.value, "no new transfer while the first may be out there")
+        assertEquals(listOf(true), sent.transfers.value.map { it.maybeSent })
+    }
+
+    @Test
     fun aRejectedTransferIsNotTriedAgain() = runTest {
         broadcaster.answers += Broadcast.Rejected("nonce too low")
         val viewModel = reviewed()

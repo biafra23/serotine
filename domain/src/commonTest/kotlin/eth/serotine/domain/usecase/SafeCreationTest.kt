@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeCreation
 import eth.serotine.domain.model.SafeRelease
 import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AddressKind
@@ -446,4 +447,29 @@ class SafeCreationTest {
         maxCost = UInt256.of(1000),
         sentAt = 1_799_999_000,
     )
+
+    @Test
+    fun aPayersEarlierTransactionMaybeSentRefusesTheDeploymentBeforeAnythingIsRead() = runTest {
+        val plan = plan(alice, bob)
+        returns(plan.address)
+        val other = SentTransfer(
+            world.alice.address, 7, SignedTransfer(byteArrayOf(2, 7)),
+            SentAction.Transfer(world.carol, TransferAsset.Native, UInt256.ONE), UInt256.ONE,
+            sentAt = 1_799_999_000, maybeSent = true,
+        )
+        world.sent.transfers.value = listOf(other)
+
+        assertEquals(
+            SafeDeploymentQuoting.Refused(SafeDeploymentRefusal.NotQuoted(CallRefusal.EarlierMaybeSent(other.hash))),
+            quote(plan, world.alice.address, FeeLevel.NORMAL),
+        )
+        assertEquals(emptyList(), world.inputs.simulated, "nothing run")
+
+        // Its own deployment maybe sent is named as such, before the generic refusal.
+        world.sent.transfers.value = listOf(deploymentRecord(plan, 7).copy(maybeSent = true))
+        assertEquals(
+            SafeDeploymentQuoting.Refused(SafeDeploymentRefusal.AlreadySent),
+            quote(plan, world.alice.address, FeeLevel.NORMAL),
+        )
+    }
 }

@@ -487,6 +487,33 @@ class CreateSafeViewModelTest {
     }
 
     @Test
+    fun theFeeHistoryIsAskedForAsTheScreenOpens() = runTest {
+        viewModel()
+        runCurrent()
+
+        assertEquals(1, fakeInputs.feeReads, "warm by the review")
+    }
+
+    @Test
+    fun aRetryOfADeploymentMaybeSentTurnedAwayKeepsTryAgainAndBackClosed() = runTest {
+        broadcaster.answers += Broadcast.Unavailable("no peer")
+        broadcaster.answers += Broadcast.Rejected("already known")
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.sign()
+        runCurrent()
+
+        viewModel.retry()
+        runCurrent()
+
+        val notSent = viewModel.review.notSent!!
+        assertTrue(notSent.canRetry, "still maybe sent: the same bytes may be tried again")
+        assertTrue(notSent.message.startsWith("Turned away this time (the peer said: already known)."))
+        viewModel.back()
+        assertIs<CreateSafeUiState.Review>(viewModel.uiState.value, "nothing new while the first may be out there")
+    }
+
+    @Test
     fun aDeploymentSignedButNotSentIsRetriedWithItsOwnBytes() = runTest {
         broadcaster.answers += Broadcast.Unavailable("no peer")
         val viewModel = reviewed()

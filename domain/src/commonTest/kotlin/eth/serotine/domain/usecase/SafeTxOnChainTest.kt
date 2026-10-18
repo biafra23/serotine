@@ -8,6 +8,7 @@ import eth.serotine.domain.model.SafeCalls
 import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.hexToBytes
@@ -16,6 +17,7 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.GasEstimate
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.test.runTest
@@ -347,5 +349,28 @@ class SafeTxOnChainTest {
             SafeApprovalQuoting.Refused(SafeTxRefusal.AlreadySent),
             quoteApproval(later, world.alice.address, FeeLevel.NORMAL),
         )
+    }
+
+    @Test
+    fun anEarlierTransactionMaybeSentRefusesAnApprovalOrAnExecutionBeforeTheSafeIsRead() = runTest {
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        val maybe = SentTransfer(
+            world.alice.address, 7, SignedTransfer(byteArrayOf(2, 7)), SentAction.SafeApproval(world.request(payment)),
+            UInt256.ONE, sentAt = 1_800_000_000, maybeSent = true,
+        )
+        world.sent.transfers.value = listOf(maybe)
+        val request = world.request(payment, world.carol)
+        val refused = SafeTxRefusal.NotQuoted(CallRefusal.EarlierMaybeSent(maybe.hash))
+
+        assertEquals(SafeApprovalQuoting.Refused(refused), quoteApproval(request, world.alice.address, FeeLevel.NORMAL))
+        assertEquals(
+            SafeExecutionQuoting.Refused(refused),
+            quoteExecution(request, world.alice.address, FeeLevel.NORMAL),
+        )
+        assertEquals(emptyList(), world.approvals.asked, "the Safe's approvals not read")
+        assertEquals(emptyList(), world.inputs.simulated, "nothing run")
+        // Another account of this wallet is not held back by Alice's.
+        val signed = world.request(payment, world.alice.address, world.carol)
+        assertIs<SafeExecutionQuoting.Quoted>(quoteExecution(signed, world.stranger, FeeLevel.NORMAL))
     }
 }
