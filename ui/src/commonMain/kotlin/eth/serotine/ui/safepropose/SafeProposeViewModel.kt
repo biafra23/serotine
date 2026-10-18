@@ -492,6 +492,8 @@ class SafeProposeViewModel(
                 return Step.Composing(error = again.message)
             }
         }
+        // Its age runs from its first read, not from its answer: the figures are as old as that.
+        val readFrom = timeSource.markNow()
         val proposing = try {
             proposeSafeTx(safe, to.address, request.option.asset, request.amount)
         } catch (e: CancellationException) {
@@ -508,7 +510,7 @@ class SafeProposeViewModel(
         return Step.Reviewing(
             request.copy(to = to),
             proposal,
-            timeSource.markNow(),
+            readFrom,
             signer,
             unlock ?: UnlockStep(biometrics = biometricsOffered()),
             safeAccount,

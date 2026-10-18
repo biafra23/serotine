@@ -26,6 +26,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -158,7 +159,9 @@ class TransactionAdaptersTest {
         )
 
         assertEquals(FeeReading.Unavailable(ReadUnavailable.UNPROVEN), inputs.fees())
-        assertEquals(6, answers, "at 0, 2.5, 5, 7.5, 10 and 12.5 s: none once 15 s would pass")
+        // At 0, 2.5, 5, 7.5 and 10 s: none at 12.5, which the engine's own 5 s wait could carry past 15.
+        assertEquals(5, answers)
+        assertTrue(testScheduler.currentTime <= 15_000)
 
         // An engine that cannot verify reads is said at once, not waited for.
         chain.base.snapshot = EngineSnapshot.Down

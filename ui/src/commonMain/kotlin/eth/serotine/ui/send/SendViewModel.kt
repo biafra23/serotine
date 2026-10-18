@@ -484,6 +484,8 @@ class SendViewModel(
                 return Step.Composing(error = again.message)
             }
         }
+        // Its age runs from its first read, not from its answer: the figures are as old as that.
+        val readFrom = timeSource.markNow()
         val quoting = try {
             quoteTransfer(from, request.to.address, request.option.asset, request.amount, request.inputs.fee)
         } catch (e: CancellationException) {
@@ -500,7 +502,7 @@ class SendViewModel(
         return Step.Reviewing(
             request.copy(to = to),
             quoting.quote,
-            timeSource.markNow(),
+            readFrom,
             unlock ?: UnlockStep(biometrics = biometricsOffered()),
             sender,
             accounts,

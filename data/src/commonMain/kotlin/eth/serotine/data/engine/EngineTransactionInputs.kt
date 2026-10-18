@@ -25,14 +25,16 @@ import kotlin.time.TimeSource
  * every verified read ([ProvenReads]). A device without an engine ([chain] null) answers
  * [ReadUnavailable.NO_ENGINE].
  *
- * The fee history is asked again while it is cold ([fees]): every [feeRetryInterval], for up to
- * [feeWait] in all, measured on [timeSource].
+ * The fee history is asked again while it is cold ([fees]): every [feeRetryInterval], never
+ * starting a read that could end past [feeWait] from the first, given the [engineFeeWait] the
+ * engine itself may take, measured on [timeSource].
  */
 class EngineTransactionInputs internal constructor(
     private val chain: TransactingChain?,
     private val dispatcher: CoroutineDispatcher,
     private val feeRetryInterval: Duration = 2_500.milliseconds,
     private val feeWait: Duration = 15.seconds,
+    private val engineFeeWait: Duration = 5.seconds,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : TransactionInputs {
 
@@ -52,7 +54,8 @@ class EngineTransactionInputs internal constructor(
      * only 5 s for that, and answers nothing ("still being computed; retry shortly"), and a caller
      * right behind gets nothing at once ("the build just failed"). The build goes on, so a request a
      * few seconds later is answered. So an empty answer is asked again every [feeRetryInterval],
-     * for up to [feeWait] in all; the wait is a [delay] between the blocking reads, so a quote
+     * and [feeWait] is a ceiling: no read starts that could end past it, given the engine's own
+     * [engineFeeWait]. The wait is a [delay] between the blocking reads, so a quote
      * cancelled meanwhile stops at the next one. Only an engine that answered nothing is asked
      * again: one that cannot verify reads, or none at all, is said at once.
      */
@@ -66,8 +69,8 @@ class EngineTransactionInputs internal constructor(
                     ?: COLD
             }
             if (reading !== COLD) return reading
-            // No room for another wait before the bound: no answer.
-            if (started.elapsedNow() + feeRetryInterval >= feeWait) return COLD
+            // No room for another wait and a read the engine may hold for its own wait: no answer.
+            if (started.elapsedNow() + feeRetryInterval + engineFeeWait > feeWait) return COLD
             delay(feeRetryInterval)
         }
     }

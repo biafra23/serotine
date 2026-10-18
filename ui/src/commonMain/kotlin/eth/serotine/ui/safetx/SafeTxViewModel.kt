@@ -597,6 +597,8 @@ class SafeTxViewModel(
         step.value = quoting
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
+            // Its age runs from its first read, not from its answer: the figures are as old as that.
+            val readFrom = timeSource.markNow()
             val next = quoted(kind, request, account, level)
             val biometrics = biometricsOffered()
             if (step.value != quoting) return@launch
@@ -605,7 +607,7 @@ class SafeTxViewModel(
                 is Quoted.Made -> step.value = Step.Reviewing(
                     kind,
                     next.quote,
-                    timeSource.markNow(),
+                    readFrom,
                     UnlockStep(biometrics = biometrics),
                     hidden = hiddenWhileQuoting,
                 )
@@ -625,6 +627,7 @@ class SafeTxViewModel(
         val request = (now ?: lastContext)?.request ?: return
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
         job = viewModelScope.launch {
+            val readFrom = timeSource.markNow()
             val next = quoted(review.kind, request, account, level)
             val latest = step.value
             if (latest !is Step.Reviewing || !latest.refreshing) return@launch
@@ -632,7 +635,7 @@ class SafeTxViewModel(
                 // The password typed meanwhile stays: it is the same review.
                 is Quoted.Made -> step.value = latest.copy(
                     quote = next.quote,
-                    quotedAt = timeSource.markNow(),
+                    quotedAt = readFrom,
                     refreshing = false,
                     unlock = latest.unlock.copy(error = note),
                 )

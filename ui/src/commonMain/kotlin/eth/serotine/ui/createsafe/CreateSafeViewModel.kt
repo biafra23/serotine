@@ -498,6 +498,8 @@ class CreateSafeViewModel(
             }
             return
         }
+        // Its age runs from its first read, not from its answer: the figures are as old as that.
+        val readFrom = timeSource.markNow()
         val quoting = try {
             quoteSafeDeployment(asked.plan, asked.payer, asked.fee)
         } catch (e: CancellationException) {
@@ -512,7 +514,7 @@ class CreateSafeViewModel(
             when (quoting) {
                 is SafeDeploymentQuoting.Quoted -> latest.copy(
                     quote = quoting.quote,
-                    quotedAt = timeSource.markNow(),
+                    quotedAt = readFrom,
                     quoting = false,
                     unlock = latest.unlock.copy(error = note),
                 )
