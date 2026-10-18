@@ -99,6 +99,9 @@ upgrades*).
      address, control badge, native balance and its fiat value.
    - The FAB (2). A long press on a row opens 3; a tap opens 4, or 16 for a
      Safe.
+   - With no account yet, it names every way the FAB adds one (watch,
+     import, create) and says that Create Safe appears there once an
+     account's key is on this device, the account that pays for it.
 2. **FAB fan-out**: Watch address (10) · Import recovery phrase (11) · Create
    account (12) · Create Safe (13). Create Safe appears once the user holds
    an EOA's key: an EOA pays for the deployment. (Whether any controllable

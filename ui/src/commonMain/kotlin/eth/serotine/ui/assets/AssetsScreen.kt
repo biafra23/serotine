@@ -236,12 +236,21 @@ private fun NetworkLabel(network: String, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * What the empty Assets screen says: every way the + button adds an account, and why Create Safe
+ * is not among them yet: an account whose key is on this device pays for its deployment
+ * (docs/wallet-ux.md, screen 2).
+ */
+internal const val NO_ACCOUNTS_HINT = "Add an account with the + button: watch an address, import a recovery " +
+    "phrase or create an account. Create Safe appears there once an account's key is on this device, because " +
+    "that account pays for the Safe's deployment."
+
 @Composable
 private fun NoAccounts(modifier: Modifier = Modifier) {
     Column(modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("No accounts yet", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Add an account with the + button: watch an address, or import a recovery phrase.",
+            NO_ACCOUNTS_HINT,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )

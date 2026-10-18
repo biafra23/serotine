@@ -76,6 +76,7 @@ import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
+import eth.serotine.ui.assets.NO_ACCOUNTS_HINT
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.createsafe.CREATE_SAFE_CONTINUE_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_DEPLOY_TAG
@@ -322,8 +323,11 @@ class AppNavigationTest {
     fun theFloatingActionButtonAddsAnAccountFromItsSeedPhrase() {
         showApp()
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+        // Every way the + button adds one, and why Create Safe is not among them on a fresh install.
+        rule.onNodeWithText(NO_ACCOUNTS_HINT).assertIsDisplayed()
 
         rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Create Safe").assertDoesNotExist()
         rule.onNodeWithText("Import recovery phrase").performClick()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).performTextInput(
             "one two three four five six seven eight nine ten eleven twelve",
