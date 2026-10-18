@@ -326,6 +326,38 @@ class VerifiedAddressKindsTest {
     }
 
     @Test
+    fun aCodeWalkAgainstSlotsMatchedAtOneSlotIsProvenAgainWithinTheRead() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // The first code proof is a walk of block 9, the slots all matched attested slot 9: the code
+        // is what straddles, so it is proven again, and this time it matched slot 9 as well.
+        chain.codeOfCall = { call ->
+            ProvenCode(proxyCode, 9, if (call == 0) ProofAnchor.Walked(9) else ProofAnchor.Attested(9))
+        }
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+
+        assertEquals(9, (reading as KindReading.Verified).blockNumber)
+        assertEquals(true, reading.kind is AddressKind.Safe)
+        assertEquals(2, chain.codeCalls, "the code proven once more, within the one read")
+    }
+
+    @Test
+    fun aCodeProofWithNoAnchorIsNeverTakenForTheSlotsState() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // A stateRootMatch whose matched slot is unknown (matchedBeaconSlot < 0): no anchor, so
+        // nothing orders it, however often it is proven again.
+        chain.codeOfCall = { ProvenCode(proxyCode, 9, anchor = null) }
+
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(address).first { it !is KindReading.Syncing },
+        )
+        assertEquals(3, chain.codeCalls, "proven again within the read's attempts, and no more")
+    }
+
+    @Test
     fun walksOfOneBlockAreOneStateWhateverHeadTheyWereWalkedTo() = runTest {
         chain.snapshot = running(head = 9)
         safeStorage()

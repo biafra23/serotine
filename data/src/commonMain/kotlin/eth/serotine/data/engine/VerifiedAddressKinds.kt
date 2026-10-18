@@ -31,7 +31,9 @@ import kotlin.time.Duration
  * Every numbered slot is a storage proof, and all of them must be of one state, no older than
  * the code's: one verified anchor ([ProofAnchor], the attested slot a proof matched; a block
  * label alone can be a peer's report) and one block, the one the reading is labelled with. A
- * read the head moved under is made again at once, up to [SAFE_ATTEMPTS] times. The guards are
+ * read the head moved under is made again at once, up to [SAFE_ATTEMPTS] times; when the slots
+ * were of one state and only the code's anchor did not order before it (a walk against a match,
+ * or none), the code is proven again too, so the next read can be of one state. The guards are
  * kept at hashed slots no storage proof names, so they are verified reads at the head, which may
  * be a head later than that label. Anything that does not match is a contract, never a Safe. A
  * Safe's reading stands for [SAFE_KEPT_FOR_HEADS] heads (a Safe takes a dozen proofs, and its
@@ -63,12 +65,25 @@ class VerifiedAddressKinds internal constructor(
         }
     }
 
-    /** The Safe at [safe], whose [code] is proven, read again at once when the head moved under a read. */
-    private fun readSafe(chain: VerifiedChain, safe: Address, code: ProvenCode): EngineReading<AddressKind>? {
-        repeat(SAFE_ATTEMPTS) {
+    /**
+     * The Safe at [safe], whose code is proven ([proven]), read again at once when the head moved
+     * under a read. When the straddle was the code against slots of one state, the code is proven
+     * again before the next read: proving the slots alone again would meet the same code anchor
+     * every time. Code proven again that is no pinned proxy's any more is read as what it is.
+     */
+    private fun readSafe(chain: VerifiedChain, safe: Address, proven: ProvenCode): EngineReading<AddressKind>? {
+        var code = proven
+        repeat(SAFE_ATTEMPTS) { attempt ->
             val storage = SafeStorage(chain, safe, code)
             val reading = storage.read()
             if (reading != null || !storage.straddled) return reading
+            if (storage.againstCode && attempt < SAFE_ATTEMPTS - 1) {
+                code = chain.proveCode(safe) ?: return null
+                val kind = kindOf(code.codeHex)
+                if (kind != AddressKind.Contract || codeHash(code.codeHex) !in safes.proxyCodeHashes) {
+                    return EngineReading.Proven(kind, code.blockNumber)
+                }
+            }
         }
         return null
     }
@@ -90,6 +105,13 @@ class VerifiedAddressKinds internal constructor(
 
         /** Whether the slots read were proven at more than one block (or before the code): the head moved. */
         var straddled = false
+            private set
+
+        /**
+         * Whether the straddle was the code's alone: the slots one state, which the code's anchor
+         * does not order before (a walk against a match, none, or a later one).
+         */
+        var againstCode = false
             private set
 
         /** The word at [slot] (or under [key] in the mapping there); null: unproven. */
@@ -165,6 +187,7 @@ class VerifiedAddressKinds internal constructor(
             val block = blocks.singleOrNull()
             if (anchor == null || block == null || !notBeforeCode(anchor)) {
                 straddled = true
+                againstCode = anchor != null && block != null
                 return null
             }
             return EngineReading.Proven(kind, block)

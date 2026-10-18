@@ -26,9 +26,18 @@ internal class FakeChain : VerifiedChain {
         return proofs[address]
     }
 
+    /**
+     * The n-th code proof, verbatim (its anchor too, none included), when a test sets the proofs
+     * apart from [codes]; [codeCalls] counts them.
+     */
+    var codeOfCall: ((Int) -> ProvenCode?)? = null
+    var codeCalls = 0
+
     override fun proveCode(address: Address): ProvenCode? {
         failure?.let { throw it }
         proofRequests += address
+        val call = codeCalls++
+        codeOfCall?.let { return it(call) }
         // A code set without an anchor matched the attested slot of its block, as the slots' default does.
         return codes[address]?.let { it.copy(anchor = it.anchor ?: ProofAnchor.Attested(it.blockNumber)) }
     }
