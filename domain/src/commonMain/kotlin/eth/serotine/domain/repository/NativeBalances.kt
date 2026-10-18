@@ -30,26 +30,33 @@ sealed interface BalanceReading {
     data class Verified(val wei: Wei, val blockNumber: Long) : BalanceReading
 
     /** No verified balance can be had right now, for the reason [reason] gives. */
-    data class Unavailable(val reason: Reason) : BalanceReading
+    data class Unavailable(val reason: ReadUnavailable) : BalanceReading
 
-    /** Why a balance is [Unavailable]. */
-    enum class Reason {
-        /**
-         * This device has no running light client: the engine does not ship for its ABI or
-         * platform, or it failed to start.
-         */
-        NO_ENGINE,
+}
 
-        /**
-         * The light client refuses to sync: its best trust anchor is older than the
-         * weak-subjectivity bound, and accepting that risk is the user's decision.
-         */
-        STALE_ANCHOR,
+/** Why a verified read — a balance, an address's kind, a token balance — has no answer right now. */
+enum class ReadUnavailable {
+    /**
+     * This device has no running light client: the engine does not ship for its ABI or
+     * platform, or it failed to start.
+     */
+    NO_ENGINE,
 
-        /**
-         * No verified balance could be had this time: the light client is synced but no peer
-         * served the proof, or the engine's state could not be read at all.
-         */
-        UNPROVEN,
-    }
+    /**
+     * The light client refuses to sync: its best trust anchor is older than the
+     * weak-subjectivity bound, and accepting that risk is the user's decision.
+     */
+    STALE_ANCHOR,
+
+    /**
+     * No verified answer could be had this time: the light client is synced but no peer
+     * served the proof, or the engine's state could not be read at all.
+     */
+    UNPROVEN,
+
+    /**
+     * The engine will not answer this read on this build, and asking again changes nothing
+     * (the Myotis engine's REFUSED, say past a fork it cannot execute).
+     */
+    REFUSED,
 }

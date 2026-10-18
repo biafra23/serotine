@@ -1,16 +1,31 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.keys.fromHex
+import eth.serotine.data.keys.toHex
+import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.AddressKinds
+import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
+import eth.serotine.domain.repository.PriceFeeds
+import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.TokenBalances
+import eth.serotine.domain.repository.TokenMetadata
+import eth.serotine.domain.repository.TransactionInputs
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
+import io.myotis.api.EnsRoot
 import io.myotis.api.LifecycleState
 import io.myotis.api.MyotisEngine
 import io.myotis.api.ports.DnsServers
+import io.myotis.api.ports.EnginePorts
 import io.myotis.engine.Myotis
 import io.myotis.engine.ports.DefaultEnginePorts
 import kotlinx.coroutines.Dispatchers
@@ -23,12 +38,15 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md): one engine hosting
  * one chain, and the verified reads the adapters make through it. A host's composition root
- * creates it with [start], hands [nativeBalances], [lightClient] and [networkUpgrades] to the
- * AppGraph, and owns it for the life of the process: [pause] and [resume] it around the app
- * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default
- * ports are used; nothing below them.
+ * creates it with [start], hands [nativeBalances], [tokenBalances], [tokenMetadata],
+ * [priceFeeds], [addressKinds], [lightClient] and [networkUpgrades] to the AppGraph, and for
+ * sending [transactionInputs], [broadcaster], [receipts] and [names], and for a Safe's
+ * transactions [safeApprovals], and owns it for the life of the process: [pause] and [resume] it
+ * around the app being in the
+ * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
+ * used; nothing below them.
  */
-class MyotisNode private constructor() {
+class MyotisNode private constructor(network: Network) {
 
     private sealed interface State {
         data object Booting : State
@@ -74,11 +92,39 @@ class MyotisNode private constructor() {
     /** Native-currency balances, verified by this node's light client. */
     val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL)
 
+    /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
+    val addressKinds: AddressKinds =
+        VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL, SafeDeployments.of(network))
+
+    /** What a token contract says about itself, as verified calls. */
+    val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
+    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
+
+    /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL)
+
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
 
     /** Network upgrades this build does not support, as peers report them to this node. */
     val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** A transaction's nonce, fees, gas and verified simulation, from this node's verified reads. */
+    val transactionInputs: TransactionInputs = EngineTransactionInputs(chain, Dispatchers.IO)
+
+    /** Gossips a signed transaction to this node's peers (the engine never signs). */
+    val broadcaster: Broadcaster = EngineBroadcaster(chain, Dispatchers.IO)
+
+    /** A Safe's owners' approvals on chain (`approvedHashes`), each a verified call. */
+    val safeApprovals: SafeApprovals = VerifiedSafeApprovals(chain, Dispatchers.IO)
+
+    /** A sent transaction's verified receipt and its block's finality. */
+    val receipts: ReceiptTracker = EngineReceipts(chain, Dispatchers.IO, POLL_INTERVAL)
+
+    /** ENS names, resolved against beacon-finalized state. */
+    val names: NameResolver = EngineNames(chain, Dispatchers.IO)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
@@ -143,6 +189,19 @@ class MyotisNode private constructor() {
         // One directory for the default ports and the engine: the Rust engine keeps its peer
         // caches and sync snapshot under EngineConfig.dataDir, in the ports' file names.
         val ports = Myotis.defaultPorts(engine, dir, dir, name, dnsServers)
+        // No CCIP-Read gateway: an off-chain ENS answer (EIP-3668) comes from an HTTP gateway the
+        // resolver names, an off-chain source no ruling allows, and the request would tell it the
+        // name and this device's address. With none, the engine refuses such a name, and says so.
+        val defaults = ports.ports()
+        val enginePorts = EnginePorts(
+            defaults.keyStore(),
+            defaults.peerCache(),
+            defaults.clPeerCache(),
+            defaults.dnsServers(),
+            null,
+            defaults.logger(),
+            defaults.clock(),
+        )
         val config = EngineConfig(
             name,
             0, 0, 0, // the network's default EL and discv5 ports; rpcPort is unused, nothing listens
@@ -152,7 +211,7 @@ class MyotisNode private constructor() {
             dataDir.path,
         )
         val handle = try {
-            engine.create(config, ports.ports())
+            engine.create(config, enginePorts)
         } catch (e: Throwable) {
             // An engine that refuses the config (an anchor mismatch, a bad data directory)
             // still holds the ports' cache writers: release them before giving up.
@@ -205,7 +264,7 @@ class MyotisNode private constructor() {
         }
     }
 
-    private inner class HandleChain : VerifiedChain {
+    private inner class HandleChain : TransactingChain {
 
         /**
          * The last snapshot read and when (System.nanoTime). Every adapter, and each of its
@@ -231,6 +290,9 @@ class MyotisNode private constructor() {
             val status = handle.status() ?: return EngineSnapshot.Booting
             // The head block's time from its slot, the consensus rule for an execution
             // payload's timestamp (genesis + slot × seconds per slot): verified data only.
+            // To check: a storage proof's optimisticSlot is the light client's signature slot,
+            // about one past the attested head (see storageProofLabel). If BeaconStatus's is that
+            // slot too, this time reads a slot (12 s) late; its API does not say which it is.
             val slot = handle.beaconStatus()?.optimisticSlot() ?: 0
             val headTimestamp = if (slot > 0 && running.genesisTime > 0 && running.secondsPerSlot > 0) {
                 running.genesisTime + slot * running.secondsPerSlot
@@ -256,6 +318,7 @@ class MyotisNode private constructor() {
                 headAgeMs = status.verifiedHeadAgeMs(),
                 wsBoundPeriods = status.wsBoundPeriods(),
                 upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
+                finalizedBlock = status.finalizedBlockNumber(),
             )
         }
 
@@ -269,12 +332,110 @@ class MyotisNode private constructor() {
             // A proven absence is a proven zero.
             return ProvenBalance(if (result.exists()) result.balanceWei() ?: return null else "0", result.blockNumber())
         }
+
+        // The code hash comes with the account proof, labelled with its block; the code itself
+        // from the verified reads; provenCode decides what of it is proven.
+        override fun proveCode(address: Address): ProvenCode? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val account = handle.requestAccount(address.hex)
+            if (account.failReason() != null || account.verifyMethod() == null) return null
+            val anchor = accountProofAnchor(account.verifyMethod(), account.matchedBeaconSlot(), account.blockNumber())
+            return provenCode(account.exists(), account.codeHashHex(), account.blockNumber(), anchor) {
+                handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest")
+            }
+        }
+
+        override fun call(to: Address, data: ByteArray): CallOutcome? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val contract = to.hex.removePrefix("0x").fromHex()
+            return callOutcome(handle.reads().callDetailed(null, contract, data, null, "latest", null))
+        }
+
+        // Accepted only with a verified storage proof tied to the beacon chain and a verdict, as
+        // balances are; a proven empty slot is a proven zero. Labelled as storageProofLabel says:
+        // shown with the block the proof anchors to once it matched an attested slot from the
+        // finalized one up to the optimistic head (on a live engine the attested slot just behind
+        // the result's optimistic slot, its signature slot), or that a header-chain walk proved;
+        // and anchored to that attested slot, which is what one reading's proofs must share.
+        override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val result = handle.getStorageProof(address.hex, slot, holder?.hex)
+            if (result.failReason() != null || !result.storageProofValid() || !result.beaconChainVerified()) return null
+            val label = storageProofLabel(
+                verifyMethod = result.verifyMethod(),
+                matchedBeaconSlot = result.matchedBeaconSlot(),
+                finalizedSlot = result.finalizedSlot(),
+                optimisticSlot = result.optimisticSlot(),
+                peerBlockNumber = result.peerBlockNumber(),
+                finalizedBlockNumber = result.finalizedBlockNumber(),
+                optimisticBlockNumber = result.optimisticBlockNumber(),
+            ) ?: return null
+            val value = if (result.exists()) result.valueHex()?.removePrefix("0x")?.lowercase() ?: return null else ""
+            return value.padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
+                ?.let { ProvenSlot(it, label.blockNumber, label.anchor) }
+        }
+
+        override fun storageAt(address: Address, slot: ByteArray): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val contract = address.hex.removePrefix("0x").fromHex()
+            val word = handle.reads().getStorageAt(contract, slot, "latest") ?: return null
+            return word.toHex().padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
+        }
+
+        // "pending": the verified count plus the sends this node made that are not mined yet,
+        // so a second transfer right after a first does not reuse its nonce.
+        override fun pendingNonce(address: Address): Long? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getTransactionCount(address.bytes(), "pending")
+        }
+
+        override fun minedNonce(address: Address): Long? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getTransactionCount(address.bytes(), "latest")
+        }
+
+        override fun feeHistory(blocks: Int, percentiles: DoubleArray): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().feeHistory(blocks.toLong(), "latest", percentiles)
+        }
+
+        override fun estimateGas(from: Address, to: Address, valueWei: String, data: ByteArray): EstimateAnswer {
+            val handle = (state as? State.Running)?.handle ?: return EstimateAnswer.Unavailable("no engine running")
+            return estimateAnswer(handle.reads().estimateGasDetailed(from.bytes(), to.bytes(), data, valueWei))
+        }
+
+        override fun callFrom(from: Address, to: Address, valueWei: String, data: ByteArray): CallOutcome? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            val result = handle.reads().callDetailed(from.bytes(), to.bytes(), data, valueWei, "latest", null)
+            return callOutcome(result)
+        }
+
+        override fun sendRaw(raw: ByteArray): SendAnswer {
+            val handle = (state as? State.Running)?.handle
+                ?: return SendAnswer.Unavailable("the light client is not running")
+            return sendAnswer(handle.reads().sendRawTransactionDetailed(raw))
+        }
+
+        override fun receipt(hash: String): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getTransactionReceipt(hash.removePrefix("0x").fromHex())
+        }
+
+        // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.
+        override fun resolveName(name: String): NameAnswer {
+            val handle = (state as? State.Running)?.handle
+                ?: return NameAnswer(null, -1, verified = false, error = "the light client is not running")
+            return nameAnswerOf { handle.ens().resolveAddress(name, EnsRoot.FINALIZED) }
+        }
     }
 
     private class TimedSnapshot(val atNanos: Long, val snapshot: EngineSnapshot)
 
     companion object {
         private val POLL_INTERVAL = 4.seconds
+
+        /** A storage word's hex digits. */
+        private const val WORD_HEX_DIGITS = 64
 
         /** How long one status read serves other pollers: well under the fastest poll (1 s). */
         private const val SNAPSHOT_REUSE_NS = 500_000_000L
@@ -303,7 +464,7 @@ class MyotisNode private constructor() {
          * start gets a node whose balances and light client say so.
          */
         fun start(network: Network, dataDir: File, dnsServers: (() -> List<String>)? = null): MyotisNode {
-            val node = MyotisNode()
+            val node = MyotisNode(network)
             node.bootThread = thread(name = "myotis-boot", isDaemon = true) {
                 try {
                     node.boot(network, dataDir, dnsServers?.let { servers -> DnsServers { servers() } })
@@ -326,6 +487,9 @@ class MyotisNode private constructor() {
  * anywhere near this path.
  */
 private fun report(why: String) = System.err.println("Serotine: no light client: $why")
+
+/** The 20 bytes the engine's reads take for an address. */
+private fun Address.bytes(): ByteArray = hex.removePrefix("0x").fromHex()
 
 /** The engine's name for this network, as `MyotisEngine.availableNetworks()` lists it. */
 private fun Network.engineName(): String = when (this) {

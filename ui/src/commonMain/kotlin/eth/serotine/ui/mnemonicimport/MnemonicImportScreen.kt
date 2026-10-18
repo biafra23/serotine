@@ -34,9 +34,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.platform.OnStopUnlessConfigurationChange
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers
 
@@ -52,8 +52,9 @@ const val MNEMONIC_IMPORT_BUTTON_TAG = "mnemonic-import-button"
 
 /**
  * Binds [MnemonicImportScreen] to its ViewModel, reports a finished import through
- * [onImported] so the caller can close the screen, and tells the ViewModel when the screen
- * stops being shown, so it drops the words.
+ * [onImported] so the caller can close the screen, and tells the ViewModel when the screen is
+ * left, so it drops the words: a stop that is not a configuration change (owner ruling,
+ * 2026-10-18, #39).
  */
 @Composable
 fun MnemonicImportRoute(
@@ -66,7 +67,9 @@ fun MnemonicImportRoute(
     // that resumes a frame later hands the field a stale value, which loses keystrokes and
     // moves the cursor while someone types fast.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
+    // Left, the words go; a rotation or another configuration change keeps them in the ViewModel's
+    // memory, never in a saved state (owner ruling, 2026-10-18, #39).
+    OnStopUnlessConfigurationChange(onStop = viewModel::onHidden)
     MnemonicImportScreen(
         state = state,
         onPhraseChange = viewModel::onPhraseChange,
@@ -74,15 +77,19 @@ fun MnemonicImportRoute(
         onRepeatChange = viewModel::onRepeatChange,
         onImport = viewModel::onImport,
         onBack = onBack,
+        onDone = onImported,
         modifier = modifier,
     )
-    if (state is MnemonicImportUiState.Imported) {
+    // A note to read first keeps the screen until the user is done with it.
+    val imported = state as? MnemonicImportUiState.Imported
+    if (imported != null && imported.note == null) {
         LaunchedEffect(Unit) { onImported() }
     }
 }
 
 /**
- * The seed-phrase screen as a function of [state]. While it is shown the window is kept
+ * The seed-phrase screen as a function of [state]; [onDone] once an import's note is read. While
+ * it is shown the window is kept
  * out of screen capture where the platform allows ([protectFromScreenCapture]); where it
  * does not, the screen says so. The field's text is never saved: it lives in the
  * ViewModel's state, not in `rememberSaveable`, so it never reaches a saved-state bundle.
@@ -97,6 +104,7 @@ fun MnemonicImportScreen(
     onImport: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onDone: () -> Unit = {},
 ) {
     val captureBlocked = protectFromScreenCapture()
     Scaffold(
@@ -122,8 +130,19 @@ fun MnemonicImportScreen(
                 onImport = onImport,
                 modifier = Modifier.padding(padding),
             )
-            is MnemonicImportUiState.Imported -> Box(Modifier.padding(padding).fillMaxSize()) {
-                Text("${state.label} added", Modifier.align(Alignment.Center))
+            is MnemonicImportUiState.Imported -> if (state.note == null) {
+                Box(Modifier.padding(padding).fillMaxSize()) {
+                    Text("${state.label} added", Modifier.align(Alignment.Center))
+                }
+            } else {
+                Column(
+                    Modifier.padding(padding).fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text("${state.label} added", style = MaterialTheme.typography.titleMedium)
+                    Text(state.note, style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                }
             }
         }
     }

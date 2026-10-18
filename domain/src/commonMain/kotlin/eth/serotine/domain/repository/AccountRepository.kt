@@ -1,6 +1,8 @@
 package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.Address
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -24,6 +26,33 @@ interface AccountRepository {
      * ([AccountAdd.NotSaved]). Never throws.
      */
     suspend fun add(account: Account): AccountAdd
+
+    /**
+     * Gives the entry under [address] the name [label], keeping everything else about it
+     * ([AccountChange.Changed]); or, when no entry has that address, changes nothing
+     * ([AccountChange.NotFound]); or, when the list cannot be stored or is
+     * [AccountList.Unreadable], changes nothing ([AccountChange.NotSaved]). [label] follows
+     * [Account.label]'s rule: a blank one is the caller's error and throws. Never throws
+     * otherwise.
+     */
+    suspend fun rename(address: Address, label: String): AccountChange
+
+    /**
+     * Records that the entry under [address] is now held as [custody], keeping everything
+     * else about it ([AccountChange.Changed]); or [AccountChange.NotFound]; or, when the list
+     * cannot be stored or is [AccountList.Unreadable], [AccountChange.NotSaved]. A watched
+     * account becomes [AccountCustody.InKeyStore] when its key is imported. Never throws.
+     */
+    suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange
+
+    /**
+     * Takes the entry under [address] out of the list ([AccountChange.Changed]); or, when no
+     * entry has that address, changes nothing ([AccountChange.NotFound]); or, when the list
+     * cannot be stored or is [AccountList.Unreadable], changes nothing
+     * ([AccountChange.NotSaved]). Only the entry: a key the key store holds for the address
+     * is the key store's to delete. Never throws.
+     */
+    suspend fun remove(address: Address): AccountChange
 }
 
 /** What [AccountRepository.observeAccounts] emits. */
@@ -62,4 +91,16 @@ sealed interface AccountAdd {
 
     /** The list could not be stored, or cannot be read; nothing changed. */
     data object NotSaved : AccountAdd
+}
+
+/** The outcome of [AccountRepository.rename] and [AccountRepository.remove]. */
+sealed interface AccountChange {
+    /** The change is in the list now. */
+    data object Changed : AccountChange
+
+    /** No entry has that address; nothing changed. */
+    data object NotFound : AccountChange
+
+    /** The list could not be stored, or cannot be read; nothing changed. */
+    data object NotSaved : AccountChange
 }

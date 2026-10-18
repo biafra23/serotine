@@ -1,21 +1,100 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.AddressKinds
+import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
+import eth.serotine.domain.repository.PriceFeeds
+import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.SafeReleases
+import eth.serotine.domain.repository.SafeTxQueue
+import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.SignatureRecovery
+import eth.serotine.domain.repository.Signer
+import eth.serotine.domain.repository.SigningRequestCodec
+import eth.serotine.domain.repository.TokenBalances
+import eth.serotine.domain.repository.TokenCatalog
+import eth.serotine.domain.repository.TokenMetadata
+import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.UserTokens
+import eth.serotine.domain.usecase.AddToken
+import eth.serotine.domain.usecase.ApproveSafeTxOnChain
+import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.DisableBiometricUnlock
+import eth.serotine.domain.usecase.EnableBiometricUnlock
+import eth.serotine.domain.usecase.EncodeSigningRequest
+import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.ImportSigningRequest
+import eth.serotine.domain.usecase.NewRecoveryPhrase
+import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeTxQueue
+import eth.serotine.domain.usecase.ObserveSafes
+import eth.serotine.domain.usecase.ObserveSentTransfer
+import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
-import eth.serotine.ui.home.HomeViewModel
+import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.PlanSafe
+import eth.serotine.domain.usecase.ProposeSafeTx
+import eth.serotine.domain.usecase.QuoteSafeApproval
+import eth.serotine.domain.usecase.QuoteSafeDeployment
+import eth.serotine.domain.usecase.QuoteSafeExecution
+import eth.serotine.domain.usecase.QuoteTransfer
+import eth.serotine.domain.usecase.ReadSafeTxOwners
+import eth.serotine.domain.usecase.RebroadcastTransfer
+import eth.serotine.domain.usecase.RemoveAccount
+import eth.serotine.domain.usecase.RemoveQueuedSafeTx
+import eth.serotine.domain.usecase.RemoveToken
+import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SendTransfer
+import eth.serotine.domain.usecase.SetDisplayCurrency
+import eth.serotine.domain.usecase.SetTokenHidden
+import eth.serotine.domain.usecase.SignSafeTx
+import eth.serotine.domain.usecase.WalletChanges
+import eth.serotine.domain.usecase.WarmFeeHistory
+import eth.serotine.domain.usecase.WatchAddress
+import eth.serotine.ui.accountdetail.AccountDetailViewModel
+import eth.serotine.ui.addtoken.AddTokenViewModel
+import eth.serotine.ui.assets.AssetsViewModel
+import eth.serotine.ui.createaccount.CreateAccountViewModel
+import eth.serotine.ui.createsafe.CreateSafeViewModel
+import eth.serotine.ui.currency.CurrencyViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
+import eth.serotine.ui.receive.ReceiveViewModel
+import eth.serotine.ui.removeaccount.RemoveAccountViewModel
+import eth.serotine.ui.renameaccount.RenameAccountViewModel
+import eth.serotine.ui.safeimport.SafeImportViewModel
+import eth.serotine.ui.safepropose.SafeProposeViewModel
+import eth.serotine.ui.safetx.SafeTxViewModel
+import eth.serotine.ui.security.SecurityViewModel
+import eth.serotine.ui.send.SendViewModel
+import eth.serotine.ui.settings.SettingsViewModel
+import eth.serotine.ui.tokens.TokensViewModel
+import eth.serotine.ui.transferstatus.TransferStatusViewModel
 import eth.serotine.ui.update.UpdateRequiredViewModel
+import eth.serotine.ui.watch.WatchViewModel
 
 /**
  * The composition root's contract: everything the shared UI needs, handed in as the
@@ -24,7 +103,9 @@ import eth.serotine.ui.update.UpdateRequiredViewModel
  * assembles use cases and ViewModels from it and never constructs an adapter itself.
  *
  * Manual constructor injection, no DI framework: the graph is small enough to read in one
- * place, and a missing dependency is a compile error rather than a start-up crash.
+ * place, and a missing dependency is a compile error rather than a start-up crash. Ports in,
+ * ViewModel factories out: the work no screen owns (following upgrade reports, listing the Safes
+ * this wallet deployed) is the host's, beside this graph, on the same adapter instances.
  */
 class AppGraph(
     private val accounts: AccountRepository,
@@ -32,6 +113,20 @@ class AppGraph(
     private val keys: KeyStore,
     /** Balances verified by the embedded light client of [network]. */
     private val nativeBalances: NativeBalances,
+    /** The tokens the wallet knows on [network]. */
+    private val tokenCatalog: TokenCatalog,
+    /** Token balances verified by that light client. */
+    private val tokenBalances: TokenBalances,
+    /** What token contracts say about themselves, verified by that light client. */
+    private val tokenMetadata: TokenMetadata,
+    /** The tokens the user added and hid. */
+    private val userTokens: UserTokens,
+    /** Prices from the network's pinned Chainlink feeds, verified by that light client. */
+    private val priceFeeds: PriceFeeds,
+    /** The user's choice of display currency. */
+    private val displayCurrency: DisplayCurrencySetting,
+    /** What is at an address, verified by that light client. */
+    private val addressKinds: AddressKinds,
     /** That light client's own state. */
     private val lightClient: LightClient,
     /** Network upgrades this version does not support, as peers report them to that light client. */
@@ -41,22 +136,209 @@ class AppGraph(
      * one instance per process, shared with them.
      */
     private val knownUpgrades: KnownUpgradeStore,
+    /** What a transfer needs from the chain before it is signed, verified by that light client. */
+    private val transactionInputs: TransactionInputs,
+    /** Hands a signed transfer to that light client's peers. */
+    private val broadcaster: Broadcaster,
+    /** A sent transfer's receipt, verified by that light client. */
+    private val receipts: ReceiptTracker,
+    /** ENS names, resolved by that light client against finalized state. */
+    private val names: NameResolver,
+    /**
+     * Signs with the keys held in [keys]: the key adapter's signer, the same instance as [keys],
+     * whose calls take turns (docs/keys-and-signing.md).
+     */
+    private val signer: Signer,
+    /** The transfers this wallet signed, kept across restarts. */
+    private val sentTransfers: SentTransfers,
+    /** The Safe transactions waiting for their owners, kept on this device across restarts. */
+    private val safeTxQueue: SafeTxQueue,
+    /** The text a Safe's signing request travels in between devices, for [network]. */
+    private val signingRequests: SigningRequestCodec,
+    /** Who made a secp256k1 signature: what a co-signer's signature is checked with. */
+    private val signatureRecovery: SignatureRecovery,
+    /** Owners' approvals of Safe transactions on chain, verified by that light client. */
+    private val safeApprovals: SafeApprovals,
+    /** The Safe release a new Safe on [network] is created from: pinned singleton, factory and proxy code. */
+    private val safeReleases: SafeReleases,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
+    /** The one [WalletChanges] of the app: imports and removals never interleave. */
+    private val walletChanges = WalletChanges()
+
     private fun observeUpgradeWarning() = ObserveUpgradeWarning(networkUpgrades, knownUpgrades, lightClient)
 
-    fun homeViewModel(): HomeViewModel =
-        HomeViewModel(
-            ObserveAccounts(accounts),
-            ObserveNativeBalance(nativeBalances),
+    fun assetsViewModel(): AssetsViewModel =
+        AssetsViewModel(
+            ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
+            ObserveSafes(accounts, observeSafe()),
             ObserveLightClient(lightClient),
             observeUpgradeWarning(),
             network,
         )
 
+    fun accountDetailViewModel(address: Address): AccountDetailViewModel =
+        AccountDetailViewModel(
+            address,
+            ObserveAccount(accounts),
+            accountValue(),
+            observeSafe(),
+            observeSafeTxQueue(),
+            knownTokens(),
+            SetTokenHidden(userTokens),
+            network,
+        )
+
+    /** The Safe transaction [hash] of the Safe at [safe] (docs/wallet-ux.md, screen 17). */
+    fun safeTxViewModel(safe: Address, hash: Digest): SafeTxViewModel = SafeTxViewModel(
+        safe,
+        hash,
+        ObserveAccounts(accounts),
+        observeSafeTxQueue(),
+        knownTokens(),
+        ReadSafeTxOwners(observeSafe(), signatureRecovery, safeApprovals, network),
+        EncodeSigningRequest(signingRequests),
+        DescribeKeyStore(keys),
+        signSafeTx(),
+        QuoteSafeApproval(observeSafe(), safeApprovals, nativeBalances, transactionInputs, sentTransfers, network),
+        ApproveSafeTxOnChain(signer, broadcaster, sentTransfers),
+        QuoteSafeExecution(
+            observeSafe(),
+            signatureRecovery,
+            safeApprovals,
+            nativeBalances,
+            transactionInputs,
+            sentTransfers,
+            network,
+        ),
+        ExecuteSafeTx(signer, broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        RemoveQueuedSafeTx(safeTxQueue),
+        WarmFeeHistory(transactionInputs),
+        network,
+    )
+
+    /** Send from the Safe at [safe], with the token at [asset] chosen (null: the network's currency). */
+    fun safeProposeViewModel(safe: Address, asset: Address?): SafeProposeViewModel = SafeProposeViewModel(
+        safe,
+        asset,
+        ObserveAccounts(accounts),
+        accountValue(),
+        observeSafe(),
+        DescribeKeyStore(keys),
+        ResolveRecipient(names),
+        ProposeSafeTx(observeSafe(), nativeBalances, tokenBalances, transactionInputs, safeTxQueue, network),
+        signSafeTx(),
+        EncodeSigningRequest(signingRequests),
+        network,
+    )
+
+    /** Import a signing request for the Safe at [safe]. */
+    fun safeImportViewModel(safe: Address): SafeImportViewModel = SafeImportViewModel(
+        safe,
+        ObserveAccount(accounts),
+        ImportSigningRequest(signingRequests, observeSafe(), signatureRecovery, safeTxQueue),
+        network,
+    )
+
+    private fun observeSafe() = ObserveSafe(addressKinds, accounts)
+
+    private fun observeSafeTxQueue() = ObserveSafeTxQueue(safeTxQueue, observeSafe(), signatureRecovery, network)
+
+    private fun signSafeTx() = SignSafeTx(signer, observeSafe(), signatureRecovery, safeTxQueue, network)
+
+    /** Send from the account at [from], with the token at [asset] chosen (null: the network's currency). */
+    fun sendViewModel(from: Address, asset: Address?): SendViewModel = SendViewModel(
+        from,
+        asset,
+        ObserveAccounts(accounts),
+        accountValue(),
+        DescribeKeyStore(keys),
+        ResolveRecipient(names),
+        QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
+        SendTransfer(signer, broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        WarmFeeHistory(transactionInputs),
+        network,
+    )
+
+    /** Where the transfer [hash] stands, and for a Safe it deployed, where its listing does. */
+    fun transferStatusViewModel(hash: String): TransferStatusViewModel = TransferStatusViewModel(
+        hash,
+        ObserveSentTransfer(sentTransfers, receipts),
+        ObserveAccounts(accounts),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        network,
+    )
+
+    /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
+    fun createSafeViewModel(): CreateSafeViewModel = CreateSafeViewModel(
+        ObserveAccounts(accounts),
+        DescribeKeyStore(keys),
+        ResolveRecipient(names),
+        PlanSafe(safeReleases, network),
+        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, network),
+        DeploySafe(signer, broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        WarmFeeHistory(transactionInputs),
+        network,
+    )
+
+    fun receiveViewModel(address: Address): ReceiveViewModel =
+        ReceiveViewModel(address, ObserveAccount(accounts), network)
+
+    fun renameAccountViewModel(address: Address): RenameAccountViewModel =
+        RenameAccountViewModel(address, ObserveAccount(accounts), RenameAccount(accounts))
+
+    fun removeAccountViewModel(address: Address): RemoveAccountViewModel =
+        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
+
+    fun watchViewModel(): WatchViewModel = WatchViewModel(
+        ObserveAddressKind(addressKinds),
+        ObserveAccounts(accounts),
+        WatchAddress(accounts, addressKinds),
+    )
+
+    fun settingsViewModel(): SettingsViewModel =
+        SettingsViewModel(ObserveLightClient(lightClient), knownTokens(), displayCurrencies(), network)
+
+    fun currencyViewModel(): CurrencyViewModel =
+        CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency))
+
+    fun tokensViewModel(): TokensViewModel =
+        TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens))
+
+    fun addTokenViewModel(): AddTokenViewModel =
+        AddTokenViewModel(
+            knownTokens(),
+            ObserveTokenMetadata(tokenMetadata),
+            AddToken(userTokens, tokenMetadata, knownTokens()),
+        )
+
+    private fun knownTokens() = ObserveKnownTokens(tokenCatalog, userTokens, tokenMetadata)
+
+    private fun displayCurrencies() = ObserveDisplayCurrencies(priceFeeds, displayCurrency)
+
+    private fun accountValue() = ObserveAccountValue(
+        ObserveNativeBalance(nativeBalances),
+        ObserveTokenHoldings(knownTokens(), tokenBalances),
+        ObserveUsdPrice(priceFeeds),
+        displayCurrencies(),
+        network,
+    )
+
+    fun createAccountViewModel(): CreateAccountViewModel = CreateAccountViewModel(
+        NewRecoveryPhrase(keys),
+        ImportMnemonicAccount(keys, accounts, walletChanges),
+        DescribeKeyStore(keys),
+    )
+
     fun updateRequiredViewModel(): UpdateRequiredViewModel = UpdateRequiredViewModel(observeUpgradeWarning(), network)
 
+    fun securityViewModel(): SecurityViewModel =
+        SecurityViewModel(DescribeKeyStore(keys), EnableBiometricUnlock(keys), DisableBiometricUnlock(keys))
+
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
-        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts), DescribeKeyStore(keys))
+        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))
 }

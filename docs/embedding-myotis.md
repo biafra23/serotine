@@ -40,8 +40,9 @@ consumer developed against an unreleased engine, Myotis's
 ## Where it goes in Serotine
 
 - **`:data` only.** The engine is a data source. An adapter in
-  `eth.serotine.data.engine` implements the domain's ports (balances, nonces,
-  logs, broadcast — each its own port) over `io.myotis.api`; `:domain` and
+  `eth.serotine.data.engine` implements the domain's ports (balances,
+  address kinds, prices, the transaction inputs, broadcast, receipts, ENS
+  names — each its own port) over `io.myotis.api`; `:domain` and
   `:ui` never import `io.myotis.*`.
 - **`io.myotis.api` and nothing below it.** Engine internals are not on the
   classpath (the library does not ship them), and the Myotis rule carries over
@@ -90,8 +91,94 @@ consumer developed against an unreleased engine, Myotis's
   reads cannot be verified, the row shows why ("Syncing…", "Sync refused", "Not
   verified", "No light client"), never an older amount. Why a node is down is
   written to stderr, with the engine's own log when it refused to start.
+- **Verified token balances.** `VerifiedTokenBalances` runs each token's
+  `balanceOf(holder)` through `VerifiedReads.callDetailed`, polled and cached
+  like the rest, through `ProvenReads`. It is labelled with the block the
+  engine names (`-1`, none, when it does not). `REVERTED` is a verified "not a
+  token". `REFUSED`, and `INFEASIBLE` for a plain call, are a permanent refusal
+  (`ReadUnavailable.REFUSED`, "cannot be read on this device"). `UNAVAILABLE`
+  is unproven, retried at the next head.
+- **Verified token metadata.** `VerifiedTokenMetadata` reads a contract's
+  `decimals()`, `symbol()` and `name()` the same way, for the check of a
+  built-in entry and for Add token, labelled with the block of the
+  `decimals()` call. `decimals()` and `symbol()` must answer: a revert, an
+  answer that is not a number or an ABI string, or decimals above 77 is a
+  verified "not a token". A missing `name()` is the symbol. A refused call is
+  `REFUSED` at once, without the calls after it. A description and a refusal
+  are kept for the rest of the process (the 256 most recent): a token's
+  description is read once, not at every head. "Not a token" ends the read
+  but is not kept, since the contract may not be deployed at that head yet.
+  Text a contract returns loses, code point by code point, whatever renders
+  as nothing or moves text: controls, separators, format characters of any
+  plane (bidi overrides, zero-width ones, tags), the rest of Unicode's
+  default-ignorable set (variation selectors, the Hangul fillers) and the
+  blank Braille cell, so none can reorder a line or hide in a symbol.
+- **Verified prices.** `VerifiedPriceFeeds` reads each pinned Chainlink feed
+  (`ChainlinkFeeds`, per network) with two verified calls, `decimals()` and
+  `latestRoundData()`, through `ProvenReads`, at every verified head. Decimals
+  other than the pin, a negative or zero answer, or what is no round are no
+  price; a refusal is `REFUSED`. A round's age is measured against the
+  time of the verified head the read started at, which the engine snapshot
+  derives from the BLS-attested slot (genesis + slot × seconds per slot),
+  never the device's clock; with no head time known yet the read is
+  unproven. A round older than its feed's heartbeat and ten minutes' grace
+  is stale, and one dated more than two minutes after the head is no feed's
+  answer. (`ChainHandle.getBlockVerified`, which would give a block's
+  timestamp, is not available on the Rust engine.)
+- **One fetch per key and head.** `ProvenReads` keeps the last proof per key,
+  and a subscriber that arrives while that key's proof for its head is being
+  fetched waits for that fetch rather than making the same blocking calls:
+  the account screen, the Assets screen and every account of the portfolio
+  read the same prices and balances.
+- **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
+  address for the Watch screen, polled, cached and refused the same way (the
+  two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,
+  labelled with its block. The empty hash means an EOA. Any other hash fetches
+  the code with `VerifiedReads.getCode`, which the engine checks against a
+  proven hash too. The adapter accepts the code only if it hashes to the
+  proof's value: the head may move between the two reads. An EIP-7702
+  delegation designator (`0xef0100` and 20 bytes) makes a delegated EOA, and
+  any other code makes a contract — or a Safe, below.
+- **Verified Safes.** Code whose Keccak-256 is a pinned SafeProxy runtime
+  hash (`SafeDeployments`, per network) is read further, with storage proofs
+  (`ChainHandle.getStorageProof`, a mapping entry by its key):
+  - slot 0 must name a pinned canonical singleton, whose version it takes;
+  - the owners are the list of the mapping at slot 2, walked from the
+    sentinel `0x1` back to it, as many as slot 3 counts;
+  - the threshold (slot 4) is between 1 and that many;
+  - slot 5 holds the nonce, and slot 1's list the modules;
+  - the guard is the word at `keccak256("guard_manager.guard.address")`, and
+    1.5.0's module guard the one at
+    `keccak256("module_manager.module_guard.address")`.
+
+  A slot proof is used only once the engine tied it to a beacon-attested
+  root (`storageProofLabel`), and it carries two things. Its anchor
+  (`ProofAnchor`) is the attested slot whose state root it matched, from the
+  light client's own state (for a header-chain match, the block walked from,
+  whichever head it was walked to). Its label is the block it is shown with:
+  matched at the finalized slot, the finalized block; at the optimistic
+  slot, the optimistic block; at an attested slot between the two, the usual
+  case, the block the proof anchors to (`peerBlockNumber`, as balances and
+  code are shown), not below the finalized block. That number is the serving
+  peer's report on some engines, so it is shown, never relied on. The matched
+  slot is the attested slot the anchor recorded, while the result's
+  optimistic slot is the light client's signature slot, about one past it, so
+  an exact optimistic match seldom happens. Any other match is no proof.
+  Every proof of a reading must share one anchor (and one label), and the
+  state must not be before the code's, as their anchors tell: attested slots
+  compared, walked blocks compared. A walk against a match, which nothing
+  verified orders, is read again, never decided by a label.
+  A read the head moved under is made again at once. The guards sit at hashed slots, which `getStorageProof` cannot name,
+  so they are verified `VerifiedReads.getStorageAt` reads at the head: they
+  may be a head later than the label. A list that does not lead back to the
+  sentinel, an unknown singleton or a Safe not set up is "another contract".
+  A Safe takes a dozen proofs and its owners rarely change, so its reading
+  stands for five heads (about a minute) before it is proven again, always
+  labelled with its own block. The pins were read on Sepolia on 2026-10-17:
+  each singleton's `VERSION()` as a verified call, each proxy hash from a
+  verified create call of its factory's `proxyCreationCode()`.
 - **The light client's progress.** `EngineLightClient` drives the
-  `LightClient` port, and Home shows it in a strip under the top bar:
+  `LightClient` port, and the Assets tab shows it in a strip under the top bar:
   - starting;
   - bootstrapping from the checkpoint;
   - verifying sync-committee periods (*n of m*);
@@ -127,6 +214,169 @@ consumer developed against an unreleased engine, Myotis's
   released Serotine was ever without the permission, so this is a development
   trap, not a user path.
 
+## Sending
+
+The engine's half of a transfer is four
+adapters over `VerifiedReads` and `EnsApi`, behind domain ports, all on a
+`TransactingChain` seam that extends `VerifiedChain`, which the Send screens
+(docs/wallet-ux.md, screens 7 to 9) put to use. Every read is made only while the light client can verify reads
+at its head; the broadcast is the engine's to judge (it does so on verified
+state). All of it runs on the adapters' dispatcher, and an engine that fails,
+or a `CancellationException` its own code throws, is no answer, as for every
+verified read.
+
+- **`EngineTransactionInputs`** (`TransactionInputs`):
+  - The nonce is `getTransactionCount(address, "pending")`: the verified count
+    plus the sends this node made that are not mined yet, so a second transfer
+    right after a first does not reuse its nonce. That record is the engine's
+    memory, gone with the process and expiring; the app's own record of sent
+    transfers (`SentTransfers`, kept in `sent-transfers.json` beside the account
+    list) covers a restart: `QuoteTransfer` never quotes below its last unmined
+    nonce plus one, nor below the mined count, and holds back what those
+    transfers may still take of the native balance and of the token's.
+    - A transfer is recorded once a peer took it. One the engine rejected
+      or refused holds no nonce, so a later quote may take the same one, and
+      only one of the two can ever be mined.
+    - A broadcast that came back unavailable (no peer answered) may have
+      reached one all the same, so it is recorded too, as maybe sent
+      (`SentTransfer.maybeSent`): it holds neither the nonce nor the cost,
+      and its receipt is watched by its hash. While one from the account is
+      not mined and within its lifetime, a new quote from that account is
+      refused (`CallRefusal.EarlierMaybeSent`): the earlier transaction may
+      still be on its way, and it is retried (`RebroadcastTransfer`, from the
+      review or from its status screen), never replaced by a new one, which
+      could take the next nonce and pay twice. A retry a peer takes makes it
+      an ordinary record; one turned away (rejected with no receipt, or
+      refused) keeps it as it was, since a retry's rejection says nothing
+      sure of the first broadcast ("already known", "replacement
+      underpriced", a nonce used past the light client's head), and its
+      lifetime and the mined count bound it.
+    - A record stops holding its nonce and its cost three hours after a peer
+      took it if no block did (`RECORD_LIFETIME_SECONDS`, which runs from
+      that broadcast, a retry's included): kept holding them, it would hold
+      every later transfer behind a nonce no block may ever take. Three hours
+      is geth's `txpool.lifetime`, which evicts only queued (not yet
+      executable) transactions, so an executable one can stay in a pool
+      longer, and be mined later; that is safe, since a nonce is mined once
+      whichever transaction takes it. The record itself stays until the
+      account's mined count passes its nonce, so its status screen still
+      finds it.
+    - A retry of a broadcast no peer answered may come back rejected because
+      the first broadcast reached a peer after all and a block used its
+      nonce. `RebroadcastTransfer` checks the verified receipt before it
+      believes the rejection, so such a transfer reads as sent, not as one
+      that can never be mined. A receipt that cannot be verified right now
+      leaves both verdicts open (`RejectionUnverified`): the review says so and
+      keeps Try again, which checks again, and offers no new transfer.
+  - The fee levels come from `feeHistory` over the last ten blocks at the 10th,
+    50th and 90th percentile (`EngineJson.feeQuote`). Each level's tip is the
+    median of its percentile, never below 0.001 gwei and never below the
+    slower level's. The next base fee is the history's last; the fee cap is
+    twice that plus the tip.
+  - The engine's fee history is cold on its first request after a start, and
+    on one more than 120 s after the last: it builds ten blocks of it, waits
+    5 s for that, and answers nothing, and a caller right behind gets nothing
+    at once; the build goes on, and a request a few seconds later is
+    answered. So an empty answer is asked again every 2.5 s, for up to 15 s
+    (`EngineTransactionInputs.fees`), the wait a coroutine delay a cancelled
+    quote stops at; and Send, Create Safe and a Safe transaction's screen ask
+    for it once as they open (`WarmFeeHistory`), so it is warm by the review.
+  - The gas is `estimateGasDetailed`, so a revert, an infeasible transfer and
+    a refusal are told apart. It is the engine's answer as it stands, priced
+    under the fork the chain runs: on Sepolia, Amsterdam since 2026-10-06, a
+    plain transfer estimates below the 21000 of earlier forks (EIP-2780;
+    17433 when probed), so Serotine adds no floor of its own.
+  - The simulation is `callDetailed` from the sender at the head, the transfer
+    as it will run.
+- **`EngineBroadcaster`** (`Broadcaster`): `sendRawTransactionDetailed`. The
+  engine judges a send on verified state before it gossips it, and its verdict
+  (sent, rejected with geth's reason, refused, unavailable) is passed on.
+- **`EngineReceipts`** (`ReceiptTracker`): `getTransactionReceipt` every poll,
+  verified against the including block's receipts root. A receipt at or below
+  the engine's finalized block (`StatusSnapshot.finalizedBlockNumber`) ends the
+  watch as finalized.
+- **`EngineNames`** (`NameResolver`): `ens().resolveAddress(name,
+  EnsRoot.FINALIZED)` and nothing fresher. `PEER_HEAD` would be a peer's claim,
+  and `AUTO` falls back to it, so an answer not `verified` is no answer.
+  - The engine is built without a CCIP-Read gateway (`EnginePorts.httpGateway`
+    null). A name whose resolver answers through one (EIP-3668) is off-chain
+    data no ruling allows, and the request would tell the gateway the name
+    and the device's address. The engine then refuses the name, and it reads
+    as `OffchainOnly`, not as "try again".
+  - The engine lower-cases a name and normalizes nothing else (no ENSIP-15),
+    so a look-alike (a Cyrillic letter, a zero-width joiner) would hash to
+    another node. Until normalization exists, only ASCII letter-digit-hyphen
+    labels are resolved.
+
+The transaction itself is the domain's: `Eip1559Transaction` builds the
+signing digest the signer signs and the raw bytes the broadcaster sends, and
+`QuoteTransfer` and `SendTransfer` (`:domain`) put the four together with the
+balances and the signer. What is signed is exactly what the quote shows: only
+`QuoteTransfer` makes a quote, and nothing copies it. A transfer signed but not
+broadcast keeps its signed bytes (`SignedTransfer`), and a retry
+(`RebroadcastTransfer`) sends those bytes again rather than quoting anew, which
+could take the next nonce while the first is still on its way.
+
+The quote and the send are not a transfer's alone: `CallQuoter` and
+`signAndSend` (internal to `:domain`'s use cases) quote and send any
+transaction from an account the wallet holds, a Safe transaction's approval
+or execution included, with the same nonce record, fees, estimate, verified
+run and receipt check on a rejected retry. `SentTransfers` records what each
+one did (`SentAction`: a transfer, a Safe transaction's approval or
+execution, or a Safe's deployment), and its nonce and most cost hold a later
+one back whatever it did.
+
+## Safe transactions
+
+A Safe transaction is the domain's too (`SafeTx`, its EIP-712 hash, the
+`execTransaction` and `approveHash` calldata; docs/wallet-ux.md, *Co-signing
+a Safe transaction*). What the engine adds:
+
+- **The Safe's state** is the verified inspection above (`VerifiedAddressKinds`):
+  owners, threshold and nonce, each storage-proven at one block. A request,
+  a signature or an execution is checked against it.
+- **Approvals on chain** are `VerifiedSafeApprovals` (`SafeApprovals`): the
+  Safe's own getter `approvedHashes(owner, hash)` as a verified call
+  (`callDetailed`, no sender) at the head, labelled with the block the engine
+  names. A word other than zero is an approval; a revert or an answer that is
+  not one word is no answer. The mapping is two levels deep, which
+  `getStorageProof` cannot name, so it is a call rather than a proof.
+- **What is simulated, and how.** No state override is used, though the API
+  has them (`callWithOverrides`, gated by `supportsStateOverrides()`): an
+  answer under an override is the caller's hypothesis, not a chain fact.
+  - A proposal (`ProposeSafeTx`) runs the Safe's call alone, as a verified
+    call *from the Safe's address* at the head (`TransactionInputs.simulate`).
+    Not run there: the Safe's own checks (the owners' signatures do not exist
+    yet; the nonce) and its guard. An engine that will not run a call from an
+    address with code answers `Simulation.Refused`, and the proposal says it
+    is not simulated rather than failing.
+  - An execution (`QuoteSafeExecution`) runs all of it: `execTransaction`
+    with the signatures it will carry, as a verified call from the executing
+    account, estimated with `estimateGasDetailed` as any transaction is. The
+    Safe's signature and nonce checks, its guard and the call itself are in
+    that run. It must return `true`: `false` is a call that failed under a
+    non-zero gas price, which would still use up the nonce. The run has the
+    engine's gas, not the limit the execution is signed with (`callDetailed`
+    takes none), and that limit is what the Safe's call gets when the
+    transaction has a `safeTxGas` and no gas price: a call that runs out
+    there returns `false` instead of reverting, so it can pass the run and
+    fail on chain. That is one reason no transaction with gas or refund
+    terms is signed, approved or executed here (`SafeTxRefusal.GasTerms`):
+    with all of them zero a failing call reverts the execution, and the
+    estimate finds a limit it passes at.
+  - An approval (`QuoteSafeApproval`) runs `approveHash` from the owner, which
+    the Safe reverts for anyone else.
+  - A Safe's deployment (`QuoteSafeDeployment`) runs the factory's
+    `createProxyWithNonce` from the paying account, estimated and run as any
+    transaction is. The run must return the address computed in `:domain`
+    (CREATE2 over the pinned proxy creation code, `SafeCreation`), so the
+    factory's code on verified state, not the pin, has the last word; before
+    it, that address must read as holding no code (`AddressKinds`, the
+    inspection above). No new engine read: the deployment needs none.
+- **The co-signing medium is no engine read.** A signing request travels as
+  text between devices (`JsonSigningRequestCodec`), and signatures are
+  checked with libsecp256k1 (`Secp256k1Recovery`), not with the engine.
+
 ## Network upgrades
 
 A hard fork the engine's build does not implement is the one thing that ends
@@ -153,10 +403,10 @@ user to update — before it, and, after it, nothing else.
   a stale head — the rule Myotis sets for every host (CLAUDE.md, *Trust*).
 - **In Serotine.** `EngineNetworkUpgrades` (`eth.serotine.data.engine`) is the
   `NetworkUpgrades` port over it, polled with the engine's status; a malformed
-  field becomes unknown rather than failing the poll the light client and the
-  balances share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
+  field becomes unknown rather than failing the status poll the light client
+  and every verified read share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
   client's state and the upgrade recorded from earlier reports:
-  - *Ahead*: a banner on Home, with the date and the way to the update;
+  - *Ahead*: a banner on Assets, with the date and the way to the update;
   - *Activated*, as peers report or by its announced time on the clock, the
     light client not showing this version cut off: the banner says so;
   - *Update required*, an activation peers confirmed (reported now, or
@@ -199,8 +449,10 @@ user to update — before it, and, after it, nothing else.
 - **A parameter that can change the answer is applied or refused**, never
   accepted and ignored — the Myotis rule, and the reason a port's contract
   spells out what each argument does.
-- **Not everything a wallet needs is chain data.** Safe{Wallet} multi-signer
-  flows (proposing a transaction to co-signers) and token metadata are
-  off-chain services. Each one is a separate decision for the owner — what is
-  fetched, over what, and how its answer is trusted or shown as untrusted —
-  recorded in CLAUDE.md under *Data sources* before the code lands.
+- **Not everything a wallet needs is chain data**, and what is not is a
+  separate decision for the owner — what is fetched, over what, and how its
+  answer is trusted or shown as untrusted — recorded in CLAUDE.md under *Data
+  sources* before the code lands. Prices, the token list and Safe
+  co-signing are decided there (2026-10-16), each without an off-chain
+  service; the dApp connection protocol and CoW Protocol's order API
+  (docs/swaps.md) are still open.

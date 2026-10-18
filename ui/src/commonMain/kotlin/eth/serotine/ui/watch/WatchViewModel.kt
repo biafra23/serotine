@@ -1,0 +1,210 @@
+package eth.serotine.ui.watch
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.Address
+import eth.serotine.domain.repository.AccountList
+import eth.serotine.domain.repository.AddressKind
+import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeState
+import eth.serotine.domain.usecase.AddressWatch
+import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.WatchAddress
+import eth.serotine.domain.usecase.control
+import eth.serotine.domain.usecase.ownersHeld
+import eth.serotine.ui.components.AddressInput
+import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.grouped
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * The Watch address screen's ViewModel: reads the typed text as an address (EIP-55 checked at
+ * the input), shows what the light client proves is at it, and adds it through
+ * [WatchAddress], which checks again before it adds.
+ */
+class WatchViewModel(
+    observeAddressKind: ObserveAddressKind,
+    observeAccounts: ObserveAccounts,
+    private val watchAddress: WatchAddress,
+) : ViewModel() {
+
+    private class Typed(val address: String = "", val name: String = "")
+
+    private class Outcome(
+        val adding: Boolean = false,
+        val nameError: String? = null,
+        val error: String? = null,
+        val done: Boolean = false,
+    )
+
+    private val typed = MutableStateFlow(Typed())
+    private val outcome = MutableStateFlow(Outcome())
+
+    private val input = typed.map { Eip55.parse(it.address) }.distinctUntilChanged()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val detection = input.flatMapLatest { parsed ->
+        when (parsed) {
+            // The one list says whether the address is in the wallet already, and, for a Safe,
+            // which of its owners' keys are held here.
+            is AddressInput.Valid -> combine(
+                observeAccounts(),
+                observeAddressKind(parsed.address).map<KindReading, KindReading?> { it }.onStart { emit(null) },
+            ) { list, reading -> detectionOf(parsed.address, list, reading) }
+            else -> flowOf(null)
+        }
+    }
+
+    val uiState: StateFlow<WatchUiState> = combine(typed, input, detection, outcome) { typed, parsed, card, outcome ->
+        WatchUiState(
+            address = typed.address,
+            name = typed.name,
+            addressError = addressError(typed.address, parsed),
+            detection = card,
+            adding = outcome.adding,
+            nameError = outcome.nameError,
+            error = outcome.error,
+            done = outcome.done,
+        )
+    }.stateIn(
+        viewModelScope,
+        // The last state is kept (it holds what the user typed); on a return the card starts
+        // again from "Checking", so no old verdict stands as current.
+        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+        WatchUiState(),
+    )
+
+    /** The address field changed; ignored while an add runs, whose result is about what was typed then. */
+    fun onAddressChange(text: String) {
+        if (outcome.value.adding || outcome.value.done) return
+        typed.update { Typed(text, it.name) }
+        outcome.value = Outcome()
+    }
+
+    /** The name field changed; ignored while an add runs. */
+    fun onNameChange(text: String) {
+        if (outcome.value.adding || outcome.value.done) return
+        typed.update { Typed(it.address, text) }
+        outcome.value = Outcome()
+    }
+
+    /** Adds the address, once; [WatchAddress] proves its kind again first. */
+    fun add() {
+        val address = (Eip55.parse(typed.value.address) as? AddressInput.Valid)?.address ?: return
+        // outcome first: it is set synchronously below, while uiState follows it a step later,
+        // so a second tap before that must still find the add running.
+        if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
+        outcome.value = Outcome(adding = true)
+        viewModelScope.launch {
+            outcome.value = when (val result = watchAddress(address, typed.value.name)) {
+                is AddressWatch.Added -> Outcome(done = true)
+                is AddressWatch.AlreadyInWallet ->
+                    Outcome(error = "Already in your wallet as “${result.account.label}”.")
+                AddressWatch.Contract -> Outcome(error = CONTRACT)
+                is AddressWatch.NotVerified ->
+                    Outcome(error = "The address cannot be checked right now. Nothing was added.")
+                AddressWatch.NameTooLong ->
+                    Outcome(nameError = "Use at most ${RenameAccount.MAX_LABEL_LENGTH} characters")
+                AddressWatch.NotSaved -> Outcome(error = "The account could not be saved. Nothing was added.")
+            }
+        }
+    }
+
+    private fun detectionOf(address: Address, list: AccountList, reading: KindReading?): Detection {
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        return detectionOf(address, list, accounts.firstOrNull { it.address == address }, reading, accounts)
+    }
+
+    private fun detectionOf(
+        address: Address,
+        list: AccountList,
+        inWallet: Account?,
+        reading: KindReading?,
+        accounts: List<Account>,
+    ): Detection = when {
+        inWallet != null -> Detection.InWallet(inWallet.label)
+        list is AccountList.Unreadable ->
+            Detection.Unavailable("Your account list cannot be read right now, so nothing can be added.")
+        reading == null -> Detection.Checking
+        reading is KindReading.Syncing ->
+            Detection.Unavailable("The light client is not synced yet. The address is checked as soon as it is.")
+        reading is KindReading.Unavailable -> Detection.Unavailable(
+            when (reading.reason) {
+                ReadUnavailable.NO_ENGINE ->
+                    "There is no light client on this device, so the address cannot be checked."
+                ReadUnavailable.STALE_ANCHOR ->
+                    "The light client refuses to sync, so the address cannot be checked."
+                // Not the code's fault alone: for a Safe, its code may be proven and its storage
+                // (owners, threshold) not, and the reading does not tell the two apart.
+                ReadUnavailable.UNPROVEN -> "What is at this address could not be verified this time: its code, or " +
+                    "for a Safe its owners and threshold. Serotine keeps trying."
+                ReadUnavailable.REFUSED -> "The light client on this device cannot check this address."
+            },
+        )
+        else -> {
+            val verified = reading as KindReading.Verified
+            when (val kind = verified.kind) {
+                AddressKind.Eoa -> Detection.Account(Eip55.format(address), checkedAt(verified), delegate = null)
+                is AddressKind.DelegatedEoa ->
+                    Detection.Account(Eip55.format(address), checkedAt(verified), Eip55.format(kind.delegate))
+                is AddressKind.Safe -> safeCard(address, kind.state, accounts, verified)
+                AddressKind.Contract -> Detection.Contract(CONTRACT)
+            }
+        }
+    }
+
+    private fun checkedAt(reading: KindReading.Verified) = "Checked at block ${grouped(reading.blockNumber)}"
+
+    private fun safeCard(address: Address, state: SafeState, accounts: List<Account>, verified: KindReading.Verified) =
+        Detection.Safe(
+            address = Eip55.format(address),
+            title = "Safe ${state.version}" + if (state.l2) " (L2)" else "",
+            signers = "${state.threshold} of ${state.owners.size} owners",
+            owners = state.owners.map(Eip55::format),
+            modules = state.modules.map(Eip55::format),
+            guard = state.guard?.let(Eip55::format),
+            checkedAt = checkedAt(verified),
+            control = Control.of(state.control(state.ownersHeld(accounts).size)),
+            moduleGuard = state.moduleGuard?.let(Eip55::format),
+            threshold = "${state.threshold}/${state.owners.size}",
+        )
+
+    /** Why the typed text is no address, once that is clear: not while the user is still typing one. */
+    private fun addressError(text: String, parsed: AddressInput): String? {
+        val trimmed = text.trim()
+        return when {
+            trimmed.isEmpty() || parsed is AddressInput.Valid -> null
+            parsed is AddressInput.ChecksumMismatch ->
+                "The capitals do not match this address's checksum: check it for a typo."
+            "." in trimmed -> "Enter the address itself; names (ENS) come with sending."
+            trimmed.length >= ADDRESS_LENGTH || !HEX_SO_FAR.matches(trimmed) ->
+                "Not an address: an address is 0x and 40 hexadecimal digits."
+            else -> null
+        }
+    }
+
+    private companion object {
+        const val ADDRESS_LENGTH = 42
+        val HEX_SO_FAR = Regex("^(0|0[xX][0-9a-fA-F]*)$")
+        const val CONTRACT =
+            "This address holds a contract that is not a recognised Safe. Serotine watches accounts and Safes."
+    }
+}

@@ -2,9 +2,10 @@ package eth.serotine.domain.model
 
 /**
  * The wallet password, as the user types it: the factor every stored key is wrapped under
- * (docs/keys-and-signing.md, *The envelope*). It travels like a [Mnemonic] — from the seed
- * screen's UiState through its ViewModel and a use case into the key store, nowhere else —
- * and becomes bytes only inside the key store, which zeroes them after stretching them.
+ * (docs/keys-and-signing.md, *The envelope*). It travels like a [Mnemonic] — from the UiState
+ * of a screen that takes it (the seed screens, Security) through its ViewModel and a use case
+ * into the key store, or as `Unlock.WithPassword` into the signer, nowhere else — and becomes
+ * bytes only inside the key store, which zeroes them after stretching them.
  * The text field's own String cannot be zeroed; that is rule 7's scoped exception.
  *
  * [toString] is redacted and equality is identity, so a log line or a data-class

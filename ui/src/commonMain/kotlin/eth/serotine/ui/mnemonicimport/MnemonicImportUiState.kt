@@ -2,6 +2,7 @@ package eth.serotine.ui.mnemonicimport
 
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.ui.components.PasswordStep
 
 /**
  * Everything the seed-phrase screen renders: the dedicated seed UiState of the mnemonic
@@ -48,22 +49,10 @@ sealed interface MnemonicImportUiState {
             }
     }
 
-    /** The account named [label] was added. The words and the password are gone; the screen closes. */
-    data class Imported(val label: String) : MnemonicImportUiState
-}
-
-/** Which password the seed screen asks for, as the key store described itself. */
-sealed interface PasswordStep {
-
-    /** The key store has not answered yet: no password field, nothing can be added. */
-    data object Checking : PasswordStep
-
-    /** This import sets the wallet password, typed twice; [protection] says, display-ready, how the seed is kept. */
-    data class New(val protection: String) : PasswordStep
-
-    /** A wallet password is set and must be given; [protection] as for [New]. */
-    data class Existing(val protection: String) : PasswordStep
-
-    /** The key store does not work on this device: nothing can be added. */
-    data object Unavailable : PasswordStep
+    /**
+     * The account named [label] was added. The words and the password are gone; the screen
+     * closes, unless there is a [note] to read first (its key protected at a lighter cost than
+     * this device's own), which stays until the user is done.
+     */
+    data class Imported(val label: String, val note: String? = null) : MnemonicImportUiState
 }

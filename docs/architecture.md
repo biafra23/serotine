@@ -2,9 +2,9 @@
 
 Serotine is laid out as a clean architecture with MVVM in the presentation
 layer. This page is the contract every change is held to (the reviewer reads
-it through CLAUDE.md); the skeleton's two vertical slices — the Home screen
-listing the managed accounts, and the seed-phrase screen that adds one — show
-each rule in code.
+it through CLAUDE.md); the Assets tab listing the managed accounts, an
+account's own screens, and the recovery-phrase screen that adds one show each
+rule in code.
 
 ## The modules and the dependency rule
 
@@ -30,15 +30,30 @@ each rule in code.
 
 **Dependencies point inward, and only inward.**
 
-- `:domain` depends on nothing of ours and on no framework (coroutines' `Flow`
-  is the one library in it). It has no Android target on purpose: Android
+- `:domain` depends on nothing of ours and on no framework. Its libraries are
+  coroutines' `Flow` and kotlincrypto's Keccak-256 (`sha3`), both pure Kotlin
+  on every target. Keccak-256 is there by the owner's ruling (2026-10-18,
+  #50) for the transaction encoding and hashing alone: the EIP-1559 signing
+  digest and transaction hash, a Safe transaction's EIP-712 hash, the CREATE2
+  address of a Safe and EIP-55. It is the one library besides coroutines, and
+  nothing else comes in under it. It has
+  no Android target on purpose: Android
   consumers resolve its JVM variant, as they do kotlinx-coroutines, so nothing
   in it can ever import `android.*` (and that variant emits Java 17 class
-  files, since Android dexes it).
+  files, since Android dexes it). What it cannot do in pure Kotlin it asks a
+  port for: secp256k1 recovery (`SignatureRecovery`), JSON
+  (`SigningRequestCodec`).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
-  `KeyStore`, `KnownUpgradeStore`, and `NativeBalances`, `LightClient` and
-  `NetworkUpgrades` over the embedded Myotis engine) and owns every data
-  source.
+  `KeyStore` and `Signer`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
+  `DisplayCurrencySetting`, `SentTransfers`, and `NativeBalances`, `TokenBalances`,
+  `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient`,
+  `NetworkUpgrades`, and for sending `TransactionInputs`, `Broadcaster`,
+  `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine; for a
+  Safe's transactions `SafeTxQueue` and `SigningRequestCodec`
+  (`eth.serotine.data.safe`), `SignatureRecovery` (`eth.serotine.data.keys`,
+  libsecp256k1) and `SafeApprovals`, over the engine; for creating a Safe
+  `SafeReleases`, the pinned release in `eth.serotine.data.safe`) and owns
+  every data source.
 - `:ui` depends on `:domain`. A ViewModel takes **use cases**, never a
   repository, and never sees `:data`.
 - The hosts depend on `:ui` and `:data` and are the **only** places that know
@@ -47,7 +62,10 @@ each rule in code.
   `AppGraph` and hands it to `App`. A port whose adapter is the platform's own
   output rather than a data source — `UpgradeNotifier`, the notifications —
   is implemented in the host itself, since it needs the host's activity, icon
-  or tray; the decision what to show stays a use case in `:domain`.
+  or tray; the decision what to show stays a use case in `:domain`. The same
+  goes for a seam an adapter needs from the host's window: the biometric prompt
+  the key adapter's `BiometricPrompter` asks for is the Android host's
+  `PlatformBiometricPrompter`, shown on the activity in front.
 
 Anything that violates the arrows — a screen reaching for a repository, a use
 case importing a Compose or Android type, `:data` depending on `:ui` — is a
@@ -57,19 +75,20 @@ review finding, whatever it saves.
 
 | package | contents |
 |---|---|
-| `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`) — immutable, validated in `init`/factory |
+| `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`, `SafeTx` and its `SigningRequest`, `SafeRelease`) and the encodings computed here (`SafeCreation`: `setup`, `createProxyWithNonce` and the CREATE2 address) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
-| `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke` |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`; later `safe`) |
-| `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` |
-| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, dates in the user's locale) |
+| `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution, a Safe's deployment) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `files`) |
+| `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `safepropose` is Send from a Safe, on the same transfer form; `transferstatus` follows a transaction once sent; `safetx` is one Safe transaction with its signing, approval and execution steps; `safeimport` imports a signing request; `createsafe` holds one screen with three steps, owners, threshold and review) |
+| `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu, the transfer form, the unlock that signs, a Safe transaction's decoded action, a signing request shared) and the display helpers and display-ready types they share (EIP-55, amounts, the light client's line, the seed screens' password step, the transfer form's inputs and texts, what a Safe transaction does and why one is refused); no ViewModel, no use case |
+| `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |
 | `eth.serotine.ui.theme` | Material 3 theme |
 | `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
 
 ## MVVM, the contract
 
-- **A screen is a pure function of its UiState.** `HomeScreen(state)` renders
-  any `HomeUiState` and holds no state of its own beyond transient UI details
+- **A screen is a pure function of its UiState.** `AssetsScreen(state)` renders
+  any `AssetsUiState` and holds no state of its own beyond transient UI details
   (scroll position, an expanded row). A UiState is a sealed interface or an
   immutable data class; its leaves are display-ready values (strings, enums),
   never a `Flow`, a repository or a platform type.
@@ -95,7 +114,29 @@ review finding, whatever it saves.
   (`onAddAccount`, `onBack`); only `App` holds the `NavController`. The one
   exception is the update screen: its ViewModel decides whether the app shows
   anything else, so `App` creates it in the host's scope and navigates to the
-  screen, clearing the back stack, while an update is required.
+  screen, clearing the back stack (both tabs' stacks included), while an
+  update is required, and to the Assets tab's start once it no longer is.
+- **App-wide work runs in the hosts, not in `App`.** What no screen owns is a
+  use case the composition root builds from its ports and runs for the
+  process's life, beside the `AppGraph` (ports in, ViewModel factories out):
+  `FollowUpgradeReports`, which notifies of a network upgrade, and
+  `FollowSafeDeployments`, which lists the Safes this wallet deployed
+  whatever screen is open (docs/wallet-ux.md, screen 15). On Android both run
+  while the application holds the engine; on the desktop, while `main()`
+  runs.
+- **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
+  a `NavigationRail` on a wide desktop window — around that one `NavHost`.
+  Each tab is a nested graph. Settings opens over the Assets tab's stack and
+  closes back down to it, so switching tabs keeps the user's place in Assets
+  with no stack saved aside to go stale (owner ruling, 2026-10-18, #49: this
+  tab model stands for now); re-selecting the current tab returns
+  to its start. A route's arguments are identifiers only
+  (`account/{address}`), never an object: the destination's ViewModel loads
+  what it shows through its use cases. The bar shows on the tabs' screens; a
+  flow that ends in a key operation or a transaction (import, create, send,
+  a Safe transaction, create Safe) is a destination of its own that covers it, and so is
+  the update screen, outside both tabs. The screens themselves are
+  docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference

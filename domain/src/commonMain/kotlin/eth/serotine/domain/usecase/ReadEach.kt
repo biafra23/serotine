@@ -1,0 +1,58 @@
+package eth.serotine.domain.usecase
+
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * Each value this flow emits, with the latest reading of each of the [keys] it names: one
+ * reader per key, started when its key arrives and cancelled when it leaves, so the other
+ * readers go on undisturbed and none waits for a cancelled read in flight to end (a verified
+ * read can take long). A key has no entry until its first reading; what a cancelled reader
+ * still delivers is dropped, so a key named again starts from no entry — on any dispatcher.
+ * The upstream is collected once.
+ */
+internal fun <T, K, V> Flow<T>.readEach(keys: (T) -> Set<K>, read: (K) -> Flow<V>): Flow<Pair<T, Map<K, V>>> =
+    channelFlow {
+        val state = MutableStateFlow(Readings<K, V>(emptyMap(), emptyMap()))
+        // Touched only where the upstream is collected, one value at a time.
+        val readers = mutableMapOf<K, Job>()
+        var generation = 0L
+        val values = onEach { value ->
+            val wanted = keys(value)
+            readers.keys.filterNot { it in wanted }.forEach { key ->
+                readers.remove(key)?.cancel() // not joined
+                // Always a change (the key had a generation), so a write racing it is retried.
+                state.update { Readings(it.generations - key, it.values - key) }
+            }
+            wanted.filterNot { it in readers }.forEach { key ->
+                val mine = ++generation
+                state.update { Readings(it.generations + (key to mine), it.values) }
+                readers[key] = launch {
+                    read(key).collect { reading ->
+                        // Written only while this reader is its key's: a cancelled one, or one
+                        // whose key left and came back under a new reader, writes nothing.
+                        state.update { now ->
+                            if (now.generations[key] != mine) {
+                                now
+                            } else {
+                                Readings(now.generations, now.values + (key to reading))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        combine(values, state) { value, read ->
+            val wanted = keys(value)
+            value to read.values.filterKeys { it in wanted }
+        }.collect { send(it) }
+    }
+
+/** Each key's reader [generations], and the [values] its current reader delivered. */
+private data class Readings<K, V>(val generations: Map<K, Long>, val values: Map<K, V>)

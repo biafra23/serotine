@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serotine wallet screens</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{--surface-0:#f5f4ef;--surface-1:#efede6;--surface-2:#ffffff;--surface-3:#ffffff;--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-accent:#185fa5;--text-success:#3b6d11;--text-warning:#854f0b;--text-danger:#a32d2d;--bg-accent:#e6f1fb;--bg-success:#eaf3de;--bg-warning:#faeeda;--fill-control:rgba(0,0,0,0.07);--fill-accent:#2f6fd0;--on-accent:#ffffff;--border:rgba(0,0,0,0.1);--border-strong:rgba(0,0,0,0.18);--border-stronger:rgba(0,0,0,0.35);--font-sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--surface-0:#1a1a19;--surface-1:#262624;--surface-2:#2c2c2a;--surface-3:#343432;--text-primary:#f1efe8;--text-secondary:#b4b2a9;--text-accent:#85b7eb;--text-success:#97c459;--text-warning:#ef9f27;--text-danger:#f09595;--bg-accent:#0c447c;--bg-success:#27500a;--bg-warning:#633806;--fill-control:rgba(255,255,255,0.1);--fill-accent:#378add;--on-accent:#ffffff;--border:rgba(255,255,255,0.1);--border-strong:rgba(255,255,255,0.18);--border-stronger:rgba(255,255,255,0.35)}}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:var(--font-sans)}
+main{max-width:1180px;margin:0 auto;padding:24px 16px}
+h1{font-size:22px;font-weight:500;margin:0 0 4px}
+.lead{color:var(--text-secondary);font-size:14px;margin:0 0 8px;line-height:1.5}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;padding:1rem 0}
+.ph{border:0.5px solid var(--border-strong);border-radius:16px;background:var(--surface-2);height:440px;display:flex;flex-direction:column;overflow:hidden;font-size:12px;position:relative;line-height:1.35}
+.hd{padding:10px 12px 4px;display:flex;align-items:center;gap:6px;font-weight:500;font-size:14px}
+.bd{flex:1;padding:0 12px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.r{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)}
+.f{flex:1;min-width:0}.e{text-align:right}
+.m{color:var(--text-secondary);font-size:11px}
+.bl{width:28px;height:28px;border-radius:50%;image-rendering:pixelated;display:block}
+.av{position:relative;flex:none;line-height:0}
+.ov{position:absolute;right:-7px;bottom:-4px;background:var(--surface-2);border:0.5px solid var(--border-stronger);border-radius:7px;font-size:11px;padding:0 3px;line-height:14px;font-weight:500;color:var(--text-primary)}
+.b{font-size:11px;padding:0 5px;border-radius:5px;line-height:15px;display:inline-block}
+.ok{background:var(--bg-success);color:var(--text-success)}.co{background:var(--bg-warning);color:var(--text-warning)}.wo{background:var(--fill-control);color:var(--text-secondary)}
+.nav{display:flex;border-top:0.5px solid var(--border);padding:6px 0 8px;font-size:11px;color:var(--text-secondary)}.nav>div{flex:1;text-align:center}.nav i{font-size:18px;display:block}.on{color:var(--text-accent)}
+.fab{position:absolute;right:12px;bottom:52px;width:42px;height:42px;border-radius:12px;background:var(--fill-accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-size:22px}
+.cap{font-size:12px;color:var(--text-secondary);margin-top:6px}
+.btn{border:0.5px solid var(--border-strong);border-radius:8px;text-align:center;padding:6px;font-size:12px}
+.pri{background:var(--fill-accent);color:var(--on-accent);border-color:transparent}
+.tk{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex:none}
+.menu{position:absolute;background:var(--surface-3);border:0.5px solid var(--border-stronger);border-radius:8px;padding:4px 0;font-size:12px;z-index:2}
+.menu div{padding:6px 12px;display:flex;gap:8px;align-items:center}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,0.4);z-index:1}
+.tot{background:var(--surface-1);border-radius:8px;padding:8px 10px}
+.big{font-size:20px;font-weight:500}
+.strip{font-size:11px;color:var(--text-success);background:var(--bg-success);border-radius:6px;padding:3px 8px}
+.in{border:0.5px solid var(--border-strong);border-radius:6px;padding:6px 8px;font-size:12px;color:var(--text-secondary)}
+.chip{border:0.5px solid var(--border-strong);border-radius:12px;padding:1px 8px;font-size:11px}
+.chip.s{background:var(--bg-accent);color:var(--text-accent);border-color:transparent}
+.w{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}.w span{background:var(--surface-1);border-radius:5px;padding:3px 4px;font-size:11px}
+</style>
+</head>
+<body>
+<main>
+<h1>Serotine wallet screens</h1>
+<p class="lead">The 20-screen proposal for the wallet UX (EOAs and Safe{Wallet}, Sepolia only for now), drawn 2026-10-16. The text that goes with it, and wins where the two differ: <code>docs/wallet-ux.md</code>. Blockies are real (ethereum/blockies algorithm, seeded by the lowercase address); the QR code is illustrative. Amounts and addresses are made up.</p>
+<h2 class="sr-only">Phone-screen mockups proposing the Serotine wallet: assets, account detail, send, receive, watch, import, create account, create Safe, Safe queue and settings.</h2>
+<div class="g">
+
+<div><div class="ph">
+<div class="hd"><span class="f">Assets</span><span class="chip">Sepolia</span></div>
+<div class="bd">
+<div class="strip">Verified at block 9,412,118 · 8 s ago</div>
+<div class="tot"><div class="m">Total · EUR</div><div class="big">€19,475.85</div><div class="m">4 accounts · testnet prices</div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH<div class="m">€9,612.30</div></div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x5ad1e7c93b04f2a8e6d1c5b7a9f3e2d4c8b607be" width="8" height="8"></canvas><span class="ov">2/3</span></span><div class="f">Family Safe <span class="b co">Co-signer</span><div class="m">0x5aD1…07Be</div></div><div class="e">1.5 ETH<div class="m">€4,500.00</div></div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x3c9e1a7b5d2f8e4c6b0a9d3e7f1c5a2b8e4d6f09" width="8" height="8"></canvas></span><div class="f">Savings <span class="b wo">Watch</span><div class="m">0x3C9e…6F09</div></div><div class="e">0.84 ETH<div class="m">€2,520.00</div></div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0xb71c4e9a2d6f3c8b5e1a7d0f9c2e6b4a8d3f5e21" width="8" height="8"></canvas><span class="ov">1/2</span></span><div class="f">Ops Safe <span class="b ok">Full</span><div class="m">0xB71c…5E21</div></div><div class="e">0.1101 ETH<div class="m">€330.30</div></div></div>
+</div>
+<div class="fab"><i class="ti ti-plus" aria-hidden="true"></i></div>
+<div class="nav"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Assets</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">1 · Assets: accounts, native balance, total</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Assets</span><span class="chip">Sepolia</span></div>
+<div class="bd"><div class="tot"><div class="m">Total · EUR</div><div class="big">€19,475.85</div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main</div></div></div>
+<div class="scrim"></div>
+<div style="position:absolute;right:12px;bottom:52px;z-index:2;display:flex;flex-direction:column;align-items:flex-end;gap:10px">
+<div style="display:flex;gap:8px;align-items:center"><span class="b" style="background:var(--surface-3);color:var(--text-primary);padding:2px 8px">Create Safe</span><span class="tk" style="width:34px;height:34px;background:var(--surface-3)"><i class="ti ti-shield-lock" aria-hidden="true"></i></span></div>
+<div style="display:flex;gap:8px;align-items:center"><span class="b" style="background:var(--surface-3);color:var(--text-primary);padding:2px 8px">Create account</span><span class="tk" style="width:34px;height:34px;background:var(--surface-3)"><i class="ti ti-key" aria-hidden="true"></i></span></div>
+<div style="display:flex;gap:8px;align-items:center"><span class="b" style="background:var(--surface-3);color:var(--text-primary);padding:2px 8px">Import recovery phrase</span><span class="tk" style="width:34px;height:34px;background:var(--surface-3)"><i class="ti ti-file-import" aria-hidden="true"></i></span></div>
+<div style="display:flex;gap:8px;align-items:center"><span class="b" style="background:var(--surface-3);color:var(--text-primary);padding:2px 8px">Watch address</span><span class="tk" style="width:34px;height:34px;background:var(--surface-3)"><i class="ti ti-eye" aria-hidden="true"></i></span></div>
+<div class="fab" style="position:static"><i class="ti ti-x" aria-hidden="true"></i></div></div>
+<div class="nav" style="margin-top:auto"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Assets</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">2 · FAB fanned out</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Assets</span><span class="chip">Sepolia</span></div>
+<div class="bd">
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH</div></div>
+<div class="r" style="background:var(--surface-1)"><span class="av"><canvas class="bl" data-a="0x5ad1e7c93b04f2a8e6d1c5b7a9f3e2d4c8b607be" width="8" height="8"></canvas><span class="ov">2/3</span></span><div class="f">Family Safe<div class="m">0x5aD1…07Be</div></div><div class="e">1.5 ETH</div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x3c9e1a7b5d2f8e4c6b0a9d3e7f1c5a2b8e4d6f09" width="8" height="8"></canvas></span><div class="f">Savings <span class="b wo">Watch</span><div class="m">0x3C9e…6F09</div></div><div class="e">0.84 ETH</div></div>
+</div>
+<div class="menu" style="left:60px;top:118px;width:150px">
+<div><i class="ti ti-send" aria-hidden="true"></i>Send</div><div><i class="ti ti-qrcode" aria-hidden="true"></i>Receive</div><div><i class="ti ti-copy" aria-hidden="true"></i>Copy address</div><div><i class="ti ti-edit" aria-hidden="true"></i>Rename</div><div style="color:var(--text-danger)"><i class="ti ti-trash" aria-hidden="true"></i>Remove</div></div>
+<div class="nav"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Assets</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">3 · Long press on an account (right-click on desktop). Watch-only rows get no Send.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Main</span><i class="ti ti-dots-vertical" aria-hidden="true"></i></div>
+<div class="bd">
+<div style="display:flex;gap:10px;align-items:center"><canvas class="bl" style="width:44px;height:44px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div><div class="big">€12,125.55</div><div class="m">0x8F3a…91c2 <i class="ti ti-copy" aria-hidden="true"></i> · <span class="b ok">Full control</span></div></div></div>
+<div style="display:flex;gap:6px"><div class="btn pri f"><i class="ti ti-send" aria-hidden="true"></i> Send</div><div class="btn f"><i class="ti ti-qrcode" aria-hidden="true"></i> Receive</div></div>
+<div style="display:flex;gap:6px;align-items:center"><span class="m f">Sort</span><span class="chip s">Value</span><span class="chip">Name</span></div>
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">Ξ</span><div class="f">ETH<div class="m">3.2041</div></div><div class="e">€9,612.30</div></div>
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">$</span><div class="f">USDC<div class="m">1,250.00</div></div><div class="e">€1,151.25</div></div>
+<div class="r"><span class="tk" style="background:var(--fill-control)">W</span><div class="f">WETH<div class="m">0.25</div></div><div class="e">€750.00</div></div>
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">L</span><div class="f">LINK<div class="m">40.0</div></div><div class="e">€512.00</div></div>
+<div class="r"><span class="tk" style="background:var(--bg-success);color:var(--text-success)">€</span><div class="f">EURC<div class="m">100.00</div></div><div class="e">€100.00</div></div>
+<div class="r"><span class="tk" style="background:var(--fill-control)">UN</span><div class="f">UNI<div class="m">3.5</div></div><div class="e m">no price</div></div>
+<div class="m">Prices: Chainlink feeds at block 9,412,118, verified</div>
+</div></div><div class="cap">4 · Account detail, sortable by value or name</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Main</span></div>
+<div class="bd">
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">Ξ</span><div class="f">ETH<div class="m">3.2041</div></div><div class="e">€9,612.30</div></div>
+<div class="r" style="background:var(--surface-1)"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">$</span><div class="f">USDC<div class="m">1,250.00</div></div><div class="e">€1,151.25</div></div>
+<div class="r"><span class="tk" style="background:var(--fill-control)">W</span><div class="f">WETH<div class="m">0.25</div></div><div class="e">€750.00</div></div>
+</div>
+<div class="menu" style="left:50px;top:96px;width:160px">
+<div><i class="ti ti-send" aria-hidden="true"></i>Send USDC</div><div><i class="ti ti-copy" aria-hidden="true"></i>Copy contract</div><div><i class="ti ti-eye-off" aria-hidden="true"></i>Hide token</div></div>
+</div><div class="cap">5 · Long press on an asset opens Send with it preselected</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Receive</span></div>
+<div class="bd" style="align-items:center;text-align:center">
+<div style="display:flex;gap:8px;align-items:center"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><span style="font-weight:500">Main</span></div>
+<div style="background:#fff;padding:8px;border-radius:8px"><canvas class="qr" data-a="0x8F3a2c71E5b9D04A6f1e3C2bA7d90E5f4C6b91c2" width="29" height="29" style="width:132px;height:132px;image-rendering:pixelated;display:block"></canvas></div>
+<div style="font-family:var(--font-mono);font-size:11px;word-break:break-all">0x8F3a2c71E5b9D04A6f1e3C2bA7d90E5f4C6b91c2</div>
+<div class="b co" style="padding:3px 8px">Only send Sepolia assets to this address</div>
+<div style="display:flex;gap:6px;width:100%"><div class="btn f"><i class="ti ti-copy" aria-hidden="true"></i> Copy</div><div class="btn f"><i class="ti ti-share" aria-hidden="true"></i> Share</div></div>
+</div></div><div class="cap">6 · Receive: QR code of the checksummed address</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Send</span></div>
+<div class="bd">
+<div class="m">From</div><div class="r"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div class="f">Main<div class="m">0x8F3a…91c2</div></div></div>
+<div class="m">Asset</div><div class="in" style="display:flex;justify-content:space-between;color:var(--text-primary)"><span>USDC</span><span class="m">1,250.00 available <i class="ti ti-chevron-down" aria-hidden="true"></i></span></div>
+<div class="m">To</div><div class="in" style="display:flex;gap:6px;align-items:center;color:var(--text-primary)"><canvas class="bl" style="width:18px;height:18px" data-a="0xd8da6bf26964af9d7eed9e03e53415d37aa96045" width="8" height="8"></canvas>vitalik.eth<span class="m f e">0xd8dA…6045</span></div>
+<div class="m">Amount</div><div class="in" style="display:flex;justify-content:space-between;color:var(--text-primary)"><span>250</span><span class="chip">Max</span></div><div class="m">≈ €230.25</div>
+<div class="m">Network fee</div><div style="display:flex;gap:4px"><span class="chip">Slow</span><span class="chip s">Normal</span><span class="chip">Fast</span><span class="m f e">≈ €0.36</span></div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Review</div>
+</div></div><div class="cap">7 · Send: compose</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Review</span></div>
+<div class="bd">
+<div style="text-align:center"><div class="big">250 USDC</div><div class="m">≈ €230.25</div></div>
+<div class="r"><span class="m" style="width:34px">To</span><canvas class="bl" style="width:22px;height:22px" data-a="0xd8da6bf26964af9d7eed9e03e53415d37aa96045" width="8" height="8"></canvas><div class="f">vitalik.eth<div class="m">0xd8dA…6045 · ENS verified</div></div></div>
+<div class="r"><span class="m" style="width:34px">From</span><canvas class="bl" style="width:22px;height:22px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div class="f">Main</div></div>
+<div class="r"><span class="m f">Fee, at most</span>0.00021 ETH</div>
+<div class="tot"><div class="m">Simulated at block 9,412,118, verified</div>USDC 1,250.00 → 1,000.00</div>
+<div class="in">Wallet password</div>
+<div style="display:flex;gap:6px;margin-top:auto;margin-bottom:10px"><div class="btn" style="width:40px"><i class="ti ti-fingerprint" aria-hidden="true"></i></div><div class="btn pri f">Sign and send</div></div>
+</div></div><div class="cap">8 · Review: amounts in token units, verified simulation</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Sent</span><i class="ti ti-x" aria-hidden="true"></i></div>
+<div class="bd">
+<div style="text-align:center;padding:8px 0"><div class="big">250 USDC</div><div class="m">to vitalik.eth</div></div>
+<div class="r"><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i><div class="f">Signed on this device</div></div>
+<div class="r"><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i><div class="f">Broadcast to 6 peers</div></div>
+<div class="r"><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i><div class="f">Included in block 9,412,121<div class="m">Receipt verified</div></div></div>
+<div class="r"><i class="ti ti-clock" style="color:var(--text-secondary)" aria-hidden="true"></i><div class="f">Finalized<div class="m">about 13 min</div></div></div>
+<div class="m" style="font-family:var(--font-mono)">0x4c1e…a90b <i class="ti ti-copy" aria-hidden="true"></i></div>
+<div class="btn" style="margin-top:auto;margin-bottom:10px">Done</div>
+</div></div><div class="cap">9 · Send: status</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Watch address</span></div>
+<div class="bd">
+<div class="m">Address or ENS name</div><div class="in" style="color:var(--text-primary)">0x5aD1E7c9…D4c8B607Be</div>
+<div class="m">Name</div><div class="in" style="color:var(--text-primary)">Family Safe</div>
+<div class="tot" style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;gap:10px;align-items:center"><span class="av"><canvas class="bl" style="width:36px;height:36px" data-a="0x5ad1e7c93b04f2a8e6d1c5b7a9f3e2d4c8b607be" width="8" height="8"></canvas><span class="ov">2/3</span></span><div><div style="font-weight:500">Safe 1.4.1</div><div class="m">2 of 3 owners must sign</div></div></div>
+<div style="display:flex;gap:4px;align-items:center"><canvas class="bl" style="width:20px;height:20px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><canvas class="bl" style="width:20px;height:20px" data-a="0x9a4fe2c71b6d3e8a5c9f0b2d7e4a1c6f3b8d5e21" width="8" height="8"></canvas><canvas class="bl" style="width:20px;height:20px" data-a="0x2e6b1d9f4a7c3e5b8d0f6a2c9e1b4d7f3a5c8e60" width="8" height="8"></canvas><span class="m">· you hold 1 owner key</span></div>
+<span class="b co" style="align-self:flex-start">Co-signer</span></div>
+<div class="m">Detected from verified code and storage</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Add</div>
+</div></div><div class="cap">10 · Watch address: EOA, Safe or contract, detected on chain</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Import recovery phrase</span></div>
+<div class="bd">
+<div class="w"><span>1 cabin</span><span>2 ••••</span><span>3 ••••</span><span>4 ••••</span><span>5 ••••</span><span>6 ••••</span><span>7 ••••</span><span>8 ••••</span><span>9 ••••</span><span>10 ••••</span><span>11 ••••</span><span>12</span></div>
+<div class="m"><i class="ti ti-lock" aria-hidden="true"></i> Screen capture is blocked here</div>
+<div class="m">Account name</div><div class="in" style="color:var(--text-primary)">Main</div>
+<div class="m">Wallet password</div><div class="in">At least 12 characters</div>
+<div class="r" style="border:0"><span class="f">Unlock with biometrics</span><i class="ti ti-toggle-right" style="font-size:22px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="m">Keys are wrapped by this password and the device's hardware key store.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Import</div>
+</div></div><div class="cap">11 · Import: today's seed screen, plus the envelope</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Create account</span><span class="m">1 of 3</span></div>
+<div class="bd">
+<div style="font-weight:500">Your recovery phrase</div>
+<div class="m">Write these 12 words on paper, in order. They're the only backup of this account.</div>
+<div class="w"><span>1 orbit</span><span>2 maple</span><span>3 fossil</span><span>4 twelve</span><span>5 crane</span><span>6 lunar</span><span>7 decade</span><span>8 sponsor</span><span>9 ribbon</span><span>10 velvet</span><span>11 quote</span><span>12 harbor</span></div>
+<div class="m"><i class="ti ti-lock" aria-hidden="true"></i> Screen capture is blocked here</div>
+<div class="m">Next: confirm words 3, 7 and 11, then set the wallet password.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">I wrote them down</div>
+</div></div><div class="cap">12 · Create account: phrase, check, password</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Create Safe</span><span class="m">1 of 3</span></div>
+<div class="bd">
+<div class="m">Name</div><div class="in" style="color:var(--text-primary)">Family Safe</div>
+<div class="m">Owners</div>
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)"><i class="ti ti-device-mobile" aria-hidden="true"></i></span><div class="f">This phone<div class="m">Hardware key, daily signing</div></div><i class="ti ti-check" aria-hidden="true"></i></div>
+<div class="r"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div class="f">Main<div class="m">Recovery phrase</div></div><i class="ti ti-check" aria-hidden="true"></i></div>
+<div class="r"><canvas class="bl" data-a="0x9a4fe2c71b6d3e8a5c9f0b2d7e4a1c6f3b8d5e21" width="8" height="8"></canvas><div class="f">Partner<div class="m">0x9a4F…5e21 · external</div></div><i class="ti ti-check" aria-hidden="true"></i></div>
+<div class="btn"><i class="ti ti-plus" aria-hidden="true"></i> Add owner</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Next</div>
+</div></div><div class="cap">13 · Create Safe: owners (device key, own accounts, others)</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Create Safe</span><span class="m">2 of 3</span></div>
+<div class="bd">
+<div style="font-weight:500">Signatures required</div>
+<div style="display:flex;align-items:center;gap:12px;justify-content:center;padding:6px 0"><span class="btn" style="width:28px">−</span><span class="big">2 of 3</span><span class="btn" style="width:28px">+</span></div>
+<div class="tot"><div style="font-weight:500;font-size:12px">Recovery</div><div class="m">If this phone is lost, Main and Partner can still sign together and swap in a new device key.</div></div>
+<div class="r"><i class="ti ti-circle-dot" style="color:var(--text-accent)" aria-hidden="true"></i><div class="f">Third owner covers recovery</div></div>
+<div class="r"><i class="ti ti-circle" aria-hidden="true"></i><div class="f">Add a recovery module<div class="m">Recoverer, 7-day veto window</div></div></div>
+<div class="b co" style="padding:3px 8px">2 of 2 without a recovery module isn't offered: one lost device locks the Safe for good.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Next</div>
+</div></div><div class="cap">14 · Create Safe: threshold and recovery</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Create Safe</span><span class="m">3 of 3</span></div>
+<div class="bd">
+<div style="display:flex;gap:10px;align-items:center"><span class="av"><canvas class="bl" style="width:44px;height:44px" data-a="0x7c2d5e8a1b4f6c9e3a0d7b2f5e8c1a4d6b9f3e72" width="8" height="8"></canvas><span class="ov">2/3</span></span><div><div style="font-weight:500">Family Safe</div><div class="m">0x7C2d…3e72, predicted</div></div></div>
+<div class="r"><span class="m f">Version</span>Safe 1.4.1</div>
+<div class="r"><span class="m f">Network</span>Sepolia</div>
+<div class="r"><span class="m f">Owners · threshold</span>3 · 2</div>
+<div class="r"><span class="m f">Deployment fee</span>≈ 0.0021 ETH</div>
+<div class="r"><span class="m f">Paid by</span><canvas class="bl" style="width:18px;height:18px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas>&nbsp;Main</div>
+<div class="m">The address is computed on this device from the factory, owners and salt, and checked against the deployed code.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Deploy Safe</div>
+</div></div><div class="cap">15 · Create Safe: review and deploy</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Family Safe</span><i class="ti ti-dots-vertical" aria-hidden="true"></i></div>
+<div class="bd">
+<div style="display:flex;gap:10px;align-items:center"><span class="av"><canvas class="bl" style="width:44px;height:44px" data-a="0x5ad1e7c93b04f2a8e6d1c5b7a9f3e2d4c8b607be" width="8" height="8"></canvas><span class="ov">2/3</span></span><div><div class="big">€4,500.00</div><div class="m">0x5aD1…07Be · <span class="b co">Co-signer</span></div></div></div>
+<div style="display:flex;gap:6px"><div class="btn pri f">Send</div><div class="btn f">Receive</div></div>
+<div style="display:flex;gap:6px"><span class="chip">Assets</span><span class="chip">Owners</span><span class="chip s">Queue · 1</span></div>
+<div class="r"><span class="tk" style="background:var(--bg-warning);color:var(--text-warning)">7</span><div class="f">Send 0.5 ETH to Savings<div class="m">1 of 2 signatures</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="m" style="margin-top:4px">Owners</div>
+<div class="r"><canvas class="bl" style="width:22px;height:22px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div class="f">Main <span class="m">· this device</span></div></div>
+<div class="r"><canvas class="bl" style="width:22px;height:22px" data-a="0x9a4fe2c71b6d3e8a5c9f0b2d7e4a1c6f3b8d5e21" width="8" height="8"></canvas><div class="f">Partner<div class="m">0x9a4F…5e21</div></div></div>
+<div class="r"><canvas class="bl" style="width:22px;height:22px" data-a="0x2e6b1d9f4a7c3e5b8d0f6a2c9e1b4d7f3a5c8e60" width="8" height="8"></canvas><div class="f">0x2E6b…8e60</div></div>
+</div></div><div class="cap">16 · Safe detail: owners and pending transactions</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Safe transaction #7</span></div>
+<div class="bd">
+<div style="text-align:center"><div class="big">0.5 ETH</div><div class="m">Family Safe → Savings</div></div>
+<div class="tot"><div class="m">Decoded on this device</div>Native transfer, no calldata, operation CALL</div>
+<div style="font-weight:500;font-size:12px">Signatures · 1 of 2</div>
+<div class="r"><canvas class="bl" style="width:22px;height:22px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div class="f">Main</div><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i></div>
+<div class="r"><canvas class="bl" style="width:22px;height:22px" data-a="0x9a4fe2c71b6d3e8a5c9f0b2d7e4a1c6f3b8d5e21" width="8" height="8"></canvas><div class="f">Partner</div><span class="m">waiting</span></div>
+<div class="r"><canvas class="bl" style="width:22px;height:22px" data-a="0x2e6b1d9f4a7c3e5b8d0f6a2c9e1b4d7f3a5c8e60" width="8" height="8"></canvas><div class="f">0x2E6b…8e60</div><span class="m">waiting</span></div>
+<div style="display:flex;gap:6px;margin-top:auto"><div class="btn f"><i class="ti ti-qrcode" aria-hidden="true"></i> Share request</div><div class="btn f">Approve on chain</div></div>
+<div class="btn pri" style="margin-bottom:10px">Execute when 2 of 2</div>
+</div></div><div class="cap">17 · Safe transaction: collect signatures, execute</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Settings</span></div>
+<div class="bd">
+<div class="m">Display</div>
+<div class="r"><i class="ti ti-currency-euro" aria-hidden="true"></i><div class="f">Display currency</div><span class="m">EUR</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="r"><i class="ti ti-coins" aria-hidden="true"></i><div class="f">Tokens<div class="m">18 known · 1 added</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="m">Security</div>
+<div class="r"><i class="ti ti-lock" aria-hidden="true"></i><div class="f">Wallet password</div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="r"><i class="ti ti-fingerprint" aria-hidden="true"></i><div class="f">Biometric unlock<div class="m">Class 3 only</div></div><i class="ti ti-toggle-right" style="font-size:22px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="m">Network</div>
+<div class="r"><i class="ti ti-world" aria-hidden="true"></i><div class="f">Sepolia<div class="m">The only network for now</div></div></div>
+<div class="r"><i class="ti ti-activity" aria-hidden="true"></i><div class="f">Light client<div class="m">Verified at block 9,412,118</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="r"><i class="ti ti-info-circle" aria-hidden="true"></i><div class="f">About</div><span class="m">v0.1.0</span></div>
+</div>
+<div class="nav"><div><i class="ti ti-wallet" aria-hidden="true"></i>Assets</div><div class="on"><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">18 · App settings</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Display currency</span></div>
+<div class="bd">
+<div class="r"><i class="ti ti-circle" aria-hidden="true"></i><div class="f">US dollar</div><span class="m">USD</span></div>
+<div class="r"><i class="ti ti-circle-dot" style="color:var(--text-accent)" aria-hidden="true"></i><div class="f">Euro</div><span class="m">EUR</span></div>
+<div class="r"><i class="ti ti-circle" aria-hidden="true"></i><div class="f">British pound</div><span class="m">GBP</span></div>
+<div class="r"><i class="ti ti-circle" aria-hidden="true"></i><div class="f">Swiss franc</div><span class="m">CHF</span></div>
+<div class="r"><i class="ti ti-circle" aria-hidden="true"></i><div class="f">Japanese yen</div><span class="m">JPY</span></div>
+<div class="r"><i class="ti ti-circle" aria-hidden="true"></i><div class="f">Ether</div><span class="m">ETH</span></div>
+<div class="r"><i class="ti ti-circle" aria-hidden="true"></i><div class="f">Bitcoin</div><span class="m">BTC</span></div>
+<div class="m">Prices come from Chainlink feeds, read through the light client. On Sepolia they're testnet feeds; the coins have no market value.</div>
+</div></div><div class="cap">19 · Display currency: totals and every coin's value</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Add token</span></div>
+<div class="bd">
+<div class="m">Contract address</div><div class="in" style="color:var(--text-primary)">0x1f9840a8…6b6F984</div>
+<div class="tot" style="display:flex;gap:10px;align-items:center"><span class="tk" style="width:34px;height:34px;background:var(--fill-control)">UN</span><div><div style="font-weight:500">Uniswap · UNI</div><div class="m">18 decimals, read from the contract</div></div></div>
+<div class="m">Symbol</div><div class="in" style="color:var(--text-primary)">UNI</div>
+<div class="m">Name and symbol are the contract's own claim. A token is identified by its address only.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Add token</div>
+</div></div><div class="cap">20 · Add a token by address (in Settings)</div></div>
+
+</div>
+</main>
+<script>
+function bk(seed){const r=[0,0,0,0];for(let i=0;i<seed.length;i++){r[i%4]=((r[i%4]<<5)-r[i%4])+seed.charCodeAt(i);}
+function rnd(){const t=r[0]^(r[0]<<11);r[0]=r[1];r[1]=r[2];r[2]=r[3];r[3]=(r[3]^(r[3]>>19)^t^(t>>8));return (r[3]>>>0)/((1<<31)>>>0);}
+function col(){const h=Math.floor(rnd()*360);const s=(rnd()*60+40)+'%';const l=(rnd()+rnd()+rnd()+rnd())*25+'%';return 'hsl('+h+','+s+','+l+')';}
+const c=col(),bg=col(),sp=col();const d=[];for(let y=0;y<8;y++){const row=[];for(let x=0;x<4;x++)row[x]=Math.floor(rnd()*2.3);d.push(...row.concat(row.slice(0,4).reverse()));}return {c,bg,sp,d};}
+document.querySelectorAll('canvas.bl').forEach(cv=>{const b=bk(cv.dataset.a.toLowerCase());const x=cv.getContext('2d');x.fillStyle=b.bg;x.fillRect(0,0,8,8);b.d.forEach((v,i)=>{if(v){x.fillStyle=v===1?b.c:b.sp;x.fillRect(i%8,Math.floor(i/8),1,1);}});});
+document.querySelectorAll('canvas.qr').forEach(cv=>{const x=cv.getContext('2d');const n=29;let s=0;for(const ch of cv.dataset.a)s=(s*31+ch.charCodeAt(0))>>>0;function r(){s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296;}
+x.fillStyle='#fff';x.fillRect(0,0,n,n);x.fillStyle='#111';for(let i=0;i<n;i++)for(let j=0;j<n;j++){if(r()<0.48)x.fillRect(i,j,1,1);}
+[[0,0],[n-7,0],[0,n-7]].forEach(([a,b])=>{x.fillStyle='#fff';x.fillRect(a-1<0?a:a-1,b-1<0?b:b-1,8,8);x.fillStyle='#111';x.fillRect(a,b,7,7);x.fillStyle='#fff';x.fillRect(a+1,b+1,5,5);x.fillStyle='#111';x.fillRect(a+2,b+2,3,3);});});
+</script>
+</body>
+</html>

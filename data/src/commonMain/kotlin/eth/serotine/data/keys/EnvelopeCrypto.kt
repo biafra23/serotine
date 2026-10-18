@@ -25,7 +25,8 @@ internal expect object EnvelopeCrypto {
      * Argon2id (v1.3, one lane) of [password] with [salt], [opsLimit] passes over
      * [memLimitBytes] of memory, [outLength] bytes long. [password] is read as given:
      * every byte, whatever it encodes. [salt] is exactly [Envelope.SALT_BYTES] long. The
-     * copies the native call needs are zeroed after it.
+     * copies the native call needs are zeroed after it. Throws [Argon2idOutOfMemory] when
+     * the memory cannot be had.
      */
     fun argon2id(password: ByteArray, salt: ByteArray, opsLimit: Long, memLimitBytes: Long, outLength: Int): ByteArray
 
@@ -53,3 +54,23 @@ internal expect object EnvelopeCrypto {
 
 /** The name ending of [EnvelopeCrypto.writeDurably]'s temporary files; one left behind is a crashed write. */
 internal const val TEMPORARY_SUFFIX = ".tmp"
+
+/**
+ * Argon2id could not have the memory its parameters ask for: the device is short of free memory
+ * right now (the owner's ruling of 2026-10-18). Its own outcome, never a broken key store: sealing
+ * tries a lighter tier ([PasswordOnlyTier]), and opening says to close other apps and try again.
+ */
+internal class Argon2idOutOfMemory : Exception("not enough memory for Argon2id")
+
+/**
+ * The password's stretching as [Envelope] runs it: [EnvelopeCrypto.argon2id], with the same
+ * contract, unless a test hands it another (one that runs out of memory above a size).
+ */
+internal fun interface PasswordStretch {
+    fun argon2id(password: ByteArray, salt: ByteArray, opsLimit: Long, memLimitBytes: Long, outLength: Int): ByteArray
+
+    companion object {
+        /** libsodium's Argon2id, through [EnvelopeCrypto]. */
+        val Sodium = PasswordStretch(EnvelopeCrypto::argon2id)
+    }
+}

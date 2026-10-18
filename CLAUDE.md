@@ -47,29 +47,54 @@ Modules (Gradle):
 
 - **domain** — entities and value objects (`Account`, `Address`, `AccountKind`),
   the ports (`AccountRepository`, …) and the use cases (`ObserveAccounts`, …).
-  Pure Kotlin + coroutines' `Flow`; targets desktop JVM + iOS and deliberately
+  Pure Kotlin + coroutines' `Flow`, and kotlincrypto's Keccak-256 (`sha3`;
+  owner ruling, 2026-10-18, #50) for the transaction encoding and hashing
+  only: the EIP-1559 signing digest and transaction hash, the EIP-712
+  `SafeTx` hash, the CREATE2 address and EIP-55. That is its one library
+  besides coroutines, and for that scope alone. Targets desktop JVM + iOS
+  and deliberately
   NO Android target (Android consumers resolve its JVM variant, so nothing in it
   can ever import `android.*`).
-- **data** — the adapters behind the ports: `FileAccountRepository` (the
-  account list, persisted as a JSON file; `InMemoryAccountRepository` for tests),
+- **data** — the adapters behind the ports: `FileAccountRepository`
+  (`eth.serotine.data.account`: the account list, persisted as a JSON file;
+  `InMemoryAccountRepository` for tests), on `VersionedJsonFile`, the
+  versioned JSON file every file adapter keeps its value in
+  (`eth.serotine.data.files`),
   the key adapter's `EnvelopeKeyStore` (`eth.serotine.data.keys`: imported
-  seeds in envelopes, docs/keys-and-signing.md), and the Myotis engine adapter
-  (`eth.serotine.data.engine`: `MyotisNode`, verified native balances, the
-  peer-reported network-upgrade advisory), whose glue over `io.myotis.api`
-  lives in a `jvmSharedMain` source set the Android and desktop targets
-  share, and the record of a known upgrade (`eth.serotine.data.upgrade`).
+  seeds in envelopes, docs/keys-and-signing.md; and `Secp256k1Recovery`, which
+  finds the address a signature recovers to and holds no key), and the Myotis
+  engine adapter
+  (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
+  token metadata, prices and address kinds, the peer-reported network-upgrade
+  advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
+  names, and a Safe's owners' approvals on chain), whose glue over
+  `io.myotis.api` lives in a `jvmSharedMain` source
+  set the Android and desktop targets share; the record of a known upgrade
+  (`eth.serotine.data.upgrade`); the built-in token list and the user's token
+  settings (`eth.serotine.data.tokens`); the Chainlink feed table
+  (`eth.serotine.data.prices`); the pinned Safe deployments, the queue of
+  Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
+  the record of sent transactions (`eth.serotine.data.transfers`); and the
+  display currency
+  (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
   engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
-  `<Feature>ViewModel`, `<Feature>UiState`; the theme; `App` with the one
-  `NavHost` (a destination per screen, whose back-stack entry owns the
-  screen's ViewModel); and `AppGraph`, the composition root's contract (ports
-  in, ViewModel factories out). Depends on `:domain` only.
+  `<Feature>ViewModel`, `<Feature>UiState`; `components` for what several
+  screens draw (blockies, the QR code, EIP-55); the theme; `App` with the one
+  `NavHost` under the Assets | Settings bar (a destination per screen, whose
+  back-stack entry owns the screen's ViewModel; Settings opens over the Assets
+  tab's stack and closes back to it, with nothing saved aside: owner ruling,
+  2026-10-18, #49, for now); and `AppGraph`, the
+  composition root's contract (ports in, ViewModel factories out). Depends on
+  `:domain` only.
 - **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
   **desktop-app** — the hosts. Each has ONE composition root
   (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
-  adapters and renders `App`. The desktop one runs once per user: it holds an
+  adapters and renders `App`, and runs the app-wide work no screen owns
+  (`FollowUpgradeReports`, `FollowSafeDeployments`), never from `App` or
+  `AppGraph`. The desktop one runs once per user: it holds an
   `InstanceLock` on its data directory for the process's lifetime. A port
   whose adapter is the platform's own output (`UpgradeNotifier`: Android's
   notifications and alarm, the desktop's tray) is implemented in the host.
@@ -125,6 +150,15 @@ and that is the owner's decision, not a drive-by dependency.
   `Dispatchers.setMain` (`ui/src/commonTest`), stateless screens headless with
   `createComposeRule` (`ui/src/desktopTest`). A test that needs a device or
   the network is `@Ignore`d by default and documented.
+- **A missing prerequisite greys an action out, never hides it** (owner
+  ruling, 2026-10-18, #55). An action that is impossible because something it
+  needs is missing is shown disabled, and selecting it (a tap on the greyed
+  item still works) tells the user what is missing and how to get it
+  (`components/Unavailable.kt`: `UnavailableDialog`, with the ways to get it
+  where there are some). The UiState carries the enabled state and a
+  display-ready reason. Only an action that does not apply at all (to that
+  kind of account, in that step) is left out. The actions issue #74 lists
+  are known not to follow it yet; that list, not this file, says which.
 - **Every screen has previews** (owner's request, 2026-10-17), so Android
   Studio renders it: `<Feature>ScreenPreviews.kt` next to the screen, one
   private `@Preview` per state the screen draws differently plus one in the
@@ -527,6 +561,24 @@ discussion that produced this note.
   anchors are sync-committee signatures and its embedded accumulators) or shown
   as not available. No JSON-RPC provider, no indexer API and no "temporary"
   fallback supplies chain state, in any build type.
+- **A Safe's fallback handler is set only to a pinned one** (owner ruling,
+  2026-10-18, #63). A Safe transaction that sets a fallback handler other
+  than the pinned canonical CompatibilityFallbackHandler 1.4.1 of its
+  network, or none (the zero address, which removes it), is shown and never
+  signed, approved or executed here: the handler answers EIP-1271 signature
+  checks for the Safe, and one that accepts every signature lets anyone
+  spend what the Safe has approved. A guard removed and a module disabled
+  are signed with a warning, not refused. A call of the Safe itself that is
+  not decoded exactly (a settings change, or the empty zero-value
+  rejection) is refused whatever its selector, since on chain it could
+  still set the handler.
+- **Enabling a Safe module is refused** (owner ruling, 2026-10-18, on #54:
+  play it safe). A Safe transaction that enables a module, whatever the
+  module, is shown and never signed, approved or executed here: a module
+  moves the Safe's funds without its owners. Disabling a module keeps its
+  warning and is not refused. Which modules may be enabled is still open
+  (#54); a temporary, warned "dangerous mode" past it is planned in #78 and
+  not built.
 - **Network-upgrade warnings are peer reports, and say so** (owner's request,
   2026-10-17: warn ahead of a breaking hard fork, notify even while the app
   is closed, and after it do nothing but ask for the update). The engine's
@@ -562,8 +614,14 @@ discussion that produced this note.
     from the adapter through a use case and the ViewModel into the seed
     UiState at creation, and back the same way at restore. Nothing on that
     path stores, logs or caches them, and the UiState is cleared when its
-    screen is left. Everything the adapter derives from the words, the seed
-    and the keys, stays under the rule above.
+    screen is left. "Left" means the app going to the background, the screen
+    turning off or the screen being popped; a configuration change (a
+    rotation, a fold, a resize, a theme or font change) is not a leaving, and
+    the words stay in the ViewModel's memory across it, never in a saved
+    state or a Bundle (owner ruling, 2026-10-18, #39). Everything the adapter
+    derives from the words, the seed and the keys, stays under the rule
+    above. Open, the owner's to decide: whether Create account, one screen
+    using both legs of the path, is within the entry (#40).
 - **How keys are held — docs/keys-and-signing.md is the contract** (owner
   decisions, 2026-10-15); this is the summary a reviewer holds a diff against:
   - No platform holds secp256k1 in hardware, so an EOA key or a
@@ -592,6 +650,18 @@ discussion that produced this note.
     as the doc sets out. No dApp browser runs in the signing process.
   - What an imported mnemonic's envelope holds: its BIP-39 seed, so further
     accounts can be derived without the words (owner ruling, 2026-10-15).
+  - Where the password stands alone, Argon2id's cost is sized by the
+    device's memory (owner ruling, 2026-10-18, #36): 256 MiB × 4, 128 MiB ×
+    8 or 64 MiB × 16, about the same time each; Android starts at the tier
+    of its total memory and low-RAM flag, the desktop starts at 256 MiB × 4.
+    A seal whose memory cannot be had steps down a tier, on any device, never
+    below the 64 MiB floor, and the user is told when a lighter tier is used:
+    a device's lighter tier with its protection, a seal that stepped down
+    when the key is stored. An envelope keeps the tier it was sealed at.
+    Argon2id short of memory is its own outcome (sealing, opening, signing),
+    never "the key store does not work", and a failed seal stores nothing.
+    The hardware path's 64 MiB × 3 and stored envelopes are unchanged
+    (docs/keys-and-signing.md, *Costs*).
   - A desktop without a hardware key store stands on the password path alone,
     with Argon2id run harder, and the app tells the user so; a Mac with a
     Secure Enclave uses it as iOS does (owner ruling, 2026-10-15), the app
@@ -603,6 +673,9 @@ discussion that produced this note.
     present or not: rule 9's TPM path comes later, and until then the app
     tells the user that it does not use the TPM yet (owner ruling,
     2026-10-16).
+  - Deleting an account's key needs no wallet password (owner ruling,
+    2026-10-18, #17): removing the account deletes its envelope, and the app
+    asks the user to confirm the removal first (`RemoveAccountDialog`).
   - Open — the owner decides, and it is recorded here when made: the
     synced-passkey owner tier, external signers, threshold signing with
     Myotis, and the dApp connection protocol (WalletConnect is the candidate;
@@ -620,10 +693,46 @@ discussion that produced this note.
   screen. Code takes the network from `eth.serotine.domain.model.Network`,
   whose only value is `SEPOLIA`; adding a network, mainnet included, is the
   owner's decision and is recorded here first.
-- **Open decisions, each recorded here before its code lands**: the Safe{Wallet}
-  multi-signer flow (the Safe Transaction Service is an off-chain HTTP API —
-  what Serotine fetches from it, over what, and how an unverified answer is
-  shown), the dApp connection protocol (WalletConnect's relay is an off-chain
-  service too, and a request that arrives through it is untrusted input,
-  decoded and shown as such), token lists and metadata, price data. Until
-  decided, none of them is wired in.
+- **Prices come from Chainlink aggregators, read through the light client**
+  (owner ruling, 2026-10-16). A price is a verified `eth_call` of a pinned
+  aggregator's `latestRoundData()` and `decimals()`, on-chain state like any
+  other; there is no HTTP price API. On Sepolia these are Chainlink's Sepolia
+  feeds, and every fiat value says "testnet prices". A token without a feed
+  shows "no price" and is left out of every total. Prices are display-only:
+  an amount is entered, reviewed and signed in token units, never derived
+  from a price. The light client proves what the aggregator says, not that
+  the oracles are right, which is why a price never reaches a signature.
+- **The token list is built in** (owner ruling, 2026-10-16): a pinned list of
+  popular tokens per `Network`, each with its address, symbol, name, decimals
+  and a bundled icon, every entry checked against the contract's own
+  `symbol()` and `decimals()` when it is listed. The user adds
+  more by address in Settings; the metadata is then read from the contract
+  and shown as the contract's claim, with a monogram icon. No remote token
+  list and no icon CDN (one would learn which tokens the user holds).
+- **Safe co-signing uses no off-chain service** (owner ruling, 2026-10-16). A
+  signing request moves between devices as a QR code or as text, carrying the
+  raw `SafeTx` fields and the signatures collected so far, never a
+  description of them. The co-signer decodes it itself and checks it against
+  the chain: the Safe (verified as a Safe), its nonce and owners, and the
+  `SafeTx` hash recomputed locally; a signer that is not a current owner is
+  refused. An owner may approve on chain with `approveHash` instead, and once
+  the threshold is met any owner executes it. Any account whose key is on
+  this device may send that execution and pay for it, owner or not; an owner
+  that executes counts as its own confirmation (owner ruling, 2026-10-18,
+  #56). The Safe Transaction Service
+  stays unwired.
+- docs/wallet-ux.md applies these three rulings to the screens.
+- **Swaps: Uniswap first, then CoW Protocol, preferred while its servers
+  work, with Uniswap as the fallback** (owner's direction, 2026-10-18;
+  docs/swaps.md, issue #69). Uniswap's contracts are chain data like any
+  other: pinned, read with verified calls, and sent to like any transaction.
+  CoW's order API is an off-chain service whose ruling is still open (next
+  item).
+- **Open decisions, each recorded here before its code lands**:
+  - the dApp connection protocol (WalletConnect's relay is an off-chain
+    service, and a request that arrives through it is untrusted input,
+    decoded and shown as such);
+  - CoW Protocol's order API: what it learns, and what of its answers is
+    shown (docs/swaps.md, *Open questions*).
+
+  Until decided, neither is wired in.

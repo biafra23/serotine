@@ -6,20 +6,29 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.BiometricChange
+import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
+import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.WalletChanges
+import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Imported
 import kotlinx.coroutines.CompletableDeferred
@@ -62,7 +71,10 @@ class MnemonicImportViewModelTest {
                 override val viewModelStore = store
             },
             factory = viewModelFactory {
-                initializer { MnemonicImportViewModel(ImportMnemonicAccount(keys, repository), DescribeKeyStore(keys)) }
+                initializer {
+                    val import = ImportMnemonicAccount(keys, repository, WalletChanges())
+                    MnemonicImportViewModel(import, DescribeKeyStore(keys))
+                }
             },
         )[MnemonicImportViewModel::class]
     }
@@ -100,6 +112,19 @@ class MnemonicImportViewModelTest {
     }
 
     @Test
+    fun theKeyOfAWatchedAccountIsAnImportThatSucceeded() = runTest {
+        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals(Imported("Savings"), viewModel.uiState.value)
+        assertEquals(AccountCustody.InKeyStore, repository.accounts.value.single().custody)
+    }
+
+    @Test
     fun aSuccessfulImportForgetsTheWordsAndReportsTheAccount() = runTest {
         val pending = CompletableDeferred<KeyImport>()
         keys.next = pending
@@ -117,7 +142,10 @@ class MnemonicImportViewModelTest {
 
         assertEquals(Imported("Account 1"), viewModel.uiState.value)
         assertEquals(twelveWords, keys.received.single().text)
-        assertEquals(listOf(Account(address, AccountKind.EOA, "Account 1")), repository.accounts.value)
+        assertEquals(
+            listOf(Account(address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
+            repository.accounts.value,
+        )
     }
 
     @Test
@@ -139,7 +167,7 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun anAccountAlreadyInTheWalletIsAnError() = runTest {
-        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Daily"))
+        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Daily", AccountCustody.InKeyStore))
         keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
         typeWordsAndPassword()
 
@@ -169,6 +197,71 @@ class MnemonicImportViewModelTest {
             entering().error,
         )
         assertTrue(entering().canImport, "the user can try again")
+    }
+
+    @Test
+    fun notEnoughMemoryToProtectTheKeyIsSaidAsSuch() = runTest {
+        keys.next = CompletableDeferred(KeyImport.NotEnoughMemory(MemoryStep.PROTECT))
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals("Not enough free memory to protect the key: close other apps and try again.", entering().error)
+        assertEquals(twelveWords, entering().phrase.text)
+        assertTrue(entering().canImport, "the user can try again")
+    }
+
+    @Test
+    fun notEnoughMemoryToCheckThePasswordIsSaidAsThat() = runTest {
+        keys.next = CompletableDeferred(KeyImport.NotEnoughMemory(MemoryStep.CHECK_PASSWORD))
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals(
+            "Not enough free memory to check the password: close other apps and try again. Nothing was added.",
+            entering().error,
+        )
+    }
+
+    @Test
+    fun aKeyProtectedAtALighterCostIsToldBeforeTheScreenCloses() = runTest {
+        keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.SOFTWARE_KEY_STORE, steppedDown = true))
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals(
+            Imported(
+                "Account 1",
+                "There was not enough free memory just now, so the password protection of this key uses less " +
+                    "memory and more passes.",
+            ),
+            viewModel.uiState.value,
+        )
+    }
+
+    @Test
+    fun aPasswordStretchedWithLessMemorySaysSoUnderThePassword() {
+        keys.description = {
+            KeyStoreDescription.Ready(
+                passwordSet = false,
+                KeyProtection.SOFTWARE_KEY_STORE,
+                passwordCost = PasswordCost.LESS_MEMORY,
+            )
+        }
+        typeWordsAndPassword()
+
+        val step = assertIs<PasswordStep.New>(entering().step)
+        assertTrue(
+            step.protection.endsWith(
+                "This device has little memory, so the password protection uses less memory and more passes.",
+            ),
+            step.protection,
+        )
     }
 
     @Test
@@ -213,7 +306,10 @@ class MnemonicImportViewModelTest {
 
         // Half an import would leave a stored key without its account.
         assertEquals(Imported("Account 1"), viewModel.uiState.value)
-        assertEquals(listOf(Account(address, AccountKind.EOA, "Account 1")), repository.accounts.value)
+        assertEquals(
+            listOf(Account(address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
+            repository.accounts.value,
+        )
     }
 
     @Test
@@ -362,6 +458,13 @@ class MnemonicImportViewModelTest {
     private fun entering(): Entering = assertIs<Entering>(viewModel.uiState.value)
 
     private class FakeKeyStore : KeyStore {
+        override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
+
+        override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
+            BiometricChange.NotOnThisDevice
+
+        override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
+
         var next = CompletableDeferred<KeyImport>()
         val received = mutableListOf<Mnemonic>()
         var passwordSet = true
@@ -373,6 +476,8 @@ class MnemonicImportViewModelTest {
             received += mnemonic
             return next.await().also { if (it is KeyImport.Stored) passwordSet = true }
         }
+
+        override suspend fun delete(address: Address): KeyDeletion = error("not used by this test")
     }
 
     private class FakeAccountRepository : AccountRepository {
@@ -390,6 +495,15 @@ class MnemonicImportViewModelTest {
                 if (added) current + account else current
             }
             return if (added) AccountAdd.Added else AccountAdd.AlreadyPresent
+        }
+
+        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+
+        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
+
+        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
+            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+            return AccountChange.Changed
         }
     }
 }

@@ -107,6 +107,43 @@ class EnvelopeTest {
     }
 
     @Test
+    fun theCeilingTakesEveryPasswordOnlyTierAndBindsMemoryTimesPasses() {
+        val mib = 1024L * 1024
+        // The tiers of the owner's ruling of 2026-10-18, and the hardware path's cost.
+        for ((ops, mem) in listOf(4L to 256 * mib, 8L to 128 * mib, 16L to 64 * mib, 3L to 64 * mib)) {
+            assertTrue(Envelope.withinBounds(ops, mem), "$ops passes over ${mem / mib} MiB")
+            Envelope.Cost(ops, mem)
+        }
+        // Each bound alone would let these pass; together, memory times passes is at most 256 MiB × 4.
+        for ((ops, mem) in listOf(16L to 128 * mib, 8L to 256 * mib, 5L to 256 * mib, 17L to 64 * mib)) {
+            assertFalse(Envelope.withinBounds(ops, mem), "$ops passes over ${mem / mib} MiB")
+            assertFailsWith<IllegalArgumentException> { Envelope.Cost(ops, mem) }
+        }
+        // The floor stays: 64 MiB, two passes.
+        assertFalse(Envelope.withinBounds(1, 64 * mib))
+        assertFalse(Envelope.withinBounds(16, 32 * mib))
+
+        val sealed = Envelope.seal(seed, address, pw("correct horse"), null, cost)
+        val tooMuch = copy(sealed, opsLimit = 16, memLimitBytes = 128 * mib)
+        assertFalse(Envelope.canOpen(tooMuch, null))
+        assertEquals(Envelope.Opened.Refused, Envelope.open(tooMuch, pw("correct horse"), null))
+    }
+
+    @Test
+    fun argon2idShortOfMemoryLeavesBeforeAnythingIsMade() {
+        val outOfMemory = PasswordStretch { _, _, _, _, _ -> throw Argon2idOutOfMemory() }
+        var dekHandedOut = false
+
+        assertFailsWith<Argon2idOutOfMemory> {
+            Envelope.seal(seed, address, pw("correct horse"), null, cost, outOfMemory) { dekHandedOut = true }
+        }
+        assertFalse(dekHandedOut, "no DEK is made before the password is stretched")
+
+        val sealed = Envelope.seal(seed, address, pw("correct horse"), null, cost)
+        assertFailsWith<Argon2idOutOfMemory> { Envelope.open(sealed, pw("correct horse"), null, outOfMemory) }
+    }
+
+    @Test
     fun theStoredFormHoldsNoSeed() {
         val sealed = Envelope.seal(seed, address, pw("correct horse"), null, cost)
 

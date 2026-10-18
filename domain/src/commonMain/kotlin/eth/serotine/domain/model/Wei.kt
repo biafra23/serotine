@@ -12,6 +12,12 @@ value class Wei private constructor(val decimal: String) {
 
     override fun toString(): String = "$decimal wei"
 
+    /**
+     * This amount as a [UInt256], or null when it exceeds 2^256 - 1 wei: a [Wei] has no upper
+     * bound, the chain's balances and values do.
+     */
+    fun toUInt256OrNull(): UInt256? = UInt256.parse(decimal)
+
     companion object {
         private val SHAPE = Regex("^(0|[1-9][0-9]*)$")
 

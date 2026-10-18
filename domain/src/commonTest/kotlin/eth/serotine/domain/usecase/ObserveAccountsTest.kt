@@ -1,9 +1,11 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +23,7 @@ class ObserveAccountsTest {
 
     @Test
     fun emitsTheRepositoryStreamUnchanged() = runTest {
-        val account = Account(Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Savings")
+        val account = Account(Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.InKeyStore)
         repository.accounts.value = listOf(account)
 
         assertEquals(AccountList.Loaded(listOf(account)), observeAccounts().first())
@@ -31,5 +33,9 @@ class ObserveAccountsTest {
         val accounts = MutableStateFlow<List<Account>>(emptyList())
         override fun observeAccounts(): Flow<AccountList> = accounts.map { AccountList.Loaded(it) }
         override suspend fun add(account: Account): AccountAdd = error("not used by this test")
+        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
+        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
+            error("not used by this test")
     }
 }

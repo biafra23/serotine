@@ -95,7 +95,13 @@ The rules a reviewer holds the adapter against:
    are stored next to the blob and bound as the additional authenticated data
    of the AES-GCM wrap of `DEK`, and the floor is re-checked when unwrapping:
    a parameter block below it is refused, not honoured, so tampering with it
-   cannot downgrade the KDF.
+   cannot downgrade the KDF. Where the password must stand alone, the cost is
+   sized by the device's memory (owner ruling, 2026-10-18, issue #36): three
+   tiers of about the same wall time, 256 MiB × 4 passes, 128 MiB × 8 and
+   64 MiB × 16, the device's own tier first and a lighter one when Argon2id
+   cannot have the memory at that moment, never below the 64 MiB floor; the
+   user is told when a lighter tier is used. Argon2id short of memory is its
+   own outcome, never a key store that does not work (*Costs*).
 3. **The envelope's biometric path binds to a key, not to the UI.** On
    Android: a key with `setUserAuthenticationRequired(true)` and per-use authorization
    (`setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` from API 30;
@@ -174,8 +180,91 @@ that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
 **What exists today**: the key-store port
-`KeyStore` in `:domain`, implemented by `EnvelopeKeyStore` in
-`eth.serotine.data.keys`.
+`KeyStore` and the signer port `Signer` in `:domain`, both implemented by
+`EnvelopeKeyStore` in `eth.serotine.data.keys`.
+
+- **Create.** `newMnemonic()` makes a 12-word BIP-39 mnemonic from 128 bits of
+  the platform's secure randomness (`EnvelopeCrypto.randomBytes`), zeroing the
+  entropy. Nothing is stored: the words travel to Create account's screen under
+  the mnemonic exception, are shown there alone, three of them are asked back,
+  and they are stored by the import below.
+- **Sign.** `sign(account, digest, unlock)` opens the account's envelope
+  (`<address>.seed`), with the password and the hardware secret
+  (`Unlock.WithPassword`) or with the DEK the biometric path unwraps
+  (`Unlock.WithBiometrics`, below), derives the first account's key and refuses
+  a key that does not derive the account it is filed under. It signs the
+  32-byte digest as given, never hashed again, with libsecp256k1 (a low s, RFC
+  6979's nonce) and finds the recovery id by recovering the public key. The seed, the key and the password's bytes are
+  zeroed before it returns (rule 7); a wrong password, a missing key and an
+  envelope this device cannot open are results, never exceptions. Send
+  (docs/wallet-ux.md, screens 7 to 9) is its first consumer: the review takes
+  the password under rule 8's protections, or offers the biometric prompt where
+  the path is on, and the signer signs the quoted transaction's EIP-1559 digest.
+  A Safe transaction's approval or execution is such a transaction too.
+- **What a Safe owner signs** (`SignSafeTx`; docs/wallet-ux.md, *Co-signing a
+  Safe transaction*). The same `sign(owner, digest, unlock)`, with the Safe
+  transaction's EIP-712 hash as the digest: computed here from the raw
+  `SafeTx` fields, the Safe's address and the chain id (the domain of Safe
+  1.3.0 on, the only versions the app recognises), and signed as it is, with
+  no `eth_sign` prefix. The signature travels as `r ‖ s ‖ v`, `v` = 27 + the
+  recovery id, which is what the Safe's `checkSignatures` and an EIP-712
+  signer elsewhere produce for that hash. Before anything signs:
+  - the owner is a current owner of the Safe, as its verified storage lists
+    them, and the nonce is not one the Safe has passed;
+  - a delegate call is refused: the Safe would run the target's code as
+    itself, and no preview can say what that code does;
+  - so are gas and refund terms (`safeTxGas`, `baseGas`, `gasPrice`,
+    `gasToken`, `refundReceiver` other than zero): a refund can pay the Safe's
+    funds to whoever it names, bounded only by what the Safe holds, and a
+    `safeTxGas` lets a failing call use up the nonce;
+  - the key store's signature is recovered (`SignatureRecovery`, libsecp256k1)
+    and kept only when it recovers to the owner, as a co-signer's is.
+
+  Nothing about what is signed comes from the request's sender: the screen
+  shows what the fields decode to (`SafeTxAction`), and the hash is this
+  device's own. That is the independent second view of *What key storage does
+  not do* below; it is still the app's view, and for a Safe holding value not
+  the sole check. An owner may approve the hash on chain instead
+  (`approveHash`, an ordinary transaction from its account), which needs no
+  signature to travel at all.
+- **Biometric unlock** (rules 3 to 5), the user's opt-in in Settings → Security,
+  on Android:
+  - `HW_bio` is `AndroidBiometricKey`: an RSA-2048 pair in the Keystore,
+    StrongBox first and the TEE otherwise. Its private half decrypts only after
+    a per-use strong biometric (`setUserAuthenticationParameters(0,
+    AUTH_BIOMETRIC_STRONG)`, the `-1` duration on API 29), only on an unlocked
+    device (`setUnlockedDeviceRequired`), and it is invalidated when the enrolled
+    biometrics change. A key the Keystore does not keep in secure hardware is
+    deleted, and the path is not offered (rule 5).
+  - `enableBiometrics(password, confirmation)` opens each envelope with the
+    wallet password to reach its DEK, makes the key anew and files each DEK
+    wrapped by its public half (RSA-OAEP, SHA-256 with MGF1-SHA-1) as
+    `<address>.bio`. Wrapping needs no biometric, so the path is then proven
+    once: one wrap opened through the prompt must give back its DEK. Only then
+    is it on; a dismissed or failed proof turns it off again. The key and the
+    wraps are made as one step and undone together; a crash in between leaves
+    wraps the next enable or disable sweeps away. A key imported while the path
+    is on is wrapped too. The password path is untouched.
+  - What the device cannot offer is said before the password is asked: no
+    strong sensor, nothing enrolled, only weak biometrics, or a key store
+    outside secure hardware (the password path's key tells, rule 5). While the
+    biometric key exists the path reads as on, usable right now or not, so
+    that it can always be turned off.
+  - `sign(…, Unlock.WithBiometrics(reason))` decrypts the wrap through the
+    platform's `BiometricPrompt` with the cipher as its `CryptoObject`, so only a
+    match the hardware accepts unlocks it. The prompt is the host's
+    (`PlatformBiometricPrompter`, on the activity in front), says the caller's
+    reason, and offers "Use the password" as the way out.
+  - `disableBiometrics()` deletes the key, then the wraps (rule 4). The last key
+    deleted takes the path with it, as it takes the wallet password.
+  - A dismissed or timed-out prompt, a key invalidated by re-enrolment, a
+    locked-out or busy sensor and an account stored before the path was on are
+    results the signing screen turns into "use the password".
+  - The key store's calls take turns, `describe()` included: the biometric
+    key's check opens a Keystore operation, which must not compete with the one
+    a pending prompt holds (StrongBox has few).
+  - The desktop and iOS have no biometric path yet, and their Security screen
+    says so.
 
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
@@ -200,6 +289,24 @@ its KDoc and returns it as a result the UI shows as state.
     never trusted. (The tag names the kind, not the device: another phone's
     envelope passes this check and then fails as a wrong password.) A
     damaged envelope of the account being imported is sealed again.
+- **Deletion.** `delete(address)` deletes the account's envelope when the
+  account is removed from the wallet; the use case removes the account from
+  the list first, so a failure in between leaves a key without an account
+  (importing the phrase again finds it), never an account whose key is gone.
+  It asks for no password: it takes nothing from someone who could clear the
+  app's data anyway. It is a plain file delete, so the ciphertext may stay on
+  the storage until the blocks are reused. With the last envelope the wallet
+  password goes too, and the next import sets a new one. That deleting a key
+  needs no password is the owner's ruling (2026-10-18, #17, recorded in
+  CLAUDE.md's *Trust*): the app asks the user to confirm the removal first
+  (`RemoveAccountDialog`), and nothing more.
+  - What a deletion that does not finish leaves is the owner's ruling
+    (2026-10-18, #18), decided and not built yet (#73). A key whose deletion
+    the user confirmed but which did not finish is deleted again at the next
+    start: a pending-deletion marker is written before the list entry is
+    removed. Keys left over from a damaged account list are never deleted
+    automatically: the user is offered to restore their accounts with the
+    wallet password. A "start over" reset comes later.
 - **The password.**
   - The first import sets the wallet password: at least eight characters,
     refused by the adapter otherwise. Every later import must give the same
@@ -218,13 +325,44 @@ its KDoc and returns it as a result the UI shows as state.
 - **Costs.**
   - When every guess needs secure hardware (Android's Keystore HMAC): 64 MiB
     and three passes.
-  - Otherwise 256 MiB and four passes. That covers a software key store, as
-    on an emulator, whose key a copy of the device's storage yields. It
-    covers the Mac's Secure Enclave, whose secret is unwrapped once and is
-    then the same for every guess. And it covers the password alone. Each
-    must hold up offline like a password-only envelope.
-  - Opening checks the 64 MiB, two-pass floor and a 256 MiB, four-pass
-    ceiling.
+  - Otherwise a password-only tier (`PasswordOnlyTier`). That covers a
+    software key store, as on an emulator, whose key a copy of the device's
+    storage yields. It covers the Mac's Secure Enclave, whose secret is
+    unwrapped once and is then the same for every guess. And it covers the
+    password alone. Each must hold up offline like a password-only envelope.
+  - The tiers, sized by memory (owner ruling, 2026-10-18, issue #36), each
+    about the same wall time: 256 MiB × 4 passes, 128 MiB × 8, 64 MiB × 16.
+    On Android the host picks the device's tier from
+    `ActivityManager.MemoryInfo.totalMem` and `isLowRamDevice`: about 4 GB or
+    more and not low-RAM is 256 MiB, about 2 GB or more is 128 MiB, less is
+    64 MiB (`totalMem` leaves out what the kernel reserves, so the thresholds
+    sit at 3.4 and 1.7 GB). The desktop starts at 256 MiB.
+  - Sealing starts at the device's tier. When libsodium cannot have the
+    memory (its -1), it tries the next lighter tier, never below 64 MiB;
+    short at that too, nothing is stored and the user reads "Not enough free
+    memory to protect the key: close other apps and try again." The password
+    is stretched before anything else is made, so a failed seal leaves
+    nothing behind. Opening an envelope (signing, the password check of a
+    later import, turning biometric unlock on) short of memory says so for
+    that step ("Not enough free memory to check the password: …" at an
+    import), never that the key store does not work.
+  - A device that seals below 256 MiB says so with its protection, on the
+    seed screens and in Security: "This device has little memory, so the
+    password protection uses less memory and more passes." A seal that
+    stepped down below the device's own tier says so when the key is stored
+    (`KeyImport.Stored.steppedDown`): "There was not enough free memory just
+    now, so the password protection of this key uses less memory and more
+    passes."
+  - An envelope keeps the tier it was sealed at: it is never sealed again
+    at a costlier one later, even once the memory is there.
+  - The tiers are chosen for about the same time, not measured on devices
+    yet; measuring them is issue #75.
+  - The hardware path's 64 MiB × 3 is no tier: it neither steps down nor
+    changes, and envelopes already stored keep the parameters they were
+    sealed with.
+  - Opening checks the 64 MiB, two-pass floor and a ceiling that takes every
+    tier: at most 256 MiB, at most 16 passes, and memory × passes at most
+    256 MiB × 4, so the most passes come only with the least memory.
 - **AES-256-GCM** comes from the JDK.
 - **The hardware secret.** On Android it is `AndroidKeystoreSecret`, an
   HMAC-SHA256 key in StrongBox, or in the TEE when StrongBox is missing or
@@ -280,9 +418,12 @@ its KDoc and returns it as a result the UI shows as state.
   hardware secret whether its key exists before anything could create one.
   When envelopes sealed with that kind of secret exist but the key does not,
   the key store reports itself unavailable instead of making a new key, whose
-  secret would only answer "wrong password". This covers a Keystore key lost
-  in an OS upgrade or a cleared key store, and a deleted enclave state. The
-  way back is the reset and recovery flows.
+  secret would only answer "wrong password"; signing with the password answers
+  unavailable for the same reason, before the envelope is touched. Signing with
+  a biometric does not need that key (its own key unwraps the DEK), so it still
+  works. This covers a Keystore key lost in an OS upgrade or a cleared key
+  store, and a deleted enclave state. The way back is the reset and recovery
+  flows.
 - **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
   Until then the key store reports itself unavailable there.
 - **What never leaves a call.**
@@ -291,19 +432,45 @@ its KDoc and returns it as a result the UI shows as state.
   - The JDK's AES keeps its own copy of a key until the garbage collector
     takes it: the GC caveat of rule 7.
   - The words and the password reach the adapter along the mnemonic
-    exception's one path. The restore screen's ViewModel drops both from its
-    state when the screen stops being shown; an import already running
+    exception's one path. The restore and Create account screens'
+    ViewModels drop both from their state when the screen is left: an
+    `ON_STOP` that is not a configuration change, so the app going to the
+    background, the screen turning off and a pop, but not a rotation, a fold,
+    a resize or a theme or font change, across which the words stay in the
+    ViewModel's memory and nowhere else (owner ruling, 2026-10-18, #39;
+    `OnStopUnlessConfigurationChange`, Android's
+    `Activity.isChangingConfigurations`); an import already running
     finishes without them.
-- **Screen protections.** The restore screen carries rule 8's protections
-  through `protectFromScreenCapture()` in `eth.serotine.ui.platform`:
+  - Create account's phrase is not stored until its check and password are
+    done, so leaving the screen before then voids it: the screen tells the
+    user to cross out what they wrote, and the next attempt gets a new
+    phrase. A phrase the key adapter returns after the screen was left is
+    dropped the same way.
+- **Screen protections.** Every screen that takes the wallet password or
+  shows the words carries rule 8's protections through
+  `protectFromScreenCapture()` in `eth.serotine.ui.platform`: the restore and
+  Create account screens, Security (21) while it asks for the password, and,
+  through the unlock they share (`UnlockFields`), Send's review (8), Send
+  from a Safe's review (16), the Safe transaction's Sign, Approve on chain
+  and Execute steps (17) and Create Safe's review (15). That is
   `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
   until its host covers the window, the screen says that capture cannot be
-  blocked.
+  blocked. Create account also keeps the display on while its phrase is
+  shown and checked (`KeepScreenOn()`; Android's `keepScreenOn`), because a
+  display that times out stops the screen, and that stop is a leaving
+  (owner ruling, 2026-10-18, #39).
 - **Not yet.**
-  - Signing is the next consumer of the envelope. Until then nothing opens
-    one except to check the password.
+  - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`) and on
+    iOS, and the opt-in on the seed screens at the first key (Settings →
+    Security is where it is turned on today).
+  - Changing the wallet password, which re-wraps every envelope's DEK as one
+    step a crash cannot leave half done.
   - A way back when no envelope opens any more (a lost Keystore key, a
     forgotten password) comes with the wallet's reset and recovery flows.
+  - The ruling on a deletion that does not finish (#18, *Deletion* above),
+    not built yet (#73): the pending-deletion marker and the deletion again
+    at the next start, the offer to restore the accounts of leftover keys
+    with the wallet password, and later a "start over" reset.
 
 ## A Safe owned by a hardware P-256 key
 
@@ -389,6 +556,17 @@ one of:
   never reach two, and the lost device's key has no backup by design. So
   threshold 2 removes the single-device risk only as 2-of-3, or as 2-of-2
   with a recovery module alongside it.
+- **Every n-of-n above one only with a recovery module** (owner ruling,
+  2026-10-18, #54). The same reasoning holds at any threshold equal to the
+  owner count: with one owner lost the rest can never reach it, not even to
+  swap the lost one out. So 2 of 2, 3 of 3 and every n of n with n > 1 are
+  created only alongside a recovery module (`SafePlanRefusal.NeedsRecoveryModule`
+  otherwise). The ruling covers changing a Safe too: a threshold change, an
+  owner removed or an owner added that leaves an n-of-n above one is not
+  signed, approved or executed here, checked against the Safe's verified
+  owners and threshold (`SafeTxRefusal.NeedsRecoveryModule`); no recovery
+  module is recognised yet, so every such change is refused. Which recovery
+  modules come, and how, stays open (#54, #72).
 
 For an **EOA** none of this exists: the mnemonic is the only backup, which is
 the other reason an EOA key is a secp256k1 key from a mnemonic in the
@@ -414,6 +592,14 @@ conditions, which a reviewer holds those two flows to:
 - **Protected.** Both screens are under rule 8's screen protections.
 - **Narrow.** Everything the adapter derives from the words, the seed and the
   keys, stays under the absolute rule and never comes back up.
+
+Create account uses both legs on one screen: the words go out to its UiState
+as at creation and come back to the adapter as at restore. Whether the entry,
+worded for two screens, covers that is the owner's open question (issue #40);
+the code is built as if it does. A configuration change does not leave a seed
+screen, and the app going to the background does (owner ruling, 2026-10-18,
+#39): the words stay in the ViewModel's memory across a rotation, never in a
+saved state or a Bundle.
 
 Every other screen and flow is held to the rule itself. A new exception is
 the owner's ruling, added to that list first.
@@ -446,16 +632,20 @@ value:
 1. **Policy on chain, where the app cannot touch it.** A Safe transaction
    guard or module enforcing spending limits, recipient allowlists, a delay
    for large or unusual transactions, no `delegatecall`, and owner changes
-   only behind the delay. A defective app can then do only what the policy
+   only behind the delay. (This wallet itself co-signs a delegate call only
+   to the pinned MultiSendCallOnly 1.4.1, each inner call decoded and shown:
+   owner ruling, 2026-10-18, #57. Not built yet, so it refuses every one.) A defective app can then do only what the policy
    permits, and anything beyond it enters a window where another device can
    veto. This exists because a Safe is a contract; for an EOA the equivalent
    is an EIP-7702 delegation to such an account, and the delegation itself is
    still signed by the secp256k1 key.
 2. **An independent second view.** A threshold-2 Safe whose second signer runs
-   on a different device and decodes the transaction itself, from the chain
-   (or from the Safe Transaction Service once that data source is decided
-   under *Data sources* in CLAUDE.md), never from the description the first
-   device sent. A hardware wallet co-signer does this with its own screen.
+   on a different device and decodes the transaction itself, never from the
+   description the first device sent. The request reaches it as a QR code or
+   as text with no off-chain service in between (owner ruling, 2026-10-16,
+   under *Data sources* in CLAUDE.md): it carries the raw `SafeTx` fields,
+   which the co-signer decodes, hashes and checks against the Safe's
+   verified state. A hardware wallet co-signer does this with its own screen.
    Myotis can be that independent decoder for a desktop confirmation, as long
    as it never trusts the phone's description of the transaction.
 3. **A smaller chance of the defect.** The signing path is one small,

@@ -4,7 +4,7 @@ import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
-import eth.serotine.domain.repository.BalanceReading.Reason
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -105,13 +105,13 @@ class VerifiedNativeBalancesTest {
         val balances = balances()
 
         chain.snapshot = running(phase = Phase.STALE_ANCHOR)
-        assertEquals(BalanceReading.Unavailable(Reason.STALE_ANCHOR), balances.observeBalance(address).first())
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.STALE_ANCHOR), balances.observeBalance(address).first())
 
         chain.snapshot = running(head = 3) // no proof for the address: the engine could not prove it
-        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), balances.observeBalance(address).first())
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(address).first())
 
         chain.proofs[address] = ProvenBalance("not a number", 3)
-        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), balances.observeBalance(address).first())
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(address).first())
     }
 
     @Test
@@ -126,7 +126,7 @@ class VerifiedNativeBalancesTest {
         // The engine's state crosses JNA: a broken native library fails with an Error.
         chain.failure = Error("native library broken")
         step(running(head = 6))
-        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), seen.last(), "not the old amount")
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), seen.last(), "not the old amount")
         // Still failing: one poll per interval, not a busy loop.
         val before = chain.snapshots
         step(running(head = 6))
@@ -149,7 +149,7 @@ class VerifiedNativeBalancesTest {
 
         chain.failure = CancellationException("thrown by the engine's own code")
         step(running(head = 6))
-        assertEquals(BalanceReading.Unavailable(Reason.UNPROVEN), seen.last())
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), seen.last())
 
         chain.failure = null
         chain.proofs[address] = ProvenBalance("3", 6)
@@ -162,16 +162,31 @@ class VerifiedNativeBalancesTest {
     fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
         chain.snapshot = EngineSnapshot.Down
         assertEquals(
-            listOf<BalanceReading>(BalanceReading.Unavailable(Reason.NO_ENGINE)),
+            listOf<BalanceReading>(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)),
             balances().observeBalance(address).toList(),
         )
         assertEquals(
-            listOf<BalanceReading>(BalanceReading.Unavailable(Reason.NO_ENGINE)),
+            listOf<BalanceReading>(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)),
             VerifiedNativeBalances(null, StandardTestDispatcher(testScheduler), POLL).observeBalance(address).toList(),
         )
     }
 
     private companion object {
         val POLL = 4.seconds
+    }
+
+    @Test
+    fun onlyTheMostRecentlyProvenAddressesAreKept() = runTest {
+        chain.snapshot = running(head = 7)
+        val addresses = (0 until 70).map { Address.of("0x" + it.toString(16).padStart(40, '0')) }
+        addresses.forEach { chain.proofs[it] = ProvenBalance("1", 7) }
+        val balances = balances()
+        addresses.forEach { balances.observeBalance(it).first() }
+        chain.proofRequests.clear()
+
+        balances.observeBalance(addresses.last()).first()
+        balances.observeBalance(addresses.first()).first()
+
+        assertEquals(listOf(addresses.first()), chain.proofRequests, "the oldest was let go, the newest kept")
     }
 }

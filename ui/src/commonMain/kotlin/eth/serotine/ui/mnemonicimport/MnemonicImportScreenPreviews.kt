@@ -3,6 +3,11 @@ package eth.serotine.ui.mnemonicimport
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.ui.components.NOT_ENOUGH_MEMORY_TO_PROTECT
+import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.STEPPED_DOWN_TEXT
+import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -15,9 +20,8 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private const val WORDS = "one two three four five six seven eight nine ten eleven twelve"
 
-private const val HARDWARE =
-    "The seed is stored encrypted under your wallet password and a key in this device's secure hardware: " +
-        "both are needed to open it, and a copy of it is useless elsewhere."
+// What the screen says under the password on a device with secure hardware, from the one source.
+private val HARDWARE = KeyProtection.HARDWARE.protectionText
 
 private val typed = MnemonicImportUiState.Entering(
     Mnemonic(WORDS),
@@ -76,6 +80,12 @@ private fun MnemonicImportInvalidWordsPreview() = MnemonicImportPreview(
 
 @Preview
 @Composable
+private fun MnemonicImportNotEnoughMemoryPreview() = MnemonicImportPreview(
+    typed.copy(error = NOT_ENOUGH_MEMORY_TO_PROTECT),
+)
+
+@Preview
+@Composable
 private fun MnemonicImportImportingPreview() = MnemonicImportPreview(typed.copy(importing = true))
 
 @Preview
@@ -88,6 +98,11 @@ private fun MnemonicImportKeyStoreUnavailablePreview() = MnemonicImportPreview(
 @Composable
 private fun MnemonicImportImportedPreview() = MnemonicImportPreview(MnemonicImportUiState.Imported("Account 1"))
 
+@Preview
+@Composable
+private fun MnemonicImportImportedSteppedDownPreview() =
+    MnemonicImportPreview(MnemonicImportUiState.Imported("Account 1", STEPPED_DOWN_TEXT))
+
 /** Every preview above, which MnemonicImportScreenPreviewsTest renders: a new preview goes in here too. */
 internal val mnemonicImportScreenPreviews: List<@Composable () -> Unit> = listOf(
     { MnemonicImportCheckingPreview() },
@@ -96,7 +111,9 @@ internal val mnemonicImportScreenPreviews: List<@Composable () -> Unit> = listOf
     { MnemonicImportPasswordHintPreview() },
     { MnemonicImportWrongPasswordPreview() },
     { MnemonicImportInvalidWordsPreview() },
+    { MnemonicImportNotEnoughMemoryPreview() },
     { MnemonicImportImportingPreview() },
     { MnemonicImportKeyStoreUnavailablePreview() },
     { MnemonicImportImportedPreview() },
+    { MnemonicImportImportedSteppedDownPreview() },
 )

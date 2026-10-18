@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -29,6 +30,7 @@ class MnemonicImportScreenTest {
     private val repeats = mutableListOf<String>()
     private var imports = 0
     private var backs = 0
+    private var dones = 0
 
     private fun show(state: MnemonicImportUiState) = rule.setContent {
         SerotineTheme {
@@ -39,6 +41,7 @@ class MnemonicImportScreenTest {
                 onRepeatChange = { repeats += it },
                 onImport = { imports++ },
                 onBack = { backs++ },
+                onDone = { dones++ },
             )
         }
     }
@@ -157,5 +160,15 @@ class MnemonicImportScreenTest {
 
         rule.onNodeWithContentDescription("Back").performClick()
         assertEquals(1, backs)
+    }
+
+    @Test
+    fun aNoteAfterTheImportStaysUntilTheUserIsDone() {
+        show(MnemonicImportUiState.Imported("Account 1", "Less memory, more passes."))
+
+        rule.onNodeWithText("Account 1 added").assertExists()
+        rule.onNodeWithText("Less memory, more passes.").assertExists()
+        rule.onNodeWithText("Done").performClick()
+        assertEquals(1, dones)
     }
 }

@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
-import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
+import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.STEPPED_DOWN_TEXT
+import eth.serotine.ui.components.notEnoughMemoryText
+import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Imported
 import kotlinx.coroutines.CancellationException
@@ -21,7 +24,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The seed-phrase screen's ViewModel: holds the words and the wallet password as they are
- * typed and hands them to [ImportMnemonicAccount]. The one ViewModel the [Mnemonic] and the
+ * typed and hands them to [ImportMnemonicAccount]. One of the ViewModels the [Mnemonic] and the
  * [WalletPassword] pass through (CLAUDE.md, *Trust*): it never logs, saves or caches them,
  * and drops them from its state as soon as the screen is not shown — hidden ([onHidden]) or
  * gone from the back stack ([onCleared]).
@@ -114,7 +117,7 @@ class MnemonicImportViewModel(
                 KeyStoreDescription.Unavailable // the port promises not to throw; the backstop
             }
             step = when (description) {
-                is KeyStoreDescription.Ready -> description.protection.text.let { protection ->
+                is KeyStoreDescription.Ready -> description.protectionText.let { protection ->
                     if (description.passwordSet) PasswordStep.Existing(protection) else PasswordStep.New(protection)
                 }
                 KeyStoreDescription.Unavailable -> PasswordStep.Unavailable
@@ -124,9 +127,12 @@ class MnemonicImportViewModel(
     }
 
     private fun Entering.after(result: MnemonicImport): MnemonicImportUiState = when (result) {
-        is MnemonicImport.Added -> Imported(result.account.label)
+        is MnemonicImport.Added -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
+        // A watched address whose key is stored now: the import did what was asked.
+        is MnemonicImport.KeyAdded -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
         is MnemonicImport.AlreadyAdded -> copy(
-            error = "“${result.account.label}” is in the wallet already; its key is stored on this device now.",
+            error = "“${result.account.label}” is in the wallet already; its key is stored on this device now." +
+                if (result.steppedDown) " $STEPPED_DOWN_TEXT" else "",
         )
         is MnemonicImport.Invalid -> copy(error = result.problem.message)
         MnemonicImport.WrongPassword -> copy(passwordError = "That is not the wallet password.")
@@ -139,27 +145,12 @@ class MnemonicImportViewModel(
                 "cannot store the key.",
         )
         MnemonicImport.KeyNotSaved -> copy(error = "The key could not be stored on this device. Nothing was added.")
+        is MnemonicImport.NotEnoughMemory -> copy(error = notEnoughMemoryText(result.step, "Nothing was added."))
         MnemonicImport.ListNotSaved -> copy(
             error = "The key is stored, but the account list could not be saved. Add the same words again " +
                 "to finish.",
         )
     }
-
-    private val KeyProtection.text: String
-        get() = when (this) {
-            KeyProtection.HARDWARE ->
-                "The seed is stored encrypted under your wallet password and a key in this device's " +
-                    "secure hardware: both are needed to open it, and a copy of it is useless elsewhere."
-            KeyProtection.SOFTWARE_KEY_STORE ->
-                "The seed is stored encrypted under your wallet password and this device's key store, " +
-                    "which is not in secure hardware here (an emulator, or a device without it)."
-            KeyProtection.PASSWORD_ONLY ->
-                "The seed is stored encrypted under your wallet password alone: Serotine uses no hardware " +
-                    "key store on this computer. Choose a strong password."
-            KeyProtection.PASSWORD_ONLY_TPM_NOT_USED ->
-                "The seed is stored encrypted under your wallet password alone: Serotine does not use this " +
-                    "computer's TPM yet, even if it has one. Choose a strong password."
-        }
 
     private val MnemonicProblem.message: String
         get() = when (this) {

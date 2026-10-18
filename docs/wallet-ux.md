@@ -1,0 +1,753 @@
+# Wallet UX: EOAs and Safe{Wallet}
+
+The screens Serotine is built towards, for externally owned accounts and Safe
+smart accounts, and the rules they follow. A screen PR is held to this page
+together with docs/architecture.md (how a screen is built) and
+docs/keys-and-signing.md (how a key is held and used). The rules here apply
+CLAUDE.md's *Trust* and *Data sources* sections to the screens; where this
+page and CLAUDE.md disagree, CLAUDE.md wins and this page is fixed.
+
+The mockups below (source: `wallet-ux-screens.html`, which opens in a
+browser) draw screens 1 to 20 with their numbers; Security (21) came later
+and has no mockup. They are a sketch: the
+blockies are real, the QR code, amounts and addresses are not, the account
+rows abbreviate the control badges, and the token rows show monograms where
+a built-in token gets its bundled icon. Where a mockup and this text differ,
+the text wins.
+
+![Screens 1 to 20, numbered as below](wallet-ux-screens.png)
+
+## Rules every screen follows
+
+- **Sepolia only, and named.** The app works on Sepolia alone (owner ruling,
+  2026-10-15), so there is no network picker; a plain label says "Sepolia" on
+  the screens that matter for it (Assets, Receive, Send review, Settings). Every
+  table this page mentions (tokens, price feeds, Safe singletons) is keyed by
+  `Network`, so another network is a data addition once the owner allows it.
+- **Verified, or not available.** Every chain value comes from the embedded
+  Myotis engine. When the engine cannot prove a value the screen says so
+  ("not available", the light client's state); it never shows a guess, a
+  value from another source, or an earlier value as if it were current. A
+  value the user acts on (a balance on Send, a Safe's owners and threshold,
+  a receipt) names the block it was verified at.
+- **Amounts are token units.** An amount is entered, reviewed and signed in
+  the token's own units. Fiat values are display-only (owner ruling,
+  2026-10-16, *Prices* below): a hint next to an amount, a total, a sort key,
+  never an input that becomes a signed amount.
+- **The UI never touches a key.** Signing is a port: a request in, a signature
+  out. The password field and the recovery phrase are the only secrets a
+  screen holds, under the rules in docs/keys-and-signing.md, and the screens
+  that show them call `protectFromScreenCapture()`.
+- **Every address has a blockie.** The ethereum/blockies identicon (seeded
+  with the lowercase address) appears next to every address on screen: rows,
+  headers, from and to, review, owners, detection, receive. A Safe's blockie
+  carries a `t/n` overlay: its threshold over its owner count. An address is
+  shown EIP-55 checksummed, shortened to `0x1234…abcd` where space is short
+  and in full wherever the user confirms it.
+- **An address typed or pasted is checked at the input.** A mixed-case
+  address whose EIP-55 checksum fails is refused with that reason; an
+  all-lowercase or all-uppercase one is accepted and shown checksummed.
+- **ENS names resolve on chain, forward.** A name is resolved through the
+  registry and its resolver with verified calls. A resolver that answers with
+  an EIP-3668 `OffchainLookup` points at an HTTP gateway, an off-chain source
+  no ruling allows, so the name is shown as not resolvable. A reverse record
+  is shown only when the name it gives resolves forward to the same address.
+  What is signed is always the address, shown in full beside the name.
+- **Control is a badge.** Every account says what the user can do with it:
+  - *Full control*: an EOA whose key is in this device's key store, or a Safe
+    whose owners held here reach its threshold.
+  - *Co-signer*: a Safe with some owners held here, fewer than its threshold.
+  - *Watch-only*: nothing held here. Send is greyed out (a tap says why);
+    Receive and the balances are as for any account.
+- **A missing prerequisite greys an action out, never hides it** (owner
+  ruling, 2026-10-18, #55). An action that cannot be done because something
+  it needs is missing is shown disabled, and a tap on it still works: it says
+  what is missing and how to get it (`UnavailableDialog`, with the ways to
+  get it where there are some). An action that does not apply to a kind of
+  account at all is not shown.
+- **Long press is never the only way.** A long press (a right click on
+  desktop) opens an item's menu; every action in it is also reachable from a
+  visible control (the detail screen's buttons), and the menu has an
+  accessibility label (`onLongClickLabel`).
+
+## Navigation
+
+The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
+`NavigationRail` on a wide desktop window. Each tab is a nested graph of the
+one `NavHost`, and switching tabs keeps the user's place: Settings opens over
+the Assets tab's stack and closes back to it, with nothing saved aside (owner
+ruling, 2026-10-18, #49, for now; docs/architecture.md). The light
+client's status strip stays at the top of Assets. A flow that ends in a key
+operation or a transaction (import, create account, create Safe, send, a
+Safe transaction) is a destination that covers the bar until it ends. A
+Safe's transactions are `safe/{address}/tx/{hash}` (17),
+`safe/{address}/propose` (Send from it, with `?asset=` for a token chosen) and
+`safe/{address}/import`: identifiers only, each screen reading the rest
+through its use cases. Create Safe is `create-safe` (13 to 15, one screen
+with three steps), and its deployment's status `transfer/{hash}` in its
+place. The
+update screen covers everything, the bar included, while a network upgrade
+has left this version unable to follow Sepolia, and gives way to the Assets
+tab's start when it no longer has (docs/embedding-myotis.md, *Network
+upgrades*).
+
+## Screens
+
+### Assets tab
+
+1. **Assets**
+   - Header: the portfolio's total in the display currency, marked "testnet
+     prices" on Sepolia, with a count of the assets that have no price.
+   - Under the status strip, a banner while peers announce or report a
+     network upgrade this version does not support, with the way to the
+     update (docs/embedding-myotis.md, *Network upgrades*).
+   - One row per account: blockie (with `t/n` for a Safe), name, short
+     address, control badge, native balance and its fiat value.
+   - The FAB (2). A long press on a row opens 3; a tap opens 4, or 16 for a
+     Safe.
+   - With no account yet, it names every way the FAB adds one (watch,
+     import, create) and says that Create Safe, there too, can be used once
+     an account's key is on this device, the account that pays for it.
+2. **FAB fan-out**: Watch address (10) · Import recovery phrase (11) · Create
+   account (12) · Create Safe (13). Create Safe is always there, and greyed
+   out until the user holds an EOA's key: an EOA pays for the deployment. A
+   tap on it then says so, with Import recovery phrase and Create account
+   as the ways to get one (owner ruling, 2026-10-18, #55).
+3. **Account menu**: Send (greyed out when watch-only, a tap saying why;
+   for a Safe, usable once an owner of it is held here, and it opens the
+   proposal of a Safe transaction, 16) · Receive · Copy address · Rename · Remove. Removing an account the user
+   holds a key for says that only its recovery phrase brings it back, and
+   asks for a confirmation, not the wallet password (owner ruling,
+   2026-10-18, #17). The key store keeps one envelope per account, under its
+   address, so the removal deletes that account's envelope and its biometric
+   wrap; with the last envelope the wallet password and the biometric path go
+   too (`EnvelopeKeyStore.delete`).
+4. **Account detail**
+   - Header: a large blockie, the account's total, the full address with
+     Copy, the control badge.
+   - Send and Receive buttons (Send greyed out as in 3).
+   - Sort: Value | Name. Under Value, assets without a price follow the
+     priced ones, by name; a stale price sorts by the value it shows.
+   - One row per asset: icon, symbol, amount, fiat value or "no price". A
+     long press opens 5.
+   - Footnote: the price source ("Chainlink, testnet prices") and the block
+     the balances were verified at.
+5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
+   Copy contract address · Hide token. The native currency's row has the menu
+   too, with Send alone.
+6. **Receive**: a QR code of the EIP-55 address, "Only send Sepolia assets"
+   (for a Safe: "This Safe exists only on Sepolia"), Copy and Share.
+7. **Send, compose**
+   - From: the account, fixed.
+   - Asset: the account's assets — its native currency and the tokens it
+     holds — each with its verified balance and block; the one from 5
+     preselected (shown whatever its balance, and said when it is not among
+     the account's tokens).
+   - To: an address, an ENS name or one of the user's accounts (offered as
+     chips); the blockie appears once the input parses as an address or
+     resolves. The address is checked at the input as everywhere; a name is
+     resolved once the typing pauses, against finalized state, and says the
+     block it was resolved at. Why a name does not resolve is said (no
+     address, off-chain only, not a name this build resolves, or not
+     verifiable right now, with Try again). The zero address, and for a
+     token the token's own contract, are refused: nobody can ever move out
+     what is sent there.
+   - Amount, in the asset's units and decimals, with Max (the whole verified
+     balance; for the native currency the quote then says the fee does not
+     fit) and a fiat hint beside it ("≈ $40.00 · testnet prices"), the
+     verified balance's value scaled to the amount: display only.
+   - Fee: Slow | Normal | Fast, from the verified fee history.
+   - Review quotes the transfer; a refusal (not enough of the asset or for
+     the fee, the call reverts, not a token, not synced, not verifiable) is
+     said here and nothing is signed. So is an earlier transaction from the
+     account that may still be on its way (its broadcast found no peer to
+     answer, and no block has it): nothing new is quoted from the account
+     until it is mined or three hours old, and the step offers its status
+     (9), where it is tried again.
+8. **Send, review**
+   - The amount in token units, exact; the recipient in full, with its
+     blockie, the ENS name it was resolved from and its name in the wallet.
+   - The most the fee can be (gas limit × max fee per gas), and the level,
+     gas and fee cap it is made of.
+   - A verified simulation: the transfer run as a verified call from the
+     sender against the head, and the balance before → after, each with the
+     block it was verified at (the native balance "at least", net of the most
+     the fee can be; for a token, its balance and the native one that pays
+     the fee), and what earlier transfers not mined yet may still take. A
+     call that reverts stops at 7, before anything is signed.
+   - The quote is never signed stale: it is made when the review is entered,
+     again on Refresh, when the screen is shown again after it was not, and
+     at the tap that would sign it when it is over a minute old (made again
+     and said, not signed). The biometric prompt's deadline is the moment the
+     quote turns a minute old (`Unlock.WithBiometrics.notAfter`, absolute, so
+     no check between the tap and the prompt stretches it; with less than 15
+     seconds left at the tap, the quote is made again first, and said so):
+     one not answered in time is dismissed, nothing is signed, and the quote
+     is made again and said.
+     A name is resolved again with every quote (one
+     that moved, or that cannot be verified again, is said, not signed), and
+     back to 7 drops it.
+   - Back, the system's included, returns to 7. It waits while a signature
+     runs, and after a broadcast no peer answered it leaves Send: only Try
+     again may send those bytes.
+   - The password field, or the biometric prompt where the user enabled it
+     ("Sign with fingerprint or face", the password the fallback), then Sign
+     and send. Each refusal is said: a wrong password, a dismissed prompt,
+     biometrics that cannot open the key now (use the password), no key, a
+     key store that cannot open it.
+   - Signed but not broadcast: said, and only the same signed bytes can be
+     sent again (Try again, when no peer took it); a transfer the engine
+     rejects on verified state is not offered again, and 7 is open again
+     for a new one. Nothing is signed twice. One no peer answered may have
+     reached one all the same, so it is recorded as maybe sent: leaving the
+     screen, or the app, keeps its bytes for Try again on its status (9).
+9. **Send, status**: what was sent (amount, asset, recipient, from this
+   device's record; for a Safe's deployment "Deployment of a Safe", the Safe
+   with its `t/n`, its version and the account that paid), then Signed → Broadcast → Included (receipt verified,
+   its block; "it reverted" when it failed, its fee paid) → Finalized (its
+   block at or below the engine's finalized head). A receipt that cannot be
+   verified right now reads as such, never as pending. One maybe sent (no
+   peer answered its broadcast) says at Broadcast that no peer confirmed it,
+   until a block has it, with Try again, which sends the same signed bytes
+   (`RebroadcastTransfer`). A retry turned away (rejected with no receipt, or
+   refused) is said as the peer's word, and the record kept: "already
+   known" or a nonce used past the light client's head come back so, and a
+   deployment's record is its Safe's only copy. Its three hours and the
+   mined count bound it. Done returns to where Send was opened from.
+10. **Watch address**
+    - An address or ENS name, and a name for the account.
+    - A detection card built from verified code and storage: an EOA; an EOA
+      with an EIP-7702 delegation (its code is the designator `0xef0100` ++
+      an address), shown as "EOA, delegated to ‹address›" with that
+      address's blockie, because the delegate's code can act for the
+      account, and badged like any EOA by whether its key is held here; a
+      Safe (version, `t of n`, the owners' blockies, enabled modules and a
+      guard if any); or another contract.
+    - The control badge the account will get (owners held here count).
+11. **Import recovery phrase**: today's seed screen, with the account's name,
+    the wallet password (on the first key) and the biometric opt-in (still to
+    come; until then it is turned on in Security, 21).
+12. **Create account**: the new phrase, shown on this screen alone and only
+    until it is stored, protected from screen capture, the display kept on;
+    then a check of three of its words; then the wallet password and
+    the biometric opt-in (on the first key; still to come, as on 11).
+13. **Create Safe 1/3, owners**: a name; owners from "This device (hardware
+    key)", the user's mnemonic accounts and external addresses.
+    - As built (`CreateSafeViewModel`, `PlanSafe`): the name (optional, as a
+      watched account's; at most 40 characters); the wallet's externally
+      owned accounts, held here ("Key on this device") or watched, each with
+      its blockie and a check box, the first held one chosen to start with;
+      and an address or ENS name typed, checked at the input and resolved as
+      Send's recipient is, then added with its blockie, in full, and the name
+      and finalized block it was resolved from. A name is resolved again with
+      every quote of the review (15), as Send's recipient is: one that moved,
+      or cannot be verified again, sends the review back here with the
+      reason, and nothing is quoted or signed for it.
+    - "This device (hardware key)" is listed but not offered: its passkey
+      signer is not built yet, and the row says so. The domain already
+      refuses a device key as the only owner (`SafePlanRefusal.DeviceKeyAlone`).
+    - Refused at this step, each said: no owner, more than 20, the zero
+      address or the owner list's sentinel `0x…01`, an owner twice.
+14. **Create Safe 2/3, threshold and recovery**: a threshold stepper, and only
+    the shapes docs/keys-and-signing.md (*Backup and recovery*) allows, its
+    reasoning applied to every threshold:
+    - a device key is never the only owner;
+    - a threshold equal to the owner count above one (2 of 2, 3 of 3, …)
+      only alongside a recovery module: with one owner lost, the rest could
+      never reach it, not even to swap the lost one out (owner ruling,
+      2026-10-18, #54).
+    - As built: the stepper runs from 1 to the number of owners and starts at
+      1 for up to two owners, a majority short of all of them above (2 of 3,
+      3 of 4). Each value says what it means and how it stands with an owner
+      lost; the rules above are listed under it. No recovery module is
+      pinned, so none is offered, and every n-of-n above one is refused with
+      the reason (`SafePlanRefusal.NeedsRecoveryModule`): 2 of 2 is not
+      offered. That every n-of-n follows the keys doc's 2-of-2 rule is the
+      owner's ruling (2026-10-18, #54); its change half, a change of an
+      existing Safe that ends as an n-of-n, is refused on screen 17. Which
+      recovery modules come stays open (#54, #72).
+15. **Create Safe 3/3, review**: the address predicted locally (CREATE2), with
+    its blockie and `t/n`; the version, owners and threshold; the deployment
+    fee and the account that pays it; Deploy. After deployment the Safe is
+    detected like a watched one (*Safes* below) before it is listed.
+    - As built (`QuoteSafeDeployment`, `DeploySafe`): the address in full
+      with its blockie and `t/n`, computed here from the factory, the
+      singleton, the initializer and a fresh random salt nonce, and the
+      factory's verified run returning that same address, with the block it
+      ran at and the block the address held no code at; "Safe 1.4.1"; the
+      owners in full; the paying account, chosen among those held here (an
+      owner held here first), the fee level, the most the fee can be and what
+      it is made of, the payer's balance before → at least after, and what
+      its earlier transactions not mined yet may still take. Then the unlock
+      and Sign and deploy, as 8's.
+    - Refused and said, nothing signed: an address that holds code already, a
+      deployment of it sent and not mined yet, a deployment of a Safe with the
+      same owners (in their order) and threshold sent and not mined yet (a
+      review planned again has another salt, so another address: it would be
+      a second Safe), a run that returns another
+      address (the pin does not match the chain), the payer's funds, a run
+      that reverts, a light client not synced or not verifying.
+    - The quote follows 8's freshness rules (made on entry, on Refresh, on a
+      change of payer or fee, when shown again, and again at the tap when
+      over a minute old), the password goes when the screen is hidden and
+      after each attempt, Back returns to 2/3 (dropping the plan: the next
+      review has another address), and one signed but not broadcast is sent
+      again only as Try again (`RebroadcastTransfer`).
+    - Sent, the status (9) replaces the screen and says "Deployment of a
+      Safe", and where its listing stands; it shows that, and drives
+      nothing. The app lists the Safe itself (`FollowSafeDeployments`, run
+      by the host for as long as the app runs, whatever screen is open, and
+      again after a restart): for each
+      recorded deployment whose listing has not ended, it waits for the
+      verified receipt, then, when it succeeded, for the light client to
+      prove code at the address (`ListDeployedSafe`), checks that it is a
+      Safe with the owners, in their order, and the threshold deployed, and
+      watches it (`WatchAddress`, which detects it again) under the name
+      given. A deployment that reverted has its address read once
+      (`ListDeployedSafe.afterRevert`): someone else's copy of the same call
+      mined first creates the very same Safe, which is then listed, and said;
+      otherwise the status says this transaction created no Safe. An outcome
+      that is no ending (not verifiable again, the list not saved) is tried
+      again. How it ended is written into the deployment's record
+      (`SentAction.SafeDeployment.listed`), which the record keeps until then
+      (`SentTransfers.prune` drops an unlisted deployment only after
+      `DEPLOYMENT_LIFETIME_SECONDS`, a week), so leaving the status screen,
+      or the app, loses nothing; and a Safe once listed and then removed by
+      the user is not listed again.
+16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
+    owners are shown with blockies, a "this device" mark on the ones held
+    here, and the threshold; the modules and guard follow them.
+    - Queue lists this device's pending transactions in nonce order, from
+      the Safe's verified nonce on: one whose nonce the Safe has passed is
+      gone (`ObserveSafeTxQueue`), and the file drops it at the next
+      proposal, import or signature. Two at one nonce (a transfer and its
+      rejection) are both listed; only one can ever run. Each row is what it
+      does as decoded here ("Send 40 USDC", a token the wallet does not know
+      in its smallest units, an added token that takes a built-in token's
+      symbol marked "Not the built-in USDC: another contract"), with the
+      blockie of the address it names, its nonce and how many run before it
+      ("Nonce 13 · 1 before it"), its signatures against the threshold ("1
+      of 2 signatures on this device": those this device holds and the Safe
+      accepts now; approvals on chain show on 17), and "Not signed here" with
+      the reason for a delegate call or gas terms.
+      While the Safe cannot be verified, the rows say that neither its nonce
+      nor the signatures are checked. A tap opens 17.
+    - Import a request (above the rows): the text another owner's Share
+      request gave, pasted, then `ImportSigningRequest`, for this Safe only (a
+      request for another Safe is refused, `SafeTxRefusal.OtherSafe`, before
+      anything is kept). Every refusal is said under the field; one that
+      passes is queued and 17 opens for it, in place of the import. Scanning
+      its QR code is not built: no camera is wired in yet, and the screen says
+      to paste the text.
+    - Send from a Safe (the header's button and the account menu, both only
+      while an owner of it is held here) proposes a transfer
+      (`ProposeSafeTx`): 7's form, from the Safe, with no fee to choose —
+      whoever executes it pays — native or
+      ERC-20, a plain call with no refund, at the Safe's verified nonce or
+      the first after those queued from it without a gap (one queued far
+      ahead, as an imported request can be, moves nothing; how far ahead of
+      the Safe's nonce a request may be signed is not bounded, the owner's
+      open question, issue #59). The Safe's balance less what the
+      transactions queued before it move must cover it, and the Safe's call
+      is run as a verified call from the Safe; the review says when the
+      engine would not run it ("Not simulated"). The review shows the Safe
+      transaction decoded here, its Safe nonce and how many queued here run
+      before it, and the Safe's balance before, what those move, and after,
+      with its block. It is proposed again on Refresh, when the screen is shown
+      again, and at the tap that signs it when it is over a minute old, as 8's
+      quote is. An owner held here, chosen when there are several, signs it
+      (`SignSafeTx`, the password or the biometric prompt as on 8); it is then
+      queued and 17 opens for it, in place of the proposal. Nothing is queued
+      until an owner held here signs it, so a proposal given up leaves no
+      nonce taken. A proposal the queue cannot save once signed is shared
+      from the review (its QR code and text), not lost: Back asks before it
+      leaves that signature behind, and a refresh that proposes another
+      transaction (another nonce) drops it and says so. The review stands on
+      its proposal while the Safe's reading or the account list is not
+      there; a refresh or the signature checks the Safe again.
+17. **Safe transaction**
+    - The action, decoded here from the raw transaction (`SafeTxAction`): a
+      native or ERC-20 transfer, a change of the Safe's settings (an owner
+      added, removed or swapped, the threshold, a module, the guard, the
+      fallback handler), a rejection (the Safe calling
+      itself with nothing: it uses up the nonce), or a contract call with its
+      selector; and the Safe nonce, with how many run before it.
+    - A change that weakens the Safe carries a warning wherever it is shown
+      (16's row, 17, the Sign step, the biometric prompt): a module enabled
+      (it moves funds without the owners) or disabled, a guard set or
+      removed (its limits, allowlist or delay stop), a fallback handler set
+      (it answers EIP-1271 for the Safe: one that accepts every signature
+      lets anyone spend what the Safe approved, through Permit2, permits or
+      orders). A fallback handler set that is not the pinned canonical
+      CompatibilityFallbackHandler 1.4.1 (`0xfd0732Dc…Ec99`,
+      `PinnedFallbackHandlers`) is refused: shown, and never signed,
+      approved or executed here (`SafeTxRefusal.UnpinnedFallbackHandler`;
+      owner ruling, 2026-10-18, #63), on 16's row and 17 with its reason.
+      Setting the pinned one, or removing the handler, is signed with its
+      warning; so are a guard removed and a module disabled, which keep
+      their warning and are not refused. A module enabled is no longer a
+      warning alone: it is refused, whatever the module, shown and never
+      signed, approved or executed here (`SafeTxRefusal.ModuleEnabled`;
+      owner ruling, 2026-10-18, on #54: play it safe), on 16's row and 17
+      with its reason, "Enabling a module is refused: a module can move the
+      Safe's funds without its owners. Which modules may be enabled is still
+      open (#54)." A temporary, warned "dangerous mode" past it is planned
+      (#78), not built.
+    - A call of the Safe itself is signed only when it decodes exactly: a
+      settings change whose data is that function's encoding, or the empty,
+      zero-value rejection. Any other self-call, whatever its selector (a
+      trailing byte, an address word with dirty upper bytes, an unknown
+      function, ether sent to itself), is refused as "a call to the Safe
+      itself that could not be decoded exactly"
+      (`SafeTxRefusal.UndecodedSelfCall`): Solidity ignores trailing data and
+      the Safe's decoder masks addresses, so on chain it could still change a
+      setting, the fallback handler of #63 included.
+    - A change that would leave the Safe an n-of-n above one (a threshold
+      changed to the owner count, an owner removed or added with the
+      threshold at the count that leaves) is refused when it is signed,
+      approved or executed, against the Safe's verified owners and threshold
+      then (`SafeTxRefusal.NeedsRecoveryModule`): the change half of the
+      owner's ruling (2026-10-18, #54), whose creation half is screen 14's.
+      No recovery module is recognised yet, so the Safe's modules do not
+      lift it. A threshold at or above the owner count it leaves is refused
+      (above it reverts anyway). Screen 17 reads it with the owners, and
+      shows it as the transaction's refusal, offering nothing to sign. The
+      check sees the Safe's current owners and threshold only, not changes
+      queued at earlier nonces: Serotine's own execution quote catches a
+      combination that ends as an n-of-n, but another wallet holding the
+      signatures could still execute it. Closing that fully is part of how far
+      ahead of a Safe's nonce a request may be signed, the owner's open
+      question (#59).
+    - `delegatecall` is marked as such and decoded no further: the Safe runs
+      the target's code as itself. This wallet shows it and does not sign,
+      approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
+      another wallet through MultiSend arrives as one. By the owner's ruling
+      (2026-10-18, #57) a delegate call is to be co-signed only when its
+      target is the pinned MultiSendCallOnly 1.4.1 and each inner call is
+      decoded and shown. Not built yet (#57): until it is, every delegate
+      call is refused, and the refusal says batches come later.
+    - Gas and refund terms, when any of `safeTxGas`, `baseGas`, `gasPrice`,
+      `gasToken` or `refundReceiver` is not zero: shown, and marked as what
+      this wallet does not sign, approve or execute
+      (`SafeTxRefusal.GasTerms`), as it proposes none. A refund pays
+      `(gas used + baseGas) × gasPrice` in `gasToken` to `refundReceiver`,
+      bounded only by what the Safe holds (for ether the gas price is capped,
+      `baseGas` is not), and with a gas price the call gets exactly
+      `safeTxGas`; a `safeTxGas` without one lets a failing call use up the
+      nonce. Whether to allow bounded terms, with the most a refund costs
+      shown, is the owner's open question (issue #58).
+    - Each owner's state (`ReadSafeTxOwners`): signed (a signature that
+      recovers to it over the hash computed here), approved on chain (a
+      verified `approvedHashes`), missing, or not verifiable now; a signature
+      of an address that is no owner now counts for nobody.
+    - Share request (QR or text) · Sign (an owner held here) · Approve on
+      chain · Execute, once the threshold is met. Execute may be sent from
+      any account held here, owner or not, which pays for it (owner ruling,
+      2026-10-18, #56); an owner's sending counts as its own confirmation.
+      Execute is greyed out, not hidden, while the confirmations fall short or
+      another transaction runs first, a tap saying why (#55). Known not to
+      follow #55 yet, tracked in #74: Sign and Approve on chain are hidden
+      where they cannot be done, and so is Execute while the owners' states
+      cannot be read. Only the Safe's
+      next nonce can be executed, and an approval or
+      execution sent and not mined yet is not offered again, from any
+      account held here. What is shown and shared carries the signatures of the
+      Safe's current owners only, so another device never refuses it for an
+      owner removed since.
+    - As built (`SafeTxViewModel`, by the Safe and the transaction's hash):
+      the Safe's blockie with `t/n`, its name and address; the action card,
+      every address in full with its blockie; the Safe nonce and how many
+      run before it; the hash computed here; the gas and refund terms, when
+      any, and the refusal; then each owner's row (blockie, name, "This
+      device", its stand and its block), the threshold and the
+      confirmations, read again on Check again, whenever the request's
+      signatures change and when the screen is shown again.
+    - Share request opens the request's text (`EncodeSigningRequest`) as one
+      QR code when it fits one (else it says to share the text), with Copy
+      text and, where the platform has a share sheet, Share. It is offered
+      only while the Safe is verified: what is shared then carries only
+      signatures its current owners made, checked here.
+    - Sign opens a step: the owner held here who signs, when there are
+      several, and the unlock of 8. The signed request is queued; one the
+      queue cannot save stays on the screen, to be shared before it is left.
+    - Approve on chain, offered while the confirmations fall short, and
+      Execute review the EOA transaction as 8 reviews a transfer: the
+      account that sends it (an owner held here first; for Execute, any
+      account held here whose sending reaches the threshold), the fee level,
+      the most the fee can be, the account's balance before and after, the
+      verified run, and for Execute the confirmations it is executed with. An
+      approval the confirmations made needless meanwhile says so and is not
+      signed. Each step offers only what the owners read for the request as
+      it is now say: a new signature reads them again before anything is
+      offered on it.
+      The quote follows 8's freshness rules and its Back, and one signed but
+      not broadcast is sent again only as Try again, through
+      `RebroadcastTransfer`; a quote made or refreshed while the screen was
+      hidden is made again before it is signed. A step signing goes on when
+      the transaction leaves the queue meanwhile; one that does not ends,
+      its password with it. Sent, the status (9) replaces the screen, and
+      says "Approval of a Safe transaction" or "Execution of a Safe
+      transaction", with the Safe and its nonce.
+    - Remove from this device asks first, then takes it out of the queue:
+      a signature already shared stays valid elsewhere until the Safe's
+      nonce passes it. One the Safe's nonce has passed says it ran, or that
+      another transaction used its nonce.
+
+### Settings tab
+
+18. **Settings**: Display currency · Tokens (n built in, m added) · Security
+    (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
+    for now) · Light client (status) · About. Tokens opens the list of every token the
+    wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
+    Copy contract, Hide or Show, and Remove for an added one; Add token
+    opens 20.
+19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the
+    ones with a pinned feed on the network (*Prices* below): on Sepolia every
+    one but CHF, which has no feed there. A stored choice the network does
+    not offer reads as USD. It is a file of its own
+    (`display-currency.json`), and values only: no amount is entered or
+    signed in it.
+20. **Add token by address**: the contract's address, then its symbol, name
+    and decimals read from the contract and labelled as its claim, with the
+    monogram icon it will get.
+21. **Security**
+    - Wallet password: whether one is set, and how this device keeps the keys
+      under it.
+    - Biometric unlock, a switch: what it does, or why this device cannot offer
+      it (no sensor, nothing enrolled, only weak biometrics, no secure hardware,
+      no biometric path on this platform yet).
+    - Turning it on asks for the wallet password here, under the screen
+      protections of a screen that takes the password, and drops it when the
+      screen is left. Turning it off asks nothing: it deletes a way in.
+    - After a change of the enrolled biometrics it reads "Stopped working",
+      with the switch still on: turning it off deletes the invalidated key,
+      and turning it on again makes a new one.
+
+## Prices
+
+The ruling (CLAUDE.md, *Data sources*, 2026-10-16): Chainlink aggregators
+read through the light client. Applied:
+
+- **A feed table per network**: price id → feed address, the currency it
+  quotes in, its decimals and its heartbeat, pinned in code from Chainlink's
+  feed directory (`ChainlinkFeeds`). A token names its price id; a token
+  without one has no price. The pins say what is expected; the contract is
+  the source of truth. On Sepolia the table has ETH, BTC, LINK, USDC, EUR,
+  GBP and JPY, each against USD; UNI has no Sepolia feed, so it has no price,
+  and neither has a token the user adds.
+- **A price is a verified call** of `latestRoundData()` and `decimals()`,
+  each at the verified head it is made at (two calls for now; one Multicall3
+  call once its code hash is pinned, as for balances). The feed address is a
+  proxy whose aggregator Chainlink can swap, and `decimals()` answers from the
+  aggregator, so it is read every time: one that differs from the pinned
+  value is no price, and the row that would show the price says why ("No
+  price: its feed changed"). A non-positive answer is no price, and so is a
+  round dated more than two minutes after the head. An `updatedAt` older than
+  the feed's heartbeat and ten minutes' grace (a heartbeat update lands a
+  little after the heartbeat), measured against the time of the verified
+  head the read started at and never the device's clock, is stale: shown
+  with its age and left out of totals, like no price.
+- **Every price goes through USD.** A feed quoted in another currency is
+  converted with that currency's own USD feed first (an X/ETH answer through
+  ETH/USD). A display currency other than USD divides the USD value by its
+  own USD rate (EUR/USD, GBP/USD, CHF/USD, JPY/USD; for ETH and BTC, ETH/USD
+  and BTC/USD). A currency whose feed is not pinned on the network is not
+  offered.
+- **A converted price is only as good as its worst feed.** Every feed on the
+  path (the token's, a conversion feed, the display currency's) passes the
+  same checks; one that fails makes the price no price, and the oldest
+  `updatedAt` on the path is the age shown and the one the stale rule
+  applies to, totals included.
+- **Totals add only priced holdings**, and say how many assets they left out.
+  A held asset with no price, or a stale one, is left out and counted; a
+  balance or price that cannot be verified right now is counted as "not
+  verified"; one still being read makes the total incomplete ("still
+  checking"). When the display currency's own rate has no price, that is
+  said once ("No EUR rate"), not as a missing price on every asset. An
+  amount of the display currency itself (ETH shown in ETH) is its own
+  value, with no feed asked. A portfolio total adds the accounts valued in
+  the currency chosen, so a change of currency never sums two of them, and
+  counts what it leaves out per account: one unpriced token held in two
+  accounts is two holdings left out.
+- **On Sepolia every fiat value says "testnet prices"**: Chainlink's Sepolia
+  feeds are testnet feeds, and Sepolia's tokens have no market value of
+  their own. Each row's value carries it ("$3,000.00 · testnet prices"), and
+  each total the note right under it.
+- **The trust is in the oracle.** The light client proves what the aggregator
+  contract says; it does not make the oracle right. That is the reason a
+  price never becomes a signed amount.
+
+## Tokens
+
+The ruling (CLAUDE.md, *Data sources*, 2026-10-16): a built-in list, more by
+address. Applied:
+
+- **A built-in entry** is its address, symbol, name, decimals, icon key and
+  price id, keyed by network. On Sepolia the list is USDC, LINK and UNI: the
+  issuers' own test deployments of tokens with an icon in the CC0 set (the
+  owner's choice, 2026-10-17). EURC, WETH and PYUSD have no CC0 icon, and
+  Aave's faucet tokens (DAI, USDT, WBTC, AAVE) are not their issuers', so all
+  of them are added by address. It is checked twice against the contract's
+  `symbol()` and `decimals()`: by the PR that adds it, which shows the values
+  read, and by the app with verified calls each time it runs. (That reading
+  of the ruling's "when it is listed" as two checks is the owner's to
+  confirm: issue #53.) An entry its
+  contract contradicts, or whose contract does not answer as a token, is not
+  shown, and Settings → Tokens says why. While the check has no verified
+  answer yet the entry is shown: its balance is a verified call of its own.
+- **Icons are bundled** as Compose `ImageVector`s, converted from the SVGs of
+  the CC0 `cryptocurrency-icons` set at a pinned commit, with their provenance
+  and licence stated (`TokenIcons`); the built-in list keeps to tokens that set
+  has an icon for. A token the user adds gets a monogram of its symbol. Nothing is
+  fetched to draw a token.
+- **A token the user adds** is read from its contract (`symbol()`, `name()`,
+  `decimals()`, verified) and labelled as the contract's claim, with the block
+  it was read at, cut on screen beyond 24 characters of symbol or 48 of name.
+  One whose symbol is a built-in token's is marked as not that
+  token, on the Add card, in Settings → Tokens and on every account row. Two
+  added tokens sharing a symbol are not marked (Settings → Tokens shows each
+  one's address); whether they should be is the owner's open question (issue
+  #51). An
+  address the wallet already knows, or that does not answer as a token,
+  cannot be added, and nothing is added without a verified answer. The added
+  tokens and the hidden ones are the user's settings, kept in a file of their
+  own (`tokens.json`, beside the account list). While that file cannot be
+  read, nothing can be changed and the account screens say that hidden tokens
+  show and added ones are missing; a damaged one is set aside, and Settings →
+  Tokens says the settings started over.
+- **Hiding** a token takes it off every account's rows, from the asset menu
+  (5) or Settings → Tokens, which shows it again. A built-in token can only be
+  hidden; an added one can also be removed.
+- **Balances are verified `balanceOf` calls**, one per token and account,
+  each labelled with the block it ran against. A call that reverts, or returns
+  anything but one word, is a verified "not a token", not a zero. With a short
+  list that is enough. Once the list grows, the calls are batched through
+  Multicall3's `aggregate3`. Its code hash on Sepolia is
+  `0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891`,
+  proven 2026-10-17, and is pinned before any batch trusts it.
+- **Only known tokens show.** An account lists the built-in tokens it holds
+  and the ones the user added, minus the hidden ones. Finding other tokens
+  an address holds takes an indexer, which the *Trust* rules exclude.
+
+## Safes
+
+- **Detection** (issue #10) reads only verified state, each value with its
+  block: the proxy's code hash must be a pinned SafeProxy runtime hash; slot
+  0 (the singleton) must be a pinned canonical singleton for the network
+  (1.3.0, 1.4.1 or 1.5.0, L1 or L2); the owners are the linked list in slot
+  2 walked from the sentinel `0x1` with storage proofs, the threshold is slot
+  4 and the nonce slot 5. The modules (slot 1's list), the guard and, from
+  1.5.0, the module guard are read too, because a module can move funds
+  without the owners' signatures.
+  Anything that does not match is "another contract", never a Safe. The
+  pins (`SafeDeployments`) cover 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the
+  SafeProxy runtime code of each factory. A Safe's control badge follows its
+  verified owners: as many held here as its threshold is full control, fewer
+  is co-signer, none is watch-only, and so is a Safe not read yet.
+  - The numbered slots carry the block they were proven at; the guards sit
+    at hashed slots no storage proof names, so they are verified reads at the
+    head, which may be a head newer than that block.
+  - The owner and module lists are what the Safe's own getters return.
+    Storage written outside them (a setup delegatecall can plant a module the
+    list does not link) is not something reading the lists can rule out; the
+    co-signing flow's own checks against the chain stand for that.
+  - The stored kind is what was verified when the account was added. An
+    address watched while it was still counterfactual stays an account after
+    its Safe is deployed; re-detecting it is a follow-up.
+- **Creation** deploys Safe 1.4.1 through `SafeProxyFactory.createProxyWithNonce`
+  with a `setup` call, from an EOA the user holds. The address is predicted
+  locally and shown before the deployment is signed.
+  - The release (`SafeReleases`, pinned in `SafeDeployments`): 1.4.1's L1
+    singleton `0x41675C09…7461a` (Safe{Wallet}'s choice for Ethereum and its
+    testnets) and SafeProxyFactory `0x4e1DCf7A…20ec67`, and the factory's
+    proxy creation code, taken from `@safe-global/safe-contracts`
+    1.4.1-build.0 and checked against the pinned proxy runtime hash and
+    safe-deployments' factory code hash.
+  - `setup`: the owners in their order and the threshold; no module (`to`
+    zero, `data` empty); no fallback handler, since CompatibilityFallbackHandler
+    is not pinned (so the Safe takes no ERC-721/1155 safe transfers and
+    answers no EIP-1271 call until one is set); no payment.
+  - The address: `keccak256(0xff ‖ factory ‖ keccak256(keccak256(initializer)
+    ‖ saltNonce) ‖ keccak256(proxyCreationCode ‖ uint256(singleton)))[12:]`
+    (`SafeCreation`), with vectors re-derived with Foundry's `cast` and the
+    factory's own run on a local node. The factory's verified run on Sepolia
+    must return it before anything is signed.
+- **A hardware P-256 owner** signs through the passkey signer, under
+  docs/keys-and-signing.md (*A Safe owned by a hardware P-256 key*).
+
+## Co-signing a Safe transaction
+
+The ruling (CLAUDE.md, *Data sources*, 2026-10-16): no off-chain service.
+Applied:
+
+- **A signing request is data, not a description**: a versioned compact
+  JSON object with the chain id, the Safe, the `SafeTx` fields (`to`,
+  `value`, `data`, `operation`, `safeTxGas`, `baseGas`, `gasPrice`,
+  `gasToken`, `refundReceiver`, `nonce`) and the signatures collected so far.
+  It carries no label, summary or hash for the receiver to trust. Version 1
+  (`JsonSigningRequestCodec`):
+
+  ```
+  {"v":1,"chainId":11155111,"safe":"0x…","tx":{"to":"0x…","value":"0","data":"0x…",
+   "operation":0,"safeTxGas":"0","baseGas":"0","gasPrice":"0","gasToken":"0x…",
+   "refundReceiver":"0x…","nonce":"4"},"signatures":[{"owner":"0x…","signature":"0x…"}]}
+  ```
+
+  - One line, in this key order; addresses and bytes lower-case hex with
+    `0x`; every uint256, the nonce included, a decimal string without a
+    leading zero; each signature `r ‖ s ‖ v` (65 bytes, `v` 27 or 28, a low
+    `s`) of the raw hash; one per owner, in ascending owner order. A high `s`
+    and an `eth_sign`-style `v` of 31 or 32 are refused, stricter than the
+    Safe contract; whether to accept them, for signers that make them, is the
+    owner's open question (issue #60).
+  - Decoded only when the text, less the whitespace around it, is exactly
+    the encoding of what it decodes to: a second value of a key, an unknown
+    field, a comment, another form of a number cannot ride along. Another
+    `v` is "a newer version", another chain "not Sepolia"; anything else,
+    and text over 140,000 characters or nested deeper than the format, is
+    "not a signing request".
+- **It travels as one QR code**, or as text through the platform's share
+  sheet when it is too large for one. A USDC transfer with one signature is
+  702 bytes, a version-21 QR code at error correction M; each further
+  signature adds 202 (904 for a 2-of-3 Safe's second signer). Nothing else
+  leaves the device: the queue of pending transactions and signatures is
+  kept locally (`FileSafeTxQueue`, beside the account list), and a
+  signature is queued only once it has passed the checks below.
+- **The receiving device checks it against the chain** before showing it
+  (`ImportSigningRequest`):
+  the chain id is Sepolia; the Safe is detected as a Safe; the nonce is not
+  below the Safe's verified nonce (how far above it may be is not bounded:
+  issue #59); the `SafeTx` hash is computed here; every
+  signature is a current owner's over that hash. An ECDSA signature must
+  recover to the owner; a contract owner's, such as the passkey signer of a
+  hardware P-256 key, must pass a verified EIP-1271 `isValidSignature` call
+  to that owner (version 1 carries ECDSA signatures only; the passkey owner
+  brings the next version). A request that fails
+  any check is refused with the reason. What the screen shows (17) is
+  decoded here from those fields.
+- **`approveHash` is the on-chain alternative**: an owner account the user
+  holds approves the hash in a transaction, which needs no transport between
+  devices. It is quoted and sent as any transaction from that account is
+  (Send's quote: nonce, fees, a verified run).
+- **Execution** is `execTransaction` sent by any account the user holds,
+  owner or not, which pays for it (owner ruling, 2026-10-18, #56), once
+  signatures and approvals reach the threshold, followed like a send (9).
+  The executing account, when it is an owner, confirms it by sending it; approvals on chain are read
+  only when the signatures fall short. Its run is the whole execution — the
+  Safe's checks, its guard, the call — as a verified call from that account,
+  and one that would fail is not signed.
+
+## Not part of this page
+
+Still the owner's decisions (CLAUDE.md, docs/keys-and-signing.md and issue
+#11):
+
+- importing a raw private key (an EOA comes from a recovery phrase);
+- the synced-passkey owner tier and external signers;
+- which recovery modules come (none is pinned, so none is offered when a
+  Safe is created, screen 14), and how: still open (issues #54, #72);
+- the dApp connection protocol;
+- any network other than Sepolia.
+
+Swapping tokens has a page of its own, docs/swaps.md (issue #69). The swap
+screens there are numbered from 22.

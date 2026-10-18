@@ -1,11 +1,12 @@
 package eth.serotine.domain.model
 
 /**
- * BIP-39 backup words, as the user types them to restore an account. The ONE type the
- * words travel as, which is the condition of the mnemonic-screen exception to the
- * key-material rule (CLAUDE.md, *Trust*; docs/keys-and-signing.md, *Backup and
- * recovery*): from the seed screen's UiState through its ViewModel and a use case into
- * the key adapter, and nowhere else, so a search for this type finds the whole path.
+ * BIP-39 backup words, as the user types them to restore an account, or as the key adapter
+ * made them for Create account (and the few typed back there to check them). The ONE type
+ * the words travel as, which is the condition of the mnemonic-screen exception to the
+ * key-material rule (CLAUDE.md, *Trust*; docs/keys-and-signing.md, *Backup and recovery*):
+ * between the key adapter and the seed screens' UiStates, through their ViewModels and the use
+ * cases between them, and nowhere else, so a search for this type finds the whole path.
  *
  * It holds [text] exactly as typed, because the input field shows it back, and reads
  * [words] from it. Whether the words are a valid mnemonic (the wordlist, the checksum) is

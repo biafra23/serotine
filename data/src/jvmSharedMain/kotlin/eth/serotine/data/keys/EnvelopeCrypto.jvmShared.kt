@@ -59,8 +59,10 @@ internal actual object EnvelopeCrypto {
                 Sodium.SizeT(memLimitBytes),
                 sodium.crypto_pwhash_alg_argon2id13(),
             )
-            // libsodium fails only for out-of-range parameters or when the memory cannot be had.
-            check(result == 0) { "crypto_pwhash failed" }
+            // libsodium fails only for out-of-range parameters or when the memory cannot be had,
+            // and every caller's parameters are within Envelope's floor and ceiling, far inside
+            // libsodium's own bounds: a failure is the memory (its -1, errno ENOMEM).
+            if (result != 0) throw Argon2idOutOfMemory()
             return out.getByteArray(0, outLength)
         } finally {
             passwordIn.clear()
