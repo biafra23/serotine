@@ -36,6 +36,7 @@ import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
+import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
@@ -351,10 +352,10 @@ class SendViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (!current.idle || !current.unlock.biometrics || requoted(current)) return
         // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
-        val within = promptDeadline(current.quotedAt.elapsedNow()) ?: return refresh(note = STALE_QUOTE)
+        val notAfter = promptDeadline(current.quotedAt) ?: return refresh(note = PROMPT_TOO_LATE)
         val amount = exactAmount(current.quote.amount, current.request.option.decimals, current.request.option.symbol)
         // The recipient in full: the prompt is the last thing read before the key signs.
-        sign(current, Unlock.WithBiometrics("Send $amount to ${Eip55.format(current.quote.to)}", within))
+        sign(current, Unlock.WithBiometrics("Send $amount to ${Eip55.format(current.quote.to)}", notAfter))
     }
 
     /** Whether [review]'s quote is too old to sign, and so is being made again instead. */

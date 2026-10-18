@@ -46,6 +46,7 @@ import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
+import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SafeTxActionItem
@@ -459,10 +460,10 @@ class SafeTxViewModel(
                     return
                 }
                 // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
-                val within = promptDeadline(current.quotedAt.elapsedNow())
-                    ?: return requote(current, current.account, current.level, note = STALE_QUOTE)
+                val notAfter = promptDeadline(current.quotedAt)
+                    ?: return requote(current, current.account, current.level, note = PROMPT_TOO_LATE)
                 val what = if (current.kind == ReviewKind.APPROVAL) "Approve on chain" else "Execute"
-                send(current, Unlock.WithBiometrics("$what Safe transaction $action", within))
+                send(current, Unlock.WithBiometrics("$what Safe transaction $action", notAfter))
             }
             else -> Unit
         }

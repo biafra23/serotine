@@ -561,7 +561,7 @@ class SafeTxViewModelTest {
         viewModel.signWithBiometrics()
         runCurrent()
 
-        assertEquals(35.seconds, (world.signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertEquals(35.seconds, -(world.signer.asked.single().second as Unlock.WithBiometrics).notAfter!!.elapsedNow())
         assertEquals(emptyList(), world.broadcaster.sent, "nothing signed, nothing sent")
         assertEquals(2, world.inputs.estimated.size, "quoted again")
         assertEquals(

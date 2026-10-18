@@ -416,11 +416,9 @@ class CreateSafeViewModelTest {
         viewModel.signWithBiometrics()
         runCurrent()
 
-        assertEquals(
-            Unlock.WithBiometrics("Deploy a 1-of-2 Safe at $address, paid from Daily", within = 60.seconds),
-            signer.asked.single().second,
-            "the prompt gets what is left of the quote's minute",
-        )
+        val unlock = assertIs<Unlock.WithBiometrics>(signer.asked.single().second)
+        assertEquals("Deploy a 1-of-2 Safe at $address, paid from Daily", unlock.reason)
+        assertEquals(60.seconds, -unlock.notAfter!!.elapsedNow(), "the prompt gets what is left of the quote's minute")
     }
 
     @Test
@@ -433,7 +431,7 @@ class CreateSafeViewModelTest {
         viewModel.signWithBiometrics()
         runCurrent()
 
-        assertEquals(15.seconds, (signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertEquals(15.seconds, -(signer.asked.single().second as Unlock.WithBiometrics).notAfter!!.elapsedNow())
         assertTrue(broadcaster.sent.isEmpty(), "nothing signed, nothing sent")
         val review = viewModel.review
         assertEquals(

@@ -494,11 +494,9 @@ class SendViewModelTest {
         viewModel.signWithBiometrics()
         runCurrent()
 
-        assertEquals(
-            Unlock.WithBiometrics("Send 0.1 ETH to 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", within = 60.seconds),
-            signer.asked.single().second,
-            "the prompt gets what is left of the quote's minute",
-        )
+        val unlock = assertIs<Unlock.WithBiometrics>(signer.asked.single().second)
+        assertEquals("Send 0.1 ETH to 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", unlock.reason)
+        assertEquals(60.seconds, -unlock.notAfter!!.elapsedNow(), "the prompt gets what is left of the quote's minute")
         val review = viewModel.review
         assertEquals(
             "The fingerprint or face check was dismissed. Nothing was signed: try again, or use the wallet password.",
@@ -523,7 +521,7 @@ class SendViewModelTest {
         viewModel.signWithBiometrics()
         runCurrent()
 
-        assertEquals(20.seconds, (signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertEquals(20.seconds, -(signer.asked.single().second as Unlock.WithBiometrics).notAfter!!.elapsedNow())
         assertTrue(broadcaster.sent.isEmpty(), "nothing signed, nothing sent")
         assertEquals(2, inputs.estimated.size, "the quote made again")
         assertEquals(

@@ -4,7 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
-import kotlin.time.Duration
+import kotlin.time.TimeMark
 
 /**
  * The signer port (docs/keys-and-signing.md, *Where it lives in the architecture*): a signing
@@ -36,11 +36,12 @@ sealed interface Unlock {
     /**
      * With a strong biometric, through the system's prompt, which says [reason] (display-ready:
      * what is being signed). Only where the biometric path is on ([KeyStore.enableBiometrics]).
-     * [within], when set, is the deadline the signature must be made in, the prompt's answer
-     * included: past it the prompt is dismissed and nothing is signed ([Signing.TimedOut]). A
-     * quote ages while the prompt is up, and one past its age is never signed.
+     * [notAfter], when set, is the moment the signature must be made by: an absolute deadline,
+     * from what is signed (a quote's age), so that nothing between the tap and the prompt (a
+     * check of the Safe, the key store's turn) can stretch it. Past it the prompt is dismissed and
+     * nothing is signed ([Signing.TimedOut]): a quote past its age is never signed.
      */
-    data class WithBiometrics(val reason: String, val within: Duration? = null) : Unlock
+    data class WithBiometrics(val reason: String, val notAfter: TimeMark? = null) : Unlock
 }
 
 /** The outcome of [Signer.sign]. */
@@ -62,7 +63,7 @@ sealed interface Signing {
     data object Cancelled : Signing
 
     /**
-     * Not signed within the unlock's deadline ([Unlock.WithBiometrics.within]): the prompt was
+     * Not signed by the unlock's deadline ([Unlock.WithBiometrics.notAfter]): the prompt was
      * dismissed, and nothing was signed. What it was to sign is too old by now, and is made again.
      */
     data object TimedOut : Signing

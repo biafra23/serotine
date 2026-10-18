@@ -326,11 +326,47 @@ class SafeProposeViewModelTest {
         viewModel.signWithBiometrics()
         runCurrent()
 
-        assertEquals(30.seconds, (world.signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertEquals(30.seconds, -(world.signer.asked.single().second as Unlock.WithBiometrics).notAfter!!.elapsedNow())
         assertEquals(emptyList(), world.queue.requests.value, "nothing signed, nothing queued")
         assertEquals(
             "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the " +
                 "quote was made again: check it, then sign.",
+            viewModel.review.unlock.error,
+        )
+    }
+
+    @Test
+    fun aSlowCheckOfTheSafeBeforeTheSignerDoesNotStretchThePromptsDeadline() = runTest {
+        biometrics = BiometricUnlock.On
+        val viewModel = reviewed()
+        clock += 30.seconds
+        // The Safe's reading SignSafeTx makes before it asks the signer takes 20 s.
+        val gate = CompletableDeferred<Unit>()
+        world.kindGate = gate
+
+        viewModel.signWithBiometrics()
+        runCurrent()
+        clock += 20.seconds
+        gate.complete(Unit)
+        runCurrent()
+
+        val unlock = assertIs<Unlock.WithBiometrics>(world.signer.asked.single().second)
+        assertEquals(10.seconds, -unlock.notAfter!!.elapsedNow(), "what is left of the proposal's minute, not 30 s")
+    }
+
+    @Test
+    fun aTapTooLateInTheProposalsMinuteForThePromptMakesItAgainAndSaysWhy() = runTest {
+        biometrics = BiometricUnlock.On
+        val viewModel = reviewed()
+        clock += 50.seconds
+
+        viewModel.signWithBiometrics()
+        runCurrent()
+
+        assertEquals(emptyList(), world.signer.asked, "nothing asked of the signer")
+        assertEquals(
+            "Too little of the quote's minute was left for the fingerprint or face check, so the quote was made " +
+                "again: check it, then sign.",
             viewModel.review.unlock.error,
         )
     }

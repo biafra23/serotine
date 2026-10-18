@@ -21,7 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.transformLatest
-import kotlin.time.Duration
+import kotlin.time.TimeMark
 import kotlin.time.Duration.Companion.seconds
 
 // The transfer form (docs/wallet-ux.md, screen 7) as Send and a Safe's proposal of a transfer
@@ -311,11 +311,22 @@ internal const val STALE_QUOTE = "The quote was over a minute old, so it was mad
 internal val MIN_PROMPT_TIME = 15.seconds
 
 /**
- * The deadline of the biometric prompt that signs a quote of [age] ([Unlock.WithBiometrics.within]):
- * what is left of [QUOTE_MAX_AGE], so that the quote is never signed older than that, or null when
- * that is less than [MIN_PROMPT_TIME] and the quote is to be made again first.
+ * The deadline of the biometric prompt that signs a quote made at [quotedAt]
+ * ([Unlock.WithBiometrics.notAfter]): the moment it turns [QUOTE_MAX_AGE] old, absolute, so that
+ * nothing between the tap and the prompt stretches it and the quote is never signed older; or
+ * null when less than [MIN_PROMPT_TIME] is left of it, and the quote is to be made again first
+ * ([PROMPT_TOO_LATE]).
  */
-internal fun promptDeadline(age: Duration): Duration? = (QUOTE_MAX_AGE - age).takeIf { it >= MIN_PROMPT_TIME }
+internal fun promptDeadline(quotedAt: TimeMark): TimeMark? =
+    (quotedAt + QUOTE_MAX_AGE).takeIf { -it.elapsedNow() >= MIN_PROMPT_TIME }
+
+/**
+ * What a review says under its unlock once the tap that opens the biometric prompt came too
+ * late in the quote's minute for the prompt ([promptDeadline] null) and the quote was made again.
+ */
+internal const val PROMPT_TOO_LATE =
+    "Too little of the quote's minute was left for the fingerprint or face check, so the quote was made again: " +
+        "check it, then sign."
 
 /**
  * What a review says under its unlock once a biometric prompt was not answered within its deadline

@@ -36,6 +36,7 @@ import eth.serotine.ui.components.AssetOption
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
+import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
@@ -381,8 +382,8 @@ class SafeProposeViewModel(
         val to = Eip55.format(current.request.to.address)
         val warning = option.warning?.let { " ($it)" }.orEmpty()
         // The prompt gets what is left of the proposal's age: past it, nothing is signed, and it is made again.
-        val within = promptDeadline(current.proposedAt.elapsedNow()) ?: return refresh(note = STALE_QUOTE)
-        sign(current, Unlock.WithBiometrics("Sign a Safe transaction of $label: send $amount$warning to $to", within))
+        val notAfter = promptDeadline(current.proposedAt) ?: return refresh(note = PROMPT_TOO_LATE)
+        sign(current, Unlock.WithBiometrics("Sign a Safe transaction of $label: send $amount$warning to $to", notAfter))
     }
 
     /** Whether [review]'s proposal is too old to sign, and so is being made again instead. */

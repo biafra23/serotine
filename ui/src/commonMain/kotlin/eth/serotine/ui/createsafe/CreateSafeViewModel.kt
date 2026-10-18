@@ -38,6 +38,7 @@ import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
+import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
@@ -352,9 +353,9 @@ class CreateSafeViewModel(
         val prompt = "Deploy a ${plan.threshold}-of-${plan.owners.size} Safe at ${Eip55.format(plan.address)}, " +
             "paid from $payer"
         // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
-        val age = current.quotedAt?.elapsedNow() ?: return requote(note = STALE_QUOTE)
-        val within = promptDeadline(age) ?: return requote(note = STALE_QUOTE)
-        sign(current, quote, Unlock.WithBiometrics(prompt, within))
+        val quotedAt = current.quotedAt ?: return requote(note = STALE_QUOTE)
+        val notAfter = promptDeadline(quotedAt) ?: return requote(note = PROMPT_TOO_LATE)
+        sign(current, quote, Unlock.WithBiometrics(prompt, notAfter))
     }
 
     /** Broadcasts the deployment signed but not sent again, byte for byte. */

@@ -22,7 +22,7 @@ import kotlin.coroutines.resume
  * takes no weaker one), with an explicit confirmation, and "Use the password" as the way out.
  *
  * A caller that is cancelled cancels the prompt's `CancellationSignal`, which dismisses it: that is
- * how the key store's deadline ([eth.serotine.domain.repository.Unlock.WithBiometrics.within])
+ * how the key store's deadline ([eth.serotine.domain.repository.Unlock.WithBiometrics.notAfter])
  * ends a prompt nobody answered in time, so that no quote is signed past its age.
  */
 class PlatformBiometricPrompter(private val foreground: () -> Activity?) : BiometricPrompter {

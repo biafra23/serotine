@@ -172,10 +172,12 @@ upgrades*).
    - The quote is never signed stale: it is made when the review is entered,
      again on Refresh, when the screen is shown again after it was not, and
      at the tap that would sign it when it is over a minute old (made again
-     and said, not signed). The biometric prompt gets what is left of that
-     minute as its deadline (`Unlock.WithBiometrics.within`; less than 15
-     seconds left, the quote is made again first): one not answered in time
-     is dismissed, nothing is signed, and the quote is made again and said.
+     and said, not signed). The biometric prompt's deadline is the moment the
+     quote turns a minute old (`Unlock.WithBiometrics.notAfter`, absolute, so
+     no check between the tap and the prompt stretches it; with less than 15
+     seconds left at the tap, the quote is made again first, and said so):
+     one not answered in time is dismissed, nothing is signed, and the quote
+     is made again and said.
      A name is resolved again with every quote (one
      that moved, or that cannot be verified again, is said, not signed), and
      back to 7 drops it.

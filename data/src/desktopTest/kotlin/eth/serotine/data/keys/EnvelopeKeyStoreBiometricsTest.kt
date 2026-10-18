@@ -30,7 +30,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /** The envelope's biometric path (docs/keys-and-signing.md, rules 3 and 4), over a fake biometric key. */
@@ -100,7 +99,9 @@ class EnvelopeKeyStoreBiometricsTest {
         val store = store()
         store.importMnemonic(hardhat, password)
         assertEquals(BiometricChange.Enabled, store.enableBiometrics(password, CONFIRM))
-        val within = Unlock.WithBiometrics("Send 0.1 ETH to 0x5aAe…eAed", within = 30.seconds)
+        // The test's virtual clock: the key store's timeout runs on it too.
+        val clock = testScheduler.timeSource
+        val within = Unlock.WithBiometrics("Send 0.1 ETH to 0x5aAe…eAed", notAfter = clock.markNow() + 30.seconds)
 
         // Answered in time: signed.
         assertIs<Signing.Signed>(store.sign(hardhatAddress, digest, within))
@@ -119,7 +120,8 @@ class EnvelopeKeyStoreBiometricsTest {
         // A deadline already gone asks nothing at all.
         key.gate = null
         val asked = key.reasons.size
-        assertEquals(Signing.TimedOut, store.sign(hardhatAddress, digest, within.copy(within = Duration.ZERO)))
+        val gone = within.copy(notAfter = clock.markNow())
+        assertEquals(Signing.TimedOut, store.sign(hardhatAddress, digest, gone))
         assertEquals(asked, key.reasons.size)
     }
 
