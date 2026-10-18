@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.STEPPED_DOWN_TEXT
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -112,6 +113,11 @@ private fun CreateAccountCreatedPreview() = CreateAccountPreview(CreateAccountUi
 
 @Preview
 @Composable
+private fun CreateAccountCreatedSteppedDownPreview() =
+    CreateAccountPreview(CreateAccountUiState.Created("Account 2", STEPPED_DOWN_TEXT))
+
+@Preview
+@Composable
 private fun CreateAccountRestartPreview() = CreateAccountPreview(
     CreateAccountUiState.Restart(
         "The phrase was cleared when the screen was left, before it was stored, and it will never be used. " +
@@ -140,6 +146,7 @@ internal val createAccountScreenPreviews: List<@Composable () -> Unit> = listOf(
     { CreateAccountCreatingPreview() },
     { CreateAccountKeyStoreStoppedPreview() },
     { CreateAccountCreatedPreview() },
+    { CreateAccountCreatedSteppedDownPreview() },
     { CreateAccountRestartPreview() },
     { CreateAccountNotListedPreview() },
     { CreateAccountKeyStoreUnavailablePreview() },

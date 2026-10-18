@@ -109,8 +109,8 @@ fun AssetsRoute(
  * ([onCreateSafe]), greyed out until an account's key is known to be held here to pay for its
  * deployment (while the list is read, too), a tap then saying why, with the ways to get one; a
  * row's tap and its long-press menu (a right click on desktop) ask [onAccountAction], its Send
- * greyed out with its reason where it cannot be done (owner ruling, 2026-10-18, #55). [fabExpandedAtStart] opens the button's fan from the start (a
- * preview).
+ * greyed out with its reason where it cannot be done (owner ruling, 2026-10-18, #55).
+ * [fabExpandedAtStart] opens the button's fan from the start (a preview).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

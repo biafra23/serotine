@@ -82,9 +82,12 @@ fun CreateAccountRoute(
         onCreate = viewModel::onCreate,
         onStartOver = viewModel::startOver,
         onBack = onBack,
+        onDone = onCreated,
         modifier = modifier,
     )
-    if (state is CreateAccountUiState.Created) {
+    // A note to read first keeps the screen until the user is done with it.
+    val created = state as? CreateAccountUiState.Created
+    if (created != null && created.note == null) {
         LaunchedEffect(Unit) { onCreated() }
     }
 }
@@ -94,7 +97,7 @@ fun CreateAccountRoute(
  * here alone, three of its words asked back, then the wallet password. While it is shown the
  * window is kept out of screen capture where the platform allows ([protectFromScreenCapture]),
  * where it does not the screen says so, and the display is kept on ([KeepScreenOn]). Nothing
- * typed is saved: it lives in the ViewModel's state only.
+ * typed is saved: it lives in the ViewModel's state only. [onDone] once a creation's note is read.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +113,7 @@ fun CreateAccountScreen(
     onStartOver: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onDone: () -> Unit = {},
 ) {
     val captureBlocked = protectFromScreenCapture()
     if (state is CreateAccountUiState.Showing || state is CreateAccountUiState.Checking) KeepScreenOn()
@@ -137,7 +141,13 @@ fun CreateAccountScreen(
                 is CreateAccountUiState.Checking -> CheckingContent(state, onCheckedWordChange, onCheck, onShowAgain)
                 is CreateAccountUiState.Securing ->
                     SecuringContent(state, onPasswordChange, onRepeatChange, onCreate)
-                is CreateAccountUiState.Created -> Text("${state.label} created")
+                is CreateAccountUiState.Created -> {
+                    Text("${state.label} created")
+                    state.note?.let { note ->
+                        Text(note, style = MaterialTheme.typography.bodyMedium)
+                        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                    }
+                }
                 CreateAccountUiState.NotListed -> Text(
                     "The key is stored, but the account list could not be saved, and the phrase is gone from " +
                         "this screen. To finish, import the phrase you wrote down (Import recovery phrase) with " +

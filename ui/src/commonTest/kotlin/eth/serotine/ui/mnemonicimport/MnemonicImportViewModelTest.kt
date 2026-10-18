@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -200,7 +201,7 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun notEnoughMemoryToProtectTheKeyIsSaidAsSuch() = runTest {
-        keys.next = CompletableDeferred(KeyImport.NotEnoughMemory)
+        keys.next = CompletableDeferred(KeyImport.NotEnoughMemory(MemoryStep.PROTECT))
         typeWordsAndPassword()
 
         viewModel.onImport()
@@ -209,6 +210,38 @@ class MnemonicImportViewModelTest {
         assertEquals("Not enough free memory to protect the key: close other apps and try again.", entering().error)
         assertEquals(twelveWords, entering().phrase.text)
         assertTrue(entering().canImport, "the user can try again")
+    }
+
+    @Test
+    fun notEnoughMemoryToCheckThePasswordIsSaidAsThat() = runTest {
+        keys.next = CompletableDeferred(KeyImport.NotEnoughMemory(MemoryStep.CHECK_PASSWORD))
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals(
+            "Not enough free memory to check the password: close other apps and try again. Nothing was added.",
+            entering().error,
+        )
+    }
+
+    @Test
+    fun aKeyProtectedAtALighterCostIsToldBeforeTheScreenCloses() = runTest {
+        keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.SOFTWARE_KEY_STORE, steppedDown = true))
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals(
+            Imported(
+                "Account 1",
+                "There was not enough free memory just now, so the password protection of this key uses less " +
+                    "memory and more passes.",
+            ),
+            viewModel.uiState.value,
+        )
     }
 
     @Test

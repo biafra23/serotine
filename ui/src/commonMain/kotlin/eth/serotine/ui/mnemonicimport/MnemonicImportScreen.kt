@@ -77,15 +77,19 @@ fun MnemonicImportRoute(
         onRepeatChange = viewModel::onRepeatChange,
         onImport = viewModel::onImport,
         onBack = onBack,
+        onDone = onImported,
         modifier = modifier,
     )
-    if (state is MnemonicImportUiState.Imported) {
+    // A note to read first keeps the screen until the user is done with it.
+    val imported = state as? MnemonicImportUiState.Imported
+    if (imported != null && imported.note == null) {
         LaunchedEffect(Unit) { onImported() }
     }
 }
 
 /**
- * The seed-phrase screen as a function of [state]. While it is shown the window is kept
+ * The seed-phrase screen as a function of [state]; [onDone] once an import's note is read. While
+ * it is shown the window is kept
  * out of screen capture where the platform allows ([protectFromScreenCapture]); where it
  * does not, the screen says so. The field's text is never saved: it lives in the
  * ViewModel's state, not in `rememberSaveable`, so it never reaches a saved-state bundle.
@@ -100,6 +104,7 @@ fun MnemonicImportScreen(
     onImport: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onDone: () -> Unit = {},
 ) {
     val captureBlocked = protectFromScreenCapture()
     Scaffold(
@@ -125,8 +130,19 @@ fun MnemonicImportScreen(
                 onImport = onImport,
                 modifier = Modifier.padding(padding),
             )
-            is MnemonicImportUiState.Imported -> Box(Modifier.padding(padding).fillMaxSize()) {
-                Text("${state.label} added", Modifier.align(Alignment.Center))
+            is MnemonicImportUiState.Imported -> if (state.note == null) {
+                Box(Modifier.padding(padding).fillMaxSize()) {
+                    Text("${state.label} added", Modifier.align(Alignment.Center))
+                }
+            } else {
+                Column(
+                    Modifier.padding(padding).fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text("${state.label} added", style = MaterialTheme.typography.titleMedium)
+                    Text(state.note, style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                }
             }
         }
     }

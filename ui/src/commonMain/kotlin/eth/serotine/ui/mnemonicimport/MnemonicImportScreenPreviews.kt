@@ -6,6 +6,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.ui.components.NOT_ENOUGH_MEMORY_TO_PROTECT
 import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.STEPPED_DOWN_TEXT
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -97,6 +98,11 @@ private fun MnemonicImportKeyStoreUnavailablePreview() = MnemonicImportPreview(
 @Composable
 private fun MnemonicImportImportedPreview() = MnemonicImportPreview(MnemonicImportUiState.Imported("Account 1"))
 
+@Preview
+@Composable
+private fun MnemonicImportImportedSteppedDownPreview() =
+    MnemonicImportPreview(MnemonicImportUiState.Imported("Account 1", STEPPED_DOWN_TEXT))
+
 /** Every preview above, which MnemonicImportScreenPreviewsTest renders: a new preview goes in here too. */
 internal val mnemonicImportScreenPreviews: List<@Composable () -> Unit> = listOf(
     { MnemonicImportCheckingPreview() },
@@ -109,4 +115,5 @@ internal val mnemonicImportScreenPreviews: List<@Composable () -> Unit> = listOf
     { MnemonicImportImportingPreview() },
     { MnemonicImportKeyStoreUnavailablePreview() },
     { MnemonicImportImportedPreview() },
+    { MnemonicImportImportedSteppedDownPreview() },
 )

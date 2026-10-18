@@ -74,8 +74,12 @@ sealed interface CreateAccountUiState {
     /** The screen was left while the key was being stored: that finishes, without the words or the password. */
     data object Finishing : CreateAccountUiState
 
-    /** The account named [label] was created; the words and the password are gone. */
-    data class Created(val label: String) : CreateAccountUiState
+    /**
+     * The account named [label] was created; the words and the password are gone. The screen
+     * closes, unless there is a [note] to read first (its key protected at a lighter cost than
+     * this device's own), which stays until the user is done.
+     */
+    data class Created(val label: String, val note: String? = null) : CreateAccountUiState
 
     /**
      * The phrase is gone, for the reason [message] gives (the screen was left; an attempt

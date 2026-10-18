@@ -213,8 +213,13 @@ sealed interface BiometricChange {
 /** The outcome of [KeyStore.importMnemonic]. */
 sealed interface KeyImport {
 
-    /** The seed is stored; [address] is its first account. */
-    data class Stored(val address: Address, val protection: KeyProtection) : KeyImport
+    /**
+     * The seed is stored; [address] is its first account. [steppedDown] when it was sealed at a
+     * lighter password cost than this device's own, as Argon2id could not have that memory just
+     * then (the owner's ruling of 2026-10-18): the envelope keeps that cost, and the user is told.
+     */
+    data class Stored(val address: Address, val protection: KeyProtection, val steppedDown: Boolean = false) :
+        KeyImport
 
     /** The words are not a BIP-39 mnemonic, for the reason [problem] gives. */
     data class Invalid(val problem: MnemonicProblem) : KeyImport
@@ -232,11 +237,20 @@ sealed interface KeyImport {
     data object NotSaved : KeyImport
 
     /**
-     * Not enough free memory to stretch the password (Argon2id could not have its memory, at
-     * the lightest cost either), so the seed could not be protected, or a stored envelope not
-     * opened to check the password. Nothing was stored.
+     * Not enough free memory to stretch the password (Argon2id could not have its memory) at
+     * [step]: protecting the seed, at the lightest cost too, or checking the password against a
+     * stored envelope. Nothing was stored.
      */
-    data object NotEnoughMemory : KeyImport
+    data class NotEnoughMemory(val step: MemoryStep) : KeyImport
+}
+
+/** Where an import ran short of memory ([KeyImport.NotEnoughMemory]). */
+enum class MemoryStep {
+    /** Checking the password against a stored envelope, which a later import does first. */
+    CHECK_PASSWORD,
+
+    /** Protecting the seed: sealing its envelope under the password. */
+    PROTECT,
 }
 
 /** The outcome of [KeyStore.newMnemonic]. */

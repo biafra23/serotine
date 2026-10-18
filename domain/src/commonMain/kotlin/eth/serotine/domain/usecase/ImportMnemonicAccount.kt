@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.MemoryStep
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -45,8 +46,8 @@ class ImportMnemonicAccount(
             KeyImport.PasswordTooShort -> MnemonicImport.PasswordTooShort
             KeyImport.Unavailable -> MnemonicImport.Unavailable
             KeyImport.NotSaved -> MnemonicImport.KeyNotSaved
-            KeyImport.NotEnoughMemory -> MnemonicImport.NotEnoughMemory
-            is KeyImport.Stored -> addOrFind(stored.address, stored.protection)
+            is KeyImport.NotEnoughMemory -> MnemonicImport.NotEnoughMemory(stored.step)
+            is KeyImport.Stored -> addOrFind(stored.address, stored.protection, stored.steppedDown)
         }
 
     /**
@@ -55,7 +56,7 @@ class ImportMnemonicAccount(
      * between; then the next round reads again rather than assume what that writer left — an
      * entry, or one already removed again.
      */
-    private suspend fun addOrFind(address: Address, protection: KeyProtection): MnemonicImport {
+    private suspend fun addOrFind(address: Address, protection: KeyProtection, steppedDown: Boolean): MnemonicImport {
         while (true) {
             val current = when (val list = accounts.observeAccounts().first()) {
                 is AccountList.Loaded -> list.accounts
@@ -63,18 +64,20 @@ class ImportMnemonicAccount(
             }
             val existing = current.firstOrNull { it.address == address }
             if (existing != null) {
-                if (existing.custody == AccountCustody.InKeyStore) return MnemonicImport.AlreadyAdded(existing)
+                if (existing.custody == AccountCustody.InKeyStore) {
+                    return MnemonicImport.AlreadyAdded(existing, steppedDown)
+                }
                 // A watched address whose key the user has now: it is held, not watched, from here on.
                 when (accounts.setCustody(address, AccountCustody.InKeyStore)) {
                     AccountChange.Changed ->
-                        return MnemonicImport.KeyAdded(existing.copy(custody = AccountCustody.InKeyStore))
+                        return MnemonicImport.KeyAdded(existing.copy(custody = AccountCustody.InKeyStore), steppedDown)
                     AccountChange.NotSaved -> return MnemonicImport.ListNotSaved
                     AccountChange.NotFound -> continue // removed by another writer meanwhile: read again
                 }
             }
             val account = Account(address, AccountKind.EOA, nextFreeLabel(current), AccountCustody.InKeyStore)
             when (accounts.add(account)) {
-                AccountAdd.Added -> return MnemonicImport.Added(account, protection)
+                AccountAdd.Added -> return MnemonicImport.Added(account, protection, steppedDown)
                 AccountAdd.NotSaved -> return MnemonicImport.ListNotSaved
                 AccountAdd.AlreadyPresent -> Unit // lost a race: read again
             }
@@ -86,20 +89,27 @@ class ImportMnemonicAccount(
 /** The outcome of [ImportMnemonicAccount]. */
 sealed interface MnemonicImport {
 
-    /** [account] is new and in the wallet, its seed stored with [protection]. */
-    data class Added(val account: Account, val protection: KeyProtection) : MnemonicImport
+    /**
+     * [account] is new and in the wallet, its seed stored with [protection]; [steppedDown] when
+     * its envelope was sealed at a lighter password cost than this device's own
+     * ([KeyImport.Stored.steppedDown]), which the user is told.
+     */
+    data class Added(val account: Account, val protection: KeyProtection, val steppedDown: Boolean = false) :
+        MnemonicImport
 
     /**
      * The words' first account was in the wallet already, as [account]; its seed is stored
-     * now (an account added before keys were kept gets its key this way).
+     * now (an account added before keys were kept gets its key this way); [steppedDown] as for
+     * [Added].
      */
-    data class AlreadyAdded(val account: Account) : MnemonicImport
+    data class AlreadyAdded(val account: Account, val steppedDown: Boolean = false) : MnemonicImport
 
     /**
      * The words' first account was in the wallet as a watched address, [account]; its key is
-     * stored now, and the account is held in the key store from here on.
+     * stored now, and the account is held in the key store from here on; [steppedDown] as for
+     * [Added].
      */
-    data class KeyAdded(val account: Account) : MnemonicImport
+    data class KeyAdded(val account: Account, val steppedDown: Boolean = false) : MnemonicImport
 
     /** The words are not a BIP-39 mnemonic, for the reason [problem] gives; nothing changed. */
     data class Invalid(val problem: MnemonicProblem) : MnemonicImport
@@ -116,8 +126,8 @@ sealed interface MnemonicImport {
     /** The seed could not be stored; nothing changed. */
     data object KeyNotSaved : MnemonicImport
 
-    /** Not enough free memory to protect the seed under the password; nothing changed. */
-    data object NotEnoughMemory : MnemonicImport
+    /** Not enough free memory at [step], to check the password or to protect the seed; nothing changed. */
+    data class NotEnoughMemory(val step: MemoryStep) : MnemonicImport
 
     /**
      * The seed is stored (and with it the wallet password, if this import set it), but the

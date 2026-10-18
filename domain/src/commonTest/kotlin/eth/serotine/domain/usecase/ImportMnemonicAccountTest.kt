@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -56,6 +57,19 @@ class ImportMnemonicAccountTest {
         assertEquals(listOf(expected), repository.accounts.value)
         assertSame(mnemonic, keys.received.single().first, "the words reach the key store unchanged")
         assertSame(password, keys.received.single().second, "and so does the password")
+    }
+
+    @Test
+    fun aSealThatSteppedDownIsCarriedToTheOutcome() = runTest {
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.SOFTWARE_KEY_STORE, steppedDown = true)
+
+        val expected = Account(first, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)
+        assertEquals(
+            MnemonicImport.Added(expected, KeyProtection.SOFTWARE_KEY_STORE, steppedDown = true),
+            import(mnemonic, password),
+        )
+        assertEquals(MnemonicImport.AlreadyAdded(expected, steppedDown = true), import(mnemonic, password))
     }
 
     @Test
@@ -204,9 +218,10 @@ class ImportMnemonicAccountTest {
     @Test
     fun notEnoughMemoryToProtectTheSeedAddsNothingAndIsSaidAsSuch() = runTest {
         val mnemonic = Mnemonic("any words")
-        keys.results[mnemonic] = KeyImport.NotEnoughMemory
-
-        assertEquals(MnemonicImport.NotEnoughMemory, import(mnemonic, password))
+        for (step in MemoryStep.entries) {
+            keys.results[mnemonic] = KeyImport.NotEnoughMemory(step)
+            assertEquals(MnemonicImport.NotEnoughMemory(step), import(mnemonic, password))
+        }
         assertEquals(emptyList(), repository.accounts.value)
     }
 

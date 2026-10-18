@@ -157,9 +157,8 @@ and that is the owner's decision, not a drive-by dependency.
   (`components/Unavailable.kt`: `UnavailableDialog`, with the ways to get it
   where there are some). The UiState carries the enabled state and a
   display-ready reason. Only an action that does not apply at all (to that
-  kind of account, in that step) is left out. Known not to follow it yet,
-  tracked in #74: screen 17's Sign and Approve on chain, and its Execute
-  while the owners' states cannot be read, are still hidden.
+  kind of account, in that step) is left out. The actions issue #74 lists
+  are known not to follow it yet; that list, not this file, says which.
 - **Every screen has previews** (owner's request, 2026-10-17), so Android
   Studio renders it: `<Feature>ScreenPreviews.kt` next to the screen, one
   private `@Preview` per state the screen draws differently plus one in the
@@ -646,13 +645,15 @@ discussion that produced this note.
     accounts can be derived without the words (owner ruling, 2026-10-15).
   - Where the password stands alone, Argon2id's cost is sized by the
     device's memory (owner ruling, 2026-10-18, #36): 256 MiB × 4, 128 MiB ×
-    8 or 64 MiB × 16, about the same time each; Android picks the tier from
-    its total memory and low-RAM flag, the desktop keeps 256 MiB × 4. A seal
-    whose memory cannot be had steps down a tier, never below the 64 MiB
-    floor, and the user is told when a lighter tier is used. Argon2id short
-    of memory is its own outcome (sealing, opening, signing), never "the key
-    store does not work", and a failed seal stores nothing. The hardware
-    path's 64 MiB × 3 and stored envelopes are unchanged
+    8 or 64 MiB × 16, about the same time each; Android starts at the tier
+    of its total memory and low-RAM flag, the desktop starts at 256 MiB × 4.
+    A seal whose memory cannot be had steps down a tier, on any device, never
+    below the 64 MiB floor, and the user is told when a lighter tier is used:
+    a device's lighter tier with its protection, a seal that stepped down
+    when the key is stored. An envelope keeps the tier it was sealed at.
+    Argon2id short of memory is its own outcome (sealing, opening, signing),
+    never "the key store does not work", and a failed seal stores nothing.
+    The hardware path's 64 MiB × 3 and stored envelopes are unchanged
     (docs/keys-and-signing.md, *Costs*).
   - A desktop without a hardware key store stands on the password path alone,
     with Argon2id run harder, and the app tells the user so; a Mac with a

@@ -2,6 +2,7 @@ package eth.serotine.ui.components
 
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.PasswordCost
 
 /**
@@ -41,6 +42,25 @@ internal const val LESS_MEMORY_TEXT =
 /** What a seed screen says when Argon2id could not have the memory to protect the key. */
 internal const val NOT_ENOUGH_MEMORY_TO_PROTECT =
     "Not enough free memory to protect the key: close other apps and try again."
+
+/**
+ * What a seed screen says when Argon2id could not have the memory at [step]: to protect the key,
+ * or to check the password against a stored one, which an import does first; [nothing] says what
+ * was not done ("Nothing was added.").
+ */
+internal fun notEnoughMemoryText(step: MemoryStep, nothing: String): String = when (step) {
+    MemoryStep.PROTECT -> NOT_ENOUGH_MEMORY_TO_PROTECT
+    MemoryStep.CHECK_PASSWORD ->
+        "Not enough free memory to check the password: close other apps and try again. $nothing"
+}
+
+/**
+ * What a seed screen says once a key was stored at a lighter password cost than this device's
+ * own (`KeyImport.Stored.steppedDown`): the envelope keeps that cost.
+ */
+internal const val STEPPED_DOWN_TEXT =
+    "There was not enough free memory just now, so the password protection of this key uses less memory and " +
+        "more passes."
 
 /** How [this] protects a stored seed, display-ready: what the seed screens say under the password. */
 internal val KeyProtection.protectionText: String

@@ -10,7 +10,8 @@ import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
 import eth.serotine.ui.components.PasswordStep
-import eth.serotine.ui.components.NOT_ENOUGH_MEMORY_TO_PROTECT
+import eth.serotine.ui.components.STEPPED_DOWN_TEXT
+import eth.serotine.ui.components.notEnoughMemoryText
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Imported
@@ -126,11 +127,12 @@ class MnemonicImportViewModel(
     }
 
     private fun Entering.after(result: MnemonicImport): MnemonicImportUiState = when (result) {
-        is MnemonicImport.Added -> Imported(result.account.label)
+        is MnemonicImport.Added -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
         // A watched address whose key is stored now: the import did what was asked.
-        is MnemonicImport.KeyAdded -> Imported(result.account.label)
+        is MnemonicImport.KeyAdded -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
         is MnemonicImport.AlreadyAdded -> copy(
-            error = "“${result.account.label}” is in the wallet already; its key is stored on this device now.",
+            error = "“${result.account.label}” is in the wallet already; its key is stored on this device now." +
+                if (result.steppedDown) " $STEPPED_DOWN_TEXT" else "",
         )
         is MnemonicImport.Invalid -> copy(error = result.problem.message)
         MnemonicImport.WrongPassword -> copy(passwordError = "That is not the wallet password.")
@@ -143,7 +145,7 @@ class MnemonicImportViewModel(
                 "cannot store the key.",
         )
         MnemonicImport.KeyNotSaved -> copy(error = "The key could not be stored on this device. Nothing was added.")
-        MnemonicImport.NotEnoughMemory -> copy(error = NOT_ENOUGH_MEMORY_TO_PROTECT)
+        is MnemonicImport.NotEnoughMemory -> copy(error = notEnoughMemoryText(result.step, "Nothing was added."))
         MnemonicImport.ListNotSaved -> copy(
             error = "The key is stored, but the account list could not be saved. Add the same words again " +
                 "to finish.",

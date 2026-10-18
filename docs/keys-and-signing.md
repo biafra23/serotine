@@ -343,11 +343,18 @@ its KDoc and returns it as a result the UI shows as state.
     memory to protect the key: close other apps and try again." The password
     is stretched before anything else is made, so a failed seal leaves
     nothing behind. Opening an envelope (signing, the password check of a
-    later import, turning biometric unlock on) short of memory says so in
-    the same words for that step, never that the key store does not work.
+    later import, turning biometric unlock on) short of memory says so for
+    that step ("Not enough free memory to check the password: …" at an
+    import), never that the key store does not work.
   - A device that seals below 256 MiB says so with its protection, on the
     seed screens and in Security: "This device has little memory, so the
-    password protection uses less memory and more passes."
+    password protection uses less memory and more passes." A seal that
+    stepped down below the device's own tier says so when the key is stored
+    (`KeyImport.Stored.steppedDown`): "There was not enough free memory just
+    now, so the password protection of this key uses less memory and more
+    passes."
+  - An envelope keeps the tier it was sealed at: it is never sealed again
+    at a costlier one later, even once the memory is there.
   - The tiers are chosen for about the same time, not measured on devices
     yet; measuring them is issue #75.
   - The hardware path's 64 MiB × 3 is no tier: it neither steps down nor

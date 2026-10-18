@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.repository.Signer
@@ -134,8 +135,9 @@ class EnvelopeKeyStore internal constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Argon2idOutOfMemory) {
+                    // The steps say where they ran short; any other stretch is the seal's.
                     report("not enough memory for Argon2id: nothing was stored")
-                    KeyImport.NotEnoughMemory
+                    KeyImport.NotEnoughMemory(MemoryStep.PROTECT)
                 } catch (e: Throwable) {
                     // Throwable: libsodium and the platform's key store are native code, which
                     // fails with Errors. Nothing of the key path is shown.
@@ -519,7 +521,13 @@ class EnvelopeKeyStore internal constructor(
             // Argon2id runs happen only when the password is wrong or a file is damaged.
             val refused = mutableListOf<String>()
             for (envelope in stored) {
-                when (Envelope.verify(envelope.sealed, password, hardware, stretch)) {
+                val opened = try {
+                    Envelope.verify(envelope.sealed, password, hardware, stretch)
+                } catch (e: Argon2idOutOfMemory) {
+                    report("not enough memory for Argon2id to check the password: nothing was stored")
+                    return KeyImport.NotEnoughMemory(MemoryStep.CHECK_PASSWORD)
+                }
+                when (opened) {
                     Envelope.Opened.Verified -> {
                         verified = true
                         alreadyStored = envelope.address == address
@@ -536,6 +544,7 @@ class EnvelopeKeyStore internal constructor(
             // One opened, so those that refused the same password are damaged.
             refused.forEach { report("the envelope of $it does not open under the wallet password") }
             if (!verified && !longEnough) return KeyImport.PasswordTooShort
+            var steppedDown = false
             if (!alreadyStored) {
                 // While the biometric path is on, the new key joins it: its DEK is wrapped too. The
                 // biometric path failing never fails the import: the password still opens it.
@@ -547,14 +556,21 @@ class EnvelopeKeyStore internal constructor(
                 }
                 var wrapped: ByteArray? = null
                 // Also over a file of this name that cannot be opened: its seed is at hand.
-                val sealed = sealAtTierThatFits(seed, address, password, protection) { dek ->
-                    wrapped = try {
-                        key?.wrap(dek)
-                    } catch (e: Exception) {
-                        report("the new key could not join the biometric path (${e::class.simpleName})")
-                        null
+                val sealed = try {
+                    sealAtTierThatFits(seed, address, password, protection) { dek ->
+                        wrapped = try {
+                            key?.wrap(dek)
+                        } catch (e: Exception) {
+                            report("the new key could not join the biometric path (${e::class.simpleName})")
+                            null
+                        }
                     }
+                } catch (e: Argon2idOutOfMemory) {
+                    report("not enough memory for Argon2id at the lightest cost: nothing was stored")
+                    return KeyImport.NotEnoughMemory(MemoryStep.PROTECT)
                 }
+                // Sealed below this device's own cost: kept so (never sealed again later), and said.
+                steppedDown = sealed.opsLimit != costs(protection).first().opsLimit
                 val written = withContext(NonCancellable) {
                     try {
                         EnvelopeCrypto.createPrivateDirectory(directory)
@@ -575,7 +591,7 @@ class EnvelopeKeyStore internal constructor(
                     wrapped?.let { if (key != null) wraps.write(address, key.tag, it) }
                 }
             }
-            return KeyImport.Stored(account, protection)
+            return KeyImport.Stored(account, protection, steppedDown)
         } finally {
             seed.fill(0)
         }

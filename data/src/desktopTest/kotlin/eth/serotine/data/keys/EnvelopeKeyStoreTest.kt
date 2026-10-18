@@ -10,6 +10,7 @@ import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.repository.Signing
@@ -522,7 +523,11 @@ class EnvelopeKeyStoreTest {
         val store = store(stretch)
         assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
 
-        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        assertEquals(
+            KeyImport.Stored(hardhatAddress, KeyProtection.PASSWORD_ONLY, steppedDown = true),
+            store.importMnemonic(hardhat, password),
+            "a seal below the device's own tier is told",
+        )
 
         assertEquals(listOf(4L to 256 * mib, 8L to 128 * mib), stretch.asked)
         val sealed = sealedIn(envelopeOf(hardhatAddress))
@@ -538,16 +543,24 @@ class EnvelopeKeyStoreTest {
         val store = store(stretch, tier = PasswordOnlyTier.REDUCED)
         assertEquals(lessMemory(passwordSet = false), store.describe(), "said before the first seal: the password step")
 
-        assertEquals(KeyImport.NotEnoughMemory, store.importMnemonic(hardhat, password))
+        assertEquals(KeyImport.NotEnoughMemory(MemoryStep.PROTECT), store.importMnemonic(hardhat, password))
 
         assertEquals(listOf(8L to 128 * mib, 16L to 64 * mib), stretch.asked, "the device's tier, then the floor's")
         assertEquals(emptyList(), directory.list().orEmpty().filter { it.endsWith(".seed") }, "nothing is added")
         assertEquals(lessMemory(passwordSet = false), store.describe())
 
         stretch.memoryAvailable = 64 * mib
-        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        assertEquals(
+            KeyImport.Stored(hardhatAddress, KeyProtection.PASSWORD_ONLY, steppedDown = true),
+            store.importMnemonic(hardhat, password),
+        )
         val sealed = sealedIn(envelopeOf(hardhatAddress))
         assertEquals(16L to 64 * mib, sealed.opsLimit to sealed.memLimitBytes)
+
+        // At the device's own tier nothing stepped down; the stored envelope keeps its tier.
+        stretch.memoryAvailable = 128 * mib
+        assertEquals(passwordOnly(abandonAddress), store.importMnemonic(abandon, password))
+        assertEquals(16L to 64 * mib, sealedIn(envelopeOf(hardhatAddress)).let { it.opsLimit to it.memLimitBytes })
     }
 
     @Test
@@ -555,7 +568,7 @@ class EnvelopeKeyStoreTest {
         val stretch = ShortOfMemory(memoryAvailable = 32 * mib)
         val store = store(stretch, tier = PasswordOnlyTier.LEAST, hardware = FakeHardware())
 
-        assertEquals(KeyImport.NotEnoughMemory, store.importMnemonic(hardhat, password))
+        assertEquals(KeyImport.NotEnoughMemory(MemoryStep.PROTECT), store.importMnemonic(hardhat, password))
         assertEquals(listOf(3L to 64 * mib), stretch.asked, "64 MiB, three passes: no tier, no step down")
 
         stretch.memoryAvailable = 64 * mib
@@ -575,7 +588,7 @@ class EnvelopeKeyStoreTest {
 
         stretch.memoryAvailable = 128 * mib
         assertEquals(Signing.NotEnoughMemory, store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
-        assertEquals(KeyImport.NotEnoughMemory, store.importMnemonic(abandon, password), "its password check opens one")
+        assertEquals(KeyImport.NotEnoughMemory(MemoryStep.CHECK_PASSWORD), store.importMnemonic(abandon, password))
         assertEquals(listOf("${hardhatAddress.hex}.seed"), directory.list().orEmpty().filter { it.endsWith(".seed") })
 
         stretch.memoryAvailable = 256 * mib

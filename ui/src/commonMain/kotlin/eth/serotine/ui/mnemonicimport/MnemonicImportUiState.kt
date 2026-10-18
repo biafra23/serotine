@@ -49,6 +49,10 @@ sealed interface MnemonicImportUiState {
             }
     }
 
-    /** The account named [label] was added. The words and the password are gone; the screen closes. */
-    data class Imported(val label: String) : MnemonicImportUiState
+    /**
+     * The account named [label] was added. The words and the password are gone; the screen
+     * closes, unless there is a [note] to read first (its key protected at a lighter cost than
+     * this device's own), which stays until the user is done.
+     */
+    data class Imported(val label: String, val note: String? = null) : MnemonicImportUiState
 }

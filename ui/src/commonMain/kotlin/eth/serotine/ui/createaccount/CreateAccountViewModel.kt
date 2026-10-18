@@ -11,7 +11,8 @@ import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.ui.components.PasswordStep
-import eth.serotine.ui.components.NOT_ENOUGH_MEMORY_TO_PROTECT
+import eth.serotine.ui.components.STEPPED_DOWN_TEXT
+import eth.serotine.ui.components.notEnoughMemoryText
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.createaccount.CreateAccountUiState.Checking
 import eth.serotine.ui.createaccount.CreateAccountUiState.Securing
@@ -196,8 +197,8 @@ class CreateAccountViewModel(
     }
 
     private fun Securing.after(result: MnemonicImport): CreateAccountUiState = when (result) {
-        is MnemonicImport.Added -> CreateAccountUiState.Created(result.account.label)
-        is MnemonicImport.KeyAdded -> CreateAccountUiState.Created(result.account.label)
+        is MnemonicImport.Added -> created(result.account.label, result.steppedDown)
+        is MnemonicImport.KeyAdded -> created(result.account.label, result.steppedDown)
         // 128 bits of fresh entropy already in the wallet: only a broken generator does that.
         is MnemonicImport.AlreadyAdded -> CreateAccountUiState.Restart(
             "These words are an account the wallet has already. Start again for a new phrase.",
@@ -216,17 +217,22 @@ class CreateAccountViewModel(
         )
         MnemonicImport.KeyNotSaved ->
             copy(creating = false, error = "The key could not be stored on this device. Nothing was created.")
-        MnemonicImport.NotEnoughMemory -> copy(creating = false, error = NOT_ENOUGH_MEMORY_TO_PROTECT)
+        is MnemonicImport.NotEnoughMemory ->
+            copy(creating = false, error = notEnoughMemoryText(result.step, "Nothing was created."))
         MnemonicImport.ListNotSaved -> copy(
             creating = false,
             error = "The key is stored, but the account list could not be saved. Try again to finish.",
         )
     }
 
+    /** [label] created, with the note that its key was protected at a lighter cost when [steppedDown]. */
+    private fun created(label: String, steppedDown: Boolean) =
+        CreateAccountUiState.Created(label, STEPPED_DOWN_TEXT.takeIf { steppedDown })
+
     /** How an attempt that finished after the screen was left went, said without its phrase. */
     private fun outcomeWithoutPhrase(result: MnemonicImport): CreateAccountUiState = when (result) {
-        is MnemonicImport.Added -> CreateAccountUiState.Created(result.account.label)
-        is MnemonicImport.KeyAdded -> CreateAccountUiState.Created(result.account.label)
+        is MnemonicImport.Added -> created(result.account.label, result.steppedDown)
+        is MnemonicImport.KeyAdded -> created(result.account.label, result.steppedDown)
         MnemonicImport.ListNotSaved -> CreateAccountUiState.NotListed
         else -> CreateAccountUiState.Restart(
             "The account was not created, and the phrase is gone. Cross out what you wrote of it, then start again.",

@@ -9,6 +9,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
@@ -192,12 +193,29 @@ class CreateAccountViewModelTest {
         viewModel.onPasswordChange("correct horse battery")
         viewModel.onRepeatChange("correct horse battery")
         viewModel.onCreate()
-        keys.next.complete(KeyImport.NotEnoughMemory)
+        keys.next.complete(KeyImport.NotEnoughMemory(MemoryStep.PROTECT))
         runCurrent()
 
         val securing = assertIs<CreateAccountUiState.Securing>(viewModel.uiState.value)
         assertEquals("Not enough free memory to protect the key: close other apps and try again.", securing.error)
         assertFalse(securing.creating, "the user can try again, with the same words")
+    }
+
+    @Test
+    fun anAccountWhoseKeyWasProtectedAtALighterCostSaysSo() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.checked()
+        runCurrent()
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.onRepeatChange("correct horse battery")
+        viewModel.onCreate()
+        keys.next.complete(KeyImport.Stored(account, KeyProtection.SOFTWARE_KEY_STORE, steppedDown = true))
+        runCurrent()
+
+        val created = assertIs<CreateAccountUiState.Created>(viewModel.uiState.value)
+        assertEquals("Account 1", created.label)
+        assertTrue(created.note!!.startsWith("There was not enough free memory just now"), created.note)
     }
 
     @Test
