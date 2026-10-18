@@ -190,6 +190,8 @@ class QuoteTransfer(
         val txTo = token?.address ?: to
         val value = if (token == null) amount else UInt256.ZERO
         val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
+        // An earlier transfer maybe still on its way: refused before any balance is read.
+        quoter.heldBack(from)?.let { return@cancellingReads it.asTransferQuoting() }
         val native = async { nativeBalances.observeBalance(from).first() }
         val tokenBalance = token?.let { async { tokenBalances.observeBalance(from, it.address).first() } }
 

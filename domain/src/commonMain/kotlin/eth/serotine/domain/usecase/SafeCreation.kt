@@ -286,6 +286,8 @@ class QuoteSafeDeployment(
     suspend operator fun invoke(plan: SafePlan, payer: Address, level: FeeLevel): SafeDeploymentQuoting {
         fun refused(refusal: SafeDeploymentRefusal) = SafeDeploymentQuoting.Refused(refusal)
         if (plan.network != network) return refused(SafeDeploymentRefusal.WrongNetwork(plan.network))
+        // An earlier transaction of the payer's maybe still on its way: refused before anything is read.
+        quoter.heldBack(payer)?.let { return refused(SafeDeploymentRefusal.NotQuoted(it)) }
         sentAndUnmined(plan)?.let { return refused(it) }
         val codelessAt = when (val reading = kinds.observeKind(plan.address).first()) {
             KindReading.Syncing -> return refused(SafeDeploymentRefusal.Syncing)

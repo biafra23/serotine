@@ -135,9 +135,13 @@ internal sealed interface CallQuoting {
  * behind a nonce no block may ever take. Only one transaction per nonce can be mined, so taking
  * such a nonce again can never pay twice. One that may have been sent ([SentTransfer.maybeSent])
  * counts for neither, but while it is within that lifetime and not mined, nothing new is quoted
- * ([CallRefusal.EarlierMaybeSent]). [clock] is in unix seconds.
+ * ([CallRefusal.EarlierMaybeSent], [heldBack]): that is checked first, from the record alone, and
+ * only a record that holds one back asks the engine anything (the mined count, to see whether a
+ * block took it since). [clock] is in unix seconds.
  *
- * A refusal returns at once: the reads still running are cancelled ([cancellingReads]).
+ * Every other refusal comes once the reads it needs have answered. The engine's reads block in
+ * native code and cannot be interrupted, so one already started runs to its end even when the
+ * quote has refused meanwhile; [cancellingReads] cancels only what can be cancelled.
  */
 internal class CallQuoter(
     private val inputs: TransactionInputs,
@@ -147,9 +151,30 @@ internal class CallQuoter(
 ) {
 
     /**
+     * Why nothing new may be quoted from [from] now, before any other read: an earlier transaction
+     * of its, maybe sent and within its lifetime, that no block has taken
+     * ([CallRefusal.EarlierMaybeSent]); or, when such a record is there, that the mined count it
+     * needs could not be read. Null when nothing holds it back. The record alone answers when it
+     * holds no such transaction; otherwise the one read asked is the mined count. A record that
+     * cannot be read holds nothing back here: the quote then goes by the engine's nonce.
+     */
+    suspend fun heldBack(from: Address): CallRefusal? {
+        val since = clock() - RECORD_LIFETIME_SECONDS
+        val maybe = (sentTransfers.observe().first() as? SentTransferList.Loaded)?.transfers.orEmpty()
+            .filter { it.account == from && it.maybeSent && it.sentAt >= since }
+        if (maybe.isEmpty()) return null
+        val count = when (val mined = inputs.minedNonce(from)) {
+            is NonceReading.Read -> mined.nonce
+            is NonceReading.Unavailable -> return CallRefusal.Unavailable(mined.reason)
+        }
+        return maybe.firstOrNull { it.nonce >= count }?.let { CallRefusal.EarlierMaybeSent(it.hash) }
+    }
+
+    /**
      * [value] wei and [data] from [from] to [to] at [level]'s fees, on [native], the sender's
      * verified balance read before. [accepts] judges what the run returned: false is a revert
-     * (a token's `transfer` that returns false refused as surely as one that reverts).
+     * (a token's `transfer` that returns false refused as surely as one that reverts). [heldBack]
+     * is asked first, before any other read starts.
      */
     suspend fun quote(
         from: Address,
@@ -162,6 +187,10 @@ internal class CallQuoter(
     ): CallQuoting = cancellingReads {
         fun refused(refusal: CallRefusal) = CallQuoting.Refused(refusal)
 
+        // An earlier transaction that may still be on its way stops this one before any read of
+        // it starts: it is retried, not replaced.
+        heldBack(from)?.let { return@cancellingReads refused(it) }
+
         // The nonces, the record and the fee history, alongside the estimate and then the run.
         val nonce = async { inputs.nonce(from) }
         val mined = async { inputs.minedNonce(from) }
@@ -169,17 +198,9 @@ internal class CallQuoter(
         val fees = async { inputs.fees() }
         val estimated = async { inputs.estimateGas(from, to, value, data) }
 
-        // An earlier transaction that may still be on its way stops this one before anything else
-        // is said: it is retried, not replaced. A count or a record not read leaves it to the
-        // refusals below.
         val expiredBefore = clock() - RECORD_LIFETIME_SECONDS
         val records = (recorded.await() as? SentTransferList.Loaded)?.transfers.orEmpty()
             .filter { it.account == from && it.sentAt >= expiredBefore }
-        (mined.await() as? NonceReading.Read)?.let { count ->
-            records.firstOrNull { it.maybeSent && it.nonce >= count.nonce }?.let {
-                return@cancellingReads refused(CallRefusal.EarlierMaybeSent(it.hash))
-            }
-        }
 
         val gas = when (val estimate = estimated.await()) {
             // The engine's, priced under the fork the chain runs: on Sepolia's Amsterdam a plain
@@ -280,7 +301,10 @@ const val DEPLOYMENT_LIFETIME_SECONDS: Long = 7 * 24 * 60 * 60
 
 /**
  * [block] in a scope of its own whose children still running when it returns are cancelled: a
- * quote that refuses early waits for none of the reads it started and no longer needs.
+ * quote that refuses early stops the reads it no longer needs where they can be stopped (a
+ * suspending read, a record's flow). An engine read blocks in native code, which cancelling
+ * cannot interrupt, so the scope still waits for one already started: what holds a quote back is
+ * checked before any starts ([CallQuoter.heldBack]).
  */
 internal suspend fun <T> cancellingReads(block: suspend CoroutineScope.() -> T): T = coroutineScope {
     try {

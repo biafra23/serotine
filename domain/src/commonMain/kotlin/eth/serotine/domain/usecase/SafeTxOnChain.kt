@@ -159,6 +159,8 @@ class QuoteSafeApproval(
         fun refused(refusal: SafeTxRefusal) = SafeApprovalQuoting.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
+        // An earlier transaction of the owner's maybe still on its way: refused before the Safe is read.
+        quoter.heldBack(owner)?.let { return refused(SafeTxRefusal.NotQuoted(it)) }
         val state = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
@@ -274,6 +276,8 @@ class QuoteSafeExecution(
         fun refused(refusal: SafeTxRefusal) = SafeExecutionQuoting.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
+        // An earlier transaction of the executor's maybe still on its way: refused before the Safe is read.
+        quoter.heldBack(executor)?.let { return refused(SafeTxRefusal.NotQuoted(it)) }
         val state = when (val check = observeSafe.check(request.safe)) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)

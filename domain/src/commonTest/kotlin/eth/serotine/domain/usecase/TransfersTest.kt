@@ -286,7 +286,8 @@ class TransfersTest {
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
             "retried, never replaced: a new one could take nonce 8 and pay twice",
         )
-        assertEquals(0, inputs.simulated.size, "nothing run for it")
+        // Refused before any read but the mined count it needs started: the engine's block.
+        assertEquals(0, inputs.simulated.size + inputs.nonces + inputs.feeHistories + inputs.estimates, "nothing asked")
 
         // Past its lifetime it holds nothing back, and neither its nonce nor its cost.
         sent.transfers.value = listOf(maybe.copy(sentAt = now - RECORD_LIFETIME_SECONDS - 1))
@@ -615,6 +616,7 @@ class TransfersTest {
         val simulated = mutableListOf<Triple<Address, Address, UInt256>>()
         var nonces = 0
         var feeHistories = 0
+        var estimates = 0
 
         var mined = 7L
         var pending = 7L
@@ -635,8 +637,10 @@ class TransfersTest {
             return fees
         }
 
-        override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
-            estimate ?: GasEstimate.Estimated(gas)
+        override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate {
+            estimates++
+            return estimate ?: GasEstimate.Estimated(gas)
+        }
 
         override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
             simulated += Triple(from, to, value)
