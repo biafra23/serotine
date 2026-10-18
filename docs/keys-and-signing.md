@@ -505,6 +505,12 @@ one of:
   never reach two, and the lost device's key has no backup by design. So
   threshold 2 removes the single-device risk only as 2-of-3, or as 2-of-2
   with a recovery module alongside it.
+- **Every n-of-n above one only with a recovery module** (owner ruling,
+  2026-10-18, #54). The same reasoning holds at any threshold equal to the
+  owner count: with one owner lost the rest can never reach it, not even to
+  swap the lost one out. So 2 of 2, 3 of 3 and every n of n with n > 1 are
+  created only alongside a recovery module (`SafePlanRefusal.NeedsRecoveryModule`
+  otherwise). Which recovery modules come, and how, stays open (#54, #72).
 
 For an **EOA** none of this exists: the mnemonic is the only backup, which is
 the other reason an EOA key is a secp256k1 key from a mnemonic in the

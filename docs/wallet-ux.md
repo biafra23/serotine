@@ -248,16 +248,17 @@ upgrades*).
     - a device key is never the only owner;
     - a threshold equal to the owner count above one (2 of 2, 3 of 3, …)
       only alongside a recovery module: with one owner lost, the rest could
-      never reach it, not even to swap the lost one out.
+      never reach it, not even to swap the lost one out (owner ruling,
+      2026-10-18, #54).
     - As built: the stepper runs from 1 to the number of owners and starts at
       1 for up to two owners, a majority short of all of them above (2 of 3,
       3 of 4). Each value says what it means and how it stands with an owner
       lost; the rules above are listed under it. No recovery module is
       pinned, so none is offered, and every n-of-n above one is refused with
       the reason (`SafePlanRefusal.NeedsRecoveryModule`): 2 of 2 is not
-      offered. Whether that generalization of the keys doc's 2-of-2 rule
-      stands, and which modules come, is the owner's open question (issue
-      #54).
+      offered. That every n-of-n follows the keys doc's 2-of-2 rule is the
+      owner's ruling (2026-10-18, #54); which recovery modules come stays
+      open (#54, #72).
 15. **Create Safe 3/3, review**: the address predicted locally (CREATE2), with
     its blockie and `t/n`; the version, owners and threshold; the deployment
     fee and the account that pays it; Deploy. After deployment the Safe is
@@ -697,8 +698,7 @@ Still the owner's decisions (CLAUDE.md, docs/keys-and-signing.md and issue
 
 - importing a raw private key (an EOA comes from a recovery phrase);
 - the synced-passkey owner tier and external signers;
-- recovery modules: none is pinned, so none is offered when a Safe is
-  created (screen 14), and which to pin is the owner's open question (issue
-  #54);
+- which recovery modules come (none is pinned, so none is offered when a
+  Safe is created, screen 14), and how: still open (issues #54, #72);
 - the dApp connection protocol;
 - any network other than Sepolia.

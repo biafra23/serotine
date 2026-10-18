@@ -86,7 +86,8 @@ sealed interface SafePlanRefusal {
     /**
      * Every one of more than one [owners] must sign: with one of them lost, the rest could never
      * reach the threshold again, not even to swap the lost one out. That shape only comes with a
-     * recovery module, and none is offered when a Safe is created here yet.
+     * recovery module (owner ruling, 2026-10-18, #54: every n-of-n with n above one), and none is
+     * offered when a Safe is created here yet.
      */
     data class NeedsRecoveryModule(val owners: Int) : SafePlanRefusal
 
