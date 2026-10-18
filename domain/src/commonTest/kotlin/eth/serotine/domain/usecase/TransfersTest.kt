@@ -542,7 +542,7 @@ class TransfersTest {
         val signature = Signature("1".padStart(64, '0'), "2".padStart(64, '0'), recoveryId = 0)
         val unavailable = FakeBroadcaster(Broadcast.Unavailable("no peer"))
         val notSent = assertIs<TransferSending.NotSent>(
-            SendTransfer(FakeSigner(Signing.Signed(signature)), unavailable, sent)(quote, Unlock.WithBiometrics("x")),
+            SendTransfer(FakeSigner(Signing.Signed(signature)), unavailable, sent) { now }(quote, Unlock.WithBiometrics("x")),
         )
         val rejection = Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7")
         val tooLow = FakeBroadcaster(rejection)
@@ -558,10 +558,15 @@ class TransfersTest {
         assertEquals(TransferSending.RejectionUnverified(rejection, notSent.transfer), unreadable(notSent.transfer))
         assertEquals(listOf(notSent.transfer), sent.transfers.value)
 
-        // In no block: the rejection stands, and the record is forgotten: it holds nothing back.
+        // In no block at the head: turned away this time, and the record stays as it was. "Nonce too
+        // low" may be a block past the light client's head; "already known", a pool that has it.
         val pending = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Pending))(notSent.transfer)
-        assertIs<TransferSending.NotSent>(pending)
-        assertEquals(emptyList(), sent.transfers.value)
+        assertEquals(TransferSending.NotSent(rejection, notSent.transfer), pending)
+        assertEquals(listOf(notSent.transfer), sent.transfers.value, "still maybe sent: nothing new passes it")
+        assertEquals(
+            TransferQuoting.EarlierMaybeSent(notSent.transfer.hash),
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
 
         // A peer took the first broadcast after all, and a block has it: sent, not "never minable".
         val mined = RebroadcastTransfer(tooLow, sent, receipts(TransactionProgress.Included(100, true))) { now }
@@ -585,7 +590,7 @@ class TransfersTest {
 
         val refused = RebroadcastTransfer(FakeBroadcaster(Broadcast.Refused("not a transaction")), sent, receipts())
         assertIs<TransferSending.NotSent>(refused(maybe))
-        assertEquals(emptyList(), sent.transfers.value, "bytes no one relays reached no one the first time either")
+        assertEquals(listOf(maybe.copy(sentAt = now)), sent.transfers.value, "a refusal proves nothing of the first")
     }
 
     private fun receipts(progress: TransactionProgress = TransactionProgress.Pending) = object : ReceiptTracker {
@@ -649,10 +654,6 @@ class TransfersTest {
             return true
         }
 
-        override suspend fun forget(hash: String): Boolean {
-            transfers.value = transfers.value.filterNot { it.hash == hash }
-            return true
-        }
 
         override suspend fun prune(account: Address, minedCount: Long, unlistedBefore: Long): Boolean {
             transfers.value = transfers.value.filterNot { it.prunable(account, minedCount, unlistedBefore) }

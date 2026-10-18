@@ -155,7 +155,7 @@ class CreateSafeViewModel(
     private data class NotSent(val broadcast: Broadcast, val transfer: SentTransfer, val unverified: Boolean = false) {
         /** Whether sending the same bytes again may change the verdict. */
         val canRetry: Boolean
-            get() = unverified || broadcast is Broadcast.Unavailable
+            get() = unverified || broadcast is Broadcast.Unavailable || transfer.maybeSent
     }
 
     /** Where the flow stands. */
@@ -749,7 +749,7 @@ class CreateSafeViewModel(
             error = step.error,
             quoting = step.quoting,
             signing = step.signing,
-            notSent = step.notSent?.let { notSentItem(it.broadcast, it.unverified, what = "deployment") },
+            notSent = step.notSent?.let { notSentItem(it.broadcast, it.unverified, what = "deployment", maybeSent = it.transfer.maybeSent) },
         )
     }
 

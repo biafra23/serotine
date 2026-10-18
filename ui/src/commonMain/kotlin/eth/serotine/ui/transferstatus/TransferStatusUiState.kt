@@ -89,4 +89,7 @@ enum class StepState {
 
     /** Where it stands cannot be verified right now. */
     UNKNOWN,
+
+    /** Done by this device, but no peer confirmed it: a broadcast maybe sent, until a block has it. */
+    UNCONFIRMED,
 }

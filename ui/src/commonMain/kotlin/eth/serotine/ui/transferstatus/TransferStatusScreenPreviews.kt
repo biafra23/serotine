@@ -46,6 +46,27 @@ private val included = pending.copy(
     ),
 )
 
+private val maybeSentStep = StatusStep(
+    "Broadcast",
+    StepState.UNCONFIRMED,
+    "No peer confirmed it, Oct 17, 2026, 3:04 PM: it may be on its way, or may not have reached the network",
+)
+
+private val maybeSent = pending.copy(
+    steps = listOf(
+        signed,
+        maybeSentStep,
+        StatusStep("Included", StepState.WAITING, "Waiting for a block to include it"),
+        waitingFinal,
+    ),
+    notSent = NotSentItem(
+        "No peer answered when this transfer was broadcast, so it may not have reached the network, or it may " +
+            "be on its way. Try again sends the same signed transfer; nothing new is sent from this account " +
+            "meanwhile, since a new one could pay twice.",
+        canRetry = true,
+    ),
+)
+
 @Composable
 private fun TransferStatusPreview(state: TransferStatusUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
@@ -182,22 +203,21 @@ private fun TransferStatusSafeNotListedPreview() = TransferStatusPreview(
 
 @Preview
 @Composable
-private fun TransferStatusMaybeSentPreview() = TransferStatusPreview(
-    pending.copy(
-        steps = listOf(
-            signed,
-            StatusStep(
-                "Broadcast",
-                StepState.UNKNOWN,
-                "No peer answered, Oct 17, 2026, 3:04 PM: it may not have reached the network",
-            ),
-            StatusStep("Included", StepState.WAITING, "Waiting for a block to include it"),
-            waitingFinal,
-        ),
+private fun TransferStatusMaybeSentPreview() = TransferStatusPreview(maybeSent)
+
+@Preview
+@Composable
+private fun TransferStatusRetryingPreview() = TransferStatusPreview(maybeSent.copy(retrying = true))
+
+@Preview
+@Composable
+private fun TransferStatusTurnedAwayPreview() = TransferStatusPreview(
+    maybeSent.copy(
         notSent = NotSentItem(
-            "No peer answered when this transfer was broadcast, so it may not have reached the network, or it may " +
-                "be on its way. Try again sends the same signed transfer; nothing new is sent from this account " +
-                "meanwhile, since a new one could pay twice.",
+            "Turned away this time (the peer said: nonce too low). That says nothing sure of the first broadcast, " +
+                "which may be on its way or in a block past the light client's head, so the signed transfer is " +
+                "kept, and nothing new is sent from this account until a block has it or three hours have " +
+                "passed. Try again sends the same signed transfer.",
             canRetry = true,
         ),
     ),
@@ -218,5 +238,7 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusSafeListedDarkPreview() },
     { TransferStatusSafeNotListedPreview() },
     { TransferStatusMaybeSentPreview() },
+    { TransferStatusRetryingPreview() },
+    { TransferStatusTurnedAwayPreview() },
     { TransferStatusLoadingPreview() },
 )

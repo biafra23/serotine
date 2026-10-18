@@ -96,7 +96,7 @@ class FileSentTransfersTest {
     }
 
     @Test
-    fun aTransactionMaybeSentIsRecordedAsSuchAndForgottenByItsHash() = runTest {
+    fun aTransactionMaybeSentIsRecordedAsSuchUntilAPeerTakesIt() = runTest {
         val maybe = transfer(7).copy(maybeSent = true)
         record().record(maybe)
         record().record(transfer(8))
@@ -106,10 +106,6 @@ class FileSentTransfersTest {
         // A peer took it on a retry: the same hash, one record, sent now.
         record().record(transfer(7))
         assertEquals(listOf(transfer(8), transfer(7)), stored())
-
-        assertTrue(record().forget(transfer(7).hash))
-        assertEquals(listOf(transfer(8)), stored())
-        assertTrue(record().forget(transfer(7).hash), "nothing to forget is no failure")
     }
 
     @Test

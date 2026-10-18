@@ -234,6 +234,7 @@ private fun StepRow(step: StatusStep) {
                 StepState.DONE -> Icon(Icons.Filled.CheckCircle, null, mark, tint = colors.primary)
                 StepState.FAILED -> Icon(Icons.Filled.Warning, null, mark, tint = colors.error)
                 StepState.UNKNOWN -> Icon(Icons.Filled.Info, null, mark, tint = colors.onSurfaceVariant)
+                StepState.UNCONFIRMED -> Icon(Icons.Filled.Warning, null, mark, tint = colors.tertiary)
                 StepState.WAITING -> Box(mark, contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 }
@@ -251,4 +252,5 @@ private val StepState.description: String
         StepState.WAITING -> "Waiting"
         StepState.FAILED -> "Failed"
         StepState.UNKNOWN -> "Not verified right now"
+        StepState.UNCONFIRMED -> "Not confirmed by a peer"
     }

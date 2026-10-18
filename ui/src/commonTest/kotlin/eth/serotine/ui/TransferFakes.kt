@@ -129,10 +129,6 @@ internal class MemorySentTransfers : SentTransfers {
         return true
     }
 
-    override suspend fun forget(hash: String): Boolean {
-        transfers.value = transfers.value.filterNot { it.hash == hash }
-        return true
-    }
 
     override suspend fun prune(account: Address, minedCount: Long, unlistedBefore: Long): Boolean {
         transfers.value = transfers.value.filterNot { it.prunable(account, minedCount, unlistedBefore) }

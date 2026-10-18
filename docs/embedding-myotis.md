@@ -245,8 +245,11 @@ verified read.
       still be on its way, and it is retried (`RebroadcastTransfer`, from the
       review or from its status screen), never replaced by a new one, which
       could take the next nonce and pay twice. A retry a peer takes makes it
-      an ordinary record; one the engine rejects on verified state, with no
-      receipt, forgets it.
+      an ordinary record; one turned away (rejected with no receipt, or
+      refused) keeps it as it was, since a retry's rejection says nothing
+      sure of the first broadcast ("already known", "replacement
+      underpriced", a nonce used past the light client's head), and its
+      lifetime and the mined count bound it.
     - A record stops holding its nonce and its cost three hours after a peer
       took it if no block did (`RECORD_LIFETIME_SECONDS`, which runs from
       that broadcast, a retry's included): kept holding them, it would hold

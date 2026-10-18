@@ -96,7 +96,7 @@ class TransferStatusViewModel(
     /** What a retry came to, said where its record no longer can; null when a peer took it. */
     private fun outcomeOf(sending: TransferSending?, what: String): NotSentItem? = when (sending) {
         is TransferSending.Sent -> null
-        is TransferSending.NotSent -> notSentItem(sending.broadcast, unverified = false, what)
+        is TransferSending.NotSent -> notSentItem(sending.broadcast, unverified = false, what, maybeSent = true)
         is TransferSending.RejectionUnverified -> notSentItem(sending.rejection, unverified = true, what)
         is TransferSending.NotSigned, null -> NotSentItem(RETRY_FAILED, canRetry = true)
     }
@@ -109,7 +109,11 @@ class TransferStatusViewModel(
         val signed = StatusStep("Signed", StepState.DONE, status.transfer?.let { "On this device" })
         val takenAt = status.transfer?.let { ", ${formatTime(it.sentAt)}" }.orEmpty()
         val broadcast = if (maybeSent) {
-            StatusStep("Broadcast", StepState.UNKNOWN, "No peer answered$takenAt: it may not have reached the network")
+            StatusStep(
+                "Broadcast",
+                StepState.UNCONFIRMED,
+                "No peer confirmed it$takenAt: it may be on its way, or may not have reached the network",
+            )
         } else {
             StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
         }
@@ -151,10 +155,11 @@ class TransferStatusViewModel(
             finished = progress is TransactionProgress.Finalized,
             safeTx = transfer?.let(::safeTxSummary),
             deployment = transfer?.let { deploymentSummary(it, progress, failed, list) },
-            notSent = when {
-                // A retry rejected or refused is forgotten: what it came to is said here alone.
-                !maybeSent -> retry.outcome?.takeUnless { it.canRetry }
-                else -> retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
+            // A retry turned away keeps the record: what it came to stays on screen with Try again.
+            notSent = if (maybeSent) {
+                retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
+            } else {
+                null
             },
             retrying = retry.running,
         )

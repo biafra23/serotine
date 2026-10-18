@@ -174,7 +174,40 @@ internal fun biometricsStillOffered(signing: Signing): Boolean = when (signing) 
  * first broadcast reached a block is not known. Retry is offered only where the same bytes may
  * still get out, never a new signature.
  */
-internal fun notSentItem(broadcast: Broadcast, unverified: Boolean, what: String): NotSentItem = when (broadcast) {
+internal fun notSentItem(
+    broadcast: Broadcast,
+    unverified: Boolean,
+    what: String,
+    maybeSent: Boolean = false,
+): NotSentItem = when {
+    // A rejection whose receipt could not be checked says so, whatever the record.
+    unverified -> notSentItemOf(broadcast, unverified = true, what)
+    // A retry of one maybe sent turned away: the peer's word on this try, not on the first.
+    maybeSent && (broadcast is Broadcast.Rejected || broadcast is Broadcast.Refused) -> turnedAway(broadcast, what)
+    else -> notSentItemOf(broadcast, unverified, what)
+}
+
+/**
+ * Why a retry of a [what] recorded as maybe sent was turned away ([broadcast], a rejection or a
+ * refusal), said as the peer's word: it is no verdict on the first broadcast, which may be in a
+ * pool or in a block past the light client's head, so the record is kept and Try again stays.
+ */
+private fun turnedAway(broadcast: Broadcast, what: String): NotSentItem {
+    val said = when (broadcast) {
+        is Broadcast.Rejected -> broadcast.detail
+        is Broadcast.Refused -> broadcast.detail
+        else -> null
+    }
+    return NotSentItem(
+        "Turned away this time" + (said?.let { " (the peer said: $it)" } ?: "") + ". That says nothing sure of " +
+            "the first broadcast, which may be on its way or in a block past the light client's head, so the " +
+            "signed $what is kept, and nothing new is sent from this account until a block has it or three hours " +
+            "have passed. Try again sends the same signed $what.",
+        canRetry = true,
+    )
+}
+
+private fun notSentItemOf(broadcast: Broadcast, unverified: Boolean, what: String): NotSentItem = when (broadcast) {
     // Not "can never be mined" when unverified: that is a verified verdict, and this one could not be checked.
     is Broadcast.Rejected -> if (unverified) {
         NotSentItem(

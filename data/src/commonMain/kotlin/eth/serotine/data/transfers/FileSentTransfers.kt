@@ -70,11 +70,6 @@ class FileSentTransfers(
         Decision(true, next = transfers.filterNot { it.hash == transfer.hash } + transfer)
     }
 
-    override suspend fun forget(hash: String): Boolean = file.change(notSaved = false) { transfers ->
-        val kept = transfers.filterNot { it.hash == hash }
-        if (kept.size == transfers.size) Decision(true) else Decision(true, next = kept)
-    }
-
     override suspend fun prune(account: Address, minedCount: Long, unlistedBefore: Long): Boolean =
         file.change(notSaved = false) { transfers ->
             val kept = transfers.filterNot { it.prunable(account, minedCount, unlistedBefore) }

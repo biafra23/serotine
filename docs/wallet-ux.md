@@ -199,10 +199,13 @@ upgrades*).
    its block; "it reverted" when it failed, its fee paid) → Finalized (its
    block at or below the engine's finalized head). A receipt that cannot be
    verified right now reads as such, never as pending. One maybe sent (no
-   peer answered its broadcast) says so at Broadcast until a block has it,
-   with Try again, which sends the same signed bytes (`RebroadcastTransfer`);
-   a retry the engine rejects on verified state, with no receipt, is said and
-   the record forgotten. Done returns to where Send was opened from.
+   peer answered its broadcast) says at Broadcast that no peer confirmed it,
+   until a block has it, with Try again, which sends the same signed bytes
+   (`RebroadcastTransfer`). A retry turned away (rejected with no receipt, or
+   refused) is said as the peer's word, and the record kept: "already
+   known" or a nonce used past the light client's head come back so, and a
+   deployment's record is its Safe's only copy. Its three hours and the
+   mined count bound it. Done returns to where Send was opened from.
 10. **Watch address**
     - An address or ENS name, and a name for the account.
     - A detection card built from verified code and storage: an EOA; an EOA

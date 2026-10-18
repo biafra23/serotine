@@ -360,10 +360,13 @@ class SendTransfer(
  * [TransferSending.RejectionUnverified]. A transfer's, a Safe transaction's approval or
  * execution, or a Safe's deployment alike. [clock] is in unix seconds.
  *
- * Its record follows the outcome ([SentTransfers]): one a peer took is recorded as sent, one no
- * peer answered again stays recorded as maybe sent ([SentTransfer.maybeSent]), from this
- * broadcast on, and one the engine rejected with no receipt, or refused, is forgotten: it can
- * never be mined as signed, so it holds nothing back.
+ * Its record follows the outcome ([SentTransfers]): one a peer took is recorded as sent, and one
+ * no peer answered again stays recorded as maybe sent ([SentTransfer.maybeSent]), from this
+ * broadcast on. One turned away (rejected with no receipt, or refused) keeps its record as it
+ * was: the rejection is the peer's word on this retry, and says nothing sure of the first
+ * broadcast ("already known", "replacement underpriced", or a nonce used by a block past the
+ * light client's head all come back so), and a deployment's record is the only copy of its Safe's
+ * owners and name. Its lifetime and [SentTransfers.prune] bound it.
  */
 class RebroadcastTransfer(
     private val broadcaster: Broadcaster,
@@ -377,19 +380,12 @@ class RebroadcastTransfer(
             is Broadcast.Rejected -> when (receipts.observe(transfer.hash).first()) {
                 is TransactionProgress.Included, is TransactionProgress.Finalized ->
                     sent(sentTransfers, transfer, clock)
-                // A verified read found no receipt: the engine's verdict on verified state stands.
-                TransactionProgress.Pending -> {
-                    sentTransfers.forget(transfer.hash)
-                    TransferSending.NotSent(broadcast, transfer)
-                }
+                // No receipt at the head: turned away this time, its record kept as it was.
+                TransactionProgress.Pending -> TransferSending.NotSent(broadcast, transfer)
                 is TransactionProgress.Unavailable -> TransferSending.RejectionUnverified(broadcast, transfer)
             }
             is Broadcast.Unavailable -> maybeSent(sentTransfers, broadcast, transfer, clock)
-            is Broadcast.Refused -> {
-                // Bytes the engine relays to no one, then as now: the first broadcast reached nobody.
-                sentTransfers.forget(transfer.hash)
-                TransferSending.NotSent(broadcast, transfer)
-            }
+            is Broadcast.Refused -> TransferSending.NotSent(broadcast, transfer)
         }
     }
 }

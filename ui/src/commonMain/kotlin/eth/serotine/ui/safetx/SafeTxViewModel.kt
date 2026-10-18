@@ -204,7 +204,7 @@ class SafeTxViewModel(
     private data class NotSent(val broadcast: Broadcast, val transfer: SentTransfer, val unverified: Boolean = false) {
         /** Whether sending the same bytes again may change the verdict. */
         val canRetry: Boolean
-            get() = unverified || broadcast is Broadcast.Unavailable
+            get() = unverified || broadcast is Broadcast.Unavailable || transfer.maybeSent
     }
 
     /** Where the screen stands. */
@@ -1020,7 +1020,7 @@ class SafeTxViewModel(
             signing = step.signing,
             notSent = step.notSent?.let {
                 val what = if (step.kind == ReviewKind.APPROVAL) "approval" else "execution"
-                notSentItem(it.broadcast, it.unverified, what)
+                notSentItem(it.broadcast, it.unverified, what, maybeSent = it.transfer.maybeSent)
             },
         )
     }

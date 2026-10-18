@@ -29,13 +29,6 @@ interface SentTransfers {
     suspend fun record(transfer: SentTransfer): Boolean
 
     /**
-     * Forgets the record of the transaction [hash], if any: one the engine has since judged, on
-     * verified state, as never to be mined as signed (a retry of a broadcast no peer answered,
-     * rejected with no receipt). False when the record could not be saved.
-     */
-    suspend fun forget(hash: String): Boolean
-
-    /**
      * Forgets [account]'s transactions whose nonce is below [minedCount], its verified count of
      * mined transactions (each of those nonces is used on chain, by that transaction or another),
      * but for a Safe's deployment whose Safe is not listed yet ([SentAction.SafeDeployment.listed]

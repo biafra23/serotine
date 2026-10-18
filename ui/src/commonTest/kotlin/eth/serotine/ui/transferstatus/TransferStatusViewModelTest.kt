@@ -301,7 +301,7 @@ class TransferStatusViewModelTest {
         val viewModel = viewModel()
         runCurrent()
 
-        assertEquals(StepState.UNKNOWN, viewModel.shown.steps[1].state, "no peer answered its broadcast")
+        assertEquals(StepState.UNCONFIRMED, viewModel.shown.steps[1].state, "no peer confirmed its broadcast")
         assertTrue(assertNotNull(viewModel.shown.notSent).canRetry)
 
         // No peer again: still maybe sent, from this broadcast on, and Try again stays.
@@ -321,8 +321,9 @@ class TransferStatusViewModelTest {
     }
 
     @Test
-    fun aRetryRejectedOnVerifiedStateIsSaidOnceItsRecordIsGone() = runTest {
-        sent.transfers.value = listOf(record.copy(maybeSent = true))
+    fun aRetryTurnedAwayKeepsItsRecordAndSaysThePeersWord() = runTest {
+        val maybe = record.copy(maybeSent = true)
+        sent.transfers.value = listOf(maybe)
         broadcaster.answers += Broadcast.Rejected("nonce too low")
         val viewModel = viewModel()
         runCurrent()
@@ -330,10 +331,14 @@ class TransferStatusViewModelTest {
         viewModel.retry()
         runCurrent()
 
-        assertEquals(emptyList(), sent.transfers.value, "it can never be mined: it holds nothing back")
-        val notSent = assertNotNull(viewModel.shown.notSent)
-        assertFalse(notSent.canRetry)
-        assertTrue("nonce too low" in notSent.message)
+        // "Nonce too low" may be a block past the light client's head: nothing sure of the first.
+        assertEquals(listOf(maybe), sent.transfers.value, "kept as it was")
+        val shown = viewModel.shown
+        val notSent = assertNotNull(shown.notSent)
+        assertTrue(notSent.canRetry)
+        assertTrue(notSent.message.startsWith("Turned away this time (the peer said: nonce too low)."))
+        assertEquals(StepState.UNCONFIRMED, shown.steps[1].state, "never shown as handed to the peers")
+        assertNotNull(shown.sent, "what was sent stays")
     }
 
     @Test

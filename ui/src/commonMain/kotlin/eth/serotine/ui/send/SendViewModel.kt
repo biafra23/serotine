@@ -162,7 +162,7 @@ class SendViewModel(
          * rejection could not yet be told from the first broadcast having been mined.
          */
         val canRetry: Boolean
-            get() = unverified || broadcast is Broadcast.Unavailable
+            get() = unverified || broadcast is Broadcast.Unavailable || transfer.maybeSent
     }
 
     /** Where the flow stands. */
@@ -641,7 +641,7 @@ class SendViewModel(
             pending = pendingText(quote, option),
             refreshing = step.refreshing,
             signing = step.signing,
-            notSent = step.notSent?.let { notSentItem(it.broadcast, it.unverified, what = "transfer") },
+            notSent = step.notSent?.let { notSentItem(it.broadcast, it.unverified, what = "transfer", maybeSent = it.transfer.maybeSent) },
         )
     }
 
