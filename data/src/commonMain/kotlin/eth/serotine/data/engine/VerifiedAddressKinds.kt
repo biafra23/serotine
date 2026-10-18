@@ -38,10 +38,11 @@ import kotlin.time.TimeSource
  * the code's: one verified anchor ([ProofAnchor], the attested slot a proof matched; a block
  * label alone can be a peer's report) and one block, the one the reading is labelled with. That
  * rule has no exception, however often a read is made. Within one read a proof that comes back
- * null (a slow or lost peer) is asked for again, up to [PROOF_TRIES] times in all; a read the head
- * moved under, or one a proof failed in after those tries, is made again, for as long as
- * [SAFE_READ_BUDGET] lasts ([timeSource] measures it, checked between the engine's calls, which
- * each block and are not cut off), a moment's pause ([RETRY_PAUSE]) after a failed proof. When the
+ * null or throws (a slow or lost peer) is asked for again, up to [PROOF_TRIES] times in all; a
+ * read the head moved under, or one a proof failed in after those tries, is made again, for as
+ * long as [SAFE_READ_BUDGET] lasts ([timeSource] measures it, checked between the engine's calls,
+ * which each block and are not cut off; a cancelled read stops at its next call), a moment's
+ * pause ([RETRY_PAUSE]) after a failed proof. When the
  * slots were of one state and only the code's anchor did not order before it (a walk against a
  * match, or none), the code is proven again too, so the next read can be of one state. The guards
  * are kept at hashed slots no storage proof names, so they are verified reads at the head, which
@@ -131,15 +132,25 @@ class VerifiedAddressKinds internal constructor(
     }
 
     /**
-     * What [prove] proves, asked for again while it comes back null, [PROOF_TRIES] times in all,
-     * and never once [deadline] has passed; null: unproven. The caller's cancellation is checked
-     * before each blocking call; [what] names the proof in the debug log.
+     * What [prove] proves, asked for again while it comes back null or throws, [PROOF_TRIES] times
+     * in all, and never once [deadline] has passed; null: unproven. The caller's cancellation is
+     * checked before each blocking call and after one that threw: a cancelled read ends there,
+     * while anything else the engine throws (it crosses JNA: an Error too, and, as [ProvenReads]
+     * has it, a `CancellationException` of the engine's own) is a failed proof. [what] names the
+     * proof in the debug log.
      */
     private suspend fun <T : Any> proof(deadline: TimeMark, what: () -> String, prove: () -> T?): T? {
         for (attempt in 1..PROOF_TRIES) {
             if (deadline.hasPassedNow()) return null
             currentCoroutineContext().ensureActive()
-            prove()?.let { return it }
+            val proven = try {
+                prove()
+            } catch (e: Throwable) {
+                currentCoroutineContext().ensureActive()
+                log { "${what()}: the engine threw ${e::class.simpleName}" }
+                null
+            }
+            proven?.let { return it }
             if (attempt < PROOF_TRIES) log { "${what()} unproven, asked again (try ${attempt + 1} of $PROOF_TRIES)" }
         }
         return null
@@ -349,10 +360,13 @@ class VerifiedAddressKinds internal constructor(
         private const val SAFE_KEPT_FOR_HEADS = 5L
 
         /**
-         * How long a Safe is read again while its reads fail: a few heads' worth, past which the
-         * read is left to the next poll (and to a one-shot check's own wait for it).
+         * How long a Safe is read again while its reads fail: a couple of heads' worth, past which
+         * the reading is unproven until the next poll. Kept well inside a one-shot check's wait
+         * (the domain's `SAFE_CHECK_BUDGET`, 45 s): that wait must outlast this budget, the code's
+         * proof before it and one poll interval, or it would cancel the very read it waits on and
+         * never see the next one.
          */
-        internal val SAFE_READ_BUDGET = 30.seconds
+        internal val SAFE_READ_BUDGET = 20.seconds
 
         /** Times one proof of a read is asked for while it comes back null, the first included. */
         internal const val PROOF_TRIES = 3

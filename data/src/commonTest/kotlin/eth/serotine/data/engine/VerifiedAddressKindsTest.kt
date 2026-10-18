@@ -10,13 +10,19 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.kotlincrypto.hash.sha3.Keccak256
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -39,7 +45,14 @@ class VerifiedAddressKindsTest {
     private val logged = mutableListOf<String>()
 
     private fun TestScope.kinds() =
-        VerifiedAddressKinds(chain, StandardTestDispatcher(testScheduler), 4.seconds, safes, chain.clock, logged::add)
+        VerifiedAddressKinds(
+            chain,
+            StandardTestDispatcher(testScheduler),
+            4.seconds,
+            safes,
+            chain.clock(testScheduler),
+            logged::add,
+        )
 
     @Test
     fun codeTellsAnAccountADelegatedAccountAndAContractApart() {
@@ -333,6 +346,7 @@ class VerifiedAddressKindsTest {
     fun aCodeWalkAgainstSlotsMatchedAtOneSlotIsProvenAgainWithinTheRead() = runTest {
         chain.snapshot = running(head = 9)
         safeStorage()
+        chain.proofTakes = 500.milliseconds // two reads and a code proof, well within the budget
         // The first code proof is a walk of block 9, the slots all matched attested slot 9: the code
         // is what straddles, so it is proven again, and this time it matched slot 9 as well.
         chain.codeOfCall = { call ->
@@ -358,7 +372,9 @@ class VerifiedAddressKindsTest {
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),
             kinds().observeKind(address).first { it !is KindReading.Syncing },
         )
-        assertEquals(3, chain.codeCalls, "proven again for each read the budget leaves time for, and no more")
+        // Ten proofs of 1 s a read: the first read, the code again, and a second read the budget
+        // cuts off before its last proof.
+        assertEquals(2, chain.codeCalls, "proven again for each read the budget leaves time for, and no more")
     }
 
     @Test
@@ -394,7 +410,7 @@ class VerifiedAddressKindsTest {
     fun aReadTheHeadMovedUnderThreeTimesIsMadeAgainUntilItsSlotsAgree() = runTest {
         chain.snapshot = running(head = 9)
         safeStorage()
-        chain.proofTakes = 500.milliseconds
+        chain.proofTakes = 250.milliseconds
         // Nine storage proofs a read: each of the first three reads sees the head move halfway
         // through, the fourth is all at block 12. (Three reads were all a Safe got before the budget.)
         chain.slotBlockOfCall = { call -> if (call >= 27) 12 else 9L + call / 9 + (if (call % 9 >= 4) 1 else 0) }
@@ -413,7 +429,7 @@ class VerifiedAddressKindsTest {
         safeStorage()
         // Every other proof at the next block: every read straddles.
         chain.slotBlockOfCall = { call -> 9L + call % 2 }
-        val start = chain.clock.markNow()
+        val start = chain.clock(testScheduler).markNow()
 
         assertEquals(
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),
@@ -421,7 +437,71 @@ class VerifiedAddressKindsTest {
         )
         // The code's proof before the read began, then the budget, and no proof asked for past it.
         assertEquals(1.seconds + VerifiedAddressKinds.SAFE_READ_BUDGET, start.elapsedNow())
-        assertEquals(true, logged.any { "not read after 3 reads" in it }, "$logged")
+        assertEquals(true, logged.any { "not read after 2 reads" in it }, "$logged")
+    }
+
+    @Test
+    fun thePausesBetweenFailedReadsSpendTheBudgetToo() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        chain.unprovenSlots += Triple(address, 0L, null) // the singleton slot, never proven
+        val start = chain.clock(testScheduler).markNow()
+
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(address).first { it !is KindReading.Syncing },
+        )
+        // The code's proof, then five reads of three tries (3 s) each followed by a 1 s pause: the
+        // budget is spent at 20 s, and the sixth read asks for nothing.
+        assertEquals(1.seconds + VerifiedAddressKinds.SAFE_READ_BUDGET, start.elapsedNow())
+        assertEquals(true, logged.any { "read 6: out of time at slot 0" in it }, "$logged")
+        assertEquals(true, logged.any { "not read after 6 reads" in it }, "$logged")
+    }
+
+    @Test
+    fun aProofTheEngineThrowsForIsAskedForAgainLikeOneThatCameBackNull() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // A JNA call that fails with an Error, once.
+        chain.slotThrowsOnCall = { call -> if (call == 2) Error("native call failed") else null }
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+
+        assertEquals(true, (reading as KindReading.Verified).kind is AddressKind.Safe)
+        assertEquals(1, chain.codeCalls, "one read: only the slot was asked for again")
+        assertEquals(true, logged.any { "the engine threw Error" in it }, "$logged")
+    }
+
+    @Test
+    fun aReadCancelledMidwayStopsAtItsNextEngineCall() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        lateinit var reader: Job
+        chain.onSlotCall = { call -> if (call == 3) reader.cancel() }
+
+        reader = launch { kinds().observeKind(address).collect {} }
+        advanceUntilIdle()
+
+        assertTrue(reader.isCancelled)
+        assertEquals(4, chain.slotCalls, "the fourth proof was the last one asked for")
+    }
+
+    @Test
+    fun aSubscriberWaitingOnAReadWhoseMakerIsCancelledMakesItItselfAndIsNotToldUnproven() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // The first read's owner-list proof fails all three tries: the read pauses before it is made again.
+        chain.slotFailsOnCall = { call -> call in 2..4 }
+        val kinds = kinds()
+        val first = launch { kinds.observeKind(address).first { it !is KindReading.Syncing } }
+        runCurrent() // the first subscriber's read is in its pause
+        val second = async { kinds.observeKind(address).first { it !is KindReading.Syncing } }
+        runCurrent() // the second waits on it
+
+        first.cancel() // a one-shot check that gave up, a screen left
+
+        val reading = second.await()
+        assertEquals(true, (reading as KindReading.Verified).kind is AddressKind.Safe, "$reading")
     }
 
     @Test
