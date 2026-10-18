@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
@@ -418,6 +419,39 @@ class AccountDetailViewModelTest {
         assertEquals(Eip55.format(friend), rows.first().about)
         assertEquals(null, (ready.queue as SafeQueue.Shown).note)
         assertTrue(ready.canSend, "an owner is held here: Send proposes a Safe transaction")
+    }
+
+    @Test
+    fun aFallbackHandlerThatIsNotPinnedIsSaidOnItsQueueRowAsNotSignedHere() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, treasury)
+        val carol = Address.of("0x" + "33".repeat(20))
+        val hostile = Address.of("0x" + "66".repeat(20))
+        val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 12, emptyList(), guard = null)
+        kind.value = KindReading.Verified(AddressKind.Safe(state), 9_412_118)
+        fun setHandler(handler: Address, nonce: Long): SafeTx {
+            val data = "f08a0323" + "0".repeat(24) + handler.hex.removePrefix("0x")
+            return SafeTx.call(treasury.address, UInt256.ZERO, ByteArray(data.length / 2) {
+                data.substring(2 * it, 2 * it + 2).toInt(16).toByte()
+            }, nonce)
+        }
+        queue.requests.value = listOf(
+            SigningRequest.of(Network.SEPOLIA, treasury.address, setHandler(hostile, 12)),
+            SigningRequest.of(
+                Network.SEPOLIA,
+                treasury.address,
+                setHandler(PinnedFallbackHandlers.COMPATIBILITY_1_4_1, 13),
+            ),
+        )
+        val viewModel = viewModel(treasury.address)
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        viewModel.show(DetailSegment.QUEUE)
+        runCurrent()
+
+        val rows = ((viewModel.uiState.value as AccountDetailUiState.Ready).queue as SafeQueue.Shown).rows
+        // Owner ruling, 2026-10-18, #63: the pinned CompatibilityFallbackHandler is signed, any other is not.
+        assertEquals(listOf("Not signed here: a fallback handler that is not pinned", null), rows.map { it.refusal })
     }
 
     @Test

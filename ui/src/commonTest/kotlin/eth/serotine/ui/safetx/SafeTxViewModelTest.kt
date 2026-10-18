@@ -278,6 +278,28 @@ class SafeTxViewModelTest {
     }
 
     @Test
+    fun aFallbackHandlerThatIsNotPinnedIsShownAsRefusedAndOffersNothingToSign() = runTest {
+        val data = "f08a0323" + "0".repeat(24) + world.recipient.hex.removePrefix("0x")
+        val setHandler = SafeTx.call(world.safe, UInt256.ZERO, data.hexBytes(), nonce = 4)
+        val viewModel = viewModel(queued(world.request(setHandler)))
+
+        val state = viewModel.overview
+        assertEquals("Set the fallback handler", state.action.title)
+        assertEquals(
+            "It sets a fallback handler Serotine does not pin, ${Eip55.format(world.recipient)}: the handler answers " +
+                "the signature checks other contracts make for the Safe, so only the canonical " +
+                "CompatibilityFallbackHandler 1.4.1, or none, is signed, approved or executed here.",
+            state.refusal,
+        )
+        assertFalse(state.canSign)
+        assertFalse(state.canApprove)
+        assertFalse(state.canExecute)
+    }
+
+    private fun String.hexBytes(): ByteArray =
+        ByteArray(length / 2) { substring(2 * it, 2 * it + 2).toInt(16).toByte() }
+
+    @Test
     fun aDelegateCallIsShownForWhatItIsAndOffersNothingToSign() = runTest {
         val delegate = SafeTx(
             to = world.recipient,

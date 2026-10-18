@@ -552,6 +552,14 @@ discussion that produced this note.
   anchors are sync-committee signatures and its embedded accumulators) or shown
   as not available. No JSON-RPC provider, no indexer API and no "temporary"
   fallback supplies chain state, in any build type.
+- **A Safe's fallback handler is set only to a pinned one** (owner ruling,
+  2026-10-18, #63). A Safe transaction that sets a fallback handler other
+  than the pinned canonical CompatibilityFallbackHandler 1.4.1 of its
+  network, or none (the zero address, which removes it), is shown and never
+  signed, approved or executed here: the handler answers EIP-1271 signature
+  checks for the Safe, and one that accepts every signature lets anyone
+  spend what the Safe has approved. A guard removed and a module disabled
+  are signed with a warning, not refused.
 - **Network-upgrade warnings are peer reports, and say so** (owner's request,
   2026-10-17: warn ahead of a breaking hard fork, notify even while the app
   is closed, and after it do nothing but ask for the update). The engine's

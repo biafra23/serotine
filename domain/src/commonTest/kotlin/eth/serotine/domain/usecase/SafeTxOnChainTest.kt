@@ -3,12 +3,14 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeCalls
 import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.hexToBytes
 import eth.serotine.domain.repository.ApprovalReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.GasEstimate
@@ -227,6 +229,36 @@ class SafeTxOnChainTest {
             SafeExecutionQuoting.Refused(SafeTxRefusal.NotQuoted(CallRefusal.Reverts(null))),
             quoteExecution(request, world.alice.address, FeeLevel.NORMAL),
         )
+    }
+
+    @Test
+    fun aFallbackHandlerThatIsNotPinnedIsShownButNeverSignedApprovedOrExecutedHere() = runTest {
+        // Owner ruling, 2026-10-18, #63: only the pinned CompatibilityFallbackHandler 1.4.1, or none.
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        fun setHandler(handler: Address) = SafeTx.call(
+            world.safe,
+            UInt256.ZERO,
+            ("f08a0323" + "0".repeat(24) + handler.hex.removePrefix("0x")).hexToBytes(),
+            nonce = 4,
+        )
+        val sign = SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA)
+        val hostile = world.request(setHandler(world.recipient), world.carol)
+        val refusal = SafeTxRefusal.UnpinnedFallbackHandler(world.recipient)
+
+        assertEquals(refusal, DecodedSafeTx.of(hostile).refusal, "said before anyone asks")
+        assertEquals(SafeTxSigning.Refused(refusal), sign(hostile, world.alice.address, unlock))
+        assertEquals(SafeApprovalQuoting.Refused(refusal), quoteApproval(hostile, world.alice.address, FeeLevel.NORMAL))
+        assertEquals(
+            SafeExecutionQuoting.Refused(refusal),
+            quoteExecution(hostile, world.alice.address, FeeLevel.NORMAL),
+        )
+        assertEquals(emptyList(), world.inputs.simulated)
+
+        // The pinned handler, and none at all (removing it, with its warning), may be signed.
+        val pinned = world.request(setHandler(PinnedFallbackHandlers.COMPATIBILITY_1_4_1))
+        assertEquals(null, DecodedSafeTx.of(pinned).refusal)
+        assertEquals(null, DecodedSafeTx.of(world.request(setHandler(Address.ZERO))).refusal)
+        assertIs<SafeTxSigning.Signed>(sign(pinned, world.alice.address, unlock))
     }
 
     @Test

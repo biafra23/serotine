@@ -1,6 +1,7 @@
 package eth.serotine.ui.components
 
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeSettingsChange
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SafeTxGasTerms
@@ -9,8 +10,8 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.BuiltInCheck
 import eth.serotine.domain.usecase.CallRefusal
-import eth.serotine.domain.usecase.QuoteFigure
 import eth.serotine.domain.usecase.KnownTokenList
+import eth.serotine.domain.usecase.QuoteFigure
 import eth.serotine.domain.usecase.SafeTxRefusal
 
 /**
@@ -165,7 +166,11 @@ private fun settingsChange(change: SafeSettingsChange): SafeTxActionItem = when 
         SafeTxActionItem(
             title = "Set the fallback handler",
             addresses = listOf(ActionAddress("Fallback handler", Eip55.format(handler))),
-            notes = listOf("It answers the calls the Safe has no function for."),
+            notes = listOfNotNull(
+                "It answers the calls the Safe has no function for.",
+                "The canonical CompatibilityFallbackHandler 1.4.1, as pinned here."
+                    .takeIf { handler == PinnedFallbackHandlers.COMPATIBILITY_1_4_1 },
+            ),
             warning = "The fallback handler answers the signature checks (EIP-1271) other contracts make for this " +
                 "Safe: one that accepts every signature lets anyone spend what the Safe has approved (Permit2, " +
                 "permits, orders), without its owners.",
@@ -229,6 +234,10 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
     is SafeTxRefusal.ThresholdNotMet ->
         "${refusal.confirmations} of the ${refusal.threshold} confirmations it needs: not enough to execute."
     SafeTxRefusal.GasTerms -> "It carries gas or refund terms: Serotine does not sign, approve or execute those."
+    is SafeTxRefusal.UnpinnedFallbackHandler -> "It sets a fallback handler Serotine does not pin, " +
+        "${Eip55.format(refusal.handler)}: the handler answers the signature checks other contracts make for the " +
+        "Safe, so only the canonical CompatibilityFallbackHandler 1.4.1, or none, is signed, approved or executed " +
+        "here."
     SafeTxRefusal.Syncing -> "The light client is not synced yet: try again in a moment."
     is SafeTxRefusal.Unavailable -> unavailableText(refusal.reason)
     is SafeTxRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)

@@ -4,7 +4,9 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeOperation
+import eth.serotine.domain.model.SafeSettingsChange
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SafeTxAction
@@ -109,6 +111,15 @@ sealed interface SafeTxRefusal {
      */
     data object GasTerms : SafeTxRefusal
 
+    /**
+     * It sets [handler] as the Safe's fallback handler, which is not the pinned
+     * CompatibilityFallbackHandler ([PinnedFallbackHandlers]; owner ruling, 2026-10-18, #63): the
+     * handler answers the EIP-1271 signature checks other contracts make for the Safe, and one that
+     * accepts every signature lets anyone spend what the Safe has approved. This wallet signs,
+     * approves and executes none; it is shown, decoded as such, and nothing more.
+     */
+    data class UnpinnedFallbackHandler(val handler: Address) : SafeTxRefusal
+
     /** The light client has no verified head yet. */
     data object Syncing : SafeTxRefusal
 
@@ -150,13 +161,20 @@ data class DecodedSafeTx private constructor(
 
 /**
  * Why this wallet signs, approves and executes none of [this], whatever its signatures and the
- * Safe say: a delegate call, or gas or refund terms (docs/wallet-ux.md, screen 17). Null when it
- * is a plain call, the only kind it proposes.
+ * Safe say: a delegate call, gas or refund terms, or a fallback handler set that is not pinned
+ * ([PinnedFallbackHandlers]; owner ruling, 2026-10-18, #63) (docs/wallet-ux.md, screen 17).
+ * Removing the handler, removing the guard and disabling a module are not refused: they carry a
+ * warning. Null when it may be signed.
  */
-internal fun SigningRequest.unsignable(): SafeTxRefusal? = when {
-    tx.operation == SafeOperation.DELEGATECALL -> SafeTxRefusal.DelegateCall
-    SafeTxGasTerms.of(tx) != null -> SafeTxRefusal.GasTerms
-    else -> null
+internal fun SigningRequest.unsignable(): SafeTxRefusal? {
+    if (tx.operation == SafeOperation.DELEGATECALL) return SafeTxRefusal.DelegateCall
+    if (SafeTxGasTerms.of(tx) != null) return SafeTxRefusal.GasTerms
+    val change = (SafeTxAction.of(safe, tx) as? SafeTxAction.SettingsChange)?.change
+    val handler = (change as? SafeSettingsChange.FallbackHandlerSet)?.handler
+    if (handler != null && !PinnedFallbackHandlers.allowed(network, handler)) {
+        return SafeTxRefusal.UnpinnedFallbackHandler(handler)
+    }
+    return null
 }
 
 /** The Safe's verified state for a one-shot check, or the refusal there is instead. */

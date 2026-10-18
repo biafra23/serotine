@@ -25,8 +25,9 @@ internal data class SafeSingleton(val version: String, val l2: Boolean, val modu
  *
  * A new Safe is created from [Table.creation] (docs/wallet-ux.md, *Safes*: creation): Safe 1.4.1,
  * its L1 singleton (Safe{Wallet}'s choice for Ethereum and its testnets) and its SafeProxyFactory,
- * with no fallback handler (CompatibilityFallbackHandler is not pinned here, so `setup` installs
- * none). The factory's proxy creation code is `SafeProxy`'s `bytecode` in the npm package
+ * with no fallback handler: `setup` installs none. (The one CompatibilityFallbackHandler a Safe
+ * transaction may set is pinned in the domain, `PinnedFallbackHandlers`, beside the check that
+ * refuses any other.) The factory's proxy creation code is `SafeProxy`'s `bytecode` in the npm package
  * `@safe-global/safe-contracts` 1.4.1-build.0
  * (`build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json`), the build the canonical
  * deployment came from: the runtime code it deploys hashes to the 1.4.1 proxy hash below, read on

@@ -232,6 +232,7 @@ class AccountDetailViewModel(
             refusal = when (tx.refusal) {
                 SafeTxRefusal.DelegateCall -> "Not signed here: a delegate call"
                 SafeTxRefusal.GasTerms -> "Not signed here: it carries gas or refund terms"
+                is SafeTxRefusal.UnpinnedFallbackHandler -> "Not signed here: a fallback handler that is not pinned"
                 else -> null
             },
         )

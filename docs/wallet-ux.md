@@ -370,9 +370,14 @@ upgrades*).
       removed (its limits, allowlist or delay stop), a fallback handler set
       (it answers EIP-1271 for the Safe: one that accepts every signature
       lets anyone spend what the Safe approved, through Permit2, permits or
-      orders). They are signed like any other change; whether to refuse
-      some of them, or allow only a pinned handler, guard or module, is the
-      owner's open question (issue #63).
+      orders). A fallback handler set that is not the pinned canonical
+      CompatibilityFallbackHandler 1.4.1 (`0xfd0732Dc…Ec99`,
+      `PinnedFallbackHandlers`) is refused: shown, and never signed,
+      approved or executed here (`SafeTxRefusal.UnpinnedFallbackHandler`;
+      owner ruling, 2026-10-18, #63), on 16's row and 17 with its reason.
+      Setting the pinned one, or removing the handler, is signed with its
+      warning; so are a guard removed and a module disabled, which keep
+      their warning and are not refused.
     - `delegatecall` is marked as such and decoded no further: the Safe runs
       the target's code as itself. This wallet shows it and does not sign,
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
