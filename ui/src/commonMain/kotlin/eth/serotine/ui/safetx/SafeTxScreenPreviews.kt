@@ -9,6 +9,8 @@ import eth.serotine.ui.components.GasTermsItem
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
+import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -197,6 +199,41 @@ private fun SafeTxDelegateCallPreview() = SafeTxPreview(
 
 @Preview
 @Composable
+private fun SafeTxUnpinnedFallbackHandlerPreview() = SafeTxPreview(
+    overview.copy(
+        action = SafeTxActionItem(
+            title = "Set the fallback handler",
+            addresses = listOf(ActionAddress("Fallback handler", FRIEND)),
+            notes = listOf("It answers the calls the Safe has no function for."),
+            warning = "The fallback handler answers the signature checks (EIP-1271) other contracts make for this " +
+                "Safe: one that accepts every signature lets anyone spend what the Safe has approved (Permit2, " +
+                "permits, orders), without its owners.",
+        ),
+        refusal = "It sets a fallback handler Serotine does not pin, $FRIEND: the handler answers the signature " +
+            "checks other contracts make for the Safe, so only the canonical CompatibilityFallbackHandler 1.4.1, " +
+            "or none, is signed, approved or executed here.",
+        canSign = false,
+        canApprove = false,
+        canExecute = false,
+    ),
+)
+
+/** The dialog a tap on a greyed-out Execute opens (owner ruling, 2026-10-18, #55). */
+@Preview
+@Composable
+private fun SafeTxExecuteReasonPreview() = SerotineTheme {
+    UnavailableDialog(
+        UnavailableNotice(
+            "Execute",
+            "Executed only once the 2 transactions before it have run: only the Safe's next transaction can be " +
+                "executed.",
+        ),
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
 private fun SafeTxGasTermsPreview() = SafeTxPreview(
     overview.copy(
         gasTerms = GasTermsItem(
@@ -313,6 +350,8 @@ internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxSignedPreview() },
     { SafeTxNotNextPreview() },
     { SafeTxDelegateCallPreview() },
+    { SafeTxUnpinnedFallbackHandlerPreview() },
+    { SafeTxExecuteReasonPreview() },
     { SafeTxGasTermsPreview() },
     { SafeTxOwnersCheckingPreview() },
     { SafeTxOwnersUnavailablePreview() },

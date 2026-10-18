@@ -99,6 +99,16 @@ private fun AssetsCreateSafeReasonPreview() = SerotineTheme {
     )
 }
 
+/** The dialog a tap on a greyed-out Send opens, for a watched account (owner ruling, 2026-10-18, #55). */
+@Preview
+@Composable
+private fun AssetsSendReasonPreview() = SerotineTheme {
+    UnavailableDialog(
+        UnavailableNotice("Send", sendBlockedReason(AccountKind.EOA, Control.WATCH_ONLY).orEmpty()),
+        onDismiss = {},
+    )
+}
+
 @Preview
 @Composable
 private fun AssetsAccountsPreview() = AssetsPreview(withAccounts)
@@ -213,6 +223,7 @@ internal val assetsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AssetsNoAccountsPreview() },
     { AssetsCreateSafeGreyedOutPreview() },
     { AssetsCreateSafeReasonPreview() },
+    { AssetsSendReasonPreview() },
     { AssetsLoadingPreview() },
     { AssetsLoadingCreateSafeGreyedOutPreview() },
     { AssetsListSetAsidePreview() },
