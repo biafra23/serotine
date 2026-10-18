@@ -296,6 +296,25 @@ class SafeTxViewModelTest {
         assertFalse(state.canExecute)
     }
 
+    @Test
+    fun aChangeThatLeavesEveryOwnerNeededIsShownAsRefusedAndOffersNothingToSign() = runTest {
+        // The Safe is 2 of 3: a threshold of 3 leaves every owner needed, with no recovery module (#54).
+        val data = "694e80c3" + "3".padStart(64, '0')
+        val changeThreshold = SafeTx.call(world.safe, UInt256.ZERO, data.hexBytes(), nonce = 4)
+        val viewModel = viewModel(queued(world.request(changeThreshold)))
+
+        val state = viewModel.overview
+        assertEquals(
+            "It would leave all 3 owners needed to sign: with one of them lost, the rest could never reach the " +
+                "threshold again. That needs a recovery module, and Serotine recognises none yet (#54), so it " +
+                "does not sign, approve or execute it.",
+            state.refusal,
+        )
+        assertFalse(state.canSign)
+        assertFalse(state.canApprove)
+        assertFalse(state.canExecute)
+    }
+
     private fun String.hexBytes(): ByteArray =
         ByteArray(length / 2) { substring(2 * it, 2 * it + 2).toInt(16).toByte() }
 

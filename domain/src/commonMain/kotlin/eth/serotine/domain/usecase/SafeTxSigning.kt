@@ -206,20 +206,30 @@ internal fun SigningRequest.unsignable(): SafeTxRefusal? {
 
 /**
  * [SafeTxRefusal.NeedsRecoveryModule] when [this] would leave the Safe, now as [state] says, an
- * n-of-n with n above one: a threshold changed to the owner count, an owner removed or added with
- * the threshold set to the count that leaves (owner ruling, 2026-10-18, #54). No recovery module
- * is recognised yet, so the Safe's modules do not lift it. Null otherwise.
+ * n-of-n with n above one: a threshold changed to the owner count or above, an owner removed or
+ * added with the threshold set to the count that leaves or above (owner ruling, 2026-10-18, #54).
+ * A threshold above the owner count reverts on chain anyway, so refusing it costs nothing, and it
+ * catches one queued behind an owner added. No recovery module is recognised yet, so the Safe's
+ * modules do not lift it. Null otherwise.
+ *
+ * Only the Safe's current owners and threshold are seen, not the changes queued at earlier
+ * nonces: a threshold change signed behind an owner's removal can end as an n-of-n once both
+ * run. Serotine's own execution quote checks the state the Safe is in then, and refuses it; but
+ * another wallet holding enough signatures could still execute it. Closing that fully is part of
+ * how far ahead of a Safe's nonce a request may be signed, the owner's open question (#59).
  */
-internal fun SigningRequest.withoutRecovery(state: SafeState): SafeTxRefusal? {
+internal fun SigningRequest.withoutRecovery(state: SafeState): SafeTxRefusal? = withoutRecovery(state.owners.size)
+
+/** [withoutRecovery] for a Safe of [owners] owners now. */
+internal fun SigningRequest.withoutRecovery(owners: Int): SafeTxRefusal? {
     val change = (SafeTxAction.of(safe, tx) as? SafeTxAction.SettingsChange)?.change ?: return null
-    val owners = state.owners.size
     val (after, threshold) = when (change) {
         is SafeSettingsChange.ThresholdChanged -> owners to change.threshold
         is SafeSettingsChange.OwnerRemoved -> owners - 1 to change.threshold
         is SafeSettingsChange.OwnerAdded -> owners + 1 to change.threshold
         else -> return null
     }
-    return SafeTxRefusal.NeedsRecoveryModule(after).takeIf { after > 1 && threshold == after.toLong() }
+    return SafeTxRefusal.NeedsRecoveryModule(after).takeIf { after > 1 && threshold >= after.toLong() }
 }
 
 /** The Safe's verified state for a one-shot check, or the refusal there is instead. */

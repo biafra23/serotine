@@ -402,7 +402,15 @@ upgrades*).
       then (`SafeTxRefusal.NeedsRecoveryModule`): the change half of the
       owner's ruling (2026-10-18, #54), whose creation half is screen 14's.
       No recovery module is recognised yet, so the Safe's modules do not
-      lift it.
+      lift it. A threshold at or above the owner count it leaves is refused
+      (above it reverts anyway). Screen 17 reads it with the owners, and
+      shows it as the transaction's refusal, offering nothing to sign. The
+      check sees the Safe's current owners and threshold only, not changes
+      queued at earlier nonces: Serotine's own execution quote catches a
+      combination that ends as an n-of-n, but another wallet holding the
+      signatures could still execute it. Closing that fully is part of how far
+      ahead of a Safe's nonce a request may be signed, the owner's open
+      question (#59).
     - `delegatecall` is marked as such and decoded no further: the Safe runs
       the target's code as itself. This wallet shows it and does not sign,
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by

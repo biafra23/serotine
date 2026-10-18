@@ -90,7 +90,13 @@ class ReadSafeTxOwners(
                 SafeTxOwner(owner, owner in held, confirmation)
             }
         }.awaitAll()
-        SafeTxOwnersReading.Read(owners, safe.state.threshold, safe.state.nonce, safe.blockNumber)
+        SafeTxOwnersReading.Read(
+            owners,
+            safe.state.threshold,
+            safe.state.nonce,
+            safe.blockNumber,
+            refusal = request.withoutRecovery(safe.state),
+        )
     }
 }
 
@@ -99,10 +105,17 @@ sealed interface SafeTxOwnersReading {
 
     /**
      * Every current [owners]' stand, in the Safe's order; its [threshold] and [safeNonce], verified
-     * at [blockNumber].
+     * at [blockNumber]; and [refusal], why this wallet signs, approves and executes none of it
+     * against the Safe as it stands now, which the transaction alone does not say: a change that
+     * leaves the Safe an n-of-n with no recovery module (owner ruling, 2026-10-18, #54). Null: none.
      */
-    data class Read(val owners: List<SafeTxOwner>, val threshold: Int, val safeNonce: Long, val blockNumber: Long) :
-        SafeTxOwnersReading {
+    data class Read(
+        val owners: List<SafeTxOwner>,
+        val threshold: Int,
+        val safeNonce: Long,
+        val blockNumber: Long,
+        val refusal: SafeTxRefusal? = null,
+    ) : SafeTxOwnersReading {
         /** How many owners confirm it, by signature or on chain. */
         val confirmations: Int
             get() = owners.count { it.confirms }

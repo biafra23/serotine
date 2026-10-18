@@ -908,7 +908,9 @@ class SafeTxViewModel(
                 hash = hashText,
                 owners = ownersItem(shown),
                 gasTerms = tx.gasTerms?.let(::gasTermsItem),
-                refusal = tx.refusal?.let { safeTxRefusalText(it, this.network) },
+                // What the transaction alone says, or what it would do to the Safe as it stands now.
+                refusal = (tx.refusal ?: read?.refusal)
+                    ?.let { safeTxRefusalText(it, this.network) },
                 canSign = options.signers.isNotEmpty(),
                 canApprove = options.approvers.isNotEmpty(),
                 canExecute = options.executors.isNotEmpty(),
@@ -922,7 +924,9 @@ class SafeTxViewModel(
     }
 
     private fun options(tx: DecodedSafeTx, read: SafeTxOwnersReading.Read?, held: List<Account>): Options {
-        if (tx.refusal != null || read == null) return Options(emptyList(), emptyList(), emptyList(), null)
+        if (tx.refusal != null || read == null || read.refusal != null) {
+            return Options(emptyList(), emptyList(), emptyList(), null)
+        }
         val unconfirmed = read.owners.filter { it.held && !it.confirms }.map { it.owner }
         val short = read.confirmations < read.threshold
         // Any account held here may execute (owner ruling, 2026-10-18, #56); a held owner first: its

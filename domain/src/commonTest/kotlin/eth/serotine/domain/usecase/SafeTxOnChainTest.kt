@@ -53,6 +53,8 @@ class SafeTxOnChainTest {
 
     private val executed = "0".repeat(63) + "1"
 
+    private val readOwners = ReadSafeTxOwners(world.observeSafe, world.recovery, world.approvals, Network.SEPOLIA)
+
     @Test
     fun eachOwnerStandsAsItsSignatureOrItsApprovalOnChainSays() = runTest {
         val request = world.request(payment, world.alice.address, world.stranger)
@@ -324,6 +326,16 @@ class SafeTxOnChainTest {
         assertRefusedEverywhere(changeThreshold(3), SafeTxRefusal.NeedsRecoveryModule(owners = 3), before = false)
         assertRefusedEverywhere(removeCarol(2), SafeTxRefusal.NeedsRecoveryModule(owners = 2), before = false)
         assertRefusedEverywhere(addStranger(4), SafeTxRefusal.NeedsRecoveryModule(owners = 4), before = false)
+        // Above the owner count too: it reverts today, and catches a threshold queued behind an owner added.
+        assertRefusedEverywhere(changeThreshold(4), SafeTxRefusal.NeedsRecoveryModule(owners = 3), before = false)
+        assertRefusedEverywhere(addStranger(5), SafeTxRefusal.NeedsRecoveryModule(owners = 4), before = false)
+        assertRefusedEverywhere(removeCarol(3), SafeTxRefusal.NeedsRecoveryModule(owners = 2), before = false)
+        // Screen 17 reads it with the owners, before anyone asks.
+        assertEquals(
+            SafeTxRefusal.NeedsRecoveryModule(owners = 3),
+            assertIs<SafeTxOwnersReading.Read>(readOwners(changeThreshold(3))).refusal,
+        )
+        assertEquals(null, assertIs<SafeTxOwnersReading.Read>(readOwners(changeThreshold(1))).refusal)
         // A module the Safe has is no recovery module this wallet recognises.
         world.state = world.state.copy(modules = listOf(world.recipient))
         assertRefusedEverywhere(changeThreshold(3), SafeTxRefusal.NeedsRecoveryModule(owners = 3), before = false)
