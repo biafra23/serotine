@@ -176,8 +176,10 @@ sealed interface SafeTxRefusal {
  * A Safe transaction as this wallet shows it: [request], what it does as decoded here from its
  * raw fields ([action]), and the gas and refund terms it carries beside its call ([gasTerms],
  * null: none). A [delegateCall] is marked as such. [refusal] says why this wallet will not sign,
- * approve or execute it, before anyone asks: a delegate call, or gas terms (null: neither).
- * Made only by [of], so what is shown is always what the request's fields decode to.
+ * approve or execute it, before anyone asks ([unsignable]): a delegate call, gas terms, a call of
+ * the Safe itself not decoded exactly as one of its settings changes or the rejection, a fallback
+ * handler set that is not pinned, or a module enabled (null: none of them). Made only by [of], so
+ * what is shown is always what the request's fields decode to.
  */
 @ConsistentCopyVisibility
 data class DecodedSafeTx private constructor(

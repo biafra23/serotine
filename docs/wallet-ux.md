@@ -380,9 +380,9 @@ upgrades*).
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
     - A change that weakens the Safe carries a warning wherever it is shown
-      (16's row, 17, the Sign step, the biometric prompt): a module enabled
-      (it moves funds without the owners) or disabled, a guard set or
-      removed (its limits, allowlist or delay stop), a fallback handler set
+      (16's row, 17, the Sign step, the biometric prompt): a module disabled,
+      a guard set or removed (its limits, allowlist or delay stop), a
+      fallback handler set
       (it answers EIP-1271 for the Safe: one that accepts every signature
       lets anyone spend what the Safe approved, through Permit2, permits or
       orders). A fallback handler set that is not the pinned canonical

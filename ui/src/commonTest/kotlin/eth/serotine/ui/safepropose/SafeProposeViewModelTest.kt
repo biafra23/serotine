@@ -226,6 +226,21 @@ class SafeProposeViewModelTest {
     }
 
     @Test
+    fun aTransferToTheSafeItselfIsRefusedOnTheFormAsMovingNothing() = runTest {
+        holding()
+        val viewModel = viewModel()
+        viewModel.onToChange(Eip55.format(world.safe))
+        viewModel.onAmountChange("0.1")
+        runCurrent()
+
+        viewModel.review()
+        runCurrent()
+
+        assertEquals("The Safe itself: nothing would leave it, so it is refused.", viewModel.form.error)
+        assertEquals(emptyList(), world.queue.requests.value, "nothing proposed")
+    }
+
+    @Test
     fun aProposalOverAMinuteOldIsMadeAgainAtTheTapThatWouldSignIt() = runTest {
         val viewModel = reviewed()
         viewModel.onPasswordChange("made-up test password")
