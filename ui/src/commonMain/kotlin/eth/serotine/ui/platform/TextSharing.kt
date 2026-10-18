@@ -3,8 +3,8 @@ package eth.serotine.ui.platform
 import androidx.compose.runtime.Composable
 
 /**
- * Puts a text on the system clipboard: what Copy does with an address. A public address
- * only; nothing secret is ever copied through this (CLAUDE.md, *Trust*).
+ * Puts a text on the system clipboard: what Copy does with an address or a signing request.
+ * Public data only; nothing secret is ever copied through this (CLAUDE.md, *Trust*).
  */
 @Composable
 expect fun rememberCopyText(): (String) -> Unit

@@ -27,7 +27,7 @@ import kotlin.time.Duration.Companion.seconds
  * ([SentAction.SafeDeployment.listed]), which the status screen shows. A Safe in the account list
  * already ends it as listed at once.
  *
- * Run for as long as the app is open (`App` starts it): it picks up after a restart, as the record
+ * Run for as long as the app is open (the hosts start it, never `App`): it picks up after a restart, as the record
  * is kept until the listing ends ([SentTransfers.prune]). An outcome that is no ending — the Safe
  * not verifiable again, the list not saved, a use case that broke its promise — is tried again
  * after [retryDelay]. A deployment is followed for [DEPLOYMENT_LIFETIME_SECONDS] after a peer took
