@@ -702,6 +702,7 @@ class SafeProposeViewModel(
         SafeTxProposing.ToZeroAddress -> ZERO_ADDRESS
         SafeTxProposing.ToTokenContract ->
             "${option.symbol}'s own contract: nothing sent to it can ever be moved out, so it is refused."
+        SafeTxProposing.ToSafeItself -> "The Safe itself: nothing would leave it, so it is refused."
         SafeTxProposing.NothingToSend -> "There is nothing to send: enter an amount above zero."
         SafeTxProposing.InsufficientFunds -> "The Safe holds less ${network.nativeSymbol} than that, once the " +
             "transactions queued on this device before it have moved what they move."

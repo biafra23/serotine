@@ -317,6 +317,11 @@ class SafeTxSigningTest {
             propose(world.safe, Address.ZERO, TransferAsset.Native, UInt256.ONE),
         )
         assertEquals(SafeTxProposing.ToTokenContract, propose(world.safe, usdc.address, usdcAsset, UInt256.ONE))
+        assertEquals(
+            SafeTxProposing.ToSafeItself,
+            propose(world.safe, world.safe, TransferAsset.Native, UInt256.ONE),
+        )
+        assertEquals(SafeTxProposing.ToSafeItself, propose(world.safe, world.safe, usdcAsset, UInt256.ONE))
         assertEquals(SafeTxProposing.NothingToSend, propose(world.safe, world.recipient, usdcAsset, UInt256.ZERO))
         assertEquals(
             SafeTxProposing.InsufficientFunds,

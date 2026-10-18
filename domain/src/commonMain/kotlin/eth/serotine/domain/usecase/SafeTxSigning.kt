@@ -450,6 +450,7 @@ class ProposeSafeTx(
             val token = (asset as? TransferAsset.Erc20Token)?.token
             if (to == Address.ZERO) return@cancellingReads SafeTxProposing.ToZeroAddress
             if (token != null && to == token.address) return@cancellingReads SafeTxProposing.ToTokenContract
+            if (to == safe) return@cancellingReads SafeTxProposing.ToSafeItself
             if (amount.isZero) return@cancellingReads SafeTxProposing.NothingToSend
             val txTo = token?.address ?: to
             val value = if (token == null) amount else UInt256.ZERO
@@ -598,6 +599,13 @@ sealed interface SafeTxProposing {
 
     /** A token sent to the token's own contract, from which nobody can move it out: refused. */
     data object ToTokenContract : SafeTxProposing
+
+    /**
+     * The recipient is the Safe itself: nothing would leave it, and the network's currency sent to
+     * it would be a call to the Safe itself, which signing refuses ([SafeTxRefusal.UndecodedSelfCall]).
+     * Refused here, before the review, for either asset.
+     */
+    data object ToSafeItself : SafeTxProposing
 
     /** The amount is zero: there is nothing to send. */
     data object NothingToSend : SafeTxProposing
