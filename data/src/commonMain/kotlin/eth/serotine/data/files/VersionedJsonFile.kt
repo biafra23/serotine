@@ -16,7 +16,6 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readString
-import kotlinx.io.writeString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.random.Random
@@ -28,13 +27,14 @@ import kotlin.time.Duration.Companion.seconds
  * throws on anything it would not accept: the file is then damaged); [encode] writes the
  * current one, `version` first.
  *
- * Writing: the whole document, into a temporary file of its own that is then moved over the
- * file in one step. A crash during a write leaves the previous one. A power loss in that
- * moment can do worse: kotlinx-io exposes no fsync, so the rename can reach the disk before
- * the data, and the next start then finds a damaged file (below). Each change reads the file
- * again first. One process writes the file: Android runs one, and the desktop host holds a
- * per-user instance lock; were a second one to write it, it could lose a change only within
- * that one change.
+ * Writing: the whole document, into a temporary file of its own whose data is flushed to the
+ * disk ([writeSynced]), then moved over the file in one step, and the directory flushed after
+ * the move ([syncDirectoryOf]). A crash or a power loss during a write leaves the previous
+ * document or the new one, each complete; where a directory cannot be flushed (Windows) a power
+ * loss just after the move may still leave the previous one. Each change reads the file again
+ * first. One process writes the file: Android runs one, and the desktop host holds a per-user
+ * instance lock; were a second one to write it, it could lose a change only within that one
+ * change.
  *
  * Reading, which never destroys or hides what is stored:
  * - no file: [empty];
@@ -52,7 +52,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * File work runs on [dispatcher], never the caller's thread. Problems are reported on standard
  * output by type only, naming the file as [what]: an exception message could quote the
- * file's contents.
+ * file's contents. [writeFile] is [writeSynced] but in tests.
  */
 internal class VersionedJsonFile<T>(
     path: String,
@@ -63,6 +63,7 @@ internal class VersionedJsonFile<T>(
     private val decode: (version: Int, text: String) -> T,
     private val encode: (T) -> String,
     private val incomplete: (text: String, value: T) -> Boolean = { _, _ -> false },
+    private val writeFile: (path: String, bytes: ByteArray) -> Unit = ::writeSynced,
 ) {
     /** What the file holds, or why it cannot be read. */
     sealed interface Read<out T> {
@@ -163,36 +164,48 @@ internal class VersionedJsonFile<T>(
     /**
      * Keeps the file [decode] read only part of, [text], under a name of its own, then writes
      * [value], what was read, in its place: the parts passed over stay in the copy. The file
-     * itself is never moved: the copy is written first, and the file replaced only by [write]'s
-     * own atomic move, so at every moment one of them holds every entry. One step a cancellation
-     * cannot cut in half ([NonCancellable]). If the copy cannot be written, nothing changes; if
-     * the file cannot be rewritten, the copy is removed again and the file stays as it was, to be
-     * set aside at a later read. Either way what was read is used.
+     * itself is never moved: the copy is written and flushed to the disk first, its name with it
+     * where the directory can be flushed ([syncDirectoryOf]), and only then is the file replaced,
+     * by [write]'s own flushed, atomic move; so a crash or a power loss leaves the file as it was,
+     * or a complete copy and the rewritten file. One step a cancellation cannot cut in half
+     * ([NonCancellable]). If the copy cannot be written, what it got of it is deleted and nothing
+     * changes; if the file cannot be rewritten, the copy is removed again and the file stays as it
+     * was, to be set aside at a later read. Either way what was read is used.
      */
     private suspend fun keepAside(text: String, value: T): Read<T> = withContext(NonCancellable) {
         var aside: Path
         do {
             aside = Path("$file.damaged-${Random.nextLong().toULong().toString(16)}")
         } while (SystemFileSystem.exists(aside))
-        try {
-            SystemFileSystem.sink(aside).buffered().use { it.writeString(text) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            report("the $what at $file has entries that could not be read; not set aside (${e::class.simpleName})")
-            return@withContext Read.Loaded(value)
-        }
-        if (!write(value)) {
+        val copied = withContext(dispatcher) {
             try {
-                SystemFileSystem.delete(aside)
+                writeFile(aside.toString(), text.encodeToByteArray())
+                syncDirectoryOf(aside.toString())
+                true
             } catch (e: Exception) {
-                // A stray copy is harmless: the file still holds every entry.
+                report("the $what at $file has entries that could not be read; not set aside (${e::class.simpleName})")
+                deleteQuietly(aside)
+                false
             }
+        }
+        if (!copied) return@withContext Read.Loaded(value)
+        if (!write(value)) {
+            // A stray copy would be harmless: the file still holds every entry.
+            deleteQuietly(aside)
             report("the $what at $file has entries that could not be read; left as it is for now")
             return@withContext Read.Loaded(value)
         }
         report("the $what at $file had entries that could not be read; kept as $aside")
         Read.Loaded(value, damagedSetAside = true)
+    }
+
+    /** Deletes [path] if it is there; a file that cannot be deleted is left, harmless. */
+    private fun deleteQuietly(path: Path) {
+        try {
+            SystemFileSystem.delete(path, mustExist = false)
+        } catch (e: Exception) {
+            // Nothing more to do.
+        }
     }
 
     /** Moves a damaged file out of the way, keeping it; Unreadable when that fails. */
@@ -216,8 +229,10 @@ internal class VersionedJsonFile<T>(
         try {
             file.parent?.let { SystemFileSystem.createDirectories(it) }
             val text = encode(value)
-            SystemFileSystem.sink(temporary).buffered().use { it.writeString(text) }
+            // The data on the disk before the name points at it, and the name after the move.
+            writeFile(temporary.toString(), text.encodeToByteArray())
             SystemFileSystem.atomicMove(temporary, file)
+            syncDirectoryOf(file.toString())
             true
         } catch (e: Exception) {
             report("could not save the $what to $file (${e::class.simpleName})")

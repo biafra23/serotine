@@ -40,6 +40,9 @@ class VersionedJsonFileTest {
     /** Whether a read passed an item over: one was in the text and is not in what was read. */
     private val passedOver: (String, List<String>) -> Boolean = { text, items -> "bad" in text && items.size < 3 }
 
+    /** How a file is written: [writeSynced], unless a test breaks it. */
+    private var writeFile: (String, ByteArray) -> Unit = ::writeSynced
+
     private fun TestScope.file(incomplete: (String, List<String>) -> Boolean = passedOver) =
         VersionedJsonFile(
             path.toString(),
@@ -53,6 +56,7 @@ class VersionedJsonFileTest {
                 """{"version":1,"items":[${items.joinToString(",") { "\"$it\"" }}]}"""
             },
             incomplete = incomplete,
+            writeFile = { path, bytes -> writeFile(path, bytes) },
         )
 
     private fun written(file: Path = path) = SystemFileSystem.source(file).buffered().use { it.readString() }
@@ -93,6 +97,25 @@ class VersionedJsonFileTest {
         assertEquals(VersionedJsonFile.Read.Loaded(listOf("a", "b")), read, "what was read is used")
         assertEquals(partial, written(), "never moved, never lost: every item is still in the file")
         assertEquals(emptyList(), copies())
+    }
+
+    @Test
+    fun aCopyThatFailsPartwayIsDeletedAndTheFileStaysAsItWas() = runTest {
+        seed()
+        // The disk fills while the copy is written: half of it lands, then the write fails.
+        writeFile = { target, bytes ->
+            if (".damaged-" in target) {
+                writeSynced(target, bytes.copyOf(bytes.size / 2))
+                throw IOException("disk full")
+            }
+            writeSynced(target, bytes)
+        }
+
+        val read = file().observe().first()
+
+        assertEquals(VersionedJsonFile.Read.Loaded(listOf("a", "b")), read, "what was read is used")
+        assertEquals(emptyList(), copies(), "no truncated copy is left behind")
+        assertEquals(partial, written(), "the file is not rewritten without its copy")
     }
 
     @Test
