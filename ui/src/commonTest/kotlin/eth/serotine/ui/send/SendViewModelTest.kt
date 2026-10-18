@@ -48,6 +48,7 @@ import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.SendTransfer
+import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
@@ -167,6 +168,7 @@ class SendViewModelTest {
             QuoteTransfer(inputs, balances, tokenBalances, sent, Network.SEPOLIA),
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
+            WarmFeeHistory(inputs),
             Network.SEPOLIA,
             clock,
         )
@@ -193,6 +195,17 @@ class SendViewModelTest {
         viewModel.review()
         runCurrent()
         return viewModel
+    }
+
+    @Test
+    fun theFeeHistoryIsAskedForAsTheComposeStepOpensSoThatItIsReadyByTheReview() = runTest {
+        holding()
+        viewModel()
+        runCurrent()
+
+        // The light client builds its fee history on a first request: asked now, warm by Review.
+        assertEquals(1, inputs.feeReads)
+        assertEquals(0, inputs.estimated.size, "nothing quoted")
     }
 
     @Test

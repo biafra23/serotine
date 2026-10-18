@@ -41,6 +41,7 @@ import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SafeTxSigning
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.TransferSending
+import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
@@ -133,9 +134,15 @@ class SafeTxViewModel(
     private val executeSafeTx: ExecuteSafeTx,
     private val rebroadcastTransfer: RebroadcastTransfer,
     private val removeQueuedSafeTx: RemoveQueuedSafeTx,
+    private val warmFeeHistory: WarmFeeHistory,
     private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
+
+    init {
+        // Approve and Execute quote a transaction: the fee history is asked for now, ready by then.
+        warmFees()
+    }
 
     /** What the screen is drawn from: a transaction to act on ([Context]), or why there is none ([Queued]). */
     private sealed interface Source
@@ -1061,6 +1068,22 @@ class SafeTxViewModel(
                 }
             }
         }
+
+    /**
+     * Asks for the fee history once, now, and lets the answer go ([WarmFeeHistory]): the light
+     * client builds it on a first request in seconds, so by the review it is ready. Never throws.
+     */
+    private fun warmFees() {
+        viewModelScope.launch {
+            try {
+                warmFeeHistory()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Nothing rests on it: the quote asks for the fees itself.
+            }
+        }
+    }
 
     /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */
     private suspend fun biometricsOffered(): Boolean = try {

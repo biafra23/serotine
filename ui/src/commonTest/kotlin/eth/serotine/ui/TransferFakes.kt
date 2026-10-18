@@ -63,7 +63,11 @@ internal class FakeTransactionInputs : TransactionInputs {
     /** While set, the fees and every run wait for it: a quote in flight, for as long as a test needs. */
     var gate: CompletableDeferred<Unit>? = null
 
+    /** How often the fees were asked. */
+    var feeReads = 0
+
     override suspend fun fees(): FeeReading {
+        feeReads++
         gate?.await()
         return fees
     }

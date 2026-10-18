@@ -13,6 +13,7 @@ import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -22,6 +23,8 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.seconds
 
@@ -115,6 +118,53 @@ class TransactionAdaptersTest {
             EngineJson.receipt("""{"blockNumber":"0x7","status":"0x0"}"""),
         )
         assertNull(EngineJson.receipt("null"))
+    }
+
+    @Test
+    fun aColdFeeHistoryIsAskedAgainUntilItIsBuilt() = runTest {
+        synced()
+        val history = """{"oldestBlock":"0x1","baseFeePerGas":["0x10","0x10"],"reward":[["0x1","0x2","0x3"]]}"""
+        // Nothing twice (the engine still building its history), then a history.
+        var answers = 0
+        chain.feeAnswer = { if (++answers <= 2) null else history }
+        val inputs = EngineTransactionInputs(
+            chain,
+            StandardTestDispatcher(testScheduler),
+            timeSource = testScheduler.timeSource,
+        )
+
+        val reading = async { inputs.fees() }
+        advanceTimeBy(4_999)
+        runCurrent()
+        assertFalse(reading.isCompleted, "asked again every 2.5 s")
+        advanceTimeBy(2)
+        runCurrent()
+        assertIs<FeeReading.Quoted>(reading.await())
+        assertEquals(3, answers)
+    }
+
+    @Test
+    fun aFeeHistoryStillColdAfterFifteenSecondsIsUnavailable() = runTest {
+        synced()
+        var answers = 0
+        chain.feeAnswer = {
+            answers++
+            null
+        }
+        val inputs = EngineTransactionInputs(
+            chain,
+            StandardTestDispatcher(testScheduler),
+            timeSource = testScheduler.timeSource,
+        )
+
+        assertEquals(FeeReading.Unavailable(ReadUnavailable.UNPROVEN), inputs.fees())
+        assertEquals(6, answers, "at 0, 2.5, 5, 7.5, 10 and 12.5 s: none once 15 s would pass")
+
+        // An engine that cannot verify reads is said at once, not waited for.
+        chain.base.snapshot = EngineSnapshot.Down
+        answers = 0
+        assertEquals(FeeReading.Unavailable(ReadUnavailable.NO_ENGINE), inputs.fees())
+        assertEquals(0, answers)
     }
 
     @Test

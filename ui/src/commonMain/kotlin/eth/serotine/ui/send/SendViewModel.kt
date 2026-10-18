@@ -30,6 +30,7 @@ import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.TransferQuote
 import eth.serotine.domain.usecase.TransferQuoting
 import eth.serotine.domain.usecase.TransferSending
+import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetOption
 import eth.serotine.ui.components.BalanceChange
@@ -50,8 +51,8 @@ import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
-import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.feeDetail
+import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
@@ -110,9 +111,15 @@ class SendViewModel(
     private val quoteTransfer: QuoteTransfer,
     private val sendTransfer: SendTransfer,
     private val rebroadcastTransfer: RebroadcastTransfer,
+    private val warmFeeHistory: WarmFeeHistory,
     private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
+
+    init {
+        // The compose step is open: the fee history is asked for now, ready by the review.
+        warmFees()
+    }
 
     /**
      * What the compose step has: the token chosen ([asset], null for the network's currency), the
@@ -643,7 +650,9 @@ class SendViewModel(
             pending = pendingText(quote, option),
             refreshing = step.refreshing,
             signing = step.signing,
-            notSent = step.notSent?.let { notSentItem(it.broadcast, it.unverified, what = "transfer", maybeSent = it.transfer.maybeSent) },
+            notSent = step.notSent?.let {
+                notSentItem(it.broadcast, it.unverified, what = "transfer", maybeSent = it.transfer.maybeSent)
+            },
         )
     }
 
@@ -724,6 +733,22 @@ class SendViewModel(
         throw e
     } catch (e: Exception) {
         RecipientLookup.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
+    }
+
+    /**
+     * Asks for the fee history once, now, and lets the answer go ([WarmFeeHistory]): the light
+     * client builds it on a first request in seconds, so by the review it is ready. Never throws.
+     */
+    private fun warmFees() {
+        viewModelScope.launch {
+            try {
+                warmFeeHistory()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Nothing rests on it: the quote asks for the fees itself.
+            }
+        }
     }
 
     /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */

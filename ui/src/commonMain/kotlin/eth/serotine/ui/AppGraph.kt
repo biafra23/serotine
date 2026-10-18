@@ -73,6 +73,7 @@ import eth.serotine.domain.usecase.SetDisplayCurrency
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.WalletChanges
+import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
@@ -214,6 +215,7 @@ class AppGraph(
         ExecuteSafeTx(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         RemoveQueuedSafeTx(safeTxQueue),
+        WarmFeeHistory(transactionInputs),
         network,
     )
 
@@ -257,6 +259,7 @@ class AppGraph(
         QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
         SendTransfer(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        WarmFeeHistory(transactionInputs),
         network,
     )
 
@@ -278,6 +281,7 @@ class AppGraph(
         QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, network),
         DeploySafe(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        WarmFeeHistory(transactionInputs),
         network,
     )
 

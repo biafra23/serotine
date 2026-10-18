@@ -43,6 +43,7 @@ import eth.serotine.domain.usecase.ReadSafeTxOwners
 import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.SignSafeTx
+import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.SafeWorld
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NotSentItem
@@ -134,6 +135,7 @@ class SafeTxViewModelTest {
             ExecuteSafeTx(world.signer, world.broadcaster, world.sent, now),
             RebroadcastTransfer(world.broadcaster, world.sent, world.receipts, now),
             RemoveQueuedSafeTx(world.queue),
+            WarmFeeHistory(world.inputs),
             Network.SEPOLIA,
             clock,
         )

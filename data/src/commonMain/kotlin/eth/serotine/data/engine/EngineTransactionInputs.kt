@@ -10,8 +10,13 @@ import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionInputs
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * [TransactionInputs] over the engine's verified reads ([TransactingChain]): asked only while
@@ -19,10 +24,16 @@ import kotlinx.coroutines.withContext
  * engine that fails, or a CancellationException its own code throws, is no answer — as for
  * every verified read ([ProvenReads]). A device without an engine ([chain] null) answers
  * [ReadUnavailable.NO_ENGINE].
+ *
+ * The fee history is asked again while it is cold ([fees]): every [feeRetryInterval], for up to
+ * [feeWait] in all, measured on [timeSource].
  */
 class EngineTransactionInputs internal constructor(
     private val chain: TransactingChain?,
     private val dispatcher: CoroutineDispatcher,
+    private val feeRetryInterval: Duration = 2_500.milliseconds,
+    private val feeWait: Duration = 15.seconds,
+    private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : TransactionInputs {
 
     override suspend fun nonce(account: Address): NonceReading = ask(NonceReading::Unavailable) { chain ->
@@ -35,9 +46,30 @@ class EngineTransactionInputs internal constructor(
             ?: NonceReading.Unavailable(ReadUnavailable.UNPROVEN)
     }
 
-    override suspend fun fees(): FeeReading = ask(FeeReading::Unavailable) { chain ->
-        chain.feeHistory(FEE_BLOCKS, EngineJson.PERCENTILES)?.let(EngineJson::feeQuote)?.let(FeeReading::Quoted)
-            ?: FeeReading.Unavailable(ReadUnavailable.UNPROVEN)
+    /**
+     * The fee levels of the verified fee history. The engine's history is cold on its first request
+     * after a start, and on one more than 120 s after the last: it builds ten blocks of it, waits
+     * only 5 s for that, and answers nothing ("still being computed; retry shortly"), and a caller
+     * right behind gets nothing at once ("the build just failed"). The build goes on, so a request a
+     * few seconds later is answered. So an empty answer is asked again every [feeRetryInterval],
+     * for up to [feeWait] in all; the wait is a [delay] between the blocking reads, so a quote
+     * cancelled meanwhile stops at the next one. Only an engine that answered nothing is asked
+     * again: one that cannot verify reads, or none at all, is said at once.
+     */
+    override suspend fun fees(): FeeReading {
+        val started = timeSource.markNow()
+        while (true) {
+            val reading = ask(FeeReading::Unavailable) { chain ->
+                chain.feeHistory(FEE_BLOCKS, EngineJson.PERCENTILES)
+                    ?.let(EngineJson::feeQuote)
+                    ?.let(FeeReading::Quoted)
+                    ?: COLD
+            }
+            if (reading !== COLD) return reading
+            // No room for another wait before the bound: no answer.
+            if (started.elapsedNow() + feeRetryInterval >= feeWait) return COLD
+            delay(feeRetryInterval)
+        }
     }
 
     override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
@@ -82,5 +114,8 @@ class EngineTransactionInputs internal constructor(
     private companion object {
         /** The blocks the fee history covers: about two minutes of Sepolia. */
         const val FEE_BLOCKS = 10
+
+        /** An engine that answered no fee history (or one it could not read): asked again, while time is left. */
+        val COLD = FeeReading.Unavailable(ReadUnavailable.UNPROVEN)
     }
 }

@@ -37,6 +37,7 @@ import eth.serotine.domain.usecase.PlanSafe
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FactoryInputs
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
@@ -149,6 +150,7 @@ class CreateSafeViewModelTest {
             QuoteSafeDeployment(kinds, balances, inputs, sent, Network.SEPOLIA) { 1_800_000_000 },
             DeploySafe(signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
+            WarmFeeHistory(inputs),
             Network.SEPOLIA,
             clock,
         )

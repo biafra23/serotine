@@ -22,7 +22,11 @@ internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : Transac
 
     override fun minedNonce(address: Address): Long? = answer { mined }
 
-    override fun feeHistory(blocks: Int, percentiles: DoubleArray): String? = answer { feeHistory }
+    /** What each fee history read answers; unset, [feeHistory]. */
+    var feeAnswer: (() -> String?)? = null
+
+    override fun feeHistory(blocks: Int, percentiles: DoubleArray): String? =
+        answer { feeAnswer?.invoke() ?: feeHistory.takeIf { feeAnswer == null } }
 
     override fun estimateGas(from: Address, to: Address, valueWei: String, data: ByteArray): EstimateAnswer =
         answer { estimate }

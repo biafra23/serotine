@@ -272,6 +272,14 @@ verified read.
     median of its percentile, never below 0.001 gwei and never below the
     slower level's. The next base fee is the history's last; the fee cap is
     twice that plus the tip.
+  - The engine's fee history is cold on its first request after a start, and
+    on one more than 120 s after the last: it builds ten blocks of it, waits
+    5 s for that, and answers nothing, and a caller right behind gets nothing
+    at once; the build goes on, and a request a few seconds later is
+    answered. So an empty answer is asked again every 2.5 s, for up to 15 s
+    (`EngineTransactionInputs.fees`), the wait a coroutine delay a cancelled
+    quote stops at; and Send, Create Safe and a Safe transaction's screen ask
+    for it once as they open (`WarmFeeHistory`), so it is warm by the review.
   - The gas is `estimateGasDetailed`, so a revert, an infeasible transfer and
     a refusal are told apart. It is the engine's answer as it stands, priced
     under the fork the chain runs: on Sepolia, Amsterdam since 2026-10-06, a
