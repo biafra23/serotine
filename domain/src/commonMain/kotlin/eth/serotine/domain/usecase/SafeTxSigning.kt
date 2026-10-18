@@ -36,7 +36,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Why a Safe transaction was not imported, signed, approved or executed (docs/wallet-ux.md,
@@ -157,6 +161,13 @@ sealed interface SafeTxRefusal {
     /** A verified figure could not be had right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : SafeTxRefusal
 
+    /**
+     * The Safe itself — its owners, threshold and nonce, as its code and storage prove them — could
+     * not be verified right now, for [reason]: a one-shot check ([ObserveSafe.check]) that waited
+     * out its budget for an unproven reading, or met a light client that cannot verify at all.
+     */
+    data class SafeUnavailable(val reason: ReadUnavailable) : SafeTxRefusal
+
     /** The transaction the owner account would send was not quoted: [refusal]. */
     data class NotQuoted(val refusal: CallRefusal) : SafeTxRefusal
 }
@@ -250,13 +261,39 @@ internal sealed interface SafeCheck {
     data class Refused(val refusal: SafeTxRefusal) : SafeCheck
 }
 
-/** The Safe at [safe] as the light client proves it now. */
-internal suspend fun ObserveSafe.check(safe: Address): SafeCheck = when (val reading = this(safe).first()) {
-    is SafeReading.Verified -> SafeCheck.Verified(reading)
-    SafeReading.Checking -> SafeCheck.Refused(SafeTxRefusal.Syncing)
-    SafeReading.NotASafe -> SafeCheck.Refused(SafeTxRefusal.NotASafe)
-    is SafeReading.Unavailable -> SafeCheck.Refused(SafeTxRefusal.Unavailable(reading.reason))
+/**
+ * How long a one-shot check of a Safe ([check]) waits for a reading that could not be verified
+ * to be made again: the adapter's own budget for one read (it retries a failed proof and a read
+ * the head moved under within it), so a check is answered in about that time.
+ */
+internal val SAFE_CHECK_BUDGET: Duration = 30.seconds
+
+/**
+ * The Safe at [safe] as the light client proves it now, for a one-shot check: an import, and the
+ * checks before Sign, Approve, Execute and a proposal. A reading that could not be verified this
+ * time ([ReadUnavailable.UNPROVEN]: a proof a peer did not deliver, a read the head kept moving
+ * under) is waited out for the next one the reading makes, for up to [budget]; the first other
+ * answer stands, the light client's syncing included. One that cannot change by asking again — no
+ * engine ([ReadUnavailable.NO_ENGINE]), an anchor it refuses ([ReadUnavailable.STALE_ANCHOR]) — is
+ * answered at once. Still unproven after [budget], it is [SafeTxRefusal.SafeUnavailable]. Only
+ * verified readings are ever taken: the wait changes how often the chain is asked, never what is
+ * believed.
+ */
+internal suspend fun ObserveSafe.check(safe: Address, budget: Duration = SAFE_CHECK_BUDGET): SafeCheck {
+    val reading = withTimeoutOrNull(budget) { this@check(safe).firstOrNull { !it.unproven } } ?: UNPROVEN_SAFE
+    return when (reading) {
+        is SafeReading.Verified -> SafeCheck.Verified(reading)
+        SafeReading.Checking -> SafeCheck.Refused(SafeTxRefusal.Syncing)
+        SafeReading.NotASafe -> SafeCheck.Refused(SafeTxRefusal.NotASafe)
+        is SafeReading.Unavailable -> SafeCheck.Refused(SafeTxRefusal.SafeUnavailable(reading.reason))
+    }
 }
+
+private val UNPROVEN_SAFE = SafeReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+/** Whether this reading could not be verified this time, and the next one may be. */
+private val SafeReading.unproven: Boolean
+    get() = this == UNPROVEN_SAFE
 
 /**
  * [request]'s signatures that are current owners' (of [owners]) and recover to them over the
@@ -293,6 +330,9 @@ internal fun SignatureRecovery.validOnly(request: SigningRequest, owners: List<A
  * queued behind the ones before it); its hash is computed here from the raw fields; and every
  * signature it carries is a current owner's and recovers to that owner over that hash
  * ([SignatureRecovery]). Anything else is refused with the reason, and nothing of it is kept.
+ * The Safe is checked once, as a one-shot check ([check]): a reading that could not be verified
+ * this time is waited out for the next one, up to [SAFE_CHECK_BUDGET], and one still unproven then
+ * is [SafeTxRefusal.SafeUnavailable].
  *
  * What it does is decoded here from the fields ([DecodedSafeTx]); a delegate call or gas terms
  * are accepted for display, marked as such, and never signed here. A request that passes is

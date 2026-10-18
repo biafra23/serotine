@@ -3,9 +3,11 @@ package eth.serotine.android
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import eth.serotine.android.keys.ForegroundActivity
 import eth.serotine.android.keys.PlatformBiometricPrompter
 import eth.serotine.android.upgrade.AndroidUpgradeNotifier
@@ -56,9 +58,16 @@ class SerotineApplication : Application() {
 
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background
     // and keeps its state under the app's private files; on an ABI the engine library does
-    // not ship (it has arm64-v8a and x86_64), balances say so.
+    // not ship (it has arm64-v8a and x86_64), balances say so. The adapters' diagnostics go to
+    // logcat in the debug app only (eth.serotine.debug is debuggable, the release app is not).
     private val node: MyotisNode by lazy {
-        MyotisNode.start(Network.SEPOLIA, filesDir.resolve("myotis"), AndroidDnsServers(this))
+        val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        MyotisNode.start(
+            Network.SEPOLIA,
+            filesDir.resolve("myotis"),
+            AndroidDnsServers(this),
+            debugLog = if (debuggable) { line -> Log.d(LOG_TAG, line) } else null,
+        )
     }
 
     /**
@@ -261,5 +270,8 @@ class SerotineApplication : Application() {
 
     private companion object {
         const val PAUSE_DELAY_MS = 30_000L
+
+        /** The logcat tag of the debug app's diagnostics. */
+        const val LOG_TAG = "Serotine"
     }
 }

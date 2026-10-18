@@ -335,10 +335,17 @@ upgrades*).
     - Import a request (above the rows): the text another owner's Share
       request gave, pasted, then `ImportSigningRequest`, for this Safe only (a
       request for another Safe is refused, `SafeTxRefusal.OtherSafe`, before
-      anything is kept). Every refusal is said under the field; one that
-      passes is queued and 17 opens for it, in place of the import. Scanning
-      its QR code is not built: no camera is wired in yet, and the screen says
-      to paste the text.
+      anything is kept). The Safe's check says "Checking the Safe on
+      chain…" while it runs: a reading that could not be verified this time
+      is waited out for the next one, for up to about 30 s, and one still
+      unproven then says "The Safe's owners and nonce could not be verified
+      this time: try again." (`SafeTxRefusal.SafeUnavailable`; the checks
+      before Sign, Approve, Execute and a proposal wait the same way,
+      docs/embedding-myotis.md). Every refusal is said under the field; one
+      that passes is queued and 17 opens for it, in place of the import,
+      saying "Added to ‹Safe›'s queue on this device." until a step begins.
+      Scanning its QR code is not built: no camera is wired in yet, and the
+      screen says to paste the text.
     - Send from a Safe (the header's button and the account menu, both only
       while an owner of it is held here) proposes a transfer
       (`ProposeSafeTx`): 7's form, from the Safe, with no fee to choose —

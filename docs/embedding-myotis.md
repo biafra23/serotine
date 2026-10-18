@@ -168,7 +168,25 @@ consumer developed against an unreleased engine, Myotis's
   state must not be before the code's, as their anchors tell: attested slots
   compared, walked blocks compared. A walk against a match, which nothing
   verified orders, is read again, never decided by a label.
-  A read the head moved under is made again at once. The guards sit at hashed slots, which `getStorageProof` cannot name,
+  A read the head moved under is made again at once; a proof that comes back
+  null (a slow or lost snap peer) is asked for again within the read, three
+  times in all, and a read it still fails in is made again after a second's
+  pause. Both are retried for as long as the read's budget lasts, about 30 s
+  (`SAFE_READ_BUDGET`, checked between the engine's calls, which block and
+  are not cut off; a cancelled read stops at the next one), and past it the
+  reading is unproven until the next poll. However often a Safe is read, a
+  reading whose slots do not share one anchor is never taken. A dozen proofs
+  one after the other often outlast a head, which is what makes the head move
+  under them; the root fix is the engine's, several slots in one proof at one
+  block (biafra23/myotis#662), and once it lands a Safe is proven in one
+  request. Until then the debug builds log which proof failed or straddled
+  and how many reads a Safe took (`MyotisNode.start`'s `debugLog`: logcat in
+  the debug app, stderr in `:desktop-app:run`; public chain data only). A
+  one-shot check of a Safe (an import, the checks before Sign, Approve,
+  Execute and a proposal) waits out an unproven reading for the next one,
+  within the same budget (`ObserveSafe.check`); one with no engine or a
+  refused anchor is answered at once.
+  The guards sit at hashed slots, which `getStorageProof` cannot name,
   so they are verified `VerifiedReads.getStorageAt` reads at the head: they
   may be a head later than the label. A list that does not lead back to the
   sentinel, an unknown singleton or a Safe not set up is "another contract".

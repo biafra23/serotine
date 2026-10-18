@@ -4,10 +4,18 @@ import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.NetworkUpgrade
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
-/** A [VerifiedChain] whose snapshot and proofs a test sets. */
+/**
+ * A [VerifiedChain] whose snapshot and proofs a test sets. Each code, storage and head-storage
+ * proof takes [proofTakes] on [clock], the time an adapter's budget is measured with.
+ */
 internal class FakeChain : VerifiedChain {
     var snapshot: EngineSnapshot = EngineSnapshot.Booting
+    val clock = TestTimeSource()
+    var proofTakes: Duration = 1.seconds
     val proofs = mutableMapOf<Address, ProvenBalance>()
     val codes = mutableMapOf<Address, ProvenCode>()
     val proofRequests = mutableListOf<Address>()
@@ -35,6 +43,7 @@ internal class FakeChain : VerifiedChain {
 
     override fun proveCode(address: Address): ProvenCode? {
         failure?.let { throw it }
+        clock += proofTakes
         proofRequests += address
         val call = codeCalls++
         codeOfCall?.let { return it(call) }
@@ -63,6 +72,9 @@ internal class FakeChain : VerifiedChain {
     /** Slots no proof is had for: unproven. */
     val unprovenSlots = mutableSetOf<Triple<Address, Long, Address?>>()
 
+    /** Whether the n-th storage proof asked for comes back null, when a test makes peers fail now and then. */
+    var slotFailsOnCall: ((Int) -> Boolean)? = null
+
     /** The block of the n-th storage proof asked for, when a test moves the head under a read. */
     var slotBlockOfCall: ((Int) -> Long)? = null
 
@@ -78,9 +90,11 @@ internal class FakeChain : VerifiedChain {
 
     override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
         failure?.let { throw it }
+        clock += proofTakes
         val key = Triple(address, slot, holder)
         if (key in unprovenSlots) return null
         val call = slotCalls++
+        if (slotFailsOnCall?.invoke(call) == true) return null
         val block = slotBlockOfCall?.invoke(call) ?: slotBlocks[key] ?: slotBlock
         val anchor = slotWalked?.let { ProofAnchor.Walked(it) }
             ?: ProofAnchor.Attested(slotAnchorOfCall?.invoke(call) ?: block)
@@ -89,6 +103,7 @@ internal class FakeChain : VerifiedChain {
 
     override fun storageAt(address: Address, slot: ByteArray): String? {
         failure?.let { throw it }
+        clock += proofTakes
         return storage[address to slot.toHex()] ?: "0".repeat(64)
     }
 }

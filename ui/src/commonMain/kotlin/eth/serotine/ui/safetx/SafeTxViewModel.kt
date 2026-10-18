@@ -139,6 +139,8 @@ class SafeTxViewModel(
     private val warmFeeHistory: WarmFeeHistory,
     private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
+    /** Whether the screen was opened by the import that just queued the transaction: its overview says so first. */
+    imported: Boolean = false,
 ) : ViewModel() {
 
     init {
@@ -259,9 +261,11 @@ class SafeTxViewModel(
         val message: String? = null,
         /** The request signed here whose signature the queue could not save: shown and shared until left. */
         val unsaved: SigningRequest? = null,
+        /** Just imported: where it went is said ([addedText]) until another message or a step replaces it. */
+        val imported: Boolean = false,
     )
 
-    private val view = MutableStateFlow(View())
+    private val view = MutableStateFlow(View(imported = imported))
     private val step = MutableStateFlow<Step>(Step.Overview)
 
     /** Asks for the owners to be read again. */
@@ -365,7 +369,7 @@ class SafeTxViewModel(
     fun startSigning() {
         if (step.value != Step.Overview || job?.isActive == true) return
         val owner = now?.options?.signers?.firstOrNull() ?: return
-        view.update { it.copy(message = null, sharing = false) }
+        view.update { it.copy(message = null, sharing = false, imported = false) }
         step.value = Step.Signing(owner, UnlockStep())
         viewModelScope.launch {
             val biometrics = biometricsOffered()
@@ -592,7 +596,7 @@ class SafeTxViewModel(
         // Not while a removal runs: its outcome lands on the overview, and would be dropped.
         if (step.value != Step.Overview || job?.isActive == true) return
         val request = now?.request ?: return
-        view.update { it.copy(message = null, sharing = false) }
+        view.update { it.copy(message = null, sharing = false, imported = false) }
         val quoting = Step.Quoting(kind, account, level)
         step.value = quoting
         hiddenWhileQuoting = false
@@ -918,10 +922,14 @@ class SafeTxViewModel(
                 quoting = step is Step.Quoting,
                 canShare = shown.found.safeNonce != null,
                 share = if (view.sharing && shown.found.safeNonce != null) share(request) else null,
-                message = view.message,
+                message = view.message ?: if (view.imported) addedText(header) else null,
             )
         }
     }
+
+    /** Where an import just put the transaction: the queue of the Safe [header] names. */
+    private fun addedText(header: SafeHeader): String =
+        "Added to ${header.label?.let { "$it's" } ?: "this Safe's"} queue on this device."
 
     private fun options(tx: DecodedSafeTx, read: SafeTxOwnersReading.Read?, held: List<Account>): Options {
         if (tx.refusal != null || read == null || read.refusal != null) {

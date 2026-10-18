@@ -252,8 +252,13 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
         "recognises none yet (#54), so it does not sign, approve or execute it."
     SafeTxRefusal.Syncing -> "The light client is not synced yet: try again in a moment."
     is SafeTxRefusal.Unavailable -> unavailableText(refusal.reason)
+    is SafeTxRefusal.SafeUnavailable ->
+        if (refusal.reason == ReadUnavailable.UNPROVEN) SAFE_UNPROVEN else unavailableText(refusal.reason)
     is SafeTxRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)
 }
+
+/** Why a check of the Safe itself came to nothing this time, after it was tried again for a while. */
+internal const val SAFE_UNPROVEN = "The Safe's owners and nonce could not be verified this time: try again."
 
 /** Why the transaction an account here would send was not quoted, display-ready. */
 internal fun callRefusalText(refusal: CallRefusal, network: Network): String = when (refusal) {

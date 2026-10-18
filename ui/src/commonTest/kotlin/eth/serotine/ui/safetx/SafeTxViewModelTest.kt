@@ -100,7 +100,11 @@ class SafeTxViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun TestScope.viewModel(request: SigningRequest, collect: Boolean = true): SafeTxViewModel {
+    private fun TestScope.viewModel(
+        request: SigningRequest,
+        collect: Boolean = true,
+        imported: Boolean = false,
+    ): SafeTxViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { 1_800_000_000L }
         val viewModel = SafeTxViewModel(
@@ -139,6 +143,7 @@ class SafeTxViewModelTest {
             WarmFeeHistory(world.inputs),
             Network.SEPOLIA,
             clock,
+            imported,
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -202,6 +207,22 @@ class SafeTxViewModelTest {
         assertTrue(state.canExecute)
         assertEquals(null, state.refusal)
         assertEquals(null, state.gasTerms)
+    }
+
+    @Test
+    fun aTransactionJustImportedSaysWhichSafesQueueItWentToUntilAStepBegins() = runTest {
+        val request = queued(world.request(world.ether(4), world.carol))
+        val viewModel = viewModel(request, imported = true)
+
+        assertEquals("Added to Treasury's queue on this device.", viewModel.overview.message)
+
+        viewModel.startSigning()
+        runCurrent()
+        viewModel.back()
+        assertEquals(null, viewModel.overview.message, "said once")
+
+        // Opened any other way, it says nothing of the kind.
+        assertEquals(null, viewModel(request).overview.message)
     }
 
     @Test

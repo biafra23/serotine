@@ -69,9 +69,10 @@ internal class ProvenReads<K, T>(
     private val sharedForHeads: Long = 1,
     /**
      * The fact about a key and the block its proof anchors to; a refusal ([EngineReading.Unavailable]);
-     * or null when unproven. Blocks.
+     * or null when unproven. Blocks, and may suspend between its blocking calls (to check its
+     * cancellation, or to pause before a retry).
      */
-    private val prove: (VerifiedChain, K) -> EngineReading<T>?,
+    private val prove: suspend (VerifiedChain, K) -> EngineReading<T>?,
 ) {
     /** The last proof per key, with the head it was fetched at. */
     private val proofs = mutableMapOf<K, Pair<Long, EngineReading.Proven<T>>>()

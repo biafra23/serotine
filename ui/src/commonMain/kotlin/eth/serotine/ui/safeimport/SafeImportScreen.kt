@@ -46,6 +46,12 @@ const val IMPORT_REQUEST_FIELD_TAG = "import-request-field"
 /** Test tag of the Import button, for UI tests. */
 const val IMPORT_REQUEST_BUTTON_TAG = "import-request-button"
 
+/**
+ * What the Import button says while the request is checked: mostly the Safe's own check, which
+ * waits out a reading that could not be verified for the next one, up to half a minute.
+ */
+internal const val CHECKING_SAFE = "Checking the Safe on chain…"
+
 /** Binds [SafeImportScreen] to its ViewModel; a request imported ends the screen through [onImported] with its hash. */
 @Composable
 fun SafeImportRoute(
@@ -159,7 +165,7 @@ private fun Entering(state: SafeImportUiState.Entering, onTextChange: (String) -
             if (state.importing) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.size(8.dp))
-                Text("Checking on chain…")
+                Text(CHECKING_SAFE)
             } else {
                 Text("Import")
             }

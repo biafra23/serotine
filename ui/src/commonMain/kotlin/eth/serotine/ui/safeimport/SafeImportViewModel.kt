@@ -26,8 +26,10 @@ import kotlinx.coroutines.launch
  * device shared as text, pasted here, for the Safe at [safe] on [network], and checked against the
  * chain before anything of it is believed or kept ([ImportSigningRequest]: decoded strictly, a
  * request for this Safe only, its nonce not passed, every signature a current owner's over the
- * hash computed here). Every refusal is said; one that passes is queued, and the screen goes to
- * the transaction's. Scanning a QR code is not offered: the platforms' cameras are not wired in.
+ * hash computed here). While it runs the screen says it checks the Safe on chain, which can take
+ * up to half a minute while the Safe's reading is made again. Every refusal is said; one that
+ * passes is queued, and the screen goes to the transaction's, which says which queue it went to.
+ * Scanning a QR code is not offered: the platforms' cameras are not wired in.
  */
 class SafeImportViewModel(
     private val safe: Address,

@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -483,10 +484,12 @@ class SafeProposeViewModelTest {
         viewModel.onHidden()
         world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
         viewModel.onShown()
+        // The Safe's check waits out its budget for a reading it can verify, then says so.
+        advanceTimeBy(31.seconds)
         runCurrent()
 
         val review = viewModel.review
         assertEquals(shared, review.share, "still there to be shared")
-        assertEquals("A figure could not be verified this time: try again.", review.error)
+        assertEquals("The Safe's owners and nonce could not be verified this time: try again.", review.error)
     }
 }

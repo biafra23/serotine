@@ -190,8 +190,11 @@ class AppGraph(
             network,
         )
 
-    /** The Safe transaction [hash] of the Safe at [safe] (docs/wallet-ux.md, screen 17). */
-    fun safeTxViewModel(safe: Address, hash: Digest): SafeTxViewModel = SafeTxViewModel(
+    /**
+     * The Safe transaction [hash] of the Safe at [safe] (docs/wallet-ux.md, screen 17); [imported]
+     * when an import has just queued it, which its overview says first.
+     */
+    fun safeTxViewModel(safe: Address, hash: Digest, imported: Boolean = false): SafeTxViewModel = SafeTxViewModel(
         safe,
         hash,
         ObserveAccounts(accounts),
@@ -217,6 +220,7 @@ class AppGraph(
         RemoveQueuedSafeTx(safeTxQueue),
         WarmFeeHistory(transactionInputs),
         network,
+        imported = imported,
     )
 
     /** Send from the Safe at [safe], with the token at [asset] chosen (null: the network's currency). */

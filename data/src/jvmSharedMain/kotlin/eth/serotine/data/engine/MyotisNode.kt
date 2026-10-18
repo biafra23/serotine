@@ -46,7 +46,7 @@ import kotlin.time.Duration.Companion.seconds
  * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
  * used; nothing below them.
  */
-class MyotisNode private constructor(network: Network) {
+class MyotisNode private constructor(network: Network, debugLog: ((String) -> Unit)?) {
 
     private sealed interface State {
         data object Booting : State
@@ -94,7 +94,7 @@ class MyotisNode private constructor(network: Network) {
 
     /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
     val addressKinds: AddressKinds =
-        VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL, SafeDeployments.of(network))
+        VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL, SafeDeployments.of(network), debugLog = debugLog)
 
     /** What a token contract says about itself, as verified calls. */
     val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -458,13 +458,21 @@ class MyotisNode private constructor(network: Network) {
          * of it may run on a caller's main thread. [dnsServers] returns the host's resolver
          * IPs for EIP-1459 peer discovery, which a mobile host must supply (null where the
          * engine reads the system's); a plain function, so no Myotis type leaves this module.
+         * [debugLog] takes the adapters' diagnostics (which proof of a Safe's read failed or
+         * straddled, and how many reads it took): a debug build's log, null in a release build.
+         * Public chain data only; no key material is on any path that writes to it.
          *
          * A device without an engine — an Android ABI the library does not ship, a desktop
          * without the host library on `java.library.path` — or one whose engine fails to
          * start gets a node whose balances and light client say so.
          */
-        fun start(network: Network, dataDir: File, dnsServers: (() -> List<String>)? = null): MyotisNode {
-            val node = MyotisNode(network)
+        fun start(
+            network: Network,
+            dataDir: File,
+            dnsServers: (() -> List<String>)? = null,
+            debugLog: ((String) -> Unit)? = null,
+        ): MyotisNode {
+            val node = MyotisNode(network, debugLog)
             node.bootThread = thread(name = "myotis-boot", isDaemon = true) {
                 try {
                     node.boot(network, dataDir, dnsServers?.let { servers -> DnsServers { servers() } })

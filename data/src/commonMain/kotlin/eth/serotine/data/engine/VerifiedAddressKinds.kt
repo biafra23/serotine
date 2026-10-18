@@ -9,10 +9,16 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.SafeState
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.kotlincrypto.hash.sha3.Keccak256
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * [AddressKinds] over a verified light client: an address's code, proven by
@@ -30,20 +36,34 @@ import kotlin.time.Duration
  *
  * Every numbered slot is a storage proof, and all of them must be of one state, no older than
  * the code's: one verified anchor ([ProofAnchor], the attested slot a proof matched; a block
- * label alone can be a peer's report) and one block, the one the reading is labelled with. A
- * read the head moved under is made again at once, up to [SAFE_ATTEMPTS] times; when the slots
- * were of one state and only the code's anchor did not order before it (a walk against a match,
- * or none), the code is proven again too, so the next read can be of one state. The guards are
- * kept at hashed slots no storage proof names, so they are verified reads at the head, which may
- * be a head later than that label. Anything that does not match is a contract, never a Safe. A
+ * label alone can be a peer's report) and one block, the one the reading is labelled with. That
+ * rule has no exception, however often a read is made. Within one read a proof that comes back
+ * null (a slow or lost peer) is asked for again, up to [PROOF_TRIES] times in all; a read the head
+ * moved under, or one a proof failed in after those tries, is made again, for as long as
+ * [SAFE_READ_BUDGET] lasts ([timeSource] measures it, checked between the engine's calls, which
+ * each block and are not cut off), a moment's pause ([RETRY_PAUSE]) after a failed proof. When the
+ * slots were of one state and only the code's anchor did not order before it (a walk against a
+ * match, or none), the code is proven again too, so the next read can be of one state. The guards
+ * are kept at hashed slots no storage proof names, so they are verified reads at the head, which
+ * may be a head later than that label. Anything that does not match is a contract, never a Safe. A
  * Safe's reading stands for [SAFE_KEPT_FOR_HEADS] heads (a Safe takes a dozen proofs, and its
  * owners rarely change); any other kind's for one.
+ *
+ * A dozen proofs one after the other take long enough that the head often moves under them; the
+ * root fix is the engine's, several slots in one proof at one block (biafra23/myotis#662), and
+ * once it lands a Safe is read in one request. Until then, [debugLog] (debug builds only) says
+ * which proof failed or straddled and how many reads a Safe took: public data, and no key is
+ * anywhere near this path.
  */
 class VerifiedAddressKinds internal constructor(
     chain: VerifiedChain?,
     dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
     private val safes: SafeDeployments.Table,
+    /** What a Safe's read budget ([SAFE_READ_BUDGET]) is measured with: a test's own clock, or the monotonic one. */
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+    /** Where a Safe's read says what failed or straddled and how many reads it took; null: nowhere (release). */
+    private val debugLog: ((String) -> Unit)? = null,
 ) : AddressKinds {
 
     private val reads = ProvenReads<Address, AddressKind>(
@@ -66,26 +86,68 @@ class VerifiedAddressKinds internal constructor(
     }
 
     /**
-     * The Safe at [safe], whose code is proven ([proven]), read again at once when the head moved
-     * under a read. When the straddle was the code against slots of one state, the code is proven
-     * again before the next read: proving the slots alone again would meet the same code anchor
-     * every time. Code proven again that is no pinned proxy's any more is read as what it is.
+     * The Safe at [safe], whose code is proven ([proven]), read again while a read fails, until
+     * [SAFE_READ_BUDGET] runs out: at once when the head moved under it, after [RETRY_PAUSE] when a
+     * proof failed (the engine may find another peer meanwhile). When the straddle was the code
+     * against slots of one state, the code is proven again before the next read: proving the slots
+     * alone again would meet the same code anchor every time. Code proven again that is no pinned
+     * proxy's any more is read as what it is. Null: no read of one state could be had in time.
      */
-    private fun readSafe(chain: VerifiedChain, safe: Address, proven: ProvenCode): EngineReading<AddressKind>? {
-        var code = proven
-        repeat(SAFE_ATTEMPTS) { attempt ->
-            val storage = SafeStorage(chain, safe, code)
-            val reading = storage.read()
-            if (reading != null || !storage.straddled) return reading
-            if (storage.againstCode && attempt < SAFE_ATTEMPTS - 1) {
-                code = chain.proveCode(safe) ?: return null
-                val kind = kindOf(code.codeHex)
-                if (kind != AddressKind.Contract || codeHash(code.codeHex) !in safes.proxyCodeHashes) {
-                    return EngineReading.Proven(kind, code.blockNumber)
+    private suspend fun readSafe(chain: VerifiedChain, safe: Address, proven: ProvenCode): EngineReading<AddressKind>? {
+        val started = timeSource.markNow()
+        val deadline = started + SAFE_READ_BUDGET
+        var code: ProvenCode? = proven
+        var read = 1
+        while (true) {
+            val known = code
+            val current = known ?: proof(deadline, { "Safe ${safe.hex}: the code" }) { chain.proveCode(safe) }
+            val pause = if (current == null) {
+                log { "Safe ${safe.hex}: read $read: the code, proven again, unproven" }
+                true
+            } else {
+                if (known == null) {
+                    val kind = kindOf(current.codeHex)
+                    if (kind != AddressKind.Contract || codeHash(current.codeHex) !in safes.proxyCodeHashes) {
+                        return EngineReading.Proven(kind, current.blockNumber)
+                    }
+                    code = current
                 }
+                val storage = SafeStorage(chain, safe, current, deadline)
+                storage.read()?.let { reading ->
+                    if (read > 1) log { "Safe ${safe.hex}: read in $read reads, ${started.elapsedNow()}" }
+                    return reading
+                }
+                log { "Safe ${safe.hex}: read $read: ${storage.failure}" }
+                if (storage.againstCode) code = null
+                !storage.straddled
             }
+            if (deadline.hasPassedNow()) {
+                log { "Safe ${safe.hex}: not read after $read reads, ${started.elapsedNow()}: unproven" }
+                return null
+            }
+            if (pause) delay(RETRY_PAUSE)
+            read++
+        }
+    }
+
+    /**
+     * What [prove] proves, asked for again while it comes back null, [PROOF_TRIES] times in all,
+     * and never once [deadline] has passed; null: unproven. The caller's cancellation is checked
+     * before each blocking call; [what] names the proof in the debug log.
+     */
+    private suspend fun <T : Any> proof(deadline: TimeMark, what: () -> String, prove: () -> T?): T? {
+        for (attempt in 1..PROOF_TRIES) {
+            if (deadline.hasPassedNow()) return null
+            currentCoroutineContext().ensureActive()
+            prove()?.let { return it }
+            if (attempt < PROOF_TRIES) log { "${what()} unproven, asked again (try ${attempt + 1} of $PROOF_TRIES)" }
         }
         return null
+    }
+
+    /** [message] to [debugLog], made only when there is one. */
+    private inline fun log(message: () -> String) {
+        debugLog?.invoke("Serotine: " + message())
     }
 
     /**
@@ -99,6 +161,8 @@ class VerifiedAddressKinds internal constructor(
         private val chain: VerifiedChain,
         private val safe: Address,
         private val code: ProvenCode,
+        /** When the read gives up: a proof not yet asked for by then is not asked for. */
+        private val deadline: TimeMark,
     ) {
         private val blocks = mutableSetOf<Long>()
         private val anchors = mutableSetOf<ProofAnchor>()
@@ -114,14 +178,30 @@ class VerifiedAddressKinds internal constructor(
         var againstCode = false
             private set
 
-        /** The word at [slot] (or under [key] in the mapping there); null: unproven. */
-        private fun word(slot: Long, key: Address? = null): String? =
-            chain.proveSlot(safe, slot, key)?.also {
-                blocks += it.blockNumber
-                anchors += it.anchor
-            }?.valueHex
+        /** Why the read gave no reading, for the debug log: the proof that failed, or the straddle. */
+        var failure = "no reading"
+            private set
 
-        fun read(): EngineReading<AddressKind>? {
+        /**
+         * The word at [slot] (or under [key] in the mapping there), its proof asked for again while
+         * it fails ([proof]); null: unproven.
+         */
+        private suspend fun word(slot: Long, key: Address? = null): String? {
+            val name = "slot $slot" + key?.let { " under ${it.hex}" }.orEmpty()
+            val proven = proof(deadline, { "Safe ${safe.hex}: $name" }) { chain.proveSlot(safe, slot, key) }
+                ?: return unproven(name)
+            blocks += proven.blockNumber
+            anchors += proven.anchor
+            return proven.valueHex
+        }
+
+        /** Null, with [failure] saying that [name]'s proof failed, or that the time ran out before it. */
+        private fun unproven(name: String): Nothing? {
+            failure = if (deadline.hasPassedNow()) "out of time at $name" else "$name unproven after $PROOF_TRIES tries"
+            return null
+        }
+
+        suspend fun read(): EngineReading<AddressKind>? {
             val singleton = addressIn(word(SINGLETON_SLOT) ?: return null)?.let { safes.singletons[it] }
                 ?: return proven(AddressKind.Contract)
             val owners = when (val walked = walk(OWNERS_SLOT, MAX_OWNERS)) {
@@ -172,8 +252,10 @@ class VerifiedAddressKinds internal constructor(
         }
 
         /** The guard kept at [slot]: an address, none, or a word that is no address. */
-        private fun guardAt(slot: ByteArray): Guard {
-            val word = chain.storageAt(safe, slot) ?: return Guard.Unproven
+        private suspend fun guardAt(slot: ByteArray): Guard {
+            val name = "guard slot 0x${slot.toHex().take(8)}…"
+            val word = proof(deadline, { "Safe ${safe.hex}: $name" }) { chain.storageAt(safe, slot) }
+                ?: return Guard.Unproven.also { unproven(name) }
             if (word.all { it == '0' }) return Guard.At(null)
             return addressIn(word)?.let { Guard.At(it) } ?: Guard.Broken
         }
@@ -188,6 +270,12 @@ class VerifiedAddressKinds internal constructor(
             if (anchor == null || block == null || !notBeforeCode(anchor)) {
                 straddled = true
                 againstCode = anchor != null && block != null
+                failure = if (againstCode) {
+                    "straddled: the slots of one state ($anchor, block $block), the code's anchor ${code.anchor} " +
+                        "not before it"
+                } else {
+                    "straddled: the slots at ${anchors.size} anchors $anchors, blocks ${blocks.sorted()}"
+                }
                 return null
             }
             return EngineReading.Proven(kind, block)
@@ -205,7 +293,7 @@ class VerifiedAddressKinds internal constructor(
          * `0x1` back to it: no more than [max] entries, each an address. Setup writes both
          * sentinels, so an empty one is no list a Safe keeps.
          */
-        private fun walk(slot: Long, max: Int): Walk {
+        private suspend fun walk(slot: Long, max: Int): Walk {
             val found = mutableListOf<Address>()
             var next = word(slot, SENTINEL) ?: return Walk.Unproven
             while (true) {
@@ -260,8 +348,17 @@ class VerifiedAddressKinds internal constructor(
         /** Heads a Safe's proof stands: about a minute of Sepolia blocks. */
         private const val SAFE_KEPT_FOR_HEADS = 5L
 
-        /** Reads of a Safe made at once when the head moved under one. */
-        private const val SAFE_ATTEMPTS = 3
+        /**
+         * How long a Safe is read again while its reads fail: a few heads' worth, past which the
+         * read is left to the next poll (and to a one-shot check's own wait for it).
+         */
+        internal val SAFE_READ_BUDGET = 30.seconds
+
+        /** Times one proof of a read is asked for while it comes back null, the first included. */
+        internal const val PROOF_TRIES = 3
+
+        /** The pause before a Safe is read again after a proof failed: no tight loop on a peer that is gone. */
+        internal val RETRY_PAUSE = 1.seconds
 
         /** The lists' sentinel, `0x…01`. */
         private val SENTINEL = Address.of("0x" + "0".repeat(39) + "1")

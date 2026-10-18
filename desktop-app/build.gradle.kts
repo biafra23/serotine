@@ -49,6 +49,9 @@ dependencies {
 val myotisLibraryDir: Provider<String> = providers.gradleProperty("myotisLibraryDir")
 tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
     myotisLibraryDir.orNull?.let { jvmArgs("-Djava.library.path=$it") }
+    // The desktop's debug build: a development run logs the adapters' diagnostics (which proof
+    // of a Safe's read failed or straddled) to stderr. No installer sets it.
+    jvmArgs("-Dserotine.debugLog=true")
 }
 
 compose.desktop {

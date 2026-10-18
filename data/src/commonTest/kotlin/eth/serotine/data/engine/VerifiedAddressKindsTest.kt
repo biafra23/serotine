@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import org.kotlincrypto.hash.sha3.Keccak256
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -34,8 +35,11 @@ class VerifiedAddressKindsTest {
         creation = null,
     )
 
+    /** What the adapter's debug log said. */
+    private val logged = mutableListOf<String>()
+
     private fun TestScope.kinds() =
-        VerifiedAddressKinds(chain, StandardTestDispatcher(testScheduler), 4.seconds, safes)
+        VerifiedAddressKinds(chain, StandardTestDispatcher(testScheduler), 4.seconds, safes, chain.clock, logged::add)
 
     @Test
     fun codeTellsAnAccountADelegatedAccountAndAContractApart() {
@@ -354,7 +358,70 @@ class VerifiedAddressKindsTest {
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),
             kinds().observeKind(address).first { it !is KindReading.Syncing },
         )
-        assertEquals(3, chain.codeCalls, "proven again within the read's attempts, and no more")
+        assertEquals(3, chain.codeCalls, "proven again for each read the budget leaves time for, and no more")
+    }
+
+    @Test
+    fun aSlotWhoseProofFailsOnceIsAskedForAgainWithinTheRead() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // The third storage proof (the owner list's second entry) comes back null once: a slow peer.
+        chain.slotFailsOnCall = { call -> call == 2 }
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+
+        assertEquals(9, (reading as KindReading.Verified).blockNumber)
+        assertEquals(listOf(owner1, owner2), (reading.kind as AddressKind.Safe).state.owners)
+        assertEquals(1, chain.codeCalls, "one read: only the slot was asked for again")
+        assertEquals(true, logged.any { "slot 2 under ${owner1.hex} unproven, asked again" in it }, "$logged")
+    }
+
+    @Test
+    fun aSlotThatStaysUnprovenFailsTheReadWhichIsMadeAgainAfterAPause() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // The 3rd, 4th and 5th storage proofs fail: all three tries of one slot in the first read.
+        chain.slotFailsOnCall = { call -> call in 2..4 }
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+
+        assertEquals(true, (reading as KindReading.Verified).kind is AddressKind.Safe)
+        assertEquals(true, logged.any { "read 1: slot 2 under ${owner1.hex} unproven after 3 tries" in it }, "$logged")
+        assertEquals(true, logged.any { "read in 2 reads" in it }, "$logged")
+    }
+
+    @Test
+    fun aReadTheHeadMovedUnderThreeTimesIsMadeAgainUntilItsSlotsAgree() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        chain.proofTakes = 500.milliseconds
+        // Nine storage proofs a read: each of the first three reads sees the head move halfway
+        // through, the fourth is all at block 12. (Three reads were all a Safe got before the budget.)
+        chain.slotBlockOfCall = { call -> if (call >= 27) 12 else 9L + call / 9 + (if (call % 9 >= 4) 1 else 0) }
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+
+        assertEquals(12, (reading as KindReading.Verified).blockNumber)
+        assertEquals(true, reading.kind is AddressKind.Safe)
+        assertEquals(true, logged.any { "read in 4 reads" in it }, "$logged")
+        assertEquals(true, logged.any { "read 1: straddled" in it }, "$logged")
+    }
+
+    @Test
+    fun aSafeTheHeadKeepsMovingUnderIsUnprovenOnceTheBudgetIsSpent() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // Every other proof at the next block: every read straddles.
+        chain.slotBlockOfCall = { call -> 9L + call % 2 }
+        val start = chain.clock.markNow()
+
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(address).first { it !is KindReading.Syncing },
+        )
+        // The code's proof before the read began, then the budget, and no proof asked for past it.
+        assertEquals(1.seconds + VerifiedAddressKinds.SAFE_READ_BUDGET, start.elapsedNow())
+        assertEquals(true, logged.any { "not read after 3 reads" in it }, "$logged")
     }
 
     @Test

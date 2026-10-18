@@ -66,7 +66,7 @@ class SafeImportScreenTest {
     fun whileItIsCheckedNothingElseCanBeAsked() {
         show(empty.copy(text = "request", importing = true))
 
-        rule.onNodeWithText("Checking on chain…").assertIsDisplayed()
+        rule.onNodeWithText("Checking the Safe on chain…").assertIsDisplayed()
         rule.onNodeWithTag(IMPORT_REQUEST_BUTTON_TAG).assertIsNotEnabled()
     }
 }
