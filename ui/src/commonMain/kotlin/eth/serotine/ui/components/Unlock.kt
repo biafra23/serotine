@@ -158,6 +158,8 @@ internal fun notSignedText(signing: Signing, failed: String): String = when (sig
     Signing.TimedOut -> PROMPT_TIMED_OUT
     Signing.NoKey -> "This device holds no key for this account, so nothing was signed."
     Signing.Unavailable -> "The key store cannot open this account's key on this device. Nothing was signed."
+    Signing.NotEnoughMemory ->
+        "Not enough free memory to open the key: close other apps and try again. Nothing was signed."
     is Signing.Signed -> failed // a signature is not a reason not to have signed
 }
 

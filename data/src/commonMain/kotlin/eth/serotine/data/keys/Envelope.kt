@@ -29,12 +29,22 @@ internal object Envelope {
     const val MIN_OPS = 2L
 
     /**
-     * The Argon2id ceiling: the costliest parameters this code writes (the password-only
-     * ones). A stored block above it is damaged, and running it could hang the import or
-     * exhaust a phone's memory, so it is refused.
+     * The Argon2id ceiling: the costliest parameters this code writes, the password-only
+     * tiers ([PasswordOnlyTier]: 256 MiB four times, 128 MiB eight times, 64 MiB sixteen
+     * times). Memory and passes are bound each ([MAX_MEMORY_BYTES], [MAX_OPS]) and together
+     * ([MAX_WORK_BYTES], memory times passes), so the most passes come only with the least
+     * memory. A stored block above it is damaged, and running it could hang the import or
+     * exhaust a phone's memory, so it is refused (the owner's ruling of 2026-10-18).
      */
     const val MAX_MEMORY_BYTES = 256L * 1024 * 1024
-    const val MAX_OPS = 4L
+    const val MAX_OPS = 16L
+    const val MAX_WORK_BYTES = MAX_MEMORY_BYTES * 4
+
+    /** Whether [opsLimit] passes over [memLimitBytes] are within the floor and the ceiling. */
+    fun withinBounds(opsLimit: Long, memLimitBytes: Long): Boolean =
+        opsLimit in MIN_OPS..MAX_OPS &&
+            memLimitBytes in MIN_MEMORY_BYTES..MAX_MEMORY_BYTES &&
+            opsLimit * memLimitBytes <= MAX_WORK_BYTES
 
     /** libsodium's `crypto_pwhash_SALTBYTES`. */
     const val SALT_BYTES = 16
@@ -42,18 +52,17 @@ internal object Envelope {
     private const val NONCE_BYTES = 12
 
     /** Argon2id parameters, as chosen for a device. */
-    class Cost(val opsLimit: Long, val memLimitBytes: Long) {
+    data class Cost(val opsLimit: Long, val memLimitBytes: Long) {
         init {
-            require(opsLimit in MIN_OPS..MAX_OPS && memLimitBytes in MIN_MEMORY_BYTES..MAX_MEMORY_BYTES) {
-                "outside the Argon2id floor and ceiling"
-            }
+            require(withinBounds(opsLimit, memLimitBytes)) { "outside the Argon2id floor and ceiling" }
         }
     }
 
     /**
      * [seed] sealed for [address] under [password] and [hardware]. [withDek] is handed the new
      * DEK before it is zeroed, for the biometric path to wrap it too (rule 4: its own key, the
-     * password path untouched); it must not keep it.
+     * password path untouched); it must not keep it. The password is stretched first, by
+     * [stretch], so [Argon2idOutOfMemory] leaves before anything else is made.
      */
     fun seal(
         seed: ByteArray,
@@ -61,11 +70,12 @@ internal object Envelope {
         password: ByteArray,
         hardware: HardwareSecret?,
         cost: Cost,
+        stretch: PasswordStretch = PasswordStretch.Sodium,
         withDek: (ByteArray) -> Unit = {},
     ): SealedSeed {
         val salt = EnvelopeCrypto.randomBytes(SALT_BYTES)
         val hardwareTag = hardware?.tag ?: NO_HARDWARE
-        val kek = kek(password, salt, cost.opsLimit, cost.memLimitBytes, hardware)
+        val kek = kek(password, salt, cost.opsLimit, cost.memLimitBytes, hardware, stretch)
         val dek = EnvelopeCrypto.randomBytes(32)
         try {
             val dekNonce = EnvelopeCrypto.randomBytes(NONCE_BYTES)
@@ -103,8 +113,7 @@ internal object Envelope {
     fun canOpen(sealed: SealedSeed, hardware: HardwareSecret?, address: String? = null): Boolean =
         sealed.version == VERSION &&
             sealed.hardware == (hardware?.tag ?: NO_HARDWARE) &&
-            sealed.opsLimit in MIN_OPS..MAX_OPS &&
-            sealed.memLimitBytes in MIN_MEMORY_BYTES..MAX_MEMORY_BYTES &&
+            withinBounds(sealed.opsLimit, sealed.memLimitBytes) &&
             (address == null || sealed.address == address) &&
             hexOfLength(sealed.salt, SALT_BYTES) &&
             hexOfLength(sealed.dekNonce, NONCE_BYTES) &&
@@ -113,10 +122,16 @@ internal object Envelope {
     /**
      * Whether [password] (with [hardware]) opens [sealed], checked by unwrapping its DEK and
      * nothing more: the seed stays sealed. [Opened.Refused] when [canOpen] says no or the
-     * data is damaged.
+     * data is damaged. Like every opening, throws [Argon2idOutOfMemory] when [stretch] cannot
+     * have the memory.
      */
-    fun verify(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Opened {
-        val dek = when (val unwrapped = unwrapDek(sealed, password, hardware)) {
+    fun verify(
+        sealed: SealedSeed,
+        password: ByteArray,
+        hardware: HardwareSecret?,
+        stretch: PasswordStretch = PasswordStretch.Sodium,
+    ): Opened {
+        val dek = when (val unwrapped = unwrapDek(sealed, password, hardware, stretch)) {
             is Unwrapped.Dek -> unwrapped.bytes
             Unwrapped.WrongPassword -> return Opened.WrongPassword
             Unwrapped.Refused -> return Opened.Refused
@@ -130,8 +145,13 @@ internal object Envelope {
      * [Opened.Refused] for an envelope this code must not open ([canOpen]) or whose data is
      * damaged.
      */
-    fun open(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Opened {
-        val dek = when (val unwrapped = unwrapDek(sealed, password, hardware)) {
+    fun open(
+        sealed: SealedSeed,
+        password: ByteArray,
+        hardware: HardwareSecret?,
+        stretch: PasswordStretch = PasswordStretch.Sodium,
+    ): Opened {
+        val dek = when (val unwrapped = unwrapDek(sealed, password, hardware, stretch)) {
             is Unwrapped.Dek -> unwrapped.bytes
             Unwrapped.WrongPassword -> return Opened.WrongPassword
             Unwrapped.Refused -> return Opened.Refused
@@ -144,8 +164,13 @@ internal object Envelope {
      * zeroes — for the biometric path to wrap: [Opened.WrongPassword] or [Opened.Refused] as
      * for [open].
      */
-    fun dek(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Opened =
-        when (val unwrapped = unwrapDek(sealed, password, hardware)) {
+    fun dek(
+        sealed: SealedSeed,
+        password: ByteArray,
+        hardware: HardwareSecret?,
+        stretch: PasswordStretch = PasswordStretch.Sodium,
+    ): Opened =
+        when (val unwrapped = unwrapDek(sealed, password, hardware, stretch)) {
             is Unwrapped.Dek -> Opened.Dek(unwrapped.bytes)
             Unwrapped.WrongPassword -> Opened.WrongPassword
             Unwrapped.Refused -> Opened.Refused
@@ -200,10 +225,15 @@ internal object Envelope {
         data object Refused : Unwrapped
     }
 
-    private fun unwrapDek(sealed: SealedSeed, password: ByteArray, hardware: HardwareSecret?): Unwrapped {
+    private fun unwrapDek(
+        sealed: SealedSeed,
+        password: ByteArray,
+        hardware: HardwareSecret?,
+        stretch: PasswordStretch,
+    ): Unwrapped {
         if (!canOpen(sealed, hardware)) return Unwrapped.Refused
         val salt = sealed.salt.fromHex()
-        val kek = kek(password, salt, sealed.opsLimit, sealed.memLimitBytes, hardware)
+        val kek = kek(password, salt, sealed.opsLimit, sealed.memLimitBytes, hardware, stretch)
         try {
             val dek = EnvelopeCrypto.aesGcmOpen(
                 kek,
@@ -226,8 +256,15 @@ internal object Envelope {
     private fun hexOfLength(hex: String, bytes: Int): Boolean =
         hex.length == bytes * 2 && hex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
-    private fun kek(password: ByteArray, salt: ByteArray, ops: Long, mem: Long, hardware: HardwareSecret?): ByteArray {
-        val p = EnvelopeCrypto.argon2id(password, salt, ops, mem, 32)
+    private fun kek(
+        password: ByteArray,
+        salt: ByteArray,
+        ops: Long,
+        mem: Long,
+        hardware: HardwareSecret?,
+        stretch: PasswordStretch,
+    ): ByteArray {
+        val p = stretch.argon2id(password, salt, ops, mem, 32)
         var sHw: ByteArray? = null
         var ikm = ByteArray(0)
         try {

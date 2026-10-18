@@ -29,6 +29,7 @@ import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -180,6 +181,23 @@ class CreateAccountViewModelTest {
         val securing = assertIs<CreateAccountUiState.Securing>(viewModel.uiState.value)
         assertTrue(securing.error!!.startsWith("The key is stored"), securing.error)
         assertIs<PasswordStep.Existing>(securing.step, "the wallet's password now, not a new one")
+    }
+
+    @Test
+    fun notEnoughMemoryToProtectTheKeyIsSaidAndThePhraseStays() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.checked()
+        runCurrent()
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.onRepeatChange("correct horse battery")
+        viewModel.onCreate()
+        keys.next.complete(KeyImport.NotEnoughMemory)
+        runCurrent()
+
+        val securing = assertIs<CreateAccountUiState.Securing>(viewModel.uiState.value)
+        assertEquals("Not enough free memory to protect the key: close other apps and try again.", securing.error)
+        assertFalse(securing.creating, "the user can try again, with the same words")
     }
 
     @Test

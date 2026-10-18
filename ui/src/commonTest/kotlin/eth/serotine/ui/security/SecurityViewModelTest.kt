@@ -11,6 +11,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
@@ -106,6 +107,43 @@ class SecurityViewModelTest {
         val prompt = assertIs<PasswordPrompt>(viewModel.ready.enabling)
         assertEquals("That is not the wallet password.", prompt.error)
         assertEquals("", prompt.password.text, "nothing typed is kept for another try")
+    }
+
+    @Test
+    fun notEnoughMemoryToOpenTheKeysIsSaidAsSuch() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.onBiometricsChange(true)
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.onConfirm()
+        keys.enabling.complete(BiometricChange.NotEnoughMemory)
+        runCurrent()
+
+        assertNull(viewModel.ready.enabling, "the password is gone")
+        assertEquals(false, viewModel.ready.biometrics.on)
+        assertEquals(
+            "Not enough free memory to open the keys: close other apps and try again. Biometric unlock is off.",
+            viewModel.ready.message,
+        )
+    }
+
+    @Test
+    fun aPasswordStretchedWithLessMemoryIsSaidWithTheProtection() = runTest {
+        keys.description = KeyStoreDescription.Ready(
+            true,
+            KeyProtection.SOFTWARE_KEY_STORE,
+            BiometricUnlock.Off,
+            passwordCost = PasswordCost.LESS_MEMORY,
+        )
+        val viewModel = viewModel()
+        runCurrent()
+
+        assertEquals(
+            "The seed is stored encrypted under your wallet password and this device's key store, which is not " +
+                "in secure hardware here (an emulator, or a device without it). This device has little memory, " +
+                "so the password protection uses less memory and more passes.",
+            viewModel.ready.protection,
+        )
     }
 
     @Test

@@ -95,7 +95,13 @@ The rules a reviewer holds the adapter against:
    are stored next to the blob and bound as the additional authenticated data
    of the AES-GCM wrap of `DEK`, and the floor is re-checked when unwrapping:
    a parameter block below it is refused, not honoured, so tampering with it
-   cannot downgrade the KDF.
+   cannot downgrade the KDF. Where the password must stand alone, the cost is
+   sized by the device's memory (owner ruling, 2026-10-18, issue #36): three
+   tiers of about the same wall time, 256 MiB × 4 passes, 128 MiB × 8 and
+   64 MiB × 16, the device's own tier first and a lighter one when Argon2id
+   cannot have the memory at that moment, never below the 64 MiB floor; the
+   user is told when a lighter tier is used. Argon2id short of memory is its
+   own outcome, never a key store that does not work (*Costs*).
 3. **The envelope's biometric path binds to a key, not to the UI.** On
    Android: a key with `setUserAuthenticationRequired(true)` and per-use authorization
    (`setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` from API 30;
@@ -319,13 +325,37 @@ its KDoc and returns it as a result the UI shows as state.
 - **Costs.**
   - When every guess needs secure hardware (Android's Keystore HMAC): 64 MiB
     and three passes.
-  - Otherwise 256 MiB and four passes. That covers a software key store, as
-    on an emulator, whose key a copy of the device's storage yields. It
-    covers the Mac's Secure Enclave, whose secret is unwrapped once and is
-    then the same for every guess. And it covers the password alone. Each
-    must hold up offline like a password-only envelope.
-  - Opening checks the 64 MiB, two-pass floor and a 256 MiB, four-pass
-    ceiling.
+  - Otherwise a password-only tier (`PasswordOnlyTier`). That covers a
+    software key store, as on an emulator, whose key a copy of the device's
+    storage yields. It covers the Mac's Secure Enclave, whose secret is
+    unwrapped once and is then the same for every guess. And it covers the
+    password alone. Each must hold up offline like a password-only envelope.
+  - The tiers, sized by memory (owner ruling, 2026-10-18, issue #36), each
+    about the same wall time: 256 MiB × 4 passes, 128 MiB × 8, 64 MiB × 16.
+    On Android the host picks the device's tier from
+    `ActivityManager.MemoryInfo.totalMem` and `isLowRamDevice`: about 4 GB or
+    more and not low-RAM is 256 MiB, about 2 GB or more is 128 MiB, less is
+    64 MiB (`totalMem` leaves out what the kernel reserves, so the thresholds
+    sit at 3.4 and 1.7 GB). The desktop starts at 256 MiB.
+  - Sealing starts at the device's tier. When libsodium cannot have the
+    memory (its -1), it tries the next lighter tier, never below 64 MiB;
+    short at that too, nothing is stored and the user reads "Not enough free
+    memory to protect the key: close other apps and try again." The password
+    is stretched before anything else is made, so a failed seal leaves
+    nothing behind. Opening an envelope (signing, the password check of a
+    later import, turning biometric unlock on) short of memory says so in
+    the same words for that step, never that the key store does not work.
+  - A device that seals below 256 MiB says so with its protection, on the
+    seed screens and in Security: "This device has little memory, so the
+    password protection uses less memory and more passes."
+  - The tiers are chosen for about the same time, not measured on devices
+    yet; measuring them is issue #75.
+  - The hardware path's 64 MiB × 3 is no tier: it neither steps down nor
+    changes, and envelopes already stored keep the parameters they were
+    sealed with.
+  - Opening checks the 64 MiB, two-pass floor and a ceiling that takes every
+    tier: at most 256 MiB, at most 16 passes, and memory × passes at most
+    256 MiB × 4, so the most passes come only with the least memory.
 - **AES-256-GCM** comes from the JDK.
 - **The hardware secret.** On Android it is `AndroidKeystoreSecret`, an
   HMAC-SHA256 key in StrongBox, or in the TEE when StrongBox is missing or

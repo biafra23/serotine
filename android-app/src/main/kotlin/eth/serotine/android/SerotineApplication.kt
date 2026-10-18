@@ -1,6 +1,7 @@
 package eth.serotine.android
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.Application
 import android.os.Bundle
 import android.os.Handler
@@ -15,6 +16,7 @@ import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.AndroidBiometricKey
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
@@ -88,11 +90,14 @@ class SerotineApplication : Application() {
         // Imported seeds in envelopes under the app's private files, the hardware factor a
         // Keystore HMAC key (docs/keys-and-signing.md); kept out of backups and transfers. The
         // biometric path's key prompts on the activity in front. One instance is both the key
-        // store and the signer, so that their calls take turns.
+        // store and the signer, so that their calls take turns. Where the password must stand
+        // alone (a key store outside secure hardware), its Argon2id tier is sized by this
+        // device's memory (the owner's ruling of 2026-10-18).
         val keyStore = EnvelopeKeyStore(
             filesDir.resolve("keys").path,
             AndroidKeystoreSecret(),
             biometricKey = AndroidBiometricKey(this, PlatformBiometricPrompter { foreground.current }),
+            passwordOnlyTier = passwordOnlyTier(),
         )
         AppGraph(
             accounts = accounts,
@@ -152,6 +157,17 @@ class SerotineApplication : Application() {
 
     /** The activity in front, for the biometric prompt. */
     private val foreground = ForegroundActivity()
+
+    /**
+     * This device's password-only Argon2id tier, from its total memory and whether the system
+     * calls it a low-RAM device ([PasswordOnlyTier.forDevice]); the full tier when the system
+     * does not say.
+     */
+    private fun passwordOnlyTier(): PasswordOnlyTier {
+        val manager = getSystemService(ActivityManager::class.java) ?: return PasswordOnlyTier.FULL
+        val memory = ActivityManager.MemoryInfo().also(manager::getMemoryInfo)
+        return PasswordOnlyTier.forDevice(memory.totalMem, manager.isLowRamDevice)
+    }
 
     override fun onCreate() {
         super.onCreate()

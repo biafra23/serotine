@@ -10,6 +10,7 @@ import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
 import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.NOT_ENOUGH_MEMORY_TO_PROTECT
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Imported
@@ -115,7 +116,7 @@ class MnemonicImportViewModel(
                 KeyStoreDescription.Unavailable // the port promises not to throw; the backstop
             }
             step = when (description) {
-                is KeyStoreDescription.Ready -> description.protection.protectionText.let { protection ->
+                is KeyStoreDescription.Ready -> description.protectionText.let { protection ->
                     if (description.passwordSet) PasswordStep.Existing(protection) else PasswordStep.New(protection)
                 }
                 KeyStoreDescription.Unavailable -> PasswordStep.Unavailable
@@ -142,6 +143,7 @@ class MnemonicImportViewModel(
                 "cannot store the key.",
         )
         MnemonicImport.KeyNotSaved -> copy(error = "The key could not be stored on this device. Nothing was added.")
+        MnemonicImport.NotEnoughMemory -> copy(error = NOT_ENOUGH_MEMORY_TO_PROTECT)
         MnemonicImport.ListNotSaved -> copy(
             error = "The key is stored, but the account list could not be saved. Add the same words again " +
                 "to finish.",

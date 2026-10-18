@@ -23,6 +23,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.WalletChanges
@@ -195,6 +196,39 @@ class MnemonicImportViewModelTest {
             entering().error,
         )
         assertTrue(entering().canImport, "the user can try again")
+    }
+
+    @Test
+    fun notEnoughMemoryToProtectTheKeyIsSaidAsSuch() = runTest {
+        keys.next = CompletableDeferred(KeyImport.NotEnoughMemory)
+        typeWordsAndPassword()
+
+        viewModel.onImport()
+        runCurrent()
+
+        assertEquals("Not enough free memory to protect the key: close other apps and try again.", entering().error)
+        assertEquals(twelveWords, entering().phrase.text)
+        assertTrue(entering().canImport, "the user can try again")
+    }
+
+    @Test
+    fun aPasswordStretchedWithLessMemorySaysSoUnderThePassword() {
+        keys.description = {
+            KeyStoreDescription.Ready(
+                passwordSet = false,
+                KeyProtection.SOFTWARE_KEY_STORE,
+                passwordCost = PasswordCost.LESS_MEMORY,
+            )
+        }
+        typeWordsAndPassword()
+
+        val step = assertIs<PasswordStep.New>(entering().step)
+        assertTrue(
+            step.protection.endsWith(
+                "This device has little memory, so the password protection uses less memory and more passes.",
+            ),
+            step.protection,
+        )
     }
 
     @Test

@@ -11,6 +11,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import fr.acinq.secp256k1.Secp256k1
@@ -472,5 +473,131 @@ class EnvelopeKeyStoreTest {
         assertEquals("Mnemonic(redacted)", created.mnemonic.toString())
         assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
         assertTrue(created.mnemonic.text != (store.newMnemonic() as NewMnemonic.Created).mnemonic.text)
+    }
+
+    /**
+     * A fast stand-in for Argon2id (HKDF over the password and the parameters) that cannot have
+     * more than [memoryAvailable] bytes, as a device short of free memory: every run is recorded,
+     * as the parameters it was asked for, in [asked].
+     */
+    private class ShortOfMemory(var memoryAvailable: Long) : PasswordStretch {
+        val asked = mutableListOf<Pair<Long, Long>>()
+
+        override fun argon2id(
+            password: ByteArray,
+            salt: ByteArray,
+            opsLimit: Long,
+            memLimitBytes: Long,
+            outLength: Int,
+        ): ByteArray {
+            asked += opsLimit to memLimitBytes
+            if (memLimitBytes > memoryAvailable) throw Argon2idOutOfMemory()
+            return Hkdf.sha256(password, salt, "$opsLimit|$memLimitBytes".encodeToByteArray(), outLength)
+        }
+    }
+
+    private fun TestScope.store(
+        stretch: PasswordStretch,
+        tier: PasswordOnlyTier = PasswordOnlyTier.FULL,
+        hardware: HardwareSecret? = null,
+    ) = EnvelopeKeyStore(
+        directory.path,
+        hardware,
+        StandardTestDispatcher(testScheduler),
+        KeyProtection.PASSWORD_ONLY,
+        biometricKey = null,
+        passwordOnlyTier = tier,
+        stretch = stretch,
+    )
+
+    private val mib = 1024L * 1024
+
+    private fun lessMemory(passwordSet: Boolean) =
+        KeyStoreDescription.Ready(passwordSet, KeyProtection.PASSWORD_ONLY, passwordCost = PasswordCost.LESS_MEMORY)
+
+    @Test
+    fun aSealShortOfMemoryStepsDownATierAndSaysSo() = runTest {
+        // Ruling #36: 256 MiB cannot be had at the moment, 128 MiB can.
+        val stretch = ShortOfMemory(memoryAvailable = 128 * mib)
+        val store = store(stretch)
+        assertEquals(KeyStoreDescription.Ready(passwordSet = false, KeyProtection.PASSWORD_ONLY), store.describe())
+
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+
+        assertEquals(listOf(4L to 256 * mib, 8L to 128 * mib), stretch.asked)
+        val sealed = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(8L to 128 * mib, sealed.opsLimit to sealed.memLimitBytes, "the next tier: less memory, more")
+        assertEquals(lessMemory(passwordSet = true), store.describe())
+        // The lighter envelope opens like any other, at the parameters it was sealed with.
+        assertIs<Signing.Signed>(store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
+    }
+
+    @Test
+    fun aDeviceWithLittleMemoryStartsAtItsTierAndNeverGoesBelowTheFloor() = runTest {
+        val stretch = ShortOfMemory(memoryAvailable = 32 * mib)
+        val store = store(stretch, tier = PasswordOnlyTier.REDUCED)
+        assertEquals(lessMemory(passwordSet = false), store.describe(), "said before the first seal: the password step")
+
+        assertEquals(KeyImport.NotEnoughMemory, store.importMnemonic(hardhat, password))
+
+        assertEquals(listOf(8L to 128 * mib, 16L to 64 * mib), stretch.asked, "the device's tier, then the floor's")
+        assertEquals(emptyList(), directory.list().orEmpty().filter { it.endsWith(".seed") }, "nothing is added")
+        assertEquals(lessMemory(passwordSet = false), store.describe())
+
+        stretch.memoryAvailable = 64 * mib
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        val sealed = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(16L to 64 * mib, sealed.opsLimit to sealed.memLimitBytes)
+    }
+
+    @Test
+    fun theHardwarePathKeepsItsCostAndHasNoLighterOne() = runTest {
+        val stretch = ShortOfMemory(memoryAvailable = 32 * mib)
+        val store = store(stretch, tier = PasswordOnlyTier.LEAST, hardware = FakeHardware())
+
+        assertEquals(KeyImport.NotEnoughMemory, store.importMnemonic(hardhat, password))
+        assertEquals(listOf(3L to 64 * mib), stretch.asked, "64 MiB, three passes: no tier, no step down")
+
+        stretch.memoryAvailable = 64 * mib
+        assertEquals(KeyImport.Stored(hardhatAddress, KeyProtection.HARDWARE), store.importMnemonic(hardhat, password))
+        assertEquals(
+            KeyStoreDescription.Ready(passwordSet = true, KeyProtection.HARDWARE),
+            store.describe(),
+            "the password-only tiers say nothing about the hardware path",
+        )
+    }
+
+    @Test
+    fun openingShortOfMemoryIsSaidAsSuchNotAsAKeyStoreThatFails() = runTest {
+        val stretch = ShortOfMemory(memoryAvailable = 256 * mib)
+        val store = store(stretch)
+        store.importMnemonic(hardhat, password)
+
+        stretch.memoryAvailable = 128 * mib
+        assertEquals(Signing.NotEnoughMemory, store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
+        assertEquals(KeyImport.NotEnoughMemory, store.importMnemonic(abandon, password), "its password check opens one")
+        assertEquals(listOf("${hardhatAddress.hex}.seed"), directory.list().orEmpty().filter { it.endsWith(".seed") })
+
+        stretch.memoryAvailable = 256 * mib
+        assertIs<Signing.Signed>(store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
+    }
+
+    @Test
+    fun anAndroidDeviceGetsTheTierItsMemoryAffords() {
+        val gb = 1_000_000_000L
+        // totalMem as such phones report it: below the nominal size, the kernel's share left out.
+        assertEquals(PasswordOnlyTier.FULL, PasswordOnlyTier.forDevice(3_700_000_000L, lowRamDevice = false))
+        assertEquals(PasswordOnlyTier.FULL, PasswordOnlyTier.forDevice(12 * gb, lowRamDevice = false))
+        assertEquals(PasswordOnlyTier.REDUCED, PasswordOnlyTier.forDevice(3_700_000_000L, lowRamDevice = true))
+        assertEquals(PasswordOnlyTier.REDUCED, PasswordOnlyTier.forDevice(2_800_000_000L, lowRamDevice = false))
+        assertEquals(PasswordOnlyTier.REDUCED, PasswordOnlyTier.forDevice(1_850_000_000L, lowRamDevice = true))
+        assertEquals(PasswordOnlyTier.LEAST, PasswordOnlyTier.forDevice(1_400_000_000L, lowRamDevice = true))
+        assertEquals(PasswordOnlyTier.LEAST, PasswordOnlyTier.forDevice(0, lowRamDevice = false))
+        assertEquals(
+            listOf(PasswordOnlyTier.REDUCED, PasswordOnlyTier.LEAST),
+            PasswordOnlyTier.REDUCED.andLighter(),
+        )
+        // Every tier is within the envelope's floor and ceiling, about the same work.
+        PasswordOnlyTier.entries.forEach { assertEquals(1024 * mib, it.cost.opsLimit * it.cost.memLimitBytes) }
     }
 }

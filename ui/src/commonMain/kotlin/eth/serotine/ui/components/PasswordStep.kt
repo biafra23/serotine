@@ -1,6 +1,8 @@
 package eth.serotine.ui.components
 
 import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.PasswordCost
 
 /**
  * Which password a seed screen (Import recovery phrase, Create account) asks for, as the key store
@@ -20,6 +22,25 @@ sealed interface PasswordStep {
     /** The key store does not work on this device: nothing can be added. */
     data object Unavailable : PasswordStep
 }
+
+/**
+ * How the device [this] describes protects a stored seed, display-ready: [KeyProtection.protectionText],
+ * and where the password is stretched with less memory, a sentence that says so (the owner's ruling
+ * of 2026-10-18).
+ */
+internal val KeyStoreDescription.Ready.protectionText: String
+    get() = when (passwordCost) {
+        PasswordCost.STANDARD -> protection.protectionText
+        PasswordCost.LESS_MEMORY -> "${protection.protectionText} $LESS_MEMORY_TEXT"
+    }
+
+/** What the seed screens and Security add where the password is stretched with less memory. */
+internal const val LESS_MEMORY_TEXT =
+    "This device has little memory, so the password protection uses less memory and more passes."
+
+/** What a seed screen says when Argon2id could not have the memory to protect the key. */
+internal const val NOT_ENOUGH_MEMORY_TO_PROTECT =
+    "Not enough free memory to protect the key: close other apps and try again."
 
 /** How [this] protects a stored seed, display-ready: what the seed screens say under the password. */
 internal val KeyProtection.protectionText: String

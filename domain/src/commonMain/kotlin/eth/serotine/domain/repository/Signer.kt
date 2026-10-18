@@ -59,6 +59,12 @@ sealed interface Signing {
     /** The key store cannot run on this device, or its envelope cannot be opened here. Nothing was signed. */
     data object Unavailable : Signing
 
+    /**
+     * Not enough free memory to open the account's envelope with the password (Argon2id could
+     * not have its memory). Nothing was signed; it may work once other apps are closed.
+     */
+    data object NotEnoughMemory : Signing
+
     /** The biometric prompt was dismissed. Nothing was signed; the password still works. */
     data object Cancelled : Signing
 

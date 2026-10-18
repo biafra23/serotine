@@ -15,6 +15,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
@@ -42,7 +43,11 @@ import kotlinx.serialization.json.Json
  * [KeyProtection.PASSWORD_ONLY_TPM_NOT_USED]. Argon2id runs at the lighter cost only
  * when that secret really lives in secure hardware and every guess needs it; otherwise (a
  * software key store, a stored secret the hardware unwraps, none) the envelope must hold up
- * against an offline attack on the password alone (rules 2 and 9).
+ * against an offline attack on the password alone (rules 2 and 9), at [passwordOnlyTier], the
+ * device's memory tier, or a lighter one when Argon2id cannot have that memory at the moment
+ * (the owner's ruling of 2026-10-18). Argon2id short of memory, sealing at the lightest tier or
+ * opening an envelope, is said as such ([KeyImport.NotEnoughMemory], [Signing.NotEnoughMemory],
+ * [BiometricChange.NotEnoughMemory]), never as a key store that does not work.
  *
  * The seed, the keys and the password's bytes exist only inside a call, as byte arrays this
  * code zeroes before it returns. Files are written durably and readable by this user alone
@@ -56,15 +61,27 @@ import kotlinx.serialization.json.Json
  * (rules 3 and 4): while it is on, each envelope's DEK is also wrapped by it
  * (`<address>.bio`, [BiometricWraps]), and [sign] can open an envelope with a strong
  * biometric instead of the password. Turning it off deletes the key and the wraps. Work runs
- * on [dispatcher]; calls are serialized within the process.
+ * on [dispatcher]; calls are serialized within the process. [stretch] is libsodium's Argon2id
+ * but in tests.
  */
-class EnvelopeKeyStore(
+class EnvelopeKeyStore internal constructor(
     private val directory: String,
     private val hardware: HardwareSecret?,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val withoutHardware: KeyProtection = KeyProtection.PASSWORD_ONLY,
-    private val biometricKey: BiometricKey? = null,
+    private val dispatcher: CoroutineDispatcher,
+    private val withoutHardware: KeyProtection,
+    private val biometricKey: BiometricKey?,
+    private val passwordOnlyTier: PasswordOnlyTier,
+    private val stretch: PasswordStretch,
 ) : KeyStore, Signer {
+
+    constructor(
+        directory: String,
+        hardware: HardwareSecret?,
+        dispatcher: CoroutineDispatcher = Dispatchers.IO,
+        withoutHardware: KeyProtection = KeyProtection.PASSWORD_ONLY,
+        biometricKey: BiometricKey? = null,
+        passwordOnlyTier: PasswordOnlyTier = PasswordOnlyTier.FULL,
+    ) : this(directory, hardware, dispatcher, withoutHardware, biometricKey, passwordOnlyTier, PasswordStretch.Sodium)
 
     private val wraps = BiometricWraps(directory)
 
@@ -95,6 +112,7 @@ class EnvelopeKeyStore(
                 passwordSet = envelopes.isNotEmpty(),
                 protection = protection,
                 biometrics = biometricUnlock(protection),
+                passwordCost = passwordCost(protection, envelopes),
             )
         } catch (e: Throwable) {
             // Throwable: the platform's key store is native code, which fails with Errors.
@@ -115,6 +133,9 @@ class EnvelopeKeyStore(
                     import(words, password.isLongEnough, passwordBytes)
                 } catch (e: CancellationException) {
                     throw e
+                } catch (e: Argon2idOutOfMemory) {
+                    report("not enough memory for Argon2id: nothing was stored")
+                    KeyImport.NotEnoughMemory
                 } catch (e: Throwable) {
                     // Throwable: libsodium and the platform's key store are native code, which
                     // fails with Errors. Nothing of the key path is shown.
@@ -177,6 +198,9 @@ class EnvelopeKeyStore(
                     }
                 } catch (e: CancellationException) {
                     throw e
+                } catch (e: Argon2idOutOfMemory) {
+                    report("not enough memory for Argon2id: nothing was signed")
+                    Signing.NotEnoughMemory
                 } catch (e: Throwable) {
                     // Throwable: libsodium, libsecp256k1 and the key store are native code. Nothing
                     // of the key path is shown.
@@ -198,7 +222,7 @@ class EnvelopeKeyStore(
         var passwordBytes = ByteArray(0)
         try {
             passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
-            return when (val opened = Envelope.open(sealed, passwordBytes, hardware)) {
+            return when (val opened = Envelope.open(sealed, passwordBytes, hardware, stretch)) {
                 Envelope.Opened.WrongPassword -> refusedOrDamaged(account, passwordBytes)
                 is Envelope.Opened.Seed -> signWith(opened.bytes, account, digest)
                 else -> Signing.Unavailable
@@ -244,7 +268,7 @@ class EnvelopeKeyStore(
      */
     private fun refusedOrDamaged(account: Address, password: ByteArray): Signing {
         val others = envelopes().filter { it.address != account.hex }.take(MAX_PASSWORD_CHECKS - 1)
-        if (others.none { Envelope.verify(it.sealed, password, hardware) == Envelope.Opened.Verified }) {
+        if (others.none { Envelope.verify(it.sealed, password, hardware, stretch) == Envelope.Opened.Verified }) {
             return Signing.WrongPassword
         }
         report("the envelope of ${account.hex} does not open under the wallet password")
@@ -327,7 +351,7 @@ class EnvelopeKeyStore(
                     passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
                     val refused = mutableListOf<String>()
                     for (envelope in envelopes) {
-                        when (val opened = Envelope.dek(envelope.sealed, passwordBytes, hardware)) {
+                        when (val opened = Envelope.dek(envelope.sealed, passwordBytes, hardware, stretch)) {
                             is Envelope.Opened.Dek -> deks += envelope.address to opened.bytes
                             Envelope.Opened.WrongPassword -> refused += envelope.address
                             else -> report("the envelope of ${envelope.address} cannot be opened")
@@ -349,6 +373,11 @@ class EnvelopeKeyStore(
                     // Cancelled during the proof: the path is not left on unproven.
                     if (touched) withContext(NonCancellable) { turnOffQuietly() }
                     throw e
+                } catch (e: Argon2idOutOfMemory) {
+                    // Only the envelopes' opening stretches the password: nothing is made yet.
+                    report("not enough memory for Argon2id: the biometric path stays off")
+                    if (touched) withContext(NonCancellable) { turnOffQuietly() }
+                    BiometricChange.NotEnoughMemory
                 } catch (e: Throwable) {
                     // Throwable: the Keystore and libsodium are native code. Nothing is left half on.
                     report("the biometric path could not be turned on (${e::class.simpleName})")
@@ -490,7 +519,7 @@ class EnvelopeKeyStore(
             // Argon2id runs happen only when the password is wrong or a file is damaged.
             val refused = mutableListOf<String>()
             for (envelope in stored) {
-                when (Envelope.verify(envelope.sealed, password, hardware)) {
+                when (Envelope.verify(envelope.sealed, password, hardware, stretch)) {
                     Envelope.Opened.Verified -> {
                         verified = true
                         alreadyStored = envelope.address == address
@@ -518,7 +547,7 @@ class EnvelopeKeyStore(
                 }
                 var wrapped: ByteArray? = null
                 // Also over a file of this name that cannot be opened: its seed is at hand.
-                val sealed = Envelope.seal(seed, address, password, hardware, cost(protection)) { dek ->
+                val sealed = sealAtTierThatFits(seed, address, password, protection) { dek ->
                     wrapped = try {
                         key?.wrap(dek)
                     } catch (e: Exception) {
@@ -552,10 +581,54 @@ class EnvelopeKeyStore(
         }
     }
 
-    /** The lighter cost only where every guess really needs the device's secure hardware. */
-    private fun cost(protection: KeyProtection): Envelope.Cost {
-        val everyGuessInHardware = protection == KeyProtection.HARDWARE && hardware?.everyGuessNeedsDevice == true
-        return if (everyGuessInHardware) HARDWARE_COST else PASSWORD_ONLY_COST
+    /**
+     * [seed] sealed at the first of [costs] Argon2id can have the memory for: the device's tier
+     * first, then each lighter one (the owner's ruling of 2026-10-18). Short of memory at the
+     * last, [Argon2idOutOfMemory] leaves, and nothing was made: the password is stretched before
+     * anything else, [withDek] included.
+     */
+    private fun sealAtTierThatFits(
+        seed: ByteArray,
+        address: String,
+        password: ByteArray,
+        protection: KeyProtection,
+        withDek: (ByteArray) -> Unit,
+    ): SealedSeed {
+        val costs = costs(protection)
+        for (cost in costs.dropLast(1)) {
+            try {
+                return Envelope.seal(seed, address, password, hardware, cost, stretch, withDek)
+            } catch (e: Argon2idOutOfMemory) {
+                report("not enough memory for Argon2id over ${cost.memLimitBytes / MIB} MiB: a lighter tier")
+            }
+        }
+        return Envelope.seal(seed, address, password, hardware, costs.last(), stretch, withDek)
+    }
+
+    /**
+     * The costs a seal tries, in order: the lighter hardware cost alone where every guess really
+     * needs the device's secure hardware; the password-only tiers otherwise, from this device's.
+     */
+    private fun costs(protection: KeyProtection): List<Envelope.Cost> =
+        if (everyGuessInHardware(protection)) {
+            listOf(HARDWARE_COST)
+        } else {
+            passwordOnlyTier.andLighter().map { it.cost }
+        }
+
+    private fun everyGuessInHardware(protection: KeyProtection): Boolean =
+        protection == KeyProtection.HARDWARE && hardware?.everyGuessNeedsDevice == true
+
+    /**
+     * [PasswordCost.LESS_MEMORY] where the password-only cost applies and less than its full
+     * memory is used: this device's tier is a lighter one, so the next seal is too, or a stored
+     * envelope was sealed lighter when the full tier's memory could not be had.
+     */
+    private fun passwordCost(protection: KeyProtection, envelopes: List<Stored>): PasswordCost {
+        if (everyGuessInHardware(protection)) return PasswordCost.STANDARD
+        val full = PasswordOnlyTier.FULL.cost.memLimitBytes
+        val lighter = passwordOnlyTier != PasswordOnlyTier.FULL || envelopes.any { it.sealed.memLimitBytes < full }
+        return if (lighter) PasswordCost.LESS_MEMORY else PasswordCost.STANDARD
     }
 
     /**
@@ -621,16 +694,13 @@ class EnvelopeKeyStore(
 
         /**
          * With a secret in secure hardware every guess needs the device (rule 2), so the KDF is sized for
-         * the slowest supported phone: the 64 MiB floor, three passes.
+         * the slowest supported phone: the 64 MiB floor, three passes. Without one (or with a key store
+         * outside secure hardware, whose key a copy of the device's storage yields), a copied envelope
+         * can be attacked offline, and the cost is a [PasswordOnlyTier].
          */
         val HARDWARE_COST = Envelope.Cost(opsLimit = 3, memLimitBytes = 64L * 1024 * 1024)
 
-        /**
-         * Without one (or with a key store outside secure hardware, whose key a copy of the
-         * device's storage yields), a copied envelope can be attacked offline: four times the
-         * memory, four passes.
-         */
-        val PASSWORD_ONLY_COST = Envelope.Cost(opsLimit = 4, memLimitBytes = 256L * 1024 * 1024)
+        const val MIB = 1024L * 1024
 
         const val SEED_SUFFIX = ".seed"
 

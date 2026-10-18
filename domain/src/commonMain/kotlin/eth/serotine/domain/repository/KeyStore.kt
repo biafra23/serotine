@@ -73,12 +73,14 @@ sealed interface KeyStoreDescription {
 
     /**
      * The key store works: [passwordSet] once a key is stored, [protection] as this device has
-     * it, and whether a biometric can authorize a signature here ([biometrics]).
+     * it, whether a biometric can authorize a signature here ([biometrics]), and how hard the
+     * password is stretched where it stands against an offline attack alone ([passwordCost]).
      */
     data class Ready(
         val passwordSet: Boolean,
         val protection: KeyProtection,
         val biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice,
+        val passwordCost: PasswordCost = PasswordCost.STANDARD,
     ) : KeyStoreDescription
 
     /** The key store cannot run on this device (its crypto library or key store fails). */
@@ -102,6 +104,22 @@ enum class KeyProtection {
      * user is told so, a TPM present or not.
      */
     PASSWORD_ONLY_TPM_NOT_USED,
+}
+
+/**
+ * How the wallet password is stretched where an envelope must hold against an offline attack on
+ * the password alone (docs/keys-and-signing.md, rule 2, and the owner's ruling of 2026-10-18).
+ */
+enum class PasswordCost {
+    /** The full cost: Argon2id over 256 MiB, four passes; and wherever the hardware path applies. */
+    STANDARD,
+
+    /**
+     * This device has little memory, so the password protection uses less memory and more passes
+     * (128 MiB eight times, or 64 MiB sixteen times): about the same time to guess, less memory to
+     * guess with.
+     */
+    LESS_MEMORY,
 }
 
 /** The envelope's biometric path on this device, as [KeyStore.describe] reports it. */
@@ -180,6 +198,12 @@ sealed interface BiometricChange {
     data object NotConfirmed : BiometricChange
 
     /**
+     * Not enough free memory to open the envelopes with the password (Argon2id could not have
+     * its memory). Nothing changed.
+     */
+    data object NotEnoughMemory : BiometricChange
+
+    /**
      * The key store failed. The password path is untouched; the biometric path is as
      * [KeyStore.describe] now reports it.
      */
@@ -206,6 +230,13 @@ sealed interface KeyImport {
 
     /** The envelope could not be written. Nothing was stored. */
     data object NotSaved : KeyImport
+
+    /**
+     * Not enough free memory to stretch the password (Argon2id could not have its memory, at
+     * the lightest cost either), so the seed could not be protected, or a stored envelope not
+     * opened to check the password. Nothing was stored.
+     */
+    data object NotEnoughMemory : KeyImport
 }
 
 /** The outcome of [KeyStore.newMnemonic]. */

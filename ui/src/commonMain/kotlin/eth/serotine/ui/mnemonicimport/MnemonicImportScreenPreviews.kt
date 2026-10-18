@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.ui.components.NOT_ENOUGH_MEMORY_TO_PROTECT
 import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.theme.SerotineTheme
@@ -78,6 +79,12 @@ private fun MnemonicImportInvalidWordsPreview() = MnemonicImportPreview(
 
 @Preview
 @Composable
+private fun MnemonicImportNotEnoughMemoryPreview() = MnemonicImportPreview(
+    typed.copy(error = NOT_ENOUGH_MEMORY_TO_PROTECT),
+)
+
+@Preview
+@Composable
 private fun MnemonicImportImportingPreview() = MnemonicImportPreview(typed.copy(importing = true))
 
 @Preview
@@ -98,6 +105,7 @@ internal val mnemonicImportScreenPreviews: List<@Composable () -> Unit> = listOf
     { MnemonicImportPasswordHintPreview() },
     { MnemonicImportWrongPasswordPreview() },
     { MnemonicImportInvalidWordsPreview() },
+    { MnemonicImportNotEnoughMemoryPreview() },
     { MnemonicImportImportingPreview() },
     { MnemonicImportKeyStoreUnavailablePreview() },
     { MnemonicImportImportedPreview() },

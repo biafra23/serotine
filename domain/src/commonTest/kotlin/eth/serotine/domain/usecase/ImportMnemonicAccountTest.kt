@@ -202,6 +202,15 @@ class ImportMnemonicAccountTest {
     }
 
     @Test
+    fun notEnoughMemoryToProtectTheSeedAddsNothingAndIsSaidAsSuch() = runTest {
+        val mnemonic = Mnemonic("any words")
+        keys.results[mnemonic] = KeyImport.NotEnoughMemory
+
+        assertEquals(MnemonicImport.NotEnoughMemory, import(mnemonic, password))
+        assertEquals(emptyList(), repository.accounts.value)
+    }
+
+    @Test
     fun aDeviceTheAdapterCannotRunOnAddsNothing() = runTest {
         val mnemonic = Mnemonic("any words")
         keys.results[mnemonic] = KeyImport.Unavailable

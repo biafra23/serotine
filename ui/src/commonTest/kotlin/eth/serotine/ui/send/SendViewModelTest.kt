@@ -506,6 +506,23 @@ class SendViewModelTest {
     }
 
     @Test
+    fun notEnoughMemoryToOpenTheKeyIsSaidAsSuch() = runTest {
+        signer.answer = Signing.NotEnoughMemory
+        val viewModel = reviewed()
+
+        viewModel.onPasswordChange("correct horse battery")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(
+            "Not enough free memory to open the key: close other apps and try again. Nothing was signed.",
+            viewModel.review.unlock.error,
+        )
+        assertTrue(broadcaster.sent.isEmpty())
+        assertTrue(sent.transfers.value.isEmpty())
+    }
+
+    @Test
     fun theFingerprintIsOfferedWhereItIsOnAndADismissedPromptLeavesThePassword() = runTest {
         biometrics = BiometricUnlock.On
         signer.answer = Signing.Cancelled

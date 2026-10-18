@@ -639,6 +639,16 @@ discussion that produced this note.
     as the doc sets out. No dApp browser runs in the signing process.
   - What an imported mnemonic's envelope holds: its BIP-39 seed, so further
     accounts can be derived without the words (owner ruling, 2026-10-15).
+  - Where the password stands alone, Argon2id's cost is sized by the
+    device's memory (owner ruling, 2026-10-18, #36): 256 MiB × 4, 128 MiB ×
+    8 or 64 MiB × 16, about the same time each; Android picks the tier from
+    its total memory and low-RAM flag, the desktop keeps 256 MiB × 4. A seal
+    whose memory cannot be had steps down a tier, never below the 64 MiB
+    floor, and the user is told when a lighter tier is used. Argon2id short
+    of memory is its own outcome (sealing, opening, signing), never "the key
+    store does not work", and a failed seal stores nothing. The hardware
+    path's 64 MiB × 3 and stored envelopes are unchanged
+    (docs/keys-and-signing.md, *Costs*).
   - A desktop without a hardware key store stands on the password path alone,
     with Argon2id run harder, and the app tells the user so; a Mac with a
     Secure Enclave uses it as iOS does (owner ruling, 2026-10-15), the app

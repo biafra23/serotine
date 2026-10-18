@@ -405,4 +405,30 @@ class EnvelopeKeyStoreBiometricsTest {
             store.describe(),
         )
     }
+
+    @Test
+    fun turningOnShortOfMemoryLeavesThePathOffAndSaysWhy() = runTest {
+        // Ruling #36: Argon2id cannot have its memory while the envelopes are opened.
+        var memoryAvailable = Long.MAX_VALUE
+        val stretch = PasswordStretch { pw, salt, ops, mem, length ->
+            if (mem > memoryAvailable) throw Argon2idOutOfMemory()
+            Hkdf.sha256(pw, salt, "$ops|$mem".encodeToByteArray(), length)
+        }
+        val store = EnvelopeKeyStore(
+            directory.path,
+            hardware = null,
+            StandardTestDispatcher(testScheduler),
+            KeyProtection.PASSWORD_ONLY,
+            key,
+            PasswordOnlyTier.FULL,
+            stretch,
+        )
+        store.importMnemonic(hardhat, password)
+        memoryAvailable = 0
+
+        assertEquals(BiometricChange.NotEnoughMemory, store.enableBiometrics(password, CONFIRM))
+        assertEquals(0, key.made, "no biometric key is made")
+        assertEquals(BiometricUnlock.Off, store.biometrics())
+        assertFalse(wrapOf(hardhatAddress).exists())
+    }
 }

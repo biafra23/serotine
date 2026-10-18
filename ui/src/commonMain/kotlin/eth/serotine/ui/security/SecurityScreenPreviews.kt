@@ -3,6 +3,8 @@ package eth.serotine.ui.security
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyProtection
+import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -114,6 +116,26 @@ private fun SecurityDesktopPreview() = SecurityPreview(
 
 @Preview
 @Composable
+private fun SecurityLessMemoryPreview() = SecurityPreview(
+    off.copy(
+        protection = KeyStoreDescription.Ready(
+            passwordSet = true,
+            KeyProtection.SOFTWARE_KEY_STORE,
+            passwordCost = PasswordCost.LESS_MEMORY,
+        ).protectionText,
+    ),
+)
+
+@Preview
+@Composable
+private fun SecurityNotEnoughMemoryPreview() = SecurityPreview(
+    off.copy(
+        message = "Not enough free memory to open the keys: close other apps and try again. Biometric unlock is off.",
+    ),
+)
+
+@Preview
+@Composable
 private fun SecurityNoKeysPreview() = SecurityPreview(
     SecurityUiState.Ready(
         password = "Not set yet: the first key you store sets it",
@@ -146,6 +168,8 @@ internal val securityScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SecurityTurningOffPreview() },
     { SecurityWeakOnlyPreview() },
     { SecurityDesktopPreview() },
+    { SecurityLessMemoryPreview() },
+    { SecurityNotEnoughMemoryPreview() },
     { SecurityNoKeysPreview() },
     { SecurityLoadingPreview() },
     { SecurityUnavailablePreview() },

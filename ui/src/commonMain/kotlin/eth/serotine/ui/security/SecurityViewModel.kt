@@ -120,7 +120,7 @@ class SecurityViewModel(
             KeyStoreDescription.Unavailable -> SecurityUiState.Unavailable
             is KeyStoreDescription.Ready -> Ready(
                 password = if (description.passwordSet) "Set" else "Not set yet: the first key you store sets it",
-                protection = description.protection.protectionText.takeIf { description.passwordSet },
+                protection = description.protectionText.takeIf { description.passwordSet },
                 biometrics = rowOf(description.biometrics, description.passwordSet),
                 message = message,
             )
@@ -167,6 +167,8 @@ class SecurityViewModel(
             "The fingerprint or face check did not go through, so biometric unlock is off. Try again."
         BiometricChange.Failed ->
             "The key store failed while turning biometric unlock on. The wallet password still works."
+        BiometricChange.NotEnoughMemory ->
+            "Not enough free memory to open the keys: close other apps and try again. Biometric unlock is off."
         BiometricChange.WrongPassword -> null
     }
 

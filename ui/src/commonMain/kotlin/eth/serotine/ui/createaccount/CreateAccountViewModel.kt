@@ -11,6 +11,7 @@ import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.NOT_ENOUGH_MEMORY_TO_PROTECT
 import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.createaccount.CreateAccountUiState.Checking
 import eth.serotine.ui.createaccount.CreateAccountUiState.Securing
@@ -185,7 +186,7 @@ class CreateAccountViewModel(
                 KeyStoreDescription.Unavailable // the port promises not to throw; the backstop
             }
             val step = when (description) {
-                is KeyStoreDescription.Ready -> description.protection.protectionText.let { protection ->
+                is KeyStoreDescription.Ready -> description.protectionText.let { protection ->
                     if (description.passwordSet) PasswordStep.Existing(protection) else PasswordStep.New(protection)
                 }
                 KeyStoreDescription.Unavailable -> PasswordStep.Unavailable
@@ -215,6 +216,7 @@ class CreateAccountViewModel(
         )
         MnemonicImport.KeyNotSaved ->
             copy(creating = false, error = "The key could not be stored on this device. Nothing was created.")
+        MnemonicImport.NotEnoughMemory -> copy(creating = false, error = NOT_ENOUGH_MEMORY_TO_PROTECT)
         MnemonicImport.ListNotSaved -> copy(
             creating = false,
             error = "The key is stored, but the account list could not be saved. Try again to finish.",

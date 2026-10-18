@@ -45,6 +45,7 @@ class ImportMnemonicAccount(
             KeyImport.PasswordTooShort -> MnemonicImport.PasswordTooShort
             KeyImport.Unavailable -> MnemonicImport.Unavailable
             KeyImport.NotSaved -> MnemonicImport.KeyNotSaved
+            KeyImport.NotEnoughMemory -> MnemonicImport.NotEnoughMemory
             is KeyImport.Stored -> addOrFind(stored.address, stored.protection)
         }
 
@@ -114,6 +115,9 @@ sealed interface MnemonicImport {
 
     /** The seed could not be stored; nothing changed. */
     data object KeyNotSaved : MnemonicImport
+
+    /** Not enough free memory to protect the seed under the password; nothing changed. */
+    data object NotEnoughMemory : MnemonicImport
 
     /**
      * The seed is stored (and with it the wallet password, if this import set it), but the
