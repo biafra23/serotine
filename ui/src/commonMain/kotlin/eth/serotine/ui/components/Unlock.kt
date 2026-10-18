@@ -155,6 +155,7 @@ internal fun notSignedText(signing: Signing, failed: String): String = when (sig
         BiometricUnusable.SENSOR_UNAVAILABLE -> "The sensor cannot be used right now: use the wallet password."
         BiometricUnusable.NO_PROMPT -> "The fingerprint or face check could not be shown: use the wallet password."
     }
+    Signing.TimedOut -> PROMPT_TIMED_OUT
     Signing.NoKey -> "This device holds no key for this account, so nothing was signed."
     Signing.Unavailable -> "The key store cannot open this account's key on this device. Nothing was signed."
     is Signing.Signed -> failed // a signature is not a reason not to have signed

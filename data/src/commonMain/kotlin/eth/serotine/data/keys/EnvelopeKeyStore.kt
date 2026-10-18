@@ -27,6 +27,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -148,8 +149,20 @@ class EnvelopeKeyStore(
      * the key, the DEK and the password's bytes exist only in this call, in byte arrays zeroed
      * before it returns (rule 7). secp256k1 runs in native code (libsecp256k1); its signature has
      * a low s, and the recovery id is found by recovering the public key it names.
+     *
+     * A biometric unlock with a deadline ([Unlock.WithBiometrics.within]) gets that long from this
+     * call on, the wait for the store's turn and the prompt included: past it the prompt is
+     * dismissed (cancelling it cancels the system's prompt) and nothing is signed, as is a
+     * signature that lands after it ([Signing.TimedOut]). Whatever the call opened is zeroed
+     * either way, in the steps that cancelling cannot cut into.
      */
-    override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+    override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing {
+        val within = (unlock as? Unlock.WithBiometrics)?.within ?: return signNow(account, digest, unlock)
+        return withTimeoutOrNull(within) { signNow(account, digest, unlock) } ?: Signing.TimedOut
+    }
+
+    /** [sign], with no deadline of its own. */
+    private suspend fun signNow(account: Address, digest: Digest, unlock: Unlock): Signing =
         lock.withLock {
             withContext(dispatcher) {
                 if (!EnvelopeCrypto.available()) return@withContext Signing.Unavailable

@@ -45,7 +45,8 @@ sealed interface SafeProposeUiState {
      * those queued before it move, and after; and how its call ran ([simulation]). An owner held
      * here, [owner] (EIP-55) of [owners], signs it as [unlock] says; [refreshing] while it is
      * proposed again, [signing] while it is signed and queued, and [error] what the last attempt
-     * came to. [share] is a signed request the queue could not keep, to be shared from here.
+     * came to. [share] is a signed request the queue could not keep, to be shared from here;
+     * [askingToDrop] while Back asks whether to leave it behind.
      */
     data class Review(
         override val network: String,
@@ -65,6 +66,7 @@ sealed interface SafeProposeUiState {
         val signing: Boolean = false,
         val error: String? = null,
         val share: ShareItem? = null,
+        val askingToDrop: Boolean = false,
     ) : SafeProposeUiState {
 
         /** Something is typed and nothing runs: the password may sign. */

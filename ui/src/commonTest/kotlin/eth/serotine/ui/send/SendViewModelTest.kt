@@ -495,8 +495,9 @@ class SendViewModelTest {
         runCurrent()
 
         assertEquals(
-            Unlock.WithBiometrics("Send 0.1 ETH to 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"),
+            Unlock.WithBiometrics("Send 0.1 ETH to 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", within = 60.seconds),
             signer.asked.single().second,
+            "the prompt gets what is left of the quote's minute",
         )
         val review = viewModel.review
         assertEquals(
@@ -510,6 +511,54 @@ class SendViewModelTest {
         runCurrent()
         assertFalse(viewModel.review.unlock.biometrics, "the password is all that is left")
         assertTrue(broadcaster.sent.isEmpty())
+    }
+
+    @Test
+    fun theBiometricPromptGetsWhatIsLeftOfTheQuotesAgeAndOneAnsweredLateSignsNothing() = runTest {
+        biometrics = BiometricUnlock.On
+        val viewModel = reviewed()
+        clock += 40.seconds
+
+        signer.answer = Signing.TimedOut
+        viewModel.signWithBiometrics()
+        runCurrent()
+
+        assertEquals(20.seconds, (signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertTrue(broadcaster.sent.isEmpty(), "nothing signed, nothing sent")
+        assertEquals(2, inputs.estimated.size, "the quote made again")
+        assertEquals(
+            "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the " +
+                "quote was made again: check it, then sign.",
+            viewModel.review.unlock.error,
+        )
+        assertTrue(viewModel.review.unlock.biometrics, "the prompt is still offered")
+
+        // Too little left for a prompt: the quote is made again first, and nothing is asked.
+        clock += 50.seconds
+        viewModel.signWithBiometrics()
+        runCurrent()
+        assertEquals(1, signer.asked.size)
+        assertEquals(3, inputs.estimated.size)
+    }
+
+    @Test
+    fun theReviewStandsWhileTheAccountListIsNotThere() = runTest {
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("correct horse battery")
+
+        accounts.unreadable.value = true
+        runCurrent()
+
+        val review = viewModel.review
+        assertEquals("Daily", review.from.label, "the sender as it was quoted")
+        assertEquals("correct horse battery", review.unlock.password.text)
+        viewModel.sign()
+        runCurrent()
+        assertIs<SendUiState.Sent>(viewModel.uiState.value)
+
+        // Composing again is where the list's state shows.
+        val composing = viewModel()
+        assertIs<SendUiState.CannotSend>(composing.uiState.value)
     }
 
     @Test

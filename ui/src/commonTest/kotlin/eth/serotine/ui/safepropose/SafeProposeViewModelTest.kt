@@ -10,6 +10,7 @@ import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
+import eth.serotine.domain.repository.BiometricUnlock
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -19,6 +20,7 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -53,6 +55,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -65,8 +68,9 @@ class SafeProposeViewModelTest {
     private val world = SafeWorld()
     private val clock = TestTimeSource()
     private val feeds = FakeFeeds()
+    private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
-        override suspend fun describe() = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE)
+        override suspend fun describe() = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, biometrics)
 
         override suspend fun newMnemonic(): NewMnemonic = error("not used by these tests")
 
@@ -261,6 +265,74 @@ class SafeProposeViewModelTest {
         // Not kept here, but shared from the review, the signature is not lost.
         val share = assertIs<ShareItem>(viewModel.review.share)
         assertTrue(share.text.endsWith(":1"), "the request carries the signature made here")
+    }
+
+    @Test
+    fun backWithASignatureTheQueueCouldNotSaveAsksBeforeItIsLeftBehind() = runTest {
+        val viewModel = reviewed()
+        world.queue.failSaves = true
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        val shared = assertIs<ShareItem>(viewModel.review.share)
+
+        viewModel.edit()
+        assertTrue(viewModel.review.askingToDrop, "asked first: it is kept nowhere else")
+        viewModel.keepUnsaved()
+        assertFalse(viewModel.review.askingToDrop)
+        assertEquals(shared, viewModel.review.share, "still there to be shared")
+
+        viewModel.edit()
+        viewModel.dropUnsaved()
+        assertEquals("0.1", viewModel.form.amount)
+    }
+
+    @Test
+    fun aSignatureNotSavedGoesWhenTheProposalIsMadeAgainAsAnotherTransaction() = runTest {
+        val viewModel = reviewed()
+        world.queue.failSaves = true
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertIs<ShareItem>(viewModel.review.share)
+
+        // Proposed again with the same terms, it is the same transaction: the signature stays.
+        viewModel.refresh()
+        runCurrent()
+        assertIs<ShareItem>(viewModel.review.share)
+
+        // Another transaction took its nonce meanwhile: proposed again, it is another one.
+        world.queue.requests.value = listOf(world.request(world.ether(4, wei = 1)))
+        viewModel.refresh()
+        runCurrent()
+
+        val review = viewModel.review
+        assertEquals("Safe nonce 5", review.nonce)
+        assertEquals(null, review.share, "a signature of another transaction is not shared with this one")
+        assertEquals(
+            "Proposed again as another transaction, so the signature made for the earlier one, which this " +
+                "device's queue could not save, was dropped: sign this one.",
+            review.error,
+        )
+    }
+
+    @Test
+    fun theBiometricPromptGetsWhatIsLeftOfTheProposalsAgeAndOneAnsweredLateIsProposedAgain() = runTest {
+        biometrics = BiometricUnlock.On
+        val viewModel = reviewed()
+        clock += 30.seconds
+        world.signer.answer = Signing.TimedOut
+
+        viewModel.signWithBiometrics()
+        runCurrent()
+
+        assertEquals(30.seconds, (world.signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertEquals(emptyList(), world.queue.requests.value, "nothing signed, nothing queued")
+        assertEquals(
+            "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the " +
+                "quote was made again: check it, then sign.",
+            viewModel.review.unlock.error,
+        )
     }
 
     @Test

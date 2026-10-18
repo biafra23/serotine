@@ -15,7 +15,9 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -28,6 +30,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** The envelope's biometric path (docs/keys-and-signing.md, rules 3 and 4), over a fake biometric key. */
 class EnvelopeKeyStoreBiometricsTest {
@@ -89,6 +93,34 @@ class EnvelopeKeyStoreBiometricsTest {
         // Proven once when turned on, then the prompt says what is signed.
         assertEquals(listOf(CONFIRM, biometrics.reason), key.reasons)
         assertIs<Signing.Signed>(store.sign(abandonAddress, digest, biometrics))
+    }
+
+    @Test
+    fun aPromptNotAnsweredWithinTheDeadlineSignsNothing() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        assertEquals(BiometricChange.Enabled, store.enableBiometrics(password, CONFIRM))
+        val within = Unlock.WithBiometrics("Send 0.1 ETH to 0x5aAe…eAed", within = 30.seconds)
+
+        // Answered in time: signed.
+        assertIs<Signing.Signed>(store.sign(hardhatAddress, digest, within))
+
+        // Not answered: past the deadline the prompt is dismissed, and nothing is signed.
+        key.gate = CompletableDeferred()
+        val late = async { store.sign(hardhatAddress, digest, within) }
+        advanceTimeBy(29.seconds)
+        runCurrent()
+        assertFalse(late.isCompleted, "the prompt is still up")
+        advanceTimeBy(2.seconds)
+        runCurrent()
+        assertEquals(Signing.TimedOut, late.await())
+        assertTrue(key.gate?.isCompleted == false, "never answered: the prompt was cancelled, not passed")
+
+        // A deadline already gone asks nothing at all.
+        key.gate = null
+        val asked = key.reasons.size
+        assertEquals(Signing.TimedOut, store.sign(hardhatAddress, digest, within.copy(within = Duration.ZERO)))
+        assertEquals(asked, key.reasons.size)
     }
 
     @Test

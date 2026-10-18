@@ -530,6 +530,48 @@ class SafeTxViewModelTest {
     }
 
     @Test
+    fun aRemovalUnderWayIsNotDroppedByAnApprovalOrAnExecutionAskedMeanwhile() = runTest {
+        funded()
+        world.inputs.simulation = executed
+        val viewModel = viewModel(queued(world.request(world.ether(4), world.carol)))
+        world.queue.removeGate = CompletableDeferred()
+
+        viewModel.remove()
+        runCurrent()
+        viewModel.startExecution()
+        viewModel.startApproval()
+        runCurrent()
+        assertEquals(emptyList(), world.inputs.estimated, "nothing quoted while the removal runs")
+
+        world.queue.removeGate?.complete(Unit)
+        runCurrent()
+        assertIs<SafeTxUiState.Removed>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun anApprovalsBiometricPromptGetsWhatIsLeftOfItsQuoteAndOneAnsweredLateIsQuotedAgain() = runTest {
+        biometrics = BiometricUnlock.On
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        viewModel.startApproval()
+        runCurrent()
+        clock += 25.seconds
+
+        world.signer.answer = Signing.TimedOut
+        viewModel.signWithBiometrics()
+        runCurrent()
+
+        assertEquals(35.seconds, (world.signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertEquals(emptyList(), world.broadcaster.sent, "nothing signed, nothing sent")
+        assertEquals(2, world.inputs.estimated.size, "quoted again")
+        assertEquals(
+            "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the " +
+                "quote was made again: check it, then sign.",
+            viewModel.review.unlock.error,
+        )
+    }
+
+    @Test
     fun aTransactionTheSafesNoncePassedIsSaidToHaveRun() = runTest {
         val viewModel = viewModel(queued(world.request(world.ether(4))))
         assertIs<SafeTxUiState.Overview>(viewModel.uiState.value)

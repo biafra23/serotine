@@ -10,7 +10,9 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.RecipientLookup
 import eth.serotine.domain.usecase.Valuation
@@ -19,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.transformLatest
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 // The transfer form (docs/wallet-ux.md, screen 7) as Send and a Safe's proposal of a transfer
@@ -300,6 +303,27 @@ internal val QUOTE_MAX_AGE = 60.seconds
 
 /** What a review says under its unlock once a stale quote was made again at the tap that would sign it. */
 internal const val STALE_QUOTE = "The quote was over a minute old, so it was made again: check it, then sign."
+
+/**
+ * The least time the biometric prompt is given to be answered in: a quote with less of
+ * [QUOTE_MAX_AGE] left at the tap is made again first, as a stale one is.
+ */
+internal val MIN_PROMPT_TIME = 15.seconds
+
+/**
+ * The deadline of the biometric prompt that signs a quote of [age] ([Unlock.WithBiometrics.within]):
+ * what is left of [QUOTE_MAX_AGE], so that the quote is never signed older than that, or null when
+ * that is less than [MIN_PROMPT_TIME] and the quote is to be made again first.
+ */
+internal fun promptDeadline(age: Duration): Duration? = (QUOTE_MAX_AGE - age).takeIf { it >= MIN_PROMPT_TIME }
+
+/**
+ * What a review says under its unlock once a biometric prompt was not answered within its deadline
+ * ([promptDeadline], [Signing.TimedOut]) and the quote was made again.
+ */
+internal const val PROMPT_TIMED_OUT =
+    "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the quote " +
+        "was made again: check it, then sign."
 
 /** What a balance not read yet shows. */
 internal const val CHECKING = "Checking…"

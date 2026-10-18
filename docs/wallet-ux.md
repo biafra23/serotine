@@ -169,7 +169,11 @@ upgrades*).
    - The quote is never signed stale: it is made when the review is entered,
      again on Refresh, when the screen is shown again after it was not, and
      at the tap that would sign it when it is over a minute old (made again
-     and said, not signed). A name is resolved again with every quote (one
+     and said, not signed). The biometric prompt gets what is left of that
+     minute as its deadline (`Unlock.WithBiometrics.within`; less than 15
+     seconds left, the quote is made again first): one not answered in time
+     is dismissed, nothing is signed, and the quote is made again and said.
+     A name is resolved again with every quote (one
      that moved, or that cannot be verified again, is said, not signed), and
      back to 7 drops it.
    - Back, the system's included, returns to 7. It waits while a signature
@@ -340,7 +344,9 @@ upgrades*).
       queued and 17 opens for it, in place of the proposal. Nothing is queued
       until an owner held here signs it, so a proposal given up leaves no
       nonce taken. A proposal the queue cannot save once signed is shared
-      from the review (its QR code and text), not lost. The review stands on
+      from the review (its QR code and text), not lost: Back asks before it
+      leaves that signature behind, and a refresh that proposes another
+      transaction (another nonce) drops it and says so. The review stands on
       its proposal while the Safe's reading or the account list is not
       there; a refresh or the signature checks the Safe again.
 17. **Safe transaction**

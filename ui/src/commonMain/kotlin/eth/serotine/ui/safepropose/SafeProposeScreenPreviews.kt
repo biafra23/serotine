@@ -129,6 +129,16 @@ private fun SafeProposeReviewNotSavedPreview() = SafeProposePreview(
 
 @Preview
 @Composable
+private fun SafeProposeReviewAskingToDropPreview() = SafeProposePreview(
+    review.copy(
+        error = "Signed, but this device's queue cannot be saved right now, so the proposal is not kept here: " +
+            "share it below before you leave this screen, or sign it again in a moment.",
+        askingToDrop = true,
+    ),
+)
+
+@Preview
+@Composable
 private fun SafeProposeReviewSigningPreview() = SafeProposePreview(review.copy(signing = true))
 
 @Preview
@@ -155,6 +165,7 @@ internal val safeProposeScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeProposeReviewDarkPreview() },
     { SafeProposeReviewQueuedNotSimulatedPreview() },
     { SafeProposeReviewNotSavedPreview() },
+    { SafeProposeReviewAskingToDropPreview() },
     { SafeProposeReviewSigningPreview() },
     { SafeProposeLoadingPreview() },
     { SafeProposeWatchOnlyPreview() },

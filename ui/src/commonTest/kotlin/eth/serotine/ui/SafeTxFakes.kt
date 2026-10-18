@@ -56,6 +56,9 @@ internal class MemorySafeTxQueue : SafeTxQueue {
     val unreadable = MutableStateFlow(false)
     var failSaves = false
 
+    /** While set, a removal waits for it. */
+    var removeGate: CompletableDeferred<Unit>? = null
+
     override fun observe(safe: Address): Flow<SafeTxQueueList> = combine(requests, unreadable) { list, broken ->
         if (broken) SafeTxQueueList.Unreadable else SafeTxQueueList.Loaded(list.filter { it.safe == safe })
     }
@@ -73,6 +76,7 @@ internal class MemorySafeTxQueue : SafeTxQueue {
     }
 
     override suspend fun remove(hash: Digest): Boolean {
+        removeGate?.await()
         if (failSaves) return false
         requests.value = requests.value.filterNot { it.hash == hash }
         return true

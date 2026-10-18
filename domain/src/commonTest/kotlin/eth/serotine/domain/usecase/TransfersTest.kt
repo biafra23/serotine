@@ -358,7 +358,8 @@ class TransfersTest {
         val signer = FakeSigner(Signing.Signed(signature))
         val unlock = Unlock.WithBiometrics("Send 1 wei")
 
-        SendTransfer(signer, FakeBroadcaster(Broadcast.Rejected("nonce too low")), sent) { 1_800_000_123 }(quote, unlock)
+        val rejected = FakeBroadcaster(Broadcast.Rejected("nonce too low"))
+        SendTransfer(signer, rejected, sent) { 1_800_000_123 }(quote, unlock)
         assertEquals(emptyList(), sent.transfers.value, "rejected: it holds no nonce")
 
         // No peer answered: it may be out there all the same, so it is kept, holding nothing but

@@ -86,6 +86,8 @@ class SafeProposeScreenTest {
                     onPasswordChange = { events += "password" },
                     onSign = { events += "sign" },
                     onSignWithBiometrics = { events += "biometrics" },
+                    onDropUnsaved = { events += "drop" },
+                    onKeepUnsaved = { events += "keep" },
                 ),
                 onBack = { events += "back" },
             )
@@ -104,6 +106,16 @@ class SafeProposeScreenTest {
         rule.onNodeWithTag(SEND_REVIEW_TAG).performScrollTo().assertIsNotEnabled()
         rule.onNodeWithContentDescription("Back").performClick()
         assertEquals(listOf("amount 0.5", "max", "back"), events.filterNot { it == "amount " })
+    }
+
+    @Test
+    fun backWithASignatureNotSavedAsksBeforeLeavingItBehind() {
+        show(review.copy(askingToDrop = true))
+
+        rule.onNodeWithText("Leave the signature behind?").assertIsDisplayed()
+        rule.onNodeWithText("Stay and share").performClick()
+        rule.onNodeWithTag(PROPOSE_DROP_UNSAVED_TAG).performClick()
+        assertEquals(listOf("keep", "drop"), events)
     }
 
     @Test

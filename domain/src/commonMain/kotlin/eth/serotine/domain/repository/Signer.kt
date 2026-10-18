@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
+import kotlin.time.Duration
 
 /**
  * The signer port (docs/keys-and-signing.md, *Where it lives in the architecture*): a signing
@@ -18,7 +19,8 @@ interface Signer {
      * the seed inside it, and the seed, the key and the password's bytes zeroed before this
      * returns. [digest] is signed as given, never hashed again: what it is the hash of is the
      * caller's to know and to have shown the user. Refused when this device holds no key for
-     * [account] ([Signing.NoKey]), or the key it holds does not derive [account]. Never throws.
+     * [account] ([Signing.NoKey]), or the key it holds does not derive [account]. A biometric
+     * unlock's deadline is applied, never ignored ([Signing.TimedOut]). Never throws.
      */
     suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing
 }
@@ -34,8 +36,11 @@ sealed interface Unlock {
     /**
      * With a strong biometric, through the system's prompt, which says [reason] (display-ready:
      * what is being signed). Only where the biometric path is on ([KeyStore.enableBiometrics]).
+     * [within], when set, is the deadline the signature must be made in, the prompt's answer
+     * included: past it the prompt is dismissed and nothing is signed ([Signing.TimedOut]). A
+     * quote ages while the prompt is up, and one past its age is never signed.
      */
-    data class WithBiometrics(val reason: String) : Unlock
+    data class WithBiometrics(val reason: String, val within: Duration? = null) : Unlock
 }
 
 /** The outcome of [Signer.sign]. */
@@ -55,6 +60,12 @@ sealed interface Signing {
 
     /** The biometric prompt was dismissed. Nothing was signed; the password still works. */
     data object Cancelled : Signing
+
+    /**
+     * Not signed within the unlock's deadline ([Unlock.WithBiometrics.within]): the prompt was
+     * dismissed, and nothing was signed. What it was to sign is too old by now, and is made again.
+     */
+    data object TimedOut : Signing
 
     /**
      * A biometric cannot open this account's envelope now, for [reason]. Nothing was signed;

@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -68,6 +69,9 @@ const val PROPOSE_PASSWORD_TAG = "propose-password"
 /** Test tag of the Sign and queue button, for UI tests. */
 const val PROPOSE_SIGN_TAG = "propose-sign"
 
+/** Test tag of the button that leaves a signature not saved behind, for UI tests. */
+const val PROPOSE_DROP_UNSAVED_TAG = "propose-drop-unsaved"
+
 /**
  * Binds [SafeProposeScreen] to its ViewModel. A proposal signed and queued ends the screen through
  * [onProposed] with its Safe transaction hash; the screen stopping being shown becomes
@@ -106,6 +110,8 @@ fun SafeProposeRoute(
             onPasswordChange = viewModel::onPasswordChange,
             onSign = viewModel::sign,
             onSignWithBiometrics = viewModel::signWithBiometrics,
+            onDropUnsaved = viewModel::dropUnsaved,
+            onKeepUnsaved = viewModel::keepUnsaved,
         ),
         onBack = onBack,
         onCopy = rememberCopyText(),
@@ -117,7 +123,9 @@ fun SafeProposeRoute(
 /**
  * What the user can ask of [SafeProposeScreen]: Send's form (the asset, the recipient typed or
  * picked, the amount, Max, Review), and in the review back to the form ([onEdit]), Refresh, the
- * owner who signs, the password, and Sign ([onSign], or [onSignWithBiometrics]).
+ * owner who signs, the password, and Sign ([onSign], or [onSignWithBiometrics]); with a signature
+ * the queue could not save, leaving it behind ([onDropUnsaved]) or staying to share it
+ * ([onKeepUnsaved]).
  */
 class SafeProposeActions(
     val onAssetChange: (contract: String?) -> Unit = {},
@@ -133,6 +141,8 @@ class SafeProposeActions(
     val onPasswordChange: (String) -> Unit = {},
     val onSign: () -> Unit = {},
     val onSignWithBiometrics: () -> Unit = {},
+    val onDropUnsaved: () -> Unit = {},
+    val onKeepUnsaved: () -> Unit = {},
 )
 
 /**
@@ -159,6 +169,24 @@ fun SafeProposeScreen(
     // In the review, back is to the form; while a signature runs, back waits for it.
     BackHandler(enabled = review != null) {
         if (review?.signing != true) actions.onEdit()
+    }
+    if (review?.askingToDrop == true) {
+        AlertDialog(
+            onDismissRequest = actions.onKeepUnsaved,
+            title = { Text("Leave the signature behind?") },
+            text = {
+                Text(
+                    "The signature made here is not saved on this device: share the request first, or it is " +
+                        "lost, and the proposal must be signed again.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = actions.onDropUnsaved, Modifier.testTag(PROPOSE_DROP_UNSAVED_TAG)) {
+                    Text("Leave it")
+                }
+            },
+            dismissButton = { TextButton(onClick = actions.onKeepUnsaved) { Text("Stay and share") } },
+        )
     }
     Scaffold(
         modifier = modifier,

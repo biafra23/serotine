@@ -20,6 +20,10 @@ import kotlin.coroutines.resume
  * biometric key's cipher as its `CryptoObject`, so only a match the hardware accepts unlocks
  * it. Strong biometrics only (`BIOMETRIC_STRONG` from API 30; a crypto-bound prompt on API 29
  * takes no weaker one), with an explicit confirmation, and "Use the password" as the way out.
+ *
+ * A caller that is cancelled cancels the prompt's `CancellationSignal`, which dismisses it: that is
+ * how the key store's deadline ([eth.serotine.domain.repository.Unlock.WithBiometrics.within])
+ * ends a prompt nobody answered in time, so that no quote is signed past its age.
  */
 class PlatformBiometricPrompter(private val foreground: () -> Activity?) : BiometricPrompter {
 

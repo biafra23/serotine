@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentTransfer
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CallQuote
@@ -44,6 +45,7 @@ import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
+import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SafeTxActionItem
@@ -58,6 +60,7 @@ import eth.serotine.ui.components.gasTermsItem
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
+import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.shareItem
@@ -455,8 +458,11 @@ class SafeTxViewModel(
                 if (!current.idle || !current.unlock.biometrics || notNeeded(current) != null || requoted(current)) {
                     return
                 }
+                // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
+                val within = promptDeadline(current.quotedAt.elapsedNow())
+                    ?: return requote(current, current.account, current.level, note = STALE_QUOTE)
                 val what = if (current.kind == ReviewKind.APPROVAL) "Approve on chain" else "Execute"
-                send(current, Unlock.WithBiometrics("$what Safe transaction $action"))
+                send(current, Unlock.WithBiometrics("$what Safe transaction $action", within))
             }
             else -> Unit
         }
@@ -571,7 +577,8 @@ class SafeTxViewModel(
     }
 
     private fun quoteForReview(kind: ReviewKind, account: Address, level: FeeLevel) {
-        if (step.value != Step.Overview) return
+        // Not while a removal runs: its outcome lands on the overview, and would be dropped.
+        if (step.value != Step.Overview || job?.isActive == true) return
         val request = now?.request ?: return
         view.update { it.copy(message = null, sharing = false) }
         val quoting = Step.Quoting(kind, account, level)
@@ -733,6 +740,12 @@ class SafeTxViewModel(
                     )
                     null -> latest.copy(signing = false, unlock = latest.unlock.copy(error = SEND_FAILED))
                 }
+            }
+            // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
+            val timedOut = (sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut
+            val latest = step.value as? Step.Reviewing
+            if (timedOut && latest != null && latest.idle) {
+                requote(latest, latest.account, latest.level, note = PROMPT_TIMED_OUT)
             }
             // Hidden while it ran and nothing was sent: the quote is from before, so it is made again.
             requoteIfHidden()

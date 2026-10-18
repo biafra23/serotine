@@ -24,8 +24,9 @@ import kotlinx.coroutines.launch
  * the wallet password and biometric unlock, and turning biometric unlock on (with the wallet
  * password, which opens each stored key once so the biometric key can wrap it, then one
  * fingerprint or face check that proves it) and off (no password: it deletes a way in). One of
- * the ViewModels the [WalletPassword] passes through: it keeps it only while its field is shown,
- * and never logs or saves it.
+ * the ViewModels the [WalletPassword] passes through: it keeps it in its state only while its
+ * field is shown, takes it out of the state at the tap that uses it (the call holds it from then
+ * on), and never logs or saves it.
  */
 class SecurityViewModel(
     private val describeKeyStore: DescribeKeyStore,
@@ -68,10 +69,14 @@ class SecurityViewModel(
         val ready = state.value as? Ready ?: return
         val prompt = ready.enabling ?: return
         if (!prompt.canConfirm) return
-        // changing outlives the field: a screen left and come back to still shows it running.
-        state.value = ready.copy(enabling = prompt.copy(working = true, error = null), changing = true)
+        // The password leaves the state now, as the signing screens' does: it is held here for the
+        // one call, and the field shows nothing while it runs. changing outlives the field: a
+        // screen left and come back to still shows it running.
+        val password = prompt.password
+        val working = prompt.copy(password = WalletPassword.EMPTY, working = true, error = null)
+        state.value = ready.copy(enabling = working, changing = true)
         viewModelScope.launch {
-            val result = safely { enableBiometricUnlock(prompt.password, CONFIRMATION) }
+            val result = safely { enableBiometricUnlock(password, CONFIRMATION) }
             if (result == BiometricChange.WrongPassword) {
                 state.update { current ->
                     when {

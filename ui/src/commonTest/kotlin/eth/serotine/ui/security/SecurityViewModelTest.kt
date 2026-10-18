@@ -71,6 +71,29 @@ class SecurityViewModelTest {
     }
 
     @Test
+    fun thePasswordLeavesTheStateAtTheTapThatUsesIt() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.onBiometricsChange(true)
+        viewModel.onPasswordChange("correct horse battery")
+
+        viewModel.onConfirm()
+        runCurrent()
+
+        // While the key store works, the state holds no password: only the call does.
+        val prompt = assertIs<PasswordPrompt>(viewModel.ready.enabling)
+        assertTrue(prompt.working)
+        assertEquals("", prompt.password.text)
+        assertEquals("correct horse battery", keys.passwords.single().text)
+        viewModel.onPasswordChange("typed meanwhile")
+        assertEquals("", assertIs<PasswordPrompt>(viewModel.ready.enabling).password.text, "the field waits")
+
+        keys.enabling.complete(BiometricChange.Enabled)
+        runCurrent()
+        assertNull(viewModel.ready.enabling)
+    }
+
+    @Test
     fun aWrongPasswordIsSaidAndTheFieldStays() = runTest {
         val viewModel = viewModel()
         runCurrent()

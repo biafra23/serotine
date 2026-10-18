@@ -417,9 +417,31 @@ class CreateSafeViewModelTest {
         runCurrent()
 
         assertEquals(
-            Unlock.WithBiometrics("Deploy a 1-of-2 Safe at $address, paid from Daily"),
+            Unlock.WithBiometrics("Deploy a 1-of-2 Safe at $address, paid from Daily", within = 60.seconds),
             signer.asked.single().second,
+            "the prompt gets what is left of the quote's minute",
         )
+    }
+
+    @Test
+    fun aFingerprintPromptAnsweredAfterTheQuotesAgeSignsNothingAndTheQuoteIsMadeAgain() = runTest {
+        biometrics = BiometricUnlock.On
+        val viewModel = reviewed()
+        clock += 45.seconds
+        signer.answer = Signing.TimedOut
+
+        viewModel.signWithBiometrics()
+        runCurrent()
+
+        assertEquals(15.seconds, (signer.asked.single().second as Unlock.WithBiometrics).within)
+        assertTrue(broadcaster.sent.isEmpty(), "nothing signed, nothing sent")
+        val review = viewModel.review
+        assertEquals(
+            "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the " +
+                "quote was made again: check it, then sign.",
+            review.unlock.error,
+        )
+        assertTrue(review.canSignWithBiometrics, "quoted again, and offered again")
     }
 
     @Test

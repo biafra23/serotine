@@ -16,6 +16,7 @@ import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentTransfer
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -34,6 +35,7 @@ import eth.serotine.ui.components.AssetOption
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
+import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
@@ -51,6 +53,7 @@ import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
+import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
@@ -85,7 +88,9 @@ import kotlin.time.TimeSource
  * What is signed is the quote under review, and a quote is never signed stale: it is made when
  * the review is entered, again on Refresh, when the screen is shown again after it was not, and
  * when it is older than [QUOTE_MAX_AGE] at the tap that would sign it ([timeSource] tells), and
- * it is dropped by any change of what it was made for. Its recipient's name is resolved again
+ * it is dropped by any change of what it was made for. The biometric prompt gets what is left of
+ * that age as its deadline ([promptDeadline]): one answered later signs nothing, and the quote is
+ * made again. Its recipient's name is resolved again
  * with every quote. A price never reaches it: the amount is what was typed, in token units.
  *
  * One of the ViewModels the [WalletPassword] passes through (CLAUDE.md, *Trust*): it holds it in
@@ -172,13 +177,17 @@ class SendViewModel(
 
         /**
          * [quote] of [request], made at [quotedAt], under review; [hidden] once the screen stopped
-         * being shown since it was made.
+         * being shown since it was made. [sender] and [accounts] are the wallet's as they were when
+         * it was quoted: the review stands on them while the account list is not there (a restart
+         * of its reading), rather than vanish with a password in it or a signature under way.
          */
         data class Reviewing(
             val request: Request,
             val quote: TransferQuote,
             val quotedAt: TimeMark,
             val unlock: UnlockStep,
+            val sender: SendFrom,
+            val accounts: List<Account>,
             val refreshing: Boolean = false,
             val signing: Boolean = false,
             val notSent: NotSent? = null,
@@ -261,11 +270,13 @@ class SendViewModel(
     fun review() {
         val current = step.value as? Step.Composing ?: return
         if (current.quoting) return
-        val request = model.value?.let(::requestOf) ?: return
+        val model = model.value ?: return
+        val request = requestOf(model) ?: return
+        val account = (model.sender as? Sender.From)?.account ?: return
         step.value = Step.Composing(quoting = true)
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
-            val next = quoted(request, unlock = null)
+            val next = quoted(request, unlock = null, SendFrom(account.label, display), model.accounts)
             if (step.value != Step.Composing(quoting = true)) return@launch
             // Made while hidden: it is from before the screen came back, so it is made again.
             step.value = if (next is Step.Reviewing) next.copy(hidden = hiddenWhileQuoting) else next
@@ -294,7 +305,9 @@ class SendViewModel(
         if (!current.idle) return
         step.value = current.copy(refreshing = true, hidden = false, unlock = current.unlock.copy(error = null))
         job = viewModelScope.launch {
-            val next = quoted(current.request, unlock = current.unlock)
+            val model = model.value
+            val sender = (model?.sender as? Sender.From)?.let { SendFrom(it.account.label, display) } ?: current.sender
+            val next = quoted(current.request, unlock = current.unlock, sender, model?.accounts ?: current.accounts)
             step.update { latest ->
                 when {
                     latest !is Step.Reviewing || !latest.refreshing -> latest
@@ -303,6 +316,8 @@ class SendViewModel(
                         request = next.request,
                         quote = next.quote,
                         quotedAt = next.quotedAt,
+                        sender = next.sender,
+                        accounts = next.accounts,
                         refreshing = false,
                         unlock = latest.unlock.copy(error = note),
                     )
@@ -335,9 +350,11 @@ class SendViewModel(
     fun signWithBiometrics() {
         val current = step.value as? Step.Reviewing ?: return
         if (!current.idle || !current.unlock.biometrics || requoted(current)) return
+        // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
+        val within = promptDeadline(current.quotedAt.elapsedNow()) ?: return refresh(note = STALE_QUOTE)
         val amount = exactAmount(current.quote.amount, current.request.option.decimals, current.request.option.symbol)
         // The recipient in full: the prompt is the last thing read before the key signs.
-        sign(current, Unlock.WithBiometrics("Send $amount to ${Eip55.format(current.quote.to)}"))
+        sign(current, Unlock.WithBiometrics("Send $amount to ${Eip55.format(current.quote.to)}", within))
     }
 
     /** Whether [review]'s quote is too old to sign, and so is being made again instead. */
@@ -438,6 +455,8 @@ class SendViewModel(
                     null -> latest.copy(signing = false, unlock = latest.unlock.copy(error = SEND_FAILED))
                 }
             }
+            // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
+            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) refresh(note = PROMPT_TIMED_OUT)
             // Hidden while it ran and nothing was sent: the quote is from before, so it is made again.
             requoteIfHidden()
         }
@@ -448,7 +467,7 @@ class SendViewModel(
      * step saying why there is none. A name is resolved again first: what is signed is the
      * address the name has now, and one that moved is said, not signed.
      */
-    private suspend fun quoted(request: Request, unlock: UnlockStep?): Step {
+    private suspend fun quoted(request: Request, unlock: UnlockStep?, sender: SendFrom, accounts: List<Account>): Step {
         val to = when (val again = resolveAgain(request.to, ::lookUp)) {
             is ResolvedAgain.Same -> again.found // its block is this resolution's
             is ResolvedAgain.Changed -> {
@@ -474,6 +493,8 @@ class SendViewModel(
             quoting.quote,
             timeSource.markNow(),
             unlock ?: UnlockStep(biometrics = biometricsOffered()),
+            sender,
+            accounts,
         )
     }
 
@@ -529,18 +550,19 @@ class SendViewModel(
 
     private fun render(model: Model?, step: Step): SendUiState {
         val network = network.displayName
-        if (step is Step.Sent) return SendUiState.Sent(network, step.hash)
+        val composing = when (step) {
+            is Step.Sent -> return SendUiState.Sent(network, step.hash)
+            // A review stands on its quote, whatever the account list says meanwhile: a refresh
+            // quotes it again, and the signature finds whether the key is still here.
+            is Step.Reviewing -> return review(model?.accounts ?: step.accounts, step)
+            is Step.Composing -> step
+        }
         model ?: return SendUiState.Loading(network)
         val account = when (val sender = model.sender) {
             is Sender.Cannot -> return SendUiState.CannotSend(network, sender.message)
             is Sender.From -> sender.account
         }
-        val sender = SendFrom(account.label, display)
-        return when (step) {
-            is Step.Composing -> compose(model, sender, step)
-            is Step.Reviewing -> review(model, sender, step)
-            is Step.Sent -> SendUiState.Sent(network, step.hash)
-        }
+        return compose(model, SendFrom(account.label, display), composing)
     }
 
     private fun compose(model: Model, sender: SendFrom, step: Step.Composing): SendUiState.Compose {
@@ -580,7 +602,7 @@ class SendViewModel(
         return SendUiState.Compose(form, inputs.fee, earlier = step.earlier)
     }
 
-    private fun review(model: Model, sender: SendFrom, step: Step.Reviewing): SendUiState.Review {
+    private fun review(accounts: List<Account>, step: Step.Reviewing): SendUiState.Review {
         val quote = step.quote
         val option = step.request.option
         val native = network.nativeSymbol
@@ -603,10 +625,10 @@ class SendViewModel(
         val ran = quote.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head"
         return SendUiState.Review(
             network = network.displayName,
-            from = sender,
+            from = step.sender,
             amount = exactAmount(quote.amount, option.decimals, option.symbol),
             asset = option.choice(),
-            recipient = recipientItem(step.request.to, model.accounts, option),
+            recipient = recipientItem(step.request.to, accounts, option),
             maxFee = exactAmount(quote.maxFee, NATIVE_DECIMALS, native),
             feeDetail = feeDetail(quote.level, transaction, quote.feeBlock),
             balances = listOfNotNull(tokenBalance, nativeBalance),

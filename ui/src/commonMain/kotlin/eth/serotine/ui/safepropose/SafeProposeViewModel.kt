@@ -13,6 +13,7 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -34,6 +35,7 @@ import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetOption
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
@@ -49,6 +51,7 @@ import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSignedText
+import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
@@ -157,8 +160,8 @@ class SafeProposeViewModel(
          * [accounts] are the wallet's as they were when it was proposed: the review stands on them
          * while the Safe's reading or the list is not there, rather than vanish with a password in
          * it or a signature under way. [unsaved] is the request signed here that the queue could
-         * not save: shown for sharing until the review is left, a new proposal or one that fails
-         * whatever.
+         * not save: shown for sharing until the review is left (Back asks first: [askingToDrop]),
+         * or a new proposal of another transaction replaces it, which says so.
          */
         data class Reviewing(
             val request: Request,
@@ -173,6 +176,7 @@ class SafeProposeViewModel(
             val error: String? = null,
             val hidden: Boolean = false,
             val unsaved: SigningRequest? = null,
+            val askingToDrop: Boolean = false,
         ) : Step {
             val idle: Boolean
                 get() = !refreshing && !signing
@@ -264,12 +268,33 @@ class SafeProposeViewModel(
         }
     }
 
-    /** Back from the review to the form: the proposal and the password go. Not while signing. */
+    /**
+     * Back from the review to the form: the proposal and the password go. Not while signing; and
+     * with a signature made here that the queue could not save, only once the user said to drop it
+     * ([dropUnsaved]): it is kept nowhere else.
+     */
     fun edit() {
         val current = step.value as? Step.Reviewing ?: return
         if (current.signing) return
+        if (current.unsaved != null) {
+            step.value = current.copy(askingToDrop = true)
+            return
+        }
         job?.cancel()
         step.value = Step.Composing()
+    }
+
+    /** Back to the form after all, dropping the signature the queue could not save. */
+    fun dropUnsaved() {
+        val current = step.value as? Step.Reviewing ?: return
+        if (current.signing || !current.askingToDrop) return
+        job?.cancel()
+        step.value = Step.Composing()
+    }
+
+    /** Stays in the review, with the signature the queue could not save, to share it. */
+    fun keepUnsaved() = step.update { current ->
+        if (current is Step.Reviewing) current.copy(askingToDrop = false) else current
     }
 
     /** Signs as the owner at [address] (EIP-55) instead. */
@@ -298,16 +323,24 @@ class SafeProposeViewModel(
             step.update { latest ->
                 when {
                     latest !is Step.Reviewing || !latest.refreshing -> latest
-                    // The password typed meanwhile stays: it is the same review, hidden since or not.
-                    next is Step.Reviewing -> latest.copy(
-                        request = next.request,
-                        proposal = next.proposal,
-                        proposedAt = next.proposedAt,
-                        owner = next.owner,
-                        accounts = next.accounts,
-                        refreshing = false,
-                        unlock = latest.unlock.copy(error = note),
-                    )
+                    // The password typed meanwhile stays: it is the same review, hidden since or not. A
+                    // signature not saved is of the transaction it was made for: one proposed anew as
+                    // another transaction (another nonce, a name that moved) drops it, and says so.
+                    next is Step.Reviewing -> {
+                        val unsaved = latest.unsaved?.takeIf { it.hash == next.proposal.request.hash }
+                        latest.copy(
+                            request = next.request,
+                            proposal = next.proposal,
+                            proposedAt = next.proposedAt,
+                            owner = next.owner,
+                            accounts = next.accounts,
+                            refreshing = false,
+                            unlock = latest.unlock.copy(error = note),
+                            unsaved = unsaved,
+                            error = if (latest.unsaved != null && unsaved == null) UNSAVED_REPLACED else latest.error,
+                            askingToDrop = latest.askingToDrop && unsaved != null,
+                        )
+                    }
                     // A request signed here that is kept nowhere else is not given up with a
                     // re-proposal that fails: the review stays, saying why, with it to share.
                     latest.unsaved != null && next is Step.Composing ->
@@ -347,7 +380,9 @@ class SafeProposeViewModel(
         // The recipient in full: the prompt is the last thing read before the key signs.
         val to = Eip55.format(current.request.to.address)
         val warning = option.warning?.let { " ($it)" }.orEmpty()
-        sign(current, Unlock.WithBiometrics("Sign a Safe transaction of $label: send $amount$warning to $to"))
+        // The prompt gets what is left of the proposal's age: past it, nothing is signed, and it is made again.
+        val within = promptDeadline(current.proposedAt.elapsedNow()) ?: return refresh(note = STALE_QUOTE)
+        sign(current, Unlock.WithBiometrics("Sign a Safe transaction of $label: send $amount$warning to $to", within))
     }
 
     /** Whether [review]'s proposal is too old to sign, and so is being made again instead. */
@@ -429,6 +464,8 @@ class SafeProposeViewModel(
                     null -> latest.copy(signing = false, unlock = latest.unlock.copy(error = SIGN_FAILED))
                 }
             }
+            // The prompt outlived the proposal's age: nothing was signed, and it is made again.
+            if ((signing as? SafeTxSigning.NotSigned)?.signing == Signing.TimedOut) refresh(note = PROMPT_TIMED_OUT)
             // Hidden while it ran and nothing was queued: the proposal is from before, so it is made again.
             reproposeIfHidden()
         }
@@ -632,6 +669,7 @@ class SafeProposeViewModel(
             signing = step.signing,
             error = step.error,
             share = step.unsaved?.let { shareItem(encodeSigningRequest(it), it.signatures.size) },
+            askingToDrop = step.askingToDrop,
         )
     }
 
@@ -695,6 +733,9 @@ class SafeProposeViewModel(
 
     private companion object {
         const val SIGN_FAILED = "Serotine could not finish this signature. Nothing was queued: try again."
+        const val UNSAVED_REPLACED =
+            "Proposed again as another transaction, so the signature made for the earlier one, which this " +
+                "device's queue could not save, was dropped: sign this one."
         const val NOT_SAVED =
             "Signed, but this device's queue cannot be saved right now, so the proposal is not kept here: share " +
                 "it below before you leave this screen, or sign it again in a moment."

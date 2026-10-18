@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentTransfer
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -36,6 +37,7 @@ import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
+import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
@@ -49,10 +51,11 @@ import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
+import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
-import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.recipientText
+import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.unavailableText
 import eth.serotine.ui.components.verifiedAt
 import kotlinx.coroutines.CancellationException
@@ -348,7 +351,10 @@ class CreateSafeViewModel(
         // The address in full: the prompt is the last thing read before the key signs.
         val prompt = "Deploy a ${plan.threshold}-of-${plan.owners.size} Safe at ${Eip55.format(plan.address)}, " +
             "paid from $payer"
-        sign(current, quote, Unlock.WithBiometrics(prompt))
+        // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
+        val age = current.quotedAt?.elapsedNow() ?: return requote(note = STALE_QUOTE)
+        val within = promptDeadline(age) ?: return requote(note = STALE_QUOTE)
+        sign(current, quote, Unlock.WithBiometrics(prompt, within))
     }
 
     /** Broadcasts the deployment signed but not sent again, byte for byte. */
@@ -559,6 +565,8 @@ class CreateSafeViewModel(
                     null -> latest.copy(signing = false, unlock = latest.unlock.copy(error = DEPLOY_FAILED))
                 }
             }
+            // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
+            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) requote(note = PROMPT_TIMED_OUT)
             // Hidden while it ran and nothing was sent: the quote is from before, so it is made again.
             requoteIfHidden()
         }
