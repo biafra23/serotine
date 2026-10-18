@@ -603,11 +603,14 @@ discussion that produced this note.
     from the adapter through a use case and the ViewModel into the seed
     UiState at creation, and back the same way at restore. Nothing on that
     path stores, logs or caches them, and the UiState is cleared when its
-    screen is left. Everything the adapter derives from the words, the seed
-    and the keys, stays under the rule above. Open, the owner's to decide:
-    whether a rotation or the app going to the background counts as leaving
-    the screen (#39; today every `ON_STOP` does), and whether Create account,
-    one screen using both legs of the path, is within the entry (#40).
+    screen is left. "Left" means the app going to the background, the screen
+    turning off or the screen being popped; a configuration change (a
+    rotation, a fold, a resize, a theme or font change) is not a leaving, and
+    the words stay in the ViewModel's memory across it, never in a saved
+    state or a Bundle (owner ruling, 2026-10-18, #39). Everything the adapter
+    derives from the words, the seed and the keys, stays under the rule
+    above. Open, the owner's to decide: whether Create account, one screen
+    using both legs of the path, is within the entry (#40).
 - **How keys are held — docs/keys-and-signing.md is the contract** (owner
   decisions, 2026-10-15); this is the summary a reviewer holds a diff against:
   - No platform holds secp256k1 in hardware, so an EOA key or a

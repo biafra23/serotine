@@ -37,11 +37,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.platform.KeepScreenOn
+import eth.serotine.ui.platform.OnStopUnlessConfigurationChange
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers
 
@@ -57,8 +56,8 @@ const val CREATE_REPEAT_TAG = "create-password-repeat"
 
 /**
  * Binds [CreateAccountScreen] to its ViewModel, reports a created account through [onCreated]
- * so the caller can close the screen, and tells the ViewModel when the screen stops being
- * shown, so it drops the words.
+ * so the caller can close the screen, and tells the ViewModel when the screen is left, so it
+ * drops the words: a stop that is not a configuration change (owner ruling, 2026-10-18, #39).
  */
 @Composable
 fun CreateAccountRoute(
@@ -69,7 +68,9 @@ fun CreateAccountRoute(
 ) {
     // Main.immediate: as on the import screen, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
+    // Left, the words go; a rotation or another configuration change keeps them in the ViewModel's
+    // memory, never in a saved state (owner ruling, 2026-10-18, #39).
+    OnStopUnlessConfigurationChange(onStop = viewModel::onHidden)
     CreateAccountScreen(
         state = state,
         onWrittenDown = viewModel::onWrittenDown,

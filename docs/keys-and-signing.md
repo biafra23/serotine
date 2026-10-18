@@ -389,11 +389,14 @@ its KDoc and returns it as a result the UI shows as state.
     takes it: the GC caveat of rule 7.
   - The words and the password reach the adapter along the mnemonic
     exception's one path. The restore and Create account screens'
-    ViewModels drop both from their state when the screen stops being shown
-    (every `ON_STOP`, a rotation and the app going to the background
-    included: the strict reading of "cleared when its screen is left",
-    which is the owner's open question, issue #39); an import already
-    running finishes without them.
+    ViewModels drop both from their state when the screen is left: an
+    `ON_STOP` that is not a configuration change, so the app going to the
+    background, the screen turning off and a pop, but not a rotation, a fold,
+    a resize or a theme or font change, across which the words stay in the
+    ViewModel's memory and nowhere else (owner ruling, 2026-10-18, #39;
+    `OnStopUnlessConfigurationChange`, Android's
+    `Activity.isChangingConfigurations`); an import already running
+    finishes without them.
   - Create account's phrase is not stored until its check and password are
     done, so leaving the screen before then voids it: the screen tells the
     user to cross out what they wrote, and the next attempt gets a new
@@ -410,8 +413,8 @@ its KDoc and returns it as a result the UI shows as state.
   until its host covers the window, the screen says that capture cannot be
   blocked. Create account also keeps the display on while its phrase is
   shown and checked (`KeepScreenOn()`; Android's `keepScreenOn`), because a
-  display that times out stops the screen, and a stopped screen is read as
-  one left (the reading issue #39 puts to the owner).
+  display that times out stops the screen, and that stop is a leaving
+  (owner ruling, 2026-10-18, #39).
 - **Not yet.**
   - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`) and on
     iOS, and the opt-in on the seed screens at the first key (Settings →
@@ -540,9 +543,10 @@ conditions, which a reviewer holds those two flows to:
 Create account uses both legs on one screen: the words go out to its UiState
 as at creation and come back to the adapter as at restore. Whether the entry,
 worded for two screens, covers that is the owner's open question (issue #40);
-the code is built as if it does. Whether a rotation or the app going to the
-background leaves a seed screen is open too (issue #39): today every
-`ON_STOP` does.
+the code is built as if it does. A configuration change does not leave a seed
+screen, and the app going to the background does (owner ruling, 2026-10-18,
+#39): the words stay in the ViewModel's memory across a rotation, never in a
+saved state or a Bundle.
 
 Every other screen and flow is held to the rule itself. A new exception is
 the owner's ruling, added to that list first.

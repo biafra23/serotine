@@ -34,10 +34,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.platform.OnStopUnlessConfigurationChange
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers
 
@@ -53,8 +52,9 @@ const val MNEMONIC_IMPORT_BUTTON_TAG = "mnemonic-import-button"
 
 /**
  * Binds [MnemonicImportScreen] to its ViewModel, reports a finished import through
- * [onImported] so the caller can close the screen, and tells the ViewModel when the screen
- * stops being shown, so it drops the words.
+ * [onImported] so the caller can close the screen, and tells the ViewModel when the screen is
+ * left, so it drops the words: a stop that is not a configuration change (owner ruling,
+ * 2026-10-18, #39).
  */
 @Composable
 fun MnemonicImportRoute(
@@ -67,7 +67,9 @@ fun MnemonicImportRoute(
     // that resumes a frame later hands the field a stale value, which loses keystrokes and
     // moves the cursor while someone types fast.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
+    // Left, the words go; a rotation or another configuration change keeps them in the ViewModel's
+    // memory, never in a saved state (owner ruling, 2026-10-18, #39).
+    OnStopUnlessConfigurationChange(onStop = viewModel::onHidden)
     MnemonicImportScreen(
         state = state,
         onPhraseChange = viewModel::onPhraseChange,
