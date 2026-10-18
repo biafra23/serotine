@@ -6,6 +6,7 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.GasTermsItem
+import eth.serotine.ui.components.MODULE_ENABLED_REFUSAL
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
@@ -218,6 +219,22 @@ private fun SafeTxUnpinnedFallbackHandlerPreview() = SafeTxPreview(
     ),
 )
 
+@Preview
+@Composable
+private fun SafeTxModuleEnabledPreview() = SafeTxPreview(
+    overview.copy(
+        action = SafeTxActionItem(
+            title = "Enable a module",
+            addresses = listOf(ActionAddress("Module", FRIEND)),
+            warning = "A module can move the Safe's funds without the owners' signatures.",
+        ),
+        refusal = MODULE_ENABLED_REFUSAL,
+        canSign = false,
+        canApprove = false,
+        canExecute = false,
+    ),
+)
+
 /** The dialog a tap on a greyed-out Execute opens (owner ruling, 2026-10-18, #55). */
 @Preview
 @Composable
@@ -351,6 +368,7 @@ internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxNotNextPreview() },
     { SafeTxDelegateCallPreview() },
     { SafeTxUnpinnedFallbackHandlerPreview() },
+    { SafeTxModuleEnabledPreview() },
     { SafeTxExecuteReasonPreview() },
     { SafeTxGasTermsPreview() },
     { SafeTxOwnersCheckingPreview() },

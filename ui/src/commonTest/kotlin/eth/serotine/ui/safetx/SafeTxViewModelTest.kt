@@ -297,6 +297,24 @@ class SafeTxViewModelTest {
     }
 
     @Test
+    fun enablingAModuleIsShownAsRefusedWithItsReasonAndOffersNothingToSign() = runTest {
+        val data = "610b5925" + "0".repeat(24) + world.recipient.hex.removePrefix("0x")
+        val enable = SafeTx.call(world.safe, UInt256.ZERO, data.hexBytes(), nonce = 4)
+        val viewModel = viewModel(queued(world.request(enable)))
+
+        val state = viewModel.overview
+        assertEquals("Enable a module", state.action.title)
+        assertEquals(
+            "Enabling a module is refused: a module can move the Safe's funds without its owners. Which modules " +
+                "may be enabled is still open (#54).",
+            state.refusal,
+        )
+        assertFalse(state.canSign)
+        assertFalse(state.canApprove)
+        assertFalse(state.canExecute)
+    }
+
+    @Test
     fun aChangeThatLeavesEveryOwnerNeededIsShownAsRefusedAndOffersNothingToSign() = runTest {
         // The Safe is 2 of 3: a threshold of 3 leaves every owner needed, with no recovery module (#54).
         val data = "694e80c3" + "3".padStart(64, '0')

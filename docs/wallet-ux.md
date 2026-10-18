@@ -385,7 +385,14 @@ upgrades*).
       owner ruling, 2026-10-18, #63), on 16's row and 17 with its reason.
       Setting the pinned one, or removing the handler, is signed with its
       warning; so are a guard removed and a module disabled, which keep
-      their warning and are not refused.
+      their warning and are not refused. A module enabled is no longer a
+      warning alone: it is refused, whatever the module, shown and never
+      signed, approved or executed here (`SafeTxRefusal.ModuleEnabled`;
+      owner ruling, 2026-10-18, on #54: play it safe), on 16's row and 17
+      with its reason, "Enabling a module is refused: a module can move the
+      Safe's funds without its owners. Which modules may be enabled is still
+      open (#54)." A temporary, warned "dangerous mode" past it is planned
+      (#78), not built.
     - A call of the Safe itself is signed only when it decodes exactly: a
       settings change whose data is that function's encoding, or the empty,
       zero-value rejection. Any other self-call, whatever its selector (a

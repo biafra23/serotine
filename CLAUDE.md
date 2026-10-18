@@ -572,6 +572,13 @@ discussion that produced this note.
   not decoded exactly (a settings change, or the empty zero-value
   rejection) is refused whatever its selector, since on chain it could
   still set the handler.
+- **Enabling a Safe module is refused** (owner ruling, 2026-10-18, on #54:
+  play it safe). A Safe transaction that enables a module, whatever the
+  module, is shown and never signed, approved or executed here: a module
+  moves the Safe's funds without its owners. Disabling a module keeps its
+  warning and is not refused. Which modules may be enabled is still open
+  (#54); a temporary, warned "dangerous mode" past it is planned in #78 and
+  not built.
 - **Network-upgrade warnings are peer reports, and say so** (owner's request,
   2026-10-17: warn ahead of a breaking hard fork, notify even while the app
   is closed, and after it do nothing but ask for the update). The engine's

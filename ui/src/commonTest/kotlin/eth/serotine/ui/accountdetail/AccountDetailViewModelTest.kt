@@ -455,6 +455,30 @@ class AccountDetailViewModelTest {
     }
 
     @Test
+    fun aModuleEnabledIsSaidOnItsQueueRowAsNotSignedHere() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, treasury)
+        val module = Address.of("0x" + "66".repeat(20))
+        val state = SafeState("1.4.1", l2 = false, listOf(daily.address), 1, 12, emptyList(), guard = null)
+        kind.value = KindReading.Verified(AddressKind.Safe(state), 9_412_118)
+        val data = "610b5925" + "0".repeat(24) + module.hex.removePrefix("0x")
+        val enable = SafeTx.call(treasury.address, UInt256.ZERO, ByteArray(data.length / 2) {
+            data.substring(2 * it, 2 * it + 2).toInt(16).toByte()
+        }, 12)
+        queue.requests.value = listOf(SigningRequest.of(Network.SEPOLIA, treasury.address, enable))
+        val viewModel = viewModel(treasury.address)
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        viewModel.show(DetailSegment.QUEUE)
+        runCurrent()
+
+        val row = ((viewModel.uiState.value as AccountDetailUiState.Ready).queue as SafeQueue.Shown).rows.single()
+        // Owner ruling, 2026-10-18, on #54: refused, its warning still shown.
+        assertEquals("Not signed here: it enables a module", row.refusal)
+        assertEquals("A module can move the Safe's funds without the owners' signatures.", row.warning)
+    }
+
+    @Test
     fun aQueueThatCannotBeReadSaysSoAndAWatchOnlySafeOffersNoSend() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)

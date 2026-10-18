@@ -307,6 +307,28 @@ class SafeTxOnChainTest {
     }
 
     @Test
+    fun enablingAModuleIsShownButNeverSignedApprovedOrExecutedHere() = runTest {
+        // Owner ruling, 2026-10-18, on #54: play it safe, whatever the module.
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        val sign = SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA)
+        val sentinel = Address.of("0x" + "0".repeat(39) + "1")
+        fun change(data: ByteArray) = world.request(SafeTx.call(world.safe, UInt256.ZERO, data, nonce = 4), world.carol)
+
+        val enable = change(AbiWords.selector("enableModule(address)") + AbiWords.word(world.recipient))
+        assertRefusedEverywhere(enable, SafeTxRefusal.ModuleEnabled(world.recipient), before = true)
+        assertEquals(emptyList(), world.inputs.simulated)
+
+        // Disabling one keeps its warning and is not refused.
+        world.state = world.state.copy(modules = listOf(world.recipient))
+        val disable = change(
+            AbiWords.selector("disableModule(address,address)") + AbiWords.word(sentinel) +
+                AbiWords.word(world.recipient),
+        )
+        assertEquals(null, DecodedSafeTx.of(disable).refusal)
+        assertIs<SafeTxSigning.Signed>(sign(disable, world.alice.address, unlock))
+    }
+
+    @Test
     fun aChangeThatLeavesEveryOwnerNeededIsRefusedWithoutARecoveryModule() = runTest {
         // Owner ruling, 2026-10-18, #54, the change half: the Safe is 2 of 3 (alice, bob, carol).
         world.inputs.simulation = Simulation.Succeeded(executed, 100)

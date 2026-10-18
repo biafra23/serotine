@@ -208,6 +208,11 @@ internal const val GAS_TERMS_WARNING =
         "lets a failing call use up the nonce. Serotine proposes none, and does not sign, approve or execute a " +
         "transaction that carries them."
 
+/** Why a Safe transaction that enables a module is not signed, approved or executed (owner ruling on #54). */
+internal const val MODULE_ENABLED_REFUSAL =
+    "Enabling a module is refused: a module can move the Safe's funds without its owners. Which modules may be " +
+        "enabled is still open (#54)."
+
 /** Why a Safe transaction was not imported, signed, approved or executed, display-ready. */
 internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String = when (refusal) {
     SafeTxRefusal.Malformed -> "This text is not a Safe signing request."
@@ -239,6 +244,7 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
         "${Eip55.format(refusal.handler)}: the handler answers the signature checks other contracts make for the " +
         "Safe, so only the canonical CompatibilityFallbackHandler 1.4.1, or none, is signed, approved or executed " +
         "here."
+    is SafeTxRefusal.ModuleEnabled -> MODULE_ENABLED_REFUSAL
     SafeTxRefusal.UndecodedSelfCall -> "A call to the Safe itself that could not be decoded exactly: on chain it " +
         "could still change the Safe's settings, so Serotine does not sign, approve or execute it."
     is SafeTxRefusal.NeedsRecoveryModule -> "It would leave all ${refusal.owners} owners needed to sign: with one " +

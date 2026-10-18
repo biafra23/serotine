@@ -134,6 +134,15 @@ sealed interface SafeTxRefusal {
     data object UndecodedSelfCall : SafeTxRefusal
 
     /**
+     * It enables [module] as a module of the Safe: a module moves the Safe's funds and changes its
+     * settings without its owners' signatures. Whatever the module, this wallet signs, approves and
+     * executes none (owner ruling, 2026-10-18, on #54: play it safe); which modules may be enabled
+     * is still open (#54), and a temporary, warned way past it is planned (#78). Disabling a module
+     * is not refused: it carries a warning.
+     */
+    data class ModuleEnabled(val module: Address) : SafeTxRefusal
+
+    /**
      * It would leave the Safe's [owners] owners all needed (a threshold of [owners], more than
      * one): with one of them lost, the rest could never reach the threshold again, not even to
      * swap the lost one out. That shape only comes with a recovery module (owner ruling,
@@ -184,10 +193,11 @@ data class DecodedSafeTx private constructor(
 /**
  * Why this wallet signs, approves and executes none of [this], whatever its signatures and the
  * Safe say: a delegate call, gas or refund terms, a call of the Safe itself that is not decoded
- * exactly as one of its settings changes or the rejection, or a fallback handler set that is not
- * pinned ([PinnedFallbackHandlers]; owner ruling, 2026-10-18, #63) (docs/wallet-ux.md, screen
- * 17). Removing the handler, removing the guard and disabling a module are not refused: they
- * carry a warning. Null when it may be signed.
+ * exactly as one of its settings changes or the rejection, a module enabled (owner ruling,
+ * 2026-10-18, on #54), or a fallback handler set that is not pinned ([PinnedFallbackHandlers];
+ * owner ruling, 2026-10-18, #63) (docs/wallet-ux.md, screen 17). Removing the handler, removing
+ * the guard and disabling a module are not refused: they carry a warning. Null when it may be
+ * signed.
  */
 internal fun SigningRequest.unsignable(): SafeTxRefusal? {
     if (tx.operation == SafeOperation.DELEGATECALL) return SafeTxRefusal.DelegateCall
@@ -197,7 +207,9 @@ internal fun SigningRequest.unsignable(): SafeTxRefusal? {
     if (tx.to == safe && action !is SafeTxAction.SettingsChange && action != SafeTxAction.Rejection) {
         return SafeTxRefusal.UndecodedSelfCall
     }
-    val handler = ((action as? SafeTxAction.SettingsChange)?.change as? SafeSettingsChange.FallbackHandlerSet)?.handler
+    val change = (action as? SafeTxAction.SettingsChange)?.change
+    if (change is SafeSettingsChange.ModuleEnabled) return SafeTxRefusal.ModuleEnabled(change.module)
+    val handler = (change as? SafeSettingsChange.FallbackHandlerSet)?.handler
     if (handler != null && !PinnedFallbackHandlers.allowed(network, handler)) {
         return SafeTxRefusal.UnpinnedFallbackHandler(handler)
     }
