@@ -25,10 +25,10 @@ class StorageProofsTest {
     fun aMatchJustBehindTheOptimisticSlotIsShownWithItsBlockAndAnchoredToTheSlotItMatched() {
         // The attested slot the anchor recorded, one behind the light client's signature slot:
         // every Safe slot on Sepolia was proven so, and thrown away before.
-        assertEquals(ProofLabel(11_937_375, ProofAnchor(11_378_990)), label())
+        assertEquals(ProofLabel(11_937_375, ProofAnchor.Attested(11_378_990)), label())
         // Three slots behind (missed slots between): the same.
         assertEquals(
-            ProofLabel(11_937_352, ProofAnchor(11_378_965)),
+            ProofLabel(11_937_352, ProofAnchor.Attested(11_378_965)),
             storageProofLabel(
                 "stateRootMatch",
                 matchedBeaconSlot = 11_378_965,
@@ -59,12 +59,12 @@ class StorageProofsTest {
     @Test
     fun anExactMatchIsTheAnchorsOwnBlock() {
         assertEquals(
-            ProofLabel(11_937_299, ProofAnchor(11_378_912)),
+            ProofLabel(11_937_299, ProofAnchor.Attested(11_378_912)),
             label(matched = 11_378_912),
             "the finalized slot: the finalized block",
         )
         assertEquals(
-            ProofLabel(11_937_375, ProofAnchor(11_378_991)),
+            ProofLabel(11_937_375, ProofAnchor.Attested(11_378_991)),
             label(matched = 11_378_991, peerBlock = 1),
             "the optimistic slot: its block",
         )
@@ -73,8 +73,13 @@ class StorageProofsTest {
     @Test
     fun aHeaderChainWalkProvesThePeersBlock() {
         assertEquals(
-            ProofLabel(11_937_300, ProofAnchor(11_000_000, walkedBlock = 11_937_300)),
+            ProofLabel(11_937_300, ProofAnchor.Walked(11_937_300)),
             label(method = "headerChain", matched = 11_000_000, peerBlock = 11_937_300),
+        )
+        // The same block walked to a later head: one anchor, one state.
+        assertEquals(
+            label(method = "headerChain", matched = 11_000_000, peerBlock = 11_937_300)?.anchor,
+            label(method = "headerChain", matched = 11_000_005, peerBlock = 11_937_300)?.anchor,
         )
     }
 
@@ -96,17 +101,19 @@ class StorageProofsTest {
 
     @Test
     fun anAccountProofIsAnchoredOnlyWhenItMatchedAnAttestedSlot() {
-        assertEquals(ProofAnchor(11_378_990), accountProofAnchor("stateRootMatch", 11_378_990))
-        assertNull(accountProofAnchor("headerChain", 11_378_990), "a walk: only its label to compare")
-        assertNull(accountProofAnchor("stateRootMatch", -1))
-        assertNull(accountProofAnchor(null, 11_378_990))
+        assertEquals(ProofAnchor.Attested(11_378_990), accountProofAnchor("stateRootMatch", 11_378_990, 11_937_375))
+        assertEquals(ProofAnchor.Walked(11_937_300), accountProofAnchor("headerChain", 11_378_990, 11_937_300))
+        assertNull(accountProofAnchor("stateRootMatch", -1, 11_937_375))
+        assertNull(accountProofAnchor(null, 11_378_990, 11_937_375))
     }
 
     @Test
     fun anAnchorIsNotBeforeAnotherAsTheirMatchedSlotsSay() {
-        assertEquals(true, ProofAnchor(20).notBefore(ProofAnchor(20)))
-        assertEquals(true, ProofAnchor(21).notBefore(ProofAnchor(20)))
-        assertEquals(false, ProofAnchor(19).notBefore(ProofAnchor(20)))
-        assertNull(ProofAnchor(21, walkedBlock = 7).notBefore(ProofAnchor(20)), "a walk: the labels decide")
+        assertEquals(true, ProofAnchor.Attested(20).notBefore(ProofAnchor.Attested(20)))
+        assertEquals(true, ProofAnchor.Attested(21).notBefore(ProofAnchor.Attested(20)))
+        assertEquals(false, ProofAnchor.Attested(19).notBefore(ProofAnchor.Attested(20)))
+        assertEquals(true, ProofAnchor.Walked(8).notBefore(ProofAnchor.Walked(7)))
+        assertEquals(false, ProofAnchor.Walked(6).notBefore(ProofAnchor.Walked(7)))
+        assertNull(ProofAnchor.Walked(9).notBefore(ProofAnchor.Attested(20)), "nothing verified orders the two")
     }
 }

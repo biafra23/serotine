@@ -77,9 +77,8 @@ class VerifiedAddressKinds internal constructor(
      * One read of the Safe storage at [safe]: every slot proven against one anchor, the verified
      * attested slot a proof matched (a block label alone can be a peer's report, so two slots
      * with equal labels and different anchors are of two states), shown with one block, and not
-     * of a state before the [code]'s: their anchors compared where both matched an attested slot,
-     * and their block labels otherwise (an account proof walked by header chain has no anchor of
-     * its own to compare).
+     * of a state before the [code]'s, as their anchors tell: attested slots compared, walked blocks
+     * compared, and a walk against a match, which no verified field orders, a straddle.
      */
     private inner class SafeStorage(
         private val chain: VerifiedChain,
@@ -164,7 +163,7 @@ class VerifiedAddressKinds internal constructor(
         private fun proven(kind: AddressKind): EngineReading<AddressKind>? {
             val anchor = anchors.singleOrNull()
             val block = blocks.singleOrNull()
-            if (anchor == null || block == null || !notBeforeCode(anchor, block)) {
+            if (anchor == null || block == null || !notBeforeCode(anchor)) {
                 straddled = true
                 return null
             }
@@ -172,11 +171,11 @@ class VerifiedAddressKinds internal constructor(
         }
 
         /**
-         * Whether the state at [anchor] (shown as [block]) is not before the code's: as their
-         * anchors tell ([ProofAnchor.notBefore]), else as their block labels do.
+         * Whether the state at [anchor] is not before the code's, as their verified anchors tell
+         * ([ProofAnchor.notBefore]). No block label decides it: a code proof with no anchor, or a
+         * walk against a match, which nothing verified orders, counts as a straddle, read again.
          */
-        private fun notBeforeCode(anchor: ProofAnchor, block: Long): Boolean =
-            code.anchor?.let { anchor.notBefore(it) } ?: (block >= code.blockNumber)
+        private fun notBeforeCode(anchor: ProofAnchor): Boolean = code.anchor?.let { anchor.notBefore(it) } == true
 
         /**
          * The linked list of the mapping at [slot] (owners, modules), walked from the sentinel

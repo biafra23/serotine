@@ -29,7 +29,8 @@ internal class FakeChain : VerifiedChain {
     override fun proveCode(address: Address): ProvenCode? {
         failure?.let { throw it }
         proofRequests += address
-        return codes[address]
+        // A code set without an anchor matched the attested slot of its block, as the slots' default does.
+        return codes[address]?.let { it.copy(anchor = it.anchor ?: ProofAnchor.Attested(it.blockNumber)) }
     }
 
     /** Answers per contract and calldata (hex), as a test sets them. */
@@ -61,6 +62,9 @@ internal class FakeChain : VerifiedChain {
      * block label; unset, a proof's anchor follows its block.
      */
     var slotAnchorOfCall: ((Int) -> Long)? = null
+
+    /** When set, every storage proof is a header-chain walk of this block. */
+    var slotWalked: Long? = null
     var slotCalls = 0
 
     override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
@@ -69,7 +73,8 @@ internal class FakeChain : VerifiedChain {
         if (key in unprovenSlots) return null
         val call = slotCalls++
         val block = slotBlockOfCall?.invoke(call) ?: slotBlocks[key] ?: slotBlock
-        val anchor = ProofAnchor(slotAnchorOfCall?.invoke(call) ?: block)
+        val anchor = slotWalked?.let { ProofAnchor.Walked(it) }
+            ?: ProofAnchor.Attested(slotAnchorOfCall?.invoke(call) ?: block)
         return ProvenSlot(slots[key] ?: "0".repeat(64), block, anchor)
     }
 

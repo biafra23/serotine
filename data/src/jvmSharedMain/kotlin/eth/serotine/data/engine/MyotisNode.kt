@@ -339,7 +339,7 @@ class MyotisNode private constructor(network: Network) {
             val handle = (state as? State.Running)?.handle ?: return null
             val account = handle.requestAccount(address.hex)
             if (account.failReason() != null || account.verifyMethod() == null) return null
-            val anchor = accountProofAnchor(account.verifyMethod(), account.matchedBeaconSlot())
+            val anchor = accountProofAnchor(account.verifyMethod(), account.matchedBeaconSlot(), account.blockNumber())
             return provenCode(account.exists(), account.codeHashHex(), account.blockNumber(), anchor) {
                 handle.reads().getCode(address.hex.removePrefix("0x").fromHex(), "latest")
             }

@@ -82,19 +82,32 @@ internal data class ProvenSlot(val valueHex: String, val blockNumber: Long, val 
 internal data class ProvenCode(val codeHex: String, val blockNumber: Long, val anchor: ProofAnchor? = null)
 
 /**
- * What a proof was verified against, from the light client's own state: the attested beacon
- * slot whose state root it matched ([beaconSlot]), or, for a header-chain walk, the block walked
- * from ([walkedBlock]) and the attested slot it was walked to. Equal anchors are one state.
+ * What a proof was verified against, from the light client's own state: equal anchors are one
+ * state, and only verified fields say which is older ([notBefore]), never a peer's label.
  */
-internal data class ProofAnchor(val beaconSlot: Long, val walkedBlock: Long? = null) {
+internal sealed interface ProofAnchor {
+
+    /** The proof's state root matched the attested beacon slot [slot]. */
+    data class Attested(val slot: Long) : ProofAnchor
 
     /**
-     * Whether this anchor's state is not older than [other]'s, as far as the anchors tell: both
-     * matched attested slots, compared; null when either was walked to, and only block labels
-     * are left to compare.
+     * A header-chain walk proved the block [block] itself, whichever attested head it was walked
+     * to: two walks of one block are one state, though the head moved between them. (The result
+     * exposes no block hash, so the walked number is the identity.) A walk and an attested match
+     * are never taken for one state, even of one block: the conservative side, a read again.
      */
-    fun notBefore(other: ProofAnchor): Boolean? =
-        if (walkedBlock == null && other.walkedBlock == null) beaconSlot >= other.beaconSlot else null
+    data class Walked(val block: Long) : ProofAnchor
+
+    /**
+     * Whether this anchor's state is not older than [other]'s, from verified fields alone: two
+     * attested slots compared, two walked blocks compared; null when one was walked and the other
+     * matched, which nothing verified orders.
+     */
+    fun notBefore(other: ProofAnchor): Boolean? = when {
+        this is Attested && other is Attested -> slot >= other.slot
+        this is Walked && other is Walked -> block >= other.block
+        else -> null
+    }
 }
 
 /** Keccak-256 of no code: the code hash of every account without code. */

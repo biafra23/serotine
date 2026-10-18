@@ -9,7 +9,8 @@ package eth.serotine.data.engine
  *
  * - [verifyMethod] null: nothing tied it to the beacon chain.
  * - `headerChain`: the walk from the proof's block up to an attested one proves that block,
- *   [peerBlockNumber], itself; the anchor is that block and the attested slot it was walked to.
+ *   [peerBlockNumber], itself; the anchor is that block ([ProofAnchor.Walked]), not the slot it
+ *   was walked to, so two walks of one block from two heads are one state.
  * - `stateRootMatch`: the anchor is [matchedBeaconSlot], the attested slot whose state root the
  *   proof matched. Matched at the [finalizedSlot], the block shown is [finalizedBlockNumber]; at
  *   the [optimisticSlot], [optimisticBlockNumber]. Matched at a slot above the finalized one and
@@ -37,7 +38,7 @@ internal fun storageProofLabel(
         // First: a header-chain walk ends at an attested slot that is not the proof's block.
         verifyMethod == HEADER_CHAIN -> {
             if (peerBlockNumber <= 0) return null
-            return ProofLabel(peerBlockNumber, ProofAnchor(matchedBeaconSlot, walkedBlock = peerBlockNumber))
+            return ProofLabel(peerBlockNumber, ProofAnchor.Walked(peerBlockNumber))
         }
         verifyMethod != STATE_ROOT_MATCH -> return null
         matchedBeaconSlot == finalizedSlot -> finalizedBlockNumber
@@ -47,16 +48,20 @@ internal fun storageProofLabel(
         else -> return null
     }
     if (block <= 0 || matchedBeaconSlot < 0) return null
-    return ProofLabel(block, ProofAnchor(matchedBeaconSlot))
+    return ProofLabel(block, ProofAnchor.Attested(matchedBeaconSlot))
 }
 
 /**
  * The verified anchor of an account proof (`AccountProofResult`, what code is proven with): its
- * matched attested slot when it matched one ([verifyMethod] `stateRootMatch`), or null for a
- * header-chain walk or no match, which leave only the block it is labelled with to compare.
+ * matched attested slot for a `stateRootMatch`, the block a header-chain walk proved
+ * ([blockNumber], the walk's own) for a `headerChain`, or null for no match.
  */
-internal fun accountProofAnchor(verifyMethod: String?, matchedBeaconSlot: Long): ProofAnchor? =
-    ProofAnchor(matchedBeaconSlot).takeIf { verifyMethod == STATE_ROOT_MATCH && matchedBeaconSlot >= 0 }
+internal fun accountProofAnchor(verifyMethod: String?, matchedBeaconSlot: Long, blockNumber: Long): ProofAnchor? =
+    when {
+        verifyMethod == STATE_ROOT_MATCH && matchedBeaconSlot >= 0 -> ProofAnchor.Attested(matchedBeaconSlot)
+        verifyMethod == HEADER_CHAIN && blockNumber > 0 -> ProofAnchor.Walked(blockNumber)
+        else -> null
+    }
 
 /** A storage proof's label: the [blockNumber] a reading is shown with, and the verified [anchor] it is of. */
 internal data class ProofLabel(val blockNumber: Long, val anchor: ProofAnchor)

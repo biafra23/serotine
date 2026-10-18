@@ -301,13 +301,41 @@ class VerifiedAddressKindsTest {
     fun storageOfAnAttestedSlotBeforeTheCodesIsNotTakenForItWhateverTheLabelsSay() = runTest {
         chain.snapshot = running(head = 9)
         safeStorage()
-        chain.codes[address] = ProvenCode(proxyCode, 9, ProofAnchor(20)) // the code matched slot 20
+        chain.codes[address] = ProvenCode(proxyCode, 9, ProofAnchor.Attested(20)) // the code matched slot 20
         chain.slotAnchorOfCall = { 19 } // the storage 19, both labelled 9
 
         assertEquals(
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),
             kinds().observeKind(address).first { it !is KindReading.Syncing },
         )
+    }
+
+    @Test
+    fun storageWalkedByHeaderChainAgainstCodeMatchedAtASlotIsNoOrderAndNoReading() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // The code matched attested slot 20; every slot was walked from block 9. Nothing verified
+        // orders a walk against a match, and no label decides it: a straddle, read again, unproven.
+        chain.codes[address] = ProvenCode(proxyCode, 9, ProofAnchor.Attested(20))
+        chain.slotWalked = 9
+
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(address).first { it !is KindReading.Syncing },
+        )
+    }
+
+    @Test
+    fun walksOfOneBlockAreOneStateWhateverHeadTheyWereWalkedTo() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // The code and every slot walked from block 9, each to whichever head was attested then.
+        chain.codes[address] = ProvenCode(proxyCode, 9, ProofAnchor.Walked(9))
+        chain.slotWalked = 9
+
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+        assertEquals(9, (reading as KindReading.Verified).blockNumber)
+        assertEquals(true, reading.kind is AddressKind.Safe)
     }
 
     @Test
