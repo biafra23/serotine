@@ -94,15 +94,16 @@ class VerifiedAddressKindsTest {
         val fetch = { fetched++; contract }
 
         // An absent account and the empty hash have no code to fetch.
-        assertEquals(ProvenCode("", 5), provenCode(exists = false, null, 5, fetch))
-        assertEquals(ProvenCode("", 5), provenCode(exists = true, "0x" + EMPTY_CODE_HASH.uppercase(), 5, fetch))
+        assertEquals(ProvenCode("", 5), provenCode(exists = false, null, 5, fetchCode = fetch))
+        val emptyHash = "0x" + EMPTY_CODE_HASH.uppercase()
+        assertEquals(ProvenCode("", 5), provenCode(exists = true, emptyHash, 5, fetchCode = fetch))
         assertEquals(0, fetched)
 
-        assertEquals(ProvenCode("6080604052", 5), provenCode(exists = true, contractHash, 5, fetch))
+        assertEquals(ProvenCode("6080604052", 5), provenCode(exists = true, contractHash, 5, fetchCode = fetch))
         // The head moved and the code with it: not the proven code, so unproven.
-        assertEquals(null, provenCode(exists = true, "0x" + "ab".repeat(32), 5, fetch))
+        assertEquals(null, provenCode(exists = true, "0x" + "ab".repeat(32), 5, fetchCode = fetch))
         assertEquals(null, provenCode(exists = true, contractHash, 5) { null })
-        assertEquals(null, provenCode(exists = true, null, 5, fetch))
+        assertEquals(null, provenCode(exists = true, null, 5, fetchCode = fetch))
     }
 
     // --- Safes.
@@ -270,6 +271,38 @@ class VerifiedAddressKindsTest {
         chain.snapshot = running(head = 9)
         safeStorage()
         chain.codes[address] = ProvenCode(proxyCode, 12) // the code at 12, the slots at 9
+
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(address).first { it !is KindReading.Syncing },
+        )
+    }
+
+    @Test
+    fun slotsWithOneBlockLabelButProvenAgainstTwoAttestedSlotsAreNoOneState() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        // Every label says 9 (a peer's report can), but the proofs matched attested slots 18 and 19
+        // by turns: two states, never shown as one. Every read straddles, so it ends unproven.
+        chain.slotAnchorOfCall = { call -> 18L + call % 2 }
+
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(address).first { it !is KindReading.Syncing },
+        )
+
+        // One attested slot for all: one state, shown with its label.
+        chain.slotAnchorOfCall = { 19 }
+        val reading = kinds().observeKind(address).first { it !is KindReading.Syncing }
+        assertEquals(9, (reading as KindReading.Verified).blockNumber)
+    }
+
+    @Test
+    fun storageOfAnAttestedSlotBeforeTheCodesIsNotTakenForItWhateverTheLabelsSay() = runTest {
+        chain.snapshot = running(head = 9)
+        safeStorage()
+        chain.codes[address] = ProvenCode(proxyCode, 9, ProofAnchor(20)) // the code matched slot 20
+        chain.slotAnchorOfCall = { 19 } // the storage 19, both labelled 9
 
         assertEquals(
             KindReading.Unavailable(ReadUnavailable.UNPROVEN),

@@ -55,14 +55,22 @@ internal class FakeChain : VerifiedChain {
 
     /** The block of the n-th storage proof asked for, when a test moves the head under a read. */
     var slotBlockOfCall: ((Int) -> Long)? = null
+
+    /**
+     * The attested beacon slot the n-th storage proof matched, when a test sets it apart from its
+     * block label; unset, a proof's anchor follows its block.
+     */
+    var slotAnchorOfCall: ((Int) -> Long)? = null
     var slotCalls = 0
 
     override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
         failure?.let { throw it }
         val key = Triple(address, slot, holder)
         if (key in unprovenSlots) return null
-        val block = slotBlockOfCall?.invoke(slotCalls++) ?: slotBlocks[key] ?: slotBlock
-        return ProvenSlot(slots[key] ?: "0".repeat(64), block)
+        val call = slotCalls++
+        val block = slotBlockOfCall?.invoke(call) ?: slotBlocks[key] ?: slotBlock
+        val anchor = ProofAnchor(slotAnchorOfCall?.invoke(call) ?: block)
+        return ProvenSlot(slots[key] ?: "0".repeat(64), block, anchor)
     }
 
     override fun storageAt(address: Address, slot: ByteArray): String? {

@@ -67,17 +67,41 @@ internal sealed interface CallOutcome {
 /** A balance in decimal wei, proven at [blockNumber], the block the proof anchors to. */
 internal data class ProvenBalance(val wei: String, val blockNumber: Long)
 
-/** A storage word as 64 lower-case hex digits ([valueHex]; all zero for an empty slot), proven at [blockNumber]. */
-internal data class ProvenSlot(val valueHex: String, val blockNumber: Long)
+/**
+ * A storage word as 64 lower-case hex digits ([valueHex]; all zero for an empty slot), shown as
+ * proven at [blockNumber], and proven against [anchor]: two words are of one state when their
+ * anchors are equal, whatever their block labels say (a label can be a peer's report).
+ */
+internal data class ProvenSlot(val valueHex: String, val blockNumber: Long, val anchor: ProofAnchor)
 
-/** Code as lower-case hex without `0x` (empty: none), proven at [blockNumber]. */
-internal data class ProvenCode(val codeHex: String, val blockNumber: Long)
+/**
+ * Code as lower-case hex without `0x` (empty: none), shown as proven at [blockNumber], and
+ * proven against [anchor] when the account proof matched an attested slot (null: a header-chain
+ * walk, which leaves only the block label to compare).
+ */
+internal data class ProvenCode(val codeHex: String, val blockNumber: Long, val anchor: ProofAnchor? = null)
+
+/**
+ * What a proof was verified against, from the light client's own state: the attested beacon
+ * slot whose state root it matched ([beaconSlot]), or, for a header-chain walk, the block walked
+ * from ([walkedBlock]) and the attested slot it was walked to. Equal anchors are one state.
+ */
+internal data class ProofAnchor(val beaconSlot: Long, val walkedBlock: Long? = null) {
+
+    /**
+     * Whether this anchor's state is not older than [other]'s, as far as the anchors tell: both
+     * matched attested slots, compared; null when either was walked to, and only block labels
+     * are left to compare.
+     */
+    fun notBefore(other: ProofAnchor): Boolean? =
+        if (walkedBlock == null && other.walkedBlock == null) beaconSlot >= other.beaconSlot else null
+}
 
 /** Keccak-256 of no code: the code hash of every account without code. */
 internal const val EMPTY_CODE_HASH = "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
 
 /**
- * The code of an account whose proof (verified at [blockNumber]) says it [exists] with the
+ * The code of an account whose proof (verified at [blockNumber], against [anchor]) says it [exists] with the
  * code hash [codeHashHex]: none for an absent account or the empty hash; otherwise what
  * [fetchCode] returns, accepted only when it hashes to the proven value — the head may have
  * moved between the proof and the read, and code from another block must not carry this
@@ -87,14 +111,15 @@ internal fun provenCode(
     exists: Boolean,
     codeHashHex: String?,
     blockNumber: Long,
+    anchor: ProofAnchor? = null,
     fetchCode: () -> ByteArray?,
 ): ProvenCode? {
-    if (!exists) return ProvenCode("", blockNumber)
+    if (!exists) return ProvenCode("", blockNumber, anchor)
     val codeHash = codeHashHex?.removePrefix("0x")?.lowercase() ?: return null
-    if (codeHash == EMPTY_CODE_HASH) return ProvenCode("", blockNumber)
+    if (codeHash == EMPTY_CODE_HASH) return ProvenCode("", blockNumber, anchor)
     val code = fetchCode() ?: return null
     if (Keccak256().digest(code).toHex() != codeHash) return null
-    return ProvenCode(code.toHex(), blockNumber)
+    return ProvenCode(code.toHex(), blockNumber, anchor)
 }
 
 /** The engine's state, or why there is none. */

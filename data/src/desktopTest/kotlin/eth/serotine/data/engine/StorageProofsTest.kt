@@ -4,7 +4,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** [storageProofBlock]: which block a beacon-verified storage proof is labelled with, if any. */
+/**
+ * [storageProofLabel]: the block a beacon-verified storage proof is shown with, and the verified
+ * anchor it is of; [accountProofAnchor], the anchor of the account proof code comes with.
+ */
 class StorageProofsTest {
 
     /** A storage proof's slots and blocks as a real Sepolia engine answered them, on the owner's phone. */
@@ -16,17 +19,17 @@ class StorageProofsTest {
         peerBlock: Long = 11_937_375,
         finalizedBlock: Long = 11_937_299,
         optimisticBlock: Long = 11_937_375,
-    ) = storageProofBlock(method, matched, finalizedSlot, optimisticSlot, peerBlock, finalizedBlock, optimisticBlock)
+    ) = storageProofLabel(method, matched, finalizedSlot, optimisticSlot, peerBlock, finalizedBlock, optimisticBlock)
 
     @Test
-    fun aMatchJustBehindTheOptimisticSlotIsTheBlockTheProofAnchorsTo() {
+    fun aMatchJustBehindTheOptimisticSlotIsShownWithItsBlockAndAnchoredToTheSlotItMatched() {
         // The attested slot the anchor recorded, one behind the light client's signature slot:
         // every Safe slot on Sepolia was proven so, and thrown away before.
-        assertEquals(11_937_375, label())
+        assertEquals(ProofLabel(11_937_375, ProofAnchor(11_378_990)), label())
         // Three slots behind (missed slots between): the same.
         assertEquals(
-            11_937_352,
-            storageProofBlock(
+            ProofLabel(11_937_352, ProofAnchor(11_378_965)),
+            storageProofLabel(
                 "stateRootMatch",
                 matchedBeaconSlot = 11_378_965,
                 finalizedSlot = 11_378_880,
@@ -39,20 +42,40 @@ class StorageProofsTest {
     }
 
     @Test
+    fun twoProofsWithOneBlockLabelButTwoMatchedSlotsAreTwoAnchors() {
+        // The label may be the serving peer's report: equal labels prove nothing, the anchors tell.
+        val owners = label(matched = 11_378_989)
+        val threshold = label(matched = 11_378_990)
+        assertEquals(owners?.blockNumber, threshold?.blockNumber)
+        assertEquals(false, owners?.anchor == threshold?.anchor)
+    }
+
+    @Test
     fun aProofOfAHeadTheOptimisticOneMovedPastIsStillItsOwnBlock() {
-        // Not tied to the optimistic block: the reading's one-block check and its retry handle that.
-        assertEquals(11_937_372, label(peerBlock = 11_937_372, optimisticBlock = 11_937_376))
+        // Not tied to the optimistic block: the reading's one-anchor check and its retry handle that.
+        assertEquals(11_937_372, label(peerBlock = 11_937_372, optimisticBlock = 11_937_376)?.blockNumber)
     }
 
     @Test
     fun anExactMatchIsTheAnchorsOwnBlock() {
-        assertEquals(11_937_299, label(matched = 11_378_912), "the finalized slot: the finalized block")
-        assertEquals(11_937_375, label(matched = 11_378_991, peerBlock = 1), "the optimistic slot: its block")
+        assertEquals(
+            ProofLabel(11_937_299, ProofAnchor(11_378_912)),
+            label(matched = 11_378_912),
+            "the finalized slot: the finalized block",
+        )
+        assertEquals(
+            ProofLabel(11_937_375, ProofAnchor(11_378_991)),
+            label(matched = 11_378_991, peerBlock = 1),
+            "the optimistic slot: its block",
+        )
     }
 
     @Test
     fun aHeaderChainWalkProvesThePeersBlock() {
-        assertEquals(11_937_300, label(method = "headerChain", matched = 11_000_000, peerBlock = 11_937_300))
+        assertEquals(
+            ProofLabel(11_937_300, ProofAnchor(11_000_000, walkedBlock = 11_937_300)),
+            label(method = "headerChain", matched = 11_000_000, peerBlock = 11_937_300),
+        )
     }
 
     @Test
@@ -69,5 +92,21 @@ class StorageProofsTest {
         assertNull(label(peerBlock = 0))
         assertNull(label(peerBlock = 11_937_298), "below the finalized block")
         assertNull(label(method = "headerChain", peerBlock = 0))
+    }
+
+    @Test
+    fun anAccountProofIsAnchoredOnlyWhenItMatchedAnAttestedSlot() {
+        assertEquals(ProofAnchor(11_378_990), accountProofAnchor("stateRootMatch", 11_378_990))
+        assertNull(accountProofAnchor("headerChain", 11_378_990), "a walk: only its label to compare")
+        assertNull(accountProofAnchor("stateRootMatch", -1))
+        assertNull(accountProofAnchor(null, 11_378_990))
+    }
+
+    @Test
+    fun anAnchorIsNotBeforeAnotherAsTheirMatchedSlotsSay() {
+        assertEquals(true, ProofAnchor(20).notBefore(ProofAnchor(20)))
+        assertEquals(true, ProofAnchor(21).notBefore(ProofAnchor(20)))
+        assertEquals(false, ProofAnchor(19).notBefore(ProofAnchor(20)))
+        assertNull(ProofAnchor(21, walkedBlock = 7).notBefore(ProofAnchor(20)), "a walk: the labels decide")
     }
 }

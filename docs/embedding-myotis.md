@@ -152,17 +152,22 @@ consumer developed against an unreleased engine, Myotis's
     `keccak256("module_manager.module_guard.address")`.
 
   A slot proof is used only once the engine tied it to a beacon-attested
-  root (`storageProofBlock`). Matched at the finalized slot it is labelled
-  with the finalized block, at the optimistic slot with the optimistic block;
-  matched at an attested slot between the two, the usual case, with the
-  block the proof anchors to (`peerBlockNumber`, as balances and code are),
-  not below the finalized block. The matched slot is the attested slot the
-  anchor recorded, while the result's optimistic slot is the light client's
-  signature slot, about one past it, so an exact optimistic match seldom
-  happens; a header-chain match is labelled with the block walked from. Any
-  other match is no proof. Every proof must anchor to one block, which
-  labels the reading; a read the head moved under is made again at the next
-  head. The guards sit at hashed slots, which `getStorageProof` cannot name,
+  root (`storageProofLabel`), and it carries two things. Its anchor
+  (`ProofAnchor`) is the attested slot whose state root it matched, from the
+  light client's own state (for a header-chain match, the block walked from
+  and the slot it was walked to). Its label is the block it is shown with:
+  matched at the finalized slot, the finalized block; at the optimistic
+  slot, the optimistic block; at an attested slot between the two, the usual
+  case, the block the proof anchors to (`peerBlockNumber`, as balances and
+  code are shown), not below the finalized block. That number is the serving
+  peer's report on some engines, so it is shown, never relied on. The matched
+  slot is the attested slot the anchor recorded, while the result's
+  optimistic slot is the light client's signature slot, about one past it, so
+  an exact optimistic match seldom happens. Any other match is no proof.
+  Every proof of a reading must share one anchor (and one label), and the
+  state must not be before the code's: their anchors compared where the code's
+  account proof matched an attested slot, their labels where it was walked.
+  A read the head moved under is made again at once. The guards sit at hashed slots, which `getStorageProof` cannot name,
   so they are verified `VerifiedReads.getStorageAt` reads at the head: they
   may be a head later than the label. A list that does not lead back to the
   sentinel, an unknown singleton or a Safe not set up is "another contract".

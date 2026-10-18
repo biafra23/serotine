@@ -28,9 +28,10 @@ import kotlin.time.Duration
  * module guard. The lists are what the Safe's own getters return; an entry written outside
  * them (a setup delegatecall can) is not something reading them can rule out.
  *
- * Every numbered slot is a storage proof, and all of them must anchor to one block, no older
- * than the code's, the one the reading is labelled with: a read the head moved under is made
- * again at once, up to [SAFE_ATTEMPTS] times. The guards are kept at hashed slots no storage
+ * Every numbered slot is a storage proof, and all of them must be of one state, no older than
+ * the code's: one verified anchor ([ProofAnchor], the attested slot a proof matched; a block
+ * label alone can be a peer's report) and one block, the one the reading is labelled with. A read
+ * the head moved under is made again at once, up to [SAFE_ATTEMPTS] times. The guards are kept at hashed slots no storage
  * proof names, so they are verified reads at the head, which may be a head later than that
  * label. Anything that does not match is a contract, never a Safe. A Safe's reading stands
  * for [SAFE_KEPT_FOR_HEADS] heads (a Safe takes a dozen proofs, and its owners rarely change);
@@ -54,7 +55,7 @@ class VerifiedAddressKinds internal constructor(
         when (val kind = kindOf(code.codeHex)) {
             AddressKind.Contract ->
                 if (codeHash(code.codeHex) in safes.proxyCodeHashes) {
-                    readSafe(verified, address, code.blockNumber)
+                    readSafe(verified, address, code)
                 } else {
                     EngineReading.Proven(kind, code.blockNumber)
                 }
@@ -62,23 +63,31 @@ class VerifiedAddressKinds internal constructor(
         }
     }
 
-    /** The Safe at [safe], read again at once when the head moved under a read. */
-    private fun readSafe(chain: VerifiedChain, safe: Address, codeBlock: Long): EngineReading<AddressKind>? {
+    /** The Safe at [safe], whose [code] is proven, read again at once when the head moved under a read. */
+    private fun readSafe(chain: VerifiedChain, safe: Address, code: ProvenCode): EngineReading<AddressKind>? {
         repeat(SAFE_ATTEMPTS) {
-            val storage = SafeStorage(chain, safe, codeBlock)
+            val storage = SafeStorage(chain, safe, code)
             val reading = storage.read()
             if (reading != null || !storage.straddled) return reading
         }
         return null
     }
 
-    /** One read of the Safe storage at [safe]: every slot proven, all at one block, not before [codeBlock]. */
+    /**
+     * One read of the Safe storage at [safe]: every slot proven against one anchor, the verified
+     * attested slot a proof matched (a block label alone can be a peer's report, so two slots
+     * with equal labels and different anchors are of two states), shown with one block, and not
+     * of a state before the [code]'s: their anchors compared where both matched an attested slot,
+     * and their block labels otherwise (an account proof walked by header chain has no anchor of
+     * its own to compare).
+     */
     private inner class SafeStorage(
         private val chain: VerifiedChain,
         private val safe: Address,
-        private val codeBlock: Long,
+        private val code: ProvenCode,
     ) {
         private val blocks = mutableSetOf<Long>()
+        private val anchors = mutableSetOf<ProofAnchor>()
 
         /** Whether the slots read were proven at more than one block (or before the code): the head moved. */
         var straddled = false
@@ -86,7 +95,10 @@ class VerifiedAddressKinds internal constructor(
 
         /** The word at [slot] (or under [key] in the mapping there); null: unproven. */
         private fun word(slot: Long, key: Address? = null): String? =
-            chain.proveSlot(safe, slot, key)?.also { blocks += it.blockNumber }?.valueHex
+            chain.proveSlot(safe, slot, key)?.also {
+                blocks += it.blockNumber
+                anchors += it.anchor
+            }?.valueHex
 
         fun read(): EngineReading<AddressKind>? {
             val singleton = addressIn(word(SINGLETON_SLOT) ?: return null)?.let { safes.singletons[it] }
@@ -146,14 +158,25 @@ class VerifiedAddressKinds internal constructor(
         }
 
         /**
-         * [kind], labelled with the one block every slot was proven at, if it is not before the
-         * code's; null, and [straddled], otherwise.
+         * [kind], labelled with the one block every slot is shown with, when every slot shares one
+         * anchor and that state is not before the code's; null, and [straddled], otherwise.
          */
         private fun proven(kind: AddressKind): EngineReading<AddressKind>? {
-            val block = blocks.singleOrNull()?.takeIf { it >= codeBlock }
-            if (block == null) straddled = true
-            return block?.let { EngineReading.Proven(kind, it) }
+            val anchor = anchors.singleOrNull()
+            val block = blocks.singleOrNull()
+            if (anchor == null || block == null || !notBeforeCode(anchor, block)) {
+                straddled = true
+                return null
+            }
+            return EngineReading.Proven(kind, block)
         }
+
+        /**
+         * Whether the state at [anchor] (shown as [block]) is not before the code's: as their
+         * anchors tell ([ProofAnchor.notBefore]), else as their block labels do.
+         */
+        private fun notBeforeCode(anchor: ProofAnchor, block: Long): Boolean =
+            code.anchor?.let { anchor.notBefore(it) } ?: (block >= code.blockNumber)
 
         /**
          * The linked list of the mapping at [slot] (owners, modules), walked from the sentinel
