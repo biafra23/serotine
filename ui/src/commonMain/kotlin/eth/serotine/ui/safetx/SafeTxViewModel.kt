@@ -565,7 +565,8 @@ class SafeTxViewModel(
         shown = false
         hiddenSince = true
         if (step.value is Step.Quoting) hiddenWhileQuoting = true
-        if ((step.value as? Step.Signing)?.checking == true) job?.cancel()
+        // Only ever the Safe's check before a signature.
+        if ((step.value as? Step.Signing)?.let { it.signing && it.checking } == true) job?.cancel()
         step.update { current ->
             when (current) {
                 is Step.Signing -> current.copy(
@@ -620,8 +621,9 @@ class SafeTxViewModel(
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             // Its age runs from its first read, not from its answer: the figures are as old as that.
-            val readFrom = timeSource.markNow()
-            val next = quoted(kind, request, account, level)
+            // The first is the one after the Safe's check, which may wait a while for a verified reading.
+            var readFrom = timeSource.markNow()
+            val next = quoted(kind, request, account, level) { readFrom = timeSource.markNow() }
             val biometrics = biometricsOffered()
             if (step.value != quoting) return@launch
             when (next) {
@@ -649,8 +651,8 @@ class SafeTxViewModel(
         val request = (now ?: lastContext)?.request ?: return
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
         job = viewModelScope.launch {
-            val readFrom = timeSource.markNow()
-            val next = quoted(review.kind, request, account, level)
+            var readFrom = timeSource.markNow()
+            val next = quoted(review.kind, request, account, level) { readFrom = timeSource.markNow() }
             val latest = step.value
             if (latest !is Step.Reviewing || !latest.refreshing) return@launch
             when (next) {
@@ -678,14 +680,24 @@ class SafeTxViewModel(
         data class Refused(val message: String) : Quoted
     }
 
-    private suspend fun quoted(kind: ReviewKind, request: SigningRequest, account: Address, level: FeeLevel): Quoted =
+    /**
+     * The [kind] of [request] quoted from [account] at [level]; [safeChecked] is called once the
+     * Safe is verified, before the figures the quote's age is measured from are read.
+     */
+    private suspend fun quoted(
+        kind: ReviewKind,
+        request: SigningRequest,
+        account: Address,
+        level: FeeLevel,
+        safeChecked: () -> Unit,
+    ): Quoted =
         try {
             when (kind) {
-                ReviewKind.APPROVAL -> when (val quoting = quoteSafeApproval(request, account, level)) {
+                ReviewKind.APPROVAL -> when (val quoting = quoteSafeApproval(request, account, level, safeChecked)) {
                     is SafeApprovalQuoting.Quoted -> Quoted.Made(TxQuote.Approval(quoting.quote))
                     is SafeApprovalQuoting.Refused -> Quoted.Refused(safeTxRefusalText(quoting.refusal, network))
                 }
-                ReviewKind.EXECUTION -> when (val quoting = quoteSafeExecution(request, account, level)) {
+                ReviewKind.EXECUTION -> when (val quoting = quoteSafeExecution(request, account, level, safeChecked)) {
                     is SafeExecutionQuoting.Quoted -> Quoted.Made(TxQuote.Execution(quoting.quote))
                     is SafeExecutionQuoting.Refused -> Quoted.Refused(safeTxRefusalText(quoting.refusal, network))
                 }
@@ -714,11 +726,12 @@ class SafeTxViewModel(
             } catch (e: Exception) {
                 null // the use case promises not to throw; the backstop
             }
+            // Left while the check came back: nothing is signed. Otherwise the check is over,
+            // whatever it came to.
+            currentCoroutineContext().ensureActive()
+            step.update { if (it is Step.Signing && it.signing) it.copy(checking = false) else it }
             val result = when (checked) {
                 is SafeTxSignCheck.Ready -> {
-                    // Left while the check came back: nothing is signed.
-                    currentCoroutineContext().ensureActive()
-                    step.update { if (it is Step.Signing && it.signing) it.copy(checking = false) else it }
                     // Signed and queued as one step, against the state just checked, which leaving
                     // cannot cut in half.
                     withContext(NonCancellable) {

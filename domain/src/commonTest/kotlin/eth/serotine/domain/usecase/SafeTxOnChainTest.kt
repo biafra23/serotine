@@ -103,6 +103,28 @@ class SafeTxOnChainTest {
     }
 
     @Test
+    fun approvalAndExecutionQuotesSayWhenTheSafeWasCheckedBeforeTheirFiguresAreRead() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        launch {
+            delay(10.seconds)
+            world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 101)
+        }
+        val checked = mutableListOf<Long>()
+
+        assertIs<SafeApprovalQuoting.Quoted>(
+            quoteApproval(world.request(payment), world.alice.address, FeeLevel.NORMAL) { checked += currentTime },
+        )
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        assertIs<SafeExecutionQuoting.Quoted>(
+            quoteExecution(world.request(payment, world.carol), world.alice.address, FeeLevel.NORMAL) {
+                checked += currentTime
+            },
+        )
+
+        assertEquals(listOf(10_000L, 10_000L), checked, "each quote's age runs from after the Safe's wait")
+    }
+
+    @Test
     fun anOwnerApprovesTheHashOnChainFromItsAccount() = runTest {
         val request = world.request(payment)
 

@@ -266,11 +266,15 @@ internal sealed interface SafeCheck {
 /**
  * How long a one-shot check of a Safe ([check]) waits for a reading that could not be verified
  * to be made again. The engine adapter retries a failed proof and a read the head moved under
- * for up to 20 s itself (`VerifiedAddressKinds.SAFE_READ_BUDGET`), after the code's proof, and the
- * reading is made again at the next poll (4 s on): this wait outlasts all three with room for
- * that next read, so it never cuts off the very read it is waiting on.
+ * for up to 20 s itself (`VerifiedAddressKinds.SAFE_READ_BUDGET`, the code's proof included), and
+ * the reading is made again at the next poll (4 s on): this wait outlasts both with room for that
+ * next read, so it normally does not cut off the very read it is waiting on. Normally, not
+ * always: the adapter checks its 20 s only between blocking engine calls, so a slow call runs past
+ * it; the poll reads the engine's state before it reads the Safe, outside those 20 s; and this
+ * wait cannot end before a blocked engine (JNA) call returns. A caller with less time than this
+ * passes its own budget. Public so that the engine adapter's tests hold its budget against this.
  */
-internal val SAFE_CHECK_BUDGET: Duration = 45.seconds
+val SAFE_CHECK_BUDGET: Duration = 45.seconds
 
 /**
  * The Safe at [safe] as the light client proves it now, for a one-shot check: an import, the
@@ -280,10 +284,10 @@ internal val SAFE_CHECK_BUDGET: Duration = 45.seconds
  * time ([ReadUnavailable.UNPROVEN]: a proof a peer did not deliver, a read the head kept moving
  * under) is waited out for the next one the reading makes, for up to [budget]; the first other
  * answer stands, the light client's syncing included. One that cannot change by asking again — no
- * engine ([ReadUnavailable.NO_ENGINE]), an anchor it refuses ([ReadUnavailable.STALE_ANCHOR]) — is
- * answered at once. Still unproven after [budget], it is [SafeTxRefusal.SafeUnavailable]. Only
- * verified readings are ever taken: the wait changes how often the chain is asked, never what is
- * believed.
+ * engine ([ReadUnavailable.NO_ENGINE]), an anchor it refuses ([ReadUnavailable.STALE_ANCHOR]), a
+ * read this engine will not make ([ReadUnavailable.REFUSED]) — is answered at once. Still
+ * unproven after [budget], it is [SafeTxRefusal.SafeUnavailable]. Only verified readings are ever
+ * taken: the wait changes how often the chain is asked, never what is believed.
  */
 internal suspend fun ObserveSafe.check(safe: Address, budget: Duration = SAFE_CHECK_BUDGET): SafeCheck {
     val reading = withTimeoutOrNull(budget) { this@check(safe).firstOrNull { !it.unproven } } ?: UNPROVEN_SAFE
@@ -441,13 +445,20 @@ class SignSafeTx(
     /**
      * Whether [owner] may sign [request] now, as the Safe's verified state says: the network, what
      * it does, the Safe's nonce and owners, the threshold it would leave, and whether [owner]'s
-     * signature is among its valid ones already. Nothing is signed, and no key is asked for.
+     * signature is among its valid ones already. Nothing is signed, and no key is asked for. The
+     * Safe's check waits out an unproven reading for up to [budget] (at most [SAFE_CHECK_BUDGET]):
+     * a caller whose signature has a deadline (a review's minute, a prompt's) passes what is left
+     * of it, and an unproven Safe is then [SafeTxRefusal.SafeUnavailable] in time.
      */
-    suspend fun check(request: SigningRequest, owner: Address): SafeTxSignCheck {
+    suspend fun check(
+        request: SigningRequest,
+        owner: Address,
+        budget: Duration = SAFE_CHECK_BUDGET,
+    ): SafeTxSignCheck {
         fun refused(refusal: SafeTxRefusal) = SafeTxSignCheck.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
-        val state = when (val check = observeSafe.check(request.safe)) {
+        val state = when (val check = observeSafe.check(request.safe, budget.coerceAtMost(SAFE_CHECK_BUDGET))) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
@@ -550,7 +561,18 @@ class ProposeSafeTx(
     private val queue: SafeTxQueue,
     private val network: Network,
 ) {
-    suspend operator fun invoke(safe: Address, to: Address, asset: TransferAsset, amount: UInt256): SafeTxProposing =
+    /**
+     * Proposes [amount] of [asset] from [safe] to [to]. [safeChecked] is called once the Safe is
+     * verified ([ObserveSafe.check], which may wait out an unproven reading), before its balance,
+     * its queue and the run are read: where a review measures the proposal's age from.
+     */
+    suspend operator fun invoke(
+        safe: Address,
+        to: Address,
+        asset: TransferAsset,
+        amount: UInt256,
+        safeChecked: () -> Unit = {},
+    ): SafeTxProposing =
         cancellingReads {
             val token = (asset as? TransferAsset.Erc20Token)?.token
             if (to == Address.ZERO) return@cancellingReads SafeTxProposing.ToZeroAddress
@@ -560,14 +582,16 @@ class ProposeSafeTx(
             val txTo = token?.address ?: to
             val value = if (token == null) amount else UInt256.ZERO
             val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
-            val checked = async { observeSafe.check(safe) }
-            val balance = async { balanceOf(safe, token?.address) }
-            val queued = async { queue.observe(safe).first() }
-
-            val reading = when (val check = checked.await()) {
+            // The Safe first: its check may wait a while, and the balance and queue read after it are
+            // as old as the proposal is said to be.
+            val reading = when (val check = observeSafe.check(safe)) {
                 is SafeCheck.Verified -> check.reading
                 is SafeCheck.Refused -> return@cancellingReads SafeTxProposing.Refused(check.refusal)
             }
+            safeChecked()
+            val balance = async { balanceOf(safe, token?.address) }
+            val queued = async { queue.observe(safe).first() }
+
             val (before, balanceBlock) = when (val read = balance.await()) {
                 is SafeBalance.Read -> read.amount to read.blockNumber
                 is SafeBalance.Refused -> return@cancellingReads read.proposing

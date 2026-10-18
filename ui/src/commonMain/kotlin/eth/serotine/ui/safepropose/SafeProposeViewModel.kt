@@ -34,8 +34,10 @@ import eth.serotine.domain.usecase.SafeTxSigning
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetOption
+import eth.serotine.ui.components.CHECK_TOOK_THE_TIME
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.MIN_PROMPT_TIME
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
@@ -281,8 +283,14 @@ class SafeProposeViewModel(
      * nowhere else.
      */
     fun edit() {
-        val current = step.value as? Step.Reviewing ?: return
+        var current = step.value as? Step.Reviewing ?: return
         if (current.signing && !current.checking) return
+        if (current.checking) {
+            // The check stops first, whatever is asked next: no key is asked for after Back.
+            job?.cancel()
+            current = current.copy(signing = false, checking = false)
+            step.value = current
+        }
         if (current.unsaved != null) {
             step.value = current.copy(askingToDrop = true)
             return
@@ -414,7 +422,8 @@ class SafeProposeViewModel(
     fun onHidden() {
         shown = false
         if ((step.value as? Step.Composing)?.proposing == true) hiddenWhileProposing = true
-        if ((step.value as? Step.Reviewing)?.checking == true) job?.cancel()
+        // Only ever the Safe's check before a signature: a refresh in flight finishes.
+        if ((step.value as? Step.Reviewing)?.let { it.signing && it.checking } == true) job?.cancel()
         step.update { current ->
             if (current is Step.Reviewing) {
                 current.copy(
@@ -449,21 +458,34 @@ class SafeProposeViewModel(
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = review.unlock.copy(password = WalletPassword.EMPTY, error = null)
         step.value = review.copy(signing = true, checking = true, error = null, unlock = unlocked)
+        // The check has what is left of the proposal's minute, less the prompt's least time when
+        // the prompt signs: past that the signature could not be made in time anyway.
+        val checkUntil = (unlock as? Unlock.WithBiometrics)?.notAfter?.let { it - MIN_PROMPT_TIME }
+            ?: (review.proposedAt + QUOTE_MAX_AGE)
         job = viewModelScope.launch {
             // The Safe is checked first, which leaving the screen or Back cancels: no key is asked
             // for, and no prompt shown, until it has passed.
             val checked = try {
-                signSafeTx.check(review.proposal.request, review.owner)
+                signSafeTx.check(review.proposal.request, review.owner, budget = -checkUntil.elapsedNow())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 null // the use case promises not to throw; the backstop
             }
+            // Left while the check came back: nothing is signed. Otherwise the check is over,
+            // whatever it came to.
+            currentCoroutineContext().ensureActive()
+            step.update { if (it is Step.Reviewing && it.signing) it.copy(checking = false) else it }
+            val unproven = (checked as? SafeTxSignCheck.Refused)?.refusal ==
+                SafeTxRefusal.SafeUnavailable(ReadUnavailable.UNPROVEN)
+            if (checkUntil.hasPassedNow() && (checked is SafeTxSignCheck.Ready || unproven)) {
+                // The check took the time the proposal had left: nothing is signed, it is made again.
+                step.update { if (it is Step.Reviewing && it.signing) it.copy(signing = false) else it }
+                refresh(note = CHECK_TOOK_THE_TIME)
+                return@launch
+            }
             val signing = when (checked) {
                 is SafeTxSignCheck.Ready -> {
-                    // Left while the check came back: nothing is signed.
-                    currentCoroutineContext().ensureActive()
-                    step.update { if (it is Step.Reviewing && it.signing) it.copy(checking = false) else it }
                     // Signed and queued as one step, against the state just checked, which leaving
                     // cannot cut in half.
                     withContext(NonCancellable) {
@@ -524,10 +546,13 @@ class SafeProposeViewModel(
                 return Step.Composing(error = again.message)
             }
         }
-        // Its age runs from its first read, not from its answer: the figures are as old as that.
-        val readFrom = timeSource.markNow()
+        // Its age runs from its first read, not from its answer: the figures are as old as that. The
+        // first is the one after the Safe's check, which may wait a while for a verified reading.
+        var readFrom = timeSource.markNow()
         val proposing = try {
-            proposeSafeTx(safe, to.address, request.option.asset, request.amount)
+            proposeSafeTx(safe, to.address, request.option.asset, request.amount) {
+                readFrom = timeSource.markNow()
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

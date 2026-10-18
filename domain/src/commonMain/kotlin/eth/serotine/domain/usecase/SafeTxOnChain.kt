@@ -168,7 +168,18 @@ class QuoteSafeApproval(
 ) {
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock)
 
-    suspend operator fun invoke(request: SigningRequest, owner: Address, level: FeeLevel): SafeApprovalQuoting {
+    /**
+     * Quotes [owner]'s approval of [request] at the fee [level]. [safeChecked] is called once the
+     * Safe is verified ([ObserveSafe.check], which may wait out an unproven reading), before the
+     * approval, the balance, the fees, the nonce and the run are read: where a review measures the
+     * quote's age from.
+     */
+    suspend operator fun invoke(
+        request: SigningRequest,
+        owner: Address,
+        level: FeeLevel,
+        safeChecked: () -> Unit = {},
+    ): SafeApprovalQuoting {
         fun refused(refusal: SafeTxRefusal) = SafeApprovalQuoting.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
@@ -178,6 +189,7 @@ class QuoteSafeApproval(
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
+        safeChecked()
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (owner !in state.owners) return refused(SafeTxRefusal.NotAnOwner(owner))
         request.withoutRecovery(state)?.let { return refused(it) }
@@ -285,7 +297,18 @@ class QuoteSafeExecution(
 ) {
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock)
 
-    suspend operator fun invoke(request: SigningRequest, executor: Address, level: FeeLevel): SafeExecutionQuoting {
+    /**
+     * Quotes [executor]'s execution of [request] at the fee [level]. [safeChecked] is called once
+     * the Safe is verified ([ObserveSafe.check], which may wait out an unproven reading), before the
+     * confirmations, the balance, the fees, the nonce and the run are read: where a review measures
+     * the quote's age from.
+     */
+    suspend operator fun invoke(
+        request: SigningRequest,
+        executor: Address,
+        level: FeeLevel,
+        safeChecked: () -> Unit = {},
+    ): SafeExecutionQuoting {
         fun refused(refusal: SafeTxRefusal) = SafeExecutionQuoting.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
@@ -295,6 +318,7 @@ class QuoteSafeExecution(
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
+        safeChecked()
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (request.nonce > state.nonce) return refused(SafeTxRefusal.NotNext(state.nonce))
         request.withoutRecovery(state)?.let { return refused(it) }

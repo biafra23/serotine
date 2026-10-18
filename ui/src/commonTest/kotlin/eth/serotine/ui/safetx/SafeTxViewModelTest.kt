@@ -628,6 +628,26 @@ class SafeTxViewModelTest {
     }
 
     @Test
+    fun aQuotesAgeRunsFromAfterItsSafeCheckNotFromBeforeTheWait() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.startApproval()
+        runCurrent()
+        // The Safe's check waits 40 s for a verified reading; the figures are read after it.
+        clock += 40.seconds
+        world.state = world.state
+        runCurrent()
+        viewModel.onPasswordChange("made-up test password")
+        clock += 30.seconds // 70 s since the tap, 30 s since the figures
+
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(listOf("made-up test password"), world.signer.passwords, "signed: the quote is 30 s old")
+    }
+
+    @Test
     fun aQuoteOverAMinuteOldIsMadeAgainAtTheTapThatWouldSignIt() = runTest {
         funded()
         val viewModel = viewModel(queued(world.request(world.ether(4))))

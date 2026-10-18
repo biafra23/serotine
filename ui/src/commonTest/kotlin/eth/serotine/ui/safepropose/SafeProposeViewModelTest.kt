@@ -387,12 +387,113 @@ class SafeProposeViewModelTest {
 
         viewModel.signWithBiometrics()
         runCurrent()
-        clock += 20.seconds
+        clock += 10.seconds
         gate.complete(Unit)
         runCurrent()
 
         val unlock = assertIs<Unlock.WithBiometrics>(world.signer.asked.single().second)
-        assertEquals(10.seconds, -unlock.notAfter!!.elapsedNow(), "what is left of the proposal's minute, not 30 s")
+        assertEquals(20.seconds, -unlock.notAfter!!.elapsedNow(), "what is left of the proposal's minute, not 30 s")
+    }
+
+    @Test
+    fun aCheckOfTheSafeThatEatsThePromptsTimeProposesAgainAndAsksForNoKey() = runTest {
+        biometrics = BiometricUnlock.On
+        val viewModel = reviewed()
+        clock += 30.seconds // 30 s of the minute left: the check gets 15, the prompt keeps its least 15
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        viewModel.signWithBiometrics()
+        runCurrent()
+        clock += 16.seconds
+        advanceTimeBy(16.seconds) // the check gives up at 15 s
+        runCurrent()
+        world.state = world.state // proven again: the new proposal is made
+        runCurrent()
+
+        assertEquals(emptyList(), world.signer.asked, "no prompt, so none to time out")
+        assertEquals(
+            "Checking the Safe on chain took the time the quote had left, so nothing was signed and the quote was " +
+                "made again: check it, then sign.",
+            viewModel.review.unlock.error,
+        )
+        assertFalse(viewModel.review.signing)
+    }
+
+    @Test
+    fun aCheckOfTheSafeThatOutlastsTheProposalsMinuteProposesAgainRatherThanSign() = runTest {
+        val viewModel = reviewed()
+        clock += 50.seconds // 10 s of the minute left for the check
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.onPasswordChange("made-up test password")
+
+        viewModel.sign()
+        runCurrent()
+        clock += 11.seconds
+        advanceTimeBy(11.seconds)
+        runCurrent()
+        world.state = world.state
+        runCurrent()
+
+        assertEquals(emptyList(), world.signer.asked, "nothing signed on a proposal past its minute")
+        assertEquals(
+            "Checking the Safe on chain took the time the quote had left, so nothing was signed and the quote was " +
+                "made again: check it, then sign.",
+            viewModel.review.unlock.error,
+        )
+    }
+
+    @Test
+    fun aRefusedCheckBeforeSigningLeavesTheReviewIdleSoALaterRefreshOutlivesBeingHidden() = runTest {
+        val viewModel = reviewed()
+        viewModel.onShown()
+        viewModel.onPasswordChange("made-up test password")
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        viewModel.sign()
+        runCurrent()
+        assertFalse(viewModel.review.signing)
+        assertFalse(viewModel.review.checking, "the check is over, refused")
+
+        // Proposed again while the Safe is unproven, and the screen hidden and shown meanwhile.
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.refresh()
+        runCurrent()
+        assertTrue(viewModel.review.refreshing)
+        viewModel.onHidden()
+        viewModel.onShown()
+        world.state = world.state
+        runCurrent()
+
+        assertFalse(viewModel.review.refreshing, "the refresh was not cancelled with the check long over")
+        viewModel.onPasswordChange("made-up test password")
+        assertTrue(viewModel.review.canSign, "proposed again, and open to sign")
+    }
+
+    @Test
+    fun backDuringTheCheckWithAnUnsavedSignatureStopsTheCheckBeforeAskingAboutIt() = runTest {
+        val viewModel = reviewed()
+        viewModel.onShown()
+        world.queue.failSaves = true
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertIs<ShareItem>(viewModel.review.share, "signed, not saved")
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertTrue(viewModel.review.checking)
+
+        viewModel.edit()
+        world.state = world.state // the Safe proven after Back
+        advanceTimeBy(60.seconds)
+        runCurrent()
+
+        assertEquals(1, world.signer.asked.size, "the first signature only: none after Back")
+        assertTrue(viewModel.review.askingToDrop)
+        assertFalse(viewModel.review.signing)
+        assertFalse(viewModel.review.checking)
+        viewModel.dropUnsaved()
+        assertIs<SafeProposeUiState.Compose>(viewModel.uiState.value)
     }
 
     @Test

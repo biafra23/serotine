@@ -377,6 +377,33 @@ class SafeTxSigningTest {
     }
 
     @Test
+    fun aProposalSaysWhenTheSafeWasCheckedBeforeItsBalanceIsRead() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        launch {
+            delay(10.seconds)
+            world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 101)
+        }
+        var checkedAt: Long? = null
+
+        assertIs<SafeTxProposing.Proposed>(
+            propose(world.safe, world.recipient, TransferAsset.Native, UInt256.ONE) { checkedAt = currentTime },
+        )
+
+        assertEquals(10_000, checkedAt, "the proposal's age runs from here, after the Safe's wait")
+    }
+
+    @Test
+    fun aSignatureCheckGivenLessTimeThanTheBudgetGivesUpInIt() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        assertEquals(
+            SafeTxSignCheck.Refused(SafeTxRefusal.SafeUnavailable(ReadUnavailable.UNPROVEN)),
+            sign.check(world.request(usdcTransfer(4)), world.alice.address, budget = 7.seconds),
+        )
+        assertEquals(7_000, currentTime)
+    }
+
+    @Test
     fun aTransferIsProposedAtTheSafesNonceAndRunFromTheSafe() = runTest {
         val amount = UInt256.of(100_000_000_000_000_000) // 0.1 ETH of the Safe's 1
 

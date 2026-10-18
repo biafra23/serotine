@@ -362,7 +362,12 @@ upgrades*).
       before it, and the Safe's balance before, what those move, and after,
       with its block. It is proposed again on Refresh, when the screen is shown
       again, and at the tap that signs it when it is over a minute old, as 8's
-      quote is. An owner held here, chosen when there are several, signs it
+      quote is; its minute runs from after the proposal's Safe check. The
+      tap that signs checks the Safe again first, within what is left of
+      that minute (less the prompt's 15 s for the biometric prompt): a check
+      that outlasts it signs nothing and proposes again, saying "Checking the
+      Safe on chain took the time the quote had left…". An owner held here,
+      chosen when there are several, signs it
       (`SignSafeTx`, the password or the biometric prompt as on 8); it is then
       queued and 17 opens for it, in place of the proposal. Nothing is queued
       until an owner held here signs it, so a proposal given up leaves no
@@ -486,7 +491,8 @@ upgrades*).
       check verified. The signed request is queued; one the queue cannot
       save stays on the screen, to be shared before it is left. Approve on
       chain and Execute check the Safe as their quote is made, saying the
-      same.
+      same; the quote's minute runs from after that check. While any of
+      these checks shows, the display is kept on.
     - Approve on chain, offered while the confirmations fall short, and
       Execute review the EOA transaction as 8 reviews a transfer: the
       account that sends it (an owner held here first; for Execute, any
