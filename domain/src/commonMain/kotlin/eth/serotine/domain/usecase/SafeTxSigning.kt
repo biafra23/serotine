@@ -17,6 +17,7 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SafeTxQueue
 import eth.serotine.domain.repository.SafeTxQueueList
 import eth.serotine.domain.repository.SignatureRecovery
@@ -122,6 +123,25 @@ sealed interface SafeTxRefusal {
      */
     data class UnpinnedFallbackHandler(val handler: Address) : SafeTxRefusal
 
+    /**
+     * A call of the Safe itself that is none of the actions decoded exactly here: a change of its
+     * settings, whose data is exactly that function's encoding, or the empty, zero-value
+     * rejection. Solidity ignores call data past the arguments and the Safe's ABI decoder masks an
+     * address's upper bytes, so data that misses the strict decoding by a trailing byte or a dirty
+     * word can still change a setting on chain, the fallback handler included. Whatever its
+     * selector, this wallet signs, approves and executes none; it is shown, and nothing more.
+     */
+    data object UndecodedSelfCall : SafeTxRefusal
+
+    /**
+     * It would leave the Safe's [owners] owners all needed (a threshold of [owners], more than
+     * one): with one of them lost, the rest could never reach the threshold again, not even to
+     * swap the lost one out. That shape only comes with a recovery module (owner ruling,
+     * 2026-10-18, #54, its change half), and none is recognised here yet, so a threshold change,
+     * an owner added or an owner removed that ends there is refused.
+     */
+    data class NeedsRecoveryModule(val owners: Int) : SafeTxRefusal
+
     /** The light client has no verified head yet. */
     data object Syncing : SafeTxRefusal
 
@@ -163,20 +183,43 @@ data class DecodedSafeTx private constructor(
 
 /**
  * Why this wallet signs, approves and executes none of [this], whatever its signatures and the
- * Safe say: a delegate call, gas or refund terms, or a fallback handler set that is not pinned
- * ([PinnedFallbackHandlers]; owner ruling, 2026-10-18, #63) (docs/wallet-ux.md, screen 17).
- * Removing the handler, removing the guard and disabling a module are not refused: they carry a
- * warning. Null when it may be signed.
+ * Safe say: a delegate call, gas or refund terms, a call of the Safe itself that is not decoded
+ * exactly as one of its settings changes or the rejection, or a fallback handler set that is not
+ * pinned ([PinnedFallbackHandlers]; owner ruling, 2026-10-18, #63) (docs/wallet-ux.md, screen
+ * 17). Removing the handler, removing the guard and disabling a module are not refused: they
+ * carry a warning. Null when it may be signed.
  */
 internal fun SigningRequest.unsignable(): SafeTxRefusal? {
     if (tx.operation == SafeOperation.DELEGATECALL) return SafeTxRefusal.DelegateCall
     if (SafeTxGasTerms.of(tx) != null) return SafeTxRefusal.GasTerms
-    val change = (SafeTxAction.of(safe, tx) as? SafeTxAction.SettingsChange)?.change
-    val handler = (change as? SafeSettingsChange.FallbackHandlerSet)?.handler
+    val action = SafeTxAction.of(safe, tx)
+    // On chain a self-call need not match the strict decoding to change a setting: only the exact ones pass.
+    if (tx.to == safe && action !is SafeTxAction.SettingsChange && action != SafeTxAction.Rejection) {
+        return SafeTxRefusal.UndecodedSelfCall
+    }
+    val handler = ((action as? SafeTxAction.SettingsChange)?.change as? SafeSettingsChange.FallbackHandlerSet)?.handler
     if (handler != null && !PinnedFallbackHandlers.allowed(network, handler)) {
         return SafeTxRefusal.UnpinnedFallbackHandler(handler)
     }
     return null
+}
+
+/**
+ * [SafeTxRefusal.NeedsRecoveryModule] when [this] would leave the Safe, now as [state] says, an
+ * n-of-n with n above one: a threshold changed to the owner count, an owner removed or added with
+ * the threshold set to the count that leaves (owner ruling, 2026-10-18, #54). No recovery module
+ * is recognised yet, so the Safe's modules do not lift it. Null otherwise.
+ */
+internal fun SigningRequest.withoutRecovery(state: SafeState): SafeTxRefusal? {
+    val change = (SafeTxAction.of(safe, tx) as? SafeTxAction.SettingsChange)?.change ?: return null
+    val owners = state.owners.size
+    val (after, threshold) = when (change) {
+        is SafeSettingsChange.ThresholdChanged -> owners to change.threshold
+        is SafeSettingsChange.OwnerRemoved -> owners - 1 to change.threshold
+        is SafeSettingsChange.OwnerAdded -> owners + 1 to change.threshold
+        else -> return null
+    }
+    return SafeTxRefusal.NeedsRecoveryModule(after).takeIf { after > 1 && threshold == after.toLong() }
 }
 
 /** The Safe's verified state for a one-shot check, or the refusal there is instead. */
@@ -326,6 +369,7 @@ class SignSafeTx(
         }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (owner !in state.owners) return refused(SafeTxRefusal.NotAnOwner(owner))
+        request.withoutRecovery(state)?.let { return refused(it) }
         // Of the signatures the request carries, only the checked ones count: a forged one in the
         // owner's name neither stands for it nor keeps it from signing.
         val valid = recovery.valid(request, state.owners)

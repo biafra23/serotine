@@ -167,6 +167,7 @@ class QuoteSafeApproval(
         }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (owner !in state.owners) return refused(SafeTxRefusal.NotAnOwner(owner))
+        request.withoutRecovery(state)?.let { return refused(it) }
         when (val approval = approvals.approval(request.safe, owner, request.hash)) {
             is ApprovalReading.Read -> if (approval.approved) return refused(SafeTxRefusal.AlreadyApproved)
             is ApprovalReading.Unavailable -> return refused(SafeTxRefusal.Unavailable(approval.reason))
@@ -283,6 +284,7 @@ class QuoteSafeExecution(
         }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (request.nonce > state.nonce) return refused(SafeTxRefusal.NotNext(state.nonce))
+        request.withoutRecovery(state)?.let { return refused(it) }
         // Sent already from any account here, and in no block yet: the nonce is the Safe's, not the sender's.
         sentAndUnmined(request)?.let { return refused(it) }
         val signatures = when (val confirmed = confirmations(request, state, executor)) {

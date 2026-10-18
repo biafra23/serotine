@@ -233,6 +233,7 @@ class AccountDetailViewModel(
                 SafeTxRefusal.DelegateCall -> "Not signed here: a delegate call"
                 SafeTxRefusal.GasTerms -> "Not signed here: it carries gas or refund terms"
                 is SafeTxRefusal.UnpinnedFallbackHandler -> "Not signed here: a fallback handler that is not pinned"
+                SafeTxRefusal.UndecodedSelfCall -> "Not signed here: a call to the Safe itself not decoded exactly"
                 else -> null
             },
         )

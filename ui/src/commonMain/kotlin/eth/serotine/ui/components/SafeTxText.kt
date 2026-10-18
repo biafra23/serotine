@@ -239,6 +239,11 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
         "${Eip55.format(refusal.handler)}: the handler answers the signature checks other contracts make for the " +
         "Safe, so only the canonical CompatibilityFallbackHandler 1.4.1, or none, is signed, approved or executed " +
         "here."
+    SafeTxRefusal.UndecodedSelfCall -> "A call to the Safe itself that could not be decoded exactly: on chain it " +
+        "could still change the Safe's settings, so Serotine does not sign, approve or execute it."
+    is SafeTxRefusal.NeedsRecoveryModule -> "It would leave all ${refusal.owners} owners needed to sign: with one " +
+        "of them lost, the rest could never reach the threshold again. That needs a recovery module, and Serotine " +
+        "recognises none yet (#54), so it does not sign, approve or execute it."
     SafeTxRefusal.Syncing -> "The light client is not synced yet: try again in a moment."
     is SafeTxRefusal.Unavailable -> unavailableText(refusal.reason)
     is SafeTxRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)

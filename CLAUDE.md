@@ -157,7 +157,9 @@ and that is the owner's decision, not a drive-by dependency.
   (`components/Unavailable.kt`: `UnavailableDialog`, with the ways to get it
   where there are some). The UiState carries the enabled state and a
   display-ready reason. Only an action that does not apply at all (to that
-  kind of account, in that step) is left out.
+  kind of account, in that step) is left out. Known not to follow it yet,
+  tracked in #74: screen 17's Sign and Approve on chain, and its Execute
+  while the owners' states cannot be read, are still hidden.
 - **Every screen has previews** (owner's request, 2026-10-17), so Android
   Studio renders it: `<Feature>ScreenPreviews.kt` next to the screen, one
   private `@Preview` per state the screen draws differently plus one in the
@@ -567,7 +569,10 @@ discussion that produced this note.
   signed, approved or executed here: the handler answers EIP-1271 signature
   checks for the Safe, and one that accepts every signature lets anyone
   spend what the Safe has approved. A guard removed and a module disabled
-  are signed with a warning, not refused.
+  are signed with a warning, not refused. A call of the Safe itself that is
+  not decoded exactly (a settings change, or the empty zero-value
+  rejection) is refused whatever its selector, since on chain it could
+  still set the handler.
 - **Network-upgrade warnings are peer reports, and say so** (owner's request,
   2026-10-17: warn ahead of a breaking hard fork, notify even while the app
   is closed, and after it do nothing but ask for the update). The engine's

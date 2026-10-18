@@ -263,8 +263,9 @@ upgrades*).
       pinned, so none is offered, and every n-of-n above one is refused with
       the reason (`SafePlanRefusal.NeedsRecoveryModule`): 2 of 2 is not
       offered. That every n-of-n follows the keys doc's 2-of-2 rule is the
-      owner's ruling (2026-10-18, #54); which recovery modules come stays
-      open (#54, #72).
+      owner's ruling (2026-10-18, #54); its change half, a change of an
+      existing Safe that ends as an n-of-n, is refused on screen 17. Which
+      recovery modules come stays open (#54, #72).
 15. **Create Safe 3/3, review**: the address predicted locally (CREATE2), with
     its blockie and `t/n`; the version, owners and threshold; the deployment
     fee and the account that pays it; Deploy. After deployment the Safe is
@@ -385,6 +386,23 @@ upgrades*).
       Setting the pinned one, or removing the handler, is signed with its
       warning; so are a guard removed and a module disabled, which keep
       their warning and are not refused.
+    - A call of the Safe itself is signed only when it decodes exactly: a
+      settings change whose data is that function's encoding, or the empty,
+      zero-value rejection. Any other self-call, whatever its selector (a
+      trailing byte, an address word with dirty upper bytes, an unknown
+      function, ether sent to itself), is refused as "a call to the Safe
+      itself that could not be decoded exactly"
+      (`SafeTxRefusal.UndecodedSelfCall`): Solidity ignores trailing data and
+      the Safe's decoder masks addresses, so on chain it could still change a
+      setting, the fallback handler of #63 included.
+    - A change that would leave the Safe an n-of-n above one (a threshold
+      changed to the owner count, an owner removed or added with the
+      threshold at the count that leaves) is refused when it is signed,
+      approved or executed, against the Safe's verified owners and threshold
+      then (`SafeTxRefusal.NeedsRecoveryModule`): the change half of the
+      owner's ruling (2026-10-18, #54), whose creation half is screen 14's.
+      No recovery module is recognised yet, so the Safe's modules do not
+      lift it.
     - `delegatecall` is marked as such and decoded no further: the Safe runs
       the target's code as itself. This wallet shows it and does not sign,
       approve or execute it (`SafeTxRefusal.DelegateCall`); a batch made by
@@ -412,7 +430,10 @@ upgrades*).
       any account held here, owner or not, which pays for it (owner ruling,
       2026-10-18, #56); an owner's sending counts as its own confirmation.
       Execute is greyed out, not hidden, while the confirmations fall short or
-      another transaction runs first, a tap saying why (#55). Only the Safe's
+      another transaction runs first, a tap saying why (#55). Known not to
+      follow #55 yet, tracked in #74: Sign and Approve on chain are hidden
+      where they cannot be done, and so is Execute while the owners' states
+      cannot be read. Only the Safe's
       next nonce can be executed, and an approval or
       execution sent and not mined yet is not offered again, from any
       account held here. What is shown and shared carries the signatures of the

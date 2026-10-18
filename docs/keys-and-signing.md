@@ -554,7 +554,12 @@ one of:
   owner count: with one owner lost the rest can never reach it, not even to
   swap the lost one out. So 2 of 2, 3 of 3 and every n of n with n > 1 are
   created only alongside a recovery module (`SafePlanRefusal.NeedsRecoveryModule`
-  otherwise). Which recovery modules come, and how, stays open (#54, #72).
+  otherwise). The ruling covers changing a Safe too: a threshold change, an
+  owner removed or an owner added that leaves an n-of-n above one is not
+  signed, approved or executed here, checked against the Safe's verified
+  owners and threshold (`SafeTxRefusal.NeedsRecoveryModule`); no recovery
+  module is recognised yet, so every such change is refused. Which recovery
+  modules come, and how, stays open (#54, #72).
 
 For an **EOA** none of this exists: the mnemonic is the only backup, which is
 the other reason an EOA key is a secp256k1 key from a mnemonic in the

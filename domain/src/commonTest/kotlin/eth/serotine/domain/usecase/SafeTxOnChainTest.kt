@@ -1,5 +1,6 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AbiWords
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Network
@@ -261,6 +262,78 @@ class SafeTxOnChainTest {
         assertEquals(null, DecodedSafeTx.of(pinned).refusal)
         assertEquals(null, DecodedSafeTx.of(world.request(setHandler(Address.ZERO))).refusal)
         assertIs<SafeTxSigning.Signed>(sign(pinned, world.alice.address, unlock))
+    }
+
+    /** [request] refused for [refusal] by signing, approval and execution, and before anyone asks if [before]. */
+    private suspend fun assertRefusedEverywhere(request: SigningRequest, refusal: SafeTxRefusal, before: Boolean) {
+        val sign = SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA)
+        assertEquals(if (before) refusal else null, DecodedSafeTx.of(request).refusal, "said before anyone asks")
+        assertEquals(SafeTxSigning.Refused(refusal), sign(request, world.alice.address, unlock))
+        assertEquals(SafeApprovalQuoting.Refused(refusal), quoteApproval(request, world.alice.address, FeeLevel.NORMAL))
+        assertEquals(
+            SafeExecutionQuoting.Refused(refusal),
+            quoteExecution(request, world.alice.address, FeeLevel.NORMAL),
+        )
+    }
+
+    @Test
+    fun aSelfCallThatIsNotDecodedExactlyIsNeverSignedApprovedOrExecutedHere() = runTest {
+        // Solidity ignores trailing call data and the Safe's decoder masks an address word: on chain
+        // each of the first two would set the handler, though the strict decoding reads none of them.
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        val handler = "0".repeat(24) + world.recipient.hex.removePrefix("0x")
+        fun selfCall(data: String, value: Long = 0) = world.request(
+            SafeTx.call(world.safe, UInt256.of(value), data.hexToBytes(), nonce = 4),
+            world.carol,
+        )
+
+        for (
+            request in listOf(
+                selfCall("f08a0323" + handler + "00"), // a trailing byte
+                selfCall("f08a0323" + "ff".repeat(12) + world.recipient.hex.removePrefix("0x")), // dirty upper bytes
+                selfCall("deadbeef" + handler), // a selector this wallet does not know
+                selfCall("", value = 1), // ether to itself: no rejection
+            )
+        ) {
+            assertRefusedEverywhere(request, SafeTxRefusal.UndecodedSelfCall, before = true)
+        }
+        assertEquals(emptyList(), world.inputs.simulated)
+
+        // The empty, zero-value rejection, and a settings change decoded exactly, are not refused for it.
+        assertEquals(null, DecodedSafeTx.of(selfCall("")).refusal)
+        assertEquals(null, DecodedSafeTx.of(selfCall("694e80c3" + "0".repeat(63) + "1")).refusal)
+    }
+
+    @Test
+    fun aChangeThatLeavesEveryOwnerNeededIsRefusedWithoutARecoveryModule() = runTest {
+        // Owner ruling, 2026-10-18, #54, the change half: the Safe is 2 of 3 (alice, bob, carol).
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        val sign = SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA)
+        val sentinel = Address.of("0x" + "0".repeat(39) + "1")
+        fun change(data: ByteArray) = world.request(SafeTx.call(world.safe, UInt256.ZERO, data, nonce = 4), world.carol)
+        fun changeThreshold(t: Long) = change(AbiWords.selector("changeThreshold(uint256)") + AbiWords.word(t))
+        fun removeCarol(t: Long) = change(
+            AbiWords.selector("removeOwner(address,address,uint256)") +
+                AbiWords.word(sentinel) + AbiWords.word(world.carol) + AbiWords.word(t),
+        )
+        fun addStranger(t: Long) = change(
+            AbiWords.selector("addOwnerWithThreshold(address,uint256)") + AbiWords.word(world.stranger) +
+                AbiWords.word(t),
+        )
+
+        assertRefusedEverywhere(changeThreshold(3), SafeTxRefusal.NeedsRecoveryModule(owners = 3), before = false)
+        assertRefusedEverywhere(removeCarol(2), SafeTxRefusal.NeedsRecoveryModule(owners = 2), before = false)
+        assertRefusedEverywhere(addStranger(4), SafeTxRefusal.NeedsRecoveryModule(owners = 4), before = false)
+        // A module the Safe has is no recovery module this wallet recognises.
+        world.state = world.state.copy(modules = listOf(world.recipient))
+        assertRefusedEverywhere(changeThreshold(3), SafeTxRefusal.NeedsRecoveryModule(owners = 3), before = false)
+
+        // Shapes that leave an owner to spare, or one owner alone, may be signed.
+        for (request in listOf(changeThreshold(1), removeCarol(1), addStranger(3))) {
+            assertIs<SafeTxSigning.Signed>(sign(request, world.alice.address, unlock))
+        }
+        world.state = world.state.copy(owners = listOf(world.alice.address, world.carol), threshold = 1)
+        assertIs<SafeTxSigning.Signed>(sign(removeCarol(1), world.alice.address, unlock), "1 of 1: no n of n")
     }
 
     @Test
