@@ -162,18 +162,22 @@ class SafeTxOnChainTest {
     }
 
     @Test
-    fun onlyAnOwnerExecutes() = runTest {
-        // This app's reading of CLAUDE.md's "once the threshold is met any owner executes it": the
-        // Safe would take any sender; this wallet sends from an owner alone.
+    fun anyAccountHeldHereExecutesWithApprovalsOnChainMakingUpTheThreshold() = runTest {
+        // Owner ruling, 2026-10-18, #56: any account whose key is here may send it, owner or not.
         world.inputs.simulation = Simulation.Succeeded(executed, 100)
-        val request = world.request(payment, world.alice.address, world.carol)
+        world.approvals.approved[world.bob.address] = ApprovalReading.Read(approved = true, blockNumber = 120)
+        val request = world.request(payment, world.carol)
 
-        assertEquals(
-            SafeExecutionQuoting.Refused(SafeTxRefusal.NotAnOwner(world.stranger)),
+        val quote = assertIs<SafeExecutionQuoting.Quoted>(
             quoteExecution(request, world.stranger, FeeLevel.NORMAL),
+        ).quote
+
+        // No confirmation of its own: the stranger is no owner.
+        assertEquals(
+            listOf(request.signatures.single(), SafeSignature.ApprovedHash(world.bob.address)),
+            quote.signatures,
         )
-        assertEquals(emptyList(), world.inputs.simulated, "nothing quoted")
-        assertIs<SafeExecutionQuoting.Quoted>(quoteExecution(request, world.bob.address, FeeLevel.NORMAL))
+        assertEquals(listOf(world.alice.address, world.bob.address), world.approvals.asked)
     }
 
     @Test
@@ -293,8 +297,8 @@ class SafeTxOnChainTest {
         )
         assertEquals(
             SafeExecutionQuoting.Refused(SafeTxRefusal.AlreadySent),
-            quoteExecution(request, world.bob.address, FeeLevel.NORMAL),
-            "from another owner just the same: the nonce is the Safe's",
+            quoteExecution(request, world.stranger, FeeLevel.NORMAL),
+            "from another account of this wallet just the same: the nonce is the Safe's",
         )
         // A block took it and it reverted (an owner swapped meanwhile): the Safe's nonce is still 4,
         // the sender's count has passed it, and a corrected execution is not held back.

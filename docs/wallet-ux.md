@@ -393,13 +393,10 @@ upgrades*).
       verified `approvedHashes`), missing, or not verifiable now; a signature
       of an address that is no owner now counts for nobody.
     - Share request (QR or text) · Sign (an owner held here) · Approve on
-      chain · Execute, once the threshold is met. Execute is sent by an owner
-      held here, its sending counting as its own confirmation; another account
-      is refused (`SafeTxRefusal.NotAnOwner`). That is this app's reading of
-      the ruling's "once the threshold is met any owner executes it"
-      (CLAUDE.md, *Data sources*), the conservative one: the sentence names
-      who may execute, and does not say that no one else may. Whether a
-      non-owner may is the owner's open question. Only the Safe's next nonce can be
+      chain · Execute, once the threshold is met. Execute may be sent from
+      any account held here, owner or not, which pays for it (owner ruling,
+      2026-10-18, #56); an owner's sending counts as its own confirmation.
+      Only the Safe's next nonce can be
       executed, and an approval or
       execution sent and not mined yet is not offered again, from any
       account held here. What is shown and shared carries the signatures of the
@@ -423,8 +420,8 @@ upgrades*).
       queue cannot save stays on the screen, to be shared before it is left.
     - Approve on chain, offered while the confirmations fall short, and
       Execute review the EOA transaction as 8 reviews a transfer: the
-      account that sends it (an owner held here; for Execute, one whose
-      sending reaches the threshold), the fee level,
+      account that sends it (an owner held here first; for Execute, any
+      account held here whose sending reaches the threshold), the fee level,
       the most the fee can be, the account's balance before and after, the
       verified run, and for Execute the confirmations it is executed with. An
       approval the confirmations made needless meanwhile says so and is not
@@ -680,13 +677,10 @@ Applied:
   holds approves the hash in a transaction, which needs no transport between
   devices. It is quoted and sent as any transaction from that account is
   (Send's quote: nonce, fees, a verified run).
-- **Execution** is `execTransaction` sent by an owner account the user
-  holds, once signatures and approvals reach the threshold, followed like a
-  send (9); an account that is not a current owner is refused
-  (`SafeTxRefusal.NotAnOwner`), though the Safe itself would take any sender:
-  this app's reading of the ruling's "any owner executes it", which does not
-  itself forbid another sender (an open question for the owner).
-  The executing owner confirms it by sending it; approvals on chain are read
+- **Execution** is `execTransaction` sent by any account the user holds,
+  owner or not, which pays for it (owner ruling, 2026-10-18, #56), once
+  signatures and approvals reach the threshold, followed like a send (9).
+  The executing account, when it is an owner, confirms it by sending it; approvals on chain are read
   only when the signatures fall short. Its run is the whole execution — the
   Safe's checks, its guard, the call — as a verified call from that account,
   and one that would fail is not signed.

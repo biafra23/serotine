@@ -674,7 +674,10 @@ discussion that produced this note.
   the chain: the Safe (verified as a Safe), its nonce and owners, and the
   `SafeTx` hash recomputed locally; a signer that is not a current owner is
   refused. An owner may approve on chain with `approveHash` instead, and once
-  the threshold is met any owner executes it. The Safe Transaction Service
+  the threshold is met any owner executes it. Any account whose key is on
+  this device may send that execution and pay for it, owner or not; an owner
+  that executes counts as its own confirmation (owner ruling, 2026-10-18,
+  #56). The Safe Transaction Service
   stays unwired.
 - docs/wallet-ux.md applies these three rulings to the screens.
 - **Open decisions, each recorded here before its code lands**: the dApp
