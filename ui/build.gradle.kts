@@ -163,8 +163,10 @@ kotlin {
                 // every build already, through navigation-compose; declared for its API.
                 implementation(libs.compose.ui.backhandler)
                 implementation(libs.material.icons.core)
-                // Keccak-256 for EIP-55, the checksum every address is shown and typed with
-                // (components/Eip55.kt): presentation, so it is computed here, not in :domain.
+                // Keccak-256 for EIP-55, the checksum every address is shown with (components/Eip55.kt).
+                // :domain computes EIP-55 too, to check a typed address at the input
+                // (hasValidChecksum): the owner's ruling of 2026-10-18 (#50) allows it there for that,
+                // and the screens format with this copy of the same library.
                 implementation(libs.kotlincrypto.sha3)
                 // The multiplatform @Preview every screen's previews carry; Android Studio
                 // renders it on the Android target (see ui-tooling below).

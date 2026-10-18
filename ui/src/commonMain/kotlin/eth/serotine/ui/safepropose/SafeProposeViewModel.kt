@@ -326,7 +326,8 @@ class SafeProposeViewModel(
                     latest !is Step.Reviewing || !latest.refreshing -> latest
                     // The password typed meanwhile stays: it is the same review, hidden since or not. A
                     // signature not saved is of the transaction it was made for: one proposed anew as
-                    // another transaction (another nonce, a name that moved) drops it, and says so.
+                    // another transaction (another nonce) drops it, and says so. A name that moved
+                    // proposes nothing new: the review stays, with the signature, saying why.
                     next is Step.Reviewing -> {
                         val unsaved = latest.unsaved?.takeIf { it.hash == next.proposal.request.hash }
                         latest.copy(

@@ -240,9 +240,11 @@ data class SafeExecutionQuote internal constructor(
  * Quotes a Safe transaction's execution (docs/wallet-ux.md, *Co-signing a Safe transaction*):
  * `execTransaction` sent to the Safe by [executor], an owner account this wallet holds, once its
  * owners' confirmations reach the threshold. Only a current owner, as the Safe's verified storage
- * says, executes: "once the threshold is met any owner executes it" (CLAUDE.md, *Data sources*,
- * 2026-10-16), so another account is refused ([SafeTxRefusal.NotAnOwner]), though the Safe itself
- * asks nothing of the sender but the gas. Checked against the Safe's verified state first: a
+ * says, executes, and another account is refused ([SafeTxRefusal.NotAnOwner]), though the Safe
+ * itself asks nothing of the sender but the gas. That is this app's reading of the ruling's "once
+ * the threshold is met any owner executes it" (CLAUDE.md, *Data sources*, 2026-10-16), the
+ * conservative one: the sentence does not itself forbid another sender, and whether one may is
+ * the owner's open question. Checked against the Safe's verified state first: a
  * delegate call and gas or refund terms are refused ([SafeTxRefusal.GasTerms]), so the Safe's
  * call always gets the gas the execution has left and a call that fails reverts it; its nonce
  * must be the Safe's verified nonce (one below has run or

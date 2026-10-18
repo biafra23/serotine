@@ -104,7 +104,8 @@ import kotlin.time.TimeSource
  *   is left.
  * - Approve on chain ([QuoteSafeApproval] → review → [ApproveSafeTxOnChain]) and Execute, once
  *   the confirmations reach the threshold ([QuoteSafeExecution] → review → [ExecuteSafeTx]), from
- *   an owner held here (CLAUDE.md, *Data sources*: any owner executes it). Their reviews follow Send's (screen 8): a
+ *   an owner held here (this app's reading of CLAUDE.md's "any owner executes it", *Data
+ *   sources*: only an owner does). Their reviews follow Send's (screen 8): a
  *   quote made when the review is entered, again on Refresh, when the screen is shown again after
  *   it was not, and at the tap that would sign it when it is older than [QUOTE_MAX_AGE]
  *   ([timeSource] tells); one signed but not broadcast is retried with its own bytes
@@ -823,10 +824,15 @@ class SafeTxViewModel(
                 // proves nothing about them.
                 val bytesOut = current is Step.Reviewing && current.notSent?.canRetry == true
                 val passed = source is Queued.Missing && source.passed
+                // A step left for the overview takes its quote in flight with it (a refresh, a first
+                // quote): left running, it would keep Approve and Execute shut until it ended.
                 when {
                     current is Step.Signing && !current.signing -> Step.Overview
                     bytesOut && !passed -> current
-                    current is Step.Reviewing && !current.signing -> Step.Overview
+                    current is Step.Reviewing && !current.signing -> {
+                        job?.cancel()
+                        Step.Overview
+                    }
                     current is Step.Quoting -> {
                         job?.cancel()
                         Step.Overview
@@ -906,7 +912,8 @@ class SafeTxViewModel(
         if (tx.refusal != null || read == null) return Options(emptyList(), emptyList(), emptyList(), null)
         val unconfirmed = read.owners.filter { it.held && !it.confirms }.map { it.owner }
         val short = read.confirmations < read.threshold
-        // Only an owner executes (CLAUDE.md, *Data sources*), its sending its own confirmation.
+        // Only an owner executes (this app's reading of the ruling in CLAUDE.md, *Data sources*), its
+        // sending its own confirmation.
         val candidates = read.owners.filter { it.held }.map { it.owner }
         val nonce = tx.request.nonce
         val executors = if (nonce == read.safeNonce) {

@@ -358,7 +358,7 @@ class SafeTxViewModelTest {
         val review = viewModel.review
         assertEquals(ReviewKind.EXECUTION, review.kind)
         assertEquals(Eip55.format(world.alice.address), review.account, "the owner held here")
-        // Dave is held here but no owner: only an owner executes (CLAUDE.md, *Data sources*).
+        // Dave is held here but no owner: only an owner executes, as this app reads CLAUDE.md's ruling.
         assertEquals(listOf(Eip55.format(world.alice.address)), review.accounts.map { it.address })
         assertEquals("Executed with: Alice, by sending the execution; 0x3333…3333's signature", review.confirmations)
         viewModel.onPasswordChange("made-up test password")
@@ -488,6 +488,29 @@ class SafeTxViewModelTest {
         assertEquals(quotes + 1, world.inputs.estimated.size, "quoted again")
         assertFalse(viewModel.review.refreshing)
         assertEquals(Eip55.format(world.alice.address), viewModel.review.account)
+    }
+
+    @Test
+    fun aRefreshCutShortByTheQueueLeavesApproveOpenOnceItIsBack() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        viewModel.startApproval()
+        runCurrent()
+        // A refresh that hangs on the engine; meanwhile the queue cannot be read, and the review ends.
+        world.inputs.gate = CompletableDeferred()
+        viewModel.refresh()
+        runCurrent()
+        world.queue.unreadable.value = true
+        runCurrent()
+        world.queue.unreadable.value = false
+        runCurrent()
+        assertIs<SafeTxUiState.Overview>(viewModel.uiState.value)
+
+        // Back: Approve works, though the refresh that was cut short never answered.
+        world.inputs.gate = null
+        viewModel.startApproval()
+        runCurrent()
+        assertEquals(ReviewKind.APPROVAL, viewModel.review.kind)
     }
 
     @Test

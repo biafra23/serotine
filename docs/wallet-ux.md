@@ -394,10 +394,12 @@ upgrades*).
       of an address that is no owner now counts for nobody.
     - Share request (QR or text) · Sign (an owner held here) · Approve on
       chain · Execute, once the threshold is met. Execute is sent by an owner
-      held here, as the ruling has it (CLAUDE.md, *Data sources*: once the
-      threshold is met any owner executes it), its sending counting as its
-      own confirmation; another account is refused
-      (`SafeTxRefusal.NotAnOwner`). Only the Safe's next nonce can be
+      held here, its sending counting as its own confirmation; another account
+      is refused (`SafeTxRefusal.NotAnOwner`). That is this app's reading of
+      the ruling's "once the threshold is met any owner executes it"
+      (CLAUDE.md, *Data sources*), the conservative one: the sentence names
+      who may execute, and does not say that no one else may. Whether a
+      non-owner may is the owner's open question. Only the Safe's next nonce can be
       executed, and an approval or
       execution sent and not mined yet is not offered again, from any
       account held here. What is shown and shared carries the signatures of the
@@ -681,7 +683,9 @@ Applied:
 - **Execution** is `execTransaction` sent by an owner account the user
   holds, once signatures and approvals reach the threshold, followed like a
   send (9); an account that is not a current owner is refused
-  (`SafeTxRefusal.NotAnOwner`), though the Safe itself would take any sender.
+  (`SafeTxRefusal.NotAnOwner`), though the Safe itself would take any sender:
+  this app's reading of the ruling's "any owner executes it", which does not
+  itself forbid another sender (an open question for the owner).
   The executing owner confirms it by sending it; approvals on chain are read
   only when the signatures fall short. Its run is the whole execution — the
   Safe's checks, its guard, the call — as a verified call from that account,

@@ -236,8 +236,8 @@ fun SafeProposeScreen(
                         actions.onMax,
                     )
                     Note(
-                        "A Safe transaction: the owners sign it, then any account of theirs executes it and pays its " +
-                            "fee. Nothing is queued until an owner held here signs it.",
+                        "A Safe transaction: the owners sign it, then one of them executes it and pays its fee. " +
+                            "Nothing is queued until an owner held here signs it.",
                     )
                     form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     ReviewButton(form, actions.onReview, Modifier.align(Alignment.End))

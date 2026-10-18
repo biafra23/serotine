@@ -163,8 +163,8 @@ class SafeTxOnChainTest {
 
     @Test
     fun onlyAnOwnerExecutes() = runTest {
-        // CLAUDE.md, *Data sources*: once the threshold is met any owner executes it. The Safe would
-        // take any sender; this wallet sends from an owner alone.
+        // This app's reading of CLAUDE.md's "once the threshold is met any owner executes it": the
+        // Safe would take any sender; this wallet sends from an owner alone.
         world.inputs.simulation = Simulation.Succeeded(executed, 100)
         val request = world.request(payment, world.alice.address, world.carol)
 
