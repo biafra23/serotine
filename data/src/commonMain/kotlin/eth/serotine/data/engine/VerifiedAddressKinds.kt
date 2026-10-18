@@ -30,12 +30,12 @@ import kotlin.time.Duration
  *
  * Every numbered slot is a storage proof, and all of them must be of one state, no older than
  * the code's: one verified anchor ([ProofAnchor], the attested slot a proof matched; a block
- * label alone can be a peer's report) and one block, the one the reading is labelled with. A read
- * the head moved under is made again at once, up to [SAFE_ATTEMPTS] times. The guards are kept at hashed slots no storage
- * proof names, so they are verified reads at the head, which may be a head later than that
- * label. Anything that does not match is a contract, never a Safe. A Safe's reading stands
- * for [SAFE_KEPT_FOR_HEADS] heads (a Safe takes a dozen proofs, and its owners rarely change);
- * any other kind's for one.
+ * label alone can be a peer's report) and one block, the one the reading is labelled with. A
+ * read the head moved under is made again at once, up to [SAFE_ATTEMPTS] times. The guards are
+ * kept at hashed slots no storage proof names, so they are verified reads at the head, which may
+ * be a head later than that label. Anything that does not match is a contract, never a Safe. A
+ * Safe's reading stands for [SAFE_KEPT_FOR_HEADS] heads (a Safe takes a dozen proofs, and its
+ * owners rarely change); any other kind's for one.
  */
 class VerifiedAddressKinds internal constructor(
     chain: VerifiedChain?,

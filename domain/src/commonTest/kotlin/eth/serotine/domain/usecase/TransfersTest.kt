@@ -552,7 +552,10 @@ class TransfersTest {
         val signature = Signature("1".padStart(64, '0'), "2".padStart(64, '0'), recoveryId = 0)
         val unavailable = FakeBroadcaster(Broadcast.Unavailable("no peer"))
         val notSent = assertIs<TransferSending.NotSent>(
-            SendTransfer(FakeSigner(Signing.Signed(signature)), unavailable, sent) { now }(quote, Unlock.WithBiometrics("x")),
+            SendTransfer(FakeSigner(Signing.Signed(signature)), unavailable, sent) { now }(
+                quote,
+                Unlock.WithBiometrics("x"),
+            ),
         )
         val rejection = Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7")
         val tooLow = FakeBroadcaster(rejection)
