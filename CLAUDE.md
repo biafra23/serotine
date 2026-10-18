@@ -660,7 +660,17 @@ discussion that produced this note.
   the threshold is met any owner executes it. The Safe Transaction Service
   stays unwired.
 - docs/wallet-ux.md applies these three rulings to the screens.
-- **Open decisions, each recorded here before its code lands**: the dApp
-  connection protocol (WalletConnect's relay is an off-chain service, and a
-  request that arrives through it is untrusted input, decoded and shown as
-  such). Until decided, it is not wired in.
+- **Swaps: Uniswap first, then CoW Protocol, preferred while its servers
+  work, with Uniswap as the fallback** (owner's direction, 2026-10-18;
+  docs/swaps.md, issue #69). Uniswap's contracts are chain data like any
+  other: pinned, read with verified calls, and sent to like any transaction.
+  CoW's order API is an off-chain service whose ruling is still open (next
+  item).
+- **Open decisions, each recorded here before its code lands**:
+  - the dApp connection protocol (WalletConnect's relay is an off-chain
+    service, and a request that arrives through it is untrusted input,
+    decoded and shown as such);
+  - CoW Protocol's order API: what it learns, and what of its answers is
+    shown (docs/swaps.md, *Open questions*).
+
+  Until decided, neither is wired in.
