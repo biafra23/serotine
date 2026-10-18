@@ -40,6 +40,7 @@ import eth.serotine.domain.usecase.SafeExecutionQuoting
 import eth.serotine.domain.usecase.SafeTxOwnersReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
+import eth.serotine.domain.usecase.SafeTxSignCheck
 import eth.serotine.domain.usecase.SafeTxSigning
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.TransferSending
@@ -74,6 +75,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -228,7 +231,13 @@ class SafeTxViewModel(
         data class Quoting(val kind: ReviewKind, val account: Address, val level: FeeLevel) : Step
 
         /** Signing the hash as [owner]. */
-        data class Signing(val owner: Address, val unlock: UnlockStep, val signing: Boolean = false) : Step
+        data class Signing(
+            val owner: Address,
+            val unlock: UnlockStep,
+            val signing: Boolean = false,
+            /** While [signing], the Safe is still being checked on chain: nothing is signed yet. */
+            val checking: Boolean = false,
+        ) : Step
 
         /** [quote], made at [quotedAt], under review; [hidden] once the screen stopped being shown since. */
         data class Reviewing(
@@ -510,12 +519,14 @@ class SafeTxViewModel(
 
     /**
      * Back from the signing step or a review to the overview: the password and the quote go. Not
-     * while signing, nor after a broadcast no peer answered: those bytes may be out there, and only
-     * a retry of them may send them again.
+     * while signing (checking the Safe before it is not signing yet, and stops), nor after a
+     * broadcast no peer answered: those bytes may be out there, and only a retry of them may send
+     * them again.
      */
     fun back() {
         when (val current = step.value) {
-            is Step.Signing -> if (current.signing) return
+            // While the Safe is checked nothing is signed yet: Back stops the check.
+            is Step.Signing -> if (current.signing && !current.checking) return
             is Step.Reviewing -> if (current.signing || current.notSent?.canRetry == true) return
             is Step.Quoting -> Unit
             else -> return
@@ -546,15 +557,22 @@ class SafeTxViewModel(
 
     /**
      * The screen stopped being shown: the password goes (CLAUDE.md, *Trust*; rule 8), and a review
-     * is quoted again when it is shown again ([onShown]). A signature already running finishes.
+     * is quoted again when it is shown again ([onShown]). A signature already running finishes; a
+     * signing still checking the Safe stops, its unlock (the password, or the prompt not yet shown)
+     * with it, so that no prompt comes up over another screen.
      */
     fun onHidden() {
         shown = false
         hiddenSince = true
         if (step.value is Step.Quoting) hiddenWhileQuoting = true
+        if ((step.value as? Step.Signing)?.checking == true) job?.cancel()
         step.update { current ->
             when (current) {
-                is Step.Signing -> current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY))
+                is Step.Signing -> current.copy(
+                    unlock = current.unlock.copy(password = WalletPassword.EMPTY),
+                    signing = current.signing && !current.checking,
+                    checking = false,
+                )
                 is Step.Reviewing ->
                     current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY), hidden = true)
                 else -> current
@@ -685,14 +703,34 @@ class SafeTxViewModel(
         val request = context.request
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = signing.unlock.copy(password = WalletPassword.EMPTY, error = null)
-        step.value = signing.copy(signing = true, unlock = unlocked)
+        step.value = signing.copy(signing = true, checking = true, unlock = unlocked)
         job = viewModelScope.launch {
-            val result = withContext(NonCancellable) {
-                try {
-                    signSafeTx(request, signing.owner, unlock)
-                } catch (e: Exception) {
-                    null // the use case promises not to throw; the backstop
+            // The Safe is checked first, which leaving the screen cancels ([onHidden]): no key is
+            // asked for, and no prompt shown, until it has passed.
+            val checked = try {
+                signSafeTx.check(request, signing.owner)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null // the use case promises not to throw; the backstop
+            }
+            val result = when (checked) {
+                is SafeTxSignCheck.Ready -> {
+                    // Left while the check came back: nothing is signed.
+                    currentCoroutineContext().ensureActive()
+                    step.update { if (it is Step.Signing && it.signing) it.copy(checking = false) else it }
+                    // Signed and queued as one step, against the state just checked, which leaving
+                    // cannot cut in half.
+                    withContext(NonCancellable) {
+                        try {
+                            signSafeTx.sign(checked, unlock)
+                        } catch (e: Exception) {
+                            null // the use case promises not to throw; the backstop
+                        }
+                    }
                 }
+                is SafeTxSignCheck.Refused -> SafeTxSigning.Refused(checked.refusal)
+                null -> null
             }
             val latest = step.value as? Step.Signing ?: return@launch
             val label = context.labelOf(signing.owner)
@@ -902,6 +940,7 @@ class SafeTxViewModel(
                 owner = Eip55.format(step.owner),
                 unlock = step.unlock,
                 signing = step.signing,
+                checking = step.checking,
             )
             is Step.Reviewing -> review(shown, header, action, nonce, step)
             else -> SafeTxUiState.Overview(

@@ -337,7 +337,7 @@ upgrades*).
       request for another Safe is refused, `SafeTxRefusal.OtherSafe`, before
       anything is kept). The Safe's check says "Checking the Safe on
       chain…" while it runs: a reading that could not be verified this time
-      is waited out for the next one, for up to about 30 s, and one still
+      is waited out for the next one, for up to 45 s, and one still
       unproven then says "The Safe's owners and nonce could not be verified
       this time: try again." (`SafeTxRefusal.SafeUnavailable`; the checks
       before Sign, Approve, Execute and a proposal wait the same way,
@@ -468,15 +468,25 @@ upgrades*).
       any, and the refusal; then each owner's row (blockie, name, "This
       device", its stand and its block), the threshold and the
       confirmations, read again on Check again, whenever the request's
-      signatures change and when the screen is shown again.
+      signatures change and when the screen is shown again. That reading
+      checks the Safe as a one-shot check does: a reading that could not be
+      verified this time is waited out for the next one, for up to 45 s, the
+      rows saying "Reading the owners and their approvals…" meanwhile.
     - Share request opens the request's text (`EncodeSigningRequest`) as one
       QR code when it fits one (else it says to share the text), with Copy
       text and, where the platform has a share sheet, Share. It is offered
       only while the Safe is verified: what is shared then carries only
       signatures its current owners made, checked here.
     - Sign opens a step: the owner held here who signs, when there are
-      several, and the unlock of 8. The signed request is queued; one the
-      queue cannot save stays on the screen, to be shared before it is left.
+      several, and the unlock of 8. The tap that signs checks the Safe first
+      ("Checking the Safe on chain…", the same wait), and only once it
+      passes is the key asked for, the biometric prompt included; leaving
+      the screen or Back during the check stops it, so no prompt comes up
+      over another screen. The signature is made against the state that
+      check verified. The signed request is queued; one the queue cannot
+      save stays on the screen, to be shared before it is left. Approve on
+      chain and Execute check the Safe as their quote is made, saying the
+      same.
     - Approve on chain, offered while the confirmations fall short, and
       Execute review the EOA transaction as 8 reviews a transfer: the
       account that sends it (an owner held here first; for Execute, any

@@ -257,6 +257,12 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
     is SafeTxRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)
 }
 
+/**
+ * What a step says while it checks the Safe on chain (Import, Sign, Approve and Execute): a check
+ * that waits out a reading that could not be verified for the next one, up to 45 s.
+ */
+internal const val CHECKING_SAFE = "Checking the Safe on chain…"
+
 /** Why a check of the Safe itself came to nothing this time, after it was tried again for a while. */
 internal const val SAFE_UNPROVEN = "The Safe's owners and nonce could not be verified this time: try again."
 

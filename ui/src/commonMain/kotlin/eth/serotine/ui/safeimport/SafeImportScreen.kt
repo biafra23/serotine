@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.CHECKING_SAFE
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the request's field, for UI tests. */
@@ -45,12 +46,6 @@ const val IMPORT_REQUEST_FIELD_TAG = "import-request-field"
 
 /** Test tag of the Import button, for UI tests. */
 const val IMPORT_REQUEST_BUTTON_TAG = "import-request-button"
-
-/**
- * What the Import button says while the request is checked: mostly the Safe's own check, which
- * waits out a reading that could not be verified for the next one, up to half a minute.
- */
-internal const val CHECKING_SAFE = "Checking the Safe on chain…"
 
 /** Binds [SafeImportScreen] to its ViewModel; a request imported ends the screen through [onImported] with its hash. */
 @Composable

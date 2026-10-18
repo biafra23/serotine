@@ -169,12 +169,14 @@ consumer developed against an unreleased engine, Myotis's
   compared, walked blocks compared. A walk against a match, which nothing
   verified orders, is read again, never decided by a label.
   A read the head moved under is made again at once; a proof that comes back
-  null (a slow or lost snap peer) is asked for again within the read, three
-  times in all, and a read it still fails in is made again after a second's
-  pause. Both are retried for as long as the read's budget lasts, about 30 s
-  (`SAFE_READ_BUDGET`, checked between the engine's calls, which block and
-  are not cut off; a cancelled read stops at the next one), and past it the
-  reading is unproven until the next poll. However often a Safe is read, a
+  null or throws (a slow or lost snap peer, a failed JNA call) is asked for
+  again within the read, three times in all, and a read it still fails in is
+  made again after a second's pause. Both are retried for as long as the
+  read's budget lasts, 20 s (`SAFE_READ_BUDGET`, checked between the
+  engine's calls, which block and are not cut off; a cancelled read stops at
+  the next one), and past it the reading is unproven until the next poll. A
+  subscriber that joined a read whose maker was cancelled midway makes it
+  again itself, rather than take the cut-off read for unproven. However often a Safe is read, a
   reading whose slots do not share one anchor is never taken. A dozen proofs
   one after the other often outlast a head, which is what makes the head move
   under them; the root fix is the engine's, several slots in one proof at one
@@ -183,9 +185,15 @@ consumer developed against an unreleased engine, Myotis's
   and how many reads a Safe took (`MyotisNode.start`'s `debugLog`: logcat in
   the debug app, stderr in `:desktop-app:run`; public chain data only). A
   one-shot check of a Safe (an import, the checks before Sign, Approve,
-  Execute and a proposal) waits out an unproven reading for the next one,
-  within the same budget (`ObserveSafe.check`); one with no engine or a
-  refused anchor is answered at once.
+  Execute and a proposal, and a transaction's owners as its screen reads
+  them) waits out an unproven reading for the next one, for up to 45 s
+  (`ObserveSafe.check`'s `SAFE_CHECK_BUDGET`): longer than the code's proof,
+  the read's 20 s and one 4 s poll together, so the wait never cancels the
+  read it is waiting on and sees the one after it. One with no engine or a
+  refused anchor is answered at once. Signing checks the Safe first, a step
+  that leaving the screen or Back stops, and only then asks for the key, in
+  a step run to its end (`SignSafeTx.check`, then `SignSafeTx.sign` against
+  the state that check verified).
   The guards sit at hashed slots, which `getStorageProof` cannot name,
   so they are verified `VerifiedReads.getStorageAt` reads at the head: they
   may be a head later than the label. A list that does not lead back to the

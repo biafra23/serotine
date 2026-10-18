@@ -105,7 +105,7 @@ class SafeImportViewModelTest {
         world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
 
         val viewModel = imported(world.codec.encode(world.request(world.ether(4))))
-        advanceTimeBy(31.seconds)
+        advanceTimeBy(46.seconds)
 
         assertEquals(false, viewModel.entering.importing)
         assertEquals(

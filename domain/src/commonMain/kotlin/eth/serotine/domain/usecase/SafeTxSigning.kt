@@ -265,14 +265,18 @@ internal sealed interface SafeCheck {
 
 /**
  * How long a one-shot check of a Safe ([check]) waits for a reading that could not be verified
- * to be made again: the adapter's own budget for one read (it retries a failed proof and a read
- * the head moved under within it), so a check is answered in about that time.
+ * to be made again. The engine adapter retries a failed proof and a read the head moved under
+ * for up to 20 s itself (`VerifiedAddressKinds.SAFE_READ_BUDGET`), after the code's proof, and the
+ * reading is made again at the next poll (4 s on): this wait outlasts all three with room for
+ * that next read, so it never cuts off the very read it is waiting on.
  */
-internal val SAFE_CHECK_BUDGET: Duration = 30.seconds
+internal val SAFE_CHECK_BUDGET: Duration = 45.seconds
 
 /**
- * The Safe at [safe] as the light client proves it now, for a one-shot check: an import, and the
- * checks before Sign, Approve, Execute and a proposal. A reading that could not be verified this
+ * The Safe at [safe] as the light client proves it now, for a one-shot check: an import, the
+ * checks before Sign, Approve, Execute and a proposal, and the owners' stand on a transaction its
+ * screen reads ([ReadSafeTxOwners], on opening, on Check again and after a signature, which so
+ * shows "Reading the owners…" for as long). A reading that could not be verified this
  * time ([ReadUnavailable.UNPROVEN]: a proof a peer did not deliver, a read the head kept moving
  * under) is waited out for the next one the reading makes, for up to [budget]; the first other
  * answer stands, the light client's syncing included. One that cannot change by asking again — no
@@ -415,6 +419,11 @@ class EncodeSigningRequest(private val codec: SigningRequestCodec) {
  * refused (docs/wallet-ux.md, screen 17). The signature is checked to recover to [owner] before
  * it is kept, and saved to the queue with the request's other signatures that are current
  * owners' and recover to them ([SafeTxQueue]). On [network] only.
+ *
+ * Two steps, so that a caller can let the first be cancelled and not the second: [check] asks
+ * the chain (it may wait out an unproven reading of the Safe, [ObserveSafe.check]) and asks for
+ * no key; [sign] signs and queues against exactly the state that check verified, and is the step
+ * a caller runs to its end. [invoke] is both, one after the other.
  */
 class SignSafeTx(
     private val signer: Signer,
@@ -423,8 +432,19 @@ class SignSafeTx(
     private val queue: SafeTxQueue,
     private val network: Network,
 ) {
-    suspend operator fun invoke(request: SigningRequest, owner: Address, unlock: Unlock): SafeTxSigning {
-        fun refused(refusal: SafeTxRefusal) = SafeTxSigning.Refused(refusal)
+    suspend operator fun invoke(request: SigningRequest, owner: Address, unlock: Unlock): SafeTxSigning =
+        when (val checked = check(request, owner)) {
+            is SafeTxSignCheck.Ready -> sign(checked, unlock)
+            is SafeTxSignCheck.Refused -> SafeTxSigning.Refused(checked.refusal)
+        }
+
+    /**
+     * Whether [owner] may sign [request] now, as the Safe's verified state says: the network, what
+     * it does, the Safe's nonce and owners, the threshold it would leave, and whether [owner]'s
+     * signature is among its valid ones already. Nothing is signed, and no key is asked for.
+     */
+    suspend fun check(request: SigningRequest, owner: Address): SafeTxSignCheck {
+        fun refused(refusal: SafeTxRefusal) = SafeTxSignCheck.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
         val state = when (val check = observeSafe.check(request.safe)) {
@@ -438,21 +458,52 @@ class SignSafeTx(
         // owner's name neither stands for it nor keeps it from signing.
         val valid = recovery.valid(request, state.owners)
         if (valid.any { it.owner == owner }) return refused(SafeTxRefusal.AlreadySigned(owner))
+        return SafeTxSignCheck.Ready(request, owner, state, valid)
+    }
+
+    /**
+     * Signs [checked]'s request as its owner with [unlock], and queues it with the valid
+     * signatures that check found: against the Safe's state it verified, not read again.
+     */
+    suspend fun sign(checked: SafeTxSignCheck.Ready, unlock: Unlock): SafeTxSigning {
+        val request = checked.request
+        val owner = checked.owner
         val signature = when (val signing = signer.sign(owner, request.hash, unlock)) {
             is Signing.Signed -> signing.signature
             else -> return SafeTxSigning.NotSigned(signing)
         }
         // The key store's signature is checked like a co-signer's: one that recovers to another
         // address is never kept, nor shared.
-        if (recovery.recover(request.hash, signature) != owner) return refused(SafeTxRefusal.BadSignature(owner))
+        if (recovery.recover(request.hash, signature) != owner) {
+            return SafeTxSigning.Refused(SafeTxRefusal.BadSignature(owner))
+        }
         // What is queued is checked: the carried signatures that count, with this one.
-        val signed = SigningRequest.of(request.network, request.safe, request.tx, valid)
+        val signed = SigningRequest.of(request.network, request.safe, request.tx, checked.valid)
             .withSignatures(listOf(SafeSignature.Ecdsa(owner, signature)))
-        queue.prune(request.safe, state.nonce)
+        queue.prune(request.safe, checked.state.nonce)
         val saved = queue.save(signed)
         // Shown and shared with what the Safe accepts now of what was queued here before.
-        return SafeTxSigning.Signed(recovery.validOnly(saved ?: signed, state.owners), saved = saved != null)
+        return SafeTxSigning.Signed(recovery.validOnly(saved ?: signed, checked.state.owners), saved = saved != null)
     }
+}
+
+/** What [SignSafeTx.check] came to. */
+sealed interface SafeTxSignCheck {
+
+    /**
+     * [owner] may sign [request]: the Safe's [state] as just verified, and the request's
+     * signatures that are valid against it ([valid]). Made only by [SignSafeTx.check].
+     */
+    @ConsistentCopyVisibility
+    data class Ready internal constructor(
+        val request: SigningRequest,
+        val owner: Address,
+        val state: SafeState,
+        val valid: List<SafeSignature.Ecdsa>,
+    ) : SafeTxSignCheck
+
+    /** Not to be signed: [refusal]. */
+    data class Refused(val refusal: SafeTxRefusal) : SafeTxSignCheck
 }
 
 /** The outcome of [SignSafeTx]. */

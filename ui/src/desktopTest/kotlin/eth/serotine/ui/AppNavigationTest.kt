@@ -644,6 +644,8 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(SAFE_TX_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
 
         rule.onNodeWithTag(SAFE_TX_HASH_TAG).performScrollTo().assertTextEquals("0x" + queued.hash.hex)
+        // The import's flag reached the new entry through its savedStateHandle: it says where it went.
+        rule.onNodeWithText("Added to Treasury's queue on this device.").performScrollTo().assertIsDisplayed()
         assertEquals(listOf(carol), safeTxQueue.requests.value.single().signers)
         assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
     }

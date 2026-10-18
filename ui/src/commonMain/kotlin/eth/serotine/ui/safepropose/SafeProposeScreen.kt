@@ -45,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.Note
@@ -166,9 +167,11 @@ fun SafeProposeScreen(
     modifier: Modifier = Modifier,
 ) {
     val review = state as? SafeProposeUiState.Review
-    // In the review, back is to the form; while a signature runs, back waits for it.
+    // In the review, back is to the form; while a signature runs, back waits for it. While the Safe
+    // is still checked before it, nothing is signed yet, and back stops the check.
+    val busy = review?.signing == true && !review.checking
     BackHandler(enabled = review != null) {
-        if (review?.signing != true) actions.onEdit()
+        if (!busy) actions.onEdit()
     }
     if (review?.askingToDrop == true) {
         AlertDialog(
@@ -195,7 +198,7 @@ fun SafeProposeScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = if (review != null) actions.onEdit else onBack,
-                        enabled = review?.signing != true,
+                        enabled = !busy,
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -325,7 +328,7 @@ private fun ReviewContent(
             canSign = state.canSign,
             canSignWithBiometrics = state.canSignWithBiometrics,
             signLabel = "Sign and queue",
-            signingLabel = "Signing…",
+            signingLabel = if (state.checking) CHECKING_SAFE else "Signing…",
             onPasswordChange = actions.onPasswordChange,
             onSign = actions.onSign,
             onSignWithBiometrics = actions.onSignWithBiometrics,

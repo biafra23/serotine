@@ -143,6 +143,10 @@ private fun SafeProposeReviewSigningPreview() = SafeProposePreview(review.copy(s
 
 @Preview
 @Composable
+private fun SafeProposeReviewCheckingPreview() = SafeProposePreview(review.copy(signing = true, checking = true))
+
+@Preview
+@Composable
 private fun SafeProposeLoadingPreview() = SafeProposePreview(SafeProposeUiState.Loading("Sepolia"))
 
 @Preview
@@ -167,6 +171,7 @@ internal val safeProposeScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeProposeReviewNotSavedPreview() },
     { SafeProposeReviewAskingToDropPreview() },
     { SafeProposeReviewSigningPreview() },
+    { SafeProposeReviewCheckingPreview() },
     { SafeProposeLoadingPreview() },
     { SafeProposeWatchOnlyPreview() },
 )

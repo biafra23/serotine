@@ -48,8 +48,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -238,6 +238,31 @@ class SafeProposeViewModelTest {
 
         assertEquals("The Safe itself: nothing would leave it, so it is refused.", viewModel.form.error)
         assertEquals(emptyList(), world.queue.requests.value, "nothing proposed")
+    }
+
+    @Test
+    fun whileTheSafeIsCheckedBeforeSigningTheReviewSaysSoAndLeavingStopsIt() = runTest {
+        val viewModel = reviewed()
+        viewModel.onShown()
+        viewModel.onPasswordChange("made-up test password")
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.sign()
+        runCurrent()
+        advanceTimeBy(10.seconds)
+
+        assertTrue(viewModel.review.signing)
+        assertTrue(viewModel.review.checking, "Checking the Safe on chain…")
+        assertEquals(emptyList(), world.signer.asked, "no key asked for while the Safe is checked")
+
+        viewModel.onHidden()
+        world.state = world.state // the Safe proven after all, once left
+        advanceTimeBy(60.seconds)
+        runCurrent()
+
+        assertEquals(emptyList(), world.signer.asked, "no signer call, so no prompt over another screen")
+        assertFalse(viewModel.review.signing)
+        assertFalse(viewModel.review.checking)
+        assertEquals(emptyList(), world.queue.requests.value)
     }
 
     @Test
@@ -500,7 +525,7 @@ class SafeProposeViewModelTest {
         world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
         viewModel.onShown()
         // The Safe's check waits out its budget for a reading it can verify, then says so.
-        advanceTimeBy(31.seconds)
+        advanceTimeBy(46.seconds)
         runCurrent()
 
         val review = viewModel.review

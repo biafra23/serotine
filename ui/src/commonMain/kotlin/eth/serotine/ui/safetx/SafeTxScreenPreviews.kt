@@ -313,6 +313,10 @@ private fun SafeTxSigningRunsPreview() = SafeTxPreview(signing.copy(signing = tr
 
 @Preview
 @Composable
+private fun SafeTxSigningCheckingPreview() = SafeTxPreview(signing.copy(signing = true, checking = true))
+
+@Preview
+@Composable
 private fun SafeTxReviewExecutionPreview() = SafeTxPreview(
     review.copy(unlock = UnlockStep(WalletPassword("made-up preview password"))),
 )
@@ -378,6 +382,7 @@ internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxSigningDarkPreview() },
     { SafeTxSigningWrongPasswordPreview() },
     { SafeTxSigningRunsPreview() },
+    { SafeTxSigningCheckingPreview() },
     { SafeTxReviewExecutionPreview() },
     { SafeTxReviewExecutionDarkPreview() },
     { SafeTxReviewApprovalPreview() },
