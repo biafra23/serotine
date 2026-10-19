@@ -139,6 +139,20 @@ class FindUniswapRouteTest {
     }
 
     @Test
+    fun withNoPoolToConvertTheFeeThroughTheRoutesAreRankedGross() = runTest {
+        pool(PoolKey.of(usdc, link, FeeTier.LOW), 10, tag = 0x05)
+        pool(PoolKey.of(usdc, link, FeeTier.MEDIUM), 10, tag = 0x30)
+        quote(SwapRoute.direct(usdc, link, FeeTier.LOW), amount, amountOut = 1_000, gas = 100_000)
+        quote(SwapRoute.direct(usdc, link, FeeTier.MEDIUM), amount, amountOut = 1_001, gas = 300_000)
+        // The fees are read, but the factory lists no WETH/LINK pool to convert them through.
+
+        val found = assertIs<RouteFinding.Found>(usdcForLink())
+        assertEquals(FeeTier.MEDIUM, found.quote.route.fees.single())
+        assertEquals(false, found.netOfFees)
+        assertEquals(2, chain.quotesAsked, "no conversion is quoted")
+    }
+
+    @Test
     fun aRouteWhoseQuoteRevertsIsDroppedAndNoneLeftIsNoRoute() = runTest {
         pool(PoolKey.of(usdc, link, FeeTier.LOW), 10, tag = 0x05)
         pool(PoolKey.of(usdc, link, FeeTier.MEDIUM), 10, tag = 0x30)

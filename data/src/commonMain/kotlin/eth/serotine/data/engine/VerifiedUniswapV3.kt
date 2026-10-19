@@ -21,8 +21,10 @@ import kotlinx.coroutines.sync.withLock
  * venue once the code of each of its contracts, proven against the light client's state
  * ([VerifiedChain.proveCode], the four in parallel), hashes to its pin. A check that passed is
  * remembered for as long as this adapter lives, since none of the pinned contracts can change its
- * code, and one check runs at a time, so callers that come while it runs share its answer. Any
- * other network has no venue here ([VenueReading.NotPinned]): this engine reads no other chain.
+ * code. One check runs at a time: callers that come while one runs wait for it, and share its
+ * answer when it passed; after one that did not, each runs its own, since a proof missing a moment
+ * ago may be had now. Any other network has no venue here ([VenueReading.NotPinned]): this
+ * engine reads no other chain.
  *
  * A call is a verified call at the head ([VerifiedChain.call]), labelled with the block the
  * engine names. Asked only while the light client can verify reads at its head
