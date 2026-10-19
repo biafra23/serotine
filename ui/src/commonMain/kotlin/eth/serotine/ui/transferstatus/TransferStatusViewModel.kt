@@ -123,8 +123,8 @@ class TransferStatusViewModel(
             TransactionProgress.Pending if nonceUsed(status) -> StatusStep(
                 "Included",
                 StepState.UNKNOWN,
-                "Its nonce was used on chain while this device was not watching: by this transaction, or by " +
-                    "one that took its place",
+                "Its nonce was used on chain while the app was not watching: by this transaction, unless " +
+                    "another one took its place, such as one sent from this account elsewhere",
             )
             TransactionProgress.Pending ->
                 StatusStep("Included", StepState.WAITING, "Waiting for a block to include it")

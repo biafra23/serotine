@@ -69,7 +69,8 @@ class ActivityViewModel(
             is SentAction.TokenApproval -> if (action.amount.isZero) {
                 Triple("Allowance reset for a swap", action.spender, "Router")
             } else {
-                Triple("Approved ${amount(action.amount, TransferAsset.Erc20Token(action.token))}", action.spender, "Router")
+                val approved = amount(action.amount, TransferAsset.Erc20Token(action.token))
+                Triple("Approved $approved", action.spender, "Router")
             }
             is SentAction.Swap -> {
                 val (symbol, decimals) = shown(action.buy)
@@ -134,7 +135,8 @@ class ActivityViewModel(
             "Reverted in block ${grouped(outcome.blockNumber)}" to ActivityState.FAILED
         }
         SentOutcome.NonceUsed ->
-            "Its nonce was used while this device was not watching" to ActivityState.UNKNOWN
+            "Mined while the app was not watching, unless another transaction took its nonce" to
+                ActivityState.UNKNOWN
         SentOutcome.NotSeen -> if (entry.transfer.maybeSent) {
             "No peer confirmed its broadcast" to ActivityState.UNCONFIRMED
         } else {

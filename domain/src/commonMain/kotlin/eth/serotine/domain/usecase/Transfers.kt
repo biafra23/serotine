@@ -484,9 +484,11 @@ class ObserveSentTransfer(
         }
     }
 
-    /** [read], or where it finds no block, the block the history saw take it. */
+    /** [read], or where it finds no block or cannot be verified right now, the block the history saw take it. */
     private fun seen(read: TransactionProgress, outcome: SentOutcome?): TransactionProgress =
-        if (read == TransactionProgress.Pending && outcome is SentOutcome.Included) {
+        if (outcome is SentOutcome.Included &&
+            (read == TransactionProgress.Pending || read is TransactionProgress.Unavailable)
+        ) {
             TransactionProgress.Included(outcome.blockNumber, outcome.succeeded)
         } else {
             read

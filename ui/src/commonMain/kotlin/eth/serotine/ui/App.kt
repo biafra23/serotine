@@ -572,8 +572,11 @@ private fun NavController.openActivity(address: Address) {
 
 /** Opens the status of the transaction [hash] (`0x` and 64 hex digits), as a route carries it: in lower case. */
 private fun NavController.openTransfer(hash: String) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    // (Not launchSingleTop: that would reuse the entry, and its hash, for another one.)
+    if (currentDestination?.route == TRANSFER_ROUTE) return
     val route = hash.lowercase().takeIf(TRANSACTION_HASH::matches) ?: return
-    navigate("${Destination.TRANSFER}/$route") { launchSingleTop = true }
+    navigate("${Destination.TRANSFER}/$route")
 }
 
 /** Opens Import a request for the Safe at [safe]. */

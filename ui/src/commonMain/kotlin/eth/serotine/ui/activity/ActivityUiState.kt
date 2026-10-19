@@ -53,6 +53,6 @@ enum class ActivityState {
     /** No peer confirmed its broadcast, and no block seen to include it. */
     UNCONFIRMED,
 
-    /** Its nonce was used while this device was not watching: by it, or by one that took its place. */
+    /** Its nonce was used while the app was not watching: by it, unless another took its place. */
     UNKNOWN,
 }

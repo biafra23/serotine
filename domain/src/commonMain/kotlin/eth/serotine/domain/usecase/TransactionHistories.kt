@@ -59,7 +59,7 @@ class HistoryRecordingSentTransfers(
  *
  * A receipt is watched for [FOLLOW_SECONDS] after a peer took the transaction, and no longer (one
  * no block took by then may never be mined, and each watch costs the engine a block body per
- * head); the mined count is read every [nonceInterval] while no block was seen to take it, and
+ * head), and not again once a block was seen to take it before the watch started; the mined count is read every [nonceInterval] while no block was seen to take it, and
  * [SentOutcome.NonceUsed] recorded only when two reads in a row find its nonce used, so that a
  * receipt in the block that used it has [nonceInterval] to be seen first. [clock] is in unix seconds.
  */
@@ -99,10 +99,16 @@ class FollowSentTransactions(
     private fun open(outcome: SentOutcome): Boolean =
         outcome == SentOutcome.NotSeen || outcome is SentOutcome.Included
 
-    /** Watches [transfer]'s receipt for what is left of its follow time, and its nonce while no block took it. */
+    /**
+     * Watches [transfer]'s receipt for what is left of its follow time, and its nonce while no block
+     * took it. One already seen in a block when this starts (in an earlier run, or before the app
+     * last went to the background) is not watched again: the engine looks for a receipt only from
+     * a few blocks below its head on, so it would never find that one, and each watch costs it a
+     * block body per head. Such a one stays [SentOutcome.Included].
+     */
     private suspend fun follow(transfer: SentTransfer): Unit = coroutineScope {
         val left = transfer.sentAt + FOLLOW_SECONDS - clock()
-        if (left > 0) {
+        if (left > 0 && outcomeOf(transfer.hash) !is SentOutcome.Included) {
             launch {
                 withTimeoutOrNull(left.seconds) {
                     receipts.observe(transfer.hash).collect { progress -> settle(transfer, progress) }

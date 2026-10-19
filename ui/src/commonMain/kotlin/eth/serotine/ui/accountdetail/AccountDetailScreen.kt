@@ -322,7 +322,7 @@ private fun Details(
                 Icon(SerotineIcons.ContentCopy, contentDescription = "Copy address", Modifier.size(18.dp))
             }
         }
-        // Three buttons: on a narrow phone, Receive goes to a second line rather than squeezed.
+        // Four buttons: on a narrow phone the last ones go to a second line rather than squeezed.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(
                 onClick = { onSend(null) },

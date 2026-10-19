@@ -46,7 +46,7 @@ private val rows = listOf(
         detail = "To Carol · 0xD122…aDb",
         about = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
         time = "12 Oct 2026, 11:03",
-        status = "Its nonce was used while this device was not watching",
+        status = "Mined while the app was not watching, unless another transaction took its nonce",
         state = ActivityState.UNKNOWN,
     ),
     ActivityRow(

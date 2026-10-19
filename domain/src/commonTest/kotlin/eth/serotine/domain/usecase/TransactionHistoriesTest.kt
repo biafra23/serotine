@@ -7,6 +7,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
@@ -130,6 +131,7 @@ class TransactionHistoriesTest {
         follow() // after a restart: the engine no longer looks back far enough to find it
 
         assertEquals(SentOutcome.Included(120, succeeded = false), history.outcomeOf(sent.hash))
+        assertEquals(null, watching[sent.hash], "not watched again: it would never be found")
     }
 
     @Test
@@ -229,6 +231,15 @@ class TransactionHistoriesTest {
         assertEquals(TransactionProgress.Finalized(120, succeeded = true), observe(sent.hash).first().progress)
         assertEquals(null, watching[sent.hash], "a finalized one is not looked up again")
 
+        history.settle(sent.hash, SentOutcome.Included(120, succeeded = true))
+        receipt(sent).value = TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN)
+        assertEquals(
+            TransactionProgress.Included(120, succeeded = true),
+            observe(sent.hash).first().progress,
+            "not verifiable right now: the block the history saw",
+        )
+
+        receipt(sent).value = TransactionProgress.Pending
         history.settle(sent.hash, SentOutcome.NonceUsed)
         val used = observe(sent.hash).first()
         assertEquals(TransactionProgress.Pending, used.progress)
