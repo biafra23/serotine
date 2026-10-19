@@ -1,6 +1,9 @@
 package eth.serotine.ui.components
 
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
+import eth.serotine.ui.components.LightClientHealth.STALE
+import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -9,7 +12,7 @@ class LightClientItemTest {
     @Test
     fun eachPhaseOfAColdStartHasATextAndAProgress() {
         assertEquals(
-            LightClientItem("Starting the light client…", null, true),
+            LightClientItem("Starting the light client…", null, true, NOT_VERIFIED),
             item(LightClientStatus.Starting),
         )
         assertEquals(
@@ -17,23 +20,29 @@ class LightClientItemTest {
                 "Bootstrapping from the trusted checkpoint · looking for light-client servers",
                 null,
                 true,
+                NOT_VERIFIED,
             ),
             item(LightClientStatus.Bootstrapping(lookingForServers = true)),
         )
         assertEquals(
-            LightClientItem("Verifying sync committees · 3 of 4 periods", 0.75f, true),
+            LightClientItem("Verifying sync committees · 3 of 4 periods", 0.75f, true, NOT_VERIFIED),
             item(LightClientStatus.CatchingUp(done = 3, total = 4)),
         )
         assertEquals(
-            LightClientItem("Synced · waiting for the first verified head", null, true),
+            LightClientItem("Synced · waiting for the first verified head", null, true, NOT_VERIFIED),
             item(LightClientStatus.WaitingForHead(headAgeSeconds = null)),
         )
         assertEquals(
-            LightClientItem("Synced to block 11,922,744 · looking for peers that serve state proofs", null, true),
+            LightClientItem(
+                "Synced to block 11,922,744 · looking for peers that serve state proofs",
+                null,
+                true,
+                STALE,
+            ),
             item(LightClientStatus.WaitingForProofPeers(headBlock = 11_922_744, headTimestamp = null)),
         )
         assertEquals(
-            LightClientItem("Verified at block 11,922,744 · 8 s ago", null, false),
+            LightClientItem("Verified at block 11,922,744 · 8 s ago", null, false, VERIFIED),
             item(LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = NOW - 8)),
         )
     }
@@ -61,15 +70,15 @@ class LightClientItemTest {
     @Test
     fun openEndedWaitsHaveNoFakeProgress() {
         assertEquals(
-            LightClientItem("Verifying sync committees", null, true),
+            LightClientItem("Verifying sync committees", null, true, NOT_VERIFIED),
             item(LightClientStatus.CatchingUp(done = 0, total = 0)),
         )
         assertEquals(
-            LightClientItem("Finishing sync", null, true),
+            LightClientItem("Finishing sync", null, true, NOT_VERIFIED),
             item(LightClientStatus.CatchingUp(done = 4, total = 4)),
         )
         assertEquals(
-            LightClientItem("Synced · the verified head is 3 min old, waiting for a fresh one", null, true),
+            LightClientItem("Synced · the verified head is 3 min old, waiting for a fresh one", null, true, STALE),
             item(LightClientStatus.WaitingForHead(headAgeSeconds = 185)),
         )
     }
@@ -77,19 +86,24 @@ class LightClientItemTest {
     @Test
     fun sleepRefusalsAndAbsenceAreSaidPlainly() {
         assertEquals(
-            LightClientItem("Light client asleep while the app is in the background", null, false),
+            LightClientItem("Light client asleep while the app is in the background", null, false, STALE),
             item(LightClientStatus.Sleeping),
         )
         assertEquals(
-            LightClientItem("Sync refused: the trust anchor is 20 periods old, past the limit of 13", null, false),
+            LightClientItem(
+                "Sync refused: the trust anchor is 20 periods old, past the limit of 13",
+                null,
+                false,
+                NOT_VERIFIED,
+            ),
             item(LightClientStatus.StaleAnchor(anchorAgePeriods = 20, boundPeriods = 13)),
         )
         assertEquals(
-            LightClientItem("Sync refused: the trust anchor is 20 periods old", null, false),
+            LightClientItem("Sync refused: the trust anchor is 20 periods old", null, false, NOT_VERIFIED),
             item(LightClientStatus.StaleAnchor(anchorAgePeriods = 20, boundPeriods = 0)),
         )
         assertEquals(
-            LightClientItem("No light client on this device", null, false),
+            LightClientItem("No light client on this device", null, false, NOT_VERIFIED),
             item(LightClientStatus.Unavailable),
         )
     }

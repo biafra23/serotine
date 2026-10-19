@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
+import eth.serotine.ui.components.LightClientHealth.STALE
+import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableFix
@@ -19,7 +22,9 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private val network = Network.SEPOLIA.displayName
 
-private val synced = LightClientItem("Verified at block 8,412,307 · 8 s ago", null, false)
+private val synced = LightClientItem("Verified at block 8,412,307 · 8 s ago", null, false, VERIFIED)
+
+private val starting = LightClientItem("Starting the light client…", null, true, NOT_VERIFIED)
 
 private val accounts = listOf(
     AccountItem(
@@ -78,7 +83,7 @@ private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false, fabE
 /** No account whose key is held here: Create Safe greyed out in the open + menu (owner ruling #55). */
 private val noKeyHere = AssetsUiState.Ready(
     network,
-    LightClientItem("Synced · verified head 9,412,118", null, false),
+    LightClientItem("Synced · verified head 9,412,118", null, false, VERIFIED),
     emptyList(),
 )
 
@@ -117,33 +122,70 @@ private fun AssetsAccountsPreview() = AssetsPreview(withAccounts)
 @Composable
 private fun AssetsAccountsDarkPreview() = AssetsPreview(withAccounts, darkTheme = true)
 
+/** No verified head yet and no balance proven before: the strip red, every row syncing. */
+private val catchingUp = AssetsUiState.Ready(
+    network,
+    LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true, NOT_VERIFIED),
+    // Until a Safe is read it is never shown as more than watch-only (AccountItem.from).
+    accounts.map {
+        it.copy(
+            balance = "Syncing…",
+            balanceVerified = false,
+            value = null,
+            signers = null,
+            control = if (it.kind == AccountKind.SAFE) Control.WATCH_ONLY else it.control,
+        )
+    },
+    total = "Checking…",
+    totalNote = "Testnet prices · still checking",
+)
+
 @Preview
 @Composable
-private fun AssetsCatchingUpPreview() = AssetsPreview(
-    AssetsUiState.Ready(
-        network,
-        LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true),
-        // Until a Safe is read it is never shown as more than watch-only (AccountItem.from).
-        accounts.map {
-            it.copy(
-                balance = "Syncing…",
-                balanceVerified = false,
-                value = null,
-                signers = null,
-                control = if (it.kind == AccountKind.SAFE) Control.WATCH_ONLY else it.control,
-            )
-        },
-        total = "Checking…",
-        totalNote = "Testnet prices · still checking",
-    ),
+private fun AssetsCatchingUpPreview() = AssetsPreview(catchingUp)
+
+@Preview
+@Composable
+private fun AssetsCatchingUpDarkPreview() = AssetsPreview(catchingUp, darkTheme = true)
+
+/** The verified head too old to read at: the amounts last verified, each said to be so. */
+private val headTooOld = AssetsUiState.Ready(
+    network,
+    LightClientItem("Synced · the verified head is 4 min old, waiting for a fresh one", null, true, STALE),
+    accounts.map {
+        it.copy(
+            balanceVerified = false,
+            balanceNote = if (it.balanceVerified) {
+                "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
+            } else {
+                null
+            },
+            value = null,
+        )
+    },
+    total = "Checking…",
+    totalNote = "Testnet prices · still checking",
 )
+
+@Preview
+@Composable
+private fun AssetsHeadTooOldPreview() = AssetsPreview(headTooOld)
+
+@Preview
+@Composable
+private fun AssetsHeadTooOldDarkPreview() = AssetsPreview(headTooOld, darkTheme = true)
 
 @Preview
 @Composable
 private fun AssetsNoAccountsPreview() = AssetsPreview(
     AssetsUiState.Ready(
         network,
-        LightClientItem("Bootstrapping from the trusted checkpoint · looking for light-client servers", null, true),
+        LightClientItem(
+            "Bootstrapping from the trusted checkpoint · looking for light-client servers",
+            null,
+            true,
+            NOT_VERIFIED,
+        ),
         emptyList(),
     ),
 )
@@ -151,12 +193,12 @@ private fun AssetsNoAccountsPreview() = AssetsPreview(
 @Preview
 @Composable
 private fun AssetsLoadingPreview() =
-    AssetsPreview(AssetsUiState.Loading(network, LightClientItem("Starting the light client…", null, true)))
+    AssetsPreview(AssetsUiState.Loading(network, starting))
 
 @Preview
 @Composable
 private fun AssetsLoadingCreateSafeGreyedOutPreview() = AssetsPreview(
-    AssetsUiState.Loading(network, LightClientItem("Starting the light client…", null, true)),
+    AssetsUiState.Loading(network, starting),
     fabExpanded = true,
 )
 
@@ -220,6 +262,8 @@ internal val assetsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AssetsAccountsPreview() },
     { AssetsAccountsDarkPreview() },
     { AssetsCatchingUpPreview() },
+    { AssetsHeadTooOldPreview() },
+    { AssetsHeadTooOldDarkPreview() },
     { AssetsNoAccountsPreview() },
     { AssetsCreateSafeGreyedOutPreview() },
     { AssetsCreateSafeReasonPreview() },
@@ -230,4 +274,5 @@ internal val assetsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AssetsUpgradeAheadPreview() },
     { AssetsUpgradeActivatedDarkPreview() },
     { AssetsListUnavailablePreview() },
+    { AssetsCatchingUpDarkPreview() },
 )

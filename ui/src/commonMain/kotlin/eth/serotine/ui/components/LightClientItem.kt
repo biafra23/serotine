@@ -1,6 +1,9 @@
 package eth.serotine.ui.components
 
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
+import eth.serotine.ui.components.LightClientHealth.STALE
+import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -14,15 +17,21 @@ import kotlin.time.ExperimentalTime
 
 /**
  * The light client's state as the status strip shows it (Assets, Settings): [text] always;
- * [progress] (0 to 1) when there is a fraction to show, null for an open-ended wait; and
- * [working] while the client is on its way to serving verified reads.
+ * [progress] (0 to 1) when there is a fraction to show, null for an open-ended wait;
+ * [working] while the client is on its way to serving verified reads; and its [health], the
+ * strip's colour.
  */
-data class LightClientItem(val text: String, val progress: Float?, val working: Boolean) {
+data class LightClientItem(
+    val text: String,
+    val progress: Float?,
+    val working: Boolean,
+    val health: LightClientHealth,
+) {
 
     companion object {
         /** [status] as the strip shows it at [now] (unix seconds), which dates the head block. */
         fun from(status: LightClientStatus, now: Long): LightClientItem = when (status) {
-            LightClientStatus.Starting -> LightClientItem("Starting the light client…", null, true)
+            LightClientStatus.Starting -> LightClientItem("Starting the light client…", null, true, NOT_VERIFIED)
             is LightClientStatus.Bootstrapping -> LightClientItem(
                 if (status.lookingForServers) {
                     "Bootstrapping from the trusted checkpoint · looking for light-client servers"
@@ -31,42 +40,51 @@ data class LightClientItem(val text: String, val progress: Float?, val working: 
                 },
                 null,
                 true,
+                NOT_VERIFIED,
             )
             is LightClientStatus.CatchingUp -> when {
-                status.total <= 0 -> LightClientItem("Verifying sync committees", null, true)
-                status.done >= status.total -> LightClientItem("Finishing sync", null, true)
+                status.total <= 0 -> LightClientItem("Verifying sync committees", null, true, NOT_VERIFIED)
+                status.done >= status.total -> LightClientItem("Finishing sync", null, true, NOT_VERIFIED)
                 else -> LightClientItem(
                     "Verifying sync committees · ${status.done} of ${status.total} periods",
                     status.done.toFloat() / status.total,
                     true,
+                    NOT_VERIFIED,
                 )
             }
-            is LightClientStatus.WaitingForHead -> LightClientItem(
-                status.headAgeSeconds?.let { "Synced · the verified head is ${age(it)} old, waiting for a fresh one" }
-                    ?: "Synced · waiting for the first verified head",
-                null,
-                true,
-            )
+            is LightClientStatus.WaitingForHead -> when (val headAge = status.headAgeSeconds) {
+                null -> LightClientItem("Synced · waiting for the first verified head", null, true, NOT_VERIFIED)
+                else -> LightClientItem(
+                    "Synced · the verified head is ${age(headAge)} old, waiting for a fresh one",
+                    null,
+                    true,
+                    STALE,
+                )
+            }
             is LightClientStatus.WaitingForProofPeers -> LightClientItem(
                 "Synced to block ${grouped(status.headBlock)}${since(status.headTimestamp, now)} · " +
                     "looking for peers that serve state proofs",
                 null,
                 true,
+                STALE,
             )
             is LightClientStatus.Synced -> LightClientItem(
                 "Verified at block ${grouped(status.headBlock)}${since(status.headTimestamp, now)}",
                 null,
                 false,
+                VERIFIED,
             )
             LightClientStatus.Sleeping ->
-                LightClientItem("Light client asleep while the app is in the background", null, false)
+                LightClientItem("Light client asleep while the app is in the background", null, false, STALE)
             is LightClientStatus.StaleAnchor -> LightClientItem(
                 "Sync refused: the trust anchor is ${status.anchorAgePeriods} periods old" +
                     if (status.boundPeriods > 0) ", past the limit of ${status.boundPeriods}" else "",
                 null,
                 false,
+                NOT_VERIFIED,
             )
-            LightClientStatus.Unavailable -> LightClientItem("No light client on this device", null, false)
+            LightClientStatus.Unavailable ->
+                LightClientItem("No light client on this device", null, false, NOT_VERIFIED)
         }
 
         /** " · 8 s ago" for a block produced at [timestamp], or nothing when its time is unknown. */
@@ -81,6 +99,26 @@ data class LightClientItem(val text: String, val progress: Float?, val working: 
             else -> "${seconds / 3_600} h"
         }
     }
+}
+
+/**
+ * How far the light client is from serving verified reads, the status strip's colour (owner's
+ * request, 2026-10-19). Its text always says the same in words; the colour is never all it says.
+ */
+enum class LightClientHealth {
+    /** Green: reads are verified at a fresh verified head. */
+    VERIFIED,
+
+    /**
+     * Yellow: no fresh head to read at right now, for a reason that passes on its own — the
+     * verified head is older than reads allow, no peer serves state proofs, or the light
+     * client is asleep while the app is in the background — so balances show as last
+     * verified, dated.
+     */
+    STALE,
+
+    /** Red: no verified head yet (starting, bootstrapping, catching up), sync refused, or no light client. */
+    NOT_VERIFIED,
 }
 
 /**

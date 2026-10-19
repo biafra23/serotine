@@ -101,6 +101,47 @@ class VerifiedNativeBalancesTest {
     }
 
     @Test
+    fun theLastProofIsShownAsLastKnownWhileReadsCannotBeVerified() = runTest {
+        chain.proofs[address] = ProvenBalance("5", 9)
+        val seen = mutableListOf<BalanceReading>()
+        chain.snapshot = running(head = 9, headTimestamp = 1_792_100_000)
+        val collecting = launch { balances().observeBalance(address).collect { seen += it } }
+        runCurrent()
+        assertEquals(BalanceReading.Verified(Wei.of("5"), 9), seen.last())
+
+        // The head goes stale: the amount stays, labelled with its block and that head's time.
+        step(running(head = 9, headTimestamp = 1_792_100_000, headAgeMs = 60_000))
+        val lastKnown = BalanceReading.LastKnown(Wei.of("5"), blockNumber = 9, asOf = 1_792_100_000)
+        assertEquals(lastKnown, seen.last())
+        for (snapshot in listOf(running(paused = true), running(phase = Phase.CATCHING_UP), EngineSnapshot.Booting)) {
+            step(snapshot)
+            assertEquals(lastKnown, seen.last(), "$snapshot")
+        }
+        assertEquals(1, chain.proofRequests.size, "nothing proven without a fresh head")
+
+        // A stale anchor is a refusal, not a head to wait for: no amount from before.
+        step(running(phase = Phase.STALE_ANCHOR))
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.STALE_ANCHOR), seen.last())
+
+        chain.proofs[address] = ProvenBalance("6", 12)
+        step(running(head = 12))
+        assertEquals(BalanceReading.Verified(Wei.of("6"), 12), seen.last(), "verified again at a fresh head")
+        collecting.cancel()
+    }
+
+    @Test
+    fun aFailedProofShowsNoAmountFromBefore() = runTest {
+        chain.snapshot = running(head = 9)
+        chain.proofs[address] = ProvenBalance("5", 9)
+        val balances = balances()
+        assertEquals(BalanceReading.Verified(Wei.of("5"), 9), balances.observeBalance(address).first())
+
+        chain.proofs.remove(address)
+        chain.snapshot = running(head = 10)
+        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(address).first())
+    }
+
+    @Test
     fun aStaleAnchorAndAFailedProofAreSaidSo() = runTest {
         val balances = balances()
 

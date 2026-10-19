@@ -71,7 +71,12 @@ internal fun assetOptions(value: AccountValue, chosen: Address?, network: Networ
         icon = network.nativeIcon,
         decimals = NATIVE_DECIMALS,
         balance = (native as? BalanceReading.Verified)?.wei?.toUInt256OrNull(),
-        balanceText = native?.let { balanceText(it, network) } ?: CHECKING,
+        // A balance last verified at an older head is not one to send from: it may have changed.
+        balanceText = when (native) {
+            null -> CHECKING
+            is BalanceReading.LastKnown -> SYNCING
+            else -> balanceText(native, network)
+        },
         verifiedAt = (native as? BalanceReading.Verified)?.let { block(it.blockNumber) },
         valuation = value.nativeValue,
         warning = null,
@@ -91,7 +96,7 @@ internal fun assetOptions(value: AccountValue, chosen: Address?, network: Networ
             balance = verified?.let { UInt256.parse(it.units.decimal) },
             balanceText = when (reading) {
                 is TokenBalanceReading.Verified -> formatUnits(reading.units.decimal, token.decimals, symbol)
-                null, TokenBalanceReading.Syncing -> CHECKING
+                null, TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown -> CHECKING
                 TokenBalanceReading.NotAToken -> "Not a token"
                 is TokenBalanceReading.Unavailable -> "Not verified"
             },

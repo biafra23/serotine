@@ -612,7 +612,12 @@ discussion that produced this note.
   is cryptographically verified by the embedded Myotis engine (its only trust
   anchors are sync-committee signatures and its embedded accumulators) or shown
   as not available. No JSON-RPC provider, no indexer API and no "temporary"
-  fallback supplies chain state, in any build type.
+  fallback supplies chain state, in any build type. One older answer is
+  shown, labelled as one: while no verified head is fresh enough to read at,
+  a balance the light client proved earlier (in this run, or kept across a
+  restart) stays on screen, dated and marked as possibly changed since, left
+  out of totals and never acted on (owner's request, 2026-10-19;
+  docs/wallet-ux.md).
 - **A Safe's fallback handler is set only to a pinned one** (owner ruling,
   2026-10-18, #63). A Safe transaction that sets a fallback handler other
   than the pinned canonical CompatibilityFallbackHandler 1.4.1 of its

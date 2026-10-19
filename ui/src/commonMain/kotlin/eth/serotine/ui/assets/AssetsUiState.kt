@@ -11,8 +11,10 @@ import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.balanceText
+import eth.serotine.ui.components.lastKnownNote
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.valuationText
+import eth.serotine.ui.platform.formatDateTime
 import eth.serotine.ui.update.UpgradeBannerItem
 
 /**
@@ -104,7 +106,9 @@ sealed interface AssetsUiState {
  * One account as the list shows it: display strings only, derived once from the domain
  * model. [address] is EIP-55 checksummed. [balance] is a verified amount ("0.5 ETH") when
  * [balanceVerified], and otherwise says why there is none ("Checking…", "Syncing…", "Not
- * verified"): never a number from anywhere else. [value] is that balance in the display
+ * verified"), or is the amount last verified while no head can be read at, with
+ * [balanceNote] saying so ("Last verified Oct 19, 2026, 2:32 PM · may have changed since"):
+ * never a number from anywhere else. [value] is that balance in the display
  * currency, or why it has none ("No price"; null while the balance is not verified). For a
  * Safe, [signers] is its verified threshold of its owners ("2/3"; null until verified), and
  * [kindNote] what the row says of its kind ("Safe", or "Not a recognised Safe" once its
@@ -117,6 +121,7 @@ data class AccountItem(
     val control: Control,
     val balance: String,
     val balanceVerified: Boolean,
+    val balanceNote: String? = null,
     val value: String? = null,
     val signers: String? = null,
     val kindNote: String? = null,
@@ -143,7 +148,8 @@ data class AccountItem(
          * [account] with its [balance], or with none read yet ([balance] null), and that
          * balance's [value] with the currency it is in (null before it is valued); for a Safe,
          * its verified [safe] reading. [address] is its EIP-55 form, which a caller that
-         * re-renders the row per balance computes once.
+         * re-renders the row per balance computes once; [formatTime] dates a balance last
+         * verified (unix seconds).
          */
         fun from(
             account: Account,
@@ -152,6 +158,7 @@ data class AccountItem(
             address: String = Eip55.format(account.address),
             value: Pair<Valuation?, DisplayCurrency>? = null,
             safe: SafeReading? = null,
+            formatTime: (Long) -> String = ::formatDateTime,
         ): AccountItem = AccountItem(
             label = account.label,
             address = address,
@@ -161,6 +168,8 @@ data class AccountItem(
                 ?: Control.of(account.kind, account.custody),
             balance = balance?.let { balanceText(it, network) } ?: "Checking…",
             balanceVerified = balance is BalanceReading.Verified,
+            balanceNote = (balance as? BalanceReading.LastKnown)
+                ?.let { lastKnownNote(it.blockNumber, it.asOf, formatTime) },
             value = value?.let { (valuation, currency) -> valuationText(valuation, currency, network) },
             signers = (safe as? SafeReading.Verified)?.let { "${it.state.threshold}/${it.state.owners.size}" },
             kindNote = when {

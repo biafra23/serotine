@@ -157,8 +157,10 @@ enum class AssetSort {
 
 /**
  * One asset row (docs/wallet-ux.md, screen 4): its [symbol] and [name], the [amount] held —
- * verified when [verified], otherwise why there is none — the block it was verified at
- * ([verifiedAt], "block 11,932,144"; null when not verified or not named), its [value] in
+ * verified when [verified], otherwise why there is none, or the amount last verified while
+ * no head can be read at, with [lastKnown] saying so ("Last verified Oct 19, 2026, 2:32 PM ·
+ * may have changed since"; null otherwise) — the block it was verified at
+ * ([verifiedAt], "block 11,932,144"; null when not verified, last known or not named), its [value] in
  * the display currency, or why there is none ("No price"; null while there is no verified
  * amount to value), the bundled [icon] key (null: a monogram), a token's EIP-55 [contract]
  * (null for the native currency), which its long-press menu copies and hides, and
@@ -174,4 +176,5 @@ data class AssetRow(
     val value: String? = null,
     val contract: String? = null,
     val warning: String? = null,
+    val lastKnown: String? = null,
 )

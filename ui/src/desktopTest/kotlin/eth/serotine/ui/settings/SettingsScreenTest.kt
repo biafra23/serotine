@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import eth.serotine.ui.APP_VERSION
+import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
@@ -25,7 +26,7 @@ class SettingsScreenTest {
 
     private fun show() = rule.setContent {
         SerotineTheme {
-            val lightClient = LightClientItem("Verified at block 9,412,118 · 8 s ago", null, false)
+            val lightClient = LightClientItem("Verified at block 9,412,118 · 8 s ago", null, false, VERIFIED)
             SettingsScreen(
                 SettingsUiState(
                     "Sepolia",
