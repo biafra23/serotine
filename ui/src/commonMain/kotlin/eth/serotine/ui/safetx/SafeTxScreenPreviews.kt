@@ -368,7 +368,12 @@ private const val ROUTER = "0x27b1fdb04752bbc536007a920d24acb045561c26"
 private val swapAction = SafeTxActionItem(
     title = "Swap 100 USDC for at least 0.04 ETH",
     addresses = listOf(ActionAddress("Router", ROUTER), ActionAddress("Token sold", USDC)),
-    notes = listOf("Through one pool at 0.05 %.", "Paid to the Safe."),
+    notes = listOf(
+        "Through one pool at 0.05 %.",
+        "Paid to the Safe.",
+        "Whether the router is Uniswap's is checked against the chain on the transaction's own screen: until " +
+            "then, what it does with the call is up to its code.",
+    ),
     icon = "usdc",
     symbol = "USDC",
 )
