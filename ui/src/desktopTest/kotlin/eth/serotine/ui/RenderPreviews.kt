@@ -30,11 +30,13 @@ fun renderEach(name: String, previews: List<@Composable () -> Unit>) {
     previews.forEachIndexed { index, preview ->
         val scene = ImageComposeScene(width = 412, height = 892) { preview() }
         try {
-            val image = scene.render()
-            screenshotDir?.let { dir ->
-                val png = checkNotNull(image.encodeToData(EncodedImageFormat.PNG)) { "$name ${index + 1}: no PNG" }
-                // padStart, not "%02d": String.format localizes the digits under some locales.
-                File(dir, "$name-${(index + 1).toString().padStart(2, '0')}.png").writeBytes(png.bytes)
+            // Closed here, not left to the cleaner: native memory stays bounded across every preview.
+            scene.render().use { image ->
+                screenshotDir?.let { dir ->
+                    val png = checkNotNull(image.encodeToData(EncodedImageFormat.PNG)) { "$name ${index + 1}: no PNG" }
+                    // padStart, not "%02d": String.format localizes the digits under some locales.
+                    png.use { File(dir, "$name-${(index + 1).toString().padStart(2, '0')}.png").writeBytes(it.bytes) }
+                }
             }
         } finally {
             scene.close()
