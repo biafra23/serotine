@@ -59,7 +59,8 @@ class HistoryRecordingSentTransfers(
  *
  * A receipt is watched for [FOLLOW_SECONDS] after a peer took the transaction, and no longer (one
  * no block took by then may never be mined, and each watch costs the engine a block body per
- * head), and not again once a block was seen to take it before the watch started; the mined count is read every [nonceInterval] while no block was seen to take it, and
+ * head), and not again once a block was seen to take it before the watch started. The mined
+ * count is read every [nonceInterval] while no block was seen to take it, and
  * [SentOutcome.NonceUsed] recorded only when two reads in a row find its nonce used, so that a
  * receipt in the block that used it has [nonceInterval] to be seen first. [clock] is in unix seconds.
  */
