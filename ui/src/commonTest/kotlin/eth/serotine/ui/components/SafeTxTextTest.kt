@@ -63,6 +63,27 @@ class SafeTxTextTest {
     }
 
     @Test
+    fun aSwapIsOfferedToBeProposedAgainWhenItsMinimumFellBehindOrItsDeadlinePassed() {
+        val swap = RouterSwap(
+            router = module,
+            route = SwapRoute.direct(usdc.address, friend, FeeTier.MEDIUM),
+            sellsEther = false,
+            amountIn = UInt256.of(100_000_000),
+            buysEther = false,
+            minimumOut = UInt256.of(1_000),
+            deadline = 1_792_419_600,
+        )
+        fun offered(check: SafeSwapCheck) =
+            safeSwapItem(SafeTxAction.Swap(swap), check, emptyList(), Network.SEPOLIA) { "$it" }?.proposeAgain
+
+        // 2,000 now: a minimum of 1,000 leaves far more open than 0.5 % would.
+        assertEquals(true, offered(SafeSwapCheck.SwapOnUniswap(swap, SwapNow.Quoted(UInt256.of(2_000), 9), false)))
+        assertEquals(false, offered(SafeSwapCheck.SwapOnUniswap(swap, SwapNow.Quoted(UInt256.of(1_004), 9), false)))
+        assertEquals(true, offered(SafeSwapCheck.SwapOnUniswap(swap, SwapNow.NoQuote, expired = true)))
+        assertEquals(false, offered(SafeSwapCheck.NotUniswap(module)), "only Uniswap's own swap")
+    }
+
+    @Test
     fun aTransferIsItsAmountInTheAssetsUnitsAndItsRecipientInFull() {
         val ether = item(SafeTxAction.NativeTransfer(friend, UInt256.of(1_500_000_000_000_000_000)))
         assertEquals("Send 1.5 ETH", ether.title)

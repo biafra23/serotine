@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,16 +71,25 @@ fun SafeTxActionCard(action: SafeTxActionItem, modifier: Modifier = Modifier) {
 /** Test tag of where a Safe's swap or its approval stands now, for UI tests. */
 const val SAFE_SWAP_TAG = "safe-swap"
 
+/** Test tag of the offer to propose a Safe's swap again, for UI tests. */
+const val SAFE_SWAP_PROPOSE_AGAIN_TAG = "safe-swap-propose-again"
+
 /**
  * Where a Safe's swap or its approval stands as the chain is now ([swap]): its lines, then what
- * to know before signing or executing it, in the error colour.
+ * to know before signing or executing it, in the error colour; and, where [onProposeAgain] is
+ * given and the swap is worth it ([SafeSwapItem.proposeAgain]), the offer to propose it again.
  */
 @Composable
-fun SafeSwapBlock(swap: SafeSwapItem, modifier: Modifier = Modifier) {
+fun SafeSwapBlock(swap: SafeSwapItem, modifier: Modifier = Modifier, onProposeAgain: (() -> Unit)? = null) {
     Column(modifier.testTag(SAFE_SWAP_TAG), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         swap.lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
         swap.warning?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        }
+        if (swap.proposeAgain && onProposeAgain != null) {
+            OutlinedButton(onClick = onProposeAgain, Modifier.testTag(SAFE_SWAP_PROPOSE_AGAIN_TAG)) {
+                Text("Propose the swap again")
+            }
         }
     }
 }

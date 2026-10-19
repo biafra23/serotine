@@ -404,6 +404,7 @@ private fun SafeTxSwapMinimumBehindPreview() = SafeTxPreview(
             warning = "Its minimum has fallen behind the market: it returns 0.01 ETH more than its minimum now, " +
                 "more than the default 0.5 % tolerance would leave, and a sandwich could take all of it. Propose " +
                 "it again with a fresh minimum, or execute it as signed.",
+            proposeAgain = true,
         ),
     ),
 )
@@ -418,6 +419,7 @@ private fun SafeTxSwapExpiredPreview() = SafeTxPreview(
         swap = swapNow.copy(
             warning = "Its deadline has passed: the router refuses it, so it can never run as signed. Replace it " +
                 "at its nonce: propose the swap again, or reject it.",
+            proposeAgain = true,
         ),
     ),
 )

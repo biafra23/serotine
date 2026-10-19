@@ -959,7 +959,8 @@ class SwapViewModel(
         const val LIST_UNAVAILABLE =
             "Your account list cannot be read right now, so nothing can be swapped. Serotine keeps trying."
         const val NOT_IN_WALLET = "This account is not in your wallet any more."
-        const val SAFE = "A Safe's swap is a Safe transaction its owners sign, which Serotine cannot propose yet."
+        const val SAFE = "A Safe's swap is proposed as Safe transactions its owners sign: Swap on the Safe's " +
+            "own screen proposes one."
         const val WATCH_ONLY =
             "This account is watch-only: its key is not on this device, so nothing can be swapped from it."
     }

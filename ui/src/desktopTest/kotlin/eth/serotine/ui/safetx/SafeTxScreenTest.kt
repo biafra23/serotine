@@ -20,6 +20,7 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.SAFE_SWAP_PROPOSE_AGAIN_TAG
 import eth.serotine.ui.components.SAFE_SWAP_TAG
 import eth.serotine.ui.components.SAFE_TX_ACTION_TAG
 import eth.serotine.ui.components.SAFE_TX_QR_TAG
@@ -108,6 +109,7 @@ class SafeTxScreenTest {
                     onConfirmWithBiometrics = { events += "biometrics" },
                     onRetry = { events += "retry" },
                     onStepBack = { events += "step back" },
+                    onProposeAgain = { events += "propose again" },
                 ),
                 onBack = { events += "back" },
                 onCopy = { events += "copy $it" },
@@ -159,6 +161,16 @@ class SafeTxScreenTest {
         show(review.copy(swap = SafeSwapItem(emptyList(), warning = "Its minimum has fallen behind the market.")))
         rule.onNodeWithTag(SAFE_SWAP_TAG).assertIsDisplayed()
         rule.onNodeWithText("Its minimum has fallen behind the market.").assertIsDisplayed()
+        rule.onNodeWithTag(SAFE_SWAP_PROPOSE_AGAIN_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aSwapWorthProposingAgainOffersIt() {
+        val swap = SafeSwapItem(emptyList(), warning = "Its minimum has fallen behind the market.", proposeAgain = true)
+        show(review.copy(swap = swap))
+        rule.onNodeWithTag(SAFE_SWAP_PROPOSE_AGAIN_TAG).performScrollTo().assertTextEquals("Propose the swap again")
+            .performClick()
+        assertEquals(listOf("propose again"), events)
     }
 
     @Test

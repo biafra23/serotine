@@ -96,7 +96,8 @@ const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
  * screen is shown (removed from here or elsewhere) ends the screen through [onGone] — once
  * the screen is the one in front: under the remove dialog it waits, so the dialog can say
  * how the removal went before both close. Send is [onSend] from an account and [onPropose]
- * from a Safe, whose transfers are Safe transactions its owners sign.
+ * from a Safe, whose transfers are Safe transactions its owners sign; Swap likewise [onSwap] and
+ * [onSafeSwap].
  */
 @Composable
 fun AccountDetailRoute(
@@ -106,6 +107,7 @@ fun AccountDetailRoute(
     onSend: (contract: String?) -> Unit,
     onPropose: (contract: String?) -> Unit,
     onSwap: (contract: String?) -> Unit,
+    onSafeSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
@@ -127,7 +129,7 @@ fun AccountDetailRoute(
         state = state,
         onBack = onBack,
         onSend = { contract -> if (isSafe) onPropose(contract) else onSend(contract) },
-        onSwap = onSwap,
+        onSwap = { contract -> if (isSafe) onSafeSwap(contract) else onSwap(contract) },
         onReceive = onReceive,
         onCopy = rememberCopyText(),
         onRename = onRename,

@@ -147,8 +147,8 @@ upgrades*).
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
    - Send, Swap and Receive buttons (Send greyed out as in 3; Swap, 22,
-     greyed out, a tap saying why, when watch-only and on a Safe until its
-     swap is built: docs/swaps.md, *A Safe's swap*).
+     greyed out, a tap saying why, when watch-only; on a Safe, Swap opens
+     24 and is greyed out as Send is: docs/swaps.md, *A Safe's swap*).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
@@ -416,7 +416,9 @@ upgrades*).
       minimum, its deadline, and when it has passed, that it can never run.
       A minimum fallen behind the market by more than the default tolerance
       is said here and on the execution's review, with what a sandwich could
-      take.
+      take. Either, or a deadline passed, offers to propose the swap again
+      (24, the swap fixed and only the tolerance open): at its nonce, in its
+      place, with a fresh minimum and deadline.
     - A change that weakens the Safe carries a warning wherever it is shown
       (16's row, 17, the Sign step, the biometric prompt): a module disabled,
       a guard set or removed (its limits, allowlist or delay stop), a

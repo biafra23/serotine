@@ -254,6 +254,7 @@ class SafeTxViewModelTest {
                 "with a fresh minimum, or execute it as signed.",
             viewModel.overview.swap?.warning,
         )
+        assertEquals(true, viewModel.overview.swap?.proposeAgain, "with the offer to propose it again")
 
         world.head.value = LightClientStatus.Synced(headBlock = 200, headTimestamp = HEAD_TIME + DAY + 1)
         viewModel.checkAgain()
