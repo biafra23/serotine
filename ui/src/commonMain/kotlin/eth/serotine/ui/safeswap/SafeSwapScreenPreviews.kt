@@ -82,7 +82,7 @@ private val review = SafeSwapUiState.Review(
     minimum = "at least 0.039999 ETH",
     tolerance = "0.5 % tolerance below the quote, fixed in the swap the owners sign: it is not quoted again when " +
         "they do.",
-    route = listOf(RouteStep("USDC → ETH", "0.05 %", POOL)),
+    route = listOf(RouteStep("USDC → WETH", "0.05 %", POOL)),
     routeNote = "One Uniswap v3 pool, as the pinned factory lists it, chosen by what it returns. ETH goes in or out " +
         "as WETH, which the router wraps or unwraps in the same transaction.",
     priceImpact = "Price impact: 0.12 %, the quote against the pools' spot prices, their fees aside.",
