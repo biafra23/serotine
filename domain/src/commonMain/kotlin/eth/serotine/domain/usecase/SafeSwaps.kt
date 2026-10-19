@@ -190,7 +190,11 @@ const val SAFE_SWAP_DEADLINE_SECONDS: Long = 24 * 60 * 60
  *   cannot run yet ([SafeSwapSimulation.AfterApproval]). An engine that will not run a call from a
  *   contract's address leaves them not run. A token that refuses one allowance for another
  *   (USDT's kind: its approval reverts while one is set) is not proposed here: setting it to zero
- *   first would take a third Safe transaction.
+ *   first would take a third Safe transaction. The runs are against the head, before anything
+ *   queued: where an approval of the router queued before this one sets a non-zero allowance, such
+ *   a token's approval passes here and reverts once that one has run. No funds move: the whole
+ *   execution reverts, its quote says so before anyone pays, and the owners replace it at its
+ *   nonce.
  *
  * What refuses it from the queue and the light client alone is said before the engine is asked
  * for a balance or a route. Nothing is saved: signing each ([SignSafeTx]) queues it. On [network]
