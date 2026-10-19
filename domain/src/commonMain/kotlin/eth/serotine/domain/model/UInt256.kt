@@ -51,7 +51,14 @@ class UInt256 private constructor(
 
     /** `this × other`, or null when the product exceeds 2^256 - 1. */
     fun timesOrNull(other: UInt256): UInt256? {
-        // Schoolbook multiplication into sixteen limbs; the product fits when the upper eight are zero.
+        // The product fits when the upper eight of its sixteen limbs are zero.
+        val product = wideProduct(other)
+        if ((LIMBS until 2 * LIMBS).any { product[it] != 0L }) return null
+        return UInt256(IntArray(LIMBS) { product[it].toInt() })
+    }
+
+    /** `this × other` exactly, as sixteen 32-bit limbs (least significant first): schoolbook multiplication. */
+    private fun wideProduct(other: UInt256): LongArray {
         val product = LongArray(2 * LIMBS)
         for (i in 0 until LIMBS) {
             val a = limb(i).toULong()
@@ -65,8 +72,7 @@ class UInt256 private constructor(
             }
             product[i + LIMBS] = carry.toLong()
         }
-        if ((LIMBS until 2 * LIMBS).any { product[it] != 0L }) return null
-        return UInt256(IntArray(LIMBS) { product[it].toInt() })
+        return product
     }
 
     /** `this × other`; throws [ArithmeticException] when the product exceeds 2^256 - 1. */
@@ -153,19 +159,7 @@ class UInt256 private constructor(
      */
     internal fun mulDivOrNull(multiplier: UInt256, divisor: UInt256): UInt256? {
         if (divisor.isZero) return null
-        // The product, sixteen limbs, least significant first.
-        val product = LongArray(2 * LIMBS)
-        for (i in 0 until LIMBS) {
-            val a = limb(i).toULong()
-            if (a == 0uL) continue
-            var carry = 0uL
-            for (j in 0 until LIMBS) {
-                val t = a * multiplier.limb(j).toULong() + product[i + j].toULong() + carry
-                product[i + j] = (t and LIMB_MASK.toULong()).toLong()
-                carry = t shr LIMB_BITS
-            }
-            product[i + LIMBS] = carry.toLong()
-        }
+        val product = wideProduct(multiplier)
         // Long division, a bit at a time: the remainder stays below the divisor, and a bit
         // shifted out of it (overflow) means it was at least 2^256, above any divisor.
         val remainder = IntArray(LIMBS)

@@ -410,9 +410,12 @@ class TransferStatusViewModelTest {
             },
         )
         receipts.of(swap.hash).value = TransactionProgress.Included(9_412_120, succeeded = true, logs = listOf(paid))
+        val received = viewModel.shown.swap
+        assertEquals("Swap of 100 USDC for 4.30912 LINK on Uniswap", received?.title)
+        assertEquals("4.30912 LINK", received?.bought)
         assertEquals(
-            "Received 4.30912 LINK, as the verified receipt's logs say.",
-            viewModel.shown.swap?.received,
+            "Received, as the verified receipt's logs say; it was signed for at least 4.28845 LINK.",
+            received?.received,
         )
     }
 

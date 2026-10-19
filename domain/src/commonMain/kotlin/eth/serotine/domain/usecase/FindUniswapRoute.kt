@@ -3,6 +3,7 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
+import eth.serotine.domain.model.PoolSlot0
 import eth.serotine.domain.model.PriceImpact
 import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.RouteQuote
@@ -114,7 +115,14 @@ class FindUniswapRoute(
         val candidates = SwapRoutes.candidates(tokenIn, tokenOut, deployment.weth9, liquidity)
         if (candidates.isEmpty()) return RouteFinding.NoRoute
 
-        val quoted = coroutineScope { candidates.map { async { quote(deployment, it, amountIn) } }.awaitAll() }
+        // The candidates' pools' spot prices, read beside the quotes: the price impact's measure.
+        val (quoted, prices) = coroutineScope {
+            val spot = candidates.flatMap { it.poolKeys }.distinct().associateWith { key ->
+                async { slot0(pools.getValue(key).address) }
+            }
+            val quotes = candidates.map { async { quote(deployment, it, amountIn) } }.awaitAll()
+            quotes to spot.mapValues { it.value.await() }
+        }
         quoted.firstNotNullOfOrNull { (it as? Quoted.Unavailable)?.reason }
             ?.let { return RouteFinding.Unavailable(it) }
         val quotes = quoted.filterIsInstance<Quoted.Read>()
@@ -127,33 +135,39 @@ class FindUniswapRoute(
         }
         val best = SwapRoutes.best(quotes.map { it.quote }) { costs?.get(it) ?: UInt256.ZERO }
             ?: return RouteFinding.NoRoute
-        val bestPools = best.route.poolKeys.map { pools.getValue(it).address }
+        val blockNumber = quotes.first { it.quote == best }.blockNumber
         return RouteFinding.Found(
             deployment = deployment,
             quote = best,
-            pools = bestPools,
+            pools = best.route.poolKeys.map { pools.getValue(it).address },
             quotedRoutes = quotes.size,
             netOfFees = ranking == RouteRanking.NET_OF_FEES && (costs != null || quotes.size == 1),
-            blockNumber = quotes.first { it.quote == best }.blockNumber,
-            spotOut = spotOut(best.route, amountIn, bestPools),
+            blockNumber = blockNumber,
+            spotOut = spotOut(best.route, amountIn, best.route.poolKeys.map { prices[it] }, blockNumber),
         )
     }
 
+    /** A pool's `slot0`, with the block it was read at; null when it could not be read. */
+    private suspend fun slot0(pool: Address): Pair<PoolSlot0, Long>? {
+        val answer = chain.call(pool, UniswapV3Pool.slot0()) as? Simulation.Succeeded ?: return null
+        val block = answer.blockNumber ?: return null
+        return UniswapV3Pool.slot0Of(answer.returnHex)?.let { it to block }
+    }
+
     /**
-     * What [route] returns for [amountIn] at its [pools]' spot prices, less their fees
-     * ([PriceImpact.spotOut]), or null when a `slot0` could not be read: the price impact is
-     * then not said, and the route stands as found.
+     * What [route] returns for [amountIn] at its pools' spot [prices] ([PriceImpact.spotOut]),
+     * each read at the quote's block [quoteBlock]; null when one could not be read, or was read at
+     * another block (the impact would compare two states of the chain): the price impact is then
+     * not said, and the route stands as found.
      */
-    private suspend fun spotOut(route: SwapRoute, amountIn: UInt256, pools: List<Address>): UInt256? {
-        val prices = coroutineScope {
-            pools.map { pool ->
-                async {
-                    (chain.call(pool, UniswapV3Pool.slot0()) as? Simulation.Succeeded)
-                        ?.let { UniswapV3Pool.slot0Of(it.returnHex) }
-                }
-            }.awaitAll()
-        }
-        return PriceImpact.spotOut(route, amountIn, prices.map { it ?: return null })
+    private fun spotOut(
+        route: SwapRoute,
+        amountIn: UInt256,
+        prices: List<Pair<PoolSlot0, Long>?>,
+        quoteBlock: Long?,
+    ): UInt256? {
+        if (quoteBlock == null || prices.any { it?.second != quoteBlock }) return null
+        return PriceImpact.spotOut(route, amountIn, prices.map { checkNotNull(it).first })
     }
 
     /** Each of [keys] the factory lists, with its address and its liquidity in range. */
@@ -257,8 +271,8 @@ sealed interface RouteFinding {
      * the [pools] its factory returned, in the route's order; chosen among [quotedRoutes] quotes,
      * ranked net of their fees or not ([netOfFees]); the quote was run against the state of
      * [blockNumber] (null: not said). [spotOut] is what the route returns at its pools' spot
-     * prices, less their fees, the price impact's measure; null when a pool's `slot0` could not
-     * be read.
+     * prices, less their fees, the price impact's measure, each read at [blockNumber]; null when
+     * a pool's `slot0` could not be read at that block.
      */
     data class Found(
         val deployment: UniswapV3Deployment,

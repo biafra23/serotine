@@ -98,8 +98,9 @@ data class ApprovalSummary(
  * the exact [sold] amount with its symbol, the sold asset's [soldSymbol] and [soldIcon], what it
  * buys at least ([bought], "at least 4.28845 LINK") with [boughtSymbol] and [boughtIcon], the EIP-55
  * [router] it went through, and the EIP-55 [from], the account that sent it and is paid. Once a
- * block has it and it went through, [received] says what it paid, as its verified receipt's logs
- * say ("Received 4.3 LINK…"); null until then, or when they do not say it.
+ * block has it and its verified receipt's logs say what it paid, [bought] and [title] say that
+ * amount, and [received] where it comes from and the minimum it was signed for; null until then,
+ * or when they do not say it.
  */
 data class SwapSummary(
     val title: String,

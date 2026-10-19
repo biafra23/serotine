@@ -47,12 +47,15 @@ object PriceImpact {
     }
 
     /**
-     * How far [quotedOut] falls below [spotOut], in basis points rounded down: 0 when it does not
-     * fall below it; null when [spotOut] is zero, which no impact is measured against.
+     * How far [quotedOut] falls below [spotOut], in basis points rounded down; null when [spotOut]
+     * is zero, which no impact is measured against, or [quotedOut] stands a basis point or more
+     * above it: no quote of one state of the pools returns more than their spot prices, so the
+     * two are not of one state. Within a basis point above, it is the rounding of each, and 0.
      */
     fun basisPoints(spotOut: UInt256, quotedOut: UInt256): Int? {
         if (spotOut.isZero) return null
-        val short = spotOut.minusOrNull(quotedOut) ?: return 0
+        val short = spotOut.minusOrNull(quotedOut)
+            ?: return 0.takeIf { (quotedOut - spotOut).mulDivOrNull(UInt256.of(BASIS_POINTS), spotOut)?.isZero == true }
         // short ≤ spotOut, so the quotient is at most 10 000.
         return short.mulDivOrNull(UInt256.of(BASIS_POINTS), spotOut)?.toLongOrNull()?.toInt()
     }

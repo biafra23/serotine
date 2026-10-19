@@ -126,7 +126,8 @@ private val hopReview = review.copy(
     tolerance = "0.5 % tolerance, below QuoterV2's verified quote of 2.871904 LINK",
     route = listOf(RouteStep("USDC → WETH", "0.05 %", POOL), RouteStep("WETH → LINK", "0.3 %", SECOND_POOL)),
     routeNote = "Through WETH: two Uniswap v3 pools, as the pinned factory lists them.",
-    priceImpact = "Price impact: not known, a pool's spot price could not be read this time.",
+    priceImpact = "Price impact: not known this time: the pools' spot prices could not be read at the quote's " +
+        "block, or give no measure for this amount.",
     netNote = "The route was chosen by what it returns, without its network fee, which could not be had right now.",
     balances = listOf(
         BalanceChange("USDC balance", "250 USDC", "210 USDC", "verified at block 8,412,305"),

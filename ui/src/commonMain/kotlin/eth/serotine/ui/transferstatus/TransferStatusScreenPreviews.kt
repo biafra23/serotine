@@ -300,7 +300,11 @@ private fun TransferStatusSwapDarkPreview() =
 private fun TransferStatusSwapReceivedPreview() = TransferStatusPreview(
     included.copy(
         sent = null,
-        swap = swap.copy(received = "Received 4.30912 LINK, as the verified receipt's logs say."),
+        swap = swap.copy(
+            title = "Swap of 100 USDC for 4.30912 LINK on Uniswap",
+            bought = "4.30912 LINK",
+            received = "Received, as the verified receipt's logs say; it was signed for at least 4.28845 LINK.",
+        ),
     ),
 )
 

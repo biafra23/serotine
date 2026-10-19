@@ -57,7 +57,8 @@ class PriceImpactTest {
     fun theImpactIsHowFarTheQuoteFallsBelowTheSpotInBasisPoints() {
         assertEquals(100, PriceImpact.basisPoints(UInt256.of(1_000_000), UInt256.of(990_000)))
         assertEquals(0, PriceImpact.basisPoints(UInt256.of(1_000_000), UInt256.of(999_999)), "rounded down")
-        assertEquals(0, PriceImpact.basisPoints(UInt256.of(1_000_000), UInt256.of(1_000_001)), "above the spot")
+        assertEquals(0, PriceImpact.basisPoints(UInt256.of(1_000_000), UInt256.of(1_000_001)), "rounding")
+        assertNull(PriceImpact.basisPoints(UInt256.of(1_000_000), UInt256.of(1_000_100)), "not of one state")
         assertEquals(10_000, PriceImpact.basisPoints(UInt256.of(1_000_000), UInt256.ZERO))
         assertNull(PriceImpact.basisPoints(UInt256.ZERO, UInt256.ONE))
     }

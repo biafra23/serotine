@@ -98,6 +98,10 @@ class FindUniswapRouteTest {
         val q96 = UInt256.of("79228162514264337593543950336")
         chain.answer(medium, UniswapV3Pool.slot0(), q96.toBytes32().toHex() + "00".repeat(32 * 6))
         assertEquals(UInt256.of(997_000), assertIs<RouteFinding.Found>(usdcForLink()).spotOut)
+
+        // Read at another block than the quote: no measure of the quote's state.
+        chain.blockOf[medium] = chain.block + 1
+        assertNull(assertIs<RouteFinding.Found>(usdcForLink()).spotOut)
     }
 
     @Test
@@ -236,6 +240,9 @@ class FindUniswapRouteTest {
         var venue: VenueReading = VenueReading.Verified(deployment)
         val answers = mutableMapOf<Pair<Address, String>, String>()
         var block = 7L
+
+        /** A contract that answers at another block than [block]. */
+        val blockOf = mutableMapOf<Address, Long>()
         var calls = 0
         var quotesAsked = 0
 
@@ -256,7 +263,8 @@ class FindUniswapRouteTest {
                 // A pool the test did not list: the factory has none.
                 return Simulation.Succeeded(answers[to to data.toHex()] ?: "00".repeat(32), block)
             }
-            return answers[to to data.toHex()]?.let { Simulation.Succeeded(it, block) } ?: Simulation.Reverted(block)
+            val at = blockOf[to] ?: block
+            return answers[to to data.toHex()]?.let { Simulation.Succeeded(it, at) } ?: Simulation.Reverted(at)
         }
     }
 

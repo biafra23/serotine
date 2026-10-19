@@ -272,19 +272,21 @@ class TransferStatusViewModel(
         val swap = transfer.action as? SentAction.Swap ?: return null
         val (soldSymbol, soldDecimals, soldIcon) = shown(swap.sell)
         val (boughtSymbol, boughtDecimals, boughtIcon) = shown(swap.buy)
+        val minimum = "at least ${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol"
+        // "At least" the minimum until the receipt's logs say what it paid (docs/swaps.md, *The record*).
+        val bought = received?.let { "${it.formatUnits(boughtDecimals)} $boughtSymbol" } ?: minimum
         return SwapSummary(
-            title = "Swap of ${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol for at least " +
-                "${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol on Uniswap",
+            title = "Swap of ${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol for $bought on Uniswap",
             sold = "${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol",
             soldSymbol = soldSymbol,
             soldIcon = soldIcon,
-            bought = "at least ${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol",
+            bought = bought,
             boughtSymbol = boughtSymbol,
             boughtIcon = boughtIcon,
             router = Eip55.format(swap.router),
             from = Eip55.format(transfer.account),
             received = received?.let {
-                "Received ${it.formatUnits(boughtDecimals)} $boughtSymbol, as the verified receipt's logs say."
+                "Received, as the verified receipt's logs say; it was signed for $minimum."
             },
         )
     }

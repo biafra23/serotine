@@ -4,6 +4,8 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.keccak256
+import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SentAction
 import kotlin.test.Test
@@ -52,6 +54,15 @@ class SwapProceedsTest {
         )
         assertEquals(UInt256.of(15), SwapProceeds.receivedOf(forEther, account, logs))
         assertNull(SwapProceeds.receivedOf(forEther.copy(weth = null), account, logs), "an older record")
+    }
+
+    @Test
+    fun thePinnedTopicsAreTheEventsSignatureHashes() {
+        assertEquals(transfer, SwapProceeds.TRANSFER)
+        assertEquals(withdrawal, SwapProceeds.WITHDRAWAL)
+        // Derived here only to check the pins.
+        assertEquals(transfer, "0x" + keccak256("Transfer(address,address,uint256)".encodeToByteArray()).toHex())
+        assertEquals(withdrawal, "0x" + keccak256("Withdrawal(address,uint256)".encodeToByteArray()).toHex())
     }
 
     @Test
