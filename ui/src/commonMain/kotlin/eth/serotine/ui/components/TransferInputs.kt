@@ -60,9 +60,15 @@ internal data class AssetOption(
 
 /**
  * The network's currency and every token the account holds, as [value] reads them, and the token
- * [chosen] whatever its balance says: it was asked for, and its row says what is known of it.
+ * [chosen] whatever its balance says: it was asked for, and its row says what is known of it. With
+ * [everyToken], every token the wallet lists, held or not: what a swap may buy.
  */
-internal fun assetOptions(value: AccountValue, chosen: Address?, network: Network): List<AssetOption> {
+internal fun assetOptions(
+    value: AccountValue,
+    chosen: Address?,
+    network: Network,
+    everyToken: Boolean = false,
+): List<AssetOption> {
     val native = value.native
     val nativeOption = AssetOption(
         asset = TransferAsset.Native,
@@ -85,7 +91,9 @@ internal fun assetOptions(value: AccountValue, chosen: Address?, network: Networ
         val token = holding.token
         val reading = holding.reading
         val verified = reading as? TokenBalanceReading.Verified
-        if (token.address != chosen && (verified == null || verified.units.isZero)) return@mapNotNull null
+        if (!everyToken && token.address != chosen && (verified == null || verified.units.isZero)) {
+            return@mapNotNull null
+        }
         val symbol = displaySymbol(token.symbol)
         AssetOption(
             asset = TransferAsset.Erc20Token(token),
@@ -371,3 +379,6 @@ private const val NOT_A_NAME =
 private const val CHECKSUM = "The capitals do not match this address's checksum: check it for a typo."
 private const val OFFCHAIN =
     "Only an off-chain gateway gives this name's address, and Serotine asks none: it cannot be resolved here."
+
+/** A Uniswap fee tier's [pips] as a percentage: 3 000 is "0.3 %". */
+internal fun feeTierText(pips: Int): String = UInt256.of(pips.toLong()).formatUnits(4) + " %"

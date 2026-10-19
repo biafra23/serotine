@@ -23,9 +23,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -44,6 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.FeeChoice
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.NotSentFields
@@ -244,31 +242,6 @@ private fun ComposeContent(
             }
         }
         ReviewButton(state.form, onReview, Modifier.align(Alignment.End))
-    }
-}
-
-/** Fee: Slow | Normal | Fast (docs/wallet-ux.md, screen 7). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FeeChoice(fee: FeeLevel, enabled: Boolean, onFeeChange: (FeeLevel) -> Unit) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        FeeLevel.entries.forEachIndexed { index, level ->
-            SegmentedButton(
-                selected = fee == level,
-                onClick = { onFeeChange(level) },
-                enabled = enabled,
-                shape = SegmentedButtonDefaults.itemShape(index, FeeLevel.entries.size),
-                label = {
-                    Text(
-                        when (level) {
-                            FeeLevel.SLOW -> "Slow"
-                            FeeLevel.NORMAL -> "Normal"
-                            FeeLevel.FAST -> "Fast"
-                        },
-                    )
-                },
-            )
-        }
     }
 }
 

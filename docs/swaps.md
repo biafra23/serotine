@@ -2,7 +2,9 @@
 
 How Serotine swaps one token for another without a server it has to trust:
 on Uniswap's contracts directly, and through CoW Protocol. This page is a
-design, and nothing on it is built yet. Issue #69 tracks it. A swap PR is held
+design. Its Uniswap plan is built, its eight parts merged through
+`feature/swaps-uniswap` (*The plan*), and nothing of CoW is. Issue #69
+tracks it. A swap PR is held
 to this page together with docs/wallet-ux.md (the screens and their rules),
 docs/embedding-myotis.md (what the engine reads and sends) and
 docs/keys-and-signing.md (what is signed). Where this page and CLAUDE.md
@@ -61,8 +63,9 @@ signed.
     wrapper, which the router wraps and unwraps within the swap.
 - **The proceeds go to the account itself.** No other recipient is offered:
   sending somewhere else is Send's job.
-- **Slippage.** The tolerance applied to a verified quote, rounded down. The
-  default and the bounds are the owner's (*Open questions*).
+- **Slippage.** The tolerance applied to a verified quote, rounded down: 0.5 %
+  by default, between 0.1 % and 5 %, and no second confirmation for a large
+  price impact for now (owner ruling, 2026-10-19, decision 2).
 - **Approvals are their own transaction, for the exact amount.**
   - When the account's allowance for the venue's spender does not cover the
     amount, the swap review starts with an approval step: "Allow
@@ -78,8 +81,8 @@ signed.
     own:
     - SwapRouter02 pulls only from the account that calls it.
     - CoW's vault relayer pulls only for an order the account signed.
-  - Unlimited approvals and Permit2 are the owner's decision (*Open
-    questions*).
+  - The exact amount, one approval per swap whose allowance falls short: no
+    unlimited approval and no Permit2 (owner ruling, 2026-10-19, decision 3).
 - **Freshness, for a swap from an account held here**, as Send's quote
   (docs/wallet-ux.md, screen 8):
   - A quote is made when the review is entered, again on Refresh, and when
@@ -104,7 +107,10 @@ signed.
     once known, the amount received.
   - On Uniswap that amount comes from the verified receipt: the token's
     `Transfer` log to the account. For ETH out, it is WETH's `Withdrawal` log
-    from the router, since unwrapped ETH comes with no `Transfer` log.
+    from the router, since unwrapped ETH comes with no `Transfer` log. Only
+    the logs of the contract the record names count (the token bought, or
+    the pinned WETH9 the record keeps), since any token on the route could
+    emit a log that claims a transfer.
   - On CoW it comes from the settlement's `Trade` log (*Proving an order's
     end*). Until that log is found, the status says "at least" the minimum.
 - **Native ETH** goes in and out through WETH, as each venue does it (below).
@@ -119,15 +125,48 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
   at consecutive nonces. A MultiSend batch would be a delegate call: the
   owner allowed one through the pinned `MultiSendCallOnly` (2026-10-18,
   issue #57), but until that is built every delegate call is refused.
+  - The approval is for the exact amount, at the Safe's next nonce, and the
+    swap takes the one after it. When that one is taken already (a
+    transaction queued further ahead), nothing is proposed: the swap would
+    sit beside it.
+  - The allowance is the router's on chain, as the approvals of it queued
+    before the swap leave it (per nonce the least of its alternatives, since
+    any one of them may be the one that runs). One that covers the amount
+    needs no approval of its own.
+  - A swap of the token through the router queued before it counts on the
+    allowance a new approval would set: nothing is proposed until it has
+    run or gone.
+  - A token that refuses one allowance for another (USDT's kind) would take
+    a third transaction, the allowance set to zero first: it is not
+    proposed from a Safe.
+- **What is held back.** What the transactions queued before the swap may
+  move of the asset sold is not the swap's to sell, as for a Safe's transfer.
+- **Only what is decoded counts.** The allowance and the balance a proposal
+  shows count the transactions queued before it that decode exactly (an
+  approval, a transfer, a swap). One that does not, a request imported from
+  elsewhere that calls the token or the router in another way
+  (`increaseAllowance`, `transferFrom`, a multicall of another shape), is
+  counted as moving nothing and setting no allowance, so the figures may
+  promise more than its turn finds. This wallet never queues such a call,
+  and the swap's verified run before it is executed is what decides: the
+  worst case is a swap that does not run and is signed for nothing, as for
+  a token of USDT's kind behind an approval already queued.
 - **Decoded here.** Screen 17 decodes each from its raw call to a pinned
   contract, never from a description: "Swap 100 USDC for at least 4.2 LINK on
   Uniswap".
+- **Proposed from the Safe's own Swap** (screen 24): Swap's form, with no
+  fee to choose (whoever executes it pays); then the review of the Safe
+  transactions it takes, decoded here at their nonces, the minimum, the
+  route and the deadline, the Safe's balance before and after, and the
+  owner held here who signs every one of them, one after the other. An
+  approval signed whose swap was not stays queued, and the swap proposed
+  again goes after it.
 - **The minimum and the deadline are fixed when the swap is proposed.**
   - Re-quoting at a later owner's tap would change the `SafeTx` hash and void
     the signatures already collected, so it is not done.
   - The deadline is longer than an account's ten minutes, since collecting
-    signatures by QR code takes time: 24 hours proposed, the owner's decision
-    (*Open questions*).
+    signatures by QR code takes time: 24 hours (owner ruling, 2026-10-19,
+    decision 5).
 - **Each owner sees the current state**: the minimum signed, and what the
   swap would return now by a verified QuoterV2 quote, said as meeting the
   minimum or not. The quote needs no allowance.
@@ -142,11 +181,18 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
   hours the rate can move in the Safe's favour. A sandwich can then take
   everything between what the swap returns now and the signed minimum, not
   only the tolerance.
-  - When the verified run returns more than the minimum by over the
-    tolerance, Execute says how much the swap leaves open and offers to
-    propose it again with a fresh minimum.
-  - Whether it may still be executed as signed is the owner's decision
-    (*Open questions*).
+  - When the swap returns more than the minimum by over the default
+    tolerance (its verified QuoterV2 quote now: an `execTransaction` run
+    returns only whether it succeeded), Execute says how much the swap
+    leaves open and offers to propose it again with a fresh minimum.
+  - Proposed again, the swap takes the nonce of the one it replaces, with
+    a fresh minimum and deadline: only one of the two can ever run. It is
+    the same swap (the pair, the amount and the router), so those queued
+    after it are left as they were, and one past a gap in the queue is not
+    proposed again. It gets no approval of its own; one the router still
+    needs is proposed first, from the Safe's Swap.
+  - It may still be executed as signed (owner ruling, 2026-10-19, decision
+    5).
 
 ## Uniswap (built first)
 
@@ -195,9 +241,26 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
 - **The cost.** A quote reads every storage slot the swap touches: the pool's
   state, the tick bitmap words and each initialized tick it crosses. The
   engine proves each slot from peers.
-  - The Uniswap plan's part 2 measures this on Sepolia and bounds the number of candidates
-    quoted per review if it has to.
-  - That part also finds out which built-in tokens have pools on Sepolia at all.
+  - Measured on Sepolia (2026-10-19, `eth_createAccessList` of QuoterV2's
+    calls): a direct quote touches 9 to 12 slots of 3 or 4 contracts, a hop
+    16 slots of 6. A review reads up to twelve pools (`getPool`, then
+    `liquidity()` of each listed one) and quotes up to five candidates, all
+    in parallel, plus one quote that converts the fee.
+  - Every built-in token (USDC, LINK, UNI) has a pool with WETH at all four
+    tiers on Sepolia, and USDC/LINK, USDC/UNI and LINK/UNI have pools of
+    their own.
+  - How long a review's quote takes through the engine is what
+    `MyotisNodeSepoliaTest` prints when run with the engine's library; the
+    number of candidates is bounded only if that asks for it.
+- **The fee a route costs**, when routes are ranked net: its QuoterV2 gas ×
+  (the next base fee + the Normal tip), in wei for WETH or ETH bought, and
+  otherwise converted by one quote of the largest such fee in WETH through
+  the bought token's deepest WETH pool, the others taking their share by
+  their gas. No fee reading or no conversion leaves the routes ranked gross,
+  and the finding says so: the ranking only picks among verified quotes,
+  and the minimum is the chosen route's own quote either way. The router's
+  own work (the `transferFrom` and the multicall) is the same for every
+  route of a swap, so it is not counted here.
 - **Exact input only.** The user says how much to sell. Exact output ("buy
   exactly 5 LINK") can come later.
 
@@ -223,15 +286,19 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
   - the amount the verified run returns ("you receive 4.31 LINK, run at block
     N") and the signed minimum ("at least 4.29 LINK, 0.5 % tolerance");
   - the route: its pools with their fee tiers and blockies;
-  - the price impact: the quote against the pool's spot price (`slot0`),
-    chain data both;
+  - the price impact: the quote against what the route returns at its pools'
+    spot prices (`slot0`), less their fees, chain data both; read with
+    verified calls of the chosen route's pools, and said as not known when
+    one cannot be read;
   - the most the fee can be, and the balances of both tokens and of ETH
     before and after.
 - **A hint, display-only.** The pool's spot price can be moved within a
   block just as the quote can. When the quote's rate is far from the
   Chainlink values the screen already shows, the review says so. On Sepolia
   the testnet feeds and the test pools do not track each other, so there the
-  hint says that and no more. It never changes an amount.
+  hint says that and no more (the only one built: comparing against the
+  feeds waits for a network with market prices). It never changes an
+  amount.
 - **MEV.** The transaction sits in the public mempool, where it can be
   sandwiched by up to the tolerance. That bound holds for an account's swap,
   quoted moments before it is sent. A Safe's swap can lose more (*A Safe's
@@ -566,33 +633,63 @@ route being unavailable, never to a wrong swap:
 Two multi-PR plans, the second after the first, so that Uniswap swaps can
 reach `main` without waiting for CoW's ruling (CLAUDE.md, *Multi-PR plans*:
 the final PR opens only when every planned part is merged). Both branch from
-`main` once `feature/wallet-ux` has merged. Whether they are two plans or one
-is the owner's decision (*Open questions*). Each part follows the checklist
-in docs/architecture.md.
+`main`, now that `feature/wallet-ux` has merged. Two plans, not one (owner
+ruling, 2026-10-19, decision 9). Each part follows the checklist in
+docs/architecture.md.
 
 **`feature/swaps-uniswap`**
 
 1. **Domain.**
    - The pin type, and the ABI of `getPool`, `liquidity`, `slot0`, QuoterV2,
      `SwapRouter02.multicall`, `exactInputSingle`, `exactInput` and
-     `unwrapWETH9`.
-   - The route candidates, the slippage arithmetic, and `SentAction`'s
-     approval and swap.
+     `unwrapWETH9`, and ERC-20's `approve` and `allowance`.
+   - The route candidates and their choice, and the slippage arithmetic.
    - Vectors made with Foundry's `cast`.
 2. **Adapters.**
-   - The Sepolia pins with their code hashes, pool discovery and quotes over
-     the engine.
-   - The router overhead pinned for the gas figure.
-   - How long a quote takes, and which built-in tokens have pools on
-     Sepolia.
-3. **Swap screens.**
-   - Swap, compose (22): from, sell, buy, amount, tolerance.
-   - Swap, review (23): the approval step, then the swap.
-   - The status (9) for a swap.
+   - The port `UniswapV3Chain` (the venue once its code is proven, and
+     verified calls) and the use case `FindUniswapRoute`, with fakes in
+     their tests.
+   - The Sepolia pins with their code hashes, and the engine adapter
+     `VerifiedUniswapV3`.
+   - Which built-in tokens have pools on Sepolia, what a quote touches, and
+     a network test that times a route through the engine.
+3. **The swap's quote and send.**
+   - `QuoteSwap`, `SendSwap` (the exact transaction run again at the tap
+     that signs it), `QuoteTokenApproval` (zero first for a token that
+     refuses one allowance for another) and `SendTokenApproval`.
+   - `SentAction`'s token approval and swap, recorded (the sent
+     transactions' format 5), with what a swap sells held back from later
+     transactions, and the status (9) for both.
+4. **Swap screens.**
+   - Swap, compose (22): from, sell, buy, amount, tolerance, fee.
+   - Swap, review (23): the approval step, then the swap; an approval sent
+     returns to 22, which says so and goes on once a block has it.
    - A Swap button on the account detail (4) and "Swap ‹symbol›" in the asset
-     menu (5), absent when watch-only.
-4. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
-   with the minimum and deadline fixed at the proposal.
+     menu (5), greyed out, a tap saying why, when watch-only (owner ruling,
+     2026-10-18, #55), and on a Safe until part 8 gave it its own swap.
+   - The port and use cases wired into `AppGraph` and the hosts.
+5. **The review's last figures.**
+   - The price impact: each pool's `slot0` against the quote.
+   - The Chainlink hint, display-only.
+   - The amount received, from the verified receipt's logs, on the status (9).
+6. **A Safe's swap on screen 17.**
+   - The approval and the swap decoded from their raw calls: a swap exactly
+     as `SwapRouter02.swap` builds one, paid to the Safe, read by building it
+     again.
+   - Whether the spender or router is the pinned SwapRouter02 (the verified
+     venue), what the swap returns now by a verified QuoterV2 quote against
+     its minimum, and its deadline against the verified head.
+   - A minimum fallen behind the market said at Execute, with what it leaves
+     open.
+7. **Proposing a Safe's swap, the use case.** `ProposeSafeSwap`: the
+   approval and the swap at consecutive nonces, or the swap alone, with the
+   minimum and a 24-hour deadline fixed at the proposal, each run from the
+   Safe; and the swap proposed again at the nonce of one whose minimum has
+   fallen behind.
+8. **Proposing a Safe's swap, the screens.** Swap on a Safe's detail (4,
+   5), its compose and review (24), signed by an owner held here (both
+   transactions); and 17's offer to propose a swap again with a fresh
+   minimum.
 
 **`feature/swaps-cow`**, once CoW's *Data sources* ruling is recorded in
 CLAUDE.md
@@ -606,6 +703,9 @@ CLAUDE.md
    - Before this part: a spike that shows the engine's half of the proof
      (*Proving an order's end*, "What the engine has to show first").
 2. **Adapter.**
+   - The router overhead pinned for the Uniswap net's gas figure, measured
+     with Foundry's `cast` (it moved here from the Uniswap plan, where it
+     ranks no route).
    - The Ktor client and the three calls, decoded leniently, with no
      transparent retry of the order POST.
    - The receipt scan for an order's `Trade`, over the engine.
@@ -626,18 +726,19 @@ on issue #69 until answered.
 1. **A pair with no verified Uniswap quote.** Do not offer it on CoW (as
    built until decided), or sign on CoW's unverified estimate with a
    warning?
-2. **Tolerance.** 0.5 % by default, between 0.1 % and 5 %? Should a price
-   impact above some level need a second confirmation?
-3. **Approvals.** The exact amount (one approval per swap), unlimited, or
-   Permit2?
+2. **Tolerance.** *Answered (owner ruling, 2026-10-19):* 0.5 % by default,
+   between 0.1 % and 5 %, and no second confirmation for a large price
+   impact for now.
+3. **Approvals.** *Answered (owner ruling, 2026-10-19):* the exact amount,
+   one approval per swap; not unlimited, not Permit2.
 4. **A CoW order's validity, and the wait before a fallback.** A few
    minutes, 5 proposed, then proven at a finalized block, 12.8 to 19.2 more
    minutes on Sepolia. Or a margin of a few blocks in place of finality,
    which is faster and wrong only after a deeper reorganization.
-5. **A Safe's swap deadline, and a minimum that has fallen behind.** 24 hours
-   proposed, long enough to collect the signatures. At Execute, when the swap
-   returns more than its minimum by over the tolerance: warn and offer to
-   propose it again (proposed), or refuse to execute it as signed?
+5. **A Safe's swap deadline, and a minimum that has fallen behind.**
+   *Answered (owner ruling, 2026-10-19):* 24 hours. At Execute, when the swap
+   returns more than its minimum by over the tolerance, warn and offer to
+   propose it again; it may still be executed as signed.
 6. **Uniswap v4 hooks.** Pools without hooks only, or pinned hooks?
 7. **CoW's data-source ruling.** It covers four things:
    - what CoW may learn, including every intended swap it is asked to quote;
@@ -648,6 +749,6 @@ on issue #69 until answered.
      light client does not prove.
 8. **Mainnet**, once allowed: a Uniswap swap in the public mempool, bounded
    by its minimum, with no private relay.
-9. **One plan or two.** Two (proposed): Uniswap reaches `main` on its own
-   branch, and CoW follows on another once its ruling is made. Or one
-   `feature/swaps` that reaches `main` only with CoW.
+9. **One plan or two.** *Answered (owner ruling, 2026-10-19):* two. Uniswap
+   reaches `main` on `feature/swaps-uniswap`, and CoW follows on
+   `feature/swaps-cow` once its ruling is made.

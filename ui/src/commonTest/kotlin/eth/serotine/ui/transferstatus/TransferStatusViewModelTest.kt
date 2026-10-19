@@ -13,6 +13,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
@@ -352,5 +353,98 @@ class TransferStatusViewModelTest {
         viewModel.retry()
         runCurrent()
         assertEquals(emptyList(), broadcaster.sent)
+    }
+
+    @Test
+    fun aSwapShowsWhatItSoldAndTheLeastItBuysAndWhyItMayFail() = runTest {
+        val router = Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e")
+        val link = Token(Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789"), "LINK", "ChainLink", 18, "link")
+        val swap = record.copy(
+            signed = SignedTransfer(byteArrayOf(2, 1, 6)),
+            action = SentAction.Swap(
+                router = router,
+                sell = TransferAsset.Erc20Token(usdc),
+                amountIn = UInt256.of(100_000_000),
+                buy = TransferAsset.Erc20Token(link),
+                minimumOut = UInt256.of("4288450000000000000"),
+            ),
+        )
+        sent.transfers.value = listOf(swap)
+        val viewModel = viewModel(swap.hash)
+        runCurrent()
+
+        assertEquals(
+            SwapSummary(
+                title = "Swap of 100 USDC for at least 4.28845 LINK on Uniswap",
+                sold = "100 USDC",
+                soldSymbol = "USDC",
+                soldIcon = "usdc",
+                bought = "at least 4.28845 LINK",
+                boughtSymbol = "LINK",
+                boughtIcon = "link",
+                router = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+                from = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
+            ),
+            viewModel.shown.swap,
+        )
+        assertNull(viewModel.shown.sent)
+
+        receipts.of(swap.hash).value = TransactionProgress.Included(9_412_120, succeeded = false)
+        assertEquals(
+            "It failed: the swap reverted in its block, so nothing was swapped: the price moved past its minimum, " +
+                "or its deadline passed. Its fee is paid all the same.",
+            viewModel.shown.note,
+        )
+        assertNull(viewModel.shown.swap?.received, "a reverted swap paid nothing")
+
+        // Went through: LINK's own Transfer log to the account says what it paid.
+        val paid = ReceiptLog(
+            link.address,
+            listOf(
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0x" + "00".repeat(32),
+                "0x" + "00".repeat(12) + record.account.hex.drop(2),
+            ),
+            "0x" + UInt256.of("4309120000000000000").toBytes32().joinToString("") {
+                (it.toInt() and 0xff).toString(16).padStart(2, '0')
+            },
+        )
+        receipts.of(swap.hash).value = TransactionProgress.Included(9_412_120, succeeded = true, logs = listOf(paid))
+        val received = viewModel.shown.swap
+        assertEquals("Swap of 100 USDC for 4.30912 LINK on Uniswap", received?.title)
+        assertEquals("4.30912 LINK", received?.bought)
+        assertEquals(
+            "Received, as the verified receipt's logs say; it was signed for at least 4.28845 LINK.",
+            received?.received,
+        )
+    }
+
+    @Test
+    fun anApprovalShowsTheAmountAndTheSpenderItLetsTakeIt() = runTest {
+        val approval = record.copy(
+            signed = SignedTransfer(byteArrayOf(2, 1, 5)),
+            action = SentAction.TokenApproval(
+                usdc,
+                Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e"),
+                UInt256.of(100_000_000),
+            ),
+        )
+        sent.transfers.value = listOf(approval)
+        val viewModel = viewModel(approval.hash)
+        runCurrent()
+
+        assertEquals(
+            ApprovalSummary(
+                title = "Approval for a swap",
+                amount = "100 USDC",
+                symbol = "USDC",
+                icon = "usdc",
+                spenderLabel = "May be taken by the swap's router",
+                spender = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+                from = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
+            ),
+            viewModel.shown.approval,
+        )
+        assertNull(viewModel.shown.swap)
     }
 }

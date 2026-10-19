@@ -50,6 +50,30 @@ class SafeTxActionTest {
     }
 
     @Test
+    fun anApprovalAndASwapPaidToTheSafeAreReadFromTheirFields() {
+        val router = Address.of("0x" + "50".repeat(20))
+        val link = Address.of("0x" + "77".repeat(20))
+        assertEquals(
+            SafeTxAction.TokenApproval(usdc, router, UInt256.of(100)),
+            SafeTxAction.of(safe, call(usdc, data = Erc20.approveData(router, UInt256.of(100)))),
+        )
+        val deployment = UniswapV3Deployment(bob, bob, router, Address.of("0x" + "ff".repeat(20)))
+        val route = SwapRoute.direct(usdc, link, FeeTier.MEDIUM)
+        val token = { address: Address -> TransferAsset.Erc20Token(Token(address, "T", "Token", 6, icon = null)) }
+        val swap = SwapRouter02.swap(deployment, token(usdc), token(link), route, UInt256.of(100), UInt256.ONE, safe, 7)
+        assertEquals(
+            SafeTxAction.Swap(RouterSwap(router, route, false, UInt256.of(100), false, UInt256.ONE, 7)),
+            SafeTxAction.of(safe, call(router, data = swap.data)),
+        )
+        // The same swap paid to bob is no swap of the Safe's: a contract call.
+        val toBob = SwapRouter02.swap(deployment, token(usdc), token(link), route, UInt256.of(100), UInt256.ONE, bob, 7)
+        assertEquals(
+            SafeTxAction.ContractCall(router, UInt256.ZERO, "5ae401dc", toBob.data.size),
+            SafeTxAction.of(safe, call(router, data = toBob.data)),
+        )
+    }
+
+    @Test
     fun aDelegateCallIsNeverReadAsAnythingElse() {
         val tx = SafeTx(
             usdc, UInt256.ZERO, Erc20.transferData(bob, UInt256.ONE), SafeOperation.DELEGATECALL,

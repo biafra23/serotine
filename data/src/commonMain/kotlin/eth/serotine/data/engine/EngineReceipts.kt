@@ -55,9 +55,9 @@ class EngineReceipts internal constructor(
         val receipt = EngineJson.receipt(json) ?: return TransactionProgress.Pending
         val finalized = (snapshot as EngineSnapshot.Running).finalizedBlock
         return if (finalized > 0 && receipt.blockNumber <= finalized) {
-            TransactionProgress.Finalized(receipt.blockNumber, receipt.succeeded)
+            TransactionProgress.Finalized(receipt.blockNumber, receipt.succeeded, receipt.logs)
         } else {
-            TransactionProgress.Included(receipt.blockNumber, receipt.succeeded)
+            TransactionProgress.Included(receipt.blockNumber, receipt.succeeded, receipt.logs)
         }
     }
 

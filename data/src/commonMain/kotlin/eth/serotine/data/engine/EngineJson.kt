@@ -1,9 +1,12 @@
 package eth.serotine.data.engine
 
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
+import eth.serotine.domain.repository.ReceiptLog
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -50,17 +53,38 @@ internal object EngineJson {
         return FeeQuote(UInt256.of(baseFees.last()), tips, newest)
     }
 
-    /** A receipt's verdict: null for the "null" literal (no verified block includes it yet). */
+    /**
+     * A receipt's verdict: null for the "null" literal (no verified block includes it yet). Its
+     * logs are read as a whole or not at all: one that is malformed leaves [Receipt.logs] null,
+     * and the verdict stands.
+     */
     fun receipt(json: String): Receipt? {
         if (json.trim() == "null") return null
         val root = Json.parseToJsonElement(json) as? JsonObject ?: throw IllegalArgumentException("not a receipt")
         val block = quantity(root.getValue("blockNumber"))?.toLongOrNull() ?: throw IllegalArgumentException("no block")
         val status = quantity(root.getValue("status")) ?: throw IllegalArgumentException("no status")
-        return Receipt(block, succeeded = status == "1")
+        return Receipt(block, succeeded = status == "1", logs = logsOf(root["logs"]))
     }
 
-    /** A receipt's block and outcome. */
-    data class Receipt(val blockNumber: Long, val succeeded: Boolean)
+    /** A receipt's block, outcome and [logs] (null when it carried none that could be read). */
+    data class Receipt(val blockNumber: Long, val succeeded: Boolean, val logs: List<ReceiptLog>? = null)
+
+    private fun logsOf(element: JsonElement?): List<ReceiptLog>? {
+        val array = element as? JsonArray ?: return null
+        return array.map { entry ->
+            val log = entry as? JsonObject ?: return null
+            val address = (log["address"] as? JsonPrimitive)?.contentOrNull?.let(Address::parse) ?: return null
+            val topics = (log["topics"] as? JsonArray)?.map { topic ->
+                (topic as? JsonPrimitive)?.contentOrNull?.lowercase()?.takeIf(TOPIC::matches) ?: return null
+            } ?: return null
+            val data = (log["data"] as? JsonPrimitive)?.contentOrNull?.lowercase()?.takeIf(DATA::matches)
+                ?: return null
+            ReceiptLog(address, topics, data)
+        }
+    }
+
+    private val TOPIC = Regex("^0x[0-9a-f]{64}$")
+    private val DATA = Regex("^0x([0-9a-f]{2})*$")
 
     /** A JSON-RPC quantity (`0x`-hex) as a decimal string, or null when it is not one. */
     private fun quantity(element: JsonElement): String? {

@@ -589,34 +589,25 @@ class ProposeSafeTx(
                 is SafeCheck.Refused -> return@cancellingReads SafeTxProposing.Refused(check.refusal)
             }
             safeChecked()
-            val balance = async { balanceOf(safe, token?.address) }
+            val balance = async { safeBalanceOf(nativeBalances, tokenBalances, safe, token?.address) }
             val queued = async { queue.observe(safe).first() }
 
             val (before, balanceBlock) = when (val read = balance.await()) {
-                is SafeBalance.Read -> read.amount to read.blockNumber
-                is SafeBalance.Refused -> return@cancellingReads read.proposing
+                is SafeBalanceRead.Read -> read.amount to read.blockNumber
+                SafeBalanceRead.NotAToken -> return@cancellingReads SafeTxProposing.NotAToken
+                is SafeBalanceRead.Refused -> return@cancellingReads SafeTxProposing.Refused(read.refusal)
             }
             if (before < amount) return@cancellingReads insufficient(token != null)
             val safeNonce = reading.state.nonce
-            // A queue that cannot be read leaves the Safe's nonce: two transactions at one nonce
-            // are two proposals, only one of which can ever run.
-            val pending = (queued.await() as? SafeTxQueueList.Loaded)?.requests.orEmpty()
-                .filter { it.network == network && it.nonce >= safeNonce }
-            val taken = pending.mapTo(HashSet()) { it.nonce }
-            var nonce = safeNonce
-            while (nonce in taken) nonce++
+            val pending = pendingOf(queued.await(), safeNonce, network)
+            val nonce = nextNonce(pending, safeNonce)
             val ahead = pending.filter { it.nonce < nonce }
-            // What the ones before it move of the asset is not this one's to move: per nonce the most
-            // any of its alternatives moves, since only one transaction at a nonce ever runs.
-            val queuedAmount = ahead.groupBy { it.nonce }.values
-                .map { alternatives -> alternatives.maxOf { it.moves(token?.address) } }
-                .sumOrNull()
-                ?: return@cancellingReads insufficient(token != null)
+            val queuedAmount = ahead.queuedMoves(token?.address) ?: return@cancellingReads insufficient(token != null)
             val available = before.minusOrNull(queuedAmount)?.takeIf { it >= amount }
                 ?: return@cancellingReads insufficient(token != null)
             val simulation = when (val run = inputs.simulate(safe, txTo, value, data)) {
                 is Simulation.Succeeded -> {
-                    val refusedByToken = token != null && run.returnHex.isNotEmpty() && run.returnHex.all { it == '0' }
+                    val refusedByToken = token != null && Erc20.returnedFalse(run.returnHex)
                     if (refusedByToken) return@cancellingReads SafeTxProposing.Reverts(run.blockNumber)
                     SafeCallSimulation.Ran(run.blockNumber)
                 }
@@ -643,44 +634,96 @@ class ProposeSafeTx(
 
     private fun insufficient(token: Boolean) =
         if (token) SafeTxProposing.InsufficientToken else SafeTxProposing.InsufficientFunds
+}
 
-    /** The Safe's verified balance of the token at [token], or of the network's currency (null). */
-    private suspend fun balanceOf(safe: Address, token: Address?): SafeBalance {
-        fun refused(refusal: SafeTxRefusal) = SafeBalance.Refused(SafeTxProposing.Refused(refusal))
-        val unproven = refused(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN))
-        if (token == null) {
-            return when (val reading = nativeBalances.observeBalance(safe).first()) {
-                is BalanceReading.Verified ->
-                    reading.wei.toUInt256OrNull()?.let { SafeBalance.Read(it, reading.blockNumber) } ?: unproven
-                BalanceReading.Syncing, is BalanceReading.LastKnown -> refused(SafeTxRefusal.Syncing)
-                is BalanceReading.Unavailable -> refused(SafeTxRefusal.Unavailable(reading.reason))
-            }
+/**
+ * The requests queued for a Safe on [network] that its nonce [safeNonce] has not passed. A queue
+ * that cannot be read holds none: two transactions at one nonce are two proposals, only one of
+ * which can ever run.
+ */
+internal fun pendingOf(queued: SafeTxQueueList, safeNonce: Long, network: Network): List<SigningRequest> =
+    (queued as? SafeTxQueueList.Loaded)?.requests.orEmpty()
+        .filter { it.network == network && it.nonce >= safeNonce }
+
+/**
+ * A Safe's next nonce: its own, or the first after the requests [pending] from it without a gap.
+ * One queued further ahead, which cannot run before the gap is filled, does not push it back.
+ */
+internal fun nextNonce(pending: List<SigningRequest>, safeNonce: Long): Long {
+    val taken = pending.mapTo(HashSet()) { it.nonce }
+    var nonce = safeNonce
+    while (nonce in taken) nonce++
+    return nonce
+}
+
+/**
+ * What these queued requests may move of the token at [token] (null: of the network's currency):
+ * per nonce the most any of its alternatives moves, since only one transaction at a nonce ever
+ * runs. Null when that sum overflows, which no balance covers.
+ */
+internal fun List<SigningRequest>.queuedMoves(token: Address?): UInt256? =
+    groupBy { it.nonce }.values
+        .map { alternatives -> alternatives.maxOf { it.moves(token) } }
+        .sumOrNull()
+
+/** What [safeBalanceOf] read: the balance, or why there is none to propose on. */
+internal sealed interface SafeBalanceRead {
+    data class Read(val amount: UInt256, val blockNumber: Long?) : SafeBalanceRead
+
+    /** The token's address answers as no token. */
+    data object NotAToken : SafeBalanceRead
+
+    data class Refused(val refusal: SafeTxRefusal) : SafeBalanceRead
+}
+
+/**
+ * [safe]'s verified balance of the token at [token], or of the network's currency (null). A
+ * last-known balance is no verified one: nothing is proposed on it.
+ */
+internal suspend fun safeBalanceOf(
+    nativeBalances: NativeBalances,
+    tokenBalances: TokenBalances,
+    safe: Address,
+    token: Address?,
+): SafeBalanceRead {
+    val unproven = SafeBalanceRead.Refused(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN))
+    if (token == null) {
+        return when (val reading = nativeBalances.observeBalance(safe).first()) {
+            is BalanceReading.Verified ->
+                reading.wei.toUInt256OrNull()?.let { SafeBalanceRead.Read(it, reading.blockNumber) } ?: unproven
+            BalanceReading.Syncing, is BalanceReading.LastKnown -> SafeBalanceRead.Refused(SafeTxRefusal.Syncing)
+            is BalanceReading.Unavailable -> SafeBalanceRead.Refused(SafeTxRefusal.Unavailable(reading.reason))
         }
-        return when (val reading = tokenBalances.observeBalance(safe, token).first()) {
-            is TokenBalanceReading.Verified ->
-                UInt256.parse(reading.units.decimal)?.let { SafeBalance.Read(it, reading.blockNumber) } ?: unproven
-            TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown -> refused(SafeTxRefusal.Syncing)
-            TokenBalanceReading.NotAToken -> SafeBalance.Refused(SafeTxProposing.NotAToken)
-            is TokenBalanceReading.Unavailable -> refused(SafeTxRefusal.Unavailable(reading.reason))
+    }
+    return when (val reading = tokenBalances.observeBalance(safe, token).first()) {
+        is TokenBalanceReading.Verified ->
+            UInt256.parse(reading.units.decimal)?.let { SafeBalanceRead.Read(it, reading.blockNumber) } ?: unproven
+        TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown -> SafeBalanceRead.Refused(SafeTxRefusal.Syncing)
+        TokenBalanceReading.NotAToken -> SafeBalanceRead.NotAToken
+        is TokenBalanceReading.Unavailable -> SafeBalanceRead.Refused(SafeTxRefusal.Unavailable(reading.reason))
+    }
+}
+
+/**
+ * What this queued request may move of the token at [token] (null: of the network's currency),
+ * as decoded from its fields: a token's transfers of it, a swap's sale of it (the router takes
+ * it), or for the currency the value of whatever it calls. A delegate call's value is not
+ * sent, and what its code may do is not known here.
+ */
+internal fun SigningRequest.moves(token: Address?): UInt256 = when (val action = SafeTxAction.of(safe, tx)) {
+    is SafeTxAction.TokenTransfer -> if (action.token == token) action.amount else UInt256.ZERO
+    is SafeTxAction.Swap -> {
+        val swap = action.swap
+        // The router takes the route's first token unless it is the WETH9 it wraps the value into:
+        // a sale of ETH moves the value, never the Safe's own WETH.
+        when {
+            !swap.sellsEther && swap.route.tokenIn == token -> swap.amountIn
+            token == null -> tx.value
+            else -> UInt256.ZERO
         }
     }
-
-    private sealed interface SafeBalance {
-        data class Read(val amount: UInt256, val blockNumber: Long?) : SafeBalance
-        data class Refused(val proposing: SafeTxProposing) : SafeBalance
-    }
-
-    /**
-     * What this queued request may move of the token at [token] (null: of the network's currency),
-     * as decoded from its fields: a token's transfers of it, or for the currency the value of
-     * whatever it calls. A delegate call's value is not sent, and what its code may do is not
-     * known here.
-     */
-    private fun SigningRequest.moves(token: Address?): UInt256 = when (val action = SafeTxAction.of(safe, tx)) {
-        is SafeTxAction.TokenTransfer -> if (action.token == token) action.amount else UInt256.ZERO
-        is SafeTxAction.DelegateCall -> UInt256.ZERO
-        else -> if (token == null) tx.value else UInt256.ZERO
-    }
+    is SafeTxAction.DelegateCall -> UInt256.ZERO
+    else -> if (token == null) tx.value else UInt256.ZERO
 }
 
 /**

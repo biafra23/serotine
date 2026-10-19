@@ -40,6 +40,7 @@ import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.SafeWorld
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.ShareItem
 import kotlinx.coroutines.CompletableDeferred

@@ -9,6 +9,7 @@ import eth.serotine.domain.repository.GasEstimate
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionProgress
 import kotlinx.coroutines.CancellationException
@@ -119,6 +120,25 @@ class TransactionAdaptersTest {
             EngineJson.receipt("""{"blockNumber":"0x7","status":"0x0"}"""),
         )
         assertNull(EngineJson.receipt("null"))
+    }
+
+    @Test
+    fun aReceiptsLogsAreReadWholeOrNotAtAll() {
+        val topic = "0x" + "DD".repeat(32)
+        val withLogs = EngineJson.receipt(
+            """{"blockNumber":"0x7","status":"0x1","logs":[{"address":"0x7777777777777777777777777777777777777777",""" +
+                """"topics":["$topic"],"data":"0x01"}]}""",
+        )
+        assertEquals(
+            listOf(ReceiptLog(Address.of("0x" + "77".repeat(20)), listOf(topic.lowercase()), "0x01")),
+            withLogs?.logs,
+        )
+        // A malformed log: the verdict stands, the logs are not read.
+        val malformed = EngineJson.receipt(
+            """{"blockNumber":"0x7","status":"0x1","logs":[{"address":"0x77","topics":[],"data":"0x"}]}""",
+        )
+        assertEquals(EngineJson.Receipt(7, succeeded = true, logs = null), malformed)
+        assertEquals(emptyList(), EngineJson.receipt("""{"blockNumber":"0x7","status":"0x1","logs":[]}""")?.logs)
     }
 
     @Test

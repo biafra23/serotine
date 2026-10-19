@@ -139,6 +139,8 @@ class SerotineApplication : Application() {
             safeApprovals = node.safeApprovals,
             // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
             safeReleases = PinnedSafeReleases(),
+            // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
+            uniswap = node.uniswap,
             network = Network.SEPOLIA,
         )
     }

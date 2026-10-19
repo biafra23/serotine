@@ -6,6 +6,7 @@ import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm

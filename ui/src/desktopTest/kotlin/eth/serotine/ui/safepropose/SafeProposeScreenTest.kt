@@ -19,6 +19,7 @@ import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SAFE_TX_ACTION_TAG
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
 import eth.serotine.ui.components.SEND_REVIEW_TAG
+import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm

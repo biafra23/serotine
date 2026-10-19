@@ -70,13 +70,15 @@ Modules (Gradle):
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
   token metadata, prices and address kinds, the peer-reported network-upgrade
   advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
-  names, and a Safe's owners' approvals on chain), whose glue over
+  names, a Safe's owners' approvals on chain, and Uniswap v3's pinned
+  contracts, proven by their code, and its verified calls), whose glue over
   `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
   (`eth.serotine.data.upgrade`); the built-in token list and the user's token
   settings (`eth.serotine.data.tokens`); the Chainlink feed table
   (`eth.serotine.data.prices`); the pinned Safe deployments, the queue of
   Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
+  the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
   the record of sent transactions (`eth.serotine.data.transfers`); and the
   display currency
   (`eth.serotine.data.settings`).

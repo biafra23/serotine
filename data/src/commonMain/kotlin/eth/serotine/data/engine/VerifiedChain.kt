@@ -1,5 +1,6 @@
 package eth.serotine.data.engine
 
+import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.NetworkUpgrade
@@ -109,6 +110,9 @@ internal sealed interface ProofAnchor {
         else -> null
     }
 }
+
+/** The Keccak-256 of [codeHex] (lower-case hex, no `0x`): its code hash, as lower-case hex. */
+internal fun codeHash(codeHex: String): String = Keccak256().digest(codeHex.fromHex()).toHex()
 
 /** Keccak-256 of no code: the code hash of every account without code. */
 internal const val EMPTY_CODE_HASH = "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"

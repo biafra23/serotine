@@ -3,6 +3,7 @@ package eth.serotine.ui.safepropose
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.ShareItem
@@ -87,16 +88,3 @@ sealed interface SafeProposeUiState {
     /** Signed and queued: [hash] is the Safe transaction's, which its screen opens by. */
     data class Proposed(override val network: String, val hash: String) : SafeProposeUiState
 }
-
-/**
- * The Safe's balance of the asset as the proposal leaves it: [what] ("ETH balance of the Safe"),
- * [before] it, what the transactions queued on this device before it may move of it ([queued], null:
- * nothing), [after] it, and the block the balance was verified at ([verifiedAt]).
- */
-data class SafeBalanceChange(
-    val what: String,
-    val before: String,
-    val after: String,
-    val verifiedAt: String,
-    val queued: String? = null,
-)

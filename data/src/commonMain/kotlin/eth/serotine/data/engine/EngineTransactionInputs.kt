@@ -9,10 +9,7 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionInputs
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -89,30 +86,11 @@ class EngineTransactionInputs internal constructor(
         }
 
     override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation =
-        ask(Simulation::Unavailable) { chain ->
-            when (val outcome = chain.callFrom(from, to, value.toDecimal(), data)) {
-                is CallOutcome.Returned -> Simulation.Succeeded(outcome.hex, outcome.blockNumber)
-                is CallOutcome.Reverted -> Simulation.Reverted(outcome.blockNumber)
-                CallOutcome.Refused -> Simulation.Refused
-                null -> Simulation.Unavailable(ReadUnavailable.UNPROVEN)
-            }
-        }
+        ask(Simulation::Unavailable) { chain -> chain.callFrom(from, to, value.toDecimal(), data).toSimulation() }
 
     /** [read] on [dispatcher] while reads can be verified; otherwise, or when the engine fails, [unavailable]. */
-    private suspend fun <T> ask(unavailable: (ReadUnavailable) -> T, read: (TransactingChain) -> T): T {
-        val chain = chain ?: return unavailable(ReadUnavailable.NO_ENGINE)
-        return withContext(dispatcher) {
-            try {
-                whyUnreadable(chain.snapshot())?.let { return@withContext unavailable(it) }
-                read(chain)
-            } catch (e: Throwable) {
-                // A cancellation of this call ends it; anything else, a CancellationException the
-                // engine's own code throws included, is an engine failure (as in ProvenReads).
-                currentCoroutineContext().ensureActive()
-                unavailable(ReadUnavailable.UNPROVEN)
-            }
-        }
-    }
+    private suspend fun <T> ask(unavailable: (ReadUnavailable) -> T, read: (TransactingChain) -> T): T =
+        chain.askVerified(dispatcher, unavailable, read)
 
     private companion object {
         /** The blocks the fee history covers: about two minutes of Sepolia. */

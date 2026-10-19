@@ -46,6 +46,7 @@ class AccountDetailScreenTest {
                 state,
                 onBack = { events += "back" },
                 onSend = { events += "send $it" },
+                onSwap = { events += "swap $it" },
                 onReceive = { events += "receive" },
                 onCopy = { events += "copy $it" },
                 onRename = { events += "rename" },
@@ -148,6 +149,62 @@ class AccountDetailScreenTest {
             .performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
         assertEquals(emptyList(), events.filter { it.startsWith("send") }, "nothing sent")
+    }
+
+    @Test
+    fun anAccountWhoseKeyIsHeldHereSwapsFromItsButtonAndFromAnAssetsMenu() {
+        val contract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+        show(
+            ready.copy(
+                control = Control.FULL_CONTROL,
+                assets = listOf(AssetRow("USDC", "USDC", "5 USDC", "usdc", verified = true, contract = contract)),
+            ),
+        )
+
+        rule.onNodeWithTag(ACCOUNT_SWAP_TAG).performClick()
+        rule.onNodeWithText("5 USDC").performTouchInput { longClick() }
+        rule.onNodeWithText("Swap USDC").performClick()
+
+        assertEquals(listOf("swap null", "swap $contract"), events)
+    }
+
+    @Test
+    fun aWatchOnlyAccountShowsSwapGreyedOutAndATapSaysWhy() {
+        show(ready.copy(assets = listOf(AssetRow("USDC", "USDC", "5 USDC", "usdc", verified = true, contract = "0x1"))))
+
+        rule.onNodeWithTag(ACCOUNT_SWAP_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "This account is watch-only: its key is not on this device, so nothing can be swapped from it. " +
+                "Import its recovery phrase to swap from it.",
+        )
+        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithText("5 USDC").performTouchInput { longClick() }
+        rule.onNodeWithText("Swap USDC").performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
+        assertEquals(emptyList(), events.filter { it.startsWith("swap") }, "nothing swapped")
+    }
+
+    @Test
+    fun aSafeSwapsWithAnOwnerHeldHereAndIsGreyedOutWithNone() {
+        show(ready.copy(kind = AccountKind.SAFE, control = Control.CO_SIGNER, safe = SafeDetails.Checking))
+        rule.onNodeWithTag(ACCOUNT_SWAP_TAG).performClick()
+        assertEquals(listOf("swap null"), events.filter { it.startsWith("swap") })
+    }
+
+    @Test
+    fun aWatchedSafesSwapIsGreyedOutAndATapSaysSo() {
+        show(ready.copy(kind = AccountKind.SAFE, control = Control.WATCH_ONLY, safe = SafeDetails.Checking))
+
+        rule.onNodeWithTag(ACCOUNT_SWAP_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "No owner of this Safe has its key on this device, so nothing can be proposed from it. Import an " +
+                "owner's recovery phrase to propose and sign its transactions.",
+        )
+        assertEquals(emptyList(), events.filter { it.startsWith("swap") }, "nothing swapped")
     }
 
     @Test

@@ -1,5 +1,6 @@
 package eth.serotine.domain.repository
 
+import eth.serotine.domain.model.Address
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -23,13 +24,29 @@ sealed interface TransactionProgress {
 
     /**
      * Included in block [blockNumber], its receipt verified; [succeeded] false when it
-     * reverted (its fee is paid all the same).
+     * reverted (its fee is paid all the same). [logs] are the receipt's own, in its order, part
+     * of what the receipts root proves; null when the receipt carried none that could be read.
      */
-    data class Included(val blockNumber: Long, val succeeded: Boolean) : TransactionProgress
+    data class Included(
+        val blockNumber: Long,
+        val succeeded: Boolean,
+        val logs: List<ReceiptLog>? = null,
+    ) : TransactionProgress
 
-    /** Included in block [blockNumber], which the beacon chain has finalized. */
-    data class Finalized(val blockNumber: Long, val succeeded: Boolean) : TransactionProgress
+    /** Included in block [blockNumber], which the beacon chain has finalized; [logs] as [Included]'s. */
+    data class Finalized(
+        val blockNumber: Long,
+        val succeeded: Boolean,
+        val logs: List<ReceiptLog>? = null,
+    ) : TransactionProgress
 
     /** Where it stands cannot be verified right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : TransactionProgress
 }
+
+/**
+ * One log of a verified receipt: the contract that emitted it ([address]), its [topics] (each
+ * `0x` and 64 lower-case hex digits, the event's signature hash first) and its [data] (`0x` and
+ * lower-case hex).
+ */
+data class ReceiptLog(val address: Address, val topics: List<String>, val data: String)

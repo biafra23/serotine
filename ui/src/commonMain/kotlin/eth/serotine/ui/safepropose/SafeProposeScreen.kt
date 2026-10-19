@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,9 +20,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,18 +34,16 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.OwnerChoices
 import eth.serotine.ui.components.RecipientCard
 import eth.serotine.ui.components.RequestShareContent
 import eth.serotine.ui.components.ReviewButton
@@ -56,7 +51,6 @@ import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.TransferFormFields
 import eth.serotine.ui.components.UnlockFields
-import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
@@ -306,23 +300,7 @@ private fun ReviewContent(
         }
         HorizontalDivider()
         Heading("Signed by")
-        Column {
-            state.owners.forEach { owner ->
-                val selected = owner.address == state.owner
-                ListItem(
-                    modifier = Modifier.selectable(
-                        selected = selected,
-                        enabled = state.idle,
-                        role = Role.RadioButton,
-                        onClick = { actions.onOwnerChange(owner.address) },
-                    ),
-                    leadingContent = { AccountAvatar(owner.address, size = 32.dp) },
-                    headlineContent = { Text(owner.label) },
-                    supportingContent = { Text(shortAddress(owner.address), fontFamily = FontFamily.Monospace) },
-                    trailingContent = { RadioButton(selected = selected, onClick = null, enabled = state.idle) },
-                )
-            }
-        }
+        OwnerChoices(state.owners, state.owner, enabled = state.idle, onChoose = actions.onOwnerChange)
         Note("Signed, it is queued on this device, from where it is shared with the other owners.")
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.share?.let { RequestShareContent(it, onCopy, onShareText, onClose = null) }

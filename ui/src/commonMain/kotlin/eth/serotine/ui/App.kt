@@ -52,10 +52,12 @@ import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
 import eth.serotine.ui.safeimport.SafeImportRoute
 import eth.serotine.ui.safepropose.SafeProposeRoute
+import eth.serotine.ui.safeswap.SafeSwapRoute
 import eth.serotine.ui.safetx.SafeTxRoute
 import eth.serotine.ui.security.SecurityRoute
 import eth.serotine.ui.send.SendRoute
 import eth.serotine.ui.settings.SettingsRoute
+import eth.serotine.ui.swap.SwapRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
 import eth.serotine.ui.transferstatus.TransferStatusRoute
@@ -208,6 +210,8 @@ private fun Destinations(
                     onGone = { navController.leave(Destination.ACCOUNT) },
                     onSend = { contract -> navController.send(address.hex, contract) },
                     onPropose = { contract -> navController.propose(address.hex, contract) },
+                    onSwap = { contract -> navController.swap(address.hex, contract) },
+                    onSafeSwap = { contract -> navController.safeSwap(address, contract) },
                     onReceive = { navController.open(AccountAction.Receive(address.hex)) },
                     onRename = { navController.open(AccountAction.Rename(address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(address.hex)) },
@@ -333,6 +337,39 @@ private fun Destinations(
                 LaunchedEffect(Unit) { navController.popBackStack(SEND_ROUTE, inclusive = true) }
             }
         }
+        // Swap, and then where the swap stands: the transaction's flow, over the bar too.
+        composable(
+            SWAP_ROUTE,
+            arguments = listOf(
+                navArgument(ASSET) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val asked = entry.savedStateHandle.get<String>(ASSET)
+            val asset = asked?.let(Address::parse)
+            if (address != null && (asked == null || asset != null)) {
+                SwapRoute(
+                    viewModel = viewModel { graph.swapViewModel(address, asset) },
+                    onBack = { navController.popBackStack(SWAP_ROUTE, inclusive = true) },
+                    // Back from the status goes where Swap was opened from, not to a signed review.
+                    onSent = { hash ->
+                        navController.navigate("${Destination.TRANSFER}/$hash") {
+                            popUpTo(SWAP_ROUTE) { inclusive = true }
+                        }
+                    },
+                    // The approval, an earlier swap, or one that may still be on its way: its status, over Swap.
+                    onOpenTransfer = { hash ->
+                        navController.navigate("${Destination.TRANSFER}/$hash") { launchSingleTop = true }
+                    },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SWAP_ROUTE, inclusive = true) }
+            }
+        }
         // A Safe's transactions: proposing one, importing one, and one of them; over the bar too,
         // as each ends in a signature or a transaction.
         composable(
@@ -357,6 +394,37 @@ private fun Destinations(
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_PROPOSE_ROUTE, inclusive = true) }
+            }
+        }
+        composable(
+            SAFE_SWAP_ROUTE,
+            arguments = listOf(
+                navArgument(ASSET) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument(REPLACING) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val asked = entry.savedStateHandle.get<String>(ASSET)
+            val asset = asked?.let(Address::parse)
+            val replaced = entry.savedStateHandle.get<String>(REPLACING)
+            val replacing = replaced?.lowercase()?.takeIf(TRANSACTION_HASH::matches)?.let(Digest::parse)
+            if (address != null && (asked == null || asset != null) && (replaced == null || replacing != null)) {
+                SafeSwapRoute(
+                    viewModel = viewModel { graph.safeSwapViewModel(address, asset, replacing) },
+                    onBack = { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) },
+                    // Signed and queued: the swap's screen, and back from it to where Swap was opened.
+                    onProposed = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_SWAP_ROUTE) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) }
             }
         }
         composable(SAFE_IMPORT_ROUTE) { entry ->
@@ -392,6 +460,8 @@ private fun Destinations(
                             popUpTo(SAFE_TX_ROUTE) { inclusive = true }
                         }
                     },
+                    // Over this one: once the new swap is signed, its own screen takes Swap's place.
+                    onProposeAgain = { navController.safeSwap(address, asset = null, replacing = hash) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) }
@@ -447,6 +517,18 @@ private fun NavController.send(address: String, asset: String?) {
 }
 
 /**
+ * Opens Swap from the account at [address], selling the token at [asset] (null: the network's
+ * currency); both in lower case, as identifiers.
+ */
+private fun NavController.swap(address: String, asset: String?) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == SWAP_ROUTE) return
+    val from = Address.parse(address) ?: return
+    val token = asset?.let { Address.parse(it) ?: return }
+    navigate("${Destination.SWAP}/${from.hex}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
+}
+
+/**
  * Opens Send from the Safe at [address] — the proposal of a Safe transaction — with the token at
  * [asset] chosen (null: the network's currency); both in lower case, as identifiers.
  */
@@ -456,6 +538,20 @@ private fun NavController.propose(address: String, asset: String?) {
     val safe = Address.parse(address) ?: return
     val token = asset?.let { Address.parse(it) ?: return }
     navigate("${Destination.SAFE}/${safe.hex}/${Destination.PROPOSE}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
+}
+
+/**
+ * Opens Swap from the Safe at [safe] — the proposal of its Safe transactions — selling the token at
+ * [asset] (null: the network's currency; one that is no address opens nothing); or, with
+ * [replacing], the swap queued under that hash proposed again in its place.
+ */
+private fun NavController.safeSwap(safe: Address, asset: String?, replacing: Digest? = null) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == SAFE_SWAP_ROUTE) return
+    val token = asset?.let { Address.parse(it) ?: return }
+    val query = listOfNotNull(token?.let { "$ASSET=${it.hex}" }, replacing?.let { "$REPLACING=0x${it.hex}" })
+        .joinToString("&")
+    navigate("${Destination.SAFE}/${safe.hex}/${Destination.SWAP}" + if (query.isEmpty()) "" else "?$query")
 }
 
 /** Opens Import a request for the Safe at [safe]. */
@@ -542,6 +638,7 @@ private object Destination {
     const val CREATE_ACCOUNT = "create-account"
     const val CREATE_SAFE = "create-safe"
     const val SEND = "send"
+    const val SWAP = "swap"
     const val TRANSFER = "transfer"
     const val SAFE = "safe"
     const val SAFE_TX = "tx"
@@ -553,17 +650,23 @@ private object Destination {
 /** The route argument every account destination carries. */
 private const val ADDRESS = "address"
 
-/** Send's optional route argument: the contract of the token chosen. */
+/** Send's and Swap's optional route argument: the contract of the token chosen (sold, for a swap). */
 private const val ASSET = "asset"
 
 /** The transfer status's and a Safe transaction's route argument: the transaction hash. */
 private const val HASH = "hash"
+
+/** A Safe's swap's optional route argument: the hash of the queued swap it is proposed again in place of. */
+private const val REPLACING = "replacing"
 
 /** Set on a Safe transaction's entry that an import has just queued, until its ViewModel takes it. */
 private const val IMPORTED = "imported"
 
 /** Send from an account, with a token chosen or not. */
 private const val SEND_ROUTE = "${Destination.SEND}/{$ADDRESS}?$ASSET={$ASSET}"
+
+/** Swap from an account, selling a token or the network's currency. */
+private const val SWAP_ROUTE = "${Destination.SWAP}/{$ADDRESS}?$ASSET={$ASSET}"
 
 /** Where a transfer stands, by its hash. */
 private const val TRANSFER_ROUTE = "${Destination.TRANSFER}/{$HASH}"
@@ -573,6 +676,10 @@ private const val SAFE_TX_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.
 
 /** Send from a Safe: a Safe transaction proposed, with a token chosen or not. */
 private const val SAFE_PROPOSE_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.PROPOSE}?$ASSET={$ASSET}"
+
+/** Swap from a Safe: its Safe transactions proposed, selling a token or not, or a queued swap again. */
+private const val SAFE_SWAP_ROUTE =
+    "${Destination.SAFE}/{$ADDRESS}/${Destination.SWAP}?$ASSET={$ASSET}&$REPLACING={$REPLACING}"
 
 /** Import a signing request for a Safe. */
 private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.IMPORT}"

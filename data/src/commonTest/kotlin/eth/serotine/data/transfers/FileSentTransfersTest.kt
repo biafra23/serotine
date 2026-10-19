@@ -172,6 +172,49 @@ class FileSentTransfersTest {
     }
 
     @Test
+    fun aTokenApprovalAndASwapAreRecordedWithWhatTheyMove() = runTest {
+        val router = Address.of("0x" + "50".repeat(20))
+        val link = Token(Address.of("0x" + "77".repeat(20)), "LINK", "ChainLink Token", 18, icon = "link")
+        val approval = transfer(7).copy(action = SentAction.TokenApproval(usdc, router, UInt256.of(100_000_000)))
+        val tokenSwap = transfer(8).copy(
+            action = SentAction.Swap(
+                router = router,
+                sell = TransferAsset.Erc20Token(usdc),
+                amountIn = UInt256.of(100_000_000),
+                buy = TransferAsset.Erc20Token(link),
+                minimumOut = UInt256.of("4288450000000000000"),
+            ),
+        )
+        val etherSwap = transfer(9).copy(
+            action = SentAction.Swap(
+                router = router,
+                sell = TransferAsset.Erc20Token(link),
+                amountIn = UInt256.of("1000000000000000000"),
+                buy = TransferAsset.Native,
+                minimumOut = UInt256.of(1),
+                weth = Address.of("0x" + "ff".repeat(20)),
+            ),
+        )
+
+        record().record(approval)
+        record().record(tokenSwap)
+        record().record(etherSwap)
+
+        assertEquals(listOf(approval, tokenSwap, etherSwap), stored())
+    }
+
+    @Test
+    fun anEntryOfTwoKindsAtOnceIsPassedOver() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val swap = """"swap":{"router":"${bob.hex}","amountIn":"1","minimumOut":"1"}"""
+        val both = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","to":"${bob.hex}","amount":"1",""" +
+            """$swap,"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":5,"transfers":[$both]}""") }
+
+        assertEquals(emptyList(), stored())
+    }
+
+    @Test
     fun aRecordOfTheSecondFormatReadsAsItWasWritten() = runTest {
         SystemFileSystem.createDirectories(directory)
         // What part 14 wrote, before a record could be a Safe's deployment.

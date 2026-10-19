@@ -74,6 +74,7 @@ import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.QrCode
 import eth.serotine.ui.components.RequestShareContent
+import eth.serotine.ui.components.SafeSwapBlock
 import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.Unavailable
@@ -106,7 +107,8 @@ const val SAFE_TX_SIGN_TAG = "safe-tx-sign"
 
 /**
  * Binds [SafeTxScreen] to its ViewModel. An approval or execution broadcast ends the screen through
- * [onSent] with its hash, and a removal through [onBack]; the screen stopping being shown becomes
+ * [onSent] with its hash, and a removal through [onBack]; [onProposeAgain] opens Swap for a Safe on
+ * this swap, to propose it again in its place. The screen stopping being shown becomes
  * [SafeTxViewModel.onHidden] (the password goes) and being shown again [SafeTxViewModel.onShown]
  * (the owners are read again, a review quoted anew).
  */
@@ -115,6 +117,7 @@ fun SafeTxRoute(
     viewModel: SafeTxViewModel,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
+    onProposeAgain: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
@@ -150,6 +153,7 @@ fun SafeTxRoute(
             onConfirmWithBiometrics = viewModel::signWithBiometrics,
             onRetry = viewModel::retry,
             onStepBack = viewModel::back,
+            onProposeAgain = onProposeAgain,
         ),
         onBack = onBack,
         onCopy = rememberCopyText(),
@@ -162,7 +166,8 @@ fun SafeTxRoute(
  * What the user can ask of [SafeTxScreen]: open and close the request's sharing, read the owners
  * again, start signing the hash, an approval on chain or the execution, remove the transaction;
  * in a step, choose the owner or account and the fee, refresh the quote, type the password, sign
- * ([onConfirm], or [onConfirmWithBiometrics]), retry a broadcast, and go back to the overview.
+ * ([onConfirm], or [onConfirmWithBiometrics]), retry a broadcast, and go back to the overview;
+ * and, for a swap worth it, propose it again in its place ([onProposeAgain]).
  */
 class SafeTxActions(
     val onShare: () -> Unit = {},
@@ -181,6 +186,7 @@ class SafeTxActions(
     val onConfirmWithBiometrics: () -> Unit = {},
     val onRetry: () -> Unit = {},
     val onStepBack: () -> Unit = {},
+    val onProposeAgain: () -> Unit = {},
 )
 
 /**
@@ -291,6 +297,8 @@ private fun OverviewContent(
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
+        // Not while Approve or Execute is quoted: the screen would be left mid-quote.
+        state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain.takeUnless { state.quoting }) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         HashLine(state.hash)
         state.gasTerms?.let { terms ->
@@ -495,6 +503,7 @@ private fun SigningContent(state: SafeTxUiState.Signing, actions: SafeTxActions)
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
+        state.swap?.let { SafeSwapBlock(it) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         HashLine(state.hash)
         Note("The owner signs this hash, computed here from the transaction's fields: nothing else.")
@@ -526,6 +535,8 @@ private fun ReviewContent(state: SafeTxUiState.Review, actions: SafeTxActions) {
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
+        // Not while the approval or the execution is signed or sent.
+        state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain.takeIf { state.idle }) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         Heading(if (state.kind == ReviewKind.APPROVAL) "Approve as" else "Send the execution from")
         Choices(state.accounts, state.account, enabled = state.idle, onChoose = actions.onAccountChange)

@@ -1,16 +1,21 @@
 package eth.serotine.ui.components
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.RouterSwap
 import eth.serotine.domain.model.SafeSettingsChange
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SafeTxGasTerms
+import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.CallRefusal
 import eth.serotine.domain.usecase.QuoteFigure
+import eth.serotine.domain.usecase.SafeSwapCheck
 import eth.serotine.domain.usecase.SafeTxRefusal
+import eth.serotine.domain.usecase.SwapNow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -25,6 +30,58 @@ class SafeTxTextTest {
 
     private fun item(action: SafeTxAction, tokens: List<DecodingToken> = listOf(DecodingToken(usdc))) =
         safeTxActionItem(action, nonce = 12, tokens, Network.SEPOLIA)
+
+    @Test
+    fun aSwapsDeadlineIsSaidOfTheRouterOnlyOnceItIsUniswaps() {
+        val swap = RouterSwap(
+            router = module,
+            route = SwapRoute.direct(usdc.address, friend, FeeTier.MEDIUM),
+            sellsEther = false,
+            amountIn = UInt256.of(100_000_000),
+            buysEther = false,
+            minimumOut = UInt256.ONE,
+            deadline = 1_792_419_600,
+        )
+        fun lines(check: SafeSwapCheck?) =
+            safeSwapItem(SafeTxAction.Swap(swap), check, listOf(DecodingToken(usdc)), Network.SEPOLIA) { "at $it" }
+                ?.lines
+
+        // Another contract's code may ignore the deadline: it is said as signed, not as refused.
+        assertEquals(listOf("Signed with a deadline of at 1792419600."), lines(SafeSwapCheck.NotUniswap(module)))
+        assertEquals(
+            listOf("Signed with a deadline of at 1792419600."),
+            lines(SafeSwapCheck.Unavailable(ReadUnavailable.UNPROVEN)),
+        )
+        assertEquals(
+            listOf("Checking the swap with the light client…", "Signed with a deadline of at 1792419600."),
+            lines(null),
+        )
+        assertEquals(
+            "Refused by the router after at 1792419600.",
+            lines(SafeSwapCheck.SwapOnUniswap(swap, SwapNow.NoQuote, expired = false))?.last(),
+        )
+    }
+
+    @Test
+    fun aSwapIsOfferedToBeProposedAgainWhenItsMinimumFellBehindOrItsDeadlinePassed() {
+        val swap = RouterSwap(
+            router = module,
+            route = SwapRoute.direct(usdc.address, friend, FeeTier.MEDIUM),
+            sellsEther = false,
+            amountIn = UInt256.of(100_000_000),
+            buysEther = false,
+            minimumOut = UInt256.of(1_000),
+            deadline = 1_792_419_600,
+        )
+        fun offered(check: SafeSwapCheck) =
+            safeSwapItem(SafeTxAction.Swap(swap), check, emptyList(), Network.SEPOLIA) { "$it" }?.proposeAgain
+
+        // 2,000 now: a minimum of 1,000 leaves far more open than 0.5 % would.
+        assertEquals(true, offered(SafeSwapCheck.SwapOnUniswap(swap, SwapNow.Quoted(UInt256.of(2_000), 9), false)))
+        assertEquals(false, offered(SafeSwapCheck.SwapOnUniswap(swap, SwapNow.Quoted(UInt256.of(1_004), 9), false)))
+        assertEquals(true, offered(SafeSwapCheck.SwapOnUniswap(swap, SwapNow.NoQuote, expired = true)))
+        assertEquals(false, offered(SafeSwapCheck.NotUniswap(module)), "only Uniswap's own swap")
+    }
 
     @Test
     fun aTransferIsItsAmountInTheAssetsUnitsAndItsRecipientInFull() {

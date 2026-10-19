@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -84,6 +85,9 @@ const val ACCOUNT_OWNERS_TAG = "account-owners"
 /** Test tag of each asset row, for UI tests. */
 const val ACCOUNT_ASSET_TAG = "account-asset"
 
+/** Test tag of the Swap button, for UI tests. */
+const val ACCOUNT_SWAP_TAG = "account-swap"
+
 /** Test tag of each queued Safe transaction, for UI tests. */
 const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
 
@@ -92,7 +96,8 @@ const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
  * screen is shown (removed from here or elsewhere) ends the screen through [onGone] — once
  * the screen is the one in front: under the remove dialog it waits, so the dialog can say
  * how the removal went before both close. Send is [onSend] from an account and [onPropose]
- * from a Safe, whose transfers are Safe transactions its owners sign.
+ * from a Safe, whose transfers are Safe transactions its owners sign; Swap likewise [onSwap] and
+ * [onSafeSwap].
  */
 @Composable
 fun AccountDetailRoute(
@@ -101,6 +106,8 @@ fun AccountDetailRoute(
     onGone: () -> Unit,
     onSend: (contract: String?) -> Unit,
     onPropose: (contract: String?) -> Unit,
+    onSwap: (contract: String?) -> Unit,
+    onSafeSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
@@ -122,6 +129,7 @@ fun AccountDetailRoute(
         state = state,
         onBack = onBack,
         onSend = { contract -> if (isSafe) onPropose(contract) else onSend(contract) },
+        onSwap = { contract -> if (isSafe) onSafeSwap(contract) else onSwap(contract) },
         onReceive = onReceive,
         onCopy = rememberCopyText(),
         onRename = onRename,
@@ -150,6 +158,7 @@ fun AccountDetailScreen(
     state: AccountDetailUiState,
     onBack: () -> Unit,
     onSend: (contract: String?) -> Unit,
+    onSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
@@ -182,6 +191,10 @@ fun AccountDetailScreen(
     val send: (String?) -> Unit = { contract ->
         val reason = (state as? AccountDetailUiState.Ready)?.sendReason
         if (reason == null) onSend(contract) else unavailable = UnavailableNotice("Send", reason)
+    }
+    val swap: (String?) -> Unit = { contract ->
+        val reason = (state as? AccountDetailUiState.Ready)?.swapReason
+        if (reason == null) onSwap(contract) else unavailable = UnavailableNotice("Swap", reason)
     }
     Scaffold(
         modifier = modifier,
@@ -227,6 +240,7 @@ fun AccountDetailScreen(
                 is AccountDetailUiState.Ready -> Details(
                     state,
                     send,
+                    swap,
                     onReceive,
                     copy,
                     onCopyContract = { contract ->
@@ -248,6 +262,7 @@ fun AccountDetailScreen(
 private fun Details(
     state: AccountDetailUiState.Ready,
     onSend: (String?) -> Unit,
+    onSwap: (String?) -> Unit,
     onReceive: () -> Unit,
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
@@ -300,7 +315,8 @@ private fun Details(
                 Icon(SerotineIcons.ContentCopy, contentDescription = "Copy address", Modifier.size(18.dp))
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Three buttons: on a narrow phone, Receive goes to a second line rather than squeezed.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(
                 onClick = { onSend(null) },
                 modifier = Modifier.unavailable(!state.canSend),
@@ -309,6 +325,15 @@ private fun Details(
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
                 Text("Send")
+            }
+            FilledTonalButton(
+                onClick = { onSwap(null) },
+                modifier = Modifier.testTag(ACCOUNT_SWAP_TAG).unavailable(!state.canSwap),
+                colors = if (state.canSwap) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
+            ) {
+                Icon(SerotineIcons.Swap, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Swap")
             }
             FilledTonalButton(onClick = onReceive) {
                 Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
@@ -325,7 +350,7 @@ private fun Details(
                 SafeQueueList(queue, onOpenSafeTx, onImportRequest)
             else -> {
                 SortChoice(state.sort, onSort)
-                Assets(state, onSend, onCopyContract, onHideToken)
+                Assets(state, onSend, onSwap, onCopyContract, onHideToken)
             }
         }
     }
@@ -339,6 +364,7 @@ private fun Details(
 private fun Assets(
     state: AccountDetailUiState.Ready,
     onSend: (String?) -> Unit,
+    onSwap: (String?) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
 ) {
@@ -346,10 +372,13 @@ private fun Assets(
         state.assets.forEach { asset ->
             val contract = asset.contract
             // Long press (right click): docs/wallet-ux.md, screen 5. Each action is also behind a
-            // visible button: Send above (the asset chosen there), the others in Settings → Tokens.
+            // visible button: Send and Swap above (the asset chosen there), the others in Settings → Tokens.
             val actions = listOfNotNull(
                 MenuAction("Send ${asset.symbol}", Icons.AutoMirrored.Filled.Send, unavailable = !state.canSend) {
                     onSend(contract)
+                },
+                MenuAction("Swap ${asset.symbol}", SerotineIcons.Swap, unavailable = !state.canSwap) {
+                    onSwap(contract)
                 },
                 contract?.let { MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(it) } },
                 contract?.let { MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) } },

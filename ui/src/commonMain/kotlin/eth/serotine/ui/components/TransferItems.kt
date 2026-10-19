@@ -78,3 +78,16 @@ data class RecipientItem(
  * the block the balance before was verified at ([verifiedAt]).
  */
 data class BalanceChange(val what: String, val before: String, val after: String, val verifiedAt: String)
+
+/**
+ * The Safe's balance of the asset as the proposal leaves it: [what] ("ETH balance of the Safe"),
+ * [before] it, what the transactions queued on this device before it may move of it ([queued], null:
+ * nothing), [after] it, and the block the balance was verified at ([verifiedAt]).
+ */
+data class SafeBalanceChange(
+    val what: String,
+    val before: String,
+    val after: String,
+    val verifiedAt: String,
+    val queued: String? = null,
+)

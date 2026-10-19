@@ -103,7 +103,7 @@ sealed interface RecipientLookup {
  * ([maxFee], gas limit × fee cap), and the balances it leaves — [nativeBefore], what this
  * wallet's own transactions not mined yet may still take of it ([pendingCost]), the least the
  * native balance can be after ([nativeAfterAtLeast]), and for a token its balance before, what
- * this wallet's transfers of it not mined yet still move ([pendingTokenAmount]) and its balance
+ * this wallet's transfers and swaps of it not mined yet still move ([pendingTokenAmount]) and its balance
  * after, both of them counted. Every figure comes from verified state, each at its own block:
  * the native balance at [balanceBlock], the token's at [tokenBalanceBlock], the fees from the
  * history up to [feeBlock], and the transfer run as a verified call from the sender at
@@ -159,8 +159,8 @@ data class TransferQuote internal constructor(
  * reach a transaction (CLAUDE.md, *Data sources*). On [network] only, its chain id signed into
  * the transaction.
  *
- * What the sender's transfers of the same token not mined yet still move ([SentTransfers]) is
- * not this one's to move either. [clock] is in unix seconds.
+ * What the sender's transfers and swaps of the same token not mined yet still move
+ * ([SentTransfers]) is not this one's to move either. [clock] is in unix seconds.
  */
 class QuoteTransfer(
     private val inputs: TransactionInputs,
@@ -258,10 +258,18 @@ class QuoteTransfer(
 
 private val UNPROVEN = TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.BALANCE)
 
-/** What this transaction moves of the token at [token]: its amount when it is a transfer of that token. */
-private fun SentTransfer.tokenAmount(token: Address): UInt256? = (action as? SentAction.Transfer)
-    ?.takeIf { (it.asset as? TransferAsset.Erc20Token)?.token?.address == token }
-    ?.amount
+/**
+ * What this transaction moves of the token at [token] out of the account: a transfer's amount, or
+ * what a swap sells, of that token.
+ */
+internal fun SentTransfer.tokenAmount(token: Address): UInt256? = when (val action = action) {
+    is SentAction.Transfer -> action.amount.takeIf { action.asset.isToken(token) }
+    is SentAction.Swap -> action.amountIn.takeIf { action.sell.isToken(token) }
+    else -> null
+}
+
+private fun TransferAsset.isToken(token: Address): Boolean =
+    (this as? TransferAsset.Erc20Token)?.token?.address == token
 
 /** This refusal of the transaction as the transfer's. */
 private fun CallRefusal.asTransferQuoting(): TransferQuoting = when (this) {
@@ -441,8 +449,27 @@ class ObserveSentTransfer(private val sentTransfers: SentTransfers, private val 
             (list as? SentTransferList.Loaded)?.transfers?.lastOrNull { it.hash == hash }
         }.distinctUntilChanged(),
         receipts.observe(hash),
-    ) { transfer, progress -> SentTransferStatus(transfer, progress) }
+    ) { transfer, progress -> SentTransferStatus(transfer, progress, receivedOf(transfer, progress)) }
+
+    /** What a swap that went through paid the account, by its verified receipt's logs. */
+    private fun receivedOf(transfer: SentTransfer?, progress: TransactionProgress): UInt256? {
+        val swap = transfer?.action as? SentAction.Swap ?: return null
+        val logs = when (progress) {
+            is TransactionProgress.Included -> progress.logs.takeIf { progress.succeeded }
+            is TransactionProgress.Finalized -> progress.logs.takeIf { progress.succeeded }
+            TransactionProgress.Pending, is TransactionProgress.Unavailable -> null
+        } ?: return null
+        return SwapProceeds.receivedOf(swap, transfer.account, logs)
+    }
 }
 
-/** What [ObserveSentTransfer] emits: the [transfer] as recorded, and its [progress]. */
-data class SentTransferStatus(val transfer: SentTransfer?, val progress: TransactionProgress)
+/**
+ * What [ObserveSentTransfer] emits: the [transfer] as recorded, and its [progress]; for a swap
+ * that went through, what it paid the account ([received], in the bought asset's smallest
+ * units), when its receipt's logs say it.
+ */
+data class SentTransferStatus(
+    val transfer: SentTransfer?,
+    val progress: TransactionProgress,
+    val received: UInt256? = null,
+)

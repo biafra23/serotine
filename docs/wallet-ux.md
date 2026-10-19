@@ -146,7 +146,9 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send and Receive buttons (Send greyed out as in 3).
+   - Send, Swap and Receive buttons (Send greyed out as in 3; Swap, 22,
+     greyed out, a tap saying why, when watch-only; on a Safe, Swap opens
+     24 and is greyed out as Send is: docs/swaps.md, *A Safe's swap*).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
@@ -154,8 +156,9 @@ upgrades*).
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
-   Copy contract address · Hide token. The native currency's row has the menu
-   too, with Send alone.
+   Swap ‹symbol› (22 with the asset sold chosen; as Swap in 4) · Copy
+   contract address · Hide token. The native currency's row has the menu
+   too, with Send and Swap alone.
 6. **Receive**: a QR code of the EIP-55 address, "Only send Sepolia assets"
    (for a Safe: "This Safe exists only on Sepolia"), Copy and Share.
 7. **Send, compose**
@@ -400,11 +403,22 @@ upgrades*).
       there; a refresh or the signature checks the Safe again.
 17. **Safe transaction**
     - The action, decoded here from the raw transaction (`SafeTxAction`): a
-      native or ERC-20 transfer, a change of the Safe's settings (an owner
-      added, removed or swapped, the threshold, a module, the guard, the
-      fallback handler), a rejection (the Safe calling
+      native or ERC-20 transfer, an ERC-20 approval, a swap through a router
+      exactly as Serotine builds one and paid to the Safe, a change of the
+      Safe's settings (an owner added, removed or swapped, the threshold, a
+      module, the guard, the fallback handler), a rejection (the Safe calling
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
+    - An approval or a swap says where it stands now (docs/swaps.md, *A
+      Safe's swap*): whether its spender or router is Uniswap's pinned
+      SwapRouter02, its code proven, with a warning when it is not; for a
+      swap, what it returns now by a verified QuoterV2 quote against its
+      minimum, its deadline, and when it has passed, that it can never run.
+      A minimum fallen behind the market by more than the default tolerance
+      is said here and on the execution's review, with what a sandwich could
+      take. Either, or a deadline passed, offers to propose the swap again
+      (24, the swap fixed and only the tolerance open): at its nonce, in its
+      place, with a fresh minimum and deadline.
     - A change that weakens the Safe carries a warning wherever it is shown
       (16's row, 17, the Sign step, the biometric prompt): a module disabled,
       a guard set or removed (its limits, allowlist or delay stop), a
