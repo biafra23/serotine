@@ -19,12 +19,13 @@ import kotlinx.coroutines.sync.withLock
  * [UniswapV3Chain] over the engine's verified reads, on [network], the one network its engine
  * follows: [pinned] (that network's pinned deployment, `UniswapDeployments` by default) is a
  * venue once the code of each of its contracts, proven against the light client's state
- * ([VerifiedChain.proveCode], the four in parallel), hashes to its pin. A check that passed is
- * remembered for as long as this adapter lives, since none of the pinned contracts can change its
- * code. One check runs at a time: callers that come while one runs wait for it, and share its
- * answer when it passed; after one that did not, each runs its own, since a proof missing a moment
- * ago may be had now. Any other network has no venue here ([VenueReading.NotPinned]): this
- * engine reads no other chain.
+ * ([VerifiedChain.proveCode], the four in parallel), hashes to its pin. A check that passed, or
+ * proved code other than a pin's ([VenueReading.CodeMismatch]), is remembered for as long as this
+ * adapter lives: deployed code does not change, and a pin that is wrong stays wrong until the
+ * build that carries it is replaced. One check runs at a time: callers that come while one runs
+ * wait for it, and share its answer when it settled; after one that could not be proven, each
+ * runs its own, since a proof missing a moment ago may be had now. Any other network has no venue
+ * here ([VenueReading.NotPinned]): this engine reads no other chain.
  *
  * A call is a verified call at the head ([VerifiedChain.call]), labelled with the block the
  * engine names. Asked only while the light client can verify reads at its head
@@ -41,14 +42,14 @@ class VerifiedUniswapV3 internal constructor(
 
     private val checking = Mutex()
 
-    /** Whether [pinned]'s code was proven; read and written under [checking]. */
-    private var verified = false
+    /** What [pinned]'s proven code settled, a venue or a mismatch, or null; read and written under [checking]. */
+    private var settled: VenueReading? = null
 
     override suspend fun venue(network: Network): VenueReading {
         val pinned = pinned?.takeIf { network == this.network } ?: return VenueReading.NotPinned
         return checking.withLock {
-            if (verified) return@withLock VenueReading.Verified(pinned.deployment)
-            check(pinned).also { verified = it is VenueReading.Verified }
+            settled?.let { return@withLock it }
+            check(pinned).also { if (it is VenueReading.Verified || it is VenueReading.CodeMismatch) settled = it }
         }
     }
 

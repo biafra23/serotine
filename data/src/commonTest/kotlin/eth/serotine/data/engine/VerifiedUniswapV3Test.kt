@@ -56,15 +56,30 @@ class VerifiedUniswapV3Test {
     }
 
     @Test
-    fun otherCodeOrNoneIsAMismatchAndIsCheckedAgain() = runTest {
+    fun otherCodeOrNoneIsAMismatchAndIsRemembered() = runTest {
         chain.snapshot = running()
         proveAll()
         chain.codes[deployment.quoterV2] = ProvenCode("6001", 100)
         val uniswap = venue()
         assertEquals(VenueReading.CodeMismatch(deployment.quoterV2), uniswap.venue(Network.SEPOLIA))
+        val calls = chain.codeCalls
+        assertEquals(VenueReading.CodeMismatch(deployment.quoterV2), uniswap.venue(Network.SEPOLIA))
+        assertEquals(calls, chain.codeCalls, "proven code other than the pin's cannot change: not proven again")
 
         chain.codes[deployment.quoterV2] = ProvenCode("", 100)
-        assertEquals(VenueReading.CodeMismatch(deployment.quoterV2), uniswap.venue(Network.SEPOLIA))
+        assertEquals(VenueReading.CodeMismatch(deployment.quoterV2), venue().venue(Network.SEPOLIA))
+    }
+
+    @Test
+    fun aCheckThatCouldNotBeProvenIsRunAgain() = runTest {
+        chain.snapshot = running()
+        proveAll()
+        chain.codes.remove(deployment.weth9)
+        val uniswap = venue()
+        assertEquals(VenueReading.Unavailable(ReadUnavailable.UNPROVEN), uniswap.venue(Network.SEPOLIA))
+
+        proveAll()
+        assertEquals(VenueReading.Verified(deployment), uniswap.venue(Network.SEPOLIA))
     }
 
     @Test

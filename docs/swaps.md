@@ -141,6 +141,16 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
     proposed from a Safe.
 - **What is held back.** What the transactions queued before the swap may
   move of the asset sold is not the swap's to sell, as for a Safe's transfer.
+- **Only what is decoded counts.** The allowance and the balance a proposal
+  shows count the transactions queued before it that decode exactly (an
+  approval, a transfer, a swap). One that does not, a request imported from
+  elsewhere that calls the token or the router in another way
+  (`increaseAllowance`, `transferFrom`, a multicall of another shape), is
+  counted as moving nothing and setting no allowance, so the figures may
+  promise more than its turn finds. This wallet never queues such a call,
+  and the swap's verified run before it is executed is what decides: the
+  worst case is a swap that does not run and is signed for nothing, as for
+  a token of USDT's kind behind an approval already queued.
 - **Decoded here.** Screen 17 decodes each from its raw call to a pinned
   contract, never from a description: "Swap 100 USDC for at least 4.2 LINK on
   Uniswap".

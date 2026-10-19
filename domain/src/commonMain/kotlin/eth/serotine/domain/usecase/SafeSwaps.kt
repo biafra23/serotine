@@ -301,7 +301,9 @@ class ProposeSafeSwap(
         val minimum = tolerance.minimumOf(found.quote.amountOut)
         if (minimum.isZero) return@cancellingReads SafeSwapProposing.TooSmall
 
-        // The allowance the router has on chain, then as the approvals queued before the swap set it.
+        // The allowance the router has on chain, then as the approvals queued before the swap set it:
+        // only those decoded exactly count, the verified run before execution being the backstop
+        // (docs/swaps.md, *Only what is decoded counts*).
         val allowance = soldToken?.let { token ->
             val onChain = when (val read = readAllowance(safe, token.address, router, uniswap::call)) {
                 is AllowanceRead.Read -> read.allowance
