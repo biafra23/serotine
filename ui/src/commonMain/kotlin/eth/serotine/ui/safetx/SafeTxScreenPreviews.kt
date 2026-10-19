@@ -371,7 +371,7 @@ private val swapAction = SafeTxActionItem(
     notes = listOf(
         "Through one pool at 0.05 %.",
         "Paid to the Safe.",
-        "Whether the router is Uniswap's is checked against the chain on the transaction's own screen: until " +
+        "Whether the router is Uniswap's is checked against the chain once the transaction is opened: until " +
             "then, what it does with the call is up to its code.",
     ),
     icon = "usdc",
@@ -428,7 +428,7 @@ private fun SafeTxSwapNotUniswapPreview() = SafeTxPreview(
     overview.copy(
         action = swapAction,
         swap = SafeSwapItem(
-            listOf("Refused by the router after 20 Oct 2026, 14:32."),
+            listOf("Signed with a deadline of 20 Oct 2026, 14:32."),
             warning = "The router is not Uniswap's pinned SwapRouter02: what it does with the Safe's tokens is " +
                 "not known here.",
         ),

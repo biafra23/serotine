@@ -680,9 +680,10 @@ class ProposeSafeTx(
         is SafeTxAction.TokenTransfer -> if (action.token == token) action.amount else UInt256.ZERO
         is SafeTxAction.Swap -> {
             val swap = action.swap
-            // The router takes the route's first token unless it is the WETH9 it wraps the value into.
+            // The router takes the route's first token unless it is the WETH9 it wraps the value into:
+            // a sale of ETH moves the value, never the Safe's own WETH.
             when {
-                swap.route.tokenIn == token -> swap.amountIn
+                !swap.sellsEther && swap.route.tokenIn == token -> swap.amountIn
                 token == null -> tx.value
                 else -> UInt256.ZERO
             }
