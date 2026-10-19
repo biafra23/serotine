@@ -473,9 +473,16 @@ class TransferStatusViewModelTest {
         runCurrent()
 
         val shown = viewModel.shown
+        assertEquals(StepState.UNCONFIRMED, shown.steps[1].state, "still no peer's word that it was taken")
+        assertEquals("No peer confirmed it, at 1800000000", shown.steps[1].detail)
         assertEquals(StepState.UNKNOWN, shown.steps[2].state)
         assertEquals(StepState.UNKNOWN, shown.steps[3].state)
         assertNull(shown.notSent, "its nonce is used: there is nothing to retry")
+
+        // Not verifiable right now (the light client still syncing): the used nonce is still said.
+        receipts.of(maybe.hash).value = TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN)
+        assertTrue(viewModel.shown.steps[2].detail.orEmpty().startsWith("Its nonce was used on chain"))
+        assertNull(viewModel.shown.notSent)
         viewModel.retry()
         runCurrent()
         assertEquals(emptyList(), broadcaster.sent)

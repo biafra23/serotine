@@ -310,6 +310,24 @@ private fun TransferStatusSwapReceivedPreview() = TransferStatusPreview(
 
 @Preview
 @Composable
+private fun TransferStatusMaybeSentNonceUsedPreview() = TransferStatusPreview(
+    pending.copy(
+        steps = listOf(
+            signed,
+            StatusStep("Broadcast", StepState.UNCONFIRMED, "No peer confirmed it, Oct 17, 2026, 3:04 PM"),
+            StatusStep(
+                "Included",
+                StepState.UNKNOWN,
+                "Its nonce was used on chain while the app was not watching: by this transaction, unless " +
+                    "another one took its place, such as one sent from this account elsewhere",
+            ),
+            StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device"),
+        ),
+    ),
+)
+
+@Preview
+@Composable
 private fun TransferStatusNonceUsedPreview() = TransferStatusPreview(
     pending.copy(
         steps = listOf(
@@ -351,4 +369,5 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusSwapDarkPreview() },
     { TransferStatusSwapReceivedPreview() },
     { TransferStatusNonceUsedPreview() },
+    { TransferStatusMaybeSentNonceUsedPreview() },
 )

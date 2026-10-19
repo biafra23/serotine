@@ -106,42 +106,49 @@ class TransferStatusViewModel(
     private fun render(status: SentTransferStatus, list: AccountList, retry: Retry): TransferStatusUiState.Shown {
         val progress = status.progress
         // Broadcast: this screen opens for a transfer a peer took, and its record says when; one
-        // maybe sent, until a block has it, says that no peer answered.
-        val maybeSent = status.transfer?.maybeSent == true && !mined(progress) && !nonceUsed(status)
+        // maybe sent, until a block has it, says that no peer answered, its nonce used since or not.
+        val unconfirmed = status.transfer?.maybeSent == true && !mined(progress)
+        // Retried only while its nonce is not used: once it is, that nonce can never be mined again.
+        val maybeSent = unconfirmed && !nonceUsed(status)
         val signed = StatusStep("Signed", StepState.DONE, status.transfer?.let { "On this device" })
         val takenAt = status.transfer?.let { ", ${formatTime(it.sentAt)}" }.orEmpty()
-        val broadcast = if (maybeSent) {
-            StatusStep(
+        val broadcast = when {
+            maybeSent -> StatusStep(
                 "Broadcast",
                 StepState.UNCONFIRMED,
                 "No peer confirmed it$takenAt: it may be on its way, or may not have reached the network",
             )
-        } else {
-            StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
+            unconfirmed -> StatusStep("Broadcast", StepState.UNCONFIRMED, "No peer confirmed it$takenAt")
+            else -> StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
         }
-        val included = when (progress) {
-            TransactionProgress.Pending if nonceUsed(status) -> StatusStep(
+        // A used nonce the history recorded, whether the receipt is not found or not verifiable now.
+        val used = nonceUsed(status)
+        val included = when {
+            used -> StatusStep(
                 "Included",
                 StepState.UNKNOWN,
                 "Its nonce was used on chain while the app was not watching: by this transaction, unless " +
                     "another one took its place, such as one sent from this account elsewhere",
             )
-            TransactionProgress.Pending ->
-                StatusStep("Included", StepState.WAITING, "Waiting for a block to include it")
-            is TransactionProgress.Included -> includedStep(progress.blockNumber, progress.succeeded)
-            is TransactionProgress.Finalized -> includedStep(progress.blockNumber, progress.succeeded)
-            is TransactionProgress.Unavailable ->
-                StatusStep("Included", StepState.UNKNOWN, "Cannot be verified right now")
+            else -> when (progress) {
+                TransactionProgress.Pending ->
+                    StatusStep("Included", StepState.WAITING, "Waiting for a block to include it")
+                is TransactionProgress.Included -> includedStep(progress.blockNumber, progress.succeeded)
+                is TransactionProgress.Finalized -> includedStep(progress.blockNumber, progress.succeeded)
+                is TransactionProgress.Unavailable ->
+                    StatusStep("Included", StepState.UNKNOWN, "Cannot be verified right now")
+            }
         }
-        val finalized = when (progress) {
-            TransactionProgress.Pending if nonceUsed(status) ->
-                StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device")
-            TransactionProgress.Pending, is TransactionProgress.Included ->
-                StatusStep("Finalized", StepState.WAITING, "Once the beacon chain finalizes its block")
-            is TransactionProgress.Finalized ->
-                StatusStep("Finalized", StepState.DONE, "Block ${grouped(progress.blockNumber)} is finalized")
-            is TransactionProgress.Unavailable ->
-                StatusStep("Finalized", StepState.UNKNOWN, "Cannot be verified right now")
+        val finalized = when {
+            used -> StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device")
+            else -> when (progress) {
+                TransactionProgress.Pending, is TransactionProgress.Included ->
+                    StatusStep("Finalized", StepState.WAITING, "Once the beacon chain finalizes its block")
+                is TransactionProgress.Finalized ->
+                    StatusStep("Finalized", StepState.DONE, "Block ${grouped(progress.blockNumber)} is finalized")
+                is TransactionProgress.Unavailable ->
+                    StatusStep("Finalized", StepState.UNKNOWN, "Cannot be verified right now")
+            }
         }
         val failed = (progress as? TransactionProgress.Included)?.succeeded == false ||
             (progress as? TransactionProgress.Finalized)?.succeeded == false

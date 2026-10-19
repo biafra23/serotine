@@ -25,6 +25,7 @@ import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionHistory
+import eth.serotine.domain.repository.yieldsTo
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
@@ -184,7 +185,8 @@ internal class MemoryTransactionHistory : TransactionHistory {
     }
 
     override suspend fun settle(hash: String, outcome: SentOutcome): Boolean {
-        if (entries.value.none { it.transfer.hash == hash }) return false
+        val current = entries.value.lastOrNull { it.transfer.hash == hash }?.outcome ?: return false
+        if (!current.yieldsTo(outcome)) return false
         entries.value = entries.value.map { if (it.transfer.hash == hash) it.copy(outcome = outcome) else it }
         return true
     }

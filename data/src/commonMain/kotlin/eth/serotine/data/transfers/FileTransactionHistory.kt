@@ -7,6 +7,7 @@ import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionHistory
+import eth.serotine.domain.repository.yieldsTo
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -72,6 +73,8 @@ class FileTransactionHistory(
             when {
                 index < 0 -> Decision(false)
                 entries[index].outcome == outcome -> Decision(true)
+                // Under the file's lock: no outcome read meanwhile is replaced by one that says less.
+                !entries[index].outcome.yieldsTo(outcome) -> Decision(false)
                 else -> {
                     val next = entries.toMutableList().apply { this[index] = this[index].copy(outcome = outcome) }
                     Decision(true, next = next)

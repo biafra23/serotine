@@ -210,6 +210,20 @@ class TransactionHistoriesTest {
     }
 
     @Test
+    fun anOutcomeThatSaysLessThanTheOneRecordedIsRefused() = runTest {
+        val sent = transfer(7)
+        history.record(sent)
+        assertEquals(true, history.settle(sent.hash, SentOutcome.Included(120, succeeded = true)))
+
+        assertEquals(false, history.settle(sent.hash, SentOutcome.NonceUsed), "a guess never replaces a receipt")
+        assertEquals(false, history.settle(sent.hash, SentOutcome.NotSeen))
+        assertEquals(true, history.settle(sent.hash, SentOutcome.Included(121, succeeded = true)), "a reorganisation")
+        assertEquals(true, history.settle(sent.hash, SentOutcome.Finalized(121, succeeded = true)))
+        assertEquals(false, history.settle(sent.hash, SentOutcome.Included(121, succeeded = true)))
+        assertEquals(SentOutcome.Finalized(121, succeeded = true), history.outcomeOf(sent.hash))
+    }
+
+    @Test
     fun theStatusOfATransactionTheRecordForgotComesFromTheHistory() = runTest {
         val sent = transfer(7)
         history.record(sent)
@@ -226,12 +240,6 @@ class TransactionHistoriesTest {
             "no receipt found any more: the block the history saw",
         )
 
-        history.settle(sent.hash, SentOutcome.Finalized(120, succeeded = true))
-        watching.clear()
-        assertEquals(TransactionProgress.Finalized(120, succeeded = true), observe(sent.hash).first().progress)
-        assertEquals(null, watching[sent.hash], "a finalized one is not looked up again")
-
-        history.settle(sent.hash, SentOutcome.Included(120, succeeded = true))
         receipt(sent).value = TransactionProgress.Unavailable(ReadUnavailable.UNPROVEN)
         assertEquals(
             TransactionProgress.Included(120, succeeded = true),
@@ -239,8 +247,11 @@ class TransactionHistoriesTest {
             "not verifiable right now: the block the history saw",
         )
 
+        history.settle(sent.hash, SentOutcome.Finalized(120, succeeded = true))
         receipt(sent).value = TransactionProgress.Pending
-        history.settle(sent.hash, SentOutcome.NonceUsed)
+        assertEquals(TransactionProgress.Finalized(120, succeeded = true), observe(sent.hash).first().progress)
+
+        history.entries.value = listOf(HistoryEntry(sent, SentOutcome.NonceUsed))
         val used = observe(sent.hash).first()
         assertEquals(TransactionProgress.Pending, used.progress)
         assertEquals(SentOutcome.NonceUsed, used.outcome)

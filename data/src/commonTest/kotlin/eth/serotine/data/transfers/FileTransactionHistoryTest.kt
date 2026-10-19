@@ -98,6 +98,19 @@ class FileTransactionHistoryTest {
     }
 
     @Test
+    fun anOutcomeThatSaysLessThanTheOneRecordedIsRefusedAndTheFileKeepsTheBlock() = runTest {
+        val sent = transfer(7)
+        history().record(sent)
+        assertTrue(history().settle(sent.hash, SentOutcome.Included(120, succeeded = true)))
+
+        // A follower that read "no block seen" before the receipt came: its guess is refused.
+        assertFalse(history().settle(sent.hash, SentOutcome.NonceUsed))
+        assertFalse(history().settle(sent.hash, SentOutcome.NotSeen))
+
+        assertEquals(listOf(HistoryEntry(sent, SentOutcome.Included(120, succeeded = true))), stored())
+    }
+
+    @Test
     fun anOutcomeOfATransactionNotInTheHistoryIsRefused() = runTest {
         assertFalse(history().settle(transfer(7).hash, SentOutcome.NonceUsed))
         assertEquals(emptyList(), stored())

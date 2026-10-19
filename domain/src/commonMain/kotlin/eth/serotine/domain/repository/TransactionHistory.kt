@@ -24,7 +24,10 @@ interface TransactionHistory {
 
     /**
      * Records [outcome] as how the transaction [hash] ended, in place of the outcome recorded of
-     * it; false when the history has no transaction [hash], or it could not be saved.
+     * it, when it says as much or more ([yieldsTo]): a block seen is never replaced by a used nonce
+     * or by none, and a finalization only by another. The check and the write are one step, so
+     * two followers racing cannot replace a verified receipt with a guess. False when the history
+     * has no transaction [hash], [outcome] says less than the one recorded, or it could not be saved.
      */
     suspend fun settle(hash: String, outcome: SentOutcome): Boolean
 }
@@ -38,6 +41,22 @@ sealed interface HistoryList {
     /** The history cannot be read right now (a newer format, a file that cannot be read). */
     data object Unreadable : HistoryList
 }
+
+/**
+ * Whether [outcome] may replace this outcome as recorded: when it says as much or more. A used
+ * nonce says more than no block seen, a block seen more than a used nonce (it names the block),
+ * and a finalization the most; one block may replace another (a reorganisation).
+ */
+fun SentOutcome.yieldsTo(outcome: SentOutcome): Boolean = outcome.rank >= rank
+
+/** How much an outcome says: what [yieldsTo] compares. */
+private val SentOutcome.rank: Int
+    get() = when (this) {
+        SentOutcome.NotSeen -> 0
+        SentOutcome.NonceUsed -> 1
+        is SentOutcome.Included -> 2
+        is SentOutcome.Finalized -> 3
+    }
 
 /** A transaction this wallet sent ([transfer], as [SentTransfers] recorded it) and how it ended ([outcome]). */
 data class HistoryEntry(val transfer: SentTransfer, val outcome: SentOutcome = SentOutcome.NotSeen)
