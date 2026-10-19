@@ -6,11 +6,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -77,19 +82,33 @@ const val SAFE_SWAP_PROPOSE_AGAIN_TAG = "safe-swap-propose-again"
 /**
  * Where a Safe's swap or its approval stands as the chain is now ([swap]): its lines, then what
  * to know before signing or executing it, in the error colour; and, where [onProposeAgain] is
- * given and the swap is worth it ([SafeSwapItem.proposeAgain]), the offer to propose it again.
+ * given and the swap is worth it ([SafeSwapItem.proposeAgain]), the offer to propose it again,
+ * greyed out when it cannot be done from here, a tap saying why.
  */
 @Composable
 fun SafeSwapBlock(swap: SafeSwapItem, modifier: Modifier = Modifier, onProposeAgain: (() -> Unit)? = null) {
+    var unavailable by remember { mutableStateOf<String?>(null) }
     Column(modifier.testTag(SAFE_SWAP_TAG), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         swap.lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
         swap.warning?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         }
         if (swap.proposeAgain && onProposeAgain != null) {
-            OutlinedButton(onClick = onProposeAgain, Modifier.testTag(SAFE_SWAP_PROPOSE_AGAIN_TAG)) {
+            val reason = swap.proposeAgainReason
+            OutlinedButton(
+                onClick = { if (reason == null) onProposeAgain() else unavailable = reason },
+                modifier = Modifier.testTag(SAFE_SWAP_PROPOSE_AGAIN_TAG).unavailable(reason != null),
+                colors = if (reason == null) {
+                    ButtonDefaults.outlinedButtonColors()
+                } else {
+                    ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+                },
+            ) {
                 Text("Propose the swap again")
             }
         }
+    }
+    unavailable?.let { reason ->
+        UnavailableDialog(UnavailableNotice("Propose the swap again", reason), onDismiss = { unavailable = null })
     }
 }

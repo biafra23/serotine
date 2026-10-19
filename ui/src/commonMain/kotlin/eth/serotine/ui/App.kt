@@ -211,7 +211,7 @@ private fun Destinations(
                     onSend = { contract -> navController.send(address.hex, contract) },
                     onPropose = { contract -> navController.propose(address.hex, contract) },
                     onSwap = { contract -> navController.swap(address.hex, contract) },
-                    onSafeSwap = { contract -> navController.safeSwap(address, contract?.let(Address::parse)) },
+                    onSafeSwap = { contract -> navController.safeSwap(address, contract) },
                     onReceive = { navController.open(AccountAction.Receive(address.hex)) },
                     onRename = { navController.open(AccountAction.Rename(address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(address.hex)) },
@@ -542,13 +542,14 @@ private fun NavController.propose(address: String, asset: String?) {
 
 /**
  * Opens Swap from the Safe at [safe] — the proposal of its Safe transactions — selling the token at
- * [asset] (null: the network's currency); or, with [replacing], the swap queued under that hash
- * proposed again in its place.
+ * [asset] (null: the network's currency; one that is no address opens nothing); or, with
+ * [replacing], the swap queued under that hash proposed again in its place.
  */
-private fun NavController.safeSwap(safe: Address, asset: Address?, replacing: Digest? = null) {
+private fun NavController.safeSwap(safe: Address, asset: String?, replacing: Digest? = null) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     if (currentDestination?.route == SAFE_SWAP_ROUTE) return
-    val query = listOfNotNull(asset?.let { "$ASSET=${it.hex}" }, replacing?.let { "$REPLACING=0x${it.hex}" })
+    val token = asset?.let { Address.parse(it) ?: return }
+    val query = listOfNotNull(token?.let { "$ASSET=${it.hex}" }, replacing?.let { "$REPLACING=0x${it.hex}" })
         .joinToString("&")
     navigate("${Destination.SAFE}/${safe.hex}/${Destination.SWAP}" + if (query.isEmpty()) "" else "?$query")
 }

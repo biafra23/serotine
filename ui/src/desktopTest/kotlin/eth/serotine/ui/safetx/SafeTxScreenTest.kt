@@ -165,6 +165,17 @@ class SafeTxScreenTest {
     }
 
     @Test
+    fun aSwapThatCannotBeProposedAgainFromHereIsGreyedOutAndATapSaysWhy() {
+        val swap = SafeSwapItem(emptyList(), proposeAgain = true, proposeAgainReason = "No owner of this Safe is here.")
+        show(overview.copy(swap = swap))
+        rule.onNodeWithTag(SAFE_SWAP_PROPOSE_AGAIN_TAG).performScrollTo()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals("No owner of this Safe is here.")
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
     fun aSwapWorthProposingAgainOffersIt() {
         val swap = SafeSwapItem(emptyList(), warning = "Its minimum has fallen behind the market.", proposeAgain = true)
         show(review.copy(swap = swap))

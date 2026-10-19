@@ -412,15 +412,7 @@ private fun SwapContent(state: SwapUiState.SwapReview) {
     }
     Note(state.tolerance)
     Heading("Route")
-    state.route.forEach { step ->
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Blockie(step.pool, size = 24.dp)
-            Column {
-                Text("${step.pair} · ${step.fee}", style = MaterialTheme.typography.bodyMedium)
-                Text(step.pool, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-            }
-        }
-    }
+    RouteSteps(state.route)
     Note(state.routeNote)
     state.netNote?.let { Note(it) }
     Text(state.priceImpact, Modifier.testTag(SWAP_IMPACT_TAG), style = MaterialTheme.typography.bodyMedium)
@@ -435,6 +427,20 @@ private fun SwapContent(state: SwapUiState.SwapReview) {
     Heading("Verified simulation")
     state.balances.forEach { Balance(it) }
     state.pending?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+}
+
+/** A swap's route, one pool per row: the pair, its fee tier and the pool's address. */
+@Composable
+internal fun RouteSteps(route: List<RouteStep>) {
+    route.forEach { step ->
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Blockie(step.pool, size = 24.dp)
+            Column {
+                Text("${step.pair} · ${step.fee}", style = MaterialTheme.typography.bodyMedium)
+                Text(step.pool, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
+        }
+    }
 }
 
 @Composable

@@ -297,7 +297,8 @@ private fun OverviewContent(
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
-        state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain) }
+        // Not while Approve or Execute is quoted: the screen would be left mid-quote.
+        state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain.takeUnless { state.quoting }) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         HashLine(state.hash)
         state.gasTerms?.let { terms ->
@@ -534,7 +535,8 @@ private fun ReviewContent(state: SafeTxUiState.Review, actions: SafeTxActions) {
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
-        state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain) }
+        // Not while the approval or the execution is signed or sent.
+        state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain.takeIf { state.idle }) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         Heading(if (state.kind == ReviewKind.APPROVAL) "Approve as" else "Send the execution from")
         Choices(state.accounts, state.account, enabled = state.idle, onChoose = actions.onAccountChange)

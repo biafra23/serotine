@@ -44,9 +44,11 @@ import eth.serotine.ui.DAY
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.HEAD_TIME
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.SafeWorld
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.SendFrom
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -335,6 +337,64 @@ class SafeSwapViewModelTest {
             "A swap of USDC is queued at Safe nonce 4, and counts on the router's allowance this one would set: " +
                 "execute or reject it first.",
             viewModel.form.error,
+        )
+    }
+
+    @Test
+    fun aScreenLeftWhileTheApprovalIsSignedSignsNoSwapOverAnotherScreen() = runTest {
+        val viewModel = reviewed()
+        val gate = CompletableDeferred<Signing>()
+        world.signer.pending = gate
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        viewModel.onHidden()
+        gate.complete(Signing.Signed(FakeSigner.SIGNATURE))
+        runCurrent()
+
+        assertEquals(1, world.signer.asked.size, "the approval alone")
+        assertEquals(listOf(4L), world.queue.requests.value.map { it.nonce })
+        assertEquals(
+            "The approval is signed and queued; the swap is not. Refresh, and the swap is proposed after the " +
+                "approval: The screen was left before the swap was signed.",
+            viewModel.review.error,
+        )
+    }
+
+    @Test
+    fun backDuringTheSwapsCheckSaysTheApprovalIsQueued() = runTest {
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("made-up test password")
+        val gate = CompletableDeferred<Signing>()
+        world.signer.pending = gate
+        viewModel.sign()
+        runCurrent()
+        // The approval signed; the Safe's check of the swap then waits for an unproven reading.
+        world.kindGate = CompletableDeferred()
+        gate.complete(Signing.Signed(FakeSigner.SIGNATURE))
+        runCurrent()
+        assertEquals(listOf(4L), world.queue.requests.value.map { it.nonce })
+
+        viewModel.edit()
+
+        assertEquals(
+            "The approval is signed and queued; the swap is not. Review again, and the swap is proposed after the " +
+                "approval.",
+            viewModel.form.error,
+        )
+    }
+
+    @Test
+    fun aQueueThatCannotBeReadIsSaidAsSuchNotAsTheSwapGone() = runTest {
+        holding()
+        world.queue.unreadable.value = true
+        val viewModel = viewModel(asset = null, replacing = world.request(world.swap(4)).hash)
+
+        assertEquals(
+            "This device's queue cannot be read right now, so the swap to propose again cannot be found. Serotine " +
+                "keeps trying.",
+            assertIs<SafeSwapUiState.CannotSwap>(viewModel.uiState.value).message,
         )
     }
 

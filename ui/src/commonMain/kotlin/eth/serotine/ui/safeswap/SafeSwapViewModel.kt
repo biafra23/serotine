@@ -10,7 +10,6 @@ import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.RouterSwap
 import eth.serotine.domain.model.SafeTxAction
-import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.SlippageTolerance
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -54,7 +53,6 @@ import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
-import eth.serotine.ui.components.feeTierText
 import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSignedText
@@ -65,9 +63,18 @@ import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
 import eth.serotine.ui.safepropose.SafeBalanceChange
-import eth.serotine.ui.swap.RouteStep
+import eth.serotine.ui.swap.NOT_A_TOKEN
+import eth.serotine.ui.swap.ROUTER_NAME
 import eth.serotine.ui.swap.SpenderItem
 import eth.serotine.ui.swap.SwapForm
+import eth.serotine.ui.swap.TOLERANCE_ERROR
+import eth.serotine.ui.swap.TOO_SMALL
+import eth.serotine.ui.swap.noRouteText
+import eth.serotine.ui.swap.noVenueText
+import eth.serotine.ui.swap.notASwapText
+import eth.serotine.ui.swap.priceHintText
+import eth.serotine.ui.swap.priceImpactText
+import eth.serotine.ui.swap.routeSteps
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -156,13 +163,13 @@ class SafeSwapViewModel(
         data class Cannot(val message: String) : Sender
     }
 
-    /** The swap proposed again: still being looked for, found at [nonce], or not in the queue. */
+    /** The swap proposed again: found at [nonce], not in the queue, or the queue unreadable now. */
     private sealed interface Replaced {
-        data object Looking : Replaced
-
         data class Found(val swap: RouterSwap, val nonce: Long) : Replaced
 
         data object Gone : Replaced
+
+        data object Unreadable : Replaced
     }
 
     /** Everything the form is derived from. */
@@ -242,7 +249,7 @@ class SafeSwapViewModel(
     } else {
         observeSafeTxQueue(safe).map { reading ->
             when (reading) {
-                SafeTxQueueReading.Unreadable -> Replaced.Gone
+                SafeTxQueueReading.Unreadable -> Replaced.Unreadable
                 is SafeTxQueueReading.Loaded -> {
                     val found = reading.transactions.firstOrNull { it.request.hash == replacing }
                     val swap = (found?.action as? SafeTxAction.Swap)?.swap
@@ -324,7 +331,8 @@ class SafeSwapViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (current.signing && !current.checking) return
         job?.cancel()
-        step.value = Step.Composing()
+        // Stopped after the approval was queued: the form says so, as the review would have.
+        step.value = Step.Composing(error = APPROVAL_QUEUED_LEFT.takeIf { current.signing && current.signed > 0 })
     }
 
     /** Signs as the owner at [address] (EIP-55) instead. */
@@ -473,6 +481,14 @@ class SafeSwapViewModel(
         val requests = review.proposal.requests
         job = viewModelScope.launch {
             for ((index, request) in requests.withIndex()) {
+                // Left after the approval was signed: the swap is not signed over another screen, and
+                // the review, made before, is proposed again when the screen is back.
+                val left = (step.value as? Step.Reviewing)?.hidden == true
+                if (index > 0 && left) {
+                    step.update { if (it is Step.Reviewing) it.copy(signing = false, checking = false) else it }
+                    stopAt(index, LEFT_BEFORE_THE_SWAP)
+                    return@launch
+                }
                 val unlock = unlockFor(index)
                 // The check has what is left of the proposal's minute, less the prompt's least time
                 // when the prompt signs: past that the signature could not be made in time anyway.
@@ -639,14 +655,15 @@ class SafeSwapViewModel(
                     account == null -> Sender.Cannot(NOT_IN_WALLET)
                     account.kind != AccountKind.SAFE -> Sender.Cannot(NOT_A_SAFE_ACCOUNT)
                     replaced == Replaced.Gone -> Sender.Cannot(REPLACED_GONE)
+                    replaced == Replaced.Unreadable -> Sender.Cannot(QUEUE_UNREADABLE)
                     else -> when (reading) {
                         SafeReading.Checking -> Sender.Checking
                         SafeReading.NotASafe -> Sender.Cannot(NOT_A_SAFE)
                         is SafeReading.Unavailable -> Sender.Cannot(UNVERIFIED)
-                        is SafeReading.Verified -> when {
-                            reading.ownersHeld.isEmpty() -> Sender.Cannot(WATCH_ONLY)
-                            replaced == Replaced.Looking -> Sender.Checking
-                            else -> Sender.From(account, reading)
+                        is SafeReading.Verified -> if (reading.ownersHeld.isEmpty()) {
+                            Sender.Cannot(WATCH_ONLY)
+                        } else {
+                            Sender.From(account, reading)
                         }
                     }
                 }
@@ -753,20 +770,7 @@ class SafeSwapViewModel(
         val held = proposal.safe.ownersHeld
         val labels = accounts.associate { it.address to it.label }
         val decoding = decodingTokens(step.request)
-        val symbolOf = { address: Address ->
-            when (address) {
-                sell.contract -> sell.symbol
-                buy.contract -> buy.symbol
-                else -> "WETH"
-            }
-        }
-        val route = proposal.route.fees.indices.map { i ->
-            RouteStep(
-                pair = "${symbolOf(proposal.route.tokens[i])} → ${symbolOf(proposal.route.tokens[i + 1])}",
-                fee = feeTierText(proposal.route.fees[i].pips),
-                pool = Eip55.format(proposal.pools[i]),
-            )
-        }
+        val route = routeSteps(proposal.route, proposal.pools, sell, buy)
         val transactions = listOfNotNull(proposal.approval, proposal.swap).map { tx ->
             SafeSwapTransaction(
                 nonce = "Safe nonce ${tx.request.nonce}",
@@ -797,17 +801,8 @@ class SafeSwapViewModel(
             } else {
                 ""
             },
-            priceImpact = proposal.priceImpact?.let { basisPoints ->
-                val figure = if (basisPoints == 0) "under 0.01" else UInt256.of(basisPoints.toLong()).formatUnits(2)
-                "Price impact: $figure %, the quote against the pools' spot prices, their fees aside."
-            } ?: "Price impact: not known this time: the pools' spot prices could not be read at the quote's " +
-                "block, or give no measure for this amount.",
-            priceHint = if (network.testnet) {
-                "${network.displayName}'s pools and Chainlink's testnet feeds do not track each other: this quote " +
-                    "is not held against the prices the wallet shows."
-            } else {
-                null
-            },
+            priceImpact = priceImpactText(proposal.priceImpact),
+            priceHint = priceHintText(network),
             spender = SpenderItem(ROUTER_NAME, Eip55.format(proposal.router)),
             deadline = "Refused by the router after ${formatTime(proposal.deadline)}: the verified head's time " +
                 "and ${SAFE_SWAP_DEADLINE_SECONDS / 3_600} hours, for its owners to sign and one to execute it.",
@@ -903,21 +898,15 @@ class SafeSwapViewModel(
         return when (proposing) {
             is SafeSwapProposing.Proposed -> error("a proposal is no refusal")
             SafeSwapProposing.NothingToSwap -> "There is nothing to swap: enter an amount above zero."
-            SafeSwapProposing.NotASwap ->
-                "$sell and $buy are one token on Uniswap: ETH for WETH and back is a wrap, not a swap."
-            SafeSwapProposing.NoRoute ->
-                "No Uniswap v3 pool takes $sell for $buy, directly or through WETH, for this amount."
-            is SafeSwapProposing.NoVenue -> proposing.contract?.let { contract ->
-                "The code at ${Eip55.format(contract)}, one of Uniswap's pinned contracts, is not the code " +
-                    "pinned with it, as the light client proves it: Uniswap is no venue here."
-            } ?: "Uniswap is not pinned for ${network.displayName}, so nothing can be swapped here."
-            SafeSwapProposing.TooSmall -> "This amount is too small: less the tolerance, the swap could return nothing."
+            SafeSwapProposing.NotASwap -> notASwapText(sell, buy)
+            SafeSwapProposing.NoRoute -> noRouteText(sell, buy)
+            is SafeSwapProposing.NoVenue -> noVenueText(proposing.contract, network)
+            SafeSwapProposing.TooSmall -> TOO_SMALL
             SafeSwapProposing.InsufficientFunds -> "The Safe holds less ${network.nativeSymbol} than that, once the " +
                 "transactions queued on this device before it have moved what they move."
             SafeSwapProposing.InsufficientToken -> "The Safe holds less $sell than that, once the transactions " +
                 "queued on this device before it have moved what they move."
-            SafeSwapProposing.NotAToken ->
-                "A token's contract does not answer as a token: nothing can be swapped with it."
+            SafeSwapProposing.NotAToken -> NOT_A_TOKEN
             is SafeSwapProposing.EarlierSwapQueued -> "A swap of $sell is queued at Safe nonce " +
                 "${proposing.nonce}, and counts on the router's allowance this one would set: execute or reject " +
                 "it first."
@@ -956,8 +945,6 @@ class SafeSwapViewModel(
     }
 
     private companion object {
-        const val ROUTER_NAME = "Uniswap's SwapRouter02"
-        const val TOLERANCE_ERROR = "Between 0.1 % and 5 %, with at most two decimals (0.5)."
         const val SIGN_FAILED = "Serotine could not finish this signature. Nothing more was queued: try again."
         const val NOT_SAVED =
             "It was signed, but this device's queue cannot be saved right now, so it was not kept: sign again in " +
@@ -978,6 +965,11 @@ class SafeSwapViewModel(
             "No owner of this Safe has its key on this device any more, so nobody here can sign the proposal."
         const val REPLACED_GONE = "The swap to propose again is no longer in this device's queue, or the Safe has " +
             "passed its nonce: there is nothing to put in its place."
+        const val LEFT_BEFORE_THE_SWAP = "The screen was left before the swap was signed."
+        const val QUEUE_UNREADABLE = "This device's queue cannot be read right now, so the swap to propose again " +
+            "cannot be found. Serotine keeps trying."
+        const val APPROVAL_QUEUED_LEFT = "The approval is signed and queued; the swap is not. Review again, and " +
+            "the swap is proposed after the approval."
         const val REPLACED_UNKNOWN_TOKEN = "The swap to propose again sells or buys a token your wallet does not " +
             "list: add it in Settings to propose the swap again."
     }
