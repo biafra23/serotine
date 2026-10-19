@@ -220,7 +220,7 @@ class TransactionHistoriesTest {
             SentTransferStatus(
                 sent,
                 TransactionProgress.Included(120, succeeded = true),
-                SentOutcome.Included(120, succeeded = true),
+                outcome = SentOutcome.Included(120, succeeded = true),
             ),
             observe(sent.hash).first(),
             "no receipt found any more: the block the history saw",

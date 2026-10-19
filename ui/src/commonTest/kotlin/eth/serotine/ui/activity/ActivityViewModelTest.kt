@@ -176,4 +176,40 @@ class ActivityViewModelTest {
         assertEquals(emptyList(), shown.rows)
         assertEquals(true, "sent from this device" in shown.coverage)
     }
+
+    @Test
+    fun aSwapAndItsApprovalSayWhatTheyMovedAndThroughWhichRouter() = runTest {
+        val router = Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e")
+        val link = Token(Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789"), "LINK", "ChainLink", 18, "link")
+        history.entries.value = listOf(
+            HistoryEntry(sent(10, SentAction.TokenApproval(usdc, router, UInt256.ZERO), 600)),
+            HistoryEntry(sent(11, SentAction.TokenApproval(usdc, router, UInt256.of(100_000_000)), 700)),
+            HistoryEntry(
+                sent(
+                    12,
+                    SentAction.Swap(
+                        router = router,
+                        sell = TransferAsset.Erc20Token(usdc),
+                        amountIn = UInt256.of(100_000_000),
+                        buy = TransferAsset.Erc20Token(link),
+                        minimumOut = UInt256.of("4288450000000000000"),
+                    ),
+                    800,
+                ),
+            ),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+
+        assertEquals(
+            listOf(
+                "Swapped 100 USDC for at least 4.28845 LINK",
+                "Approved 100 USDC",
+                "Allowance reset for a swap",
+            ),
+            rows.map { it.title },
+        )
+        assertEquals("On Uniswap · 0x3bFA…e48E", rows.first().detail)
+        assertEquals("Router 0x3bFA…e48E", rows.last().detail)
+    }
 }

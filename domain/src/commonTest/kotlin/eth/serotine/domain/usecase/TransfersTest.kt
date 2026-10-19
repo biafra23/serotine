@@ -437,9 +437,10 @@ class TransfersTest {
                 flowOf(TransactionProgress.Finalized(100, succeeded, listOf(paid)))
         }
 
-        assertEquals(UInt256.of(42), ObserveSentTransfer(sent, receipts)(record.hash).first().received)
+        val observe = ObserveSentTransfer(sent, receipts, MemoryTransactionHistory())
+        assertEquals(UInt256.of(42), observe(record.hash).first().received)
         succeeded = false
-        assertEquals(null, ObserveSentTransfer(sent, receipts)(record.hash).first().received)
+        assertEquals(null, observe(record.hash).first().received)
     }
 
     @Test
