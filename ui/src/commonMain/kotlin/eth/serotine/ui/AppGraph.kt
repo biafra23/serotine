@@ -25,6 +25,7 @@ import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
+import eth.serotine.domain.repository.TransactionHistory
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.UserTokens
@@ -43,6 +44,7 @@ import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -84,6 +86,7 @@ import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
+import eth.serotine.ui.activity.ActivityViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.assets.AssetsViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
@@ -159,8 +162,13 @@ class AppGraph(
      * whose calls take turns (docs/keys-and-signing.md).
      */
     private val signer: Signer,
-    /** The transfers this wallet signed, kept across restarts. */
+    /**
+     * The transfers this wallet signed, kept across restarts: the host's record that also adds
+     * each one to [transactionHistory] (`HistoryRecordingSentTransfers`).
+     */
     private val sentTransfers: SentTransfers,
+    /** Every transaction this wallet sent, kept for good, with how each ended (issue #85). */
+    private val transactionHistory: TransactionHistory,
     /** The Safe transactions waiting for their owners, kept on this device across restarts. */
     private val safeTxQueue: SafeTxQueue,
     /** The text a Safe's signing request travels in between devices, for [network]. */
@@ -335,9 +343,17 @@ class AppGraph(
     /** Where the transfer [hash] stands, and for a Safe it deployed, where its listing does. */
     fun transferStatusViewModel(hash: String): TransferStatusViewModel = TransferStatusViewModel(
         hash,
-        ObserveSentTransfer(sentTransfers, receipts),
+        ObserveSentTransfer(sentTransfers, receipts, transactionHistory),
         ObserveAccounts(accounts),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        network,
+    )
+
+    /** The transactions this device sent for the account at [address] (docs/wallet-ux.md, screen 25). */
+    fun activityViewModel(address: Address): ActivityViewModel = ActivityViewModel(
+        address,
+        ObserveAccountHistory(transactionHistory),
+        ObserveAccounts(accounts),
         network,
     )
 

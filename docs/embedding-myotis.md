@@ -342,7 +342,13 @@ verified read.
 - **`EngineReceipts`** (`ReceiptTracker`): `getTransactionReceipt` every poll,
   verified against the including block's receipts root. A receipt at or below
   the engine's finalized block (`StatusSnapshot.finalizedBlockNumber`) ends the
-  watch as finalized.
+  watch as finalized. The engine looks for a transaction from 8 blocks below
+  its head at the first poll of its hash and forward from there, so a
+  transaction mined while nothing watched it is never found by its hash.
+  That is why `FollowSentTransactions` watches every transaction sent while
+  the app is open and records what it sees in the history, and why the
+  history tells one mined while the app was closed by its account's mined
+  count (docs/wallet-ux.md, screen 25).
 - **`EngineNames`** (`NameResolver`): `ens().resolveAddress(name,
   EnsRoot.FINALIZED)` and nothing fresher. `PEER_HEAD` would be a peer's claim,
   and `AUTO` falls back to it, so an answer not `verified` is no answer.

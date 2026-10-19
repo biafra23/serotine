@@ -28,6 +28,7 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
@@ -401,11 +402,13 @@ class TransfersTest {
                 flowOf(TransactionProgress.Included(100, succeeded = true))
         }
 
+        val observe = ObserveSentTransfer(sent, receipts, MemoryTransactionHistory())
+
         assertEquals(
             SentTransferStatus(record, TransactionProgress.Included(100, succeeded = true)),
-            ObserveSentTransfer(sent, receipts)(record.hash).first(),
+            observe(record.hash).first(),
         )
-        assertEquals(null, ObserveSentTransfer(sent, receipts)("0x" + "00".repeat(32)).first().transfer)
+        assertEquals(null, observe("0x" + "00".repeat(32)).first().transfer)
     }
 
     @Test
@@ -435,9 +438,14 @@ class TransfersTest {
                 flowOf(TransactionProgress.Finalized(100, succeeded, listOf(paid)))
         }
 
-        assertEquals(UInt256.of(42), ObserveSentTransfer(sent, receipts)(record.hash).first().received)
+        // As in the app: the history holds the swap, finalized; its receipt still says what it paid.
+        val history = MemoryTransactionHistory()
+        history.record(record)
+        history.settle(record.hash, SentOutcome.Finalized(100, succeeded = true))
+        val observe = ObserveSentTransfer(sent, receipts, history)
+        assertEquals(UInt256.of(42), observe(record.hash).first().received)
         succeeded = false
-        assertEquals(null, ObserveSentTransfer(sent, receipts)(record.hash).first().received)
+        assertEquals(null, observe(record.hash).first().received)
     }
 
     @Test

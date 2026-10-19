@@ -39,6 +39,7 @@ import androidx.navigation.navArgument
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.ui.accountdetail.AccountDetailRoute
+import eth.serotine.ui.activity.ActivityRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.assets.AccountAction
 import eth.serotine.ui.assets.AssetsRoute
@@ -213,10 +214,18 @@ private fun Destinations(
                     onSwap = { contract -> navController.swap(address.hex, contract) },
                     onSafeSwap = { contract -> navController.safeSwap(address, contract) },
                     onReceive = { navController.open(AccountAction.Receive(address.hex)) },
+                    onActivity = { navController.openActivity(address) },
                     onRename = { navController.open(AccountAction.Rename(address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(address.hex)) },
                     onOpenSafeTx = { hash -> navController.openSafeTx(address, hash) },
                     onImportRequest = { navController.importRequest(address) },
+                )
+            }
+            withAddress(Destination.ACTIVITY, navController) { address ->
+                ActivityRoute(
+                    viewModel = viewModel { graph.activityViewModel(address) },
+                    onBack = { navController.leave(Destination.ACTIVITY) },
+                    onOpen = { hash -> navController.openTransfer(hash) },
                 )
             }
             withAddress(Destination.RECEIVE, navController) { address ->
@@ -554,6 +563,22 @@ private fun NavController.safeSwap(safe: Address, asset: String?, replacing: Dig
     navigate("${Destination.SAFE}/${safe.hex}/${Destination.SWAP}" + if (query.isEmpty()) "" else "?$query")
 }
 
+/** Opens the Activity of the account at [address]: the transactions this device sent for it. */
+private fun NavController.openActivity(address: Address) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == "${Destination.ACTIVITY}/{$ADDRESS}") return
+    navigate("${Destination.ACTIVITY}/${address.hex}")
+}
+
+/** Opens the status of the transaction [hash] (`0x` and 64 hex digits), as a route carries it: in lower case. */
+private fun NavController.openTransfer(hash: String) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    // (Not launchSingleTop: that would reuse the entry, and its hash, for another one.)
+    if (currentDestination?.route == TRANSFER_ROUTE) return
+    val route = hash.lowercase().takeIf(TRANSACTION_HASH::matches) ?: return
+    navigate("${Destination.TRANSFER}/$route")
+}
+
 /** Opens Import a request for the Safe at [safe]. */
 private fun NavController.importRequest(safe: Address) {
     if (currentDestination?.route == SAFE_IMPORT_ROUTE) return
@@ -626,6 +651,7 @@ private object Destination {
     const val ASSETS = "assets"
     const val ACCOUNT = "account"
     const val RECEIVE = "receive"
+    const val ACTIVITY = "activity"
     const val WATCH = "watch"
     const val RENAME = "rename"
     const val REMOVE = "remove"

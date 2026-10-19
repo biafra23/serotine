@@ -41,8 +41,10 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
@@ -54,6 +56,7 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
+import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -71,6 +74,8 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentOutcome
+import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
@@ -79,12 +84,14 @@ import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
+import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.assets.NO_ACCOUNTS_HINT
@@ -179,7 +186,9 @@ class AppNavigationTest {
     private val treasuryAddress = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
     private val carol = Address.of("0x" + "33".repeat(20))
     private val broadcaster = FakeBroadcaster()
-    private val sentTransfers = MemorySentTransfers()
+    private val history = MemoryTransactionHistory()
+    private val sentRecord = MemorySentTransfers()
+    private val sentTransfers = HistoryRecordingSentTransfers(sentRecord, history)
     private val receipts = FakeReceipts()
 
     /** The Safes deployed in this test, as the light client proves them once their code is there. */
@@ -273,6 +282,7 @@ class AppNavigationTest {
         names = FakeNames(),
         signer = signer,
         sentTransfers = sentTransfers,
+        transactionHistory = history,
         safeTxQueue = safeTxQueue,
         signingRequests = codec,
         signatureRecovery = recovery,
@@ -574,7 +584,7 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
 
         rule.onNodeWithText("Waiting for a block to include it").assertIsDisplayed()
-        val hash = sentTransfers.transfers.value.single().hash
+        val hash = sentRecord.transfers.value.single().hash
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(hash)
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(1, broadcaster.sent.size)
@@ -599,6 +609,35 @@ class AppNavigationTest {
 
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun anAccountsActivityListsWhatWasSentAndARowOpensWhereItStands() {
+        accounts.value = listOf(daily, savings)
+        val sent = SentTransfer(
+            account = daily.address,
+            nonce = 7,
+            signed = SignedTransfer(byteArrayOf(2, 7)),
+            action = SentAction.Transfer(savings.address, TransferAsset.Native, UInt256.of("100000000000000000")),
+            maxCost = UInt256.ONE,
+            sentAt = 1_800_000_000,
+        )
+        history.entries.value = listOf(HistoryEntry(sent, SentOutcome.Finalized(9_412_118, succeeded = true)))
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Activity").performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Finalized in block 9,412,118").assertIsDisplayed()
+        // Under the bar, as the account it is of.
+        rule.onNodeWithText("Settings").assertIsDisplayed()
+        rule.onNodeWithText("Sent 0.1 ETH").performClick()
+
+        rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(sent.hash)
+        assertEquals(listOf("assets", "account/{address}", "activity/{address}", "transfer/{hash}"), screens())
+        rule.onNodeWithText("Done").performScrollTo().performClick()
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
     }
 
     @Test
@@ -697,7 +736,7 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
 
         rule.onNodeWithText("Approval of a Safe transaction").assertIsDisplayed()
-        val approval = sentTransfers.transfers.value.single()
+        val approval = sentRecord.transfers.value.single()
         assertEquals(SentAction.SafeApproval(queued), approval.action)
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(approval.hash)
         // The signed review is gone from the back stack: Done returns to the Safe.
@@ -758,7 +797,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(CREATE_SAFE_DEPLOY_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
 
-        val deployment = sentTransfers.transfers.value.single()
+        val deployment = sentRecord.transfers.value.single()
         val action = deployment.action as SentAction.SafeDeployment
         assertEquals(listOf(daily.address, savings.address), action.owners)
         assertEquals("Family vault", action.label)

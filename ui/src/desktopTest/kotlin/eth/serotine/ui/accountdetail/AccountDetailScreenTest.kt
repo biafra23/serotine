@@ -48,6 +48,7 @@ class AccountDetailScreenTest {
                 onSend = { events += "send $it" },
                 onSwap = { events += "swap $it" },
                 onReceive = { events += "receive" },
+                onActivity = { events += "activity" },
                 onCopy = { events += "copy $it" },
                 onRename = { events += "rename" },
                 onRemove = { events += "remove" },

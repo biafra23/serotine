@@ -146,9 +146,10 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send, Swap and Receive buttons (Send greyed out as in 3; Swap, 22,
-     greyed out, a tap saying why, when watch-only; on a Safe, Swap opens
-     24 and is greyed out as Send is: docs/swaps.md, *A Safe's swap*).
+   - Send, Swap, Receive and Activity buttons (Send greyed out as in 3;
+     Swap, 22, greyed out, a tap saying why, when watch-only; on a Safe,
+     Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
+     swap*; Activity opens 25).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
@@ -550,6 +551,41 @@ upgrades*).
       a signature already shared stays valid elsewhere until the Safe's
       nonce passes it. One the Safe's nonce has passed says it ran, or that
       another transaction used its nonce.
+
+### Activity (issue #85)
+
+Screens 22 to 24 are the swap screens (docs/swaps.md).
+
+25. **Activity**: the transactions this device sent for an account, newest
+    first, under the Assets tab like the account it is of
+    (`activity/{address}`).
+    - First, what the list covers: transactions sent from this device. Those
+      received, and those sent from the account elsewhere, are not listed
+      yet (issue #85 has the plan for them).
+    - One row per transaction: the blockie of its other side, what it did
+      ("Sent 0.25 ETH", "Swapped 100 USDC for at least 4.28845 LINK",
+      "Executed a Safe transaction", "Deployed a Safe"),
+      whom or what else it concerns ("To Bob · 0x5aAe…eAed", "Safe nonce 4 ·
+      Treasury · …"), when a peer took it, and how it ended as this device
+      saw it: in its block or finalized there, reverted, no block seen yet,
+      no peer confirmed its broadcast, or mined while the app was not
+      watching unless another transaction took its nonce. A tap opens its
+      status (9).
+    - A Safe's Activity lists the approvals and executions of its
+      transactions and its deployment, whichever account here sent them
+      ("Executed transaction 4", "By Alice · …").
+    - Where the list comes from: every transaction a peer took (or maybe
+      took) goes into the history as it is recorded
+      (`HistoryRecordingSentTransfers`), which is kept for good, unlike the
+      record that holds nonces back, which forgets one once its nonce is
+      mined. How each ended is recorded by `FollowSentTransactions`, which
+      the hosts run while the app is open: the verified receipt's block and
+      result, then its finalization. The engine finds a receipt only for a
+      transaction mined while it watches for it, so one mined while the app
+      was closed is told by its account's verified mined count instead: its
+      nonce is used, by this transaction or by one that took its place,
+      which the device cannot tell apart. The status screen (9) reads the
+      same history once the record has forgotten a transaction.
 
 ### Settings tab
 
