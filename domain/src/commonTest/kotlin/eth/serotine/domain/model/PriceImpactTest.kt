@@ -45,6 +45,13 @@ class PriceImpactTest {
         val route = SwapRoute.direct(high, low, FeeTier.LOWEST)
         val amountIn = UInt256.of("340282366920938463463374607431768211456000000") // 2^128 × 10^6
         assertEquals(UInt256.of(999_900), PriceImpact.spotOut(route, amountIn, listOf(PoolSlot0(sqrt, 0))))
+
+        // Selling token0 multiplies by it, through two exact steps: 10^6 × 2^128, less 0.01 %.
+        val sell0 = SwapRoute.direct(low, high, FeeTier.LOWEST)
+        assertEquals(
+            UInt256.of("340248338684246369617028269971025034634854400"),
+            PriceImpact.spotOut(sell0, UInt256.of(1_000_000), listOf(PoolSlot0(sqrt, 0))),
+        )
     }
 
     @Test

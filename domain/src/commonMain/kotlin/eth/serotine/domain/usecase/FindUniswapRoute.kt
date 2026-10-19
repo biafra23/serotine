@@ -61,6 +61,9 @@ enum class RouteRanking {
  * Every read is made at once, each pool and each quote in parallel. One that could not be had
  * leaves no route (unavailable, with its reason): a route found from part of the pools could be
  * a worse one, unsaid. A quote that reverts drops its route (its pool cannot take the amount).
+ * The pools' spot prices, read beside the quotes, are the exception: they rank nothing, so one
+ * that could not be had, or was read at another block than the quote, drops only the price
+ * impact ([RouteFinding.Found.spotOut]), and the route stands.
  */
 class FindUniswapRoute(
     private val chain: UniswapV3Chain,
