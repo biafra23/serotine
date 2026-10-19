@@ -3,6 +3,7 @@ package eth.serotine.domain.repository
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import kotlinx.coroutines.flow.Flow
@@ -10,9 +11,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * The port for the transactions this wallet sent (signed, and taken by a peer, or maybe taken:
  * [SentTransfer.maybeSent]) — its transfers, its approvals and executions of Safe transactions,
- * and its Safes' deployments — kept across restarts: what the Send status screen
- * (docs/wallet-ux.md, screen 9) shows, and what keeps a new transaction from reusing the nonce of
- * one not mined yet — the engine's own record of its sends lasts only while the process does.
+ * its Safes' deployments, and its swaps and the token approvals before them — kept across
+ * restarts: what the Send status screen (docs/wallet-ux.md, screen 9) shows, and what keeps a
+ * new transaction from reusing the nonce of one not mined yet — the engine's own record of its
+ * sends lasts only while the process does.
  * Public data only: a signed transaction's bytes are public once broadcast, and no key is ever in
  * them. :data keeps it in a file. Never throws.
  */
@@ -143,5 +145,26 @@ sealed interface SentAction {
         val version: String,
         val label: String,
         val listed: SafeListing? = null,
+    ) : SentAction
+
+    /**
+     * The account's approval of [spender] to take [amount] of [token] (`approve`), its own
+     * transaction before a swap whose allowance falls short (docs/swaps.md, *What both venues
+     * share*): it sets the allowance to [amount], zero included, and moves nothing but the fee.
+     */
+    data class TokenApproval(val token: Token, val spender: Address, val amount: UInt256) : SentAction
+
+    /**
+     * A swap on Uniswap through the router at [router]: exactly [amountIn] of [sell] for at least
+     * [minimumOut] of [buy], paid to the account (docs/swaps.md, *The transaction*). What it sells
+     * of a token, the account's later transactions cannot move while this one is not mined; ETH
+     * sold is the transaction's value, which its cost already holds.
+     */
+    data class Swap(
+        val router: Address,
+        val sell: TransferAsset,
+        val amountIn: UInt256,
+        val buy: TransferAsset,
+        val minimumOut: UInt256,
     ) : SentAction
 }

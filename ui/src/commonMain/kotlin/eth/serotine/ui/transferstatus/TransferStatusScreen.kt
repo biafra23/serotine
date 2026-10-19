@@ -104,6 +104,62 @@ fun TransferStatusScreen(
     }
 }
 
+/** A token approval: the amount, the spender it lets take it, and the account that sent it. */
+@Composable
+private fun ApprovalBlock(approval: ApprovalSummary) {
+    Text(approval.title, style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        TokenIcon(approval.icon, approval.symbol, size = 40.dp)
+        Text(approval.amount, style = MaterialTheme.typography.headlineSmall)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Blockie(approval.spender, size = 32.dp)
+        Column {
+            Text(approval.spenderLabel, style = MaterialTheme.typography.labelMedium)
+            SelectionContainer {
+                Text(approval.spender, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
+        }
+    }
+    FromRow(approval.from, "From")
+}
+
+/** A swap: what it sells, the least it buys, the router it went through and the account paid. */
+@Composable
+private fun SwapBlock(swap: SwapSummary) {
+    Text(swap.title, style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        TokenIcon(swap.soldIcon, swap.soldSymbol, size = 40.dp)
+        Text(swap.sold, style = MaterialTheme.typography.headlineSmall)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        TokenIcon(swap.boughtIcon, swap.boughtSymbol, size = 40.dp)
+        Text(swap.bought, style = MaterialTheme.typography.titleLarge)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Blockie(swap.router, size = 32.dp)
+        Column {
+            Text("Through the router", style = MaterialTheme.typography.labelMedium)
+            SelectionContainer {
+                Text(swap.router, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
+        }
+    }
+    FromRow(swap.from, "From and paid to")
+}
+
+@Composable
+private fun FromRow(from: String, label: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Blockie(from, size = 24.dp)
+        Text(
+            "$label ${shortAddress(from)}",
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+        )
+    }
+}
+
 @Composable
 private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetry: () -> Unit) {
     Column(
@@ -125,14 +181,7 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetr
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Blockie(sent.from, size = 24.dp)
-                Text(
-                    "From ${shortAddress(sent.from)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
+            FromRow(sent.from, "From")
         }
         val safeTx = state.safeTx
         if (safeTx != null) {
@@ -146,14 +195,7 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetr
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Blockie(safeTx.from, size = 24.dp)
-                Text(
-                    "From ${shortAddress(safeTx.from)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
+            FromRow(safeTx.from, "From")
         }
         val deployment = state.deployment
         if (deployment != null) {
@@ -172,14 +214,7 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetr
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Blockie(deployment.from, size = 24.dp)
-                Text(
-                    "Paid from ${shortAddress(deployment.from)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
+            FromRow(deployment.from, "Paid from")
             Text(
                 deployment.listing,
                 color = if (deployment.listingFailed) {
@@ -189,7 +224,9 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetr
                 },
             )
         }
-        if (sent == null && safeTx == null && deployment == null) {
+        state.approval?.let { ApprovalBlock(it) }
+        state.swap?.let { SwapBlock(it) }
+        if (sent == null && safeTx == null && deployment == null && state.approval == null && state.swap == null) {
             Text(
                 "This device has no record of what was sent: only where the transaction stands is shown.",
                 style = MaterialTheme.typography.bodyMedium,

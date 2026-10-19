@@ -17,9 +17,10 @@ sealed interface TransferStatusUiState {
 
     /**
      * The transaction [hash]: what was sent ([sent] for a transfer, [safeTx] for a Safe
-     * transaction's approval or execution, [deployment] for a Safe's deployment; all null when this
-     * device has no record of it), its [steps] in order, and [note], what to know about where it
-     * stands (a failure, or that it cannot be verified right now), or null. [finished] once its
+     * transaction's approval or execution, [deployment] for a Safe's deployment, [approval] for a
+     * token approval, [swap] for a swap; all null when this device has no record of it), its
+     * [steps] in order, and [note], what to know about where it stands (a failure, or that it
+     * cannot be verified right now), or null. [finished] once its
      * block is finalized. [notSent] while it is recorded as maybe sent (no peer answered its
      * broadcast) and no block has it, with Try again, which sends the same signed bytes
      * ([retrying] while it does); or what such a retry came to, once there is nothing to retry.
@@ -33,6 +34,8 @@ sealed interface TransferStatusUiState {
         val finished: Boolean = false,
         val safeTx: SafeTxSummary? = null,
         val deployment: DeploymentSummary? = null,
+        val approval: ApprovalSummary? = null,
+        val swap: SwapSummary? = null,
         val notSent: NotSentItem? = null,
         val retrying: Boolean = false,
     ) : TransferStatusUiState
@@ -71,6 +74,41 @@ data class DeploymentSummary(
     val from: String,
     val listing: String,
     val listingFailed: Boolean = false,
+)
+
+/**
+ * What a token approval allowed, from this device's record: [title] ("Approval for a swap", or
+ * "Allowance reset for a swap" for the zero one a token of USDT's kind needs first), the [amount]
+ * with its symbol, the token's [symbol] and bundled [icon] (null: a monogram), the EIP-55
+ * [spender] and what it may take ([spenderLabel]), and the EIP-55 [from], the account that sent it.
+ */
+data class ApprovalSummary(
+    val title: String,
+    val amount: String,
+    val symbol: String,
+    val icon: String?,
+    val spenderLabel: String,
+    val spender: String,
+    val from: String,
+)
+
+/**
+ * What a swap sold and the least it buys, from this device's record: [title] ("Swap of 100 USDC
+ * for at least 4.28845 LINK on Uniswap"),
+ * the exact [sold] amount with its symbol, the sold asset's [soldSymbol] and [soldIcon], what it
+ * buys at least ([bought], "at least 4.28845 LINK") with [boughtSymbol] and [boughtIcon], the EIP-55
+ * [router] it went through, and the EIP-55 [from], the account that sent it and is paid.
+ */
+data class SwapSummary(
+    val title: String,
+    val sold: String,
+    val soldSymbol: String,
+    val soldIcon: String?,
+    val bought: String,
+    val boughtSymbol: String,
+    val boughtIcon: String?,
+    val router: String,
+    val from: String,
 )
 
 /** One step of a transfer: its [label] ("Included"), where it stands ([state]) and its [detail] (its block). */

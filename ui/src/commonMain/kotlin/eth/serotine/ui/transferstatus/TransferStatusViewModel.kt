@@ -145,6 +145,9 @@ class TransferStatusViewModel(
                 progress is TransactionProgress.Unavailable -> unavailable(progress.reason)
                 failed && transfer?.action is SentAction.Transfer ->
                     "It failed: the transfer reverted in its block, so nothing was moved. Its fee is paid all the same."
+                failed && transfer?.action is SentAction.Swap ->
+                    "It failed: the swap reverted in its block, so nothing was swapped: the price moved past its " +
+                        "minimum, or its deadline passed. Its fee is paid all the same."
                 failed && transfer?.action is SentAction.SafeDeployment ->
                     "It failed: this transaction reverted in its block and created no Safe itself. Its fee is " +
                         "paid all the same."
@@ -155,6 +158,8 @@ class TransferStatusViewModel(
             finished = progress is TransactionProgress.Finalized,
             safeTx = transfer?.let(::safeTxSummary),
             deployment = transfer?.let { deploymentSummary(it, progress, failed, list) },
+            approval = transfer?.let(::approvalSummary),
+            swap = transfer?.let(::swapSummary),
             // A retry turned away keeps the record: what it came to stays on screen with Try again.
             notSent = if (maybeSent) {
                 retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
@@ -174,6 +179,8 @@ class TransferStatusViewModel(
         is SentAction.SafeApproval -> "approval"
         is SentAction.SafeExecution -> "execution"
         is SentAction.SafeDeployment -> "deployment"
+        is SentAction.TokenApproval -> "approval"
+        is SentAction.Swap -> "swap"
     }
 
     private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
@@ -232,14 +239,56 @@ class TransferStatusViewModel(
         StatusStep("Included", StepState.FAILED, "In block ${grouped(block)}, its receipt verified: it reverted")
     }
 
+    /** [asset]'s symbol as shown, its decimals and its bundled icon. */
+    private fun shown(asset: TransferAsset): Triple<String, Int, String?> = when (asset) {
+        TransferAsset.Native -> Triple(network.nativeSymbol, NATIVE_DECIMALS, network.nativeIcon)
+        is TransferAsset.Erc20Token -> Triple(displaySymbol(asset.token.symbol), asset.token.decimals, asset.token.icon)
+    }
+
+    /** What [transfer] allowed, when it is a token approval. */
+    private fun approvalSummary(transfer: SentTransfer): ApprovalSummary? {
+        val approval = transfer.action as? SentAction.TokenApproval ?: return null
+        val (symbol, decimals, icon) = shown(TransferAsset.Erc20Token(approval.token))
+        // A zero approval takes the allowance back, before the whole amount is approved.
+        val reset = approval.amount.isZero
+        return ApprovalSummary(
+            title = if (reset) "Allowance reset for a swap" else "Approval for a swap",
+            amount = "${approval.amount.formatUnits(decimals)} $symbol",
+            symbol = symbol,
+            icon = icon,
+            spenderLabel = if (reset) {
+                "The swap's router may take none, until the whole amount is approved"
+            } else {
+                "May be taken by the swap's router"
+            },
+            spender = Eip55.format(approval.spender),
+            from = Eip55.format(transfer.account),
+        )
+    }
+
+    /** What [transfer] sold and buys at least, when it is a swap. */
+    private fun swapSummary(transfer: SentTransfer): SwapSummary? {
+        val swap = transfer.action as? SentAction.Swap ?: return null
+        val (soldSymbol, soldDecimals, soldIcon) = shown(swap.sell)
+        val (boughtSymbol, boughtDecimals, boughtIcon) = shown(swap.buy)
+        return SwapSummary(
+            title = "Swap of ${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol for at least " +
+                "${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol on Uniswap",
+            sold = "${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol",
+            soldSymbol = soldSymbol,
+            soldIcon = soldIcon,
+            bought = "at least ${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol",
+            boughtSymbol = boughtSymbol,
+            boughtIcon = boughtIcon,
+            router = Eip55.format(swap.router),
+            from = Eip55.format(transfer.account),
+        )
+    }
+
     /** What [transfer] sent, when it is a transfer. */
     private fun summary(transfer: SentTransfer): SentSummary? {
         val sent = transfer.action as? SentAction.Transfer ?: return null
-        val (symbol, decimals, icon) = when (val asset = sent.asset) {
-            TransferAsset.Native -> Triple(network.nativeSymbol, NATIVE_DECIMALS, network.nativeIcon)
-            is TransferAsset.Erc20Token ->
-                Triple(displaySymbol(asset.token.symbol), asset.token.decimals, asset.token.icon)
-        }
+        val (symbol, decimals, icon) = shown(sent.asset)
         return SentSummary(
             amount = "${sent.amount.formatUnits(decimals)} $symbol",
             symbol = symbol,
@@ -254,7 +303,9 @@ class TransferStatusViewModel(
         val (title, request) = when (val action = transfer.action) {
             is SentAction.SafeApproval -> "Approval of a Safe transaction" to action.request
             is SentAction.SafeExecution -> "Execution of a Safe transaction" to action.request
-            is SentAction.Transfer, is SentAction.SafeDeployment -> return null
+            is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
+            is SentAction.Swap,
+            -> return null
         }
         return SafeTxSummary(
             title = title,

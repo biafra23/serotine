@@ -29,8 +29,10 @@ import kotlinx.serialization.json.JsonElement
  * [SentTransfers] kept in the file at [path] (a [VersionedJsonFile]): the signed transactions,
  * each with its signed bytes as hex, which are public once broadcast, and what it does — a
  * transfer's recipient, token and amount, the Safe transaction an approval or execution was
- * for, in the form a signing request travels in, or the Safe a deployment created (its address,
- * owners, threshold, version and the name it is listed under), and whether it is only maybe sent.
+ * for, in the form a signing request travels in, the Safe a deployment created (its address,
+ * owners, threshold, version and the name it is listed under), a token approval's token, spender
+ * and amount, or a swap's router, the asset and amount it sells and the asset and minimum it buys,
+ * and whether it is only maybe sent.
  * An entry that does not decode (a damaged one, or one of a kind this build does not know) is
  * passed over, as [eth.serotine.data.safe.FileSafeTxQueue] passes one over, and the rest are read;
  * the file it was in is then set aside once, whole, and what was read written in its place, so
@@ -39,8 +41,9 @@ import kotlinx.serialization.json.JsonElement
  * is [SentTransferList.Unreadable] (a quote then goes by the engine's nonce alone).
  *
  * Format 2 adds the Safe transactions, format 3 the Safe deployments, format 4 the transactions
- * maybe sent; a file of an earlier format reads as it is and is written as 4 at its next change,
- * which a build that reads only an earlier one then leaves alone.
+ * maybe sent, format 5 the token approvals and the swaps; a file of an earlier format reads as it
+ * is and is written as 5 at its next change, which a build that reads only an earlier one then
+ * leaves alone.
  */
 class FileSentTransfers(
     path: String,
@@ -90,8 +93,9 @@ class FileSentTransfers(
 
     /**
      * One transaction: a transfer's [to], [token] (null: the native currency) and [amount], a
-     * Safe transaction's approval or execution ([safe]), or a Safe's deployment ([deployment]) —
-     * exactly one of the three, else the file is damaged.
+     * Safe transaction's approval or execution ([safe]), a Safe's deployment ([deployment]), a
+     * token approval ([approval]) or a swap ([swap]) — exactly one of the five, else the file is
+     * damaged.
      */
     @Serializable
     private class StoredTransfer(
@@ -103,6 +107,8 @@ class FileSentTransfers(
         val amount: String? = null,
         val safe: StoredSafeCall? = null,
         val deployment: StoredDeployment? = null,
+        val approval: StoredApproval? = null,
+        val swap: StoredSwap? = null,
         val maxCost: String,
         val sentAt: Long,
         val maybeSent: Boolean = false,
@@ -118,14 +124,14 @@ class FileSentTransfers(
         )
 
         private fun action(): SentAction {
-            if (deployment != null) {
-                require(to == null && token == null && amount == null && safe == null) { "a deployment and more" }
-                return deployment.toAction()
-            }
-            if (safe != null) {
-                require(to == null && token == null && amount == null) { "a transfer and a Safe call at once" }
-                return safe.toAction()
-            }
+            val kinds = listOfNotNull(deployment, safe, approval, swap)
+            require(kinds.size <= 1) { "more than one kind of transaction" }
+            val transferFields = to != null || token != null || amount != null
+            require(kinds.isEmpty() || !transferFields) { "a transfer and another kind at once" }
+            deployment?.let { return it.toAction() }
+            safe?.let { return it.toAction() }
+            approval?.let { return it.toAction() }
+            swap?.let { return it.toAction() }
             return SentAction.Transfer(
                 to = Address.of(requireNotNull(to) { "a transfer without a recipient" }),
                 asset = token?.let { TransferAsset.Erc20Token(it.toToken()) } ?: TransferAsset.Native,
@@ -144,6 +150,33 @@ class FileSentTransfers(
         val icon: String? = null,
     ) {
         fun toToken() = Token(Address.of(address), symbol, name, decimals, icon)
+    }
+
+    /** A token approval: [spender] may take [amount] of [token]. */
+    @Serializable
+    private class StoredApproval(val token: StoredToken, val spender: String, val amount: String) {
+        fun toAction() = SentAction.TokenApproval(token.toToken(), Address.of(spender), UInt256.of(amount))
+    }
+
+    /**
+     * A swap through [router]: [amountIn] of [sell] for at least [minimumOut] of [buy], each asset
+     * a token, or the native currency (null).
+     */
+    @Serializable
+    private class StoredSwap(
+        val router: String,
+        val sell: StoredToken? = null,
+        val amountIn: String,
+        val buy: StoredToken? = null,
+        val minimumOut: String,
+    ) {
+        fun toAction() = SentAction.Swap(
+            router = Address.of(router),
+            sell = sell.asset(),
+            amountIn = UInt256.of(amountIn),
+            buy = buy.asset(),
+            minimumOut = UInt256.of(minimumOut),
+        )
     }
 
     /** A Safe transaction's [kind] of call ([APPROVAL] or [EXECUTION]) and its [request]. */
@@ -185,7 +218,7 @@ class FileSentTransfers(
     }
 
     private companion object {
-        const val FORMAT_VERSION = 4
+        const val FORMAT_VERSION = 5
         const val APPROVAL = "approval"
         const val EXECUTION = "execution"
         val JSON = Json
@@ -207,14 +240,26 @@ class FileSentTransfers(
                 nonce = transfer.nonce,
                 raw = transfer.signed.raw.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') },
                 to = send?.to?.hex,
-                token = (send?.asset as? TransferAsset.Erc20Token)?.token?.let {
-                    StoredToken(it.address.hex, it.symbol, it.name, it.decimals, it.icon)
-                },
+                token = send?.asset?.storedToken(),
                 amount = send?.amount?.toDecimal(),
                 safe = when (action) {
-                    is SentAction.Transfer, is SentAction.SafeDeployment -> null
                     is SentAction.SafeApproval -> safeCall(APPROVAL, action.request)
                     is SentAction.SafeExecution -> safeCall(EXECUTION, action.request)
+                    is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
+                    is SentAction.Swap,
+                    -> null
+                },
+                approval = (action as? SentAction.TokenApproval)?.let {
+                    StoredApproval(stored(it.token), it.spender.hex, it.amount.toDecimal())
+                },
+                swap = (action as? SentAction.Swap)?.let {
+                    StoredSwap(
+                        it.router.hex,
+                        it.sell.storedToken(),
+                        it.amountIn.toDecimal(),
+                        it.buy.storedToken(),
+                        it.minimumOut.toDecimal(),
+                    )
                 },
                 deployment = (action as? SentAction.SafeDeployment)?.let {
                     StoredDeployment(
@@ -233,6 +278,15 @@ class FileSentTransfers(
         }
 
         fun safeCall(kind: String, request: SigningRequest) = StoredSafeCall(kind, WireRequest.of(request))
+
+        fun stored(token: Token) = StoredToken(token.address.hex, token.symbol, token.name, token.decimals, token.icon)
+
+        /** The token this asset is, as stored; null for the native currency. */
+        fun TransferAsset.storedToken(): StoredToken? = (this as? TransferAsset.Erc20Token)?.token?.let(::stored)
+
+        /** The asset this stored token is: the native currency for none. */
+        fun StoredToken?.asset(): TransferAsset = this?.let { TransferAsset.Erc20Token(it.toToken()) }
+            ?: TransferAsset.Native
 
         fun String.hexBytes(): ByteArray {
             require(length % 2 == 0 && all { it in '0'..'9' || it in 'a'..'f' }) { "not lower-case hex" }

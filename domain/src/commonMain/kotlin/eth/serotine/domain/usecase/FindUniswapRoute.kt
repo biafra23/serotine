@@ -64,6 +64,9 @@ class FindUniswapRoute(
     private val chain: UniswapV3Chain,
     private val inputs: TransactionInputs,
 ) {
+    /** [network]'s Uniswap v3 deployment once its code is proven ([UniswapV3Chain.venue]). */
+    suspend fun venue(network: Network): VenueReading = chain.venue(network)
+
     /**
      * The best route on [network] for selling exactly [amountIn] (not zero) of [sell] for [buy],
      * ranked by [ranking].
