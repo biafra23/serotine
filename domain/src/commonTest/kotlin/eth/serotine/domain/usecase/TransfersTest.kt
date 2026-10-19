@@ -25,6 +25,7 @@ import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
@@ -405,6 +406,38 @@ class TransfersTest {
             ObserveSentTransfer(sent, receipts)(record.hash).first(),
         )
         assertEquals(null, ObserveSentTransfer(sent, receipts)("0x" + "00".repeat(32)).first().transfer)
+    }
+
+    @Test
+    fun aSwapThatWentThroughSaysWhatItPaidAndOneThatRevertedDoesNot() = runTest {
+        val link = Token(Address.of("0x" + "77".repeat(20)), "LINK", "ChainLink Token", 18, icon = null)
+        val swap = SentAction.Swap(
+            Address.of("0x" + "50".repeat(20)),
+            TransferAsset.Native,
+            UInt256.ONE,
+            TransferAsset.Erc20Token(link),
+            UInt256.ONE,
+        )
+        val record = SentTransfer(alice, 7, SignedTransfer(byteArrayOf(2, 9)), swap, UInt256.ONE, 1)
+        sent.transfers.value = listOf(record)
+        val paid = ReceiptLog(
+            link.address,
+            listOf(
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0x" + "00".repeat(12) + "30".repeat(20),
+                "0x" + "00".repeat(12) + alice.hex.drop(2),
+            ),
+            "0x" + "00".repeat(31) + "2a",
+        )
+        var succeeded = true
+        val receipts = object : ReceiptTracker {
+            override fun observe(hash: String): Flow<TransactionProgress> =
+                flowOf(TransactionProgress.Finalized(100, succeeded, listOf(paid)))
+        }
+
+        assertEquals(UInt256.of(42), ObserveSentTransfer(sent, receipts)(record.hash).first().received)
+        succeeded = false
+        assertEquals(null, ObserveSentTransfer(sent, receipts)(record.hash).first().received)
     }
 
     @Test

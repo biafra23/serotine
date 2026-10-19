@@ -60,6 +60,7 @@ class SwapScreenTest {
         tolerance = "0.5 % tolerance, below QuoterV2's verified quote of 0.016 ETH",
         route = listOf(RouteStep("USDC → WETH", "0.3 %", "0x3030303030303030303030303030303030303030")),
         routeNote = "One Uniswap v3 pool, as the pinned factory lists it.",
+        priceImpact = "Price impact: 0.31 %, the quote against the pools' spot prices, their fees aside.",
         spender = router,
         deadline = "Refused by the router after 14:32: the verified head's time and 10 minutes.",
         maxFee = "0.0033 ETH",
@@ -137,6 +138,8 @@ class SwapScreenTest {
 
         rule.onNodeWithText("Review swap").assertExists()
         rule.onNodeWithTag(SWAP_MINIMUM_TAG).assertTextEquals("at least 0.01592 ETH")
+        rule.onNodeWithTag(SWAP_IMPACT_TAG).performScrollTo()
+            .assertTextEquals("Price impact: 0.31 %, the quote against the pools' spot prices, their fees aside.")
         rule.onNodeWithText("USDC → WETH · 0.3 %").performScrollTo()
         rule.onNodeWithTag(SWAP_SIGN_TAG).performScrollTo().assertIsEnabled().performClick()
         rule.onNodeWithContentDescription("Back").performClick()

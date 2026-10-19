@@ -72,6 +72,8 @@ sealed interface SwapUiState {
      * has covers the amount; [deadline] when the router refuses it; the most the fee can be and what
      * it is made of; the verified [balances] before → after. [pending] what earlier transactions
      * not mined yet may still take. [netNote] when the route was chosen without its fee.
+     * [priceImpact] says how far the quote falls below the pools' spot prices, or that it is not
+     * known; [priceHint] what the prices the wallet shows say of the quote (display only).
      */
     data class SwapReview(
         override val network: String,
@@ -85,6 +87,8 @@ sealed interface SwapUiState {
         val tolerance: String,
         val route: List<RouteStep>,
         val routeNote: String,
+        val priceImpact: String,
+        val priceHint: String? = null,
         val spender: SpenderItem,
         val allowanceNote: String? = null,
         val deadline: String,

@@ -101,6 +101,9 @@ private val review = SwapUiState.SwapReview(
     route = listOf(RouteStep("USDC → WETH", "0.05 %", POOL)),
     routeNote = "One Uniswap v3 pool, as the pinned factory lists it. ETH goes in or out as WETH, which the " +
         "router wraps or unwraps in the same transaction.",
+    priceImpact = "Price impact: 0.12 %, the quote against the pools' spot prices, their fees aside.",
+    priceHint = "Sepolia's pools and Chainlink's testnet feeds do not track each other: this quote is not held " +
+        "against the prices the wallet shows.",
     spender = router,
     allowanceNote = "An earlier approval already lets the router take this much USDC: no approval is needed.",
     deadline = "Refused by the router after 19 Oct 2026, 14:32: the verified head's time and 10 minutes.",
@@ -123,6 +126,8 @@ private val hopReview = review.copy(
     tolerance = "0.5 % tolerance, below QuoterV2's verified quote of 2.871904 LINK",
     route = listOf(RouteStep("USDC → WETH", "0.05 %", POOL), RouteStep("WETH → LINK", "0.3 %", SECOND_POOL)),
     routeNote = "Through WETH: two Uniswap v3 pools, as the pinned factory lists them.",
+    priceImpact = "Price impact: not known this time: the pools' spot prices could not be read at the quote's " +
+        "block, or give no measure for this amount.",
     netNote = "The route was chosen by what it returns, without its network fee, which could not be had right now.",
     balances = listOf(
         BalanceChange("USDC balance", "250 USDC", "210 USDC", "verified at block 8,412,305"),

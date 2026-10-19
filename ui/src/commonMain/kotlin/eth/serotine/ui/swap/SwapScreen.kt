@@ -76,6 +76,9 @@ const val SWAP_REVIEW_TAG = "swap-review"
 /** Test tag of the reviewed minimum, for UI tests. */
 const val SWAP_MINIMUM_TAG = "swap-minimum"
 
+/** Test tag of the review's price impact, for UI tests. */
+const val SWAP_IMPACT_TAG = "swap-impact"
+
 /** Test tag of the wallet password field, for UI tests. */
 const val SWAP_PASSWORD_TAG = "swap-password"
 
@@ -402,6 +405,8 @@ private fun SwapContent(state: SwapUiState.SwapReview) {
     }
     Note(state.routeNote)
     state.netNote?.let { Note(it) }
+    Text(state.priceImpact, Modifier.testTag(SWAP_IMPACT_TAG), style = MaterialTheme.typography.bodyMedium)
+    state.priceHint?.let { Note(it) }
     Heading("Through")
     Spender(state.spender)
     state.allowanceNote?.let { Note(it) }

@@ -106,7 +106,10 @@ signed.
     once known, the amount received.
   - On Uniswap that amount comes from the verified receipt: the token's
     `Transfer` log to the account. For ETH out, it is WETH's `Withdrawal` log
-    from the router, since unwrapped ETH comes with no `Transfer` log.
+    from the router, since unwrapped ETH comes with no `Transfer` log. Only
+    the logs of the contract the record names count (the token bought, or
+    the pinned WETH9 the record keeps), since any token on the route could
+    emit a log that claims a transfer.
   - On CoW it comes from the settlement's `Trade` log (*Proving an order's
     end*). Until that log is found, the status says "at least" the minimum.
 - **Native ETH** goes in and out through WETH, as each venue does it (below).
@@ -242,15 +245,19 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
   - the amount the verified run returns ("you receive 4.31 LINK, run at block
     N") and the signed minimum ("at least 4.29 LINK, 0.5 % tolerance");
   - the route: its pools with their fee tiers and blockies;
-  - the price impact: the quote against the pool's spot price (`slot0`),
-    chain data both;
+  - the price impact: the quote against what the route returns at its pools'
+    spot prices (`slot0`), less their fees, chain data both; read with
+    verified calls of the chosen route's pools, and said as not known when
+    one cannot be read;
   - the most the fee can be, and the balances of both tokens and of ETH
     before and after.
 - **A hint, display-only.** The pool's spot price can be moved within a
   block just as the quote can. When the quote's rate is far from the
   Chainlink values the screen already shows, the review says so. On Sepolia
   the testnet feeds and the test pools do not track each other, so there the
-  hint says that and no more. It never changes an amount.
+  hint says that and no more (the only one built: comparing against the
+  feeds waits for a network with market prices). It never changes an
+  amount.
 - **MEV.** The transaction sits in the public mempool, where it can be
   sandwiched by up to the tolerance. That bound holds for an account's swap,
   quoted moments before it is sent. A Safe's swap can lose more (*A Safe's

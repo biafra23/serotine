@@ -160,7 +160,7 @@ class FileSentTransfers(
 
     /**
      * A swap through [router]: [amountIn] of [sell] for at least [minimumOut] of [buy], each asset
-     * a token, or the native currency (null).
+     * a token, or the native currency (null); [weth] the WETH9 the router unwraps ETH bought from.
      */
     @Serializable
     private class StoredSwap(
@@ -169,6 +169,7 @@ class FileSentTransfers(
         val amountIn: String,
         val buy: StoredToken? = null,
         val minimumOut: String,
+        val weth: String? = null,
     ) {
         fun toAction() = SentAction.Swap(
             router = Address.of(router),
@@ -176,6 +177,7 @@ class FileSentTransfers(
             amountIn = UInt256.of(amountIn),
             buy = buy.asset(),
             minimumOut = UInt256.of(minimumOut),
+            weth = weth?.let(Address::of),
         )
     }
 
@@ -259,6 +261,7 @@ class FileSentTransfers(
                         it.amountIn.toDecimal(),
                         it.buy.storedToken(),
                         it.minimumOut.toDecimal(),
+                        it.weth?.hex,
                     )
                 },
                 deployment = (action as? SentAction.SafeDeployment)?.let {

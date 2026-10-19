@@ -272,4 +272,30 @@ class UInt256Test {
         assertNull(u("18446744073709551616").toLongOrNull(), "2^64")
         assertNull(u(max).toLongOrNull())
     }
+
+    @Test
+    fun multipliesAndDividesThroughAProductAbove256Bits() {
+        // (2^256 - 1)^2 / (2^256 - 1): the product needs 512 bits, the quotient does not.
+        assertEquals(u(max), u(max).mulDivOrNull(u(max), u(max)))
+        // 2^200 × 2^200 / 2^150 = 2^250.
+        val twoTo200 = u("1606938044258990275541962092341162602522202993782792835301376")
+        assertEquals(
+            u("1809251394333065553493296640760748560207343510400633813116524750123642650624"),
+            twoTo200.mulDivOrNull(twoTo200, u("1427247692705959881058285969449495136382746624")),
+        )
+        // Rounded down.
+        assertEquals(
+            u("1741894730528882788945500467623184619031963768587303764670"),
+            u("123456789012345678901234567890").mulDivOrNull(u("98765432109876543210987654321"), UInt256.of(7)),
+        )
+        assertEquals(UInt256.ZERO, UInt256.of(5).mulDivOrNull(UInt256.ONE, UInt256.of(6)))
+    }
+
+    @Test
+    fun refusesAZeroDivisorAndAQuotientAbove256Bits() {
+        assertNull(UInt256.ONE.mulDivOrNull(UInt256.ONE, UInt256.ZERO))
+        // 2^255 × 4 / 2 = 2^256.
+        val twoTo255 = u("57896044618658097711785492504343953926634992332820282019728792003956564819968")
+        assertNull(twoTo255.mulDivOrNull(UInt256.of(4), UInt256.of(2)))
+    }
 }

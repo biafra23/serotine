@@ -796,6 +796,18 @@ class SwapViewModel(
             } else {
                 ""
             },
+            priceImpact = quote.priceImpact?.let { basisPoints ->
+                val figure = if (basisPoints == 0) "under 0.01" else UInt256.of(basisPoints.toLong()).formatUnits(2)
+                "Price impact: $figure %, the quote against the pools' spot prices, their fees aside."
+            } ?: "Price impact: not known this time: the pools' spot prices could not be read at the quote's " +
+                "block, or give no measure for this amount.",
+            // On a testnet, the feeds the wallet shows and the pools follow no common market.
+            priceHint = if (network.testnet) {
+                "${network.displayName}'s pools and Chainlink's testnet feeds do not track each other: this quote " +
+                    "is not held against the prices the wallet shows."
+            } else {
+                null
+            },
             spender = SpenderItem(ROUTER_NAME, Eip55.format(quote.router)),
             // A token sold: the quote read the router's allowance as covering the amount.
             allowanceNote = sold?.let {
