@@ -487,27 +487,20 @@ discussion that produced this note.
   anyway. A capture of the running app (`:desktop-app:run`, the debug Android
   app) may stand in or be added where the previews cannot show the change
   (navigation, an animation, a host's window or notification).
-  Where to put them: a human drags them into the description on GitHub. A
-  session commits them to the `pr-screenshots` branch, an orphan branch that
-  holds only screenshots and is never merged, in a directory named after the
-  PR's head branch (known before the PR is, so the PR opens with its
-  screenshots and the automated review, which runs once, sees them), and
-  links each by that commit's SHA, so the images stay what they were when a
-  later push moves the branch:
-  `![<caption>](https://github.com/<owner>/<repo>/blob/<sha>/<head-branch>/<file>.png?raw=true)`.
-  Start from the remote branch (`git fetch origin pr-screenshots && git switch
-  -c pr-screenshots FETCH_HEAD`, best in a `git worktree`); only when
-  `origin/pr-screenshots` does not exist yet, create it with `git switch
-  --orphan pr-screenshots`. It is NEVER force-pushed or rewritten: earlier
-  PRs link its old commits, which must stay reachable. A push rejected
-  because another session pushed first is fetched and the commit reapplied
-  on top. This rule is the permission to create and push to that branch.
-  Screenshots never go on the PR's own branch: binaries merged into `main`
-  stay in its history for good. A push to `pr-screenshots` the host refuses
-  is no reason to drop them: attach the files to the conversation for the
-  owner instead and say in the description that they are missing and why. A
-  push that changes what the screenshots show updates them in the
-  description in the same round.
+  Where to put them: in the PR description only, never in the repository
+  (owner ruling, 2026-10-19). No screenshot is committed anywhere: not on the
+  PR's own branch (binaries merged into `main` stay in its history for good),
+  not on a branch of its own, not in a commit removed again later.
+  `build/screenshots/` is git-ignored and stays so. A human drags the
+  files into the description on GitHub. A session cannot upload an image
+  to GitHub, so it attaches the files to the conversation for the owner,
+  each named after its screen and state
+  (`assets-head-too-old-after.png`), and gives the description a
+  `## Screenshots` section with one slot per file: a table row with the
+  caption and the file's name where the image goes, before and after side by
+  side for a changed screen. The owner drags each file into its slot. A push
+  that changes what the screenshots show attaches the new files in the same
+  round and updates the slots.
 - **ALWAYS respond to every review comment, individually, on its own thread.**
   One comment, one reply. A single bulk PR-level summary is not a substitute —
   it may be posted *in addition*, but a reviewer must be able to see the

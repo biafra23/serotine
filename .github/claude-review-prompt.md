@@ -23,6 +23,9 @@ standing rules, especially:
   screenshots of it, or says "No UI change" (CLAUDE.md, "Pull
   requests and code review"); read it with `gh pr view` and flag a
   visible change without them, or with them missing a state it adds.
+  A session cannot upload images, so a `## Screenshots` section that
+  names one file per state, for the owner to drag in, counts as
+  present; flag a screenshot committed to the repository instead.
 - Kotlin: immutable data, sealed UI states, structured concurrency
   (no GlobalScope, no blocking on the main thread), SOLID as
   CLAUDE.md spells it out.
