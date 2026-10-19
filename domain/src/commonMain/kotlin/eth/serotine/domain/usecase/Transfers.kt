@@ -11,12 +11,14 @@ import eth.serotine.domain.model.hasValidChecksum
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
@@ -24,15 +26,19 @@ import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
+import eth.serotine.domain.repository.TransactionHistory
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -439,17 +445,52 @@ sealed interface TransferSending {
 }
 
 /**
- * A sent transaction (docs/wallet-ux.md, screen 9): what was sent, from its record (null when the
- * record has none: an older install, an unreadable record), and where it stands, as its verified
- * receipt says.
+ * A sent transaction (docs/wallet-ux.md, screen 9): what was sent, from its record, or from the
+ * [history] once the record has forgotten it (null when neither has it: an older install, an
+ * unreadable record), and where it stands, as its verified receipt says. The engine finds a
+ * receipt only while it watches for it, so where it no longer finds one the history says what was
+ * seen of it: a finalized transaction is not looked up again, one seen in a block reads as
+ * included in it, and one whose nonce was used reads as pending with that outcome beside it. What
+ * a swap paid comes from its receipt's logs, so it is not known of one only the history holds.
  */
-class ObserveSentTransfer(private val sentTransfers: SentTransfers, private val receipts: ReceiptTracker) {
-    operator fun invoke(hash: String): Flow<SentTransferStatus> = combine(
-        sentTransfers.observe().map { list ->
-            (list as? SentTransferList.Loaded)?.transfers?.lastOrNull { it.hash == hash }
-        }.distinctUntilChanged(),
-        receipts.observe(hash),
-    ) { transfer, progress -> SentTransferStatus(transfer, progress, receivedOf(transfer, progress)) }
+class ObserveSentTransfer(
+    private val sentTransfers: SentTransfers,
+    private val receipts: ReceiptTracker,
+    private val history: TransactionHistory,
+) {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    operator fun invoke(hash: String): Flow<SentTransferStatus> {
+        val entry = history.observe().map { list ->
+            (list as? HistoryList.Loaded)?.entries?.lastOrNull { it.transfer.hash == hash }
+        }.distinctUntilChanged()
+        val outcome = entry.map { it?.outcome }.distinctUntilChanged()
+        val progress = outcome.map { it as? SentOutcome.Finalized }.distinctUntilChanged().flatMapLatest { finalized ->
+            if (finalized != null) {
+                flowOf(TransactionProgress.Finalized(finalized.blockNumber, finalized.succeeded))
+            } else {
+                receipts.observe(hash)
+            }
+        }
+        return combine(
+            sentTransfers.observe().map { list ->
+                (list as? SentTransferList.Loaded)?.transfers?.lastOrNull { it.hash == hash }
+            }.distinctUntilChanged(),
+            entry,
+            progress,
+        ) { record, recorded, read ->
+            val transfer = record ?: recorded?.transfer
+            val seen = seen(read, recorded?.outcome)
+            SentTransferStatus(transfer, seen, receivedOf(transfer, seen), recorded?.outcome)
+        }
+    }
+
+    /** [read], or where it finds no block, the block the history saw take it. */
+    private fun seen(read: TransactionProgress, outcome: SentOutcome?): TransactionProgress =
+        if (read == TransactionProgress.Pending && outcome is SentOutcome.Included) {
+            TransactionProgress.Included(outcome.blockNumber, outcome.succeeded)
+        } else {
+            read
+        }
 
     /** What a swap that went through paid the account, by its verified receipt's logs. */
     private fun receivedOf(transfer: SentTransfer?, progress: TransactionProgress): UInt256? {
@@ -466,10 +507,12 @@ class ObserveSentTransfer(private val sentTransfers: SentTransfers, private val 
 /**
  * What [ObserveSentTransfer] emits: the [transfer] as recorded, and its [progress]; for a swap
  * that went through, what it paid the account ([received], in the bought asset's smallest
- * units), when its receipt's logs say it.
+ * units), when its receipt's logs say it; and how the history says it ended ([outcome]; null
+ * when the history does not hold it).
  */
 data class SentTransferStatus(
     val transfer: SentTransfer?,
     val progress: TransactionProgress,
     val received: UInt256? = null,
+    val outcome: SentOutcome? = null,
 )

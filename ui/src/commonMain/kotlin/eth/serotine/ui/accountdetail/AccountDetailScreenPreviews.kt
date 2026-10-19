@@ -116,6 +116,7 @@ private fun AccountDetailPreview(state: AccountDetailUiState, darkTheme: Boolean
             onSend = {},
             onSwap = {},
             onReceive = {},
+            onActivity = {},
             onCopy = {},
             onRename = {},
             onRemove = {},

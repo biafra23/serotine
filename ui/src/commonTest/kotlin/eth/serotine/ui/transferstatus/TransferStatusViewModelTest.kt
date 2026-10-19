@@ -12,10 +12,12 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcast
+import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -24,6 +26,7 @@ import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBroadcaster
 import eth.serotine.ui.FakeReceipts
+import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemorySentTransfers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -60,6 +63,7 @@ class TransferStatusViewModelTest {
         sentAt = 1_800_000_000,
     )
     private val sent = MemorySentTransfers()
+    private val history = MemoryTransactionHistory()
     private val receipts = FakeReceipts()
     private val accounts = FakeAccounts()
     private val broadcaster = FakeBroadcaster()
@@ -71,7 +75,7 @@ class TransferStatusViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = TransferStatusViewModel(
             hash,
-            ObserveSentTransfer(sent, receipts),
+            ObserveSentTransfer(sent, receipts, history),
             ObserveAccounts(accounts),
             RebroadcastTransfer(broadcaster, sent, receipts) { 1_800_000_500 },
             Network.SEPOLIA,
@@ -446,5 +450,34 @@ class TransferStatusViewModelTest {
             viewModel.shown.approval,
         )
         assertNull(viewModel.shown.swap)
+    }
+
+    @Test
+    fun aTransactionTheRecordForgotIsShownFromTheHistory() = runTest {
+        history.entries.value = listOf(HistoryEntry(record, SentOutcome.Included(9_412_118, succeeded = true)))
+        val viewModel = viewModel()
+        runCurrent()
+
+        val shown = viewModel.shown
+        assertEquals("40.5 USDC", shown.sent?.amount)
+        assertEquals(StepState.DONE, shown.steps[2].state, "the block the history saw, its receipt no longer found")
+        assertEquals("In block 9,412,118, its receipt verified", shown.steps[2].detail)
+    }
+
+    @Test
+    fun aNonceUsedWhileNotWatchingIsSaidSoAndNotRetried() = runTest {
+        val maybe = record.copy(maybeSent = true)
+        sent.transfers.value = listOf(maybe)
+        history.entries.value = listOf(HistoryEntry(maybe, SentOutcome.NonceUsed))
+        val viewModel = viewModel()
+        runCurrent()
+
+        val shown = viewModel.shown
+        assertEquals(StepState.UNKNOWN, shown.steps[2].state)
+        assertEquals(StepState.UNKNOWN, shown.steps[3].state)
+        assertNull(shown.notSent, "its nonce is used: there is nothing to retry")
+        viewModel.retry()
+        runCurrent()
+        assertEquals(emptyList(), broadcaster.sent)
     }
 }

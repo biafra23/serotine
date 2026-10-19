@@ -401,11 +401,13 @@ class TransfersTest {
                 flowOf(TransactionProgress.Included(100, succeeded = true))
         }
 
+        val observe = ObserveSentTransfer(sent, receipts, MemoryTransactionHistory())
+
         assertEquals(
             SentTransferStatus(record, TransactionProgress.Included(100, succeeded = true)),
-            ObserveSentTransfer(sent, receipts)(record.hash).first(),
+            observe(record.hash).first(),
         )
-        assertEquals(null, ObserveSentTransfer(sent, receipts)("0x" + "00".repeat(32)).first().transfer)
+        assertEquals(null, observe("0x" + "00".repeat(32)).first().transfer)
     }
 
     @Test

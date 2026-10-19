@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -109,6 +110,7 @@ fun AccountDetailRoute(
     onSwap: (contract: String?) -> Unit,
     onSafeSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
+    onActivity: () -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
     onOpenSafeTx: (hash: String) -> Unit,
@@ -131,6 +133,7 @@ fun AccountDetailRoute(
         onSend = { contract -> if (isSafe) onPropose(contract) else onSend(contract) },
         onSwap = { contract -> if (isSafe) onSafeSwap(contract) else onSwap(contract) },
         onReceive = onReceive,
+        onActivity = onActivity,
         onCopy = rememberCopyText(),
         onRename = onRename,
         onRemove = onRemove,
@@ -146,7 +149,8 @@ fun AccountDetailRoute(
 
 /**
  * One account (docs/wallet-ux.md, screens 4 and 16) as a pure function of [state]: its blockie,
- * balance, address and control, Send (where it can send) and Receive as buttons, and Copy,
+ * balance, address and control, Send (where it can send), Receive and Activity (the
+ * transactions this device sent for it, [onActivity]) as buttons, and Copy,
  * Rename and Remove in the top bar's menu, so none of them depends on the long press of the
  * account list. [onSend] opens Send with the token at a contract chosen, or the network's
  * currency (null). A Safe's Queue opens a transaction through [onOpenSafeTx] by its hash, and
@@ -160,6 +164,7 @@ fun AccountDetailScreen(
     onSend: (contract: String?) -> Unit,
     onSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
+    onActivity: () -> Unit,
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
@@ -242,6 +247,7 @@ fun AccountDetailScreen(
                     send,
                     swap,
                     onReceive,
+                    onActivity,
                     copy,
                     onCopyContract = { contract ->
                         onCopy(contract)
@@ -264,6 +270,7 @@ private fun Details(
     onSend: (String?) -> Unit,
     onSwap: (String?) -> Unit,
     onReceive: () -> Unit,
+    onActivity: () -> Unit,
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
@@ -339,6 +346,11 @@ private fun Details(
                 Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
                 Text("Receive")
+            }
+            FilledTonalButton(onClick = onActivity) {
+                Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Activity")
             }
         }
         val safe = state.safe

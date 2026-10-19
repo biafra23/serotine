@@ -10,6 +10,7 @@ import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -80,7 +81,7 @@ class TransferStatusViewModel(
     fun retry() {
         val status = latest ?: return
         val transfer = status.transfer ?: return
-        if (!transfer.maybeSent || mined(status.progress) || retrying.value.running) return
+        if (!transfer.maybeSent || mined(status.progress) || nonceUsed(status) || retrying.value.running) return
         retrying.value = Retry(running = true)
         viewModelScope.launch {
             val sending = withContext(NonCancellable) {
@@ -106,7 +107,7 @@ class TransferStatusViewModel(
         val progress = status.progress
         // Broadcast: this screen opens for a transfer a peer took, and its record says when; one
         // maybe sent, until a block has it, says that no peer answered.
-        val maybeSent = status.transfer?.maybeSent == true && !mined(progress)
+        val maybeSent = status.transfer?.maybeSent == true && !mined(progress) && !nonceUsed(status)
         val signed = StatusStep("Signed", StepState.DONE, status.transfer?.let { "On this device" })
         val takenAt = status.transfer?.let { ", ${formatTime(it.sentAt)}" }.orEmpty()
         val broadcast = if (maybeSent) {
@@ -119,6 +120,12 @@ class TransferStatusViewModel(
             StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
         }
         val included = when (progress) {
+            TransactionProgress.Pending if nonceUsed(status) -> StatusStep(
+                "Included",
+                StepState.UNKNOWN,
+                "Its nonce was used on chain while this device was not watching: by this transaction, or by " +
+                    "one that took its place",
+            )
             TransactionProgress.Pending ->
                 StatusStep("Included", StepState.WAITING, "Waiting for a block to include it")
             is TransactionProgress.Included -> includedStep(progress.blockNumber, progress.succeeded)
@@ -127,6 +134,8 @@ class TransferStatusViewModel(
                 StatusStep("Included", StepState.UNKNOWN, "Cannot be verified right now")
         }
         val finalized = when (progress) {
+            TransactionProgress.Pending if nonceUsed(status) ->
+                StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device")
             TransactionProgress.Pending, is TransactionProgress.Included ->
                 StatusStep("Finalized", StepState.WAITING, "Once the beacon chain finalizes its block")
             is TransactionProgress.Finalized ->
@@ -170,6 +179,13 @@ class TransferStatusViewModel(
             retrying = retry.running,
         )
     }
+
+    /**
+     * Whether the history says [status]'s nonce was used while no receipt of it was seen: neither
+     * waiting for a block nor to be retried, since that nonce can never be mined again.
+     */
+    private fun nonceUsed(status: SentTransferStatus): Boolean =
+        status.outcome == SentOutcome.NonceUsed && !mined(status.progress)
 
     private fun mined(progress: TransactionProgress): Boolean =
         progress is TransactionProgress.Included || progress is TransactionProgress.Finalized

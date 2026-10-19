@@ -10,10 +10,13 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.HistoryEntry
+import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
@@ -21,12 +24,14 @@ import eth.serotine.domain.repository.prunable
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.TransactionHistory
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 /** One gwei, in wei. */
@@ -161,4 +166,26 @@ internal class FakeReceipts : ReceiptTracker {
     fun of(hash: String) = progress.getOrPut(hash) { MutableStateFlow(TransactionProgress.Pending) }
 
     override fun observe(hash: String): Flow<TransactionProgress> = of(hash)
+}
+
+/** A [TransactionHistory] in memory, as the port's contract says one behaves; [unreadable] reads as such. */
+internal class MemoryTransactionHistory : TransactionHistory {
+    val entries = MutableStateFlow<List<HistoryEntry>>(emptyList())
+    val unreadable = MutableStateFlow(false)
+
+    override fun observe(): Flow<HistoryList> = combine(entries, unreadable) { list, broken ->
+        if (broken) HistoryList.Unreadable else HistoryList.Loaded(list)
+    }
+
+    override suspend fun record(transfer: SentTransfer): Boolean {
+        val outcome = entries.value.lastOrNull { it.transfer.hash == transfer.hash }?.outcome ?: SentOutcome.NotSeen
+        entries.value = entries.value.filterNot { it.transfer.hash == transfer.hash } + HistoryEntry(transfer, outcome)
+        return true
+    }
+
+    override suspend fun settle(hash: String, outcome: SentOutcome): Boolean {
+        if (entries.value.none { it.transfer.hash == hash }) return false
+        entries.value = entries.value.map { if (it.transfer.hash == hash) it.copy(outcome = outcome) else it }
+        return true
+    }
 }

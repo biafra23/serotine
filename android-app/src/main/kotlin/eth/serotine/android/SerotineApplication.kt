@@ -27,10 +27,13 @@ import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
+import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -96,7 +99,18 @@ class SerotineApplication : Application() {
      * them), beside the account list. One instance, which the graph and the deployments' follower
      * share.
      */
-    private val sentTransfers by lazy { FileSentTransfers(filesDir.resolve("sent-transfers.json").path) }
+    private val sentRecord by lazy { FileSentTransfers(filesDir.resolve("sent-transfers.json").path) }
+
+    /**
+     * Every transaction sent from here, kept for good with how each ended (issue #85): what an
+     * account's Activity lists. Public data only, as [sentRecord]'s, beside it.
+     */
+    private val transactionHistory by lazy {
+        FileTransactionHistory(filesDir.resolve("transaction-history.json").path)
+    }
+
+    /** [sentRecord], each of whose records also goes into [transactionHistory]: what all that sends is handed. */
+    private val sentTransfers by lazy { HistoryRecordingSentTransfers(sentRecord, transactionHistory) }
 
     val graph: AppGraph by lazy {
         // Imported seeds in envelopes under the app's private files, the hardware factor a
@@ -131,6 +145,7 @@ class SerotineApplication : Application() {
             names = node.names,
             signer = keyStore,
             sentTransfers = sentTransfers,
+            transactionHistory = transactionHistory,
             // The Safe transactions waiting for their owners, with the signatures collected (public
             // data, no key in them), beside the account list in the app's private files.
             safeTxQueue = FileSafeTxQueue(filesDir.resolve("safe-tx-queue.json").path),
@@ -161,12 +176,15 @@ class SerotineApplication : Application() {
     private var holds = 0
     private var following: Job? = null
     private var deployments: Job? = null
+    private var sentTransactions: Job? = null
     private val sleep = Runnable {
         node.pause()
         following?.cancel()
         following = null
         deployments?.cancel()
         deployments = null
+        sentTransactions?.cancel()
+        sentTransactions = null
     }
 
     /** The activity in front, for the biometric prompt. */
@@ -191,9 +209,9 @@ class SerotineApplication : Application() {
     }
 
     /**
-     * Keeps the engine's networking on, its upgrade reports followed into notifications, and the
-     * Safes this wallet deployed listed once proven, until the matching [releaseEngine]. Main
-     * thread.
+     * Keeps the engine's networking on, its upgrade reports followed into notifications, the
+     * Safes this wallet deployed listed once proven, and how the transactions sent from here end
+     * recorded, until the matching [releaseEngine]. Main thread.
      */
     fun holdEngine() {
         if (holds++ > 0) return
@@ -204,6 +222,21 @@ class SerotineApplication : Application() {
             following = scope.launch { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
         }
         if (deployments?.isActive != true) deployments = scope.launch { followSafeDeployments() }
+        if (sentTransactions?.isActive != true) sentTransactions = scope.launch { followSentTransactions() }
+    }
+
+    /**
+     * Records how each transaction sent from here ends, whatever screen is open (issue #85); runs
+     * until cancelled. A failure ends it, never the wallet: the next hold follows them again.
+     */
+    private suspend fun followSentTransactions() {
+        try {
+            FollowSentTransactions(transactionHistory, sentRecord, node.receipts, node.transactionInputs)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following sent transactions stopped: ${e::class.simpleName}")
+        }
     }
 
     /**

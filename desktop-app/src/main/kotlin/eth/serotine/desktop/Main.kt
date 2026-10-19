@@ -19,10 +19,13 @@ import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
+import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -113,8 +116,11 @@ private fun openWallet(dataDir: File) {
     val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
     // One instance each, which the graph and the deployments' follower share.
     val accounts = FileAccountRepository(dataDir.resolve("accounts.json").path)
-    // The transactions signed here, with their signed bytes (public once broadcast).
-    val sentTransfers = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
+    // The transactions signed here, with their signed bytes (public once broadcast), and every one
+    // of them kept for good with how it ended (issue #85): each record goes into both.
+    val sentRecord = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
+    val transactionHistory = FileTransactionHistory(dataDir.resolve("transaction-history.json").path)
+    val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
     application(exitProcessOnExit = false) {
         LaunchedEffect(Unit) {
             // A failure in the notices ends them, never the wallet (as on Android): the window
@@ -144,6 +150,17 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following Safe deployments stopped: ${e::class.simpleName}")
             }
         }
+        LaunchedEffect(Unit) {
+            // How each transaction sent from here ends is recorded whatever screen is open, while
+            // the app runs (issue #85). A failure ends it, never the wallet.
+            try {
+                FollowSentTransactions(transactionHistory, sentRecord, node.receipts, node.transactionInputs)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following sent transactions stopped: ${e::class.simpleName}")
+            }
+        }
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
@@ -170,6 +187,7 @@ private fun openWallet(dataDir: File) {
                 names = node.names,
                 signer = keyStore,
                 sentTransfers = sentTransfers,
+                transactionHistory = transactionHistory,
                 // The Safe transactions waiting for their owners, with the signatures collected (public).
                 safeTxQueue = FileSafeTxQueue(dataDir.resolve("safe-tx-queue.json").path),
                 signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),

@@ -79,7 +79,8 @@ Modules (Gradle):
   (`eth.serotine.data.prices`); the pinned Safe deployments, the queue of
   Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
   the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
-  the record of sent transactions (`eth.serotine.data.transfers`); and the
+  the record of sent transactions and the history of them, kept for good
+  (`eth.serotine.data.transfers`); and the
   display currency
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
