@@ -205,3 +205,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+// `-Pscreenshots=<dir>` (relative to the repository root): the preview tests also save every
+// preview as a PNG there (RenderPreviews.kt) — the screenshots a PR that changes the UI
+// carries (CLAUDE.md, "Pull requests and code review").
+val screenshotDir: String? = providers.gradleProperty("screenshots").orNull?.let { rootDir.resolve(it).absolutePath }
+tasks.named<Test>("desktopTest") {
+    screenshotDir?.let { systemProperty("serotine.screenshots", it) }
+}

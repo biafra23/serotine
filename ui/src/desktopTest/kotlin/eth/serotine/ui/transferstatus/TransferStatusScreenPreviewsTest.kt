@@ -7,5 +7,5 @@ import kotlin.test.Test
 class TransferStatusScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(transferStatusScreenPreviews)
+    fun everyPreviewRenders() = renderEach("transferStatusScreen", transferStatusScreenPreviews)
 }

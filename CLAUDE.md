@@ -34,6 +34,9 @@ repository's own.
 ./gradlew :desktop-app:packageDmg   # macOS
 ./gradlew :desktop-app:packageMsi   # Windows, WiX 3 on the PATH
 
+# Every screen's previews as PNGs in build/screenshots/, for a PR that changes the UI
+./gradlew :ui:desktopTest --tests '*PreviewsTest' --rerun -Pscreenshots=build/screenshots
+
 # The release version the tag guard compares against (project.version minus -SNAPSHOT)
 ./gradlew -q :printReleaseVersion
 ```
@@ -194,7 +197,8 @@ step skipped and none treated as optional or "only if asked"**:
    skill / `/code-review`) and address what it finds before going further.
 3. **PR** — open a pull request. This is the default next step after review, not
    a separate request the user has to make. (Follow the PR-description rules
-   below: English, the session link as the last line.) Its base is `main` for a
+   below: English, screenshots when it changes the UI, the session link as the
+   last line.) Its base is `main` for a
    single-PR work item, and the feature branch for a part of a multi-PR plan
    (next section).
 4. **Wait for review comments** — and make sure they REACH you. In the desktop
@@ -456,6 +460,54 @@ discussion that produced this note.
   copy-paste. No `link` reported (app links off for the organization), or no
   session-mgmt tool on this host at all (a plain `claude` terminal, CI): say so
   in that line. Commit messages keep their `Co-Authored-By` trailer.
+- **A PR that changes the UI shows it in screenshots in its description**
+  (owner's request, 2026-10-19). "Changes the UI" means a user could see the
+  difference: a screen, dialog or component drawn differently, a new or
+  changed text, state, colour or layout, a new screen. A ViewModel-only change
+  counts when it changes what a screen shows. A PR with no visible change
+  says "No UI change" in place of the screenshots, so a reader can tell an
+  omission from a decision. What to show:
+  - every state the PR adds or changes, each under a caption naming the
+    screen and the state; for a changed screen, before and after side by side
+    (a two-column table), the before taken on the base branch;
+  - the dark theme too when the change touches colours or the theme;
+  - made-up data only, as in the previews: never a real seed phrase, key or
+    password, and no account of the owner's.
+
+  How to take them: the screen's previews (*Every screen has previews*) are
+  the source, rendered headless, so a session with no display or device can
+  take them too.
+  `./gradlew :ui:desktopTest --tests '*.<Feature>ScreenPreviewsTest' --rerun
+  -Pscreenshots=build/screenshots` (`…DialogPreviewsTest` for a dialog) writes
+  each preview of that screen to `build/screenshots/<feature>Screen-<nn>.png`
+  (`…Dialog-<nn>.png` for a dialog's), nn the two-digit position in the
+  previews list counting from 01 (`RenderPreviews.kt`), replacing that
+  screen's files from an earlier run; leave `--tests` out for every screen. A
+  state the PR adds gets a preview first, which the previews rule asks for
+  anyway. A capture of the running app (`:desktop-app:run`, the debug Android
+  app) may stand in or be added where the previews cannot show the change
+  (navigation, an animation, a host's window or notification).
+  Where to put them: a human drags them into the description on GitHub. A
+  session commits them to the `pr-screenshots` branch, an orphan branch that
+  holds only screenshots and is never merged, in a directory named after the
+  PR's head branch (known before the PR is, so the PR opens with its
+  screenshots and the automated review, which runs once, sees them), and
+  links each by that commit's SHA, so the images stay what they were when a
+  later push moves the branch:
+  `![<caption>](https://github.com/<owner>/<repo>/blob/<sha>/<head-branch>/<file>.png?raw=true)`.
+  Start from the remote branch (`git fetch origin pr-screenshots && git switch
+  -c pr-screenshots FETCH_HEAD`, best in a `git worktree`); only when
+  `origin/pr-screenshots` does not exist yet, create it with `git switch
+  --orphan pr-screenshots`. It is NEVER force-pushed or rewritten: earlier
+  PRs link its old commits, which must stay reachable. A push rejected
+  because another session pushed first is fetched and the commit reapplied
+  on top. This rule is the permission to create and push to that branch.
+  Screenshots never go on the PR's own branch: binaries merged into `main`
+  stay in its history for good. A push to `pr-screenshots` the host refuses
+  is no reason to drop them: attach the files to the conversation for the
+  owner instead and say in the description that they are missing and why. A
+  push that changes what the screenshots show updates them in the
+  description in the same round.
 - **ALWAYS respond to every review comment, individually, on its own thread.**
   One comment, one reply. A single bulk PR-level summary is not a substitute —
   it may be posted *in addition*, but a reviewer must be able to see the

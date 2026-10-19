@@ -7,5 +7,5 @@ import kotlin.test.Test
 class SafeTxScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(safeTxScreenPreviews)
+    fun everyPreviewRenders() = renderEach("safeTxScreen", safeTxScreenPreviews)
 }
