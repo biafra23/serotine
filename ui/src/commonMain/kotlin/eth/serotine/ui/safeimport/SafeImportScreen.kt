@@ -38,6 +38,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.CHECKING_SAFE
+import eth.serotine.ui.platform.KeepScreenOn
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the request's field, for UI tests. */
@@ -78,6 +80,8 @@ fun SafeImportScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The Safe's check can take up to 45 s: the display stays on while it runs.
+    if ((state as? SafeImportUiState.Entering)?.importing == true) KeepScreenOn()
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -159,7 +163,7 @@ private fun Entering(state: SafeImportUiState.Entering, onTextChange: (String) -
             if (state.importing) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.size(8.dp))
-                Text("Checking on chain…")
+                Text(CHECKING_SAFE)
             } else {
                 Text("Import")
             }

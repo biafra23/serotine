@@ -4,6 +4,8 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.ui.SafeWorld
@@ -13,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -22,6 +25,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /** [SafeImportViewModel] over fake ports, through the real use case. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -78,6 +82,37 @@ class SafeImportViewModelTest {
 
         assertEquals(SafeImportUiState.Imported("Sepolia", "0x" + request.hash.hex), viewModel.uiState.value)
         assertEquals(listOf(request), world.queue.requests.value)
+    }
+
+    @Test
+    fun whileTheSafeCannotBeVerifiedItIsCheckedAgainAndThenImported() = runTest {
+        val request = world.request(world.usdcTransfer(5), world.carol)
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        val viewModel = imported(world.codec.encode(request))
+        advanceTimeBy(10.seconds)
+        assertEquals(true, viewModel.entering.importing, "still checking the Safe on chain")
+        assertEquals(null, viewModel.entering.error)
+
+        // The next reading proves it.
+        world.state = world.state
+        runCurrent()
+        assertEquals(SafeImportUiState.Imported("Sepolia", "0x" + request.hash.hex), viewModel.uiState.value)
+    }
+
+    @Test
+    fun aSafeStillUnverifiedOnceTheCheckGivesUpSaysSo() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        val viewModel = imported(world.codec.encode(world.request(world.ether(4))))
+        advanceTimeBy(46.seconds)
+
+        assertEquals(false, viewModel.entering.importing)
+        assertEquals(
+            "The Safe's owners and nonce could not be verified this time: try again.",
+            viewModel.entering.error,
+        )
+        assertEquals(emptyList(), world.queue.requests.value)
     }
 
     @Test

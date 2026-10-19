@@ -40,6 +40,7 @@ import eth.serotine.domain.usecase.SafeExecutionQuoting
 import eth.serotine.domain.usecase.SafeTxOwnersReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
+import eth.serotine.domain.usecase.SafeTxSignCheck
 import eth.serotine.domain.usecase.SafeTxSigning
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.TransferSending
@@ -74,6 +75,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -139,6 +142,8 @@ class SafeTxViewModel(
     private val warmFeeHistory: WarmFeeHistory,
     private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
+    /** Whether the screen was opened by the import that just queued the transaction: its overview says so first. */
+    imported: Boolean = false,
 ) : ViewModel() {
 
     init {
@@ -226,7 +231,13 @@ class SafeTxViewModel(
         data class Quoting(val kind: ReviewKind, val account: Address, val level: FeeLevel) : Step
 
         /** Signing the hash as [owner]. */
-        data class Signing(val owner: Address, val unlock: UnlockStep, val signing: Boolean = false) : Step
+        data class Signing(
+            val owner: Address,
+            val unlock: UnlockStep,
+            val signing: Boolean = false,
+            /** While [signing], the Safe is still being checked on chain: nothing is signed yet. */
+            val checking: Boolean = false,
+        ) : Step
 
         /** [quote], made at [quotedAt], under review; [hidden] once the screen stopped being shown since. */
         data class Reviewing(
@@ -259,9 +270,11 @@ class SafeTxViewModel(
         val message: String? = null,
         /** The request signed here whose signature the queue could not save: shown and shared until left. */
         val unsaved: SigningRequest? = null,
+        /** Just imported: where it went is said ([addedText]) until another message or a step replaces it. */
+        val imported: Boolean = false,
     )
 
-    private val view = MutableStateFlow(View())
+    private val view = MutableStateFlow(View(imported = imported))
     private val step = MutableStateFlow<Step>(Step.Overview)
 
     /** Asks for the owners to be read again. */
@@ -365,7 +378,7 @@ class SafeTxViewModel(
     fun startSigning() {
         if (step.value != Step.Overview || job?.isActive == true) return
         val owner = now?.options?.signers?.firstOrNull() ?: return
-        view.update { it.copy(message = null, sharing = false) }
+        view.update { it.copy(message = null, sharing = false, imported = false) }
         step.value = Step.Signing(owner, UnlockStep())
         viewModelScope.launch {
             val biometrics = biometricsOffered()
@@ -506,12 +519,14 @@ class SafeTxViewModel(
 
     /**
      * Back from the signing step or a review to the overview: the password and the quote go. Not
-     * while signing, nor after a broadcast no peer answered: those bytes may be out there, and only
-     * a retry of them may send them again.
+     * while signing (checking the Safe before it is not signing yet, and stops), nor after a
+     * broadcast no peer answered: those bytes may be out there, and only a retry of them may send
+     * them again.
      */
     fun back() {
         when (val current = step.value) {
-            is Step.Signing -> if (current.signing) return
+            // While the Safe is checked nothing is signed yet: Back stops the check.
+            is Step.Signing -> if (current.signing && !current.checking) return
             is Step.Reviewing -> if (current.signing || current.notSent?.canRetry == true) return
             is Step.Quoting -> Unit
             else -> return
@@ -542,15 +557,23 @@ class SafeTxViewModel(
 
     /**
      * The screen stopped being shown: the password goes (CLAUDE.md, *Trust*; rule 8), and a review
-     * is quoted again when it is shown again ([onShown]). A signature already running finishes.
+     * is quoted again when it is shown again ([onShown]). A signature already running finishes; a
+     * signing still checking the Safe stops, its unlock (the password, or the prompt not yet shown)
+     * with it, so that no prompt comes up over another screen.
      */
     fun onHidden() {
         shown = false
         hiddenSince = true
         if (step.value is Step.Quoting) hiddenWhileQuoting = true
+        // Only ever the Safe's check before a signature.
+        if ((step.value as? Step.Signing)?.let { it.signing && it.checking } == true) job?.cancel()
         step.update { current ->
             when (current) {
-                is Step.Signing -> current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY))
+                is Step.Signing -> current.copy(
+                    unlock = current.unlock.copy(password = WalletPassword.EMPTY),
+                    signing = current.signing && !current.checking,
+                    checking = false,
+                )
                 is Step.Reviewing ->
                     current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY), hidden = true)
                 else -> current
@@ -592,14 +615,15 @@ class SafeTxViewModel(
         // Not while a removal runs: its outcome lands on the overview, and would be dropped.
         if (step.value != Step.Overview || job?.isActive == true) return
         val request = now?.request ?: return
-        view.update { it.copy(message = null, sharing = false) }
+        view.update { it.copy(message = null, sharing = false, imported = false) }
         val quoting = Step.Quoting(kind, account, level)
         step.value = quoting
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             // Its age runs from its first read, not from its answer: the figures are as old as that.
-            val readFrom = timeSource.markNow()
-            val next = quoted(kind, request, account, level)
+            // The first is the one after the Safe's check, which may wait a while for a verified reading.
+            var readFrom = timeSource.markNow()
+            val next = quoted(kind, request, account, level) { readFrom = timeSource.markNow() }
             val biometrics = biometricsOffered()
             if (step.value != quoting) return@launch
             when (next) {
@@ -627,8 +651,8 @@ class SafeTxViewModel(
         val request = (now ?: lastContext)?.request ?: return
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
         job = viewModelScope.launch {
-            val readFrom = timeSource.markNow()
-            val next = quoted(review.kind, request, account, level)
+            var readFrom = timeSource.markNow()
+            val next = quoted(review.kind, request, account, level) { readFrom = timeSource.markNow() }
             val latest = step.value
             if (latest !is Step.Reviewing || !latest.refreshing) return@launch
             when (next) {
@@ -656,14 +680,24 @@ class SafeTxViewModel(
         data class Refused(val message: String) : Quoted
     }
 
-    private suspend fun quoted(kind: ReviewKind, request: SigningRequest, account: Address, level: FeeLevel): Quoted =
+    /**
+     * The [kind] of [request] quoted from [account] at [level]; [safeChecked] is called once the
+     * Safe is verified, before the figures the quote's age is measured from are read.
+     */
+    private suspend fun quoted(
+        kind: ReviewKind,
+        request: SigningRequest,
+        account: Address,
+        level: FeeLevel,
+        safeChecked: () -> Unit,
+    ): Quoted =
         try {
             when (kind) {
-                ReviewKind.APPROVAL -> when (val quoting = quoteSafeApproval(request, account, level)) {
+                ReviewKind.APPROVAL -> when (val quoting = quoteSafeApproval(request, account, level, safeChecked)) {
                     is SafeApprovalQuoting.Quoted -> Quoted.Made(TxQuote.Approval(quoting.quote))
                     is SafeApprovalQuoting.Refused -> Quoted.Refused(safeTxRefusalText(quoting.refusal, network))
                 }
-                ReviewKind.EXECUTION -> when (val quoting = quoteSafeExecution(request, account, level)) {
+                ReviewKind.EXECUTION -> when (val quoting = quoteSafeExecution(request, account, level, safeChecked)) {
                     is SafeExecutionQuoting.Quoted -> Quoted.Made(TxQuote.Execution(quoting.quote))
                     is SafeExecutionQuoting.Refused -> Quoted.Refused(safeTxRefusalText(quoting.refusal, network))
                 }
@@ -681,14 +715,35 @@ class SafeTxViewModel(
         val request = context.request
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = signing.unlock.copy(password = WalletPassword.EMPTY, error = null)
-        step.value = signing.copy(signing = true, unlock = unlocked)
+        step.value = signing.copy(signing = true, checking = true, unlock = unlocked)
         job = viewModelScope.launch {
-            val result = withContext(NonCancellable) {
-                try {
-                    signSafeTx(request, signing.owner, unlock)
-                } catch (e: Exception) {
-                    null // the use case promises not to throw; the backstop
+            // The Safe is checked first, which leaving the screen cancels ([onHidden]): no key is
+            // asked for, and no prompt shown, until it has passed.
+            val checked = try {
+                signSafeTx.check(request, signing.owner)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null // the use case promises not to throw; the backstop
+            }
+            // Left while the check came back: nothing is signed. Otherwise the check is over,
+            // whatever it came to.
+            currentCoroutineContext().ensureActive()
+            step.update { if (it is Step.Signing && it.signing) it.copy(checking = false) else it }
+            val result = when (checked) {
+                is SafeTxSignCheck.Ready -> {
+                    // Signed and queued as one step, against the state just checked, which leaving
+                    // cannot cut in half.
+                    withContext(NonCancellable) {
+                        try {
+                            signSafeTx.sign(checked, unlock)
+                        } catch (e: Exception) {
+                            null // the use case promises not to throw; the backstop
+                        }
+                    }
                 }
+                is SafeTxSignCheck.Refused -> SafeTxSigning.Refused(checked.refusal)
+                null -> null
             }
             val latest = step.value as? Step.Signing ?: return@launch
             val label = context.labelOf(signing.owner)
@@ -898,6 +953,7 @@ class SafeTxViewModel(
                 owner = Eip55.format(step.owner),
                 unlock = step.unlock,
                 signing = step.signing,
+                checking = step.checking,
             )
             is Step.Reviewing -> review(shown, header, action, nonce, step)
             else -> SafeTxUiState.Overview(
@@ -918,10 +974,14 @@ class SafeTxViewModel(
                 quoting = step is Step.Quoting,
                 canShare = shown.found.safeNonce != null,
                 share = if (view.sharing && shown.found.safeNonce != null) share(request) else null,
-                message = view.message,
+                message = view.message ?: if (view.imported) addedText(header) else null,
             )
         }
     }
+
+    /** Where an import just put the transaction: the queue of the Safe [header] names. */
+    private fun addedText(header: SafeHeader): String =
+        "Added to ${header.label?.let { "$it's" } ?: "this Safe's"} queue on this device."
 
     private fun options(tx: DecodedSafeTx, read: SafeTxOwnersReading.Read?, held: List<Account>): Options {
         if (tx.refusal != null || read == null || read.refusal != null) {

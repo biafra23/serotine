@@ -100,7 +100,11 @@ class SafeTxViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun TestScope.viewModel(request: SigningRequest, collect: Boolean = true): SafeTxViewModel {
+    private fun TestScope.viewModel(
+        request: SigningRequest,
+        collect: Boolean = true,
+        imported: Boolean = false,
+    ): SafeTxViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { 1_800_000_000L }
         val viewModel = SafeTxViewModel(
@@ -139,6 +143,7 @@ class SafeTxViewModelTest {
             WarmFeeHistory(world.inputs),
             Network.SEPOLIA,
             clock,
+            imported,
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -202,6 +207,80 @@ class SafeTxViewModelTest {
         assertTrue(state.canExecute)
         assertEquals(null, state.refusal)
         assertEquals(null, state.gasTerms)
+    }
+
+    /** Alice's signing step, the password typed and Sign tapped while the Safe cannot be verified this time. */
+    private fun TestScope.signingWhileTheSafeIsUnproven(): SafeTxViewModel {
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        viewModel.startSigning()
+        runCurrent()
+        viewModel.onPasswordChange("made-up test password")
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.sign()
+        runCurrent()
+        return viewModel
+    }
+
+    @Test
+    fun whileTheSafeIsCheckedBeforeSigningTheStepSaysSoAndSignsOnceItPasses() = runTest {
+        val viewModel = signingWhileTheSafeIsUnproven()
+
+        advanceTimeBy(10.seconds)
+        val checking = viewModel.signing
+        assertTrue(checking.signing)
+        assertTrue(checking.checking, "Checking the Safe on chain…")
+        assertEquals(emptyList(), world.signer.passwords, "no key asked for while the Safe is checked")
+
+        world.state = world.state // the next reading proves it
+        runCurrent()
+
+        assertEquals(listOf("made-up test password"), world.signer.passwords)
+        assertTrue(viewModel.overview.message!!.startsWith("Signed as Alice."), viewModel.overview.message)
+    }
+
+    @Test
+    fun leavingTheScreenWhileTheSafeIsCheckedStopsItAndAsksForNoKey() = runTest {
+        val viewModel = signingWhileTheSafeIsUnproven()
+
+        viewModel.onHidden()
+        world.state = world.state // the Safe proven after all, once left
+        advanceTimeBy(60.seconds)
+        runCurrent()
+
+        assertEquals(emptyList(), world.signer.asked, "no signer call, so no prompt over another screen")
+        val left = viewModel.signing
+        assertFalse(left.signing)
+        assertFalse(left.checking)
+        assertEquals("", left.unlock.password.text)
+    }
+
+    @Test
+    fun backWhileTheSafeIsCheckedStopsItToo() = runTest {
+        val viewModel = signingWhileTheSafeIsUnproven()
+
+        viewModel.back()
+        world.state = world.state
+        advanceTimeBy(60.seconds)
+        runCurrent()
+
+        assertEquals(emptyList(), world.signer.asked)
+        assertIs<SafeTxUiState.Overview>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun aTransactionJustImportedSaysWhichSafesQueueItWentToUntilAStepBegins() = runTest {
+        val request = queued(world.request(world.ether(4), world.carol))
+        val viewModel = viewModel(request, imported = true)
+
+        assertEquals("Added to Treasury's queue on this device.", viewModel.overview.message)
+
+        viewModel.startSigning()
+        runCurrent()
+        viewModel.back()
+        assertEquals(null, viewModel.overview.message, "said once")
+
+        // Opened any other way, it says nothing of the kind.
+        assertEquals(null, viewModel(request).overview.message)
     }
 
     @Test
@@ -546,6 +625,26 @@ class SafeTxViewModelTest {
         assertEquals(2, world.broadcaster.sent.size)
         assertContentEquals(world.broadcaster.sent[0], world.broadcaster.sent[1])
         assertEquals(1, world.signer.asked.size, "nothing is signed twice")
+    }
+
+    @Test
+    fun aQuotesAgeRunsFromAfterItsSafeCheckNotFromBeforeTheWait() = runTest {
+        funded()
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.startApproval()
+        runCurrent()
+        // The Safe's check waits 40 s for a verified reading; the figures are read after it.
+        clock += 40.seconds
+        world.state = world.state
+        runCurrent()
+        viewModel.onPasswordChange("made-up test password")
+        clock += 30.seconds // 70 s since the tap, 30 s since the figures
+
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(listOf("made-up test password"), world.signer.passwords, "signed: the quote is 30 s old")
     }
 
     @Test

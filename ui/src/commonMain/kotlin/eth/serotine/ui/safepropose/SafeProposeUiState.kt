@@ -64,6 +64,8 @@ sealed interface SafeProposeUiState {
         val queued: String? = null,
         val refreshing: Boolean = false,
         val signing: Boolean = false,
+        /** While [signing], the Safe is still checked on chain: no key is asked for yet, and Back stops it. */
+        val checking: Boolean = false,
         val error: String? = null,
         val share: ShareItem? = null,
         val askingToDrop: Boolean = false,

@@ -41,7 +41,9 @@ internal sealed interface EngineReading<out T> {
  *
  * The last proof per key is shared by all subscribers, so one that re-subscribes on the same
  * head gets it at once instead of fetching it again, and one that arrives while it is being
- * fetched waits for that fetch; the [MAX_CACHED] most recently proven keys are kept, so keys
+ * fetched waits for that fetch — or, when the subscriber making it is cancelled midway (a
+ * one-shot check that gave up, a screen left), makes it again itself, since a read cut off says
+ * nothing of the fact; the [MAX_CACHED] most recently proven keys are kept, so keys
  * only looked at (the Watch screen) do not pile up. A device without
  * an engine ([chain] null) and an engine that is down answer [ReadUnavailable.NO_ENGINE]
  * once and stop, and so does a key the engine refuses ([ReadUnavailable.REFUSED]).
@@ -69,9 +71,10 @@ internal class ProvenReads<K, T>(
     private val sharedForHeads: Long = 1,
     /**
      * The fact about a key and the block its proof anchors to; a refusal ([EngineReading.Unavailable]);
-     * or null when unproven. Blocks.
+     * or null when unproven. Blocks, and may suspend between its blocking calls (to check its
+     * cancellation, or to pause before a retry).
      */
-    private val prove: (VerifiedChain, K) -> EngineReading<T>?,
+    private val prove: suspend (VerifiedChain, K) -> EngineReading<T>?,
 ) {
     /** The last proof per key, with the head it was fetched at. */
     private val proofs = mutableMapOf<K, Pair<Long, EngineReading.Proven<T>>>()
@@ -80,7 +83,7 @@ internal class ProvenReads<K, T>(
      * The read being made per key, with the head it is made at: a subscriber that finds one
      * for its head waits for it rather than making the same blocking calls again.
      */
-    private val inFlight = mutableMapOf<K, Pair<Long, CompletableDeferred<EngineReading<T>>>>()
+    private val inFlight = mutableMapOf<K, Pair<Long, CompletableDeferred<EngineReading<T>?>>>()
     private val proofsLock = Mutex()
 
     fun observe(key: K): Flow<EngineReading<T>> {
@@ -116,27 +119,34 @@ internal class ProvenReads<K, T>(
         if (snapshot !is EngineSnapshot.Running) return EngineReading.Syncing
         if (snapshot.phase == Phase.STALE_ANCHOR) return EngineReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
         val head = snapshot.readableHead ?: return EngineReading.Syncing
-        val pending = CompletableDeferred<EngineReading<T>>()
-        val running = proofsLock.withLock {
-            proofs[key]?.let { (provenAtHead, reading) ->
-                if (head - provenAtHead in 0 until keptForHeads(reading.value)) return reading
+        while (true) {
+            val pending = CompletableDeferred<EngineReading<T>?>()
+            val running = proofsLock.withLock {
+                proofs[key]?.let { (provenAtHead, reading) ->
+                    if (head - provenAtHead in 0 until keptForHeads(reading.value)) return reading
+                }
+                inFlight[key]?.takeIf { (at, _) -> head - at in 0 until sharedForHeads }?.second ?: run {
+                    inFlight[key] = head to pending
+                    null
+                }
             }
-            inFlight[key]?.takeIf { (at, _) -> head - at in 0 until sharedForHeads }?.second ?: run {
-                inFlight[key] = head to pending
-                null
+            if (running != null) {
+                // Null: the subscriber that made it was cancelled midway, which says nothing of the
+                // fact. This one makes the read itself, or joins whoever has started it since.
+                running.await()?.let { return it }
+                continue
             }
-        }
-        if (running != null) return running.await()
-        // Unproven unless the read completes: a waiter is never left without an answer.
-        var reading: EngineReading<T> = UNPROVEN
-        try {
-            reading = prove(chain, key, head)
-            return reading
-        } finally {
-            withContext(NonCancellable) {
-                proofsLock.withLock { if (inFlight[key]?.second === pending) inFlight.remove(key) }
+            // Null unless the read completes: a waiter is never left without an answer.
+            var reading: EngineReading<T>? = null
+            try {
+                reading = prove(chain, key, head)
+                return reading
+            } finally {
+                withContext(NonCancellable) {
+                    proofsLock.withLock { if (inFlight[key]?.second === pending) inFlight.remove(key) }
+                }
+                pending.complete(reading)
             }
-            pending.complete(reading)
         }
     }
 

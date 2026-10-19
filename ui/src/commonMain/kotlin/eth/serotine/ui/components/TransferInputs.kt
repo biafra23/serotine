@@ -336,6 +336,15 @@ internal const val PROMPT_TIMED_OUT =
     "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the quote " +
         "was made again: check it, then sign."
 
+/**
+ * What a review says under its unlock once the Safe's check before a signature used up what was
+ * left of the quote's minute (less the prompt's least time, for the prompt) and the quote was
+ * made again: no key was asked for, and no prompt shown.
+ */
+internal const val CHECK_TOOK_THE_TIME =
+    "Checking the Safe on chain took the time the quote had left, so nothing was signed and the quote was made " +
+        "again: check it, then sign."
+
 /** What a balance not read yet shows. */
 internal const val CHECKING = "Checking…"
 

@@ -155,6 +155,15 @@ class SafeProposeScreenTest {
     }
 
     @Test
+    fun whileTheSafeIsCheckedBeforeSigningItSaysSoAndBackStopsIt() {
+        show(review.copy(signing = true, checking = true))
+
+        rule.onNodeWithText("Checking the Safe on chain…").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("Back").assertIsEnabled().performClick()
+        assertEquals(listOf("edit"), events)
+    }
+
+    @Test
     fun aSafeThatCannotProposeSaysWhy() {
         show(SafeProposeUiState.CannotPropose("Sepolia", "No owner of this Safe has its key on this device."))
 

@@ -13,6 +13,7 @@ import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AddressKind
+import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.Signing
@@ -20,12 +21,18 @@ import eth.serotine.domain.repository.SigningRequestDecoding
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 class SafeTxSigningTest {
 
@@ -110,8 +117,107 @@ class SafeTxSigningTest {
         world.kind.value = KindReading.Syncing
         assertEquals(SafeTxRefusal.Syncing, refusal(world.request(usdcTransfer(4))))
         world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
-        assertEquals(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN), refusal(world.request(usdcTransfer(4))))
+        assertEquals(SafeTxRefusal.SafeUnavailable(ReadUnavailable.UNPROVEN), refusal(world.request(usdcTransfer(4))))
         assertEquals(emptyList(), world.queue.requests.value)
+    }
+
+    @Test
+    fun aSafeThatCouldNotBeVerifiedThisTimeIsWaitedOutForItsNextReading() = runTest {
+        val request = world.request(usdcTransfer(4), world.carol)
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        // The reading proves the Safe at its next poll, eight seconds on.
+        launch {
+            delay(8.seconds)
+            world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 101)
+        }
+
+        val imported = assertIs<SigningRequestImport.Imported>(import(world.codec.encode(request)))
+
+        assertEquals(101, imported.safe.blockNumber)
+        assertEquals(8_000, currentTime, "imported once the Safe was proven, not before")
+        assertEquals(listOf(request), world.queue.requests.value)
+    }
+
+    @Test
+    fun aSafeStillUnprovenOnceTheBudgetIsSpentIsRefusedAsTheSafesCheck() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        assertEquals(
+            SigningRequestImport.Refused(SafeTxRefusal.SafeUnavailable(ReadUnavailable.UNPROVEN)),
+            import(world.codec.encode(world.request(usdcTransfer(4)))),
+        )
+        assertEquals(SAFE_CHECK_BUDGET.inWholeMilliseconds, currentTime)
+        assertEquals(emptyList(), world.queue.requests.value)
+    }
+
+    @Test
+    fun aCheckOutlastsTheAdaptersOwnRetriesAndSeesTheReadingAfterThem() = runTest {
+        // As the engine adapter answers a slow Safe: its code proven (2 s), then its own retries
+        // for its whole 20 s budget, unproven; the next poll 4 s on, and a read of 12 s that is.
+        val slow = object : AddressKinds {
+            override fun observeKind(address: Address): Flow<KindReading> = flow {
+                delay(22.seconds)
+                emit(KindReading.Unavailable(ReadUnavailable.UNPROVEN))
+                delay(16.seconds)
+                emit(KindReading.Verified(AddressKind.Safe(world.state), 101))
+            }
+        }
+        val importing =
+            ImportSigningRequest(world.codec, ObserveSafe(slow, world.accounts), world.recovery, world.queue)
+        val request = world.request(usdcTransfer(4), world.carol)
+
+        val imported = assertIs<SigningRequestImport.Imported>(importing(world.codec.encode(request)))
+
+        assertEquals(101, imported.safe.blockNumber)
+        assertEquals(38_000, currentTime, "the wait did not cut off the read it was waiting on")
+    }
+
+    @Test
+    fun aSignatureIsMadeAgainstTheStateItsCheckVerifiedNotAReadingSince() = runTest {
+        val request = world.request(usdcTransfer(4))
+        val checked = assertIs<SafeTxSignCheck.Ready>(sign.check(request, world.alice.address))
+        // The Safe's reading changes after the check: the signature still stands on what was checked.
+        world.state = world.state.copy(nonce = 9)
+
+        val signed = assertIs<SafeTxSigning.Signed>(sign.sign(checked, unlock))
+
+        assertEquals(4, checked.state.nonce)
+        assertEquals(listOf(world.alice.address), signed.request.signers)
+        assertEquals(listOf(world.alice.address to request.hash), world.signer.asked)
+    }
+
+    @Test
+    fun aCheckThatRefusesAsksForNoKey() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.NO_ENGINE)
+
+        assertEquals(
+            SafeTxSignCheck.Refused(SafeTxRefusal.SafeUnavailable(ReadUnavailable.NO_ENGINE)),
+            sign.check(world.request(usdcTransfer(4)), world.alice.address),
+        )
+        assertEquals(emptyList(), world.signer.asked)
+    }
+
+    @Test
+    fun noEngineAndAnAnchorTheLightClientRefusesAreAnsweredAtOnce() = runTest {
+        val text = world.codec.encode(world.request(usdcTransfer(4)))
+        for (reason in listOf(ReadUnavailable.NO_ENGINE, ReadUnavailable.STALE_ANCHOR)) {
+            world.kind.value = KindReading.Unavailable(reason)
+            assertEquals(SigningRequestImport.Refused(SafeTxRefusal.SafeUnavailable(reason)), import(text))
+        }
+        assertEquals(0, currentTime, "asking again would change nothing: not waited for")
+    }
+
+    @Test
+    fun theCheckBeforeSigningWaitsOutAnUnprovenReadingToo() = runTest {
+        val request = world.request(usdcTransfer(4))
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        launch {
+            delay(4.seconds)
+            world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 101)
+        }
+
+        assertIs<SafeTxSigning.Signed>(sign(request, world.alice.address, unlock))
+        assertEquals(4_000, currentTime)
     }
 
     @Test
@@ -268,6 +374,33 @@ class SafeTxSigningTest {
             sign(world.request(usdcTransfer(4)), world.alice.address, unlock),
         )
         assertEquals(emptyList(), world.queue.requests.value)
+    }
+
+    @Test
+    fun aProposalSaysWhenTheSafeWasCheckedBeforeItsBalanceIsRead() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        launch {
+            delay(10.seconds)
+            world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 101)
+        }
+        var checkedAt: Long? = null
+
+        assertIs<SafeTxProposing.Proposed>(
+            propose(world.safe, world.recipient, TransferAsset.Native, UInt256.ONE) { checkedAt = currentTime },
+        )
+
+        assertEquals(10_000, checkedAt, "the proposal's age runs from here, after the Safe's wait")
+    }
+
+    @Test
+    fun aSignatureCheckGivenLessTimeThanTheBudgetGivesUpInIt() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        assertEquals(
+            SafeTxSignCheck.Refused(SafeTxRefusal.SafeUnavailable(ReadUnavailable.UNPROVEN)),
+            sign.check(world.request(usdcTransfer(4)), world.alice.address, budget = 7.seconds),
+        )
+        assertEquals(7_000, currentTime)
     }
 
     @Test

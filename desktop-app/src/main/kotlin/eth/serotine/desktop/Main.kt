@@ -96,8 +96,12 @@ private fun openWallet(dataDir: File) {
     // Before the window: on a Mac with no wallet yet this asks the Secure Enclave once.
     val hardware = desktopHardwareSecret(keys.path)
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
-    // background; without its host library on java.library.path, balances say so.
-    val node = MyotisNode.start(Network.SEPOLIA, dataDir.resolve("myotis"))
+    // background; without its host library on java.library.path, balances say so. The adapters'
+    // diagnostics go to stderr only in a development run (`:desktop-app:run` sets the property;
+    // no installer does): the desktop's debug build.
+    val debugLog: ((String) -> Unit)? =
+        if (System.getProperty(DEBUG_LOG_PROPERTY) == "true") { line -> System.err.println(line) } else null
+    val node = MyotisNode.start(Network.SEPOLIA, dataDir.resolve("myotis"), debugLog = debugLog)
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
     val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
@@ -194,6 +198,9 @@ private fun openWallet(dataDir: File) {
  * MyotisNode.shutdown() itself gives a boot in progress, so that boot is not cut off mid-start.
  */
 private const val ENGINE_SHUTDOWN_WAIT_MS = 20_000L
+
+/** The system property, `true` in a development run only, that turns the adapters' diagnostics on. */
+private const val DEBUG_LOG_PROPERTY = "serotine.debugLog"
 
 /**
  * Keeps [directory], the key store's envelopes, out of backups (docs/keys-and-signing.md,

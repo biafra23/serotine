@@ -67,6 +67,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.AddressLine
+import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.GAS_TERMS_WARNING
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.NotSentFields
@@ -82,6 +83,7 @@ import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
 import kotlinx.coroutines.Dispatchers
@@ -205,8 +207,12 @@ fun SafeTxScreen(
     val quoting = (state as? SafeTxUiState.Overview)?.quoting == true
     // In a step, back is to the overview, until bytes may be out there: after a broadcast no peer
     // answered, only Try again may send them, so back leaves the screen. While a signature runs,
-    // back waits for it: leaving would not stop it, only hide what it did.
-    val busy = review?.signing == true || signing?.signing == true
+    // back waits for it: leaving would not stop it, only hide what it did. While the Safe is still
+    // checked before a signature, nothing is signed yet, and back stops the check.
+    val busy = review?.signing == true || (signing?.signing == true && !signing.checking)
+    // A check of the Safe can take up to 45 s: a screen that times out meanwhile is a screen left,
+    // which stops a check before Sign.
+    if (signing?.checking == true || quoting) KeepScreenOn()
     val leaves = review?.notSent?.canRetry == true
     val inStep = review != null || signing != null || quoting
     BackHandler(enabled = inStep) {
@@ -363,7 +369,8 @@ private fun OverviewContent(
         if (state.quoting) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                Text("Checking on chain…")
+                // Approve and Execute quote from the Safe's verified state: its check first.
+                Text(CHECKING_SAFE)
             }
         }
         TextButton(onClick = { confirmRemove = true }, enabled = !state.quoting) {
@@ -500,7 +507,7 @@ private fun SigningContent(state: SafeTxUiState.Signing, actions: SafeTxActions)
             canSign = state.canSign,
             canSignWithBiometrics = state.canSignWithBiometrics,
             signLabel = "Sign",
-            signingLabel = "Signing…",
+            signingLabel = if (state.checking) CHECKING_SAFE else "Signing…",
             onPasswordChange = actions.onPasswordChange,
             onSign = actions.onConfirm,
             onSignWithBiometrics = actions.onConfirmWithBiometrics,

@@ -75,6 +75,8 @@ sealed interface SafeTxUiState {
         val owner: String,
         val unlock: UnlockStep,
         val signing: Boolean = false,
+        /** While [signing], the Safe is still checked on chain: no key is asked for yet, and Back stops it. */
+        val checking: Boolean = false,
     ) : SafeTxUiState {
 
         /** Something is typed and nothing runs: the password may sign. */

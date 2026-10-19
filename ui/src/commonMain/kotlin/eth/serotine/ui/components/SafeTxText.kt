@@ -252,8 +252,20 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
         "recognises none yet (#54), so it does not sign, approve or execute it."
     SafeTxRefusal.Syncing -> "The light client is not synced yet: try again in a moment."
     is SafeTxRefusal.Unavailable -> unavailableText(refusal.reason)
+    is SafeTxRefusal.SafeUnavailable ->
+        if (refusal.reason == ReadUnavailable.UNPROVEN) SAFE_UNPROVEN else unavailableText(refusal.reason)
     is SafeTxRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)
 }
+
+/**
+ * What a step says while it checks the Safe on chain (Import, Sign, Propose's signature, and
+ * Approve and Execute's quote): a check that waits out a reading that could not be verified for
+ * the next one, up to 45 s. The display is kept on meanwhile ([eth.serotine.ui.platform.KeepScreenOn]).
+ */
+internal const val CHECKING_SAFE = "Checking the Safe on chain…"
+
+/** Why a check of the Safe itself came to nothing this time, after it was tried again for a while. */
+internal const val SAFE_UNPROVEN = "The Safe's owners and nonce could not be verified this time: try again."
 
 /** Why the transaction an account here would send was not quoted, display-ready. */
 internal fun callRefusalText(refusal: CallRefusal, network: Network): String = when (refusal) {

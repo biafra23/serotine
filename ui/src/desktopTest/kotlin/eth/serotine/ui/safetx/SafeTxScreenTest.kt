@@ -260,6 +260,35 @@ class SafeTxScreenTest {
     }
 
     @Test
+    fun whileTheSafeIsCheckedBeforeSigningItSaysSoAndBackStopsIt() {
+        show(
+            SafeTxUiState.Signing(
+                network = "Sepolia",
+                safe = overview.safe,
+                action = action,
+                nonce = overview.nonce,
+                hash = hash,
+                owners = listOf(SignerChoice("Daily", daily)),
+                owner = daily,
+                unlock = UnlockStep(),
+                signing = true,
+                checking = true,
+            ),
+        )
+
+        rule.onNodeWithText("Checking the Safe on chain…").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("Back").assertIsEnabled().performClick()
+        assertEquals(listOf("step back"), events)
+    }
+
+    @Test
+    fun whileApprovalOrExecutionIsQuotedTheSafesCheckIsSaid() {
+        show(overview.copy(quoting = true))
+
+        rule.onNodeWithText("Checking the Safe on chain…").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun aTransactionNoLongerQueuedSaysSo() {
         show(SafeTxUiState.NotQueued("Sepolia", "This transaction is not in this device's queue."))
 

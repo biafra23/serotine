@@ -335,10 +335,17 @@ upgrades*).
     - Import a request (above the rows): the text another owner's Share
       request gave, pasted, then `ImportSigningRequest`, for this Safe only (a
       request for another Safe is refused, `SafeTxRefusal.OtherSafe`, before
-      anything is kept). Every refusal is said under the field; one that
-      passes is queued and 17 opens for it, in place of the import. Scanning
-      its QR code is not built: no camera is wired in yet, and the screen says
-      to paste the text.
+      anything is kept). The Safe's check says "Checking the Safe on
+      chain…" while it runs: a reading that could not be verified this time
+      is waited out for the next one, for up to 45 s, and one still
+      unproven then says "The Safe's owners and nonce could not be verified
+      this time: try again." (`SafeTxRefusal.SafeUnavailable`; the checks
+      before Sign, Approve, Execute and a proposal wait the same way,
+      docs/embedding-myotis.md). Every refusal is said under the field; one
+      that passes is queued and 17 opens for it, in place of the import,
+      saying "Added to ‹Safe›'s queue on this device." until a step begins.
+      Scanning its QR code is not built: no camera is wired in yet, and the
+      screen says to paste the text.
     - Send from a Safe (the header's button and the account menu, both only
       while an owner of it is held here) proposes a transfer
       (`ProposeSafeTx`): 7's form, from the Safe, with no fee to choose —
@@ -355,7 +362,12 @@ upgrades*).
       before it, and the Safe's balance before, what those move, and after,
       with its block. It is proposed again on Refresh, when the screen is shown
       again, and at the tap that signs it when it is over a minute old, as 8's
-      quote is. An owner held here, chosen when there are several, signs it
+      quote is; its minute runs from after the proposal's Safe check. The
+      tap that signs checks the Safe again first, within what is left of
+      that minute (less the prompt's 15 s for the biometric prompt): a check
+      that outlasts it signs nothing and proposes again, saying "Checking the
+      Safe on chain took the time the quote had left…". An owner held here,
+      chosen when there are several, signs it
       (`SignSafeTx`, the password or the biometric prompt as on 8); it is then
       queued and 17 opens for it, in place of the proposal. Nothing is queued
       until an owner held here signs it, so a proposal given up leaves no
@@ -373,9 +385,9 @@ upgrades*).
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
     - A change that weakens the Safe carries a warning wherever it is shown
-      (16's row, 17, the Sign step, the biometric prompt): a module enabled
-      (it moves funds without the owners) or disabled, a guard set or
-      removed (its limits, allowlist or delay stop), a fallback handler set
+      (16's row, 17, the Sign step, the biometric prompt): a module disabled,
+      a guard set or removed (its limits, allowlist or delay stop), a
+      fallback handler set
       (it answers EIP-1271 for the Safe: one that accepts every signature
       lets anyone spend what the Safe approved, through Permit2, permits or
       orders). A fallback handler set that is not the pinned canonical
@@ -461,15 +473,26 @@ upgrades*).
       any, and the refusal; then each owner's row (blockie, name, "This
       device", its stand and its block), the threshold and the
       confirmations, read again on Check again, whenever the request's
-      signatures change and when the screen is shown again.
+      signatures change and when the screen is shown again. That reading
+      checks the Safe as a one-shot check does: a reading that could not be
+      verified this time is waited out for the next one, for up to 45 s, the
+      rows saying "Reading the owners and their approvals…" meanwhile.
     - Share request opens the request's text (`EncodeSigningRequest`) as one
       QR code when it fits one (else it says to share the text), with Copy
       text and, where the platform has a share sheet, Share. It is offered
       only while the Safe is verified: what is shared then carries only
       signatures its current owners made, checked here.
     - Sign opens a step: the owner held here who signs, when there are
-      several, and the unlock of 8. The signed request is queued; one the
-      queue cannot save stays on the screen, to be shared before it is left.
+      several, and the unlock of 8. The tap that signs checks the Safe first
+      ("Checking the Safe on chain…", the same wait), and only once it
+      passes is the key asked for, the biometric prompt included; leaving
+      the screen or Back during the check stops it, so no prompt comes up
+      over another screen. The signature is made against the state that
+      check verified. The signed request is queued; one the queue cannot
+      save stays on the screen, to be shared before it is left. Approve on
+      chain and Execute check the Safe as their quote is made, saying the
+      same; the quote's minute runs from after that check. While any of
+      these checks shows, the display is kept on.
     - Approve on chain, offered while the confirmations fall short, and
       Execute review the EOA transaction as 8 reviews a transfer: the
       account that sends it (an owner held here first; for Execute, any

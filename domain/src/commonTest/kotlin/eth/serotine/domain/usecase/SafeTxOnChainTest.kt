@@ -13,19 +13,25 @@ import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.hexToBytes
+import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.ApprovalReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.Unlock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.time.Duration.Companion.seconds
 
 class SafeTxOnChainTest {
 
@@ -56,6 +62,21 @@ class SafeTxOnChainTest {
     private val readOwners = ReadSafeTxOwners(world.observeSafe, world.recovery, world.approvals, Network.SEPOLIA)
 
     @Test
+    fun theOwnersStandWaitsOutAnUnprovenReadingOfTheSafeForTheNextOne() = runTest {
+        val request = world.request(payment, world.alice.address)
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        launch {
+            delay(12.seconds)
+            world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 101)
+        }
+
+        val reading = assertIs<SafeTxOwnersReading.Read>(readOwners(request))
+
+        assertEquals(101, reading.blockNumber)
+        assertEquals(12_000, currentTime, "read once the Safe was proven, not before")
+    }
+
+    @Test
     fun eachOwnerStandsAsItsSignatureOrItsApprovalOnChainSays() = runTest {
         val request = world.request(payment, world.alice.address, world.stranger)
         world.approvals.approved[world.bob.address] = ApprovalReading.Read(approved = true, blockNumber = 120)
@@ -79,6 +100,28 @@ class SafeTxOnChainTest {
         assertEquals(3, reading.confirmationsExecutedBy(world.carol))
         assertEquals(2, reading.confirmationsExecutedBy(world.alice.address), "it signed already")
         assertEquals(2, reading.confirmationsExecutedBy(world.stranger), "no owner")
+    }
+
+    @Test
+    fun approvalAndExecutionQuotesSayWhenTheSafeWasCheckedBeforeTheirFiguresAreRead() = runTest {
+        world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        launch {
+            delay(10.seconds)
+            world.kind.value = KindReading.Verified(AddressKind.Safe(world.state), 101)
+        }
+        val checked = mutableListOf<Long>()
+
+        assertIs<SafeApprovalQuoting.Quoted>(
+            quoteApproval(world.request(payment), world.alice.address, FeeLevel.NORMAL) { checked += currentTime },
+        )
+        world.inputs.simulation = Simulation.Succeeded(executed, 100)
+        assertIs<SafeExecutionQuoting.Quoted>(
+            quoteExecution(world.request(payment, world.carol), world.alice.address, FeeLevel.NORMAL) {
+                checked += currentTime
+            },
+        )
+
+        assertEquals(listOf(10_000L, 10_000L), checked, "each quote's age runs from after the Safe's wait")
     }
 
     @Test

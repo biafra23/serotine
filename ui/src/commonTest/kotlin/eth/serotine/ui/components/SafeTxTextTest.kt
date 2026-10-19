@@ -143,6 +143,15 @@ class SafeTxTextTest {
             "A figure could not be verified this time: try again.",
             safeTxRefusalText(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN), Network.SEPOLIA),
         )
+        // The Safe's own check names what it could not verify; a light client that cannot verify at all says that.
+        assertEquals(
+            "The Safe's owners and nonce could not be verified this time: try again.",
+            safeTxRefusalText(SafeTxRefusal.SafeUnavailable(ReadUnavailable.UNPROVEN), Network.SEPOLIA),
+        )
+        assertEquals(
+            "There is no light client on this device, so nothing can be verified.",
+            safeTxRefusalText(SafeTxRefusal.SafeUnavailable(ReadUnavailable.NO_ENGINE), Network.SEPOLIA),
+        )
         assertEquals(
             "The fee could not be verified this time: try again.",
             safeTxRefusalText(

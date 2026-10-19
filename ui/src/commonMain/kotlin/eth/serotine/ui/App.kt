@@ -365,7 +365,10 @@ private fun Destinations(
                 SafeImportRoute(
                     viewModel = viewModel { graph.safeImportViewModel(address) },
                     onBack = { navController.popBackStack(SAFE_IMPORT_ROUTE, inclusive = true) },
-                    onImported = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_IMPORT_ROUTE) },
+                    // Checked and queued: the transaction's screen, which says where it went.
+                    onImported = { hash ->
+                        navController.openSafeTx(address, hash, replacing = SAFE_IMPORT_ROUTE, imported = true)
+                    },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_IMPORT_ROUTE, inclusive = true) }
@@ -377,7 +380,11 @@ private fun Destinations(
                 ?.let(Digest::parse)
             if (address != null && hash != null) {
                 SafeTxRoute(
-                    viewModel = viewModel { graph.safeTxViewModel(address, hash) },
+                    // Said once, by the ViewModel this entry makes first: not again after a restore.
+                    viewModel = viewModel {
+                        val imported = entry.savedStateHandle.remove<Boolean>(IMPORTED) == true
+                        graph.safeTxViewModel(address, hash, imported)
+                    },
                     onBack = { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) },
                     // Back from the status goes where the transaction was opened from, not to a signed review.
                     onSent = { sent ->
@@ -460,14 +467,21 @@ private fun NavController.importRequest(safe: Address) {
 /**
  * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe at [safe]; in place of the
  * destination [replacing] when set (the proposal or import that led to it), so back from it returns
- * to where that was opened from.
+ * to where that was opened from. [imported] when an import has just queued it: the screen says so.
  */
-private fun NavController.openSafeTx(safe: Address, hash: String, replacing: String? = null) {
+private fun NavController.openSafeTx(
+    safe: Address,
+    hash: String,
+    replacing: String? = null,
+    imported: Boolean = false,
+) {
     if (replacing == null && currentDestination?.route == SAFE_TX_ROUTE) return
     val digest = Digest.parse(hash) ?: return
     navigate("${Destination.SAFE}/${safe.hex}/${Destination.SAFE_TX}/0x${digest.hex}") {
         if (replacing != null) popUpTo(replacing) { inclusive = true }
     }
+    // The entry just opened, before it is first drawn: its ViewModel takes the flag when it is made.
+    if (imported) currentBackStackEntry?.savedStateHandle?.set(IMPORTED, true)
 }
 
 /**
@@ -544,6 +558,9 @@ private const val ASSET = "asset"
 
 /** The transfer status's and a Safe transaction's route argument: the transaction hash. */
 private const val HASH = "hash"
+
+/** Set on a Safe transaction's entry that an import has just queued, until its ViewModel takes it. */
+private const val IMPORTED = "imported"
 
 /** Send from an account, with a token chosen or not. */
 private const val SEND_ROUTE = "${Destination.SEND}/{$ADDRESS}?$ASSET={$ASSET}"

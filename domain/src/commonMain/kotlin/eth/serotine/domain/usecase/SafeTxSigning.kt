@@ -36,7 +36,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Why a Safe transaction was not imported, signed, approved or executed (docs/wallet-ux.md,
@@ -157,6 +161,13 @@ sealed interface SafeTxRefusal {
     /** A verified figure could not be had right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : SafeTxRefusal
 
+    /**
+     * The Safe itself — its owners, threshold and nonce, as its code and storage prove them — could
+     * not be verified right now, for [reason]: a one-shot check ([ObserveSafe.check]) that waited
+     * out its budget for an unproven reading, or met a light client that cannot verify at all.
+     */
+    data class SafeUnavailable(val reason: ReadUnavailable) : SafeTxRefusal
+
     /** The transaction the owner account would send was not quoted: [refusal]. */
     data class NotQuoted(val refusal: CallRefusal) : SafeTxRefusal
 }
@@ -165,8 +176,10 @@ sealed interface SafeTxRefusal {
  * A Safe transaction as this wallet shows it: [request], what it does as decoded here from its
  * raw fields ([action]), and the gas and refund terms it carries beside its call ([gasTerms],
  * null: none). A [delegateCall] is marked as such. [refusal] says why this wallet will not sign,
- * approve or execute it, before anyone asks: a delegate call, or gas terms (null: neither).
- * Made only by [of], so what is shown is always what the request's fields decode to.
+ * approve or execute it, before anyone asks ([unsignable]): a delegate call, gas terms, a call of
+ * the Safe itself not decoded exactly as one of its settings changes or the rejection, a fallback
+ * handler set that is not pinned, or a module enabled (null: none of them). Made only by [of], so
+ * what is shown is always what the request's fields decode to.
  */
 @ConsistentCopyVisibility
 data class DecodedSafeTx private constructor(
@@ -250,13 +263,47 @@ internal sealed interface SafeCheck {
     data class Refused(val refusal: SafeTxRefusal) : SafeCheck
 }
 
-/** The Safe at [safe] as the light client proves it now. */
-internal suspend fun ObserveSafe.check(safe: Address): SafeCheck = when (val reading = this(safe).first()) {
-    is SafeReading.Verified -> SafeCheck.Verified(reading)
-    SafeReading.Checking -> SafeCheck.Refused(SafeTxRefusal.Syncing)
-    SafeReading.NotASafe -> SafeCheck.Refused(SafeTxRefusal.NotASafe)
-    is SafeReading.Unavailable -> SafeCheck.Refused(SafeTxRefusal.Unavailable(reading.reason))
+/**
+ * How long a one-shot check of a Safe ([check]) waits for a reading that could not be verified
+ * to be made again. The engine adapter retries a failed proof and a read the head moved under
+ * for up to 20 s itself (`VerifiedAddressKinds.SAFE_READ_BUDGET`, the code's proof included), and
+ * the reading is made again at the next poll (4 s on): this wait outlasts both with room for that
+ * next read, so it normally does not cut off the very read it is waiting on. Normally, not
+ * always: the adapter checks its 20 s only between blocking engine calls, so a slow call runs past
+ * it; the poll reads the engine's state before it reads the Safe, outside those 20 s; and this
+ * wait cannot end before a blocked engine (JNA) call returns. A caller with less time than this
+ * passes its own budget. Public so that the engine adapter's tests hold its budget against this.
+ */
+val SAFE_CHECK_BUDGET: Duration = 45.seconds
+
+/**
+ * The Safe at [safe] as the light client proves it now, for a one-shot check: an import, the
+ * checks before Sign, Approve, Execute and a proposal, and the owners' stand on a transaction its
+ * screen reads ([ReadSafeTxOwners], on opening, on Check again and after a signature, which so
+ * shows "Reading the owners…" for as long). A reading that could not be verified this
+ * time ([ReadUnavailable.UNPROVEN]: a proof a peer did not deliver, a read the head kept moving
+ * under) is waited out for the next one the reading makes, for up to [budget]; the first other
+ * answer stands, the light client's syncing included. One that cannot change by asking again — no
+ * engine ([ReadUnavailable.NO_ENGINE]), an anchor it refuses ([ReadUnavailable.STALE_ANCHOR]), a
+ * read this engine will not make ([ReadUnavailable.REFUSED]) — is answered at once. Still
+ * unproven after [budget], it is [SafeTxRefusal.SafeUnavailable]. Only verified readings are ever
+ * taken: the wait changes how often the chain is asked, never what is believed.
+ */
+internal suspend fun ObserveSafe.check(safe: Address, budget: Duration = SAFE_CHECK_BUDGET): SafeCheck {
+    val reading = withTimeoutOrNull(budget) { this@check(safe).firstOrNull { !it.unproven } } ?: UNPROVEN_SAFE
+    return when (reading) {
+        is SafeReading.Verified -> SafeCheck.Verified(reading)
+        SafeReading.Checking -> SafeCheck.Refused(SafeTxRefusal.Syncing)
+        SafeReading.NotASafe -> SafeCheck.Refused(SafeTxRefusal.NotASafe)
+        is SafeReading.Unavailable -> SafeCheck.Refused(SafeTxRefusal.SafeUnavailable(reading.reason))
+    }
 }
+
+private val UNPROVEN_SAFE = SafeReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+/** Whether this reading could not be verified this time, and the next one may be. */
+private val SafeReading.unproven: Boolean
+    get() = this == UNPROVEN_SAFE
 
 /**
  * [request]'s signatures that are current owners' (of [owners]) and recover to them over the
@@ -293,6 +340,9 @@ internal fun SignatureRecovery.validOnly(request: SigningRequest, owners: List<A
  * queued behind the ones before it); its hash is computed here from the raw fields; and every
  * signature it carries is a current owner's and recovers to that owner over that hash
  * ([SignatureRecovery]). Anything else is refused with the reason, and nothing of it is kept.
+ * The Safe is checked once, as a one-shot check ([check]): a reading that could not be verified
+ * this time is waited out for the next one, up to [SAFE_CHECK_BUDGET], and one still unproven then
+ * is [SafeTxRefusal.SafeUnavailable].
  *
  * What it does is decoded here from the fields ([DecodedSafeTx]); a delegate call or gas terms
  * are accepted for display, marked as such, and never signed here. A request that passes is
@@ -373,6 +423,11 @@ class EncodeSigningRequest(private val codec: SigningRequestCodec) {
  * refused (docs/wallet-ux.md, screen 17). The signature is checked to recover to [owner] before
  * it is kept, and saved to the queue with the request's other signatures that are current
  * owners' and recover to them ([SafeTxQueue]). On [network] only.
+ *
+ * Two steps, so that a caller can let the first be cancelled and not the second: [check] asks
+ * the chain (it may wait out an unproven reading of the Safe, [ObserveSafe.check]) and asks for
+ * no key; [sign] signs and queues against exactly the state that check verified, and is the step
+ * a caller runs to its end. [invoke] is both, one after the other.
  */
 class SignSafeTx(
     private val signer: Signer,
@@ -381,11 +436,29 @@ class SignSafeTx(
     private val queue: SafeTxQueue,
     private val network: Network,
 ) {
-    suspend operator fun invoke(request: SigningRequest, owner: Address, unlock: Unlock): SafeTxSigning {
-        fun refused(refusal: SafeTxRefusal) = SafeTxSigning.Refused(refusal)
+    suspend operator fun invoke(request: SigningRequest, owner: Address, unlock: Unlock): SafeTxSigning =
+        when (val checked = check(request, owner)) {
+            is SafeTxSignCheck.Ready -> sign(checked, unlock)
+            is SafeTxSignCheck.Refused -> SafeTxSigning.Refused(checked.refusal)
+        }
+
+    /**
+     * Whether [owner] may sign [request] now, as the Safe's verified state says: the network, what
+     * it does, the Safe's nonce and owners, the threshold it would leave, and whether [owner]'s
+     * signature is among its valid ones already. Nothing is signed, and no key is asked for. The
+     * Safe's check waits out an unproven reading for up to [budget] (at most [SAFE_CHECK_BUDGET]):
+     * a caller whose signature has a deadline (a review's minute, a prompt's) passes what is left
+     * of it, and an unproven Safe is then [SafeTxRefusal.SafeUnavailable] in time.
+     */
+    suspend fun check(
+        request: SigningRequest,
+        owner: Address,
+        budget: Duration = SAFE_CHECK_BUDGET,
+    ): SafeTxSignCheck {
+        fun refused(refusal: SafeTxRefusal) = SafeTxSignCheck.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
-        val state = when (val check = observeSafe.check(request.safe)) {
+        val state = when (val check = observeSafe.check(request.safe, budget.coerceAtMost(SAFE_CHECK_BUDGET))) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
@@ -396,21 +469,52 @@ class SignSafeTx(
         // owner's name neither stands for it nor keeps it from signing.
         val valid = recovery.valid(request, state.owners)
         if (valid.any { it.owner == owner }) return refused(SafeTxRefusal.AlreadySigned(owner))
+        return SafeTxSignCheck.Ready(request, owner, state, valid)
+    }
+
+    /**
+     * Signs [checked]'s request as its owner with [unlock], and queues it with the valid
+     * signatures that check found: against the Safe's state it verified, not read again.
+     */
+    suspend fun sign(checked: SafeTxSignCheck.Ready, unlock: Unlock): SafeTxSigning {
+        val request = checked.request
+        val owner = checked.owner
         val signature = when (val signing = signer.sign(owner, request.hash, unlock)) {
             is Signing.Signed -> signing.signature
             else -> return SafeTxSigning.NotSigned(signing)
         }
         // The key store's signature is checked like a co-signer's: one that recovers to another
         // address is never kept, nor shared.
-        if (recovery.recover(request.hash, signature) != owner) return refused(SafeTxRefusal.BadSignature(owner))
+        if (recovery.recover(request.hash, signature) != owner) {
+            return SafeTxSigning.Refused(SafeTxRefusal.BadSignature(owner))
+        }
         // What is queued is checked: the carried signatures that count, with this one.
-        val signed = SigningRequest.of(request.network, request.safe, request.tx, valid)
+        val signed = SigningRequest.of(request.network, request.safe, request.tx, checked.valid)
             .withSignatures(listOf(SafeSignature.Ecdsa(owner, signature)))
-        queue.prune(request.safe, state.nonce)
+        queue.prune(request.safe, checked.state.nonce)
         val saved = queue.save(signed)
         // Shown and shared with what the Safe accepts now of what was queued here before.
-        return SafeTxSigning.Signed(recovery.validOnly(saved ?: signed, state.owners), saved = saved != null)
+        return SafeTxSigning.Signed(recovery.validOnly(saved ?: signed, checked.state.owners), saved = saved != null)
     }
+}
+
+/** What [SignSafeTx.check] came to. */
+sealed interface SafeTxSignCheck {
+
+    /**
+     * [owner] may sign [request]: the Safe's [state] as just verified, and the request's
+     * signatures that are valid against it ([valid]). Made only by [SignSafeTx.check].
+     */
+    @ConsistentCopyVisibility
+    data class Ready internal constructor(
+        val request: SigningRequest,
+        val owner: Address,
+        val state: SafeState,
+        val valid: List<SafeSignature.Ecdsa>,
+    ) : SafeTxSignCheck
+
+    /** Not to be signed: [refusal]. */
+    data class Refused(val refusal: SafeTxRefusal) : SafeTxSignCheck
 }
 
 /** The outcome of [SignSafeTx]. */
@@ -457,7 +561,18 @@ class ProposeSafeTx(
     private val queue: SafeTxQueue,
     private val network: Network,
 ) {
-    suspend operator fun invoke(safe: Address, to: Address, asset: TransferAsset, amount: UInt256): SafeTxProposing =
+    /**
+     * Proposes [amount] of [asset] from [safe] to [to]. [safeChecked] is called once the Safe is
+     * verified ([ObserveSafe.check], which may wait out an unproven reading), before its balance,
+     * its queue and the run are read: where a review measures the proposal's age from.
+     */
+    suspend operator fun invoke(
+        safe: Address,
+        to: Address,
+        asset: TransferAsset,
+        amount: UInt256,
+        safeChecked: () -> Unit = {},
+    ): SafeTxProposing =
         cancellingReads {
             val token = (asset as? TransferAsset.Erc20Token)?.token
             if (to == Address.ZERO) return@cancellingReads SafeTxProposing.ToZeroAddress
@@ -467,14 +582,16 @@ class ProposeSafeTx(
             val txTo = token?.address ?: to
             val value = if (token == null) amount else UInt256.ZERO
             val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
-            val checked = async { observeSafe.check(safe) }
-            val balance = async { balanceOf(safe, token?.address) }
-            val queued = async { queue.observe(safe).first() }
-
-            val reading = when (val check = checked.await()) {
+            // The Safe first: its check may wait a while, and the balance and queue read after it are
+            // as old as the proposal is said to be.
+            val reading = when (val check = observeSafe.check(safe)) {
                 is SafeCheck.Verified -> check.reading
                 is SafeCheck.Refused -> return@cancellingReads SafeTxProposing.Refused(check.refusal)
             }
+            safeChecked()
+            val balance = async { balanceOf(safe, token?.address) }
+            val queued = async { queue.observe(safe).first() }
+
             val (before, balanceBlock) = when (val read = balance.await()) {
                 is SafeBalance.Read -> read.amount to read.blockNumber
                 is SafeBalance.Refused -> return@cancellingReads read.proposing
