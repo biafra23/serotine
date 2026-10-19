@@ -281,6 +281,29 @@ class SafeSwapViewModelTest {
     }
 
     @Test
+    fun signingAgainAfterTheSwapFailedSignsTheSwapAloneNotTheApprovalTwice() = runTest {
+        // The key store signs the approval, runs short of memory for the swap, then signs it.
+        var calls = 0
+        val signer = object : Signer {
+            override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+                if (calls++ == 1) Signing.NotEnoughMemory else Signing.Signed(world.recovery.sign(account, digest))
+        }
+        val viewModel = reviewed(signer)
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertEquals(listOf(4L), world.queue.requests.value.map { it.nonce })
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(3, calls, "the approval once, the swap twice")
+        assertEquals(listOf(4L, 5L), world.queue.requests.value.map { it.nonce })
+        assertIs<SafeSwapUiState.Proposed>(viewModel.uiState.value)
+    }
+
+    @Test
     fun aSwapProposedAgainKeepsItsPairAndAmountAndTakesTheQueuedOnesNonce() = runTest {
         holding()
         allowance = UInt256.of(100_000_000)

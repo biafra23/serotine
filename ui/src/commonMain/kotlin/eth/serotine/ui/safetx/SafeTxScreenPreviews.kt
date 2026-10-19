@@ -426,6 +426,23 @@ private fun SafeTxSwapExpiredPreview() = SafeTxPreview(
 
 @Preview
 @Composable
+private fun SafeTxSwapProposeAgainGreyedPreview() = SafeTxPreview(
+    overview.copy(
+        action = swapAction,
+        canExecute = false,
+        executeNote = "Its deadline has passed: the router refuses it, so it can never run as signed.",
+        swap = swapNow.copy(
+            warning = "Its deadline has passed: the router refuses it, so it can never run as signed. Replace it " +
+                "at its nonce: propose the swap again, or reject it.",
+            proposeAgain = true,
+            proposeAgainReason = "No owner of this Safe has its key on this device, so the swap cannot be " +
+                "proposed again from here. Import an owner's recovery phrase to propose and sign its transactions.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
 private fun SafeTxSwapNotUniswapPreview() = SafeTxPreview(
     overview.copy(
         action = swapAction,
@@ -488,4 +505,5 @@ internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxSwapExpiredPreview() },
     { SafeTxSwapNotUniswapPreview() },
     { SafeTxSwapApprovalPreview() },
+    { SafeTxSwapProposeAgainGreyedPreview() },
 )

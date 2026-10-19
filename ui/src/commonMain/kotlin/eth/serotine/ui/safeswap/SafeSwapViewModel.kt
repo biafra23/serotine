@@ -340,7 +340,8 @@ class SafeSwapViewModel(
         val owner = Address.parse(address) ?: return
         step.update { current ->
             if (current is Step.Reviewing && current.idle && owner in current.proposal.safe.ownersHeld) {
-                current.copy(owner = owner, unlock = current.unlock.copy(error = null), error = null)
+                // Another owner signs every one of them, the approval queued by the last one too.
+                current.copy(owner = owner, unlock = current.unlock.copy(error = null), error = null, signed = 0)
             } else {
                 current
             }
@@ -470,17 +471,20 @@ class SafeSwapViewModel(
     /**
      * Signs [review]'s transactions in nonce order, each with the unlock [unlockFor] gives for its
      * index, and queues each: each one's Safe check first, which leaving the screen or Back
-     * cancels, then its signature, which runs to its end. One the owner signed already (an
-     * approval signed before its swap failed) is passed over. The first that is not signed stops
-     * the rest, and says which were.
+     * cancels, then its signature, which runs to its end. A review whose approval was signed and
+     * queued by an earlier tap, its swap not, goes on from the swap: the approval is not signed
+     * twice. The first that is not signed stops the rest, and says which were.
      */
     private fun sign(review: Step.Reviewing, unlockFor: (index: Int) -> Unlock) {
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = review.unlock.copy(password = WalletPassword.EMPTY, error = null)
-        step.value = review.copy(signing = true, checking = true, signed = 0, error = null, unlock = unlocked)
+        step.value = review.copy(signing = true, checking = true, error = null, unlock = unlocked)
         val requests = review.proposal.requests
+        // What an earlier tap on this very review signed and queued already, as this owner.
+        val from = review.signed
         job = viewModelScope.launch {
-            for ((index, request) in requests.withIndex()) {
+            for (index in from until requests.size) {
+                val request = requests[index]
                 // Left after the approval was signed: the swap is not signed over another screen, and
                 // the review, made before, is proposed again when the screen is back.
                 val left = (step.value as? Step.Reviewing)?.hidden == true
@@ -505,11 +509,6 @@ class SafeSwapViewModel(
                 // Left while the check came back: nothing more is signed.
                 currentCoroutineContext().ensureActive()
                 step.update { if (it is Step.Reviewing && it.signing) it.copy(checking = false) else it }
-                val alreadySigned = SafeTxRefusal.AlreadySigned(review.owner)
-                if (checked is SafeTxSignCheck.Refused && checked.refusal == alreadySigned) {
-                    step.update { if (it is Step.Reviewing && it.signing) it.copy(signed = index + 1) else it }
-                    continue
-                }
                 val unproven = (checked as? SafeTxSignCheck.Refused)?.refusal ==
                     SafeTxRefusal.SafeUnavailable(ReadUnavailable.UNPROVEN)
                 if (checkUntil.hasPassedNow() && (checked is SafeTxSignCheck.Ready || unproven)) {
