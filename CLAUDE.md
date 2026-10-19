@@ -491,21 +491,23 @@ discussion that produced this note.
   (owner ruling, 2026-10-19). No screenshot is committed anywhere: not on the
   PR's own branch (binaries merged into `main` stay in its history for good),
   not on a branch of its own, not in a commit removed again later.
-  `build/screenshots/` is git-ignored and stays so. A human drags the
-  files into the description on GitHub. A session cannot upload an image
-  to GitHub, so it attaches the files to the conversation for the owner,
-  each named after its screen and state
-  (`assets-head-too-old-after.png`), and gives the description a
-  `## Screenshots` section with one slot per file: a table row with the
-  caption and the file's name where the image goes, before and after side by
-  side for a changed screen. The owner drags each file into its slot. A push
-  that changes what the screenshots show attaches the new files in the same
-  round and updates the slots. A host where the files cannot reach the owner
-  (CI, a plain `claude` terminal) still writes the slots, each under its
-  screen-and-state name, and the section says the images await rendering
-  with the command above: the after images on the PR's branch, the before
-  images on the base branch (*What to show*), each `<feature>Screen-<nn>.png`
-  renamed to the name of the slot its caption names.
+  `build/screenshots/` is git-ignored and stays so. GitHub takes an image
+  into a description only from a browser logged in to it (an upload the API
+  does not offer), so a session that has one (the desktop app's browser, on
+  the owner's computer) drags the files into the description's
+  `## Screenshots` section itself: each under its caption, before and after
+  side by side for a changed screen. A session that cannot upload them
+  shows them to the owner in the session instead (owner ruling, 2026-10-19):
+  it attaches each file to the conversation, named after its screen and
+  state (`assets-head-too-old-after.png`), with its caption, and the
+  description's `## Screenshots` section says the screenshots were shown in
+  the session and gives the command that renders them, with no table of
+  file names in place of the images. A push that changes what the
+  screenshots show shows the new ones in the same round, the same way. A
+  host where the files reach no one (CI, a plain `claude` terminal) says in
+  that section that the images await rendering with the command above: the
+  after images on the PR's branch, the before images on the base branch
+  (*What to show*).
 - **ALWAYS respond to every review comment, individually, on its own thread.**
   One comment, one reply. A single bulk PR-level summary is not a substitute —
   it may be posted *in addition*, but a reviewer must be able to see the
