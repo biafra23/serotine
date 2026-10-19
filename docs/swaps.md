@@ -168,9 +168,11 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
     returns only whether it succeeded), Execute says how much the swap
     leaves open and offers to propose it again with a fresh minimum.
   - Proposed again, the swap takes the nonce of the one it replaces, with
-    a fresh minimum and deadline: only one of the two can ever run. It gets
-    no approval of its own; one the router still needs is proposed first,
-    from the Safe's Swap.
+    a fresh minimum and deadline: only one of the two can ever run. It is
+    the same swap (the pair, the amount and the router), so those queued
+    after it are left as they were, and one past a gap in the queue is not
+    proposed again. It gets no approval of its own; one the router still
+    needs is proposed first, from the Safe's Swap.
   - It may still be executed as signed (owner ruling, 2026-10-19, decision
     5).
 

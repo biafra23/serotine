@@ -65,6 +65,7 @@ class ProposeSafeSwapTest {
     private val propose = ProposeSafeSwap(
         world.observeSafe,
         FindUniswapRoute(chain, inputs),
+        chain,
         world.nativeBalances,
         world.tokenBalances,
         inputs,
@@ -91,9 +92,10 @@ class ProposeSafeSwapTest {
     private fun returns(out: UInt256) =
         Simulation.Succeeded(AbiWords.withBytesArray(ByteArray(0), emptyList(), listOf(out.toBytes32())).toHex(), 121)
 
+    private val allowanceCall = usdcToken.address to Erc20.allowanceData(safe, router).toHex()
+
     private fun allow(amount: UInt256) {
-        inputs.answers[usdcToken.address to Erc20.allowanceData(safe, router).toHex()] =
-            Simulation.Succeeded(word(amount), 120)
+        chain.answers[allowanceCall] = word(amount)
     }
 
     private fun queuedSwap(nonce: Long, minimumOut: UInt256 = UInt256.ONE): SafeTx {
@@ -236,12 +238,86 @@ class ProposeSafeSwapTest {
     }
 
     @Test
-    fun aSwapIsProposedAgainOnlyInPlaceOfOneStillQueued() = runTest {
+    fun aSwapIsProposedAgainOnlyInPlaceOfTheSameSwapStillQueued() = runTest {
         pool(usdcToken.address, linkToken.address)
         allow(twoUsdc)
 
         assertEquals(SafeSwapProposing.NothingToReplace, proposeUsdcForLink(replacing = 4))
         assertEquals(SafeSwapProposing.NothingToReplace, proposeUsdcForLink(replacing = 3), "the Safe passed it")
+
+        // An approval at 4 and its swap at 5: in place of the approval, both swaps could run.
+        world.queue.save(world.request(approval(4, twoUsdc)))
+        world.queue.save(world.request(queuedSwap(5)))
+        assertEquals(SafeSwapProposing.NothingToReplace, proposeUsdcForLink(replacing = 4), "no swap")
+        assertEquals(
+            SafeSwapProposing.NothingToReplace,
+            propose(safe, usdc, link, UInt256.of(3_000_000), SlippageTolerance.DEFAULT, replacing = 5),
+            "another amount would leave those queued after it short",
+        )
+        assertEquals(
+            SafeSwapProposing.NothingToReplace,
+            propose(safe, usdc, TransferAsset.Native, twoUsdc, SlippageTolerance.DEFAULT, replacing = 5),
+            "another pair",
+        )
+        inputs.routerRun = returns(quoted)
+        assertIs<SafeSwapProposing.Proposed>(proposeUsdcForLink(replacing = 5))
+    }
+
+    @Test
+    fun aSwapPastAGapIsNotProposedAgain() = runTest {
+        pool(usdcToken.address, linkToken.address)
+        allow(twoUsdc)
+        // Nothing at 4: the swap at 5 cannot run before something fills it.
+        world.queue.save(world.request(queuedSwap(5)))
+
+        assertEquals(SafeSwapProposing.NothingToReplace, proposeUsdcForLink(replacing = 5))
+    }
+
+    @Test
+    fun anApprovalThatReturnsFalseIsRefusedAsOneThatReverts() = runTest {
+        pool(usdcToken.address, linkToken.address)
+        allow(UInt256.ZERO)
+        inputs.answers[usdcToken.address to Erc20.approveData(router, twoUsdc).toHex()] =
+            Simulation.Succeeded("00".repeat(32), 120)
+
+        assertEquals(SafeSwapProposing.ApprovalReverts(120), proposeUsdcForLink())
+    }
+
+    @Test
+    fun anEngineThatRunsNoCallFromAContractLeavesTheRunsNotRunAndStillReadsTheAllowance() = runTest {
+        pool(usdcToken.address, linkToken.address)
+        allow(UInt256.ZERO)
+        inputs.refusing = true
+
+        val approving = assertIs<SafeSwapProposing.Proposed>(proposeUsdcForLink()).proposal
+        assertEquals(SafeCallSimulation.NotRun, approving.approvalSimulation)
+        assertEquals(SafeSwapSimulation.AfterApproval, approving.swapSimulation)
+
+        allow(twoUsdc)
+        val swapping = assertIs<SafeSwapProposing.Proposed>(proposeUsdcForLink()).proposal
+        assertEquals(SafeSwapSimulation.NotRun, swapping.swapSimulation)
+    }
+
+    @Test
+    fun anAllowanceThatCannotBeReadProposesNothing() = runTest {
+        pool(usdcToken.address, linkToken.address)
+
+        assertEquals(SafeSwapProposing.NotAToken, proposeUsdcForLink(), "the token's contract reverted")
+
+        chain.answering[allowanceCall] = Simulation.Refused
+        assertEquals(
+            SafeSwapProposing.Unavailable(ReadUnavailable.REFUSED, QuoteFigure.ALLOWANCE),
+            proposeUsdcForLink(),
+        )
+    }
+
+    @Test
+    fun aRunWhoseAnswerIsNoAmountIsNoSwap() = runTest {
+        pool(usdcToken.address, linkToken.address)
+        allow(twoUsdc)
+        inputs.routerRun = Simulation.Succeeded("00".repeat(32), 121)
+
+        assertEquals(SafeSwapProposing.Reverts(121), proposeUsdcForLink())
     }
 
     @Test
@@ -265,14 +341,10 @@ class ProposeSafeSwapTest {
     fun whatTheQueueMovesBeforeItIsNotThisSwapsToSell() = runTest {
         pool(usdcToken.address, linkToken.address)
         allow(UInt256.ZERO)
-        world.queue.save(
-            world.request(SafeTx.call(usdcToken.address, UInt256.ZERO, Erc20.transferData(world.recipient, twoUsdc), 4)),
-        )
-        world.queue.save(
-            world.request(
-                SafeTx.call(usdcToken.address, UInt256.ZERO, Erc20.transferData(world.recipient, UInt256.of(1_500_000)), 5),
-            ),
-        )
+        fun transfer(amount: UInt256, nonce: Long) =
+            SafeTx.call(usdcToken.address, UInt256.ZERO, Erc20.transferData(world.recipient, amount), nonce)
+        world.queue.save(world.request(transfer(twoUsdc, 4)))
+        world.queue.save(world.request(transfer(UInt256.of(1_500_000), 5)))
 
         assertEquals(SafeSwapProposing.InsufficientToken, proposeUsdcForLink(), "5 held, 3.5 queued before it")
     }
@@ -324,7 +396,11 @@ class ProposeSafeSwapTest {
 
         override suspend fun venue(network: Network): VenueReading = venue
 
+        /** Calls answered with this instead, as their contract and their data in hex. */
+        val answering = mutableMapOf<Pair<Address, String>, Simulation>()
+
         override suspend fun call(to: Address, data: ByteArray): Simulation {
+            answering[to to data.toHex()]?.let { return it }
             answers[to to data.toHex()]?.let { return Simulation.Succeeded(it, 120) }
             // A pair the test did not list: the factory has no pool for it.
             if (to == deployment.factory) return Simulation.Succeeded("00".repeat(32), 120)
@@ -334,7 +410,7 @@ class ProposeSafeSwapTest {
 
     /**
      * The Safe's runs: the router answers [routerRun], a call in [answers] its answer, any other one
-     * word of 1. Nothing here is ever sent, so nothing else is asked.
+     * word of 1; none at all when [refusing]. Nothing here is ever sent, so nothing else is asked.
      */
     private inner class SafeRuns : TransactionInputs {
         var routerRun: Simulation = Simulation.Reverted(121)
@@ -352,8 +428,12 @@ class ProposeSafeSwapTest {
         override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
             error("a proposal sends nothing")
 
+        /** An engine that runs no call from a contract's address. */
+        var refusing = false
+
         override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
             simulated += from to to
+            if (refusing) return Simulation.Refused
             if (to == router) return routerRun
             return answers[to to data.toHex()] ?: Simulation.Succeeded("00".repeat(31) + "01", 120)
         }

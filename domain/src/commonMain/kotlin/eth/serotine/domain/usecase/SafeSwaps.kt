@@ -12,9 +12,12 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.SlippageTolerance
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.SwapRouter02
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.UniswapV3Deployment
 import eth.serotine.domain.model.swapsWith
+import eth.serotine.domain.model.tokenOn
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
@@ -166,14 +169,17 @@ const val SAFE_SWAP_DEADLINE_SECONDS: Long = 24 * 60 * 60
  * less than verified state, and prices never reach it.
  *
  * - **The approval.** A token sold needs the router's allowance for the whole amount, as the
- *   chain has it and as the approvals of the router queued before the swap leave it (per nonce
- *   the least of its alternatives, since any one of them may be the one that runs). One that
- *   falls short is approved for the exact amount (owner ruling, 2026-10-19, #69's decision 3) in
- *   its own Safe transaction at the Safe's next nonce, and the swap takes the nonce after it: two
- *   Safe transactions, since a MultiSend batch is a delegate call, refused until it is built.
- * - **The nonce.** The Safe's next one, as [ProposeSafeTx] takes it; or, to propose a swap again
- *   with a fresh minimum ([replacing]), the nonce of the one queued there, which this one
- *   replaces: only one transaction at a nonce ever runs. Such a swap gets no approval of its own.
+ *   chain has it (a verified call from no sender, [UniswapV3Chain.call]) and as the approvals of
+ *   the router queued before the swap leave it (per nonce the least of its alternatives, since
+ *   any one of them may be the one that runs). One that falls short is approved for the exact
+ *   amount (owner ruling, 2026-10-19, #69's decision 3) in its own Safe transaction at the Safe's
+ *   next nonce, and the swap takes the nonce after it: two Safe transactions, since a MultiSend
+ *   batch is a delegate call, refused until it is built.
+ * - **The nonce.** The Safe's next one, as [ProposeSafeTx] takes it. Or, to propose a swap again
+ *   with a fresh minimum ([replacing]), the nonce of one queued there that is the same swap (the
+ *   pair, the amount and the router): only one transaction at a nonce ever runs, and one that
+ *   moves what the one it replaces moves leaves those queued after it as they were. Such a swap
+ *   gets no approval of its own.
  * - **What is held back.** What the transactions queued before it may move of the asset sold is
  *   not this one's to sell. A swap of the token through the router queued before it counts on the
  *   allowance this one would set, so one is proposed only once that one has run or gone.
@@ -185,11 +191,14 @@ const val SAFE_SWAP_DEADLINE_SECONDS: Long = 24 * 60 * 60
  *   (USDT's kind: its approval reverts while one is set) is not proposed here: setting it to zero
  *   first would take a third Safe transaction.
  *
- * Nothing is saved: signing each ([SignSafeTx]) queues it. On [network] only.
+ * What refuses it from the queue and the light client alone is said before the engine is asked
+ * for a balance or a route. Nothing is saved: signing each ([SignSafeTx]) queues it. On [network]
+ * only.
  */
 class ProposeSafeSwap(
     private val observeSafe: ObserveSafe,
     private val findRoute: FindUniswapRoute,
+    private val uniswap: UniswapV3Chain,
     private val nativeBalances: NativeBalances,
     private val tokenBalances: TokenBalances,
     private val inputs: TransactionInputs,
@@ -199,9 +208,9 @@ class ProposeSafeSwap(
 ) {
     /**
      * Exactly [amountIn] of [sell] for [buy] from [safe], at [tolerance]; at the nonce
-     * [replacing], when set, in place of the transaction queued there. [safeChecked] is called
-     * once the Safe is verified ([ObserveSafe.check], which may wait out an unproven reading),
-     * before the rest is read: where a review measures the proposal's age from.
+     * [replacing], when set, in place of the same swap queued there. [safeChecked] is called once
+     * the Safe is verified ([ObserveSafe.check], which may wait out an unproven reading), before
+     * the rest is read: where a review measures the proposal's age from.
      */
     suspend operator fun invoke(
         safe: Address,
@@ -230,15 +239,17 @@ class ProposeSafeSwap(
             is SafeCheck.Refused -> return@cancellingReads SafeSwapProposing.Refused(check.refusal)
         }
         safeChecked()
-        val head = async { lightClient.observeStatus().first() }
-        val balance = async { safeBalanceOf(nativeBalances, tokenBalances, safe, soldToken?.address) }
-        val queued = async { queue.observe(safe).first() }
 
+        // The queue and the light client are this device's own: what they refuse is said before
+        // the engine is asked for anything.
         val safeNonce = reading.state.nonce
-        val pending = pendingOf(queued.await(), safeNonce, network)
+        val pending = pendingOf(queue.observe(safe).first(), safeNonce, network)
+        val next = nextNonce(pending, safeNonce)
         val nonce = when {
-            replacing == null -> nextNonce(pending, safeNonce)
-            replacing >= safeNonce && pending.any { it.nonce == replacing } -> replacing
+            replacing == null -> next
+            // One past a gap could not run before the gap is filled: none to replace.
+            replacing < next && pending.any { it.nonce == replacing && it.isSwap(deployment, sell, buy, amountIn) } ->
+                replacing
             else -> return@cancellingReads SafeSwapProposing.NothingToReplace
         }
         val ahead = pending.filter { it.nonce < nonce }
@@ -246,56 +257,61 @@ class ProposeSafeSwap(
             ahead.lastOrNull { it.sells(soldToken.address, router) }
                 ?.let { return@cancellingReads SafeSwapProposing.EarlierSwapQueued(it.nonce) }
         }
-        val (before, balanceBlock) = when (val read = balance.await()) {
-            is SafeBalanceRead.Read -> read.amount to read.blockNumber
-            SafeBalanceRead.NotAToken -> return@cancellingReads SafeSwapProposing.NotAToken
-            is SafeBalanceRead.Refused -> return@cancellingReads SafeSwapProposing.Refused(read.refusal)
-        }
-        val queuedAmount = ahead.queuedMoves(soldToken?.address)
-        val available = queuedAmount?.let { before.minusOrNull(it) }?.takeIf { it >= amountIn }
-            ?: return@cancellingReads insufficient(soldToken != null)
-        val deadline = when (val status = head.await()) {
+        val deadline = when (val status = lightClient.observeStatus().first()) {
             // A verified head whose time is not known yet gives no deadline.
             is LightClientStatus.Synced -> status.headTimestamp?.plus(SAFE_SWAP_DEADLINE_SECONDS)
                 ?: return@cancellingReads SafeSwapProposing.Unavailable(ReadUnavailable.UNPROVEN, figure = null)
             else -> return@cancellingReads SafeSwapProposing.Refused(SafeTxRefusal.Syncing)
         }
 
+        val (before, balanceBlock) = when (
+            val read = safeBalanceOf(nativeBalances, tokenBalances, safe, soldToken?.address)
+        ) {
+            is SafeBalanceRead.Read -> read.amount to read.blockNumber
+            SafeBalanceRead.NotAToken -> return@cancellingReads SafeSwapProposing.NotAToken
+            is SafeBalanceRead.Refused -> return@cancellingReads SafeSwapProposing.Refused(read.refusal)
+        }
+        val queuedAmount = ahead.queuedMoves(soldToken?.address) ?: return@cancellingReads insufficient(soldToken)
+        val available = before.minusOrNull(queuedAmount)?.takeIf { it >= amountIn }
+            ?: return@cancellingReads insufficient(soldToken)
+
         val found = when (val finding = findRoute(network, sell, buy, amountIn, RouteRanking.GROSS)) {
             is RouteFinding.Found -> finding
             else -> return@cancellingReads finding.asSafeSwapProposing()
+        }
+        // The route's venue is read again inside the route's finding: the approval and the swap
+        // go to one router, or nothing is proposed.
+        if (found.deployment != deployment) {
+            return@cancellingReads SafeSwapProposing.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.ROUTE)
         }
         val minimum = tolerance.minimumOf(found.quote.amountOut)
         if (minimum.isZero) return@cancellingReads SafeSwapProposing.TooSmall
 
         // The allowance the router has on chain, then as the approvals queued before the swap set it.
-        var onChain: UInt256? = null
-        var allowance: UInt256? = null
-        if (soldToken != null) {
-            val read = when (val answer = readAllowance(inputs, safe, soldToken, router)) {
-                is AllowanceRead.Read -> answer.allowance
-                AllowanceRead.NotAToken -> return@cancellingReads SafeSwapProposing.NotAToken
-                AllowanceRead.Refused ->
+        val allowance = soldToken?.let { token ->
+            val onChain = when (val answer = uniswap.call(token.address, Erc20.allowanceData(safe, router))) {
+                is Simulation.Succeeded -> Erc20.allowanceOf(answer.returnHex)
+                    ?: return@cancellingReads SafeSwapProposing.NotAToken
+                is Simulation.Reverted -> return@cancellingReads SafeSwapProposing.NotAToken
+                Simulation.Refused ->
                     return@cancellingReads SafeSwapProposing.Unavailable(ReadUnavailable.REFUSED, QuoteFigure.ALLOWANCE)
-                is AllowanceRead.Unavailable ->
+                is Simulation.Unavailable ->
                     return@cancellingReads SafeSwapProposing.Unavailable(answer.reason, QuoteFigure.ALLOWANCE)
             }
-            onChain = read
-            allowance = ahead.groupBy { it.nonce }.toSortedMap().values.fold(read) { set, alternatives ->
-                alternatives.minOf { it.approvalOf(soldToken.address, router) ?: set }
+            val byNonce = ahead.groupBy { it.nonce }.entries.sortedBy { it.key }
+            val queued = byNonce.fold(onChain) { set, (_, alternatives) ->
+                alternatives.minOf { it.approvalOf(token.address, router) ?: set }
             }
-        }
-        val approves = allowance != null && allowance < amountIn
-        if (approves && replacing != null) {
-            return@cancellingReads SafeSwapProposing.NeedsApproval(checkNotNull(allowance))
-        }
-        if (approves && pending.any { it.nonce == nonce + 1 }) {
-            return@cancellingReads SafeSwapProposing.NextNonceTaken(nonce + 1)
+            SafeAllowance(onChain, queued)
         }
 
         var approval: DecodedSafeTx? = null
         var approvalRun: SafeCallSimulation? = null
-        if (approves && soldToken != null) {
+        if (soldToken != null && allowance != null && allowance.queued < amountIn) {
+            if (replacing != null) return@cancellingReads SafeSwapProposing.NeedsApproval(allowance.queued)
+            if (pending.any { it.nonce == nonce + 1 }) {
+                return@cancellingReads SafeSwapProposing.NextNonceTaken(nonce + 1)
+            }
             val data = Erc20.approveData(router, amountIn)
             approvalRun = when (val run = inputs.simulate(safe, soldToken.address, UInt256.ZERO, data)) {
                 // A token that returns false refused the approval as surely as one that reverts.
@@ -313,14 +329,14 @@ class ProposeSafeSwap(
                 SigningRequest.of(network, safe, SafeTx.call(soldToken.address, UInt256.ZERO, data, nonce)),
             )
         }
-        val call = SwapRouter02.swap(found.deployment, sell, buy, found.quote.route, amountIn, minimum, safe, deadline)
-        val buysEther = buy == TransferAsset.Native
-        val swapRun = if (approves || (onChain != null && onChain < amountIn)) {
+        val call = SwapRouter02.swap(deployment, sell, buy, found.quote.route, amountIn, minimum, safe, deadline)
+        val swapRun = if (allowance != null && allowance.onChain < amountIn) {
+            // An approval, its own or one queued before it, has to run first.
             SafeSwapSimulation.AfterApproval
         } else {
             when (val run = inputs.simulate(safe, call.to, call.value, call.data)) {
                 // The run must return the swap's amount, and that at least the minimum.
-                is Simulation.Succeeded -> SwapRouter02.amountOutOf(run.returnHex, buysEther)
+                is Simulation.Succeeded -> SwapRouter02.amountOutOf(run.returnHex, buy == TransferAsset.Native)
                     ?.takeIf { it >= minimum }
                     ?.let { SafeSwapSimulation.Ran(it, run.blockNumber) }
                     ?: return@cancellingReads SafeSwapProposing.Reverts(run.blockNumber)
@@ -330,7 +346,7 @@ class ProposeSafeSwap(
                     return@cancellingReads SafeSwapProposing.Unavailable(run.reason, QuoteFigure.RUN)
             }
         }
-        val swapNonce = if (approves) nonce + 1 else nonce
+        val swapNonce = if (approval != null) nonce + 1 else nonce
         queue.prune(safe, safeNonce)
         SafeSwapProposing.Proposed(
             SafeSwapProposal(
@@ -351,10 +367,10 @@ class ProposeSafeSwap(
                 spotOut = found.spotOut,
                 minimumOut = minimum,
                 deadline = deadline,
-                allowance = allowance,
+                allowance = allowance?.queued,
                 queuedAhead = (nonce - safeNonce).toInt(),
                 balanceBefore = before,
-                queuedAmount = checkNotNull(queuedAmount),
+                queuedAmount = queuedAmount,
                 balanceAfter = available - amountIn,
                 balanceBlock = balanceBlock,
                 approvalSimulation = approvalRun,
@@ -364,8 +380,31 @@ class ProposeSafeSwap(
         )
     }
 
-    private fun insufficient(token: Boolean) =
-        if (token) SafeSwapProposing.InsufficientToken else SafeSwapProposing.InsufficientFunds
+    private fun insufficient(token: Token?) =
+        if (token != null) SafeSwapProposing.InsufficientToken else SafeSwapProposing.InsufficientFunds
+
+    /** The router's allowance [onChain] now, and as the approvals queued before the swap leave it ([queued]). */
+    private data class SafeAllowance(val onChain: UInt256, val queued: UInt256)
+}
+
+/**
+ * Whether this queued request is the swap [deployment]'s router makes of exactly [amountIn] of
+ * [sell] for [buy], whatever its minimum, deadline and route: the one a swap proposed again
+ * replaces.
+ */
+private fun SigningRequest.isSwap(
+    deployment: UniswapV3Deployment,
+    sell: TransferAsset,
+    buy: TransferAsset,
+    amountIn: UInt256,
+): Boolean {
+    val swap = (SafeTxAction.of(safe, tx) as? SafeTxAction.Swap)?.swap ?: return false
+    return swap.router == deployment.swapRouter02 &&
+        swap.amountIn == amountIn &&
+        swap.sellsEther == (sell == TransferAsset.Native) &&
+        swap.buysEther == (buy == TransferAsset.Native) &&
+        swap.route.tokenIn == sell.tokenOn(deployment) &&
+        swap.route.tokenOut == buy.tokenOn(deployment)
 }
 
 /** What this queued request sets the [spender]'s allowance over [token] to, if it is such an approval. */
