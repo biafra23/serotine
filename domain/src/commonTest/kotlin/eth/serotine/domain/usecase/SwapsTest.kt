@@ -133,6 +133,18 @@ class SwapsTest {
     }
 
     @Test
+    fun eachTokenBalanceCarriesTheBlockItWasVerifiedAt() = runTest {
+        tokens.of(account, linkToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 118)
+        pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
+        allow(hundredUsdc)
+        inputs.routerReturns = returns(UInt256.of("4300000000000000000"))
+
+        val quoted = assertIs<SwapQuoting.Quoted>(quoteUsdcForLink()).quote
+        assertEquals(120, quoted.tokenBalanceBlock)
+        assertEquals(118, quoted.buyBalanceBlock)
+    }
+
+    @Test
     fun theQuoteCarriesItsPriceImpactAgainstThePoolsSpot() = runTest {
         pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
         allow(hundredUsdc)

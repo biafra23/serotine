@@ -38,18 +38,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.ui.components.AmountLine
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.OwnerChoices
+import eth.serotine.ui.components.RouteSteps
 import eth.serotine.ui.components.SafeTxActionCard
+import eth.serotine.ui.components.Spender
+import eth.serotine.ui.components.SwapFormFields
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.platform.KeepScreenOn
-import eth.serotine.ui.swap.AmountLine
-import eth.serotine.ui.swap.RouteSteps
-import eth.serotine.ui.swap.Spender
-import eth.serotine.ui.swap.SwapFormFields
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the Review button, for UI tests. */

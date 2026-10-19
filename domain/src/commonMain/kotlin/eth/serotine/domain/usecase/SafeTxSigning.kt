@@ -607,7 +607,7 @@ class ProposeSafeTx(
                 ?: return@cancellingReads insufficient(token != null)
             val simulation = when (val run = inputs.simulate(safe, txTo, value, data)) {
                 is Simulation.Succeeded -> {
-                    val refusedByToken = token != null && run.returnHex.isNotEmpty() && run.returnHex.all { it == '0' }
+                    val refusedByToken = token != null && Erc20.returnedFalse(run.returnHex)
                     if (refusedByToken) return@cancellingReads SafeTxProposing.Reverts(run.blockNumber)
                     SafeCallSimulation.Ran(run.blockNumber)
                 }

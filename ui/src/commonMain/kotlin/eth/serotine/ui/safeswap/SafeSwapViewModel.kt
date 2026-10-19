@@ -42,39 +42,41 @@ import eth.serotine.ui.components.CHECK_TOOK_THE_TIME
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.MIN_PROMPT_TIME
+import eth.serotine.ui.components.NOT_A_TOKEN
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
+import eth.serotine.ui.components.ROUTER_NAME
 import eth.serotine.ui.components.STALE_QUOTE
+import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.SpenderItem
+import eth.serotine.ui.components.SwapForm
+import eth.serotine.ui.components.SwapPick
+import eth.serotine.ui.components.TOO_SMALL
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.amountHint
-import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.noRouteText
+import eth.serotine.ui.components.noVenueText
+import eth.serotine.ui.components.notASwapText
 import eth.serotine.ui.components.notSignedText
+import eth.serotine.ui.components.priceHintText
+import eth.serotine.ui.components.priceImpactText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.routeSteps
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
+import eth.serotine.ui.components.sellNote
+import eth.serotine.ui.components.swapOptions
+import eth.serotine.ui.components.toleranceError
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
-import eth.serotine.ui.safepropose.SafeBalanceChange
-import eth.serotine.ui.swap.NOT_A_TOKEN
-import eth.serotine.ui.swap.ROUTER_NAME
-import eth.serotine.ui.swap.SpenderItem
-import eth.serotine.ui.swap.SwapForm
-import eth.serotine.ui.swap.TOLERANCE_ERROR
-import eth.serotine.ui.swap.TOO_SMALL
-import eth.serotine.ui.swap.noRouteText
-import eth.serotine.ui.swap.noVenueText
-import eth.serotine.ui.swap.notASwapText
-import eth.serotine.ui.swap.priceHintText
-import eth.serotine.ui.swap.priceImpactText
-import eth.serotine.ui.swap.routeSteps
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -136,20 +138,13 @@ class SafeSwapViewModel(
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
-    /** An asset of the form: the network's currency, or the token at [Token.address]. */
-    private sealed interface Pick {
-        data object Native : Pick
-
-        data class Token(val address: Address) : Pick
-    }
-
     /**
      * What the form has: the asset sold, the asset bought (null until chosen), the amount and the
      * tolerance as typed.
      */
     private data class Inputs(
-        val sell: Pick,
-        val buy: Pick? = null,
+        val sell: SwapPick,
+        val buy: SwapPick? = null,
         val amount: String = "",
         val tolerance: String = SlippageTolerance.DEFAULT.percent,
     )
@@ -231,7 +226,7 @@ class SafeSwapViewModel(
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(safe)
 
-    private val inputs = MutableStateFlow(Inputs(asset?.let(Pick::Token) ?: Pick.Native))
+    private val inputs = MutableStateFlow(Inputs(asset?.let(SwapPick::Token) ?: SwapPick.Native))
     private val step = MutableStateFlow<Step>(Step.Composing())
 
     /** The proposal or signature in flight. */
@@ -282,13 +277,13 @@ class SafeSwapViewModel(
 
     /** Sells the token at [contract], or the network's currency (null). */
     fun onSellChange(contract: String?) {
-        val pick = pickOf(contract) ?: return
+        val pick = SwapPick.of(contract) ?: return
         change { it.copy(sell = pick, buy = it.buy.takeUnless { buy -> buy == pick }, amount = "") }
     }
 
     /** Buys the token at [contract], or the network's currency (null). */
     fun onBuyChange(contract: String?) {
-        val pick = pickOf(contract) ?: return
+        val pick = SwapPick.of(contract) ?: return
         change { it.copy(buy = pick) }
     }
 
@@ -411,7 +406,9 @@ class SafeSwapViewModel(
             val request = requests[index]
             val action = safeTxActionItem(SafeTxAction.of(request.safe, request.tx), request.nonce, decoding, network)
             val of = if (requests.size > 1) " ${index + 1} of ${requests.size}" else ""
-            val reason = "Sign Safe transaction$of of $label, nonce ${request.nonce}: ${action.title}"
+            // The address it names in full, as screen 17's prompt does: the last thing read before the key signs.
+            val named = action.addresses.firstOrNull()?.let { ", ${it.what.lowercase()} ${it.address}" }.orEmpty()
+            val reason = "Sign Safe transaction$of of $label, nonce ${request.nonce}: ${action.title}$named"
             Unlock.WithBiometrics(reason, notAfter)
         }
     }
@@ -635,9 +632,6 @@ class SafeSwapViewModel(
         step.value = Step.Composing()
     }
 
-    private fun pickOf(contract: String?): Pick? =
-        if (contract == null) Pick.Native else Address.parse(contract)?.let(Pick::Token)
-
     private fun modelOf(
         list: AccountList,
         reading: SafeReading,
@@ -671,22 +665,17 @@ class SafeSwapViewModel(
         // A swap proposed again: its pair and its amount, whatever was typed.
         val found = replaced as? Replaced.Found
         val inputs = found?.let { typed.copy(sell = it.swap.sold(), buy = it.swap.bought()) } ?: typed
-        val sellContract = (inputs.sell as? Pick.Token)?.address
-        val sellOptions = assetOptions(value, sellContract, network)
-        val sell = sellOptions.firstOrNull { it.contract == sellContract }
-        // Every asset the wallet lists but the one sold.
-        val buyOptions = assetOptions(value, chosen = null, network, everyToken = true)
-            .filter { it.contract != sellContract }
-        val buyContract = (inputs.buy as? Pick.Token)?.address
-        val buy = inputs.buy?.let { buyOptions.firstOrNull { option -> option.contract == buyContract } }
+        val options = swapOptions(value, inputs.sell, inputs.buy, network)
+        val sell = options.sell
+        val buy = options.buy
         val amount = found?.let { sell?.let { option -> found.swap.amountIn.formatUnits(option.decimals) } }
         return Model(
             sender = sender,
             accounts = accounts,
             currency = value.currency,
-            sellOptions = if (found != null) listOfNotNull(sell) else sellOptions,
+            sellOptions = if (found != null) listOfNotNull(sell) else options.sellOptions,
             sell = sell,
-            buyOptions = if (found != null) listOfNotNull(buy) else buyOptions,
+            buyOptions = if (found != null) listOfNotNull(buy) else options.buyOptions,
             buy = buy,
             tokensRead = value.tokensRead,
             inputs = amount?.let { inputs.copy(amount = it) } ?: inputs,
@@ -694,9 +683,9 @@ class SafeSwapViewModel(
         )
     }
 
-    private fun RouterSwap.sold(): Pick = if (sellsEther) Pick.Native else Pick.Token(route.tokenIn)
+    private fun RouterSwap.sold(): SwapPick = if (sellsEther) SwapPick.Native else SwapPick.Token(route.tokenIn)
 
-    private fun RouterSwap.bought(): Pick = if (buysEther) Pick.Native else Pick.Token(route.tokenOut)
+    private fun RouterSwap.bought(): SwapPick = if (buysEther) SwapPick.Native else SwapPick.Token(route.tokenOut)
 
     private fun render(model: Model?, step: Step): SafeSwapUiState {
         val network = network.displayName
@@ -717,7 +706,6 @@ class SafeSwapViewModel(
             return SafeSwapUiState.CannotSwap(network, REPLACED_UNKNOWN_TOKEN)
         }
         val amount = typedAmount(inputs.amount, model.sell)
-        val toleranceText = inputs.tolerance.trim()
         val form = SwapForm(
             network = network,
             from = SendFrom(account.label, display),
@@ -730,16 +718,8 @@ class SafeSwapViewModel(
             amountError = amount.error,
             amountHint = amountHint(amount.units, model.sell, model.currency, this.network),
             canMax = found == null && model.sell?.balance != null && !composing.proposing,
-            toleranceError = if (toleranceText.isNotEmpty() && SlippageTolerance.parsePercent(toleranceText) == null) {
-                TOLERANCE_ERROR
-            } else {
-                null
-            },
-            note = when {
-                model.sell == null && !model.tokensRead -> "Checking this Safe's tokens…"
-                model.sell == null -> "The token asked for is not among this Safe's tokens: choose another."
-                else -> null
-            },
+            toleranceError = toleranceError(inputs.tolerance),
+            note = sellNote(model.sell, model.tokensRead, "this Safe"),
             quoting = composing.proposing,
             error = composing.error,
             info = if (found != null) {

@@ -1,12 +1,9 @@
-package eth.serotine.ui.swap
+package eth.serotine.ui.components
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.UInt256
-import eth.serotine.ui.components.AssetOption
-import eth.serotine.ui.components.Eip55
-import eth.serotine.ui.components.feeTierText
 
 /** Why the tolerance typed is none: what a swap's form says under it. */
 internal const val TOLERANCE_ERROR = "Between 0.1 % and 5 %, with at most two decimals (0.5)."

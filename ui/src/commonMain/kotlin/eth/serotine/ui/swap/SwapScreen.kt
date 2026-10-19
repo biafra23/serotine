@@ -46,6 +46,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.AmountLine
 import eth.serotine.ui.components.AssetChoiceRow
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Blockie
@@ -54,21 +55,12 @@ import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.RouteSteps
+import eth.serotine.ui.components.Spender
+import eth.serotine.ui.components.SwapFormFields
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.UnlockFields
 import kotlinx.coroutines.Dispatchers
-
-/** Test tag of each asset to sell, for UI tests. */
-const val SWAP_SELL_TAG = "swap-sell"
-
-/** Test tag of each asset to buy, for UI tests. */
-const val SWAP_BUY_TAG = "swap-buy"
-
-/** Test tag of the amount field, for UI tests. */
-const val SWAP_AMOUNT_TAG = "swap-amount"
-
-/** Test tag of the tolerance field, for UI tests. */
-const val SWAP_TOLERANCE_TAG = "swap-tolerance"
 
 /** Test tag of the Review button, for UI tests. */
 const val SWAP_REVIEW_TAG = "swap-review"
@@ -301,68 +293,6 @@ private fun ComposeContent(
     }
 }
 
-/**
- * The swap form's fields (screen 22): the asset sold, the amount, the asset bought and the
- * tolerance; all but the tolerance held while [SwapForm.fixed]. Swap and a Safe's swap share them.
- */
-@Composable
-internal fun SwapFormFields(
-    form: SwapForm,
-    onSellChange: (String?) -> Unit,
-    onBuyChange: (String?) -> Unit,
-    onAmountChange: (String) -> Unit,
-    onMax: () -> Unit,
-    onToleranceChange: (String) -> Unit,
-) {
-    Heading("Sell")
-    Column {
-        form.sellOptions.forEach { asset ->
-            val enabled = !form.quoting && !form.fixed
-            AssetChoiceRow(asset, selected = asset == form.sell, enabled = enabled, tag = SWAP_SELL_TAG) {
-                onSellChange(asset.contract)
-            }
-        }
-        form.note?.let { Note(it) }
-    }
-    Heading("Amount")
-    OutlinedTextField(
-        value = form.amount,
-        onValueChange = onAmountChange,
-        modifier = Modifier.fillMaxWidth().testTag(SWAP_AMOUNT_TAG),
-        enabled = !form.quoting && !form.fixed && form.sell != null,
-        label = { Text(form.sell?.let { "Amount of ${it.symbol} to sell" } ?: "Amount") },
-        singleLine = true,
-        trailingIcon = { TextButton(onClick = onMax, enabled = form.canMax && !form.fixed) { Text("Max") } },
-        isError = form.amountError != null,
-        supportingText = (form.amountError ?: form.amountHint)?.let { text -> { Text(text) } },
-        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal),
-    )
-    Heading("Buy")
-    Column {
-        form.buyOptions.forEach { asset ->
-            val enabled = !form.quoting && !form.fixed
-            AssetChoiceRow(asset, selected = asset == form.buy, enabled = enabled, tag = SWAP_BUY_TAG) {
-                onBuyChange(asset.contract)
-            }
-        }
-        Note("Only the assets your wallet lists: what a swap buys shows on Assets and can be sent.")
-    }
-    Heading("Slippage tolerance")
-    OutlinedTextField(
-        value = form.tolerance,
-        onValueChange = onToleranceChange,
-        modifier = Modifier.fillMaxWidth().testTag(SWAP_TOLERANCE_TAG),
-        enabled = !form.quoting,
-        label = { Text("Tolerance in %") },
-        singleLine = true,
-        isError = form.toleranceError != null,
-        supportingText = {
-            Text(form.toleranceError ?: "How far below the verified quote the swap may return: 0.1 % to 5 %.")
-        },
-        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal),
-    )
-}
-
 @Composable
 private fun ReviewColumn(content: @Composable () -> Unit) {
     Column(
@@ -427,41 +357,6 @@ private fun SwapContent(state: SwapUiState.SwapReview) {
     Heading("Verified simulation")
     state.balances.forEach { Balance(it) }
     state.pending?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-}
-
-/** A swap's route, one pool per row: the pair, its fee tier and the pool's address. */
-@Composable
-internal fun RouteSteps(route: List<RouteStep>) {
-    route.forEach { step ->
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Blockie(step.pool, size = 24.dp)
-            Column {
-                Text("${step.pair} · ${step.fee}", style = MaterialTheme.typography.bodyMedium)
-                Text(step.pool, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-            }
-        }
-    }
-}
-
-@Composable
-internal fun AmountLine(icon: String?, symbol: String, amount: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        TokenIcon(icon, symbol, size = 40.dp)
-        SelectionContainer { Text(amount, style = MaterialTheme.typography.headlineSmall) }
-    }
-}
-
-@Composable
-internal fun Spender(spender: SpenderItem) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Blockie(spender.address, size = 32.dp)
-        Column {
-            Text(spender.name, style = MaterialTheme.typography.titleSmall)
-            SelectionContainer {
-                Text(spender.address, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-            }
-        }
-    }
 }
 
 @Composable

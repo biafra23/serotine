@@ -61,6 +61,12 @@ object Erc20 {
     fun allowanceData(owner: Address, spender: Address): ByteArray =
         ALLOWANCE_SELECTOR + AbiWords.word(owner) + AbiWords.word(spender)
 
+    /**
+     * Whether a `transfer` or `approve` that ran returned false ([returnHex]: lower-case hex, no
+     * `0x`): a word of zeros. A token that returns nothing (older ones) succeeded.
+     */
+    fun returnedFalse(returnHex: String): Boolean = returnHex.isNotEmpty() && returnHex.all { it == '0' }
+
     /** The allowance `allowance` returned as [returnHex], or null when that is not one word. */
     fun allowanceOf(returnHex: String): UInt256? =
         AbiWords.returnedWord(returnHex)?.let(AbiWords::uint)

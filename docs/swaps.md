@@ -2,8 +2,9 @@
 
 How Serotine swaps one token for another without a server it has to trust:
 on Uniswap's contracts directly, and through CoW Protocol. This page is a
-design. Its Uniswap plan is being built on `feature/swaps-uniswap` (*The
-plan*), and nothing of CoW is. Issue #69 tracks it. A swap PR is held
+design. Its Uniswap plan is built, its eight parts merged through
+`feature/swaps-uniswap` (*The plan*), and nothing of CoW is. Issue #69
+tracks it. A swap PR is held
 to this page together with docs/wallet-ux.md (the screens and their rules),
 docs/embedding-myotis.md (what the engine reads and sends) and
 docs/keys-and-signing.md (what is signed). Where this page and CLAUDE.md
@@ -654,8 +655,8 @@ docs/architecture.md.
    - Swap, review (23): the approval step, then the swap; an approval sent
      returns to 22, which says so and goes on once a block has it.
    - A Swap button on the account detail (4) and "Swap ‹symbol›" in the asset
-     menu (5), greyed out, a tap saying why, when watch-only and on a Safe
-     until part 8 (owner ruling, 2026-10-18, #55).
+     menu (5), greyed out, a tap saying why, when watch-only (owner ruling,
+     2026-10-18, #55), and on a Safe until part 8 gave it its own swap.
    - The port and use cases wired into `AppGraph` and the hosts.
 5. **The review's last figures.**
    - The price impact: each pool's `slot0` against the quote.

@@ -435,7 +435,7 @@ class SafeSwapViewModelTest {
     }
 
     @Test
-    fun theBiometricPromptSaysWhichOfTheTwoItSigns() = runTest {
+    fun theBiometricPromptSaysWhichOfTheTwoItSignsAndNamesTheRouterInFull() = runTest {
         biometrics = BiometricUnlock.On
         val viewModel = reviewed()
 
@@ -443,10 +443,12 @@ class SafeSwapViewModelTest {
         runCurrent()
 
         val reasons = world.signer.asked.map { (it.second as Unlock.WithBiometrics).reason }
+        val named = Eip55.format(router)
         assertEquals(
             listOf(
-                "Sign Safe transaction 1 of 2 of Treasury, nonce 4: Allow a contract to take 100 USDC",
-                "Sign Safe transaction 2 of 2 of Treasury, nonce 5: Swap 100 USDC for at least 0.039999 ETH",
+                "Sign Safe transaction 1 of 2 of Treasury, nonce 4: Allow a contract to take 100 USDC, spender $named",
+                "Sign Safe transaction 2 of 2 of Treasury, nonce 5: Swap 100 USDC for at least 0.039999 ETH, " +
+                    "router $named",
             ),
             reasons,
         )

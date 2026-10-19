@@ -124,6 +124,16 @@ class SafeSwapsTest {
     }
 
     @Test
+    fun aSwapWhoseDeadlineFallsWithinASlotOfTheHeadIsExpiredAlready() = runTest {
+        // The router takes a block at its deadline, and the next block is a slot after the head at the soonest.
+        chain.quote = quoted(4_210)
+        light.status.value = LightClientStatus.Synced(headBlock = 10, headTimestamp = deadline - SLOT_SECONDS)
+        assertEquals(false, assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
+        light.status.value = LightClientStatus.Synced(headBlock = 11, headTimestamp = deadline - SLOT_SECONDS + 1)
+        assertEquals(true, assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
+    }
+
+    @Test
     fun aSwapThroughAnotherRouterOrWrappingThroughAnotherTokenIsNotUniswaps() = runTest {
         assertEquals(SafeSwapCheck.NotUniswap(other), checkSwap(SafeTxAction.Swap(swap.copy(router = other))))
         // ETH in through a token that is not the pinned WETH9.

@@ -47,9 +47,9 @@ import kotlinx.coroutines.flow.first
  *   device's clock: the router refuses the swap after it.
  * - The balances are verified, each at its block: the native one as every quote has it
  *   ([nativeBefore], [pendingCost], [nativeAfterAtLeast]); the token sold, when it is one, before
- *   ([sellBefore]), what this wallet's own transactions not mined yet still move of it
- *   ([pendingSell]) and after ([sellAfter]); the token bought, when it is one, before
- *   ([buyBefore]).
+ *   ([sellBefore], at [tokenBalanceBlock]), what this wallet's own transactions not mined yet
+ *   still move of it ([pendingSell]) and after ([sellAfter]); the token bought, when it is one,
+ *   before ([buyBefore], at [buyBalanceBlock]).
  * - [netOfFees]: whether the route was chosen net of the fees (`RouteFinding.Found.netOfFees`).
  * - [spotOut] is what the route returns at its pools' spot prices, less their fees, and
  *   [priceImpact] how far [quotedOut] falls below it; null when a pool's price could not be read.
@@ -86,6 +86,7 @@ data class SwapQuote internal constructor(
     val buyBefore: UInt256?,
     val balanceBlock: Long?,
     val tokenBalanceBlock: Long?,
+    val buyBalanceBlock: Long?,
     val feeBlock: Long,
     val simulationBlock: Long?,
 ) {
@@ -197,9 +198,10 @@ class QuoteSwap(
             is TokenRead.Units -> read.units.also { tokenBlock = read.blockNumber }
             is TokenRead.NotRead -> return@cancellingReads read.refusal
         }
+        var buyBlock: Long? = null
         val buyBefore = when (val read = boughtBalance?.await()?.let(::tokenUnits)) {
             null -> null
-            is TokenRead.Units -> read.units
+            is TokenRead.Units -> read.units.also { buyBlock = read.blockNumber }
             is TokenRead.NotRead -> return@cancellingReads read.refusal
         }
         val earlier = when (val read = records.await()) {
@@ -300,6 +302,7 @@ class QuoteSwap(
                 buyBefore = buyBefore,
                 balanceBlock = call.balanceBlock,
                 tokenBalanceBlock = tokenBlock,
+                buyBalanceBlock = buyBlock,
                 feeBlock = call.feeBlock,
                 simulationBlock = call.simulationBlock,
             ),
@@ -361,8 +364,18 @@ internal suspend fun readAllowance(
     owner: Address,
     token: Token,
     spender: Address,
+): AllowanceRead = readAllowance(owner, token.address, spender) { to, data ->
+    inputs.simulate(owner, to, UInt256.ZERO, data)
+}
+
+/** The allowance of [spender] over [owner]'s tokens at [token], as [call] runs `allowance` verified. */
+internal suspend fun readAllowance(
+    owner: Address,
+    token: Address,
+    spender: Address,
+    call: suspend (to: Address, data: ByteArray) -> Simulation,
 ): AllowanceRead =
-    when (val run = inputs.simulate(owner, token.address, UInt256.ZERO, Erc20.allowanceData(owner, spender))) {
+    when (val run = call(token, Erc20.allowanceData(owner, spender))) {
         is Simulation.Succeeded -> Erc20.allowanceOf(run.returnHex)?.let { AllowanceRead.Read(it) }
             ?: AllowanceRead.NotAToken
         is Simulation.Reverted -> AllowanceRead.NotAToken
@@ -630,7 +643,7 @@ class QuoteTokenApproval(
             is NativeRead.NotRead -> return@cancellingReads read.refusal.asApprovalQuoting()
         }
         // A token that returns false refused the approval as surely as one that reverts.
-        val accepts: (String) -> Boolean = { returned -> returned.isEmpty() || returned.any { it != '0' } }
+        val accepts: (String) -> Boolean = { returned -> !Erc20.returnedFalse(returned) }
         suspend fun quote(setTo: UInt256): CallQuoting {
             val data = Erc20.approveData(spender, setTo)
             return quoter.quote(from, token.address, UInt256.ZERO, data, level, nativeBefore, accepts)

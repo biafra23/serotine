@@ -15,7 +15,14 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.RouteStep
+import eth.serotine.ui.components.SWAP_AMOUNT_TAG
+import eth.serotine.ui.components.SWAP_BUY_TAG
+import eth.serotine.ui.components.SWAP_SELL_TAG
+import eth.serotine.ui.components.SWAP_TOLERANCE_TAG
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.SpenderItem
+import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule

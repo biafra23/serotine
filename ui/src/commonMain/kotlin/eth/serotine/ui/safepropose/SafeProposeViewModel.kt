@@ -44,6 +44,7 @@ import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
 import eth.serotine.ui.components.STALE_QUOTE
+import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep

@@ -4,7 +4,10 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.RouteStep
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.SpenderItem
+import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
 
 /**
@@ -128,49 +131,8 @@ sealed interface Signable {
 }
 
 /**
- * The swap form (screen 22), display-ready: [from] is fixed; [sellOptions] the account's assets
- * with their verified balances, [sell] the chosen one; [buyOptions] the assets the wallet lists
- * (its native currency, the built-in tokens and those the user added), [buy] the chosen one;
- * [amount] typed in [sell]'s units ([amountError] why it is no amount), with [amountHint] its
- * value (display only) and [canMax]; [tolerance] the slippage tolerance typed as a percentage
- * ([toleranceError] why it is none). [note] says what holds the pair back, [quoting] while the
- * review is quoted, [error] why the last one was refused, [canReview] when it can be asked for.
- * [fixed] when the pair and the amount are set and only the tolerance may change: a Safe's swap
- * proposed again in place of one queued.
- */
-data class SwapForm(
-    val network: String,
-    val from: SendFrom,
-    val sellOptions: List<AssetChoice>,
-    val sell: AssetChoice?,
-    val buyOptions: List<AssetChoice>,
-    val buy: AssetChoice?,
-    val amount: String,
-    val tolerance: String,
-    val amountError: String? = null,
-    val amountHint: String? = null,
-    val canMax: Boolean = false,
-    val toleranceError: String? = null,
-    val note: String? = null,
-    val quoting: Boolean = false,
-    val error: String? = null,
-    val info: String? = null,
-    val canReview: Boolean = false,
-    val fixed: Boolean = false,
-)
-
-/**
  * A transaction of the account's that holds the swap back: [hash], what to open it as
  * ([label], "Open the approval"), and whether it is only waiting for a block ([waiting]) or may
  * still be on its way, to be tried again from its status.
  */
 data class EarlierItem(val hash: String, val label: String, val waiting: Boolean)
-
-/** The router a swap goes through, or an approval lets take the tokens: [name] and its EIP-55 [address]. */
-data class SpenderItem(val name: String, val address: String)
-
-/**
- * One pool of a swap's route: [pair] ("USDC → WETH"), its [fee] tier ("0.05 %") and the EIP-55
- * [pool] the pinned factory returned.
- */
-data class RouteStep(val pair: String, val fee: String, val pool: String)

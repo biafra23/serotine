@@ -5,13 +5,13 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.RouteStep
+import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.SpenderItem
+import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
-import eth.serotine.ui.safepropose.SafeBalanceChange
-import eth.serotine.ui.swap.RouteStep
-import eth.serotine.ui.swap.SpenderItem
-import eth.serotine.ui.swap.SwapForm
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
