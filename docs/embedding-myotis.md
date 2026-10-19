@@ -91,11 +91,17 @@ consumer developed against an unreleased engine, Myotis's
   reads cannot be verified, the row shows why ("Syncing…", "Sync refused", "Not
   verified", "No light client"), with one exception: while there is no head
   to read at (not synced, asleep, a stale head, no proof peer), a balance
-  proven earlier in this process is offered
+  proven earlier is offered
   as `LastKnown`, labelled with its block and the time of the head it was
   proven at, and the row says it may have changed since (owner's request,
   2026-10-19; docs/wallet-ux.md). `ProvenReads` keeps that last proof per key;
-  every adapter but the two balance ones reads it as syncing. Why a node is
+  every adapter but the two balance ones reads it as syncing. The balance
+  adapters also keep it across restarts in `LastBalancesFile`
+  (`last-balances.json` beside the account list, a path the host passes to
+  `MyotisNode.start`): at most 256 entries, rewritten when an amount changes
+  or its stored proof is 50 blocks old, so the time a row shows after a
+  restart can be up to ten minutes earlier than the last proof of that same
+  amount. Why a node is
   down is written to stderr, with the engine's own log when it refused to
   start.
 - **Verified token balances.** `VerifiedTokenBalances` runs each token's

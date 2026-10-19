@@ -101,7 +101,13 @@ private fun openWallet(dataDir: File) {
     // no installer does): the desktop's debug build.
     val debugLog: ((String) -> Unit)? =
         if (System.getProperty(DEBUG_LOG_PROPERTY) == "true") { line -> System.err.println(line) } else null
-    val node = MyotisNode.start(Network.SEPOLIA, dataDir.resolve("myotis"), debugLog = debugLog)
+    // The balances last verified are kept beside it, to be shown as such after a restart.
+    val node = MyotisNode.start(
+        Network.SEPOLIA,
+        dataDir.resolve("myotis"),
+        lastBalances = dataDir.resolve("last-balances.json").path,
+        debugLog = debugLog,
+    )
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
     val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
