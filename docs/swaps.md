@@ -613,12 +613,18 @@ docs/architecture.md.
      transactions' format 5), with what a swap sells held back from later
      transactions, and the status (9) for both.
 4. **Swap screens.**
-   - Swap, compose (22): from, sell, buy, amount, tolerance.
-   - Swap, review (23): the approval step, then the swap.
+   - Swap, compose (22): from, sell, buy, amount, tolerance, fee.
+   - Swap, review (23): the approval step, then the swap; an approval sent
+     returns to 22, which says so and goes on once a block has it.
    - A Swap button on the account detail (4) and "Swap ‹symbol›" in the asset
-     menu (5), absent when watch-only.
+     menu (5), greyed out, a tap saying why, when watch-only and on a Safe
+     until part 6 (owner ruling, 2026-10-18, #55).
    - The port and use cases wired into `AppGraph` and the hosts.
-5. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
+5. **The review's last figures.**
+   - The price impact: each pool's `slot0` against the quote.
+   - The Chainlink hint, display-only.
+   - The amount received, from the verified receipt's logs, on the status (9).
+6. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
    with the minimum and deadline fixed at the proposal.
 
 **`feature/swaps-cow`**, once CoW's *Data sources* ruling is recorded in

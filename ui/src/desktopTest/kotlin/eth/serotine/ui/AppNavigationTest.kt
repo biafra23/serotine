@@ -68,17 +68,22 @@ import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TransactionProgress
+import eth.serotine.domain.repository.UniswapV3Chain
+import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
@@ -273,6 +278,12 @@ class AppNavigationTest {
         signatureRecovery = recovery,
         safeApprovals = FakeApprovals(),
         safeReleases = FakeReleases(),
+        uniswap = object : UniswapV3Chain {
+            override suspend fun venue(network: Network): VenueReading = VenueReading.NotPinned
+
+            override suspend fun call(to: Address, data: ByteArray): Simulation =
+                Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
+        },
         network = Network.SEPOLIA,
     )
 
@@ -570,6 +581,23 @@ class AppNavigationTest {
         // The signed review is gone from the back stack: Done returns to the account.
         assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun anAccountOpensSwapFromItsDetailAndItsBackArrowReturns() {
+        accounts.value = listOf(daily)
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_SWAP_TAG).performClick()
+        // Over the bar, as every flow that ends in a transaction.
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        rule.onNodeWithText("Slippage tolerance").assertExists()
+        assertEquals(listOf("assets", "account/{address}", "swap/{address}?asset={asset}"), screens())
+
+        rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
 

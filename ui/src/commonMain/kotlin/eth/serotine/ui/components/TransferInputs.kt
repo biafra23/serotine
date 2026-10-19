@@ -60,9 +60,15 @@ internal data class AssetOption(
 
 /**
  * The network's currency and every token the account holds, as [value] reads them, and the token
- * [chosen] whatever its balance says: it was asked for, and its row says what is known of it.
+ * [chosen] whatever its balance says: it was asked for, and its row says what is known of it. With
+ * [everyToken], every token the wallet lists, held or not: what a swap may buy.
  */
-internal fun assetOptions(value: AccountValue, chosen: Address?, network: Network): List<AssetOption> {
+internal fun assetOptions(
+    value: AccountValue,
+    chosen: Address?,
+    network: Network,
+    everyToken: Boolean = false,
+): List<AssetOption> {
     val native = value.native
     val nativeOption = AssetOption(
         asset = TransferAsset.Native,
@@ -80,7 +86,9 @@ internal fun assetOptions(value: AccountValue, chosen: Address?, network: Networ
         val token = holding.token
         val reading = holding.reading
         val verified = reading as? TokenBalanceReading.Verified
-        if (token.address != chosen && (verified == null || verified.units.isZero)) return@mapNotNull null
+        if (!everyToken && token.address != chosen && (verified == null || verified.units.isZero)) {
+            return@mapNotNull null
+        }
         val symbol = displaySymbol(token.symbol)
         AssetOption(
             asset = TransferAsset.Erc20Token(token),

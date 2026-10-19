@@ -1,0 +1,171 @@
+package eth.serotine.ui.swap
+
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.theme.SerotineTheme
+import org.junit.Rule
+import org.junit.Test
+import kotlin.test.assertEquals
+
+/** Renders the stateless [SwapScreen] headless for its states. */
+class SwapScreenTest {
+
+    @get:Rule
+    val rule = createComposeRule()
+
+    private val usdcContract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+    private val ether = AssetChoice("ETH", "Ether", "eth", "1.5 ETH")
+    private val usdc = AssetChoice("USDC", "USDC", "usdc", "250 USDC", contract = usdcContract)
+    private val from = SendFrom("Daily", "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
+    private val router = SpenderItem("Uniswap's SwapRouter02", "0x5050505050505050505050505050505050505050")
+
+    private val compose = SwapUiState.Compose(
+        SwapForm(
+            network = "Sepolia",
+            from = from,
+            sellOptions = listOf(ether, usdc),
+            sell = usdc,
+            buyOptions = listOf(ether),
+            buy = null,
+            amount = "",
+            tolerance = "0.5",
+        ),
+        FeeLevel.NORMAL,
+    )
+
+    private val review = SwapUiState.SwapReview(
+        network = "Sepolia",
+        from = from,
+        sell = usdc,
+        sold = "40 USDC",
+        buy = ether,
+        receive = "0.01595 ETH",
+        ranAt = "The swap, run as a verified call from this account at block 9,412,118, returns this.",
+        minimum = "at least 0.01592 ETH",
+        tolerance = "0.5 % tolerance, below QuoterV2's verified quote of 0.016 ETH",
+        route = listOf(RouteStep("USDC → WETH", "0.3 %", "0x3030303030303030303030303030303030303030")),
+        routeNote = "One Uniswap v3 pool, as the pinned factory lists it.",
+        spender = router,
+        deadline = "Refused by the router after 14:32: the verified head's time and 10 minutes.",
+        maxFee = "0.0033 ETH",
+        feeDetail = "Normal fee",
+        balances = listOf(BalanceChange("USDC balance", "250 USDC", "210 USDC", "verified at block 9,412,117")),
+        unlock = UnlockStep(),
+    )
+
+    private val events = mutableListOf<String>()
+
+    private fun show(state: SwapUiState) = rule.setContent {
+        SerotineTheme {
+            SwapScreen(
+                state = state,
+                onSellChange = { events += "sell $it" },
+                onBuyChange = { events += "buy $it" },
+                onAmountChange = { events += "amount $it" },
+                onMax = { events += "max" },
+                onToleranceChange = { events += "tolerance $it" },
+                onFeeChange = { events += "fee $it" },
+                onReview = { events += "review" },
+                onEdit = { events += "edit" },
+                onRefresh = { events += "refresh" },
+                onPasswordChange = { events += "password" },
+                onSign = { events += "sign" },
+                onSignWithBiometrics = { events += "biometrics" },
+                onRetry = { events += "retry" },
+                onOpenTransfer = { events += "open $it" },
+                onBack = { events += "back" },
+            )
+        }
+    }
+
+    @Test
+    fun theComposeStepChoosesBothAssetsTheAmountAndTheTolerance() {
+        show(compose)
+
+        rule.onAllNodesWithTag(SWAP_SELL_TAG)[0].performClick()
+        rule.onAllNodesWithTag(SWAP_BUY_TAG)[0].performClick()
+        rule.onNodeWithTag(SWAP_AMOUNT_TAG).performTextInput("40")
+        rule.onNodeWithTag(SWAP_TOLERANCE_TAG).performTextInput("1")
+        rule.onNodeWithTag(SWAP_REVIEW_TAG).performScrollTo().assertIsNotEnabled()
+
+        // The fields are stateless here: each edit is of the state's text, typed at its start.
+        assertEquals(listOf("sell null", "buy null", "amount 40"), events.take(3))
+        assertEquals("tolerance 10.5", events.last())
+    }
+
+    @Test
+    fun anApprovalOnItsWayIsSaidAndOpens() {
+        val hash = "0x" + "5e".repeat(32)
+        show(
+            compose.copy(
+                form = compose.form.copy(
+                    buy = ether,
+                    amount = "40",
+                    info = "Your approval is on its way: once a block has it, Review quotes the swap.",
+                    canReview = true,
+                ),
+                earlier = EarlierItem(hash, "Open the approval", waiting = true),
+            ),
+        )
+
+        rule.onNodeWithText("Your approval is on its way: once a block has it, Review quotes the swap.")
+            .performScrollTo()
+        rule.onNodeWithTag(SWAP_EARLIER_TAG).performScrollTo().performClick()
+        rule.onNodeWithTag(SWAP_REVIEW_TAG).performScrollTo().assertIsEnabled().performClick()
+
+        assertEquals(listOf("open $hash", "review"), events)
+    }
+
+    @Test
+    fun theReviewShowsTheMinimumAndSignsWithThePassword() {
+        show(review.copy(unlock = UnlockStep(WalletPassword("made-up test password"))))
+
+        rule.onNodeWithText("Review swap").assertExists()
+        rule.onNodeWithTag(SWAP_MINIMUM_TAG).assertTextEquals("at least 0.01592 ETH")
+        rule.onNodeWithText("USDC → WETH · 0.3 %").performScrollTo()
+        rule.onNodeWithTag(SWAP_SIGN_TAG).performScrollTo().assertIsEnabled().performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
+
+        assertEquals(listOf("sign", "edit"), events)
+    }
+
+    @Test
+    fun theApprovalReviewNamesTheRouterAndTheAmount() {
+        show(
+            SwapUiState.ApprovalReview(
+                network = "Sepolia",
+                from = from,
+                token = usdc,
+                amount = "40 USDC",
+                allowance = "5 USDC",
+                spender = router,
+                resetNote = null,
+                maxFee = "0.0006 ETH",
+                feeDetail = "Normal fee",
+                balance = BalanceChange("ETH balance, which pays the fee", "1.5 ETH", "at least 1.4994 ETH", "now"),
+                simulation = "The approval, run as a verified call, goes through.",
+                unlock = UnlockStep(),
+            ),
+        )
+
+        rule.onNodeWithText("Approve").assertExists()
+        rule.onNodeWithText("Uniswap's SwapRouter02").assertExists()
+        rule.onNodeWithText("It may take 5 USDC now.").performScrollTo()
+        rule.onNodeWithTag(SWAP_SIGN_TAG).performScrollTo().assertIsNotEnabled()
+    }
+}

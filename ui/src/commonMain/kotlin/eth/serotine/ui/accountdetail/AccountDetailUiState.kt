@@ -2,6 +2,7 @@ package eth.serotine.ui.accountdetail
 
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.assets.sendBlockedReason
+import eth.serotine.ui.assets.swapBlockedReason
 import eth.serotine.ui.components.Control
 
 /** Everything the account detail screen renders (docs/wallet-ux.md, screen 4). */
@@ -54,6 +55,18 @@ sealed interface AccountDetailUiState {
         /** Why Send cannot be done from this account, and how to get there; null when it can. */
         val sendReason: String?
             get() = sendBlockedReason(kind, control)
+
+        /**
+         * Whether Swap can be done from this account: greyed out when it cannot (watch-only, or a
+         * Safe, whose swap is not built yet), and a tap on it says [swapReason] (owner ruling,
+         * 2026-10-18, #55).
+         */
+        val canSwap: Boolean
+            get() = swapReason == null
+
+        /** Why Swap cannot be done from this account, and how to get there; null when it can. */
+        val swapReason: String?
+            get() = swapBlockedReason(kind, control)
     }
 
     /** The account is not in the wallet (removed): the screen leaves. */

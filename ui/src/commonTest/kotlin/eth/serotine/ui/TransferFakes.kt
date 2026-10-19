@@ -53,6 +53,9 @@ internal class FakeTransactionInputs : TransactionInputs {
     var estimate: GasEstimate = GasEstimate.Estimated(21_000)
     var simulation: Simulation = Simulation.Succeeded("", 100)
 
+    /** What a run of a contract answers instead of [simulation]: a token's allowance, a router's swap. */
+    val runs = mutableMapOf<Address, Simulation>()
+
     /** Each transfer estimated: from, to and value. */
     val estimated = mutableListOf<Triple<Address, Address, UInt256>>()
 
@@ -79,7 +82,7 @@ internal class FakeTransactionInputs : TransactionInputs {
 
     override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
         gate?.await()
-        return simulation
+        return runs[to] ?: simulation
     }
 }
 

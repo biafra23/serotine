@@ -125,7 +125,9 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send and Receive buttons (Send greyed out as in 3).
+   - Send, Swap and Receive buttons (Send greyed out as in 3; Swap, 22,
+     greyed out, a tap saying why, when watch-only and on a Safe until its
+     swap is built: docs/swaps.md, *A Safe's swap*).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
@@ -133,8 +135,9 @@ upgrades*).
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
-   Copy contract address · Hide token. The native currency's row has the menu
-   too, with Send alone.
+   Swap ‹symbol› (22 with the asset sold chosen; as Swap in 4) · Copy
+   contract address · Hide token. The native currency's row has the menu
+   too, with Send and Swap alone.
 6. **Receive**: a QR code of the EIP-55 address, "Only send Sepolia assets"
    (for a Safe: "This Safe exists only on Sepolia"), Copy and Share.
 7. **Send, compose**
