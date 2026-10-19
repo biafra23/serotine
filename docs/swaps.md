@@ -124,6 +124,22 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
   at consecutive nonces. A MultiSend batch would be a delegate call: the
   owner allowed one through the pinned `MultiSendCallOnly` (2026-10-18,
   issue #57), but until that is built every delegate call is refused.
+  - The approval is for the exact amount, at the Safe's next nonce, and the
+    swap takes the one after it. When that one is taken already (a
+    transaction queued further ahead), nothing is proposed: the swap would
+    sit beside it.
+  - The allowance is the router's on chain, as the approvals of it queued
+    before the swap leave it (per nonce the least of its alternatives, since
+    any one of them may be the one that runs). One that covers the amount
+    needs no approval of its own.
+  - A swap of the token through the router queued before it counts on the
+    allowance a new approval would set: nothing is proposed until it has
+    run or gone.
+  - A token that refuses one allowance for another (USDT's kind) would take
+    a third transaction, the allowance set to zero first: it is not
+    proposed from a Safe.
+- **What is held back.** What the transactions queued before the swap may
+  move of the asset sold is not the swap's to sell, as for a Safe's transfer.
 - **Decoded here.** Screen 17 decodes each from its raw call to a pinned
   contract, never from a description: "Swap 100 USDC for at least 4.2 LINK on
   Uniswap".
@@ -151,6 +167,12 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
     tolerance (its verified QuoterV2 quote now: an `execTransaction` run
     returns only whether it succeeded), Execute says how much the swap
     leaves open and offers to propose it again with a fresh minimum.
+  - Proposed again, the swap takes the nonce of the one it replaces, with
+    a fresh minimum and deadline: only one of the two can ever run. It is
+    the same swap (the pair, the amount and the router), so those queued
+    after it are left as they were, and one past a gap in the queue is not
+    proposed again. It gets no approval of its own; one the router still
+    needs is proposed first, from the Safe's Swap.
   - It may still be executed as signed (owner ruling, 2026-10-19, decision
     5).
 
@@ -626,7 +648,7 @@ docs/architecture.md.
      returns to 22, which says so and goes on once a block has it.
    - A Swap button on the account detail (4) and "Swap ‹symbol›" in the asset
      menu (5), greyed out, a tap saying why, when watch-only and on a Safe
-     until part 7 (owner ruling, 2026-10-18, #55).
+     until part 8 (owner ruling, 2026-10-18, #55).
    - The port and use cases wired into `AppGraph` and the hosts.
 5. **The review's last figures.**
    - The price impact: each pool's `slot0` against the quote.
@@ -641,10 +663,14 @@ docs/architecture.md.
      its minimum, and its deadline against the verified head.
    - A minimum fallen behind the market said at Execute, with what it leaves
      open.
-7. **Proposing a Safe's swap** through the queue: two Safe transactions at
-   consecutive nonces, the minimum and a 24-hour deadline fixed at the
-   proposal; Swap on a Safe's detail; and Execute's offer to propose a swap
-   again with a fresh minimum.
+7. **Proposing a Safe's swap, the use case.** `ProposeSafeSwap`: the
+   approval and the swap at consecutive nonces, or the swap alone, with the
+   minimum and a 24-hour deadline fixed at the proposal, each run from the
+   Safe; and the swap proposed again at the nonce of one whose minimum has
+   fallen behind.
+8. **Proposing a Safe's swap, the screens.** Swap on a Safe's detail, its
+   compose and review, signed by an owner held here (both transactions);
+   and Execute's offer to propose a swap again with a fresh minimum.
 
 **`feature/swaps-cow`**, once CoW's *Data sources* ruling is recorded in
 CLAUDE.md
