@@ -1,6 +1,5 @@
 package eth.serotine.data.engine
 
-import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
@@ -397,9 +396,6 @@ class VerifiedAddressKinds internal constructor(
 
         /** A storage word as a number, when it is a small one. */
         private fun number(word: String): Long? = Abi.uint256(word)?.toLongOrNull()
-
-        /** The Keccak-256 of [codeHex], as lower-case hex. */
-        private fun codeHash(codeHex: String): String = Keccak256().digest(codeHex.fromHex()).toHex()
 
         private const val WORD_HEX_DIGITS = 64
         private const val ADDRESS_PADDING = 24
