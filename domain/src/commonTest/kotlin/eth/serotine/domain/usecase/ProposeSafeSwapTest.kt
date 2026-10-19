@@ -182,6 +182,38 @@ class ProposeSafeSwapTest {
     }
 
     @Test
+    fun aLaterQueuedApprovalSetsTheAllowanceWhateverAnEarlierOneSet() = runTest {
+        pool(usdcToken.address, linkToken.address)
+        allow(UInt256.ZERO)
+        world.queue.save(world.request(approval(4, UInt256.of(5_000_000))))
+        world.queue.save(world.request(approval(5, UInt256.of(1_000_000))))
+
+        val proposal = assertIs<SafeSwapProposing.Proposed>(proposeUsdcForLink()).proposal
+
+        assertEquals(UInt256.of(1_000_000), proposal.allowance, "the one at 5 runs last")
+        assertEquals(listOf(6L, 7L), proposal.requests.map { it.nonce }, "an approval of its own")
+    }
+
+    @Test
+    fun anApprovalOfAnotherSpenderOrTokenLeavesTheRoutersAllowanceAsItWas() = runTest {
+        pool(usdcToken.address, linkToken.address)
+        allow(UInt256.ZERO)
+        val other = Address.of("0x" + "66".repeat(20))
+        // USDC to another spender at 4, and LINK to the router at 5.
+        world.queue.save(
+            world.request(SafeTx.call(usdcToken.address, UInt256.ZERO, Erc20.approveData(other, twoUsdc), 4)),
+        )
+        world.queue.save(
+            world.request(SafeTx.call(linkToken.address, UInt256.ZERO, Erc20.approveData(router, twoUsdc), 5)),
+        )
+
+        val proposal = assertIs<SafeSwapProposing.Proposed>(proposeUsdcForLink()).proposal
+
+        assertEquals(UInt256.ZERO, proposal.allowance)
+        assertEquals(listOf(6L, 7L), proposal.requests.map { it.nonce })
+    }
+
+    @Test
     fun aRejectionBesideAQueuedApprovalLeavesTheAllowanceTheChainHas() = runTest {
         pool(usdcToken.address, linkToken.address)
         allow(UInt256.ZERO)
