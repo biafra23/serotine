@@ -499,14 +499,21 @@ discussion that produced this note.
   the owner's computer) drags the files into the description's
   `## Screenshots` section itself: each under its caption, before and after
   side by side for a changed screen. A session that cannot upload them
-  shows them to the owner in the session instead (owner ruling, 2026-10-19):
-  it attaches each file to the conversation, named after its screen and
-  state (`assets-head-too-old-after.png`), with its caption, and the
-  description's `## Screenshots` section says the screenshots were shown in
-  the session and gives the command that renders them, with no table of
-  file names in place of the images. A push that changes what the
-  screenshots show shows the new ones in the same round, the same way. A
-  host where the files reach no one (CI, a plain `claude` terminal) lists
+  shows them to the owner in the session instead, gathered where the owner
+  finds them again at a glance (owner ruling, 2026-10-19): ONE artifact per
+  PR (the session's Artifact tool), a page with every screenshot under its
+  caption, before and after side by side for a changed screen, titled with
+  the PR's number and subject. The session gives its link in its reply, and
+  the description's `## Screenshots` section gives the same link (private to
+  the owner; the owner's artifact gallery lists it too) and the command that
+  renders the screenshots, with no table of file names in place of the
+  images. A push that changes what the screenshots show republishes that
+  same artifact in the same round, so its link stays and its history keeps
+  the earlier versions. A session that has neither (no browser, no
+  Artifact tool) attaches the files to the conversation, each named after
+  its screen and state (`assets-head-too-old-after.png`) with its caption,
+  and the section says they were shown in the session. A host where the
+  files reach no one (CI, a plain `claude` terminal) lists
   in that section each state under its caption, with the
   `<feature>Screen-<nn>.png` it renders to, and says the images await
   rendering with the command above: the after images on the PR's branch,
