@@ -43,8 +43,8 @@ object SwapRoutes {
             .filter { liquidity.inRange(PoolKey.of(tokenIn, tokenOut, it)) }
             .map { SwapRoute.direct(tokenIn, tokenOut, it) }
         if (tokenIn == weth || tokenOut == weth) return direct
-        val feeIn = liquidity.deepestTier(tokenIn, weth) ?: return direct
-        val feeOut = liquidity.deepestTier(weth, tokenOut) ?: return direct
+        val feeIn = deepestTier(tokenIn, weth, liquidity) ?: return direct
+        val feeOut = deepestTier(weth, tokenOut, liquidity) ?: return direct
         return direct + SwapRoute.via(tokenIn, feeIn, weth, feeOut, tokenOut)
     }
 
@@ -65,13 +65,19 @@ object SwapRoutes {
         return best?.quote
     }
 
-    private fun Map<PoolKey, UInt256>.inRange(key: PoolKey): Boolean = this[key]?.isZero == false
-
-    private fun Map<PoolKey, UInt256>.deepestTier(tokenA: Address, tokenB: Address): FeeTier? = FeeTier.entries
-        .mapNotNull { tier -> this[PoolKey.of(tokenA, tokenB, tier)]?.takeUnless { it.isZero }?.let { tier to it } }
+    /**
+     * The tier of [tokenA] and [tokenB]'s pool with the most of [liquidity] in range (on a tie,
+     * the lower fee), or null when none of their pools has any.
+     */
+    fun deepestTier(tokenA: Address, tokenB: Address, liquidity: Map<PoolKey, UInt256>): FeeTier? = FeeTier.entries
+        .mapNotNull { tier ->
+            liquidity[PoolKey.of(tokenA, tokenB, tier)]?.takeUnless { it.isZero }?.let { tier to it }
+        }
         // maxBy keeps the first of equals, and the tiers come by fee: on a tie, the lower fee.
         .maxByOrNull { it.second }
         ?.first
+
+    private fun Map<PoolKey, UInt256>.inRange(key: PoolKey): Boolean = this[key]?.isZero == false
 
     /** A quote and its [net], as [best] ranks them. */
     private class Ranked(val quote: RouteQuote, val net: Net) {

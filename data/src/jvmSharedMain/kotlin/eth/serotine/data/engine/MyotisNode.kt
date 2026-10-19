@@ -18,6 +18,7 @@ import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.UniswapV3Chain
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
 import io.myotis.api.EngineConfig
@@ -41,10 +42,9 @@ import kotlin.time.Duration.Companion.seconds
  * creates it with [start], hands [nativeBalances], [tokenBalances], [tokenMetadata],
  * [priceFeeds], [addressKinds], [lightClient] and [networkUpgrades] to the AppGraph, and for
  * sending [transactionInputs], [broadcaster], [receipts] and [names], and for a Safe's
- * transactions [safeApprovals], and owns it for the life of the process: [pause] and [resume] it
- * around the app being in the
- * background, [shutdown] on exit. Only `io.myotis.api` and the library's default ports are
- * used; nothing below them.
+ * transactions [safeApprovals], and for swaps [uniswap], and owns it for the life of the process:
+ * [pause] and [resume] it around the app being in the background, [shutdown] on exit. Only
+ * `io.myotis.api` and the library's default ports are used; nothing below them.
  */
 class MyotisNode private constructor(network: Network, debugLog: ((String) -> Unit)?) {
 
@@ -119,6 +119,9 @@ class MyotisNode private constructor(network: Network, debugLog: ((String) -> Un
 
     /** A Safe's owners' approvals on chain (`approvedHashes`), each a verified call. */
     val safeApprovals: SafeApprovals = VerifiedSafeApprovals(chain, Dispatchers.IO)
+
+    /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
+    val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
     val receipts: ReceiptTracker = EngineReceipts(chain, Dispatchers.IO, POLL_INTERVAL)

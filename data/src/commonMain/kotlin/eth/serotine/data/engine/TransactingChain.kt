@@ -2,6 +2,11 @@ package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.Simulation
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /**
  * What the transaction adapters need beyond [VerifiedChain]: the sender's nonce, the fee
@@ -85,4 +90,35 @@ internal fun whyUnreadable(snapshot: EngineSnapshot): ReadUnavailable? = when (s
         snapshot.readableHead == null -> ReadUnavailable.UNPROVEN
         else -> null
     }
+}
+
+/**
+ * [read] of this chain on [dispatcher] while reads can be verified ([whyUnreadable]); otherwise,
+ * or when the engine fails, [unavailable]. No chain at all is [ReadUnavailable.NO_ENGINE].
+ */
+internal suspend fun <C : VerifiedChain, T> C?.askVerified(
+    dispatcher: CoroutineDispatcher,
+    unavailable: (ReadUnavailable) -> T,
+    read: (C) -> T,
+): T {
+    val chain = this ?: return unavailable(ReadUnavailable.NO_ENGINE)
+    return withContext(dispatcher) {
+        try {
+            whyUnreadable(chain.snapshot())?.let { return@withContext unavailable(it) }
+            read(chain)
+        } catch (e: Throwable) {
+            // A cancellation of this call ends it; anything else, a CancellationException the
+            // engine's own code throws included, is an engine failure (as in ProvenReads).
+            currentCoroutineContext().ensureActive()
+            unavailable(ReadUnavailable.UNPROVEN)
+        }
+    }
+}
+
+/** A verified call's answer as the domain's [Simulation]; no answer (null) is not proven. */
+internal fun CallOutcome?.toSimulation(): Simulation = when (this) {
+    is CallOutcome.Returned -> Simulation.Succeeded(hex, blockNumber)
+    is CallOutcome.Reverted -> Simulation.Reverted(blockNumber)
+    CallOutcome.Refused -> Simulation.Refused
+    null -> Simulation.Unavailable(ReadUnavailable.UNPROVEN)
 }

@@ -197,9 +197,26 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
 - **The cost.** A quote reads every storage slot the swap touches: the pool's
   state, the tick bitmap words and each initialized tick it crosses. The
   engine proves each slot from peers.
-  - The Uniswap plan's part 2 measures this on Sepolia and bounds the number of candidates
-    quoted per review if it has to.
-  - That part also finds out which built-in tokens have pools on Sepolia at all.
+  - Measured on Sepolia (2026-10-19, `eth_createAccessList` of QuoterV2's
+    calls): a direct quote touches 9 to 12 slots of 3 or 4 contracts, a hop
+    16 slots of 6. A review reads up to twelve pools (`getPool`, then
+    `liquidity()` of each listed one) and quotes up to five candidates, all
+    in parallel, plus one quote that converts the fee.
+  - Every built-in token (USDC, LINK, UNI) has a pool with WETH at all four
+    tiers on Sepolia, and USDC/LINK, USDC/UNI and LINK/UNI have pools of
+    their own.
+  - How long a review's quote takes through the engine is what
+    `MyotisNodeSepoliaTest` prints when run with the engine's library; the
+    number of candidates is bounded only if that asks for it.
+- **The fee a route costs**, when routes are ranked net: its QuoterV2 gas ×
+  (the next base fee + the Normal tip), in wei for WETH or ETH bought, and
+  otherwise converted by one quote of the largest such fee in WETH through
+  the bought token's deepest WETH pool, the others taking their share by
+  their gas. No fee reading or no conversion leaves the routes ranked gross,
+  and the finding says so: the ranking only picks among verified quotes,
+  and the minimum is the chosen route's own quote either way. The router's
+  own work (the `transferFrom` and the multicall) is the same for every
+  route of a swap, so it is not counted here.
 - **Exact input only.** The user says how much to sell. Exact output ("buy
   exactly 5 LINK") can come later.
 
@@ -581,12 +598,13 @@ docs/architecture.md.
    - The route candidates and their choice, and the slippage arithmetic.
    - Vectors made with Foundry's `cast`.
 2. **Adapters.**
-   - The ports and use cases a route needs, with fakes in their tests.
-   - The Sepolia pins with their code hashes, pool discovery and quotes over
-     the engine.
-   - The router overhead pinned for the gas figure.
-   - How long a quote takes, and which built-in tokens have pools on
-     Sepolia.
+   - The port `UniswapV3Chain` (the venue once its code is proven, and
+     verified calls) and the use case `FindUniswapRoute`, with fakes in
+     their tests.
+   - The Sepolia pins with their code hashes, and the engine adapter
+     `VerifiedUniswapV3`.
+   - Which built-in tokens have pools on Sepolia, what a quote touches, and
+     a network test that times a route through the engine.
 3. **Swap screens.**
    - `SentAction`'s approval and swap, with their record and hold-back: they
      land with the screens that send them, so nothing is recorded that no
@@ -611,6 +629,9 @@ CLAUDE.md
    - Before this part: a spike that shows the engine's half of the proof
      (*Proving an order's end*, "What the engine has to show first").
 2. **Adapter.**
+   - The router overhead pinned for the Uniswap net's gas figure, measured
+     with Foundry's `cast` (it moved here from the Uniswap plan, where it
+     ranks no route).
    - The Ktor client and the three calls, decoded leniently, with no
      transparent retry of the order POST.
    - The receipt scan for an order's `Trade`, over the engine.
