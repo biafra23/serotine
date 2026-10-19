@@ -97,7 +97,9 @@ data class ApprovalSummary(
  * for at least 4.28845 LINK on Uniswap"),
  * the exact [sold] amount with its symbol, the sold asset's [soldSymbol] and [soldIcon], what it
  * buys at least ([bought], "at least 4.28845 LINK") with [boughtSymbol] and [boughtIcon], the EIP-55
- * [router] it went through, and the EIP-55 [from], the account that sent it and is paid.
+ * [router] it went through, and the EIP-55 [from], the account that sent it and is paid. Once a
+ * block has it and it went through, [received] says what it paid, as its verified receipt's logs
+ * say ("Received 4.3 LINK…"); null until then, or when they do not say it.
  */
 data class SwapSummary(
     val title: String,
@@ -109,6 +111,7 @@ data class SwapSummary(
     val boughtIcon: String?,
     val router: String,
     val from: String,
+    val received: String? = null,
 )
 
 /** One step of a transfer: its [label] ("Included"), where it stands ([state]) and its [detail] (its block). */

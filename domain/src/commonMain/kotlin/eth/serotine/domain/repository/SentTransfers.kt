@@ -158,7 +158,9 @@ sealed interface SentAction {
      * A swap on Uniswap through the router at [router]: exactly [amountIn] of [sell] for at least
      * [minimumOut] of [buy], paid to the account (docs/swaps.md, *The transaction*). What it sells
      * of a token, the account's later transactions cannot move while this one is not mined; ETH
-     * sold is the transaction's value, which its cost already holds.
+     * sold is the transaction's value, which its cost already holds. [weth] is the pinned WETH9
+     * the router unwraps ETH bought from (its `Withdrawal` says how much); null when the swap
+     * buys a token, or the record is older than this field.
      */
     data class Swap(
         val router: Address,
@@ -166,5 +168,6 @@ sealed interface SentAction {
         val amountIn: UInt256,
         val buy: TransferAsset,
         val minimumOut: UInt256,
+        val weth: Address? = null,
     ) : SentAction
 }

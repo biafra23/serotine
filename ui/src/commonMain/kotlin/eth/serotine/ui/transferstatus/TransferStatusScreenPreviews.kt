@@ -295,6 +295,15 @@ private fun TransferStatusAllowanceResetPreview() = TransferStatusPreview(
 private fun TransferStatusSwapDarkPreview() =
     TransferStatusPreview(pending.copy(sent = null, swap = swap), darkTheme = true)
 
+@Preview
+@Composable
+private fun TransferStatusSwapReceivedPreview() = TransferStatusPreview(
+    included.copy(
+        sent = null,
+        swap = swap.copy(received = "Received 4.30912 LINK, as the verified receipt's logs say."),
+    ),
+)
+
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
@@ -318,4 +327,5 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusApprovalPreview() },
     { TransferStatusAllowanceResetPreview() },
     { TransferStatusSwapDarkPreview() },
+    { TransferStatusSwapReceivedPreview() },
 )

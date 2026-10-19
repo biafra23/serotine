@@ -192,6 +192,7 @@ class FileSentTransfersTest {
                 amountIn = UInt256.of("1000000000000000000"),
                 buy = TransferAsset.Native,
                 minimumOut = UInt256.of(1),
+                weth = Address.of("0x" + "ff".repeat(20)),
             ),
         )
 

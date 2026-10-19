@@ -29,6 +29,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 class FindUniswapRouteTest {
     private val usdc = Address.of("0x" + "1c".repeat(20))
@@ -85,6 +86,18 @@ class FindUniswapRouteTest {
         assertEquals(2, found.quotedRoutes)
         assertEquals(deployment, found.deployment)
         assertEquals(42L, found.blockNumber)
+    }
+
+    @Test
+    fun theChosenRoutesSpotIsReadFromItsPoolsAndLeftOutWhenOneCannotBeRead() = runTest {
+        val medium = pool(PoolKey.of(usdc, link, FeeTier.MEDIUM), 10, tag = 0x30)
+        quote(SwapRoute.direct(usdc, link, FeeTier.MEDIUM), amount, amountOut = 990_000, gas = 100_000)
+        assertNull(assertIs<RouteFinding.Found>(usdcForLink()).spotOut, "slot0 reverted")
+
+        // At a price of one: 1 000 000 less the pool's 0.3 %.
+        val q96 = UInt256.of("79228162514264337593543950336")
+        chain.answer(medium, UniswapV3Pool.slot0(), q96.toBytes32().toHex() + "00".repeat(32 * 6))
+        assertEquals(UInt256.of(997_000), assertIs<RouteFinding.Found>(usdcForLink()).spotOut)
     }
 
     @Test

@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PriceImpact
 import eth.serotine.domain.model.SlippageTolerance
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.SwapRouter02
@@ -35,7 +36,8 @@ import kotlinx.coroutines.flow.first
 /**
  * A Uniswap swap from an account this wallet holds, quoted for review (docs/swaps.md, *The
  * transaction*; screen 23): exactly [amountIn] of [sell] for at least [minimumOut] of [buy],
- * paid to [from], along [route] through the factory's [pools] and the router at [router].
+ * paid to [from], along [route] through the factory's [pools] and the router at [router], which
+ * wraps and unwraps ETH as [weth9].
  *
  * - [quotedOut] is QuoterV2's verified quote of the route, at [quoteBlock]; [minimumOut] is that
  *   less [tolerance], rounded down: the pool's own answer for this exact amount, never a price.
@@ -49,6 +51,8 @@ import kotlinx.coroutines.flow.first
  *   ([pendingSell]) and after ([sellAfter]); the token bought, when it is one, before
  *   ([buyBefore]).
  * - [netOfFees]: whether the route was chosen net of the fees (`RouteFinding.Found.netOfFees`).
+ * - [spotOut] is what the route returns at its pools' spot prices, less their fees, and
+ *   [priceImpact] how far [quotedOut] falls below it; null when a pool's price could not be read.
  *
  * Only [QuoteSwap] makes one, and nothing copies it: what [SendSwap] signs is its [transaction].
  */
@@ -63,9 +67,11 @@ data class SwapQuote internal constructor(
     val route: SwapRoute,
     val pools: List<Address>,
     val router: Address,
+    val weth9: Address,
     val quotedOut: UInt256,
     val quoteBlock: Long?,
     val netOfFees: Boolean,
+    val spotOut: UInt256?,
     val minimumOut: UInt256,
     val returnedOut: UInt256,
     val deadline: Long,
@@ -83,6 +89,10 @@ data class SwapQuote internal constructor(
     val feeBlock: Long,
     val simulationBlock: Long?,
 ) {
+    /** The price impact in basis points ([PriceImpact.basisPoints]), or null when [spotOut] is not known. */
+    val priceImpact: Int?
+        get() = spotOut?.let { PriceImpact.basisPoints(it, quotedOut) }
+
     /** The quote of the transaction itself, which [SendSwap] signs. */
     internal val call: CallQuote
         get() = CallQuote(
@@ -100,7 +110,14 @@ data class SwapQuote internal constructor(
 
     /** What the account's record says this transaction does. */
     internal val action: SentAction.Swap
-        get() = SentAction.Swap(router, sell, amountIn, buy, minimumOut)
+        get() = SentAction.Swap(
+            router,
+            sell,
+            amountIn,
+            buy,
+            minimumOut,
+            weth = weth9.takeIf { buy == TransferAsset.Native },
+        )
 }
 
 /**
@@ -264,9 +281,11 @@ class QuoteSwap(
                 route = found.quote.route,
                 pools = found.pools,
                 router = router,
+                weth9 = found.deployment.weth9,
                 quotedOut = found.quote.amountOut,
                 quoteBlock = found.blockNumber,
                 netOfFees = found.netOfFees,
+                spotOut = found.spotOut,
                 minimumOut = minimum,
                 returnedOut = checkNotNull(returned) { "an accepted run returned the amount" },
                 deadline = deadline,

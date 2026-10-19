@@ -129,6 +129,22 @@ class SwapsTest {
         assertEquals(UInt256.of(400_000_000), quoted.sellAfter)
         assertEquals(UInt256.ZERO, quoted.buyBefore)
         assertEquals(SwapRoute.direct(usdcToken.address, linkToken.address, FeeTier.MEDIUM), quoted.route)
+        assertEquals(null, quoted.priceImpact, "the pool's slot0 did not answer")
+    }
+
+    @Test
+    fun theQuoteCarriesItsPriceImpactAgainstThePoolsSpot() = runTest {
+        pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
+        allow(hundredUsdc)
+        inputs.routerReturns = returns(UInt256.of("4300000000000000000"))
+        // 220 000² LINK units per USDC unit: 100 USDC is 4.84 LINK at the spot, 4.82548 less 0.3 %.
+        val sqrt = UInt256.of(220_000) * UInt256.of("79228162514264337593543950336")
+        chain.answers[Address.of("0x" + "30".repeat(20)) to UniswapV3Pool.slot0().toHex()] =
+            word(sqrt) + "00".repeat(32 * 6)
+
+        val quoted = assertIs<SwapQuoting.Quoted>(quoteUsdcForLink()).quote
+        assertEquals(UInt256.of("4825480000000000000"), quoted.spotOut)
+        assertEquals(1068, quoted.priceImpact, "4.31 against 4.82548")
     }
 
     @Test

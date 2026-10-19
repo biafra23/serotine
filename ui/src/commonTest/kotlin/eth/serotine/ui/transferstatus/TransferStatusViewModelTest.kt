@@ -13,6 +13,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
@@ -393,6 +394,25 @@ class TransferStatusViewModelTest {
             "It failed: the swap reverted in its block, so nothing was swapped: the price moved past its minimum, " +
                 "or its deadline passed. Its fee is paid all the same.",
             viewModel.shown.note,
+        )
+        assertNull(viewModel.shown.swap?.received, "a reverted swap paid nothing")
+
+        // Went through: LINK's own Transfer log to the account says what it paid.
+        val paid = ReceiptLog(
+            link.address,
+            listOf(
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0x" + "00".repeat(32),
+                "0x" + "00".repeat(12) + record.account.hex.drop(2),
+            ),
+            "0x" + UInt256.of("4309120000000000000").toBytes32().joinToString("") {
+                (it.toInt() and 0xff).toString(16).padStart(2, '0')
+            },
+        )
+        receipts.of(swap.hash).value = TransactionProgress.Included(9_412_120, succeeded = true, logs = listOf(paid))
+        assertEquals(
+            "Received 4.30912 LINK, as the verified receipt's logs say.",
+            viewModel.shown.swap?.received,
         )
     }
 

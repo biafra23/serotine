@@ -448,8 +448,27 @@ class ObserveSentTransfer(private val sentTransfers: SentTransfers, private val 
             (list as? SentTransferList.Loaded)?.transfers?.lastOrNull { it.hash == hash }
         }.distinctUntilChanged(),
         receipts.observe(hash),
-    ) { transfer, progress -> SentTransferStatus(transfer, progress) }
+    ) { transfer, progress -> SentTransferStatus(transfer, progress, receivedOf(transfer, progress)) }
+
+    /** What a swap that went through paid the account, by its verified receipt's logs. */
+    private fun receivedOf(transfer: SentTransfer?, progress: TransactionProgress): UInt256? {
+        val swap = transfer?.action as? SentAction.Swap ?: return null
+        val logs = when (progress) {
+            is TransactionProgress.Included -> progress.logs.takeIf { progress.succeeded }
+            is TransactionProgress.Finalized -> progress.logs.takeIf { progress.succeeded }
+            TransactionProgress.Pending, is TransactionProgress.Unavailable -> null
+        } ?: return null
+        return SwapProceeds.receivedOf(swap, transfer.account, logs)
+    }
 }
 
-/** What [ObserveSentTransfer] emits: the [transfer] as recorded, and its [progress]. */
-data class SentTransferStatus(val transfer: SentTransfer?, val progress: TransactionProgress)
+/**
+ * What [ObserveSentTransfer] emits: the [transfer] as recorded, and its [progress]; for a swap
+ * that went through, what it paid the account ([received], in the bought asset's smallest
+ * units), when its receipt's logs say it.
+ */
+data class SentTransferStatus(
+    val transfer: SentTransfer?,
+    val progress: TransactionProgress,
+    val received: UInt256? = null,
+)

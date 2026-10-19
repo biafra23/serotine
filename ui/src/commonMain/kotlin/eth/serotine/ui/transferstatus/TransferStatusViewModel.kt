@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
+import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.ReadUnavailable
@@ -159,7 +160,7 @@ class TransferStatusViewModel(
             safeTx = transfer?.let(::safeTxSummary),
             deployment = transfer?.let { deploymentSummary(it, progress, failed, list) },
             approval = transfer?.let(::approvalSummary),
-            swap = transfer?.let(::swapSummary),
+            swap = transfer?.let { swapSummary(it, status.received) },
             // A retry turned away keeps the record: what it came to stays on screen with Try again.
             notSent = if (maybeSent) {
                 retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
@@ -266,8 +267,8 @@ class TransferStatusViewModel(
         )
     }
 
-    /** What [transfer] sold and buys at least, when it is a swap. */
-    private fun swapSummary(transfer: SentTransfer): SwapSummary? {
+    /** What [transfer] sold and buys at least, when it is a swap, and what it paid ([received]) once known. */
+    private fun swapSummary(transfer: SentTransfer, received: UInt256?): SwapSummary? {
         val swap = transfer.action as? SentAction.Swap ?: return null
         val (soldSymbol, soldDecimals, soldIcon) = shown(swap.sell)
         val (boughtSymbol, boughtDecimals, boughtIcon) = shown(swap.buy)
@@ -282,6 +283,9 @@ class TransferStatusViewModel(
             boughtIcon = boughtIcon,
             router = Eip55.format(swap.router),
             from = Eip55.format(transfer.account),
+            received = received?.let {
+                "Received ${it.formatUnits(boughtDecimals)} $boughtSymbol, as the verified receipt's logs say."
+            },
         )
     }
 

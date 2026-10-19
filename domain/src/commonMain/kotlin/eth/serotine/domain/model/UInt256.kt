@@ -147,6 +147,40 @@ class UInt256 private constructor(
     /** Limb [i] as the unsigned value it holds. */
     private fun limb(i: Int): Long = limbs[i].toLong() and LIMB_MASK
 
+    /**
+     * `this × multiplier / divisor`, rounded down, with the product held exactly in 512 bits:
+     * null when [divisor] is zero or the quotient exceeds 2^256 - 1.
+     */
+    internal fun mulDivOrNull(multiplier: UInt256, divisor: UInt256): UInt256? {
+        if (divisor.isZero) return null
+        // The product, sixteen limbs, least significant first.
+        val product = LongArray(2 * LIMBS)
+        for (i in 0 until LIMBS) {
+            val a = limb(i).toULong()
+            if (a == 0uL) continue
+            var carry = 0uL
+            for (j in 0 until LIMBS) {
+                val t = a * multiplier.limb(j).toULong() + product[i + j].toULong() + carry
+                product[i + j] = (t and LIMB_MASK.toULong()).toLong()
+                carry = t shr LIMB_BITS
+            }
+            product[i + LIMBS] = carry.toLong()
+        }
+        // Long division, a bit at a time: the remainder stays below the divisor, and a bit
+        // shifted out of it (overflow) means it was at least 2^256, above any divisor.
+        val remainder = IntArray(LIMBS)
+        val quotient = IntArray(2 * LIMBS)
+        for (bit in 2 * LIMBS * LIMB_BITS - 1 downTo 0) {
+            val overflow = shiftLeftOne(remainder, ((product[bit / LIMB_BITS] ushr (bit % LIMB_BITS)) and 1L).toInt())
+            if (overflow || !lessThan(remainder, divisor.limbs)) {
+                subtractInPlace(remainder, divisor.limbs)
+                quotient[bit / LIMB_BITS] = quotient[bit / LIMB_BITS] or (1 shl (bit % LIMB_BITS))
+            }
+        }
+        if ((LIMBS until 2 * LIMBS).any { quotient[it] != 0 }) return null
+        return UInt256(quotient.copyOf(LIMBS))
+    }
+
     /** `this / divisor` and `this % divisor`, for a [divisor] in 1..2^31 - 1. */
     internal fun divRem(divisor: Int): Pair<UInt256, Int> {
         require(divisor > 0) { "a divisor is positive: $divisor" }
@@ -162,6 +196,36 @@ class UInt256 private constructor(
     }
 
     companion object {
+        /** Shifts [limbs] left by one bit, [lowBit] in; whether a bit was shifted out at the top. */
+        private fun shiftLeftOne(limbs: IntArray, lowBit: Int): Boolean {
+            var carry = lowBit
+            for (i in 0 until LIMBS) {
+                val next = limbs[i] ushr (LIMB_BITS - 1)
+                limbs[i] = (limbs[i] shl 1) or carry
+                carry = next
+            }
+            return carry != 0
+        }
+
+        /** Whether [a] is below [b], both unsigned limbs. */
+        private fun lessThan(a: IntArray, b: IntArray): Boolean {
+            for (i in LIMBS - 1 downTo 0) {
+                val order = (a[i].toLong() and LIMB_MASK).compareTo(b[i].toLong() and LIMB_MASK)
+                if (order != 0) return order < 0
+            }
+            return false
+        }
+
+        /** `a -= b` modulo 2^256. */
+        private fun subtractInPlace(a: IntArray, b: IntArray) {
+            var borrow = 0L
+            for (i in 0 until LIMBS) {
+                val limb = (a[i].toLong() and LIMB_MASK) - (b[i].toLong() and LIMB_MASK) - borrow
+                a[i] = limb.toInt()
+                borrow = if (limb < 0) 1 else 0
+            }
+        }
+
         private const val LIMBS = 8
         private const val LIMB_BITS = 32
         private const val LIMB_MASK = 0xFFFF_FFFFL

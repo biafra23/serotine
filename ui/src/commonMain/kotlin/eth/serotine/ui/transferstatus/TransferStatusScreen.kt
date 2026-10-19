@@ -48,6 +48,9 @@ const val TRANSFER_STEP_TAG = "transfer-step"
 /** Test tag of the transaction hash, for UI tests. */
 const val TRANSFER_HASH_TAG = "transfer-hash"
 
+/** Test tag of what a swap paid, for UI tests. */
+const val TRANSFER_RECEIVED_TAG = "transfer-received"
+
 /** Test tag of the address of the Safe a deployment created, for UI tests. */
 const val TRANSFER_SAFE_TAG = "transfer-safe"
 
@@ -135,6 +138,9 @@ private fun SwapBlock(swap: SwapSummary) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         TokenIcon(swap.boughtIcon, swap.boughtSymbol, size = 40.dp)
         Text(swap.bought, style = MaterialTheme.typography.titleLarge)
+    }
+    swap.received?.let {
+        Text(it, Modifier.testTag(TRANSFER_RECEIVED_TAG), style = MaterialTheme.typography.bodyLarge)
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Blockie(swap.router, size = 32.dp)

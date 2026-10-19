@@ -211,6 +211,9 @@ class SwapViewModelTest {
         val key = PoolKey.of(usdc.address, deployment.weth9, FeeTier.MEDIUM)
         uniswap.answers[deployment.factory to UniswapV3Factory.getPool(key).hex()] = word(pool)
         uniswap.answers[pool to UniswapV3Pool.liquidity().hex()] = word(UInt256.of(1_000))
+        // 20 040² wei per USDC unit: 40 USDC is 0.016015871808 ETH at the spot, less the 0.3 %.
+        uniswap.answers[pool to UniswapV3Pool.slot0().hex()] =
+            word(UInt256.of(20_040) * UInt256.of("79228162514264337593543950336")) + "00".repeat(32 * 6)
         val route = SwapRoute.direct(usdc.address, deployment.weth9, FeeTier.MEDIUM)
         uniswap.answers[deployment.quoterV2 to QuoterV2.quote(route, fortyUsdc).hex()] =
             word(UInt256.of("16000000000000000")) + "00".repeat(64) + word(UInt256.of(100_000))
@@ -293,6 +296,15 @@ class SwapViewModelTest {
         assertEquals(listOf("USDC balance", "ETH balance"), review.balances.map { it.what })
         assertEquals("210 USDC", review.balances.first().after)
         assertNull(review.netNote, "one route, chosen as is")
+        assertEquals(
+            "Price impact: 0.09 %, the quote against the pools' spot prices, their fees aside.",
+            review.priceImpact,
+        )
+        assertEquals(
+            "Sepolia's pools and Chainlink's testnet feeds do not track each other: this quote is not held " +
+                "against the prices the wallet shows.",
+            review.priceHint,
+        )
         assertEquals(
             "An earlier approval already lets the router take this much USDC: no approval is needed.",
             review.allowanceNote,

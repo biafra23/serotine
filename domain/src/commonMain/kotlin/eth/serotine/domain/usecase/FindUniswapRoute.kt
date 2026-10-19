@@ -3,6 +3,7 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
+import eth.serotine.domain.model.PriceImpact
 import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.RouteQuote
 import eth.serotine.domain.model.SwapRoute
@@ -126,14 +127,33 @@ class FindUniswapRoute(
         }
         val best = SwapRoutes.best(quotes.map { it.quote }) { costs?.get(it) ?: UInt256.ZERO }
             ?: return RouteFinding.NoRoute
+        val bestPools = best.route.poolKeys.map { pools.getValue(it).address }
         return RouteFinding.Found(
             deployment = deployment,
             quote = best,
-            pools = best.route.poolKeys.map { pools.getValue(it).address },
+            pools = bestPools,
             quotedRoutes = quotes.size,
             netOfFees = ranking == RouteRanking.NET_OF_FEES && (costs != null || quotes.size == 1),
             blockNumber = quotes.first { it.quote == best }.blockNumber,
+            spotOut = spotOut(best.route, amountIn, bestPools),
         )
+    }
+
+    /**
+     * What [route] returns for [amountIn] at its [pools]' spot prices, less their fees
+     * ([PriceImpact.spotOut]), or null when a `slot0` could not be read: the price impact is
+     * then not said, and the route stands as found.
+     */
+    private suspend fun spotOut(route: SwapRoute, amountIn: UInt256, pools: List<Address>): UInt256? {
+        val prices = coroutineScope {
+            pools.map { pool ->
+                async {
+                    (chain.call(pool, UniswapV3Pool.slot0()) as? Simulation.Succeeded)
+                        ?.let { UniswapV3Pool.slot0Of(it.returnHex) }
+                }
+            }.awaitAll()
+        }
+        return PriceImpact.spotOut(route, amountIn, prices.map { it ?: return null })
     }
 
     /** Each of [keys] the factory lists, with its address and its liquidity in range. */
@@ -236,7 +256,9 @@ sealed interface RouteFinding {
      * The best route on [deployment]: its [quote] (the route, what it returns, its gas), through
      * the [pools] its factory returned, in the route's order; chosen among [quotedRoutes] quotes,
      * ranked net of their fees or not ([netOfFees]); the quote was run against the state of
-     * [blockNumber] (null: not said).
+     * [blockNumber] (null: not said). [spotOut] is what the route returns at its pools' spot
+     * prices, less their fees, the price impact's measure; null when a pool's `slot0` could not
+     * be read.
      */
     data class Found(
         val deployment: UniswapV3Deployment,
@@ -245,6 +267,7 @@ sealed interface RouteFinding {
         val quotedRoutes: Int,
         val netOfFees: Boolean,
         val blockNumber: Long?,
+        val spotOut: UInt256? = null,
     ) : RouteFinding
 
     /** The two assets are one token on Uniswap: the same one, or ETH and WETH, a wrap. */
