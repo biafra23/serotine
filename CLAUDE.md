@@ -460,8 +460,10 @@ discussion that produced this note.
   copy-paste. No `link` reported (app links off for the organization), or no
   session-mgmt tool on this host at all (a plain `claude` terminal, CI): say so
   in that line. Commit messages keep their `Co-Authored-By` trailer.
-- **A PR that changes the UI shows it in screenshots in its description**
-  (owner's request, 2026-10-19). "Changes the UI" means a user could see the
+- **A PR that changes the UI shows it in screenshots: in its description,
+  or, from a session that cannot upload them, in the session** (owner's
+  request, 2026-10-19, and ruling of the same day on the session, *Where to
+  put them* below). "Changes the UI" means a user could see the
   difference: a screen, dialog or component drawn differently, a new or
   changed text, state, colour or layout, a new screen. A ViewModel-only change
   counts when it changes what a screen shows. A PR with no visible change
@@ -504,10 +506,11 @@ discussion that produced this note.
   the session and gives the command that renders them, with no table of
   file names in place of the images. A push that changes what the
   screenshots show shows the new ones in the same round, the same way. A
-  host where the files reach no one (CI, a plain `claude` terminal) says in
-  that section that the images await rendering with the command above: the
-  after images on the PR's branch, the before images on the base branch
-  (*What to show*).
+  host where the files reach no one (CI, a plain `claude` terminal) lists
+  in that section each state under its caption, with the
+  `<feature>Screen-<nn>.png` it renders to, and says the images await
+  rendering with the command above: the after images on the PR's branch,
+  the before images on the base branch (*What to show*).
 - **ALWAYS respond to every review comment, individually, on its own thread.**
   One comment, one reply. A single bulk PR-level summary is not a substitute —
   it may be posted *in addition*, but a reviewer must be able to see the
