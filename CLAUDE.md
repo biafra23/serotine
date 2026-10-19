@@ -501,9 +501,11 @@ discussion that produced this note.
   side for a changed screen. The owner drags each file into its slot. A push
   that changes what the screenshots show attaches the new files in the same
   round and updates the slots. A host where the files cannot reach the owner
-  (CI, a plain `claude` terminal) still writes the slots, and the section
-  says the images await rendering, with the command above, on the PR's
-  branch.
+  (CI, a plain `claude` terminal) still writes the slots, each under its
+  screen-and-state name, and the section says the images await rendering
+  with the command above: the after images on the PR's branch, the before
+  images on the base branch (*What to show*), each `<feature>Screen-<nn>.png`
+  renamed to the name of the slot its caption names.
 - **ALWAYS respond to every review comment, individually, on its own thread.**
   One comment, one reply. A single bulk PR-level summary is not a substitute —
   it may be posted *in addition*, but a reviewer must be able to see the
