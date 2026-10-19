@@ -12,8 +12,10 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
+import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.Signing
@@ -468,6 +470,14 @@ class SafeTxSigningTest {
 
         world.tokens = TokenBalanceReading.NotAToken
         assertEquals(SafeTxProposing.NotAToken, propose(world.safe, world.recipient, usdcAsset, UInt256.ONE))
+
+        // A balance last verified at an older head may have changed: nothing is proposed on it.
+        val syncing = SafeTxProposing.Refused(SafeTxRefusal.Syncing)
+        world.tokens = TokenBalanceReading.LastKnown(TokenUnits.of("5000000"), 99, asOf = null)
+        assertEquals(syncing, propose(world.safe, world.recipient, usdcAsset, UInt256.ONE))
+        world.native = BalanceReading.LastKnown(Wei.of("1000000000000000000"), 99, asOf = 1_792_100_000)
+        assertEquals(syncing, propose(world.safe, world.recipient, TransferAsset.Native, UInt256.ONE))
+        world.native = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
         world.tokens = TokenBalanceReading.Verified(TokenUnits.of("5000000"), 100)
         world.kind.value = KindReading.Verified(AddressKind.Eoa, 100)
         assertEquals(
