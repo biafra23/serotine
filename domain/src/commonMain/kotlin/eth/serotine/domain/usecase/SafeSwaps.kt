@@ -63,7 +63,6 @@ class CheckSafeSwap(
     }
 
     private suspend fun swap(swap: RouterSwap): SafeSwapCheck = coroutineScope {
-        val head = async { lightClient.observeStatus().first() }
         val deployment = when (val venue = uniswap.venue(network)) {
             is VenueReading.Verified -> venue.deployment
             VenueReading.NotPinned, is VenueReading.CodeMismatch ->
@@ -79,6 +78,8 @@ class CheckSafeSwap(
         if (swap.router != deployment.swapRouter02 || wethEnds.any { it != deployment.weth9 }) {
             return@coroutineScope SafeSwapCheck.NotUniswap(swap.router)
         }
+        // Read beside the quote, once the verdict needs it: a status not in yet holds back no other.
+        val head = async { lightClient.observeStatus().first() }
         val now = when (val answer = uniswap.call(deployment.quoterV2, QuoterV2.quote(swap.route, swap.amountIn))) {
             is Simulation.Succeeded -> QuoterV2.quoteOf(swap.route, answer.returnHex)
                 ?.let { SwapNow.Quoted(it.amountOut, answer.blockNumber) }

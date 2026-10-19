@@ -10,11 +10,15 @@ import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.UniswapV3Deployment
 import eth.serotine.domain.model.toHex
+import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.VenueReading
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,5 +131,19 @@ class SafeSwapsTest {
         assertEquals(SafeSwapCheck.NotUniswap(deployment.swapRouter02), checkSwap(SafeTxAction.Swap(fakeWrap)))
         chain.venue = VenueReading.Unavailable(ReadUnavailable.UNPROVEN)
         assertEquals(SafeSwapCheck.Unavailable(ReadUnavailable.UNPROVEN), checkSwap(SafeTxAction.Swap(swap)))
+    }
+
+    @Test
+    fun aVerdictThatNeedsNoHeadIsGivenWhileTheLightClientSaysNothingYet() = runTest {
+        val silent = object : LightClient {
+            override fun observeStatus(): Flow<LightClientStatus> = flow { awaitCancellation() }
+        }
+        val checkSilently = CheckSafeSwap(chain, silent, Network.SEPOLIA)
+
+        assertEquals(
+            SafeSwapCheck.NotUniswap(other),
+            checkSilently(SafeTxAction.Swap(swap.copy(router = other))),
+            "the router is not the pinned one, whatever the head",
+        )
     }
 }

@@ -130,7 +130,7 @@ internal fun safeTxActionItem(
                         swap.route.fees.joinToString(" and ") { feeTierText(it.pips) } + "."
                 },
                 "Paid to the Safe.",
-                "Whether the router is Uniswap's is checked against the chain on the transaction's own screen: " +
+                "Whether the router is Uniswap's is checked against the chain once the transaction is opened: " +
                     "until then, what it does with the call is up to its code.",
                 sold.unknownNote ?: bought.unknownNote,
             ),
@@ -258,13 +258,14 @@ private fun swapItem(
     network: Network,
     formatTime: (Long) -> String,
 ): SafeSwapItem {
-    val deadline = "Refused by the router after ${formatTime(swap.deadline)}."
+    // What the router does with its deadline is said only of Uniswap's: another's code may ignore it.
+    val signed = "Signed with a deadline of ${formatTime(swap.deadline)}."
     val checked = when (check) {
-        null -> return SafeSwapItem(listOf("Checking the swap with the light client…", deadline))
-        is SafeSwapCheck.NotUniswap -> return SafeSwapItem(listOf(deadline), warning = NOT_UNISWAP_ROUTER)
+        null -> return SafeSwapItem(listOf("Checking the swap with the light client…", signed))
+        is SafeSwapCheck.NotUniswap -> return SafeSwapItem(listOf(signed), warning = NOT_UNISWAP_ROUTER)
         is SafeSwapCheck.SwapOnUniswap -> check
         else -> return SafeSwapItem(
-            listOf(deadline),
+            listOf(signed),
             warning = "Whether the router is Uniswap's could not be verified this time: until it is, treat it as " +
                 "any contract's call.",
         )
@@ -304,7 +305,7 @@ private fun swapItem(
         lines = listOf(
             "Through Uniswap's SwapRouter02, its code proven by the light client.",
             now,
-            deadline,
+            "Refused by the router after ${formatTime(swap.deadline)}.",
         ),
         warning = warnings.takeIf { it.isNotEmpty() }?.joinToString(" "),
     )
@@ -354,7 +355,6 @@ private fun tokenAmount(address: Address, amount: UInt256, tokens: List<Decoding
 private fun tokenSymbol(address: Address, tokens: List<DecodingToken>): String =
     tokens.firstOrNull { it.token.address == address }?.let { displaySymbol(it.token.symbol) }
         ?: shortAddress(Eip55.format(address))
-
 
 
 private fun callData(selector: String?, size: Int): String =

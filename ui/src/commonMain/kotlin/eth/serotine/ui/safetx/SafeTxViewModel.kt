@@ -916,7 +916,7 @@ class SafeTxViewModel(
         // The address it names in full: the prompt is the last thing read before the key signs.
         val named = action.addresses.firstOrNull()?.let { ", ${it.what.lowercase()} ${it.address}" }.orEmpty()
         // A swap or an approval says whose contract it is, as far as it was checked.
-        val unchecked = when (val checked = swapCheck.value) {
+        val unchecked = when (swapCheck.value) {
             SafeSwapCheck.ApprovalOfRouter, is SafeSwapCheck.SwapOnUniswap -> null
             is SafeSwapCheck.NotUniswap -> "not Uniswap's"
             null, is SafeSwapCheck.Unavailable -> "not verified as Uniswap's".takeIf {
