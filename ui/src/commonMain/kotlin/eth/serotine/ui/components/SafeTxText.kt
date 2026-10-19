@@ -40,8 +40,17 @@ data class SafeTxActionItem(
  * Where a Safe's approval or swap stands as the chain is now (docs/swaps.md, *A Safe's swap*),
  * display-ready: [lines] (whose router it is, what it returns now against its minimum, its
  * deadline) and [warning], what to know before anyone signs or executes it, or null.
+ * [proposeAgain] when Uniswap's swap is worth proposing again in its place: its minimum has
+ * fallen behind the market, or its deadline has passed (owner ruling, 2026-10-19);
+ * [proposeAgainReason] why that cannot be done from here (no owner held here), the offer then
+ * greyed out (owner ruling, 2026-10-18, #55), or null when it can.
  */
-data class SafeSwapItem(val lines: List<String>, val warning: String? = null)
+data class SafeSwapItem(
+    val lines: List<String>,
+    val warning: String? = null,
+    val proposeAgain: Boolean = false,
+    val proposeAgainReason: String? = null,
+)
 
 /** An address a Safe transaction names: [what] it is ("To", "New owner") and its EIP-55 [address]. */
 data class ActionAddress(val what: String, val address: String)
@@ -308,6 +317,7 @@ private fun swapItem(
             "Refused by the router after ${formatTime(swap.deadline)}.",
         ),
         warning = warnings.takeIf { it.isNotEmpty() }?.joinToString(" "),
+        proposeAgain = checked.expired == true || checked.leftOpen != null,
     )
 }
 

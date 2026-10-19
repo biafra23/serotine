@@ -58,7 +58,7 @@ sealed interface AccountDetailUiState {
 
         /**
          * Whether Swap can be done from this account: greyed out when it cannot (watch-only, or a
-         * Safe, whose swap is not built yet), and a tap on it says [swapReason] (owner ruling,
+         * Safe with no owner held here), and a tap on it says [swapReason] (owner ruling,
          * 2026-10-18, #55).
          */
         val canSwap: Boolean

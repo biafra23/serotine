@@ -59,6 +59,7 @@ import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.PlanSafe
+import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.ProposeSafeTx
 import eth.serotine.domain.usecase.QuoteSafeApproval
 import eth.serotine.domain.usecase.QuoteSafeDeployment
@@ -94,6 +95,7 @@ import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
 import eth.serotine.ui.safeimport.SafeImportViewModel
 import eth.serotine.ui.safepropose.SafeProposeViewModel
+import eth.serotine.ui.safeswap.SafeSwapViewModel
 import eth.serotine.ui.safetx.SafeTxViewModel
 import eth.serotine.ui.security.SecurityViewModel
 import eth.serotine.ui.send.SendViewModel
@@ -246,6 +248,34 @@ class AppGraph(
         ProposeSafeTx(observeSafe(), nativeBalances, tokenBalances, transactionInputs, safeTxQueue, network),
         signSafeTx(),
         EncodeSigningRequest(signingRequests),
+        network,
+    )
+
+    /**
+     * Swap from the Safe at [safe], with the token at [asset] sold (null: the network's currency); or,
+     * with [replacing], the swap queued under that hash proposed again in its place.
+     */
+    fun safeSwapViewModel(safe: Address, asset: Address?, replacing: Digest?): SafeSwapViewModel = SafeSwapViewModel(
+        safe,
+        asset,
+        replacing,
+        ObserveAccounts(accounts),
+        accountValue(),
+        observeSafe(),
+        observeSafeTxQueue(),
+        DescribeKeyStore(keys),
+        ProposeSafeSwap(
+            observeSafe(),
+            FindUniswapRoute(uniswap, transactionInputs),
+            uniswap,
+            nativeBalances,
+            tokenBalances,
+            transactionInputs,
+            safeTxQueue,
+            lightClient,
+            network,
+        ),
+        signSafeTx(),
         network,
     )
 

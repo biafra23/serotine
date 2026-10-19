@@ -418,7 +418,8 @@ class SwapViewModelTest {
             assertIs<SwapUiState.CannotSwap>(viewModel(from = watched.address).uiState.value).message,
         )
         assertEquals(
-            "A Safe's swap is a Safe transaction its owners sign, which Serotine cannot propose yet.",
+            "A Safe's swap is proposed as Safe transactions its owners sign: Swap on the Safe's own screen " +
+                "proposes one.",
             assertIs<SwapUiState.CannotSwap>(viewModel(from = safe.address).uiState.value).message,
         )
     }

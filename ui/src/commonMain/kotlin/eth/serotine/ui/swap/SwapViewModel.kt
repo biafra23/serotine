@@ -53,7 +53,6 @@ import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
-import eth.serotine.ui.components.feeTierText
 import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
@@ -729,20 +728,7 @@ class SwapViewModel(
         val sell = step.request.sell
         val buy = step.request.buy
         val native = network.nativeSymbol
-        val nativeSymbolOf = { address: Address ->
-            when (address) {
-                sell.contract -> sell.symbol
-                buy.contract -> buy.symbol
-                else -> "WETH"
-            }
-        }
-        val route = quote.route.fees.indices.map { i ->
-            RouteStep(
-                pair = "${nativeSymbolOf(quote.route.tokens[i])} → ${nativeSymbolOf(quote.route.tokens[i + 1])}",
-                fee = feeTierText(quote.route.fees[i].pips),
-                pool = Eip55.format(quote.pools[i]),
-            )
-        }
+        val route = routeSteps(quote.route, quote.pools, sell, buy)
         val sold = sell.asset as? TransferAsset.Erc20Token
         val bought = buy.asset as? TransferAsset.Erc20Token
         val balances = listOfNotNull(
@@ -797,18 +783,8 @@ class SwapViewModel(
             } else {
                 ""
             },
-            priceImpact = quote.priceImpact?.let { basisPoints ->
-                val figure = if (basisPoints == 0) "under 0.01" else UInt256.of(basisPoints.toLong()).formatUnits(2)
-                "Price impact: $figure %, the quote against the pools' spot prices, their fees aside."
-            } ?: "Price impact: not known this time: the pools' spot prices could not be read at the quote's " +
-                "block, or give no measure for this amount.",
-            // On a testnet, the feeds the wallet shows and the pools follow no common market.
-            priceHint = if (network.testnet) {
-                "${network.displayName}'s pools and Chainlink's testnet feeds do not track each other: this quote " +
-                    "is not held against the prices the wallet shows."
-            } else {
-                null
-            },
+            priceImpact = priceImpactText(quote.priceImpact),
+            priceHint = priceHintText(network),
             spender = SpenderItem(ROUTER_NAME, Eip55.format(quote.router)),
             // A token sold: the quote read the router's allowance as covering the amount.
             allowanceNote = sold?.let {
@@ -861,15 +837,10 @@ class SwapViewModel(
         is SwapQuoting.EarlierSwapPending, is SwapQuoting.EarlierMaybeSent,
         -> error("not a refusal said as text")
         SwapQuoting.NothingToSwap -> "There is nothing to swap: enter an amount above zero."
-        SwapQuoting.NotASwap -> "${request.sell.symbol} and ${request.buy.symbol} are one token on Uniswap: " +
-            "ETH for WETH and back is a wrap, not a swap."
-        SwapQuoting.NoRoute -> "No Uniswap v3 pool takes ${request.sell.symbol} for ${request.buy.symbol}, " +
-            "directly or through WETH, for this amount."
-        is SwapQuoting.NoVenue -> quoting.contract?.let { contract ->
-            "The code at ${Eip55.format(contract)}, one of Uniswap's pinned contracts, is not the code " +
-                "pinned with it, as the light client proves it: Uniswap is no venue here."
-        } ?: "Uniswap is not pinned for ${network.displayName}, so nothing can be swapped here."
-        SwapQuoting.TooSmall -> "This amount is too small: less the tolerance, the swap could return nothing."
+        SwapQuoting.NotASwap -> notASwapText(request.sell.symbol, request.buy.symbol)
+        SwapQuoting.NoRoute -> noRouteText(request.sell.symbol, request.buy.symbol)
+        is SwapQuoting.NoVenue -> noVenueText(quoting.contract, network)
+        SwapQuoting.TooSmall -> TOO_SMALL
         SwapQuoting.InsufficientFunds -> if (request.sell.asset == TransferAsset.Native) {
             "Not enough ${network.nativeSymbol} for this amount and the most the fee can be: swap less, to leave " +
                 "room for the fee. Transactions not mined yet count too."
@@ -883,7 +854,7 @@ class SwapViewModel(
             val at = quoting.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
             "The swap reverts, or returns less than its minimum, run as a verified call$at. Nothing was signed."
         }
-        SwapQuoting.NotAToken -> "A token's contract does not answer as a token: nothing can be swapped with it."
+        SwapQuoting.NotAToken -> NOT_A_TOKEN
         SwapQuoting.Refused -> "The light client on this device cannot quote this swap."
         SwapQuoting.Syncing -> "The light client is not synced yet: try again in a moment."
         is SwapQuoting.Unavailable -> unavailableText(quoting.reason, quoting.figure)
@@ -939,8 +910,6 @@ class SwapViewModel(
     }
 
     private companion object {
-        const val ROUTER_NAME = "Uniswap's SwapRouter02"
-        const val TOLERANCE_ERROR = "Between 0.1 % and 5 %, with at most two decimals (0.5)."
         const val APPROVAL_SENT = "Your approval is on its way: once a block has it, Review quotes the swap."
         const val RESET_SENT = "Your approval of zero is on its way: once a block has it, Review asks for the " +
             "approval of the whole amount."
@@ -959,7 +928,8 @@ class SwapViewModel(
         const val LIST_UNAVAILABLE =
             "Your account list cannot be read right now, so nothing can be swapped. Serotine keeps trying."
         const val NOT_IN_WALLET = "This account is not in your wallet any more."
-        const val SAFE = "A Safe's swap is a Safe transaction its owners sign, which Serotine cannot propose yet."
+        const val SAFE = "A Safe's swap is proposed as Safe transactions its owners sign: Swap on the Safe's " +
+            "own screen proposes one."
         const val WATCH_ONLY =
             "This account is watch-only: its key is not on this device, so nothing can be swapped from it."
     }

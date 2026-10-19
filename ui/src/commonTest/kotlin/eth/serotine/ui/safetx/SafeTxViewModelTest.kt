@@ -243,6 +243,21 @@ class SafeTxViewModelTest {
     }
 
     @Test
+    fun aSwapWorthProposingAgainIsGreyedOutWhereNoOwnerIsHeld() = runTest {
+        world.quoteSwap(out = 50_000_000_000_000_000)
+        world.state = world.state.copy(owners = listOf(world.bob.address, world.carol))
+        val viewModel = viewModel(queued(world.request(world.swap(4))))
+
+        val swap = viewModel.overview.swap
+        assertEquals(true, swap?.proposeAgain)
+        assertEquals(
+            "No owner of this Safe has its key on this device, so the swap cannot be proposed again from here. " +
+                "Import an owner's recovery phrase to propose and sign its transactions.",
+            swap?.proposeAgainReason,
+        )
+    }
+
+    @Test
     fun aSwapsMinimumFallenBehindIsSaidWithWhatItLeavesOpenAndAPassedDeadlineRefusesIt() = runTest {
         // 0.05 ETH now, less 0.5 % keeps 0.04975: a minimum of 0.04 leaves 0.01 open.
         world.quoteSwap(out = 50_000_000_000_000_000)
@@ -254,6 +269,7 @@ class SafeTxViewModelTest {
                 "with a fresh minimum, or execute it as signed.",
             viewModel.overview.swap?.warning,
         )
+        assertEquals(true, viewModel.overview.swap?.proposeAgain, "with the offer to propose it again")
 
         world.head.value = LightClientStatus.Synced(headBlock = 200, headTimestamp = HEAD_TIME + DAY + 1)
         viewModel.checkAgain()

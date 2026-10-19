@@ -983,9 +983,16 @@ class SafeTxViewModel(
         val tx = shown.found.tx
         val request = shown.request
         val action = safeTxActionItem(tx.action, request.nonce, shown.tokens, this.network)
-        val swap = safeSwapItem(tx.action, swapCheck, shown.tokens, this.network, formatTime)
-        val expired = (swapCheck as? SafeSwapCheck.SwapOnUniswap)?.expired == true
         val read = shown.owners as? SafeTxOwnersReading.Read
+        // Proposed again only by an owner held here: with none, the offer is greyed out, saying why.
+        val swap = safeSwapItem(tx.action, swapCheck, shown.tokens, this.network, formatTime)?.let { item ->
+            if (item.proposeAgain && read != null && read.owners.none { it.held }) {
+                item.copy(proposeAgainReason = NO_OWNER_TO_PROPOSE)
+            } else {
+                item
+            }
+        }
+        val expired = (swapCheck as? SafeSwapCheck.SwapOnUniswap)?.expired == true
         val header = SafeHeader(
             label = shown.labels[safe],
             address = Eip55.format(safe),
@@ -1222,6 +1229,8 @@ class SafeTxViewModel(
     }
 
     private companion object {
+        const val NO_OWNER_TO_PROPOSE = "No owner of this Safe has its key on this device, so the swap cannot be " +
+            "proposed again from here. Import an owner's recovery phrase to propose and sign its transactions."
         const val SWAP_EXPIRED = "Its deadline has passed: the router refuses it, so it can never run as signed."
         const val SIGN_FAILED = "Serotine could not finish this signature. Nothing was queued: try again."
         const val SEND_FAILED =

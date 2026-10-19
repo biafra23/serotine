@@ -143,6 +143,13 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
 - **Decoded here.** Screen 17 decodes each from its raw call to a pinned
   contract, never from a description: "Swap 100 USDC for at least 4.2 LINK on
   Uniswap".
+- **Proposed from the Safe's own Swap** (screen 24): Swap's form, with no
+  fee to choose (whoever executes it pays); then the review of the Safe
+  transactions it takes, decoded here at their nonces, the minimum, the
+  route and the deadline, the Safe's balance before and after, and the
+  owner held here who signs every one of them, one after the other. An
+  approval signed whose swap was not stays queued, and the swap proposed
+  again goes after it.
 - **The minimum and the deadline are fixed when the swap is proposed.**
   - Re-quoting at a later owner's tap would change the `SafeTx` hash and void
     the signatures already collected, so it is not done.
@@ -668,9 +675,10 @@ docs/architecture.md.
    minimum and a 24-hour deadline fixed at the proposal, each run from the
    Safe; and the swap proposed again at the nonce of one whose minimum has
    fallen behind.
-8. **Proposing a Safe's swap, the screens.** Swap on a Safe's detail, its
-   compose and review, signed by an owner held here (both transactions);
-   and Execute's offer to propose a swap again with a fresh minimum.
+8. **Proposing a Safe's swap, the screens.** Swap on a Safe's detail (4,
+   5), its compose and review (24), signed by an owner held here (both
+   transactions); and 17's offer to propose a swap again with a fresh
+   minimum.
 
 **`feature/swaps-cow`**, once CoW's *Data sources* ruling is recorded in
 CLAUDE.md

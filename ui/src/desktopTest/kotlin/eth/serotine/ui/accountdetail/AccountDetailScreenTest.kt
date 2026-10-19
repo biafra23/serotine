@@ -187,15 +187,22 @@ class AccountDetailScreenTest {
     }
 
     @Test
-    fun aSafesSwapIsGreyedOutUntilItIsBuiltAndATapSaysSo() {
+    fun aSafeSwapsWithAnOwnerHeldHereAndIsGreyedOutWithNone() {
         show(ready.copy(kind = AccountKind.SAFE, control = Control.CO_SIGNER, safe = SafeDetails.Checking))
+        rule.onNodeWithTag(ACCOUNT_SWAP_TAG).performClick()
+        assertEquals(listOf("swap null"), events.filter { it.startsWith("swap") })
+    }
+
+    @Test
+    fun aWatchedSafesSwapIsGreyedOutAndATapSaysSo() {
+        show(ready.copy(kind = AccountKind.SAFE, control = Control.WATCH_ONLY, safe = SafeDetails.Checking))
 
         rule.onNodeWithTag(ACCOUNT_SWAP_TAG)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
             .performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
-            "Swapping from a Safe is not built yet: its swap is a Safe transaction its owners sign, which " +
-                "Serotine cannot propose yet. Send works from a Safe as before.",
+            "No owner of this Safe has its key on this device, so nothing can be proposed from it. Import an " +
+                "owner's recovery phrase to propose and sign its transactions.",
         )
         assertEquals(emptyList(), events.filter { it.startsWith("swap") }, "nothing swapped")
     }
