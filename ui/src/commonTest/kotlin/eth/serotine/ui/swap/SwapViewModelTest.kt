@@ -351,6 +351,14 @@ class SwapViewModelTest {
         )
         assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
 
+        // A quote that fails before it finds the approval again keeps it said, with its link.
+        light.status.value = LightClientStatus.Bootstrapping(lookingForServers = false)
+        viewModel.review()
+        runCurrent()
+        assertEquals("The light client is not synced yet: try again in a moment.", viewModel.compose.error)
+        assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
+        light.status.value = LightClientStatus.Synced(headBlock = 9_412_119, headTimestamp = headTime)
+
         // In a block, and allowed: the swap itself is quoted.
         inputs.mined = 8
         allow(fortyUsdc)

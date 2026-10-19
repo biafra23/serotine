@@ -286,13 +286,22 @@ class SwapViewModel(
         val model = model.value ?: return
         val request = requestOf(model) ?: return
         val account = (model.swapper as? Swapper.From)?.account ?: return
-        step.value = Step.Composing(quoting = true)
+        // A transaction only waiting for a block stays said while the quote runs, and after one
+        // that failed short of finding it again (a read unavailable, the light client syncing).
+        val waiting = current.earlier?.takeIf { it.waiting }
+        val quoting = Step.Composing(quoting = true, info = waiting?.let { current.info }, earlier = waiting)
+        step.value = quoting
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             val next = quoted(request, unlock = null, SendFrom(account.label, display))
-            if (step.value != Step.Composing(quoting = true)) return@launch
-            // Made while hidden: it is from before the screen came back, so it is made again.
-            step.value = if (next is Step.Reviewing) next.copy(hidden = hiddenWhileQuoting) else next
+            if (step.value != quoting) return@launch
+            step.value = when {
+                // Made while hidden: it is from before the screen came back, so it is made again.
+                next is Step.Reviewing -> next.copy(hidden = hiddenWhileQuoting)
+                next is Step.Composing && next.earlier == null && waiting != null ->
+                    next.copy(info = quoting.info, earlier = waiting)
+                else -> next
+            }
             requoteIfHidden()
         }
     }
@@ -446,6 +455,7 @@ class SwapViewModel(
                             val error = notRunText(swapped.reason)
                             latest.copy(signing = false, unlock = latest.unlock.copy(error = error))
                         }
+                        requoteIfHidden()
                         return@launch
                     }
                     null -> null
