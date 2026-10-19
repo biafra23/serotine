@@ -170,7 +170,10 @@ class SwapsTest {
         ).quote
         assertEquals(tenth, quoted.transaction.value)
         assertEquals(null, quoted.sellBefore)
-        assertTrue(inputs.runs.keys.none { it.first == usdcToken.address })
+        // No call of any token's allowance(owner, spender) was run: ETH sold needs none.
+        val allowanceSelector = Erc20.allowanceData(account, router).toHex().take(8)
+        assertTrue(inputs.simulated.isNotEmpty(), "the swap itself was run")
+        assertTrue(inputs.simulated.none { (_, data) -> data.startsWith(allowanceSelector) })
     }
 
     @Test
@@ -206,6 +209,10 @@ class SwapsTest {
         allow(hundredUsdc)
         light.status.value = LightClientStatus.WaitingForHead(headAgeSeconds = 90)
         assertEquals(SwapQuoting.Syncing, quoteUsdcForLink())
+
+        // A verified head whose time is not known names no figure: the swap was never run.
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = null)
+        assertEquals(SwapQuoting.Unavailable(ReadUnavailable.UNPROVEN, figure = null), quoteUsdcForLink())
     }
 
     @Test
@@ -393,6 +400,9 @@ class SwapsTest {
         var estimates = 0
         var routerReturns = ""
         val runs = mutableMapOf<Pair<Address, String>, String>()
+
+        /** Every call run, as its contract and its data in hex. */
+        val simulated = mutableListOf<Pair<Address, String>>()
         val reverting = mutableSetOf<String>()
 
         override suspend fun nonce(account: Address): NonceReading = NonceReading.Read(maxOf(7, mined))
@@ -415,6 +425,7 @@ class SwapsTest {
         }
 
         override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+            simulated += to to data.toHex()
             if (data.toHex() in reverting) return Simulation.Reverted(120)
             if (to == router) return Simulation.Succeeded(routerReturns, 120)
             return Simulation.Succeeded(runs[to to data.toHex()] ?: ("00".repeat(31) + "01"), 120)

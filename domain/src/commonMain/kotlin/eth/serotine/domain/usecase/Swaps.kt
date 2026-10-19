@@ -198,8 +198,10 @@ class QuoteSwap(
         }
         if (soldToken == null && nativeBefore.wei < amountIn) return@cancellingReads SwapQuoting.InsufficientFunds
         val deadline = when (val status = head.await()) {
+            // A verified head whose time is not known yet gives no deadline: no figure of the swap's
+            // own is missing, so none is named.
             is LightClientStatus.Synced -> status.headTimestamp?.plus(SWAP_DEADLINE_SECONDS)
-                ?: return@cancellingReads SwapQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.RUN)
+                ?: return@cancellingReads SwapQuoting.Unavailable(ReadUnavailable.UNPROVEN, figure = null)
             else -> return@cancellingReads SwapQuoting.Syncing
         }
         if (soldToken != null) {
