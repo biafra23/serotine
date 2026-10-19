@@ -80,6 +80,8 @@ sealed interface SafeTxUiState {
         val signing: Boolean = false,
         /** While [signing], the Safe is still checked on chain: no key is asked for yet, and Back stops it. */
         val checking: Boolean = false,
+        /** For a swap or its approval, where it stands now: the last thing shown before the key signs. */
+        val swap: SafeSwapItem? = null,
     ) : SafeTxUiState {
 
         /** Something is typed and nothing runs: the password may sign. */
@@ -98,7 +100,7 @@ sealed interface SafeTxUiState {
      * account's native balance before → after; [simulation] how it ran as a verified call; for an
      * execution, the [confirmations] it is executed with; [pending] what earlier transactions not
      * mined yet may take; for an approval, [notNeeded] once the owners read since make it so, and
-     * then it is not signed. For the execution of a swap, [swap] says where it stands now, a
+     * then it is not signed. For a swap or its approval, [swap] says where it stands now, a
      * minimum fallen behind the market included. [unlock] is how it is signed; [refreshing]
      * while it is quoted again,
      * [signing] while it is signed and broadcast, and [notSent] once it was signed but not

@@ -409,6 +409,7 @@ private fun SafeTxSwapExpiredPreview() = SafeTxPreview(
     overview.copy(
         action = swapAction,
         canExecute = false,
+        executeNote = "Its deadline has passed: the router refuses it, so it can never run as signed.",
         swap = swapNow.copy(
             warning = "Its deadline has passed: the router refuses it, so it can never run as signed. Replace it " +
                 "at its nonce: propose the swap again, or reject it.",

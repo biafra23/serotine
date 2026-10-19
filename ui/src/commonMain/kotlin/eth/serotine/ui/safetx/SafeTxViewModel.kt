@@ -365,7 +365,7 @@ class SafeTxViewModel(
      * again; null while checked, and for anything else.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val swapCheck: Flow<SafeSwapCheck?> = queued
+    private val swapCheck: StateFlow<SafeSwapCheck?> = queued
         .map { (it as? Queued.Found)?.tx?.action }
         .distinctUntilChanged()
         .transformLatest { action ->
@@ -374,6 +374,15 @@ class SafeTxViewModel(
                 emitAll(readAgain.mapLatest { checkSwap(action) })
             }
         }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            null,
+        )
+
+    /** Whether the transaction is a swap whose deadline the verified head has passed: it can never run. */
+    private val swapExpired: Boolean
+        get() = (swapCheck.value as? SafeSwapCheck.SwapOnUniswap)?.expired == true
 
     private suspend fun checkSwap(action: SafeTxAction): SafeSwapCheck? = try {
         checkSafeSwap(action)
@@ -444,6 +453,7 @@ class SafeTxViewModel(
 
     /** Quotes the execution from the first account held here that can execute it, a held owner first, for review. */
     fun startExecution() {
+        if (swapExpired) return
         val executor = now?.options?.executors?.firstOrNull() ?: return
         quoteForReview(ReviewKind.EXECUTION, executor, FeeLevel.NORMAL)
     }
@@ -905,7 +915,16 @@ class SafeTxViewModel(
         val action = safeTxActionItem(context.found.tx.action, request.nonce, context.tokens, network)
         // The address it names in full: the prompt is the last thing read before the key signs.
         val named = action.addresses.firstOrNull()?.let { ", ${it.what.lowercase()} ${it.address}" }.orEmpty()
-        val warning = action.warning?.let { " ($it)" }.orEmpty()
+        // A swap or an approval says whose contract it is, as far as it was checked.
+        val unchecked = when (val checked = swapCheck.value) {
+            SafeSwapCheck.ApprovalOfRouter, is SafeSwapCheck.SwapOnUniswap -> null
+            is SafeSwapCheck.NotUniswap -> "not Uniswap's"
+            null, is SafeSwapCheck.Unavailable -> "not verified as Uniswap's".takeIf {
+                context.found.tx.action.let { it is SafeTxAction.Swap || it is SafeTxAction.TokenApproval }
+            }
+        }
+        val warning = listOfNotNull(action.warning, unchecked).takeIf { it.isNotEmpty() }
+            ?.joinToString("; ", " (", ")").orEmpty()
         return "${request.nonce} of ${context.labelOf(safe)}: ${action.title}$warning$named"
     }
 
@@ -965,6 +984,7 @@ class SafeTxViewModel(
         val request = shown.request
         val action = safeTxActionItem(tx.action, request.nonce, shown.tokens, this.network)
         val swap = safeSwapItem(tx.action, swapCheck, shown.tokens, this.network, formatTime)
+        val expired = (swapCheck as? SafeSwapCheck.SwapOnUniswap)?.expired == true
         val read = shown.owners as? SafeTxOwnersReading.Read
         val header = SafeHeader(
             label = shown.labels[safe],
@@ -987,9 +1007,9 @@ class SafeTxViewModel(
                 unlock = step.unlock,
                 signing = step.signing,
                 checking = step.checking,
+                swap = swap,
             )
-            is Step.Reviewing -> review(shown, header, action, nonce, step)
-                .copy(swap = swap.takeIf { step.kind == ReviewKind.EXECUTION })
+            is Step.Reviewing -> review(shown, header, action, nonce, step).copy(swap = swap)
             else -> SafeTxUiState.Overview(
                 network = network,
                 safe = header,
@@ -1004,8 +1024,9 @@ class SafeTxViewModel(
                     ?.let { safeTxRefusalText(it, this.network) },
                 canSign = options.signers.isNotEmpty(),
                 canApprove = options.approvers.isNotEmpty(),
-                canExecute = options.executors.isNotEmpty(),
-                executeNote = options.executeNote,
+                // A swap past its deadline never runs: Execute is shown greyed out, saying so.
+                canExecute = options.executors.isNotEmpty() && !expired,
+                executeNote = if (expired) SWAP_EXPIRED else options.executeNote,
                 quoting = step is Step.Quoting,
                 canShare = shown.found.safeNonce != null,
                 share = if (view.sharing && shown.found.safeNonce != null) share(request) else null,
@@ -1201,6 +1222,7 @@ class SafeTxViewModel(
     }
 
     private companion object {
+        const val SWAP_EXPIRED = "Its deadline has passed: the router refuses it, so it can never run as signed."
         const val SIGN_FAILED = "Serotine could not finish this signature. Nothing was queued: try again."
         const val SEND_FAILED =
             "Serotine could not finish this transaction. Check the account's balance before you send again."

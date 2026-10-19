@@ -186,7 +186,13 @@ object SwapRouter02 {
     private const val FEE_SIZE = 3
 
     /** A swap's multicall holds the swap, and the unwrap when it buys ETH: never more. */
-    private const val MAX_CALLS = 2L
+    private const val MAX_CALLS = 2
+
+    /**
+     * The latest deadline a decoded swap may carry: the last second of the year 9999. A later one
+     * is no swap anyone builds, and no date a screen can show.
+     */
+    const val MAX_DEADLINE = 253_402_300_799L
 
     /**
      * The recipient that means the router itself (`Constants.ADDRESS_THIS`, address 2): where the
@@ -261,16 +267,24 @@ object SwapRouter02 {
      * amounts and deadline, sent to the router at [call]'s `to`; null for anything else. Decoded
      * by its fields, then built again from them and held to the bytes and value it came with, so
      * only that exact encoding is read as a swap. Which router it is, and so whether it is
-     * Uniswap's, is for the caller to establish: this reads the call, not the contract.
+     * Uniswap's, is for the caller to establish: this reads the call, not the contract. A
+     * deadline past [MAX_DEADLINE] is no swap's. Never throws: whatever the bytes, a swap or null.
      */
-    fun decode(call: TransactionCall, account: Address): RouterSwap? {
+    fun decode(call: TransactionCall, account: Address): RouterSwap? = try {
+        decodeOrNull(call, account)
+    } catch (e: IllegalArgumentException) {
+        null // a bound this reading missed: still no swap
+    } catch (e: IndexOutOfBoundsException) {
+        null
+    }
+
+    private fun decodeOrNull(call: TransactionCall, account: Address): RouterSwap? {
         val data = call.data
         if (data.size < SELECTOR_SIZE + 2 * WORD || !data.copyOf(SELECTOR_SIZE).contentEquals(MULTICALL)) return null
         val deadline = AbiWords.uint(data.copyOfRange(SELECTOR_SIZE, SELECTOR_SIZE + WORD)).toLongOrNull()
-            ?: return null
+            ?.takeIf { it <= MAX_DEADLINE } ?: return null
         val calls = bytesArray(data, at = SELECTOR_SIZE + 2 * WORD) ?: return null
-        if (calls.size !in 1..2) return null
-        val (route, _, amounts) = swapCall(calls[0]) ?: return null
+        val (route, amounts) = swapCall(calls[0]) ?: return null
         val (amountIn, minimum) = amounts
         if (minimum.isZero) return null
         val buysEther = calls.size == 2
@@ -292,24 +306,36 @@ object SwapRouter02 {
         return decoded.takeIf { rebuilt == call }
     }
 
-    /** The `bytes[]` whose length word starts at [at] in [data], its offsets relative to the word after it. */
+    /**
+     * The one or two calls of the `bytes[]` whose length word starts at [at] in [data], its
+     * offsets relative to the word after it; null when it is not one, or holds another count.
+     * Every offset and length is bounded by [data]'s size before it is used.
+     */
     private fun bytesArray(data: ByteArray, at: Int): List<ByteArray>? {
-        val count = wordAt(data, at)?.toLongOrNull()?.takeIf { it in 0..MAX_CALLS } ?: return null
+        val count = boundedAt(data, at, MAX_CALLS) ?: return null
+        if (count < 1) return null
         val base = at + WORD
-        return (0 until count.toInt()).map { i ->
-            val offset = wordAt(data, base + i * WORD)?.toLongOrNull()?.takeIf { it < data.size } ?: return null
-            val start = base + offset.toInt()
-            val length = wordAt(data, start)?.toLongOrNull()?.takeIf { start + WORD + it <= data.size } ?: return null
-            data.copyOfRange(start + WORD, start + WORD + length.toInt())
+        return (0 until count).map { i ->
+            val start = base + (boundedAt(data, base + i * WORD, data.size) ?: return null)
+            val length = boundedAt(data, start, data.size) ?: return null
+            if (start + WORD + length > data.size) return null
+            data.copyOfRange(start + WORD, start + WORD + length)
         }
     }
+
+    /** The word at [at] in [data] as an Int no larger than [most], or null when it is not one. */
+    private fun boundedAt(data: ByteArray, at: Int, most: Int): Int? =
+        wordAt(data, at)?.toLongOrNull()?.takeIf { it in 0..most.toLong() }?.toInt()
 
     /** The word at [at] in [data], or null when [data] ends before it does. */
     private fun wordAt(data: ByteArray, at: Int): UInt256? =
         if (at >= 0 && at + WORD <= data.size) AbiWords.uint(data.copyOfRange(at, at + WORD)) else null
 
-    /** The route, the recipient and (amount in, minimum out) of an `exactInputSingle` or `exactInput` call. */
-    private fun swapCall(call: ByteArray): Triple<SwapRoute, Address, Pair<UInt256, UInt256>>? {
+    /**
+     * The route and (amount in, minimum out) of an `exactInputSingle` or `exactInput` call; its
+     * recipient is in the bytes [decode] compares.
+     */
+    private fun swapCall(call: ByteArray): Pair<SwapRoute, Pair<UInt256, UInt256>>? {
         if (call.size < SELECTOR_SIZE) return null
         val selector = call.copyOf(SELECTOR_SIZE)
         return when {
@@ -319,23 +345,17 @@ object SwapRouter02 {
                 val tokenOut = AbiWords.address(words[1]) ?: return null
                 val fee = AbiWords.uint(words[2]).toLongOrNull()?.toInt()?.let(FeeTier::ofPips) ?: return null
                 if (tokenIn == tokenOut) return null
-                val recipient = AbiWords.address(words[3]) ?: return null
-                Triple(
-                    SwapRoute.direct(tokenIn, tokenOut, fee),
-                    recipient,
-                    AbiWords.uint(words[4]) to AbiWords.uint(words[5]),
-                )
+                SwapRoute.direct(tokenIn, tokenOut, fee) to (AbiWords.uint(words[4]) to AbiWords.uint(words[5]))
             }
             selector.contentEquals(EXACT_INPUT) -> {
                 val head = SELECTOR_SIZE + WORD
-                val recipient = wordAt(call, head + WORD)?.let { AbiWords.address(it.toBytes32()) } ?: return null
                 val amountIn = wordAt(call, head + 2 * WORD) ?: return null
                 val minimum = wordAt(call, head + 3 * WORD) ?: return null
                 val pathAt = head + EXACT_INPUT_HEAD_WORDS * WORD
-                val length = wordAt(call, pathAt)?.toLongOrNull()?.toInt() ?: return null
+                val length = boundedAt(call, pathAt, call.size) ?: return null
                 if (pathAt + WORD + length > call.size) return null
                 val route = routeOf(call.copyOfRange(pathAt + WORD, pathAt + WORD + length)) ?: return null
-                Triple(route, recipient, amountIn to minimum)
+                route to (amountIn to minimum)
             }
             else -> null
         }

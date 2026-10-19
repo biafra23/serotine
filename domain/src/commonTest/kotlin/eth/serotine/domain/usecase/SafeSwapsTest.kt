@@ -112,6 +112,9 @@ class SafeSwapsTest {
         chain.quote = quoted(4_210)
         light.status.value = LightClientStatus.Synced(headBlock = 10, headTimestamp = deadline + 1)
         assertEquals(true, assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
+        // A verified head with no proof peers right now still has its time.
+        light.status.value = LightClientStatus.WaitingForProofPeers(headBlock = 10, headTimestamp = deadline + 1)
+        assertEquals(true, assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
         light.status.value = LightClientStatus.Starting
         assertNull(assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
     }

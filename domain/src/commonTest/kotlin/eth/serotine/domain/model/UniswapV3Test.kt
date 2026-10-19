@@ -450,4 +450,27 @@ class UniswapV3Test {
         val transfer = TransactionCall(usdc, UInt256.ZERO, Erc20.transferData(account, hundredUsdc))
         assertNull(SwapRouter02.decode(transfer, account))
     }
+
+    @Test
+    fun anyLengthOrOffsetOrDeadlineAtAllIsReadWithoutThrowing() {
+        val hopCall = SwapRouter02.swap(deployment, usdcToken, linkToken, hop, hundredUsdc, minimum, account, deadline)
+        val data = hopCall.data
+        // Every word of the call set to 2^32 - 1, 2^31 and 2^256 - 1 in turn: a length, an offset or
+        // a deadline past any bound reads as no swap, and never throws.
+        for (word in 0 until (data.size - 4) / 32) {
+            for (value in listOf("ffffffff", "80000000", "ff".repeat(32))) {
+                val changed = data.copyOf()
+                val bytes = value.chunked(2).map { it.toInt(16).toByte() }
+                bytes.forEachIndexed { i, byte -> changed[4 + word * 32 + 32 - bytes.size + i] = byte }
+                SwapRouter02.decode(TransactionCall(hopCall.to, hopCall.value, changed), account)
+            }
+        }
+        val farDeadline = SwapRouter02.swap(
+            deployment, usdcToken, linkToken, hop, hundredUsdc, minimum, account, SwapRouter02.MAX_DEADLINE + 1,
+        )
+        assertNull(SwapRouter02.decode(farDeadline, account), "past the year 9999")
+        for (cut in data.indices) {
+            assertNull(SwapRouter02.decode(TransactionCall(hopCall.to, hopCall.value, data.copyOf(cut)), account))
+        }
+    }
 }

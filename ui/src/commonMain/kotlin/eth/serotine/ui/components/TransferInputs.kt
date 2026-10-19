@@ -374,3 +374,6 @@ private const val NOT_A_NAME =
 private const val CHECKSUM = "The capitals do not match this address's checksum: check it for a typo."
 private const val OFFCHAIN =
     "Only an off-chain gateway gives this name's address, and Serotine asks none: it cannot be resolved here."
+
+/** A Uniswap fee tier's [pips] as a percentage: 3 000 is "0.3 %". */
+internal fun feeTierText(pips: Int): String = UInt256.of(pips.toLong()).formatUnits(4) + " %"

@@ -246,7 +246,8 @@ class SafeTxViewModelTest {
     fun aSwapsMinimumFallenBehindIsSaidWithWhatItLeavesOpenAndAPassedDeadlineRefusesIt() = runTest {
         // 0.05 ETH now, less 0.5 % keeps 0.04975: a minimum of 0.04 leaves 0.01 open.
         world.quoteSwap(out = 50_000_000_000_000_000)
-        val viewModel = viewModel(queued(world.request(world.swap(4))))
+        val viewModel = viewModel(queued(world.request(world.swap(4), world.carol, world.bob.address)))
+        assertTrue(viewModel.overview.canExecute, "still executable as signed (owner ruling, 2026-10-19)")
         assertEquals(
             "Its minimum has fallen behind the market: it returns 0.01 ETH more than its minimum now, more than " +
                 "the default 0.5 % tolerance would leave, and a sandwich could take all of it. Propose it again " +
@@ -261,6 +262,28 @@ class SafeTxViewModelTest {
             "Its deadline has passed: the router refuses it, so it can never run as signed. Replace it at its " +
                 "nonce: propose the swap again, or reject it.",
             viewModel.overview.swap?.warning,
+        )
+        // Greyed out, saying why (owner ruling, 2026-10-18, #55), and not quoted on a tap.
+        assertFalse(viewModel.overview.canExecute)
+        assertEquals(
+            "Its deadline has passed: the router refuses it, so it can never run as signed.",
+            viewModel.overview.executeNote,
+        )
+        viewModel.startExecution()
+        runCurrent()
+        assertIs<SafeTxUiState.Overview>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun theSignStepShowsWhereTheSwapStandsBeforeTheKeySigns() = runTest {
+        world.quoteSwap(out = 40_200_000_000_000_000)
+        val viewModel = viewModel(queued(world.request(world.swap(4))))
+        viewModel.startSigning()
+        runCurrent()
+
+        assertEquals(
+            "Through Uniswap's SwapRouter02, its code proven by the light client.",
+            viewModel.signing.swap?.lines?.first(),
         )
     }
 

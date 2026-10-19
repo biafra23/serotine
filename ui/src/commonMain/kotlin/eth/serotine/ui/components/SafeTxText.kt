@@ -79,32 +79,18 @@ internal fun safeTxActionItem(
         symbol = network.nativeSymbol,
     )
     is SafeTxAction.TokenTransfer -> {
-        val known = tokens.firstOrNull { it.token.address == action.token }
-        val token = known?.token
-        val addresses = listOf(
-            ActionAddress("To", Eip55.format(action.to)),
-            ActionAddress("Token contract", Eip55.format(action.token)),
+        val amount = tokenAmount(action.token, action.amount, tokens)
+        SafeTxActionItem(
+            title = "Send ${amount.text}",
+            addresses = listOf(
+                ActionAddress("To", Eip55.format(action.to)),
+                ActionAddress("Token contract", Eip55.format(action.token)),
+            ),
+            notes = listOfNotNull(amount.unknownNote),
+            warning = amount.warning,
+            icon = amount.icon,
+            symbol = amount.symbol,
         )
-        if (token == null) {
-            SafeTxActionItem(
-                title = "Send ${grouped(action.amount)} units of a token",
-                addresses = addresses,
-                notes = listOf(
-                    "Serotine does not know the token at this contract: the amount is in its smallest units, " +
-                        "and how many decimals it has is not known here.",
-                ),
-            )
-        } else {
-            val symbol = displaySymbol(token.symbol)
-            SafeTxActionItem(
-                title = "Send ${action.amount.formatUnits(token.decimals)} $symbol",
-                addresses = addresses,
-                // As Send's asset row says it: the symbol is the contract's claim.
-                warning = if (known.sharesBuiltInSymbol) "Not the built-in $symbol: another contract" else null,
-                icon = token.icon,
-                symbol = symbol,
-            )
-        }
     }
     is SafeTxAction.TokenApproval -> {
         val amount = tokenAmount(action.token, action.amount, tokens)
@@ -138,15 +124,17 @@ internal fun safeTxActionItem(
             ),
             notes = listOfNotNull(
                 if (swap.route.isDirect) {
-                    "Through one pool at ${feeText(swap.route.fees.single().pips)}."
+                    "Through one pool at ${feeTierText(swap.route.fees.single().pips)}."
                 } else {
                     "Through ${tokenSymbol(swap.route.tokens[1], tokens)}: two pools, at " +
-                        swap.route.fees.joinToString(" and ") { feeText(it.pips) } + "."
+                        swap.route.fees.joinToString(" and ") { feeTierText(it.pips) } + "."
                 },
                 "Paid to the Safe.",
+                "Whether the router is Uniswap's is checked against the chain on the transaction's own screen: " +
+                    "until then, what it does with the call is up to its code.",
                 sold.unknownNote ?: bought.unknownNote,
             ),
-            warning = sold.warning ?: bought.warning,
+            warning = listOfNotNull(sold.warning, bought.warning).takeIf { it.isNotEmpty() }?.joinToString(". "),
             icon = sold.icon,
             symbol = sold.symbol,
         )
@@ -253,7 +241,11 @@ internal fun safeSwapItem(
         SafeSwapCheck.ApprovalOfRouter ->
             SafeSwapItem(listOf("The spender is Uniswap's SwapRouter02, its code proven by the light client."))
         is SafeSwapCheck.NotUniswap -> SafeSwapItem(emptyList(), warning = NOT_UNISWAP_SPENDER)
-        else -> SafeSwapItem(listOf("Whether the spender is Uniswap's could not be verified this time."))
+        else -> SafeSwapItem(
+            emptyList(),
+            warning = "Whether the spender is Uniswap's could not be verified this time: until it is, treat it as " +
+                "any contract.",
+        )
     }
     is SafeTxAction.Swap -> swapItem(action.swap, check, tokens, network, formatTime)
     else -> null
@@ -272,7 +264,9 @@ private fun swapItem(
         is SafeSwapCheck.NotUniswap -> return SafeSwapItem(listOf(deadline), warning = NOT_UNISWAP_ROUTER)
         is SafeSwapCheck.SwapOnUniswap -> check
         else -> return SafeSwapItem(
-            listOf("Whether the router is Uniswap's could not be verified this time.", deadline),
+            listOf(deadline),
+            warning = "Whether the router is Uniswap's could not be verified this time: until it is, treat it as " +
+                "any contract's call.",
         )
     }
     val bought = { amount: UInt256 ->
@@ -345,8 +339,8 @@ private fun tokenAmount(address: Address, amount: UInt256, tokens: List<Decoding
     val known = tokens.firstOrNull { it.token.address == address }
         ?: return AmountText(
             "${grouped(amount)} units of a token",
-            unknownNote = "Serotine does not know a token here: its amount is in its smallest units, and how " +
-                "many decimals it has is not known here.",
+            unknownNote = "Serotine does not know the token at this contract: the amount is in its smallest " +
+                "units, and how many decimals it has is not known here.",
         )
     val symbol = displaySymbol(known.token.symbol)
     return AmountText(
@@ -361,8 +355,7 @@ private fun tokenSymbol(address: Address, tokens: List<DecodingToken>): String =
     tokens.firstOrNull { it.token.address == address }?.let { displaySymbol(it.token.symbol) }
         ?: shortAddress(Eip55.format(address))
 
-/** A fee tier's pips as a percentage: 3 000 is "0.3 %". */
-private fun feeText(pips: Int): String = UInt256.of(pips.toLong()).formatUnits(4) + " %"
+
 
 private fun callData(selector: String?, size: Int): String =
     selector?.let { "Function 0x$it, ${bytes(size)} of call data" }

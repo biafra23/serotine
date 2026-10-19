@@ -497,6 +497,7 @@ private fun SigningContent(state: SafeTxUiState.Signing, actions: SafeTxActions)
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
+        state.swap?.let { SafeSwapBlock(it) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         HashLine(state.hash)
         Note("The owner signs this hash, computed here from the transaction's fields: nothing else.")

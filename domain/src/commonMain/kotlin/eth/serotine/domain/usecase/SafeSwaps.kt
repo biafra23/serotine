@@ -72,7 +72,12 @@ class CheckSafeSwap(
             Simulation.Refused -> SwapNow.Unavailable(ReadUnavailable.REFUSED)
             is Simulation.Unavailable -> SwapNow.Unavailable(answer.reason)
         }
-        val headTime = (head.await() as? LightClientStatus.Synced)?.headTimestamp
+        // A verified head's time, whether peers serve proofs for it right now or not.
+        val headTime = when (val status = head.await()) {
+            is LightClientStatus.Synced -> status.headTimestamp
+            is LightClientStatus.WaitingForProofPeers -> status.headTimestamp
+            else -> null
+        }
         SafeSwapCheck.SwapOnUniswap(swap, now, expired = headTime?.let { it > swap.deadline })
     }
 }
