@@ -181,6 +181,13 @@ object SwapRouter02 {
     /** `exactInput`'s tuple has four head words: the path's offset, the recipient, the two amounts. */
     private const val EXACT_INPUT_HEAD_WORDS = 4
 
+    private const val SELECTOR_SIZE = 4
+    private const val ADDRESS_SIZE = 20
+    private const val FEE_SIZE = 3
+
+    /** A swap's multicall holds the swap, and the unwrap when it buys ETH: never more. */
+    private const val MAX_CALLS = 2L
+
     /**
      * The recipient that means the router itself (`Constants.ADDRESS_THIS`, address 2): where the
      * WETH a swap buys stays until `unwrapWETH9` sends it on as ETH in the same multicall.
@@ -215,7 +222,28 @@ object SwapRouter02 {
         require(route.tokenOut == buy.tokenOn(deployment)) { "the route ends with another token than bought" }
         require(!amountOutMinimum.isZero) { "a swap is never signed without a minimum" }
         require(deadline >= 0) { "a deadline is not negative" }
-        val buysEther = buy == TransferAsset.Native
+        return encode(
+            deployment.swapRouter02,
+            route,
+            amountIn,
+            amountOutMinimum,
+            account,
+            deadline,
+            sellsEther = sell == TransferAsset.Native,
+            buysEther = buy == TransferAsset.Native,
+        )
+    }
+
+    private fun encode(
+        router: Address,
+        route: SwapRoute,
+        amountIn: UInt256,
+        amountOutMinimum: UInt256,
+        account: Address,
+        deadline: Long,
+        sellsEther: Boolean,
+        buysEther: Boolean,
+    ): TransactionCall {
         val recipient = if (buysEther) ADDRESS_THIS else account
         val swap = if (route.isDirect) {
             exactInputSingle(route, recipient, amountIn, amountOutMinimum)
@@ -223,9 +251,111 @@ object SwapRouter02 {
             exactInput(route, recipient, amountIn, amountOutMinimum)
         }
         val calls = if (buysEther) listOf(swap, unwrapWeth9(amountOutMinimum, account)) else listOf(swap)
-        val value = if (sell == TransferAsset.Native) amountIn else UInt256.ZERO
+        val value = if (sellsEther) amountIn else UInt256.ZERO
         val data = AbiWords.withBytesArray(MULTICALL, head = listOf(word(deadline)), elements = calls)
-        return TransactionCall(deployment.swapRouter02, value, data)
+        return TransactionCall(router, value, data)
+    }
+
+    /**
+     * The swap [call] makes for [account] when it is exactly what [swap] builds for some route,
+     * amounts and deadline, sent to the router at [call]'s `to`; null for anything else. Decoded
+     * by its fields, then built again from them and held to the bytes and value it came with, so
+     * only that exact encoding is read as a swap. Which router it is, and so whether it is
+     * Uniswap's, is for the caller to establish: this reads the call, not the contract.
+     */
+    fun decode(call: TransactionCall, account: Address): RouterSwap? {
+        val data = call.data
+        if (data.size < SELECTOR_SIZE + 2 * WORD || !data.copyOf(SELECTOR_SIZE).contentEquals(MULTICALL)) return null
+        val deadline = AbiWords.uint(data.copyOfRange(SELECTOR_SIZE, SELECTOR_SIZE + WORD)).toLongOrNull()
+            ?: return null
+        val calls = bytesArray(data, at = SELECTOR_SIZE + 2 * WORD) ?: return null
+        if (calls.size !in 1..2) return null
+        val (route, _, amounts) = swapCall(calls[0]) ?: return null
+        val (amountIn, minimum) = amounts
+        if (minimum.isZero) return null
+        val buysEther = calls.size == 2
+        val sellsEther = !call.value.isZero
+        if (buysEther && sellsEther) return null
+        val decoded = RouterSwap(
+            router = call.to,
+            route = route,
+            sellsEther = sellsEther,
+            amountIn = amountIn,
+            buysEther = buysEther,
+            minimumOut = minimum,
+            deadline = deadline,
+        )
+        val rebuilt = runCatching {
+            encode(call.to, route, amountIn, minimum, account, deadline, sellsEther, buysEther)
+        }.getOrNull() ?: return null
+        // The recipient is in the bytes compared: the account, or the router itself when it unwraps.
+        return decoded.takeIf { rebuilt == call }
+    }
+
+    /** The `bytes[]` whose length word starts at [at] in [data], its offsets relative to the word after it. */
+    private fun bytesArray(data: ByteArray, at: Int): List<ByteArray>? {
+        val count = wordAt(data, at)?.toLongOrNull()?.takeIf { it in 0..MAX_CALLS } ?: return null
+        val base = at + WORD
+        return (0 until count.toInt()).map { i ->
+            val offset = wordAt(data, base + i * WORD)?.toLongOrNull()?.takeIf { it < data.size } ?: return null
+            val start = base + offset.toInt()
+            val length = wordAt(data, start)?.toLongOrNull()?.takeIf { start + WORD + it <= data.size } ?: return null
+            data.copyOfRange(start + WORD, start + WORD + length.toInt())
+        }
+    }
+
+    /** The word at [at] in [data], or null when [data] ends before it does. */
+    private fun wordAt(data: ByteArray, at: Int): UInt256? =
+        if (at >= 0 && at + WORD <= data.size) AbiWords.uint(data.copyOfRange(at, at + WORD)) else null
+
+    /** The route, the recipient and (amount in, minimum out) of an `exactInputSingle` or `exactInput` call. */
+    private fun swapCall(call: ByteArray): Triple<SwapRoute, Address, Pair<UInt256, UInt256>>? {
+        if (call.size < SELECTOR_SIZE) return null
+        val selector = call.copyOf(SELECTOR_SIZE)
+        return when {
+            selector.contentEquals(EXACT_INPUT_SINGLE) -> {
+                val words = AbiWords.staticArguments(call, EXACT_INPUT_SINGLE, words = 7) ?: return null
+                val tokenIn = AbiWords.address(words[0]) ?: return null
+                val tokenOut = AbiWords.address(words[1]) ?: return null
+                val fee = AbiWords.uint(words[2]).toLongOrNull()?.toInt()?.let(FeeTier::ofPips) ?: return null
+                if (tokenIn == tokenOut) return null
+                val recipient = AbiWords.address(words[3]) ?: return null
+                Triple(
+                    SwapRoute.direct(tokenIn, tokenOut, fee),
+                    recipient,
+                    AbiWords.uint(words[4]) to AbiWords.uint(words[5]),
+                )
+            }
+            selector.contentEquals(EXACT_INPUT) -> {
+                val head = SELECTOR_SIZE + WORD
+                val recipient = wordAt(call, head + WORD)?.let { AbiWords.address(it.toBytes32()) } ?: return null
+                val amountIn = wordAt(call, head + 2 * WORD) ?: return null
+                val minimum = wordAt(call, head + 3 * WORD) ?: return null
+                val pathAt = head + EXACT_INPUT_HEAD_WORDS * WORD
+                val length = wordAt(call, pathAt)?.toLongOrNull()?.toInt() ?: return null
+                if (pathAt + WORD + length > call.size) return null
+                val route = routeOf(call.copyOfRange(pathAt + WORD, pathAt + WORD + length)) ?: return null
+                Triple(route, recipient, amountIn to minimum)
+            }
+            else -> null
+        }
+    }
+
+    /** The route a packed path spells (token ‖ fee ‖ token …), or null when it spells none. */
+    private fun routeOf(path: ByteArray): SwapRoute? {
+        if (path.size < ADDRESS_SIZE || (path.size - ADDRESS_SIZE) % (FEE_SIZE + ADDRESS_SIZE) != 0) return null
+        val pools = (path.size - ADDRESS_SIZE) / (FEE_SIZE + ADDRESS_SIZE)
+        val tokens = (0..pools).map { i ->
+            val at = i * (FEE_SIZE + ADDRESS_SIZE)
+            Address.of("0x" + path.copyOfRange(at, at + ADDRESS_SIZE).toHex())
+        }
+        val fees = (0 until pools).map { i ->
+            val at = ADDRESS_SIZE + i * (FEE_SIZE + ADDRESS_SIZE)
+            val pips = ((path[at].toInt() and 0xff) shl 16) or ((path[at + 1].toInt() and 0xff) shl 8) or
+                (path[at + 2].toInt() and 0xff)
+            FeeTier.ofPips(pips) ?: return null
+        }
+        return runCatching { SwapRoute(tokens, fees) }.getOrNull()
     }
 
     /**
@@ -267,6 +397,23 @@ object SwapRouter02 {
 
     private fun unwrapWeth9(minimum: UInt256, recipient: Address) = UNWRAP_WETH9 + minimum.toBytes32() + word(recipient)
 }
+
+/**
+ * A swap decoded from a call of a router ([SwapRouter02.decode]): exactly [amountIn] along
+ * [route] for at least [minimumOut], refused by [router] after [deadline] (seconds since the
+ * epoch). [sellsEther]: the call's value is [amountIn], which the router wraps into the route's
+ * first token; [buysEther]: the router unwraps the route's last token and sends it on as ETH.
+ * Otherwise each end is the route's token itself.
+ */
+data class RouterSwap(
+    val router: Address,
+    val route: SwapRoute,
+    val sellsEther: Boolean,
+    val amountIn: UInt256,
+    val buysEther: Boolean,
+    val minimumOut: UInt256,
+    val deadline: Long,
+)
 
 /** The token a route takes for this asset on [deployment]: the token's own, or WETH9 for ETH. */
 fun TransferAsset.tokenOn(deployment: UniswapV3Deployment): Address = when (this) {

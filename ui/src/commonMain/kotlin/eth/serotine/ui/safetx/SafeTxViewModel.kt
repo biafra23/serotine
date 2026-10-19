@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
+import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountList
@@ -20,6 +21,7 @@ import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CallQuote
+import eth.serotine.domain.usecase.CheckSafeSwap
 import eth.serotine.domain.usecase.DecodedSafeTx
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.EncodeSigningRequest
@@ -37,6 +39,7 @@ import eth.serotine.domain.usecase.SafeApprovalQuote
 import eth.serotine.domain.usecase.SafeApprovalQuoting
 import eth.serotine.domain.usecase.SafeExecutionQuote
 import eth.serotine.domain.usecase.SafeExecutionQuoting
+import eth.serotine.domain.usecase.SafeSwapCheck
 import eth.serotine.domain.usecase.SafeTxOwnersReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
@@ -66,11 +69,13 @@ import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.safeSwapItem
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.shareItem
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.verifiedAt
+import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -140,10 +145,13 @@ class SafeTxViewModel(
     private val rebroadcastTransfer: RebroadcastTransfer,
     private val removeQueuedSafeTx: RemoveQueuedSafeTx,
     private val warmFeeHistory: WarmFeeHistory,
+    private val checkSafeSwap: CheckSafeSwap,
     private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     /** Whether the screen was opened by the import that just queued the transaction: its overview says so first. */
     imported: Boolean = false,
+    /** Dates a swap's deadline in the user's own time zone. */
+    private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
     init {
@@ -351,7 +359,31 @@ class SafeTxViewModel(
             null,
         )
 
-    val uiState: StateFlow<SafeTxUiState> = combine(context.onEach(::follow), view, step, ::render).stateIn(
+    /**
+     * Where the transaction stands as a swap or its approval (docs/swaps.md, *A Safe's swap*):
+     * checked against the verified venue, and for a swap quoted now, whenever the owners are read
+     * again; null while checked, and for anything else.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val swapCheck: Flow<SafeSwapCheck?> = queued
+        .map { (it as? Queued.Found)?.tx?.action }
+        .distinctUntilChanged()
+        .transformLatest { action ->
+            emit(null)
+            if (action is SafeTxAction.TokenApproval || action is SafeTxAction.Swap) {
+                emitAll(readAgain.mapLatest { checkSwap(action) })
+            }
+        }
+
+    private suspend fun checkSwap(action: SafeTxAction): SafeSwapCheck? = try {
+        checkSafeSwap(action)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        SafeSwapCheck.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
+    }
+
+    val uiState: StateFlow<SafeTxUiState> = combine(context.onEach(::follow), view, step, swapCheck, ::render).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         SafeTxUiState.Loading(network.displayName),
@@ -912,7 +944,7 @@ class SafeTxViewModel(
         }
     }
 
-    private fun render(context: Source?, view: View, step: Step): SafeTxUiState {
+    private fun render(context: Source?, view: View, step: Step, swapCheck: SafeSwapCheck?): SafeTxUiState {
         val network = network.displayName
         when (step) {
             is Step.Sent -> return SafeTxUiState.Sent(network, step.hash)
@@ -932,6 +964,7 @@ class SafeTxViewModel(
         val tx = shown.found.tx
         val request = shown.request
         val action = safeTxActionItem(tx.action, request.nonce, shown.tokens, this.network)
+        val swap = safeSwapItem(tx.action, swapCheck, shown.tokens, this.network, formatTime)
         val read = shown.owners as? SafeTxOwnersReading.Read
         val header = SafeHeader(
             label = shown.labels[safe],
@@ -956,6 +989,7 @@ class SafeTxViewModel(
                 checking = step.checking,
             )
             is Step.Reviewing -> review(shown, header, action, nonce, step)
+                .copy(swap = swap.takeIf { step.kind == ReviewKind.EXECUTION })
             else -> SafeTxUiState.Overview(
                 network = network,
                 safe = header,
@@ -963,6 +997,7 @@ class SafeTxViewModel(
                 nonce = nonce,
                 hash = hashText,
                 owners = ownersItem(shown),
+                swap = swap,
                 gasTerms = tx.gasTerms?.let(::gasTermsItem),
                 // What the transaction alone says, or what it would do to the Safe as it stands now.
                 refusal = (tx.refusal ?: read?.refusal)

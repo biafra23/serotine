@@ -382,11 +382,20 @@ upgrades*).
       there; a refresh or the signature checks the Safe again.
 17. **Safe transaction**
     - The action, decoded here from the raw transaction (`SafeTxAction`): a
-      native or ERC-20 transfer, a change of the Safe's settings (an owner
-      added, removed or swapped, the threshold, a module, the guard, the
-      fallback handler), a rejection (the Safe calling
+      native or ERC-20 transfer, an ERC-20 approval, a swap through a router
+      exactly as Serotine builds one and paid to the Safe, a change of the
+      Safe's settings (an owner added, removed or swapped, the threshold, a
+      module, the guard, the fallback handler), a rejection (the Safe calling
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
+    - An approval or a swap says where it stands now (docs/swaps.md, *A
+      Safe's swap*): whether its spender or router is Uniswap's pinned
+      SwapRouter02, its code proven, with a warning when it is not; for a
+      swap, what it returns now by a verified QuoterV2 quote against its
+      minimum, its deadline, and when it has passed, that it can never run.
+      A minimum fallen behind the market by more than the default tolerance
+      is said here and on the execution's review, with what a sandwich could
+      take.
     - A change that weakens the Safe carries a warning wherever it is shown
       (16's row, 17, the Sign step, the biometric prompt): a module disabled,
       a guard set or removed (its limits, allowlist or delay stop), a

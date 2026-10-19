@@ -672,12 +672,20 @@ class ProposeSafeTx(
 
     /**
      * What this queued request may move of the token at [token] (null: of the network's currency),
-     * as decoded from its fields: a token's transfers of it, or for the currency the value of
-     * whatever it calls. A delegate call's value is not sent, and what its code may do is not
-     * known here.
+     * as decoded from its fields: a token's transfers of it, a swap's sale of it (the router takes
+     * it), or for the currency the value of whatever it calls. A delegate call's value is not
+     * sent, and what its code may do is not known here.
      */
     private fun SigningRequest.moves(token: Address?): UInt256 = when (val action = SafeTxAction.of(safe, tx)) {
         is SafeTxAction.TokenTransfer -> if (action.token == token) action.amount else UInt256.ZERO
+        is SafeTxAction.Swap -> {
+            val swap = action.swap
+            when {
+                !swap.sellsEther && swap.route.tokenIn == token -> swap.amountIn
+                token == null -> tx.value
+                else -> UInt256.ZERO
+            }
+        }
         is SafeTxAction.DelegateCall -> UInt256.ZERO
         else -> if (token == null) tx.value else UInt256.ZERO
     }

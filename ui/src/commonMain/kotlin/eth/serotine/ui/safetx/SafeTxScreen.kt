@@ -74,6 +74,7 @@ import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.QrCode
 import eth.serotine.ui.components.RequestShareContent
+import eth.serotine.ui.components.SafeSwapBlock
 import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.Unavailable
@@ -291,6 +292,7 @@ private fun OverviewContent(
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
+        state.swap?.let { SafeSwapBlock(it) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         HashLine(state.hash)
         state.gasTerms?.let { terms ->
@@ -526,6 +528,7 @@ private fun ReviewContent(state: SafeTxUiState.Review, actions: SafeTxActions) {
     ) {
         SafeLine(state.safe)
         SafeTxActionCard(state.action)
+        state.swap?.let { SafeSwapBlock(it) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         Heading(if (state.kind == ReviewKind.APPROVAL) "Approve as" else "Send the execution from")
         Choices(state.accounts, state.account, enabled = state.idle, onChoose = actions.onAccountChange)

@@ -405,4 +405,49 @@ class UniswapV3Test {
         assertNull(SwapRouter02.amountOutOf(one.replaceRange(64 * 3 + 62, 64 * 3 + 64, "40"), false), "a longer result")
         assertNull(SwapRouter02.amountOutOf("", buysEther = false))
     }
+
+    @Test
+    fun eachSwapIsReadBackFromItsOwnCallExactly() {
+        fun roundTrip(sell: TransferAsset, buy: TransferAsset, route: SwapRoute) {
+            val call = SwapRouter02.swap(deployment, sell, buy, route, hundredUsdc, minimum, account, deadline)
+            assertEquals(
+                RouterSwap(
+                    router = deployment.swapRouter02,
+                    route = route,
+                    sellsEther = sell == TransferAsset.Native,
+                    amountIn = hundredUsdc,
+                    buysEther = buy == TransferAsset.Native,
+                    minimumOut = minimum,
+                    deadline = deadline,
+                ),
+                SwapRouter02.decode(call, account),
+            )
+        }
+        roundTrip(usdcToken, linkToken, SwapRoute.direct(usdc, link, FeeTier.LOW))
+        roundTrip(usdcToken, linkToken, hop)
+        roundTrip(usdcToken, TransferAsset.Native, SwapRoute.direct(usdc, weth, FeeTier.LOW))
+        roundTrip(TransferAsset.Native, linkToken, SwapRoute.direct(weth, link, FeeTier.MEDIUM))
+        roundTrip(linkToken, TransferAsset.Native, SwapRoute.via(link, FeeTier.MEDIUM, usdc, FeeTier.LOW, weth))
+    }
+
+    @Test
+    fun aSwapPaidToAnotherOrChangedInAnyByteIsNoSwap() {
+        val call = SwapRouter02.swap(deployment, usdcToken, linkToken, hop, hundredUsdc, minimum, account, deadline)
+        val bob = Address.of("0x" + "bb".repeat(20))
+        assertNull(SwapRouter02.decode(call, bob), "paid to the account, not to bob")
+        assertNull(SwapRouter02.decode(TransactionCall(call.to, UInt256.ONE, call.data), account), "with ether")
+        assertNull(SwapRouter02.decode(TransactionCall(call.to, call.value, call.data + byteArrayOf(0)), account))
+        // Every byte of the call is part of the swap: none can change and still read as one.
+        val data = call.data
+        for (i in data.indices) {
+            val changed = data.copyOf().also { it[i] = (it[i].toInt() xor 1).toByte() }
+            val decoded = SwapRouter02.decode(TransactionCall(call.to, call.value, changed), account)
+            if (decoded != null) {
+                // Only the deadline, the amounts or the path's tokens can change into another valid swap.
+                assertEquals(false, decoded == SwapRouter02.decode(call, account), "byte $i")
+            }
+        }
+        val transfer = TransactionCall(usdc, UInt256.ZERO, Erc20.transferData(account, hundredUsdc))
+        assertNull(SwapRouter02.decode(transfer, account))
+    }
 }
