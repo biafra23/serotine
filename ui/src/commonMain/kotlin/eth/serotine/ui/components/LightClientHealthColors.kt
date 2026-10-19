@@ -14,16 +14,16 @@ import androidx.compose.ui.unit.dp
 
 /**
  * This health's colour on the current theme: green, yellow or red, fixed hues rather than the
- * theme's roles (whose dark error is a pale pink), a lighter tone on a dark surface, so each
- * reads on either.
+ * theme's roles (whose dark error is a pale pink), a lighter tone on a dark surface: each at
+ * least 3:1 against its surface, the contrast a status mark needs.
  */
 @Composable
 @ReadOnlyComposable
-internal fun LightClientHealth.color(): Color {
+internal fun LightClientHealth.healthColor(): Color {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     return when (this) {
         LightClientHealth.VERIFIED -> if (dark) Color(0xFF81C995) else Color(0xFF1E8E3E)
-        LightClientHealth.STALE -> if (dark) Color(0xFFFDD663) else Color(0xFFE6A700)
+        LightClientHealth.STALE -> if (dark) Color(0xFFFDD663) else Color(0xFFB88700)
         LightClientHealth.NOT_VERIFIED -> if (dark) Color(0xFFEE675C) else Color(0xFFC5221F)
     }
 }
@@ -31,5 +31,5 @@ internal fun LightClientHealth.color(): Color {
 /** A small dot in [health]'s colour, beside the light client's state wherever it is written. */
 @Composable
 internal fun LightClientHealthDot(health: LightClientHealth, modifier: Modifier = Modifier) {
-    Box(modifier.size(8.dp).background(health.color(), CircleShape))
+    Box(modifier.size(8.dp).background(health.healthColor(), CircleShape))
 }

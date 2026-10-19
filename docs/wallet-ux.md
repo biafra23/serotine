@@ -110,9 +110,10 @@ upgrades*).
 1. **Assets**
    - The light client's status strip on top, coloured by what it can verify
      (owner's request, 2026-10-19): green while reads are verified at a fresh
-     head; yellow while it is synced but has no fresh head to read at (the
-     verified head older than reads allow, no peer serving state proofs, or
-     asleep), when balances show as last verified; red with no verified head
+     head; yellow while it has no fresh head to read at for a reason that
+     passes on its own (the verified head older than reads allow, no peer
+     serving state proofs, or asleep in the background), when balances show
+     as last verified; red with no verified head
      yet (starting, bootstrapping, catching up), sync refused, or no light
      client. A dot before its text and the bar under it carry the colour; the
      text says the same in words. Settings shows the same dot.

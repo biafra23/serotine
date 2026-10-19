@@ -54,7 +54,7 @@ import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
-import eth.serotine.ui.components.color
+import eth.serotine.ui.components.healthColor
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
@@ -215,7 +215,7 @@ private fun PortfolioTotal(total: String, note: String?) {
  */
 @Composable
 private fun LightClientStrip(item: LightClientItem, modifier: Modifier = Modifier) {
-    val color = item.health.color()
+    val color = item.health.healthColor()
     Column(modifier.fillMaxWidth().testTag(ASSETS_LIGHT_CLIENT_TAG)) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -238,7 +238,8 @@ private fun LightClientStrip(item: LightClientItem, modifier: Modifier = Modifie
                 trackColor = track,
             )
             item.working -> LinearProgressIndicator(Modifier.fillMaxWidth(), color = color, trackColor = track)
-            else -> HorizontalDivider(thickness = 4.dp, color = color)
+            // Thinner than a progress bar: a settled state, not one under way.
+            else -> HorizontalDivider(thickness = 2.dp, color = color)
         }
     }
 }

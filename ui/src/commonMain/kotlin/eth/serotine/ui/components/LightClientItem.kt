@@ -110,9 +110,10 @@ enum class LightClientHealth {
     VERIFIED,
 
     /**
-     * Yellow: synced, but there is no fresh head to read at right now — the verified head is
-     * older than reads allow, no peer serves state proofs, or the light client is asleep — so
-     * balances show as last verified, dated.
+     * Yellow: no fresh head to read at right now, for a reason that passes on its own — the
+     * verified head is older than reads allow, no peer serves state proofs, or the light
+     * client is asleep while the app is in the background — so balances show as last
+     * verified, dated.
      */
     STALE,
 
