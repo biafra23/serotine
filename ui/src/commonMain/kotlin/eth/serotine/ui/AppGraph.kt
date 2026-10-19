@@ -26,6 +26,7 @@ import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
@@ -35,6 +36,7 @@ import eth.serotine.domain.usecase.DisableBiometricUnlock
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
+import eth.serotine.domain.usecase.FindUniswapRoute
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.NewRecoveryPhrase
@@ -60,6 +62,8 @@ import eth.serotine.domain.usecase.ProposeSafeTx
 import eth.serotine.domain.usecase.QuoteSafeApproval
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.QuoteSafeExecution
+import eth.serotine.domain.usecase.QuoteSwap
+import eth.serotine.domain.usecase.QuoteTokenApproval
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.ReadSafeTxOwners
 import eth.serotine.domain.usecase.RebroadcastTransfer
@@ -68,6 +72,8 @@ import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SendSwap
+import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.SetDisplayCurrency
 import eth.serotine.domain.usecase.SetTokenHidden
@@ -91,6 +97,7 @@ import eth.serotine.ui.safetx.SafeTxViewModel
 import eth.serotine.ui.security.SecurityViewModel
 import eth.serotine.ui.send.SendViewModel
 import eth.serotine.ui.settings.SettingsViewModel
+import eth.serotine.ui.swap.SwapViewModel
 import eth.serotine.ui.tokens.TokensViewModel
 import eth.serotine.ui.transferstatus.TransferStatusViewModel
 import eth.serotine.ui.update.UpdateRequiredViewModel
@@ -161,6 +168,8 @@ class AppGraph(
     private val safeApprovals: SafeApprovals,
     /** The Safe release a new Safe on [network] is created from: pinned singleton, factory and proxy code. */
     private val safeReleases: SafeReleases,
+    /** Uniswap v3 on [network]: its pinned contracts, proven by their code, and verified calls of them. */
+    private val uniswap: UniswapV3Chain,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
 ) {
@@ -262,6 +271,30 @@ class AppGraph(
         ResolveRecipient(names),
         QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
         SendTransfer(signer, broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        WarmFeeHistory(transactionInputs),
+        network,
+    )
+
+    /** Swap from the account at [from], selling the token at [sell] (null: the network's currency). */
+    fun swapViewModel(from: Address, sell: Address?): SwapViewModel = SwapViewModel(
+        from,
+        sell,
+        ObserveAccounts(accounts),
+        accountValue(),
+        DescribeKeyStore(keys),
+        QuoteSwap(
+            FindUniswapRoute(uniswap, transactionInputs),
+            transactionInputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            lightClient,
+            network,
+        ),
+        SendSwap(transactionInputs, signer, broadcaster, sentTransfers),
+        QuoteTokenApproval(transactionInputs, nativeBalances, sentTransfers, network),
+        SendTokenApproval(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
         network,

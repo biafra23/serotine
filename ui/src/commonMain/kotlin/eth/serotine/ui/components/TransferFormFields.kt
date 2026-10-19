@@ -15,10 +15,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +35,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import eth.serotine.domain.repository.FeeLevel
 
 // The transfer form (docs/wallet-ux.md, screen 7) as Send and Send from a Safe draw it, and the
 // pieces of their reviews they share.
@@ -118,11 +123,18 @@ internal fun ReviewButton(form: TransferForm, onReview: () -> Unit, modifier: Mo
     }
 }
 
+/** One asset to choose, with its verified balance; [tag] tags its row for UI tests. */
 @Composable
-private fun AssetChoiceRow(asset: AssetChoice, selected: Boolean, enabled: Boolean, onSelect: () -> Unit) {
+internal fun AssetChoiceRow(
+    asset: AssetChoice,
+    selected: Boolean,
+    enabled: Boolean,
+    tag: String = SEND_ASSET_TAG,
+    onSelect: () -> Unit,
+) {
     ListItem(
         modifier = Modifier
-            .testTag(SEND_ASSET_TAG)
+            .testTag(tag)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect),
         leadingContent = { TokenIcon(asset.icon, asset.symbol) },
         headlineContent = { Text(asset.symbol) },
@@ -238,4 +250,21 @@ internal fun Heading(text: String) {
 @Composable
 internal fun Note(text: String) {
     Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** Fee: Slow | Normal | Fast (docs/wallet-ux.md, screen 7), from the verified fee history. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun FeeChoice(fee: FeeLevel, enabled: Boolean, onFeeChange: (FeeLevel) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        FeeLevel.entries.forEachIndexed { index, level ->
+            SegmentedButton(
+                selected = fee == level,
+                onClick = { onFeeChange(level) },
+                enabled = enabled,
+                shape = SegmentedButtonDefaults.itemShape(index, FeeLevel.entries.size),
+                label = { Text(levelName(level)) },
+            )
+        }
+    }
 }

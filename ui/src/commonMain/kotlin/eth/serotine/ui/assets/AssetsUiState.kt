@@ -210,12 +210,7 @@ internal const val CREATE_SAFE_NEEDS_A_KEY = "Creating a Safe needs an account w
  * null when it can: the reason a greyed-out Send says on a tap (owner ruling, 2026-10-18, #55).
  */
 internal fun sendBlockedReason(kind: AccountKind, control: Control): String? = when (kind) {
-    AccountKind.EOA -> if (control == Control.FULL_CONTROL) {
-        null
-    } else {
-        "This account is watch-only: its key is not on this device, so nothing can be sent from it. Import its " +
-            "recovery phrase to send from it."
-    }
+    AccountKind.EOA -> if (control == Control.FULL_CONTROL) null else watchOnlyReason("sent", "send")
     AccountKind.SAFE -> if (control != Control.WATCH_ONLY) {
         null
     } else {
@@ -223,3 +218,19 @@ internal fun sendBlockedReason(kind: AccountKind, control: Control): String? = w
             "recovery phrase to propose and sign its transactions."
     }
 }
+
+/**
+ * Why Swap cannot be done from an account of [kind] under [control], and how to get there; null
+ * when it can. A Safe's swap is a Safe transaction its owners sign, which is not built yet
+ * (docs/swaps.md, *A Safe's swap*): greyed out, never hidden (owner ruling, 2026-10-18, #55).
+ */
+internal fun swapBlockedReason(kind: AccountKind, control: Control): String? = when (kind) {
+    AccountKind.EOA -> if (control == Control.FULL_CONTROL) null else watchOnlyReason("swapped", "swap")
+    AccountKind.SAFE -> "Swapping from a Safe is not built yet: its swap is a Safe transaction its owners sign, " +
+        "which Serotine cannot propose yet. Send works from a Safe as before."
+}
+
+/** An account's key not on this device: nothing can be [done] from it, and how to [act] from it. */
+private fun watchOnlyReason(done: String, act: String): String =
+    "This account is watch-only: its key is not on this device, so nothing can be $done from it. Import its " +
+        "recovery phrase to $act from it."
