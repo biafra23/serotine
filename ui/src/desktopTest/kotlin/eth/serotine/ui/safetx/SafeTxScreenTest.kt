@@ -20,9 +20,11 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.SAFE_SWAP_TAG
 import eth.serotine.ui.components.SAFE_TX_ACTION_TAG
 import eth.serotine.ui.components.SAFE_TX_QR_TAG
 import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
+import eth.serotine.ui.components.SafeSwapItem
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
@@ -138,6 +140,25 @@ class SafeTxScreenTest {
         rule.onNodeWithText("Approve on chain").performScrollTo().performClick()
         rule.onNodeWithText("Check again").performScrollTo().performClick()
         assertEquals(listOf("sign", "approve", "check again"), events)
+    }
+
+    @Test
+    fun aSwapsStandNowIsShownUnderItsActionAndOnTheExecutionsReview() {
+        val swap = SafeSwapItem(
+            listOf("Returns 0.05 ETH now, by a verified QuoterV2 quote at block 9: it meets its minimum."),
+            warning = "Its minimum has fallen behind the market.",
+        )
+        show(overview.copy(swap = swap))
+        rule.onNodeWithText("Returns 0.05 ETH now, by a verified QuoterV2 quote at block 9: it meets its minimum.")
+            .assertIsDisplayed()
+        rule.onNodeWithText("Its minimum has fallen behind the market.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theExecutionsReviewSaysTheSwapsMinimumHasFallenBehind() {
+        show(review.copy(swap = SafeSwapItem(emptyList(), warning = "Its minimum has fallen behind the market.")))
+        rule.onNodeWithTag(SAFE_SWAP_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Its minimum has fallen behind the market.").assertIsDisplayed()
     }
 
     @Test

@@ -6,17 +6,25 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapRoute
+import eth.serotine.domain.model.SwapRouter02
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.UniswapV3Deployment
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.ApprovalReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SafeTxQueue
@@ -24,6 +32,9 @@ import eth.serotine.domain.repository.SafeTxQueueList
 import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.SigningRequestDecoding
+import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.UniswapV3Chain
+import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
 import kotlinx.coroutines.CompletableDeferred
@@ -164,6 +175,69 @@ internal class SafeWorld {
     val metadata = FakeMetadata()
     val knownTokens = ObserveKnownTokens(catalog, userTokens, metadata)
 
+    /** Uniswap as pinned on Sepolia, its code proven; QuoterV2 answers [quotes] by call data, or reverts. */
+    val uniswapDeployment = UniswapV3Deployment(
+        factory = Address.of("0x0227628f3f023bb0b980b67d528571c95c6dac1c"),
+        quoterV2 = Address.of("0xed1f6473345f45b75f8179591dd5ba1888cf2fb3"),
+        swapRouter02 = Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e"),
+        weth9 = Address.of("0xfff9976782d46cc05630d1f6ebab18b2324d6b14"),
+    )
+    val quotes = mutableMapOf<String, Simulation>()
+    val uniswap = object : UniswapV3Chain {
+        override suspend fun venue(network: Network): VenueReading = VenueReading.Verified(uniswapDeployment)
+
+        override suspend fun call(to: Address, data: ByteArray): Simulation =
+            quotes[data.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }]
+                ?: Simulation.Reverted(100)
+    }
+
+    /** The verified head, at [HEAD_TIME]. */
+    val head = MutableStateFlow<LightClientStatus>(
+        LightClientStatus.Synced(headBlock = 100, headTimestamp = HEAD_TIME),
+    )
+    val lightClient = object : LightClient {
+        override fun observeStatus(): Flow<LightClientStatus> = head
+    }
+
+    /** USDC → ETH in the pinned router's 0.05 % pool, [amountIn] for at least [minimum] wei, paid to the Safe. */
+    fun swap(nonce: Long, amountIn: Long = 100_000_000, minimum: Long = 40_000_000_000_000_000) = SafeTx.call(
+        uniswapDeployment.swapRouter02,
+        UInt256.ZERO,
+        SwapRouter02.swap(
+            uniswapDeployment,
+            TransferAsset.Erc20Token(usdc),
+            TransferAsset.Native,
+            SWAP_ROUTE,
+            UInt256.of(amountIn),
+            UInt256.of(minimum),
+            safe,
+            HEAD_TIME + DAY,
+        ).data,
+        nonce,
+    )
+
+    /** The pinned router allowed to take [units] of the Safe's USDC. */
+    fun approval(nonce: Long, units: Long = 100_000_000) = SafeTx.call(
+        usdc.address,
+        UInt256.ZERO,
+        Erc20.approveData(uniswapDeployment.swapRouter02, UInt256.of(units)),
+        nonce,
+    )
+
+    /** QuoterV2 quotes [out] wei for the [swap]'s [amountIn], at block 100. */
+    fun quoteSwap(out: Long, amountIn: Long = 100_000_000) {
+        val data = QuoterV2.quote(SWAP_ROUTE, UInt256.of(amountIn))
+        quotes[data.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }] = Simulation.Succeeded(
+            listOf(UInt256.of(out), UInt256.ZERO, UInt256.ZERO, UInt256.of(100_000)).joinToString("") { word ->
+                word.toBytes32().joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+            },
+            100,
+        )
+    }
+
+    private val SWAP_ROUTE: SwapRoute
+        get() = SwapRoute.direct(usdc.address, uniswapDeployment.weth9, FeeTier.LOW)
+
     init {
         kind.value = KindReading.Verified(AddressKind.Safe(state), 100)
     }
@@ -184,3 +258,9 @@ internal class SafeWorld {
         )
     }
 }
+
+/** The verified head's time in the Safe tests: a swap's deadline is a day after it. */
+internal const val HEAD_TIME = 1_792_419_000L
+
+/** A day, in seconds. */
+internal const val DAY = 86_400L

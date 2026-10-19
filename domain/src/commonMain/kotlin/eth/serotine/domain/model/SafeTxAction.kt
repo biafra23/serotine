@@ -4,8 +4,9 @@ import eth.serotine.domain.model.AbiWords.selector
 
 /**
  * What a [SafeTx] does, decoded here from its raw fields (docs/wallet-ux.md, screen 17), never
- * from a description that came with it. Decoding is strict: a call is read as a transfer or a
- * change of the Safe's settings only when its data is exactly that function's encoding;
+ * from a description that came with it. Decoding is strict: a call is read as a transfer, an
+ * approval, a swap or a change of the Safe's settings only when its data is exactly that
+ * function's encoding;
  * anything else is a [ContractCall] with its selector, and a delegate call is always a
  * [DelegateCall], whatever its data, because the Safe then runs the target's code as itself.
  */
@@ -20,6 +21,21 @@ sealed interface SafeTxAction {
      * contract's claim, read separately; the transfer is to that contract's address.
      */
     data class TokenTransfer(val token: Address, val to: Address, val amount: UInt256) : SafeTxAction
+
+    /**
+     * The ERC-20 token at [token] lets [spender] take up to [amount] (in its smallest units) of the
+     * Safe's: the token's `approve`, called with no ether. It moves nothing on its own; the
+     * spender may take that much later (docs/swaps.md, *What both venues share*).
+     */
+    data class TokenApproval(val token: Address, val spender: Address, val amount: UInt256) : SafeTxAction
+
+    /**
+     * A swap through the router at [RouterSwap.router], paid to the Safe, exactly as
+     * [SwapRouter02.swap] builds one ([SwapRouter02.decode]). Whether that router is Uniswap's
+     * pinned one is not part of decoding: it is checked against the verified venue before the
+     * swap is called one (docs/swaps.md, *A Safe's swap*).
+     */
+    data class Swap(val swap: RouterSwap) : SafeTxAction
 
     /** A change of the Safe's own settings: a call of one of its functions, on itself, with no ether. */
     data class SettingsChange(val change: SafeSettingsChange) : SafeTxAction
@@ -69,7 +85,11 @@ sealed interface SafeTxAction {
                     settingsChange(data)?.let { return SettingsChange(it) }
                 } else {
                     Erc20.transferOf(data)?.let { return TokenTransfer(tx.to, it.to, it.amount) }
+                    Erc20.approveOf(data)?.let { return TokenApproval(tx.to, it.spender, it.amount) }
                 }
+            }
+            if (tx.to != safe) {
+                SwapRouter02.decode(TransactionCall(tx.to, tx.value, data), safe)?.let { return Swap(it) }
             }
             return ContractCall(tx.to, tx.value, selector, data.size)
         }

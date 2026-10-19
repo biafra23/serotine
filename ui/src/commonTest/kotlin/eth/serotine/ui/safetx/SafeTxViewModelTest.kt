@@ -24,6 +24,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
@@ -32,6 +33,7 @@ import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
+import eth.serotine.domain.usecase.CheckSafeSwap
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
@@ -44,9 +46,12 @@ import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.WarmFeeHistory
+import eth.serotine.ui.DAY
+import eth.serotine.ui.HEAD_TIME
 import eth.serotine.ui.SafeWorld
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.SafeSwapItem
 import eth.serotine.ui.components.ShareItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -141,9 +146,11 @@ class SafeTxViewModelTest {
             RebroadcastTransfer(world.broadcaster, world.sent, world.receipts, now),
             RemoveQueuedSafeTx(world.queue),
             WarmFeeHistory(world.inputs),
+            CheckSafeSwap(world.uniswap, world.lightClient, Network.SEPOLIA),
             Network.SEPOLIA,
             clock,
             imported,
+            formatTime = { "at $it" },
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -207,6 +214,88 @@ class SafeTxViewModelTest {
         assertTrue(state.canExecute)
         assertEquals(null, state.refusal)
         assertEquals(null, state.gasTerms)
+    }
+
+    @Test
+    fun aSwapIsShownDecodedWithWhatItReturnsNowAgainstItsMinimumAndItsDeadline() = runTest {
+        world.quoteSwap(out = 40_200_000_000_000_000)
+        val viewModel = viewModel(queued(world.request(world.swap(4))))
+
+        val state = viewModel.overview
+        assertEquals("Swap 100 USDC for at least 0.04 ETH", state.action.title)
+        assertEquals(
+            listOf(
+                "Router" to Eip55.format(world.uniswapDeployment.swapRouter02),
+                "Token sold" to Eip55.format(world.usdc.address),
+            ),
+            state.action.addresses.map { it.what to it.address },
+        )
+        assertEquals(
+            SafeSwapItem(
+                listOf(
+                    "Through Uniswap's SwapRouter02, its code proven by the light client.",
+                    "Returns 0.0402 ETH now, by a verified QuoterV2 quote at block 100: it meets its minimum.",
+                    "Refused by the router after at ${HEAD_TIME + DAY}.",
+                ),
+            ),
+            state.swap,
+        )
+    }
+
+    @Test
+    fun aSwapsMinimumFallenBehindIsSaidWithWhatItLeavesOpenAndAPassedDeadlineRefusesIt() = runTest {
+        // 0.05 ETH now, less 0.5 % keeps 0.04975: a minimum of 0.04 leaves 0.01 open.
+        world.quoteSwap(out = 50_000_000_000_000_000)
+        val viewModel = viewModel(queued(world.request(world.swap(4), world.carol, world.bob.address)))
+        assertTrue(viewModel.overview.canExecute, "still executable as signed (owner ruling, 2026-10-19)")
+        assertEquals(
+            "Its minimum has fallen behind the market: it returns 0.01 ETH more than its minimum now, more than " +
+                "the default 0.5 % tolerance would leave, and a sandwich could take all of it. Propose it again " +
+                "with a fresh minimum, or execute it as signed.",
+            viewModel.overview.swap?.warning,
+        )
+
+        world.head.value = LightClientStatus.Synced(headBlock = 200, headTimestamp = HEAD_TIME + DAY + 1)
+        viewModel.checkAgain()
+        runCurrent()
+        assertEquals(
+            "Its deadline has passed: the router refuses it, so it can never run as signed. Replace it at its " +
+                "nonce: propose the swap again, or reject it.",
+            viewModel.overview.swap?.warning,
+        )
+        // Greyed out, saying why (owner ruling, 2026-10-18, #55), and not quoted on a tap.
+        assertFalse(viewModel.overview.canExecute)
+        assertEquals(
+            "Its deadline has passed: the router refuses it, so it can never run as signed.",
+            viewModel.overview.executeNote,
+        )
+        viewModel.startExecution()
+        runCurrent()
+        assertIs<SafeTxUiState.Overview>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun theSignStepShowsWhereTheSwapStandsBeforeTheKeySigns() = runTest {
+        world.quoteSwap(out = 40_200_000_000_000_000)
+        val viewModel = viewModel(queued(world.request(world.swap(4))))
+        viewModel.startSigning()
+        runCurrent()
+
+        assertEquals(
+            "Through Uniswap's SwapRouter02, its code proven by the light client.",
+            viewModel.signing.swap?.lines?.first(),
+        )
+    }
+
+    @Test
+    fun anApprovalNamesUniswapsRouterAsItsSpender() = runTest {
+        val viewModel = viewModel(queued(world.request(world.approval(4))))
+
+        assertEquals("Allow a contract to take 100 USDC", viewModel.overview.action.title)
+        assertEquals(
+            listOf("The spender is Uniswap's SwapRouter02, its code proven by the light client."),
+            viewModel.overview.swap?.lines,
+        )
     }
 
     /** Alice's signing step, the password typed and Sign tapped while the Safe cannot be verified this time. */

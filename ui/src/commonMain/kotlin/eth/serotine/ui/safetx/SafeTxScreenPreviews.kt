@@ -8,6 +8,7 @@ import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.GasTermsItem
 import eth.serotine.ui.components.MODULE_ENABLED_REFUSAL
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.SafeSwapItem
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnavailableDialog
@@ -362,6 +363,95 @@ private fun SafeTxNotQueuedPreview() = SafeTxPreview(
     ),
 )
 
+private const val ROUTER = "0x27b1fdb04752bbc536007a920d24acb045561c26"
+
+private val swapAction = SafeTxActionItem(
+    title = "Swap 100 USDC for at least 0.04 ETH",
+    addresses = listOf(ActionAddress("Router", ROUTER), ActionAddress("Token sold", USDC)),
+    notes = listOf(
+        "Through one pool at 0.05 %.",
+        "Paid to the Safe.",
+        "Whether the router is Uniswap's is checked against the chain once the transaction is opened: until " +
+            "then, what it does with the call is up to its code.",
+    ),
+    icon = "usdc",
+    symbol = "USDC",
+)
+
+private val swapNow = SafeSwapItem(
+    listOf(
+        "Through Uniswap's SwapRouter02, its code proven by the light client.",
+        "Returns 0.0402 ETH now, by a verified QuoterV2 quote at block 8,412,307: it meets its minimum.",
+        "Refused by the router after 20 Oct 2026, 14:32.",
+    ),
+)
+
+@Preview
+@Composable
+private fun SafeTxSwapPreview() = SafeTxPreview(overview.copy(action = swapAction, swap = swapNow))
+
+@Preview
+@Composable
+private fun SafeTxSwapMinimumBehindPreview() = SafeTxPreview(
+    review.copy(
+        action = swapAction,
+        swap = swapNow.copy(
+            lines = listOf(
+                swapNow.lines[0],
+                "Returns 0.05 ETH now, by a verified QuoterV2 quote at block 8,412,307: it meets its minimum.",
+                swapNow.lines[2],
+            ),
+            warning = "Its minimum has fallen behind the market: it returns 0.01 ETH more than its minimum now, " +
+                "more than the default 0.5 % tolerance would leave, and a sandwich could take all of it. Propose " +
+                "it again with a fresh minimum, or execute it as signed.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun SafeTxSwapExpiredPreview() = SafeTxPreview(
+    overview.copy(
+        action = swapAction,
+        canExecute = false,
+        executeNote = "Its deadline has passed: the router refuses it, so it can never run as signed.",
+        swap = swapNow.copy(
+            warning = "Its deadline has passed: the router refuses it, so it can never run as signed. Replace it " +
+                "at its nonce: propose the swap again, or reject it.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun SafeTxSwapNotUniswapPreview() = SafeTxPreview(
+    overview.copy(
+        action = swapAction,
+        swap = SafeSwapItem(
+            listOf("Signed with a deadline of 20 Oct 2026, 14:32."),
+            warning = "The router is not Uniswap's pinned SwapRouter02: what it does with the Safe's tokens is " +
+                "not known here.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun SafeTxSwapApprovalPreview() = SafeTxPreview(
+    overview.copy(
+        action = SafeTxActionItem(
+            title = "Allow a contract to take 100 USDC",
+            addresses = listOf(ActionAddress("Spender", ROUTER), ActionAddress("Token contract", USDC)),
+            notes = listOf(
+                "It moves nothing on its own: the spender may take up to this much of the Safe's tokens later.",
+            ),
+            icon = "usdc",
+            symbol = "USDC",
+        ),
+        swap = SafeSwapItem(listOf("The spender is Uniswap's SwapRouter02, its code proven by the light client.")),
+    ),
+)
+
 /** Every preview above, which SafeTxScreenPreviewsTest renders: a new preview goes in here too. */
 internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxOverviewPreview() },
@@ -391,4 +481,9 @@ internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxReviewNotSentPreview() },
     { SafeTxLoadingPreview() },
     { SafeTxNotQueuedPreview() },
+    { SafeTxSwapPreview() },
+    { SafeTxSwapMinimumBehindPreview() },
+    { SafeTxSwapExpiredPreview() },
+    { SafeTxSwapNotUniswapPreview() },
+    { SafeTxSwapApprovalPreview() },
 )

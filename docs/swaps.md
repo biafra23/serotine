@@ -131,8 +131,8 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
   - Re-quoting at a later owner's tap would change the `SafeTx` hash and void
     the signatures already collected, so it is not done.
   - The deadline is longer than an account's ten minutes, since collecting
-    signatures by QR code takes time: 24 hours proposed, the owner's decision
-    (*Open questions*).
+    signatures by QR code takes time: 24 hours (owner ruling, 2026-10-19,
+    decision 5).
 - **Each owner sees the current state**: the minimum signed, and what the
   swap would return now by a verified QuoterV2 quote, said as meeting the
   minimum or not. The quote needs no allowance.
@@ -147,11 +147,12 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
   hours the rate can move in the Safe's favour. A sandwich can then take
   everything between what the swap returns now and the signed minimum, not
   only the tolerance.
-  - When the verified run returns more than the minimum by over the
-    tolerance, Execute says how much the swap leaves open and offers to
-    propose it again with a fresh minimum.
-  - Whether it may still be executed as signed is the owner's decision
-    (*Open questions*).
+  - When the swap returns more than the minimum by over the default
+    tolerance (its verified QuoterV2 quote now: an `execTransaction` run
+    returns only whether it succeeded), Execute says how much the swap
+    leaves open and offers to propose it again with a fresh minimum.
+  - It may still be executed as signed (owner ruling, 2026-10-19, decision
+    5).
 
 ## Uniswap (built first)
 
@@ -625,14 +626,25 @@ docs/architecture.md.
      returns to 22, which says so and goes on once a block has it.
    - A Swap button on the account detail (4) and "Swap ‹symbol›" in the asset
      menu (5), greyed out, a tap saying why, when watch-only and on a Safe
-     until part 6 (owner ruling, 2026-10-18, #55).
+     until part 7 (owner ruling, 2026-10-18, #55).
    - The port and use cases wired into `AppGraph` and the hosts.
 5. **The review's last figures.**
    - The price impact: each pool's `slot0` against the quote.
    - The Chainlink hint, display-only.
    - The amount received, from the verified receipt's logs, on the status (9).
-6. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
-   with the minimum and deadline fixed at the proposal.
+6. **A Safe's swap on screen 17.**
+   - The approval and the swap decoded from their raw calls: a swap exactly
+     as `SwapRouter02.swap` builds one, paid to the Safe, read by building it
+     again.
+   - Whether the spender or router is the pinned SwapRouter02 (the verified
+     venue), what the swap returns now by a verified QuoterV2 quote against
+     its minimum, and its deadline against the verified head.
+   - A minimum fallen behind the market said at Execute, with what it leaves
+     open.
+7. **Proposing a Safe's swap** through the queue: two Safe transactions at
+   consecutive nonces, the minimum and a 24-hour deadline fixed at the
+   proposal; Swap on a Safe's detail; and Execute's offer to propose a swap
+   again with a fresh minimum.
 
 **`feature/swaps-cow`**, once CoW's *Data sources* ruling is recorded in
 CLAUDE.md
@@ -678,10 +690,10 @@ on issue #69 until answered.
    minutes, 5 proposed, then proven at a finalized block, 12.8 to 19.2 more
    minutes on Sepolia. Or a margin of a few blocks in place of finality,
    which is faster and wrong only after a deeper reorganization.
-5. **A Safe's swap deadline, and a minimum that has fallen behind.** 24 hours
-   proposed, long enough to collect the signatures. At Execute, when the swap
-   returns more than its minimum by over the tolerance: warn and offer to
-   propose it again (proposed), or refuse to execute it as signed?
+5. **A Safe's swap deadline, and a minimum that has fallen behind.**
+   *Answered (owner ruling, 2026-10-19):* 24 hours. At Execute, when the swap
+   returns more than its minimum by over the tolerance, warn and offer to
+   propose it again; it may still be executed as signed.
 6. **Uniswap v4 hooks.** Pools without hooks only, or pinned hooks?
 7. **CoW's data-source ruling.** It covers four things:
    - what CoW may learn, including every intended swap it is asked to quote;

@@ -4,6 +4,7 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.GasTermsItem
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.SafeSwapItem
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
@@ -35,7 +36,8 @@ sealed interface SafeTxUiState {
      * The transaction: the [safe] it is of; what it does ([action]); where it stands in the Safe's
      * order ([nonce], "Safe nonce 12 · next"); its [hash], computed here; its [gasTerms] when it
      * carries any; [refusal], why this wallet will not sign, approve or execute it (a delegate call,
-     * gas terms), or null; and each owner's stand ([owners]). What can be done: [canSign] with an
+     * gas terms), or null; and each owner's stand ([owners]). For a swap or its approval, [swap]
+     * says where it stands as the chain is now (docs/swaps.md, *A Safe's swap*). What can be done: [canSign] with an
      * owner key held here, [canApprove] on chain, [canExecute] once its confirmations reach the
      * threshold, [executeNote] saying why it cannot be executed yet; [quoting] while an approval
      * or an execution is quoted for review. [canShare] once the Safe is verified, so that what is
@@ -49,6 +51,7 @@ sealed interface SafeTxUiState {
         val nonce: String,
         val hash: String,
         val owners: OwnersItem,
+        val swap: SafeSwapItem? = null,
         val gasTerms: GasTermsItem? = null,
         val refusal: String? = null,
         val canSign: Boolean = false,
@@ -77,6 +80,8 @@ sealed interface SafeTxUiState {
         val signing: Boolean = false,
         /** While [signing], the Safe is still checked on chain: no key is asked for yet, and Back stops it. */
         val checking: Boolean = false,
+        /** For a swap or its approval, where it stands now: the last thing shown before the key signs. */
+        val swap: SafeSwapItem? = null,
     ) : SafeTxUiState {
 
         /** Something is typed and nothing runs: the password may sign. */
@@ -95,7 +100,9 @@ sealed interface SafeTxUiState {
      * account's native balance before → after; [simulation] how it ran as a verified call; for an
      * execution, the [confirmations] it is executed with; [pending] what earlier transactions not
      * mined yet may take; for an approval, [notNeeded] once the owners read since make it so, and
-     * then it is not signed. [unlock] is how it is signed; [refreshing] while it is quoted again,
+     * then it is not signed. For a swap or its approval, [swap] says where it stands now, a
+     * minimum fallen behind the market included. [unlock] is how it is signed; [refreshing]
+     * while it is quoted again,
      * [signing] while it is signed and broadcast, and [notSent] once it was signed but not
      * broadcast: then the same signed bytes are all that can be sent.
      */
@@ -116,6 +123,7 @@ sealed interface SafeTxUiState {
         val confirmations: String? = null,
         val pending: String? = null,
         val notNeeded: String? = null,
+        val swap: SafeSwapItem? = null,
         val refreshing: Boolean = false,
         val signing: Boolean = false,
         val notSent: NotSentItem? = null,

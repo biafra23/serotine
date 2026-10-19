@@ -66,3 +66,20 @@ fun SafeTxActionCard(action: SafeTxActionItem, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** Test tag of where a Safe's swap or its approval stands now, for UI tests. */
+const val SAFE_SWAP_TAG = "safe-swap"
+
+/**
+ * Where a Safe's swap or its approval stands as the chain is now ([swap]): its lines, then what
+ * to know before signing or executing it, in the error colour.
+ */
+@Composable
+fun SafeSwapBlock(swap: SafeSwapItem, modifier: Modifier = Modifier) {
+    Column(modifier.testTag(SAFE_SWAP_TAG), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        swap.lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        swap.warning?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        }
+    }
+}

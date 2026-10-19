@@ -405,4 +405,72 @@ class UniswapV3Test {
         assertNull(SwapRouter02.amountOutOf(one.replaceRange(64 * 3 + 62, 64 * 3 + 64, "40"), false), "a longer result")
         assertNull(SwapRouter02.amountOutOf("", buysEther = false))
     }
+
+    @Test
+    fun eachSwapIsReadBackFromItsOwnCallExactly() {
+        fun roundTrip(sell: TransferAsset, buy: TransferAsset, route: SwapRoute) {
+            val call = SwapRouter02.swap(deployment, sell, buy, route, hundredUsdc, minimum, account, deadline)
+            assertEquals(
+                RouterSwap(
+                    router = deployment.swapRouter02,
+                    route = route,
+                    sellsEther = sell == TransferAsset.Native,
+                    amountIn = hundredUsdc,
+                    buysEther = buy == TransferAsset.Native,
+                    minimumOut = minimum,
+                    deadline = deadline,
+                ),
+                SwapRouter02.decode(call, account),
+            )
+        }
+        roundTrip(usdcToken, linkToken, SwapRoute.direct(usdc, link, FeeTier.LOW))
+        roundTrip(usdcToken, linkToken, hop)
+        roundTrip(usdcToken, TransferAsset.Native, SwapRoute.direct(usdc, weth, FeeTier.LOW))
+        roundTrip(TransferAsset.Native, linkToken, SwapRoute.direct(weth, link, FeeTier.MEDIUM))
+        roundTrip(linkToken, TransferAsset.Native, SwapRoute.via(link, FeeTier.MEDIUM, usdc, FeeTier.LOW, weth))
+    }
+
+    @Test
+    fun aSwapPaidToAnotherOrChangedInAnyByteIsNoSwap() {
+        val call = SwapRouter02.swap(deployment, usdcToken, linkToken, hop, hundredUsdc, minimum, account, deadline)
+        val bob = Address.of("0x" + "bb".repeat(20))
+        assertNull(SwapRouter02.decode(call, bob), "paid to the account, not to bob")
+        assertNull(SwapRouter02.decode(TransactionCall(call.to, UInt256.ONE, call.data), account), "with ether")
+        assertNull(SwapRouter02.decode(TransactionCall(call.to, call.value, call.data + byteArrayOf(0)), account))
+        // Every byte of the call is part of the swap: none can change and still read as one.
+        val data = call.data
+        for (i in data.indices) {
+            val changed = data.copyOf().also { it[i] = (it[i].toInt() xor 1).toByte() }
+            val decoded = SwapRouter02.decode(TransactionCall(call.to, call.value, changed), account)
+            if (decoded != null) {
+                // Only the deadline, the amounts or the path's tokens can change into another valid swap.
+                assertEquals(false, decoded == SwapRouter02.decode(call, account), "byte $i")
+            }
+        }
+        val transfer = TransactionCall(usdc, UInt256.ZERO, Erc20.transferData(account, hundredUsdc))
+        assertNull(SwapRouter02.decode(transfer, account))
+    }
+
+    @Test
+    fun anyLengthOrOffsetOrDeadlineAtAllIsReadWithoutThrowing() {
+        val hopCall = SwapRouter02.swap(deployment, usdcToken, linkToken, hop, hundredUsdc, minimum, account, deadline)
+        val data = hopCall.data
+        // Every word of the call set to 2^32 - 1, 2^31 and 2^256 - 1 in turn: a length, an offset or
+        // a deadline past any bound reads as no swap, and never throws.
+        for (word in 0 until (data.size - 4) / 32) {
+            for (value in listOf("ffffffff", "80000000", "ff".repeat(32))) {
+                val changed = data.copyOf()
+                val bytes = value.chunked(2).map { it.toInt(16).toByte() }
+                bytes.forEachIndexed { i, byte -> changed[4 + word * 32 + 32 - bytes.size + i] = byte }
+                SwapRouter02.decode(TransactionCall(hopCall.to, hopCall.value, changed), account)
+            }
+        }
+        val farDeadline = SwapRouter02.swap(
+            deployment, usdcToken, linkToken, hop, hundredUsdc, minimum, account, SwapRouter02.MAX_DEADLINE + 1,
+        )
+        assertNull(SwapRouter02.decode(farDeadline, account), "past the year 9999")
+        for (cut in data.indices) {
+            assertNull(SwapRouter02.decode(TransactionCall(hopCall.to, hopCall.value, data.copyOf(cut)), account))
+        }
+    }
 }

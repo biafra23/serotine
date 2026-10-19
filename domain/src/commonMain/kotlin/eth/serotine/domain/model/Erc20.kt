@@ -47,6 +47,16 @@ object Erc20 {
     fun approveData(spender: Address, amount: UInt256): ByteArray =
         APPROVE_SELECTOR + AbiWords.word(spender) + amount.toBytes32()
 
+    /**
+     * What [data] approves when it is exactly the call data of `approve(spender, amount)`, as
+     * [approveData] builds it: the selector and two words, the first an address. Null for
+     * anything else.
+     */
+    fun approveOf(data: ByteArray): Erc20Approval? {
+        val (spender, amount) = AbiWords.staticArguments(data, APPROVE_SELECTOR, words = 2) ?: return null
+        return Erc20Approval(AbiWords.address(spender) ?: return null, AbiWords.uint(amount))
+    }
+
     /** The call data of `allowance(owner, spender)`: what [spender] may still take of [owner]'s tokens. */
     fun allowanceData(owner: Address, spender: Address): ByteArray =
         ALLOWANCE_SELECTOR + AbiWords.word(owner) + AbiWords.word(spender)
@@ -58,3 +68,6 @@ object Erc20 {
 
 /** An ERC-20 `transfer` decoded from call data: [amount] (in the token's smallest units) to [to]. */
 data class Erc20Transfer(val to: Address, val amount: UInt256)
+
+/** An ERC-20 `approve` decoded from call data: [spender] may take [amount] (in the token's smallest units). */
+data class Erc20Approval(val spender: Address, val amount: UInt256)

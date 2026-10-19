@@ -65,6 +65,16 @@ class Erc20Test {
     }
 
     @Test
+    fun onlyExactlyAnApprovalsDataIsAnApproval() {
+        val spender = Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e")
+        val data = Erc20.approveData(spender, UInt256.of(100_000_000))
+        assertEquals(Erc20Approval(spender, UInt256.of(100_000_000)), Erc20.approveOf(data))
+        assertNull(Erc20.approveOf(data + byteArrayOf(0)), "one byte more")
+        assertNull(Erc20.approveOf(data.copyOf().also { it[15] = 1 }), "an address word with high bits")
+        assertNull(Erc20.approveOf(Erc20.transferData(spender, UInt256.ONE)), "a transfer")
+    }
+
+    @Test
     fun allowanceIsAskedOfTheOwnerAndTheSpenderAndIsOneWord() {
         // cast calldata 'allowance(address,address)' 0x7099…79c8 0x3bfa…e48e
         assertEquals(

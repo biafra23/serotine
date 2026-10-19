@@ -53,6 +53,7 @@ import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
+import eth.serotine.ui.components.feeTierText
 import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
@@ -738,7 +739,7 @@ class SwapViewModel(
         val route = quote.route.fees.indices.map { i ->
             RouteStep(
                 pair = "${nativeSymbolOf(quote.route.tokens[i])} → ${nativeSymbolOf(quote.route.tokens[i + 1])}",
-                fee = UInt256.of(quote.route.fees[i].pips.toLong()).formatUnits(4) + " %",
+                fee = feeTierText(quote.route.fees[i].pips),
                 pool = Eip55.format(quote.pools[i]),
             )
         }

@@ -30,6 +30,7 @@ import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
+import eth.serotine.domain.usecase.CheckSafeSwap
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
@@ -228,6 +229,7 @@ class AppGraph(
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         RemoveQueuedSafeTx(safeTxQueue),
         WarmFeeHistory(transactionInputs),
+        CheckSafeSwap(uniswap, lightClient, network),
         network,
         imported = imported,
     )
