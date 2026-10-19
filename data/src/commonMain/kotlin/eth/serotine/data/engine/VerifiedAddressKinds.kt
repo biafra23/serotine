@@ -343,7 +343,7 @@ class VerifiedAddressKinds internal constructor(
 
     override fun observeKind(address: Address): Flow<KindReading> = reads.observe(address).map { reading ->
         when (reading) {
-            EngineReading.Syncing -> KindReading.Syncing
+            EngineReading.Syncing, is EngineReading.LastKnown -> KindReading.Syncing
             is EngineReading.Proven -> KindReading.Verified(reading.value, reading.blockNumber)
             is EngineReading.Unavailable -> KindReading.Unavailable(reading.reason)
         }

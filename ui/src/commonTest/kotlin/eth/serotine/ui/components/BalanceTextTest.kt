@@ -40,6 +40,21 @@ class BalanceTextTest {
     }
 
     @Test
+    fun aLastKnownBalanceIsItsAmountAndANoteDatingIt() {
+        val reading = BalanceReading.LastKnown(Wei.of("500000000000000000"), 11_922_744, asOf = 1_792_100_000)
+        assertEquals("0.5 ETH", balanceText(reading, Network.SEPOLIA))
+        assertEquals(
+            "Last verified at 1792100000 · may have changed since",
+            lastKnownNote(reading.blockNumber, reading.asOf) { "at $it" },
+        )
+        assertEquals(
+            "Last verified at block 11,922,744 · may have changed since",
+            lastKnownNote(11_922_744, asOf = null) { "at $it" },
+        )
+        assertEquals("Last verified earlier · may have changed since", lastKnownNote(null, null) { "at $it" })
+    }
+
+    @Test
     fun tokenUnitsAreShownAtTheirOwnDecimals() {
         assertEquals("1250 USDC", formatUnits("1250000000", 6, "USDC"))
         assertEquals("0.5 LINK", formatUnits("500000000000000000", 18, "LINK"))

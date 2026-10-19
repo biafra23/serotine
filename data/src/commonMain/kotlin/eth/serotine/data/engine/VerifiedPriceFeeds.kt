@@ -54,7 +54,7 @@ class VerifiedPriceFeeds internal constructor(
         if (priceId !in pinned) return flowOf(FeedReading.NoPrice(NoPriceReason.NO_FEED))
         return reads.observe(priceId).map { reading ->
             when (reading) {
-                EngineReading.Syncing -> FeedReading.Syncing
+                EngineReading.Syncing, is EngineReading.LastKnown -> FeedReading.Syncing
                 is EngineReading.Proven -> reading.value
                 is EngineReading.Unavailable -> FeedReading.Unavailable(reading.reason)
             }

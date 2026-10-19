@@ -138,6 +138,33 @@ private fun AssetsCatchingUpPreview() = AssetsPreview(
     ),
 )
 
+/** The verified head too old to read at: the amounts last verified, each said to be so. */
+private val headTooOld = AssetsUiState.Ready(
+    network,
+    LightClientItem("Synced · the verified head is 4 min old, waiting for a fresh one", null, true),
+    accounts.map {
+        it.copy(
+            balanceVerified = false,
+            balanceNote = if (it.balanceVerified) {
+                "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
+            } else {
+                null
+            },
+            value = null,
+        )
+    },
+    total = "Checking…",
+    totalNote = "Testnet prices · still checking",
+)
+
+@Preview
+@Composable
+private fun AssetsHeadTooOldPreview() = AssetsPreview(headTooOld)
+
+@Preview
+@Composable
+private fun AssetsHeadTooOldDarkPreview() = AssetsPreview(headTooOld, darkTheme = true)
+
 @Preview
 @Composable
 private fun AssetsNoAccountsPreview() = AssetsPreview(
@@ -220,6 +247,8 @@ internal val assetsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AssetsAccountsPreview() },
     { AssetsAccountsDarkPreview() },
     { AssetsCatchingUpPreview() },
+    { AssetsHeadTooOldPreview() },
+    { AssetsHeadTooOldDarkPreview() },
     { AssetsNoAccountsPreview() },
     { AssetsCreateSafeGreyedOutPreview() },
     { AssetsCreateSafeReasonPreview() },

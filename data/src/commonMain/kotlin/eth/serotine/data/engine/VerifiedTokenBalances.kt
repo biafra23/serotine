@@ -15,7 +15,8 @@ import kotlin.time.Duration
  * as a verified call ([VerifiedChain.call]), polled, cached and refused as [ProvenReads]
  * describes. A call that reverts, or returns anything but one word, is a verified "not a
  * token" ([TokenBalanceReading.NotAToken]); one the engine refuses for good is
- * [ReadUnavailable.REFUSED]; one it cannot answer right now is unproven.
+ * [ReadUnavailable.REFUSED]; one it cannot answer right now is unproven. While no head can be
+ * read, the last proof made in this process is [TokenBalanceReading.LastKnown].
  */
 class VerifiedTokenBalances internal constructor(
     chain: VerifiedChain?,
@@ -44,11 +45,18 @@ class VerifiedTokenBalances internal constructor(
             when (reading) {
                 EngineReading.Syncing -> TokenBalanceReading.Syncing
                 is EngineReading.Proven -> reading.value?.let {
-                    TokenBalanceReading.Verified(it, reading.blockNumber.takeIf { block -> block != UNKNOWN_BLOCK })
+                    TokenBalanceReading.Verified(it, named(reading.blockNumber))
                 } ?: TokenBalanceReading.NotAToken
+                // Only an amount is offered as last known: an older "not a token" is not repeated.
+                is EngineReading.LastKnown -> reading.value?.let {
+                    TokenBalanceReading.LastKnown(it, named(reading.blockNumber), reading.asOf)
+                } ?: TokenBalanceReading.Syncing
                 is EngineReading.Unavailable -> TokenBalanceReading.Unavailable(reading.reason)
             }
         }
+
+    /** [block], or null for [UNKNOWN_BLOCK]. */
+    private fun named(block: Long): Long? = block.takeIf { it != UNKNOWN_BLOCK }
 
     private companion object {
         /** What the engine reports for a call whose block it did not name. */

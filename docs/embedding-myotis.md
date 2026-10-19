@@ -89,8 +89,15 @@ consumer developed against an unreleased engine, Myotis's
   labelled with the block the proof anchors to: `VerifiedReads.getBalance`
   answers a block number from the current head, so it cannot be labelled. While
   reads cannot be verified, the row shows why ("Syncing…", "Sync refused", "Not
-  verified", "No light client"), never an older amount. Why a node is down is
-  written to stderr, with the engine's own log when it refused to start.
+  verified", "No light client"), with one exception: while there is no head
+  to read at (not synced, asleep, a stale head, no proof peer), a balance
+  proven earlier in this process is offered
+  as `LastKnown`, labelled with its block and the time of the head it was
+  proven at, and the row says it may have changed since (owner's request,
+  2026-10-19; docs/wallet-ux.md). `ProvenReads` keeps that last proof per key;
+  every adapter but the two balance ones reads it as syncing. Why a node is
+  down is written to stderr, with the engine's own log when it refused to
+  start.
 - **Verified token balances.** `VerifiedTokenBalances` runs each token's
   `balanceOf(holder)` through `VerifiedReads.callDetailed`, polled and cached
   like the rest, through `ProvenReads`. It is labelled with the block the

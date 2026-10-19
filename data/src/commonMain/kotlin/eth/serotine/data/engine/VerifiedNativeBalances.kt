@@ -12,7 +12,8 @@ import kotlin.time.Duration
 /**
  * [NativeBalances] over a verified light client: each balance proven by
  * [VerifiedChain.proveBalance] and labelled with the block its proof anchors to, polled,
- * cached and refused as [ProvenReads] describes. The port never fails, and no answer from
+ * cached and refused as [ProvenReads] describes; while no head can be read, the last proof
+ * made in this process, as [BalanceReading.LastKnown]. The port never fails, and no answer from
  * anywhere else stands in.
  */
 class VerifiedNativeBalances internal constructor(
@@ -31,6 +32,7 @@ class VerifiedNativeBalances internal constructor(
         when (reading) {
             EngineReading.Syncing -> BalanceReading.Syncing
             is EngineReading.Proven -> BalanceReading.Verified(reading.value, reading.blockNumber)
+            is EngineReading.LastKnown -> BalanceReading.LastKnown(reading.value, reading.blockNumber, reading.asOf)
             is EngineReading.Unavailable -> BalanceReading.Unavailable(reading.reason)
         }
     }

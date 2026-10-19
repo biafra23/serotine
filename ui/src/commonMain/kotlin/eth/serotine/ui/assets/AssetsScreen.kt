@@ -348,7 +348,13 @@ private fun AccountRow(account: AccountItem) {
             }
         },
         supportingContent = {
-            Text(account.kindNote?.let { "${account.shortAddress} · $it" } ?: account.shortAddress)
+            Column {
+                Text(account.kindNote?.let { "${account.shortAddress} · $it" } ?: account.shortAddress)
+                // A balance last verified, not current: said under the row, where there is room.
+                account.balanceNote?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                }
+            }
         },
         trailingContent = {
             Column(horizontalAlignment = Alignment.End) {

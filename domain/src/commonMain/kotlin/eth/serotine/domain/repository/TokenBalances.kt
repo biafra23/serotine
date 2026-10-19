@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.Flow
  * The port for ERC-20 balances, as the embedded light client proves them: the token
  * contract's own `balanceOf`, run as a verified call. :data implements it over the Myotis
  * engine (`eth.serotine.data.engine`), on the one network the app works on; nothing else may
- * answer it — no indexer, no token API (CLAUDE.md, *Trust*).
+ * answer it — no indexer, no token API (CLAUDE.md, *Trust*). The one older answer it gives is
+ * the light client's own last proof, labelled as such ([TokenBalanceReading.LastKnown]).
  */
 interface TokenBalances {
     /**
@@ -22,8 +23,17 @@ interface TokenBalances {
 /** One answer of [TokenBalances.observeBalance]. */
 sealed interface TokenBalanceReading {
 
-    /** The light client has no verified head yet. */
+    /** The light client has no verified head yet, and no earlier proof of this balance. */
     data object Syncing : TokenBalanceReading
+
+    /**
+     * The light client has no verified head it can read at, and [units] is the balance
+     * it last verified, from a call against the state of block [blockNumber] (null when the
+     * engine did not say), at a verified head produced at [asOf] (unix seconds; null when
+     * unknown). It may have changed since, as [BalanceReading.LastKnown] says, and is never a
+     * balance to act on.
+     */
+    data class LastKnown(val units: TokenUnits, val blockNumber: Long?, val asOf: Long?) : TokenBalanceReading
 
     /**
      * [units] of the token, from a verified call against the state of block [blockNumber]

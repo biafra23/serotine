@@ -93,6 +93,21 @@ class AssetsScreenTest {
     }
 
     @Test
+    fun aBalanceLastVerifiedSaysSinceWhenItMayHaveChanged() {
+        val note = "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
+        show(
+            AssetsUiState.Ready(
+                "Sepolia",
+                syncing,
+                listOf(daily.copy(balanceVerified = false, balanceNote = note), savings),
+            ),
+        )
+
+        rule.onNodeWithText("0.5 ETH").assertIsDisplayed()
+        rule.onNodeWithText(note).assertIsDisplayed()
+    }
+
+    @Test
     fun aTapOpensTheAccount() {
         show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily)))
 

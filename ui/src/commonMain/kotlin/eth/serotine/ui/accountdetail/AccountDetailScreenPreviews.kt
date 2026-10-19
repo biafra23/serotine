@@ -150,6 +150,21 @@ private fun AccountDetailCheckingPreview() = AccountDetailPreview(
     ),
 )
 
+private const val LAST_KNOWN = "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
+
+/** The verified head too old to read at: the amounts last verified, each said to be so. */
+@Preview
+@Composable
+private fun AccountDetailHeadTooOldPreview() = AccountDetailPreview(
+    daily.copy(
+        total = "Checking…",
+        totalNote = "Testnet prices · still checking",
+        assets = listOf(ether, usdc, uniswap).map {
+            it.copy(verified = false, verifiedAt = null, value = null, lastKnown = LAST_KNOWN)
+        },
+    ),
+)
+
 @Preview
 @Composable
 private fun AccountDetailByNameWithImpostorPreview() = AccountDetailPreview(
@@ -256,6 +271,7 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailAssetsPreview() },
     { AccountDetailAssetsDarkPreview() },
     { AccountDetailCheckingPreview() },
+    { AccountDetailHeadTooOldPreview() },
     { AccountDetailByNameWithImpostorPreview() },
     { AccountDetailSafeAssetsPreview() },
     { AccountDetailSafeOwnersPreview() },
