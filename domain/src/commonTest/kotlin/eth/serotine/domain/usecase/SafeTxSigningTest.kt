@@ -2,16 +2,20 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapRoute
+import eth.serotine.domain.model.SwapRouter02
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.UniswapV3Deployment
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
@@ -365,6 +369,38 @@ class SafeTxSigningTest {
         assertEquals(1, proposal.queuedAhead)
         assertEquals(UInt256.of(3_000_000), proposal.queuedAmount, "the larger of the two, not their sum")
         assertEquals(UInt256.ZERO, proposal.balanceAfter)
+    }
+
+    @Test
+    fun aQueuedSaleOfEtherMovesTheSafesEtherNotItsWeth() = runTest {
+        val weth = Token(Address.of("0x" + "ee".repeat(20)), "WETH", "Wrapped Ether", 18, icon = null)
+        val deployment = UniswapV3Deployment(
+            factory = Address.of("0x" + "fa".repeat(20)),
+            quoterV2 = Address.of("0x" + "0e".repeat(20)),
+            swapRouter02 = Address.of("0x" + "50".repeat(20)),
+            weth9 = weth.address,
+        )
+        val sale = SwapRouter02.swap(
+            deployment,
+            TransferAsset.Native,
+            TransferAsset.Erc20Token(usdc),
+            SwapRoute.direct(weth.address, usdc.address, FeeTier.MEDIUM),
+            amountIn = UInt256.of(4_000_000),
+            amountOutMinimum = UInt256.ONE,
+            account = world.safe,
+            deadline = 1_792_419_600,
+        )
+        world.queue.save(world.request(SafeTx.call(sale.to, sale.value, sale.data, 4)))
+
+        // The swap wraps its value through WETH9: the Safe's own 5,000,000 WETH units stay its own.
+        val proposal = assertIs<SafeTxProposing.Proposed>(
+            propose(world.safe, world.recipient, TransferAsset.Erc20Token(weth), UInt256.of(2_000_000)),
+        ).proposal
+        assertEquals(UInt256.ZERO, proposal.queuedAmount)
+        val ether = assertIs<SafeTxProposing.Proposed>(
+            propose(world.safe, world.recipient, TransferAsset.Native, UInt256.ONE),
+        ).proposal
+        assertEquals(UInt256.of(4_000_000), ether.queuedAmount, "the value it sends")
     }
 
     @Test
