@@ -7,5 +7,5 @@ import kotlin.test.Test
 class CurrencyScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(currencyScreenPreviews)
+    fun everyPreviewRenders() = renderEach("currencyScreen", currencyScreenPreviews)
 }

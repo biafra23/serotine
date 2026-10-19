@@ -7,5 +7,5 @@ import kotlin.test.Test
 class SettingsScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(settingsScreenPreviews)
+    fun everyPreviewRenders() = renderEach("settingsScreen", settingsScreenPreviews)
 }

@@ -7,5 +7,5 @@ import kotlin.test.Test
 class UpdateRequiredScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(updateRequiredScreenPreviews)
+    fun everyPreviewRenders() = renderEach("updateRequiredScreen", updateRequiredScreenPreviews)
 }

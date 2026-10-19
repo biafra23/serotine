@@ -7,5 +7,5 @@ import kotlin.test.Test
 class AccountDetailScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(accountDetailScreenPreviews)
+    fun everyPreviewRenders() = renderEach("accountDetailScreen", accountDetailScreenPreviews)
 }
