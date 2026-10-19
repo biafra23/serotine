@@ -46,7 +46,7 @@ import kotlin.time.Duration.Companion.seconds
  * [pause] and [resume] it around the app being in the background, [shutdown] on exit. Only
  * `io.myotis.api` and the library's default ports are used; nothing below them.
  */
-class MyotisNode private constructor(network: Network, debugLog: ((String) -> Unit)?) {
+class MyotisNode private constructor(network: Network, lastBalancesPath: String?, debugLog: ((String) -> Unit)?) {
 
     private sealed interface State {
         data object Booting : State
@@ -89,8 +89,11 @@ class MyotisNode private constructor(network: Network, debugLog: ((String) -> Un
 
     private val chain = HandleChain()
 
+    /** The balances last verified, kept for after a restart; none kept without a path. */
+    private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
+
     /** Native-currency balances, verified by this node's light client. */
-    val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL)
+    val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
 
     /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
     val addressKinds: AddressKinds =
@@ -103,7 +106,7 @@ class MyotisNode private constructor(network: Network, debugLog: ((String) -> Un
     val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
-    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL)
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
@@ -465,6 +468,9 @@ class MyotisNode private constructor(network: Network, debugLog: ((String) -> Un
          * [debugLog] takes the adapters' diagnostics (which proof of a Safe's read failed or
          * straddled, and how many reads it took): a debug build's log, null in a release build.
          * Public chain data only; no key material is on any path that writes to it.
+         * [lastBalances] is the file the balances last verified are kept in, to be shown as such
+         * after a restart until a head can be read ([LastBalancesFile]); null keeps them for the
+         * process only. Public chain data too.
          *
          * A device without an engine — an Android ABI the library does not ship, a desktop
          * without the host library on `java.library.path` — or one whose engine fails to
@@ -474,9 +480,10 @@ class MyotisNode private constructor(network: Network, debugLog: ((String) -> Un
             network: Network,
             dataDir: File,
             dnsServers: (() -> List<String>)? = null,
+            lastBalances: String? = null,
             debugLog: ((String) -> Unit)? = null,
         ): MyotisNode {
-            val node = MyotisNode(network, debugLog)
+            val node = MyotisNode(network, lastBalances, debugLog)
             node.bootThread = thread(name = "myotis-boot", isDaemon = true) {
                 try {
                     node.boot(network, dataDir, dnsServers?.let { servers -> DnsServers { servers() } })

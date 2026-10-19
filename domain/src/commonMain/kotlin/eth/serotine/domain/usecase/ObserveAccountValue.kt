@@ -113,14 +113,15 @@ data class AccountValue(
 
     private fun heldNative(reading: BalanceReading): Holding = when (reading) {
         is BalanceReading.Verified -> if (reading.wei.decimal == "0") Holding.None else Holding.Some
-        BalanceReading.Syncing -> Holding.Pending
+        // Last known: it may have changed, so the total waits for a fresh proof.
+        BalanceReading.Syncing, is BalanceReading.LastKnown -> Holding.Pending
         is BalanceReading.Unavailable -> Holding.Unverified
     }
 
     private fun heldToken(reading: TokenBalanceReading?): Holding = when (reading) {
         is TokenBalanceReading.Verified -> if (reading.units.isZero) Holding.None else Holding.Some
         TokenBalanceReading.NotAToken -> Holding.None
-        null, TokenBalanceReading.Syncing -> Holding.Pending
+        null, TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown -> Holding.Pending
         is TokenBalanceReading.Unavailable -> Holding.Unverified
     }
 }

@@ -77,6 +77,18 @@ class VerifiedAddressKindsTest {
     }
 
     @Test
+    fun aKindIsNeverShownFromBeforeWhileTheHeadIsTooOld() = runTest {
+        chain.snapshot = running(head = 9)
+        chain.codes[address] = ProvenCode("ef0100" + delegate.hex.removePrefix("0x"), blockNumber = 9)
+        val kinds = kinds()
+        kinds.observeKind(address).first()
+
+        // Only balances are offered as last known; what an address is gates signing.
+        chain.snapshot = running(head = 9, headAgeMs = 60_000)
+        assertEquals(KindReading.Syncing, kinds.observeKind(address).first())
+    }
+
+    @Test
     fun whatCannotBeProvenIsSaidSo() = runTest {
         chain.snapshot = running(head = 9)
         assertEquals(KindReading.Unavailable(ReadUnavailable.UNPROVEN), kinds().observeKind(address).first())
