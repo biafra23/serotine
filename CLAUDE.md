@@ -462,8 +462,10 @@ discussion that produced this note.
   copy-paste. No `link` reported (app links off for the organization), or no
   session-mgmt tool on this host at all (a plain `claude` terminal, CI): say so
   in that line. Commit messages keep their `Co-Authored-By` trailer.
-- **A PR that changes the UI shows it in screenshots in its description**
-  (owner's request, 2026-10-19). "Changes the UI" means a user could see the
+- **A PR that changes the UI shows it in screenshots: in its description,
+  or, from a session that cannot upload them, in the session** (owner's
+  request, 2026-10-19, and ruling of the same day on the session, *Where to
+  put them* below). "Changes the UI" means a user could see the
   difference: a screen, dialog or component drawn differently, a new or
   changed text, state, colour or layout, a new screen. A ViewModel-only change
   counts when it changes what a screen shows. A PR with no visible change
@@ -493,21 +495,31 @@ discussion that produced this note.
   (owner ruling, 2026-10-19). No screenshot is committed anywhere: not on the
   PR's own branch (binaries merged into `main` stay in its history for good),
   not on a branch of its own, not in a commit removed again later.
-  `build/screenshots/` is git-ignored and stays so. A human drags the
-  files into the description on GitHub. A session cannot upload an image
-  to GitHub, so it attaches the files to the conversation for the owner,
-  each named after its screen and state
-  (`assets-head-too-old-after.png`), and gives the description a
-  `## Screenshots` section with one slot per file: a table row with the
-  caption and the file's name where the image goes, before and after side by
-  side for a changed screen. The owner drags each file into its slot. A push
-  that changes what the screenshots show attaches the new files in the same
-  round and updates the slots. A host where the files cannot reach the owner
-  (CI, a plain `claude` terminal) still writes the slots, each under its
-  screen-and-state name, and the section says the images await rendering
-  with the command above: the after images on the PR's branch, the before
-  images on the base branch (*What to show*), each `<feature>Screen-<nn>.png`
-  renamed to the name of the slot its caption names.
+  `build/screenshots/` is git-ignored and stays so. GitHub takes an image
+  into a description only from a browser logged in to it (an upload the API
+  does not offer), so a session that has one (the desktop app's browser, on
+  the owner's computer) drags the files into the description's
+  `## Screenshots` section itself: each under its caption, before and after
+  side by side for a changed screen. A session that cannot upload them
+  shows them to the owner in the session instead, gathered where the owner
+  finds them again at a glance (owner ruling, 2026-10-19): ONE artifact per
+  PR (the session's Artifact tool), a page with every screenshot under its
+  caption, before and after side by side for a changed screen, titled with
+  the PR's number and subject. The session gives its link in its reply, and
+  the description's `## Screenshots` section gives the same link (private to
+  the owner; the owner's artifact gallery lists it too) and the command that
+  renders the screenshots, with no table of file names in place of the
+  images. A push that changes what the screenshots show republishes that
+  same artifact in the same round, so its link stays and its history keeps
+  the earlier versions. A session that has neither (no browser, no
+  Artifact tool) attaches the files to the conversation, each named after
+  its screen and state (`assets-head-too-old-after.png`) with its caption,
+  and the section says they were shown in the session. A host where the
+  files reach no one (CI, a plain `claude` terminal) lists
+  in that section each state under its caption, with the
+  `<feature>Screen-<nn>.png` it renders to, and says the images await
+  rendering with the command above: the after images on the PR's branch,
+  the before images on the base branch (*What to show*).
 - **ALWAYS respond to every review comment, individually, on its own thread.**
   One comment, one reply. A single bulk PR-level summary is not a substitute —
   it may be posted *in addition*, but a reviewer must be able to see the
