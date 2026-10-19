@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.rightClick
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.theme.SerotineTheme
@@ -36,7 +37,7 @@ class AssetsScreenTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private val syncing = LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true)
+    private val syncing = LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true, NOT_VERIFIED)
     private val daily = AccountItem(
         "Daily",
         "0x8F3a2c71E5b9D04A6f1e3C2bA7d90E5f4C6b91c2",

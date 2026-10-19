@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.ui.components.LightClientHealthDot
 
 /** Test tag of the app's version line, for UI tests. */
 const val SETTINGS_VERSION_TAG = "settings-version"
@@ -75,7 +76,10 @@ fun SettingsScreen(
                 supportingContent = { Text("The only network for now") },
             )
             Section("Light client")
-            ListItem(headlineContent = { Text(state.lightClient.text) })
+            ListItem(
+                leadingContent = { LightClientHealthDot(state.lightClient.health) },
+                headlineContent = { Text(state.lightClient.text) },
+            )
             Section("About")
             ListItem(
                 // One merged node: a screen reader announces "Serotine, version 0.1.0".

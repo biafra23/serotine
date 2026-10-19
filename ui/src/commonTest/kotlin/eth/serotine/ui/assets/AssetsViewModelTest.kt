@@ -45,6 +45,7 @@ import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.update.UpgradeBannerItem
 import kotlinx.coroutines.Dispatchers
@@ -244,7 +245,7 @@ class AssetsViewModelTest {
         runCurrent()
 
         assertEquals(
-            LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true),
+            LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true, NOT_VERIFIED),
             viewModel.uiState.value.lightClient,
         )
     }
