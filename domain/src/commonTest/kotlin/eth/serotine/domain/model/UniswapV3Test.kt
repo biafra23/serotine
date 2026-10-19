@@ -378,4 +378,31 @@ class UniswapV3Test {
             SwapRouter02.swap(deployment, usdcToken, linkToken, hop, hundredUsdc, UInt256.ZERO, account, deadline)
         }
     }
+
+    @Test
+    fun theSwapsAmountIsReadFromTheMulticallsResultsOnly() {
+        // cast abi-encode 'f(bytes[])' "[$(cast abi-encode 'f(uint256)' 4310000000000000000)]"
+        val one = "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000000000000000000001" +
+            "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000003bd0322a25ef0000"
+        // The same with unwrapWETH9's empty result after it: '[<word>,0x]'.
+        val two = "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000000000000000000002" +
+            "0000000000000000000000000000000000000000000000000000000000000040" +
+            "0000000000000000000000000000000000000000000000000000000000000080" +
+            "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000003bd0322a25ef0000" +
+            "0000000000000000000000000000000000000000000000000000000000000000"
+        val amount = UInt256.of("4310000000000000000")
+        assertEquals(amount, SwapRouter02.amountOutOf(one, buysEther = false))
+        assertEquals(amount, SwapRouter02.amountOutOf(two, buysEther = true))
+
+        assertNull(SwapRouter02.amountOutOf(one, buysEther = true), "the unwrap's result missing")
+        assertNull(SwapRouter02.amountOutOf(two, buysEther = false), "a result more")
+        assertNull(SwapRouter02.amountOutOf(one + "00".repeat(32), buysEther = false), "a word more")
+        assertNull(SwapRouter02.amountOutOf(one.replaceRange(64 * 3 + 62, 64 * 3 + 64, "40"), false), "a longer result")
+        assertNull(SwapRouter02.amountOutOf("", buysEther = false))
+    }
 }

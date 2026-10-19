@@ -223,6 +223,78 @@ private fun TransferStatusTurnedAwayPreview() = TransferStatusPreview(
     ),
 )
 
+private val swap = SwapSummary(
+    title = "Swap of 100 USDC for at least 4.28845 LINK on Uniswap",
+    sold = "100 USDC",
+    soldSymbol = "USDC",
+    soldIcon = "usdc",
+    bought = "at least 4.28845 LINK",
+    boughtSymbol = "LINK",
+    boughtIcon = "link",
+    router = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+    from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+)
+
+@Preview
+@Composable
+private fun TransferStatusSwapPreview() = TransferStatusPreview(pending.copy(sent = null, swap = swap))
+
+@Preview
+@Composable
+private fun TransferStatusSwapFailedPreview() = TransferStatusPreview(
+    pending.copy(
+        sent = null,
+        swap = swap,
+        steps = listOf(
+            signed,
+            broadcast,
+            StatusStep("Included", StepState.FAILED, "In block 8,412,311, its receipt verified: it reverted"),
+            waitingFinal,
+        ),
+        note = "It failed: the swap reverted in its block, so nothing was swapped: the price moved past its " +
+            "minimum, or its deadline passed. Its fee is paid all the same.",
+    ),
+)
+
+@Preview
+@Composable
+private fun TransferStatusApprovalPreview() = TransferStatusPreview(
+    included.copy(
+        sent = null,
+        approval = ApprovalSummary(
+            title = "Approval for a swap",
+            amount = "100 USDC",
+            symbol = "USDC",
+            icon = "usdc",
+            spenderLabel = "May be taken by the swap's router",
+            spender = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+            from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun TransferStatusAllowanceResetPreview() = TransferStatusPreview(
+    pending.copy(
+        sent = null,
+        approval = ApprovalSummary(
+            title = "Allowance reset for a swap",
+            amount = "0 USDT",
+            symbol = "USDT",
+            icon = null,
+            spenderLabel = "The swap's router may take none, until the whole amount is approved",
+            spender = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+            from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun TransferStatusSwapDarkPreview() =
+    TransferStatusPreview(pending.copy(sent = null, swap = swap), darkTheme = true)
+
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
@@ -241,4 +313,9 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusRetryingPreview() },
     { TransferStatusTurnedAwayPreview() },
     { TransferStatusLoadingPreview() },
+    { TransferStatusSwapPreview() },
+    { TransferStatusSwapFailedPreview() },
+    { TransferStatusApprovalPreview() },
+    { TransferStatusAllowanceResetPreview() },
+    { TransferStatusSwapDarkPreview() },
 )

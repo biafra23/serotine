@@ -109,6 +109,12 @@ enum class QuoteFigure {
 
     /** The transaction run as a verified call. */
     RUN,
+
+    /** The allowance a token's spender has, which a swap needs. */
+    ALLOWANCE,
+
+    /** A swap's route: its pools and their quotes. */
+    ROUTE,
 }
 
 /** A verified native balance a quote starts from, or why there is none. */

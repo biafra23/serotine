@@ -303,6 +303,8 @@ internal fun figureText(figure: QuoteFigure?, ofWhat: String): String = when (fi
     QuoteFigure.FEES -> "The fee"
     QuoteFigure.GAS -> "The gas estimate"
     QuoteFigure.RUN -> "The verified run of the transaction"
+    QuoteFigure.ALLOWANCE -> "The token's allowance"
+    QuoteFigure.ROUTE -> "The swap's route"
     null -> "A figure $ofWhat"
 }
 

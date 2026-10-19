@@ -605,16 +605,20 @@ docs/architecture.md.
      `VerifiedUniswapV3`.
    - Which built-in tokens have pools on Sepolia, what a quote touches, and
      a network test that times a route through the engine.
-3. **Swap screens.**
-   - `SentAction`'s approval and swap, with their record and hold-back: they
-     land with the screens that send them, so nothing is recorded that no
-     screen shows.
+3. **The swap's quote and send.**
+   - `QuoteSwap`, `SendSwap` (the exact transaction run again at the tap
+     that signs it), `QuoteTokenApproval` (zero first for a token that
+     refuses one allowance for another) and `SendTokenApproval`.
+   - `SentAction`'s token approval and swap, recorded (the sent
+     transactions' format 5), with what a swap sells held back from later
+     transactions, and the status (9) for both.
+4. **Swap screens.**
    - Swap, compose (22): from, sell, buy, amount, tolerance.
    - Swap, review (23): the approval step, then the swap.
-   - The status (9) for a swap.
    - A Swap button on the account detail (4) and "Swap ‹symbol›" in the asset
      menu (5), absent when watch-only.
-4. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
+   - The port and use cases wired into `AppGraph` and the hosts.
+5. **Safe swaps** through the queue: two Safe transactions, decoded on 17,
    with the minimum and deadline fixed at the proposal.
 
 **`feature/swaps-cow`**, once CoW's *Data sources* ruling is recorded in

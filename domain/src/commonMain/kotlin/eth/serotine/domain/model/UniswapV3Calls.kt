@@ -228,6 +228,23 @@ object SwapRouter02 {
         return TransactionCall(deployment.swapRouter02, value, data)
     }
 
+    /**
+     * What the swap returns, by what a [swap] call's run returned as [returnHex]: `multicall`'s
+     * results, a `bytes[]` holding the swap's `amountOut` as one word, and when the account buys
+     * ETH ([buysEther]) `unwrapWETH9`'s empty result after it. Null when it is not exactly that.
+     */
+    fun amountOutOf(returnHex: String, buysEther: Boolean): UInt256? {
+        val data = AbiWords.returned(returnHex) ?: return null
+        val calls = if (buysEther) 2 else 1
+        // The array's offset and length, an offset per result, then the first result's length.
+        val at = (2 + calls + 1) * WORD
+        if (data.size < at + WORD) return null
+        val amount = data.copyOfRange(at, at + WORD)
+        val results = if (buysEther) listOf(amount, ByteArray(0)) else listOf(amount)
+        val expected = AbiWords.withBytesArray(ByteArray(0), head = emptyList(), elements = results)
+        return if (expected.contentEquals(data)) AbiWords.uint(amount) else null
+    }
+
     private fun exactInputSingle(route: SwapRoute, recipient: Address, amountIn: UInt256, minimum: UInt256) =
         EXACT_INPUT_SINGLE +
             word(route.tokenIn) +
