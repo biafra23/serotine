@@ -490,6 +490,19 @@ class TransfersTest {
             TransferQuoting.Syncing,
             quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
         )
+        // A balance last verified at an older head is shown, never quoted on: it may have changed.
+        native = BalanceReading.LastKnown(Wei.of("1000000000000000000"), 99, asOf = 1_792_100_000)
+        assertEquals(
+            TransferQuoting.Syncing,
+            quoteTransfer(alice, bob, TransferAsset.Native, UInt256.ONE, FeeLevel.NORMAL),
+        )
+        native = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
+        token = TokenBalanceReading.LastKnown(TokenUnits.of("5000000"), 99, asOf = null)
+        assertEquals(
+            TransferQuoting.Syncing,
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.ONE, FeeLevel.NORMAL),
+        )
+        token = TokenBalanceReading.Verified(TokenUnits.of("5000000"), 100)
         native = BalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
         assertEquals(
             TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.BALANCE),

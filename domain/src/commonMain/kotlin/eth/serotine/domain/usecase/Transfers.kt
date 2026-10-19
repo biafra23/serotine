@@ -206,7 +206,8 @@ class QuoteTransfer(
                 tokenBlock = reading.blockNumber
                 UInt256.parse(reading.units.decimal) ?: return@cancellingReads UNPROVEN
             }
-            TokenBalanceReading.Syncing -> return@cancellingReads TransferQuoting.Syncing
+            TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown ->
+                return@cancellingReads TransferQuoting.Syncing
             TokenBalanceReading.NotAToken -> return@cancellingReads TransferQuoting.NotAToken
             is TokenBalanceReading.Unavailable ->
                 return@cancellingReads TransferQuoting.Unavailable(reading.reason, QuoteFigure.BALANCE)

@@ -550,6 +550,9 @@ private fun AssetItem(asset: AssetRow) {
         supportingContent = {
             Column {
                 Text(asset.verifiedAt?.let { "${asset.name} · verified at $it" } ?: asset.name)
+                asset.lastKnown?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                }
                 asset.warning?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 }

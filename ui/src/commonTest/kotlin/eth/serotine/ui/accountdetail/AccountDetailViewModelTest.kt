@@ -109,6 +109,7 @@ class AccountDetailViewModelTest {
         ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
         Network.SEPOLIA,
+        formatTime = { "<$it>" },
     )
 
     @AfterTest
@@ -258,6 +259,48 @@ class AccountDetailViewModelTest {
             ready.assets,
         )
         assertEquals("1 token not verified", ready.tokensNote)
+    }
+
+    @Test
+    fun amountsLastVerifiedAreShownDatedAndNotAsVerified() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(daily.address).value =
+            BalanceReading.LastKnown(Wei.of("3204100000000000000"), 9, asOf = 1_792_100_000)
+        // 1,250 USDC last known; LINK last known to be none, so not known to be none now.
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.LastKnown(TokenUnits.of("1250000000"), 12, asOf = null)
+        tokenBalances.of(daily.address, link.address).value =
+            TokenBalanceReading.LastKnown(TokenUnits.of("0"), 9, asOf = 1_792_100_000)
+        tokenBalances.of(daily.address, uni.address).value = TokenBalanceReading.NotAToken
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(
+            listOf(
+                AssetRow(
+                    "ETH",
+                    "Ether",
+                    "3.2041 ETH",
+                    "eth",
+                    verified = false,
+                    lastKnown = "Last verified <1792100000> · may have changed since",
+                ),
+                AssetRow(
+                    "USDC",
+                    "USDC",
+                    "1250 USDC",
+                    "usdc",
+                    verified = false,
+                    contract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+                    lastKnown = "Last verified at block 12 · may have changed since",
+                ),
+            ),
+            ready.assets,
+        )
+        assertEquals("Checking…", ready.total)
+        assertEquals("Checking 1 token · 1 token did not answer as a token", ready.tokensNote)
     }
 
     @Test

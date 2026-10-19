@@ -2,8 +2,8 @@
 <!-- Android 12 and later: nothing of the app's data leaves the device, neither to a cloud
      backup nor in a device-to-device transfer. allowBackup="false" alone still lets a
      device-to-device migration copy it (docs/keys-and-signing.md, rule 8). That is the
-     account list (addresses and labels), the key store's envelopes (files/keys) and the
-     engine's caches. -->
+     account list (addresses and labels), the key store's envelopes (files/keys), the
+     balances last verified (last-balances.json) and the engine's caches. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />

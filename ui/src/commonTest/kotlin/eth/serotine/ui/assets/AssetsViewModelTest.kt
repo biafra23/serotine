@@ -45,6 +45,7 @@ import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.update.UpgradeBannerItem
 import kotlinx.coroutines.Dispatchers
@@ -214,6 +215,27 @@ class AssetsViewModelTest {
     }
 
     @Test
+    fun aBalanceLastVerifiedIsShownDimmedAndDatedAndLeftOutOfTheTotal() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(treasury)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        feeds.answer("ETH", 2_000.0)
+
+        balances.of(treasury.address).value =
+            BalanceReading.LastKnown(Wei.of("2500000000000000000"), 9, asOf = 1_792_100_000)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AssetsUiState.Ready
+        assertEquals(
+            treasuryItem("2.5 ETH", verified = false)
+                .copy(balanceNote = "Last verified <1792100000> · may have changed since"),
+            ready.accounts.single(),
+        )
+        assertEquals("Checking…", ready.total, "a balance that may have changed is not added up")
+    }
+
+    @Test
     fun theStatusStripFollowsTheLightClient() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = viewModel()
@@ -223,7 +245,7 @@ class AssetsViewModelTest {
         runCurrent()
 
         assertEquals(
-            LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true),
+            LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true, NOT_VERIFIED),
             viewModel.uiState.value.lightClient,
         )
     }

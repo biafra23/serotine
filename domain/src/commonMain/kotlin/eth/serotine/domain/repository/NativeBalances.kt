@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.Flow
  * The port for native-currency balances, as the embedded light client proves them. :data
  * implements it over the Myotis engine (`eth.serotine.data.engine`), on the one network the
  * app works on (CLAUDE.md, *Data sources*); nothing else may answer it — no RPC provider, no
- * indexer, no cached guess (CLAUDE.md, *Trust*).
+ * indexer, no cached guess (CLAUDE.md, *Trust*). The one older answer it gives is the light
+ * client's own last proof, labelled as such ([BalanceReading.LastKnown]).
  */
 interface NativeBalances {
     /**
@@ -23,8 +24,18 @@ interface NativeBalances {
 /** One answer of [NativeBalances.observeBalance]. */
 sealed interface BalanceReading {
 
-    /** The light client has no verified head yet. */
+    /** The light client has no verified head yet, and no earlier proof of this balance. */
     data object Syncing : BalanceReading
+
+    /**
+     * The light client has no verified head it can read at (it is catching up, asleep, waiting
+     * for a fresh head or for a peer serving proofs), and [wei] is the balance it last
+     * verified, at block [blockNumber], whose verified head was produced at [asOf] (unix
+     * seconds; null when unknown). It may have changed since: shown as such (owner's request,
+     * 2026-10-19), and never a balance to act on — a quote or a signature treats it as
+     * [Syncing].
+     */
+    data class LastKnown(val wei: Wei, val blockNumber: Long, val asOf: Long?) : BalanceReading
 
     /** [wei] is the balance at block [blockNumber], verified by the light client. */
     data class Verified(val wei: Wei, val blockNumber: Long) : BalanceReading

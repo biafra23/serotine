@@ -652,14 +652,14 @@ class ProposeSafeTx(
             return when (val reading = nativeBalances.observeBalance(safe).first()) {
                 is BalanceReading.Verified ->
                     reading.wei.toUInt256OrNull()?.let { SafeBalance.Read(it, reading.blockNumber) } ?: unproven
-                BalanceReading.Syncing -> refused(SafeTxRefusal.Syncing)
+                BalanceReading.Syncing, is BalanceReading.LastKnown -> refused(SafeTxRefusal.Syncing)
                 is BalanceReading.Unavailable -> refused(SafeTxRefusal.Unavailable(reading.reason))
             }
         }
         return when (val reading = tokenBalances.observeBalance(safe, token).first()) {
             is TokenBalanceReading.Verified ->
                 UInt256.parse(reading.units.decimal)?.let { SafeBalance.Read(it, reading.blockNumber) } ?: unproven
-            TokenBalanceReading.Syncing -> refused(SafeTxRefusal.Syncing)
+            TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown -> refused(SafeTxRefusal.Syncing)
             TokenBalanceReading.NotAToken -> SafeBalance.Refused(SafeTxProposing.NotAToken)
             is TokenBalanceReading.Unavailable -> refused(SafeTxRefusal.Unavailable(reading.reason))
         }

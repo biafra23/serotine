@@ -30,6 +30,18 @@ the text wins.
   value from another source, or an earlier value as if it were current. A
   value the user acts on (a balance on Send, a Safe's owners and threshold,
   a receipt) names the block it was verified at.
+- **A balance last verified is shown as such** (owner's request,
+  2026-10-19). While the light client has no head it can read at (asleep,
+  catching up, its verified head too old, or no peer serving state proofs),
+  a balance it proved earlier, in this run or before a restart (kept in
+  `last-balances.json` with the app's other files), stays on the Assets and
+  Account detail rows instead of "Syncing…": dimmed, with "Last verified
+  ‹time of its head› · may have changed since" under it (the block when the
+  time is unknown). It is left out of every total and has no fiat value, and
+  nothing acts on it: Send's asset choice, a quote and a signature treat it
+  as syncing. While the trust anchor is stale, a proof fails or the engine
+  refuses, the row says that and shows no amount from before, and no other
+  value (an address's kind, a Safe's owners, a price) is shown last known.
 - **Amounts are token units.** An amount is entered, reviewed and signed in
   the token's own units. Fiat values are display-only (owner ruling,
   2026-10-16, *Prices* below): a hint next to an amount, a total, a sort key,
@@ -96,6 +108,15 @@ upgrades*).
 ### Assets tab
 
 1. **Assets**
+   - The light client's status strip on top, coloured by what it can verify
+     (owner's request, 2026-10-19): green while reads are verified at a fresh
+     head; yellow while it has no fresh head to read at for a reason that
+     passes on its own (the verified head older than reads allow, no peer
+     serving state proofs, or asleep in the background), when balances show
+     as last verified; red with no verified head
+     yet (starting, bootstrapping, catching up), sync refused, or no light
+     client. A dot before its text and the bar under it carry the colour; the
+     text says the same in words. Settings shows the same dot.
    - Header: the portfolio's total in the display currency, marked "testnet
      prices" on Sepolia, with a count of the assets that have no price.
    - Under the status strip, a banner while peers announce or report a
