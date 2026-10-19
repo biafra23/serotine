@@ -477,29 +477,37 @@ discussion that produced this note.
   How to take them: the screen's previews (*Every screen has previews*) are
   the source, rendered headless, so a session with no display or device can
   take them too.
-  `./gradlew :ui:desktopTest --tests '*<Feature>ScreenPreviewsTest' --rerun
-  -Pscreenshots=build/screenshots` writes each preview of that screen to
-  `build/screenshots/<feature>Screen-<n>.png` (`…Dialog-<n>.png` for a
-  dialog's), n counting from 1 in the order of the previews list
-  (`RenderPreviews.kt`); leave `--tests` out for every screen. A state the PR adds gets a preview first, which the previews rule
-  asks for anyway. A capture of the running app (`:desktop-app:run`, the
-  debug Android app) may stand in or be added where the previews cannot show
-  the change (navigation, an animation, a host's window or notification).
+  `./gradlew :ui:desktopTest --tests '*.<Feature>ScreenPreviewsTest' --rerun
+  -Pscreenshots=build/screenshots` (`…DialogPreviewsTest` for a dialog) writes
+  each preview of that screen to `build/screenshots/<feature>Screen-<nn>.png`
+  (`…Dialog-<nn>.png` for a dialog's), nn the two-digit position in the
+  previews list counting from 01 (`RenderPreviews.kt`), replacing that
+  screen's files from an earlier run; leave `--tests` out for every screen. A
+  state the PR adds gets a preview first, which the previews rule asks for
+  anyway. A capture of the running app (`:desktop-app:run`, the debug Android
+  app) may stand in or be added where the previews cannot show the change
+  (navigation, an animation, a host's window or notification).
   Where to put them: a human drags them into the description on GitHub. A
   session commits them to the `pr-screenshots` branch, an orphan branch that
-  holds only screenshots and is never merged (create it with
-  `git switch --orphan pr-screenshots` when missing), in a directory named
-  after the PR's head branch (known before the PR is, so the PR opens with
-  its screenshots and the automated review, which runs once, sees them), and
+  holds only screenshots and is never merged, in a directory named after the
+  PR's head branch (known before the PR is, so the PR opens with its
+  screenshots and the automated review, which runs once, sees them), and
   links each by that commit's SHA, so the images stay what they were when a
   later push moves the branch:
   `![<caption>](https://github.com/<owner>/<repo>/blob/<sha>/<head-branch>/<file>.png?raw=true)`.
-  This rule is the permission to create and push to that branch. Screenshots
-  never go on the PR's own branch: binaries merged into `main` stay in its
-  history for good. A push to `pr-screenshots` the host refuses is no reason to
-  drop them: attach the files to the conversation for the owner instead and
-  say in the description that they are missing and why. A push that changes
-  what the screenshots show updates them in the description in the same round.
+  Start from the remote branch (`git fetch origin pr-screenshots && git switch
+  -c pr-screenshots FETCH_HEAD`, best in a `git worktree`); only when
+  `origin/pr-screenshots` does not exist yet, create it with `git switch
+  --orphan pr-screenshots`. It is NEVER force-pushed or rewritten: earlier
+  PRs link its old commits, which must stay reachable. A push rejected
+  because another session pushed first is fetched and the commit reapplied
+  on top. This rule is the permission to create and push to that branch.
+  Screenshots never go on the PR's own branch: binaries merged into `main`
+  stay in its history for good. A push to `pr-screenshots` the host refuses
+  is no reason to drop them: attach the files to the conversation for the
+  owner instead and say in the description that they are missing and why. A
+  push that changes what the screenshots show updates them in the
+  description in the same round.
 - **ALWAYS respond to every review comment, individually, on its own thread.**
   One comment, one reply. A single bulk PR-level summary is not a substitute —
   it may be posted *in addition*, but a reviewer must be able to see the
