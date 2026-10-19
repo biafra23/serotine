@@ -131,7 +131,8 @@ internal sealed interface NativeRead {
         fun of(reading: BalanceReading): NativeRead = when (reading) {
             is BalanceReading.Verified -> reading.wei.toUInt256OrNull()?.let { Before(it, reading.blockNumber) }
                 ?: NotRead(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.BALANCE))
-            BalanceReading.Syncing -> NotRead(CallRefusal.Syncing)
+            // A balance last verified at an older head may have changed: nothing to quote on.
+            BalanceReading.Syncing, is BalanceReading.LastKnown -> NotRead(CallRefusal.Syncing)
             is BalanceReading.Unavailable -> NotRead(CallRefusal.Unavailable(reading.reason, QuoteFigure.BALANCE))
         }
     }

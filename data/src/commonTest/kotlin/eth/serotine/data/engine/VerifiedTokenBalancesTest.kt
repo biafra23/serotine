@@ -61,6 +61,30 @@ class VerifiedTokenBalancesTest {
     }
 
     @Test
+    fun theLastBalanceIsLastKnownWhileTheHeadIsTooOld() = runTest {
+        chain.snapshot = running(head = 9, headTimestamp = 1_792_100_000)
+        chain.calls[usdc to calldata] = CallOutcome.Returned("0".repeat(56) + "4a817c80", blockNumber = 9)
+        val balances = balances()
+        balances.observeBalance(holder, usdc).first()
+
+        chain.snapshot = running(head = 9, headAgeMs = 60_000)
+        assertEquals(
+            TokenBalanceReading.LastKnown(TokenUnits.of("1250000000"), 9, asOf = 1_792_100_000),
+            balances.observeBalance(holder, usdc).first(),
+        )
+    }
+
+    @Test
+    fun anOlderNotATokenIsNotRepeatedWhileTheHeadIsTooOld() = runTest {
+        chain.calls[usdc to calldata] = CallOutcome.Reverted(blockNumber = 9)
+        val balances = balances()
+        assertEquals(TokenBalanceReading.NotAToken, balances.observeBalance(holder, usdc).first())
+
+        chain.snapshot = running(head = 9, paused = true)
+        assertEquals(TokenBalanceReading.Syncing, balances.observeBalance(holder, usdc).first())
+    }
+
+    @Test
     fun noVerifiedAnswerIsUnproven() = runTest {
         assertEquals(
             TokenBalanceReading.Unavailable(ReadUnavailable.UNPROVEN),

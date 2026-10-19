@@ -43,8 +43,8 @@ class AssetsViewModel(
     private val network: Network,
     /** Now, in unix seconds: what the strip dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
-    /** How the banner dates an upgrade (unix seconds). */
-    formatTime: (Long) -> String = ::formatDateTime,
+    /** How the banner dates an upgrade, and a row a balance last verified (unix seconds). */
+    private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
     private val strip = observeLightClient().asItems(clock)
@@ -100,6 +100,7 @@ class AssetsViewModel(
                         checksums.getOrPut(account.address) { Eip55.format(account.address) },
                         value?.let { it.nativeValue to it.currency },
                         safes[account.address],
+                        formatTime,
                     )
                 }
                 val total = portfolio.total.takeIf { list.accounts.isNotEmpty() }

@@ -7,6 +7,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTxAction
+import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -33,10 +34,12 @@ import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.lastKnownNote
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
+import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -72,6 +75,8 @@ class AccountDetailViewModel(
     observeKnownTokens: ObserveKnownTokens,
     private val setTokenHidden: SetTokenHidden,
     private val network: Network,
+    /** How a row dates a balance last verified (unix seconds). */
+    private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
     // The checksum once, not on every balance reading.
@@ -274,7 +279,8 @@ class AccountDetailViewModel(
     /**
      * The native row and a row per token held: a token whose verified balance is zero is not
      * held. Each row names the block its own amount was verified at: the readings are polled
-     * one by one and need not share one.
+     * one by one and need not share one. While no head can be read at, a row shows the
+     * amount last verified and says that it may have changed since.
      */
     private fun rows(value: AccountValue): List<Row> {
         val native = value.native
@@ -287,31 +293,51 @@ class AccountDetailViewModel(
                 verified = native is BalanceReading.Verified,
                 verifiedAt = (native as? BalanceReading.Verified)?.let { block(it.blockNumber) },
                 value = valuationText(value.nativeValue, value.currency, network),
+                lastKnown = (native as? BalanceReading.LastKnown)
+                    ?.let { lastKnownNote(it.blockNumber, it.asOf, formatTime) },
             ),
             value.nativeValue,
         )
         val tokenRows = value.tokens.mapNotNull { (holding, valuation) ->
-            val verified = holding.reading as? TokenBalanceReading.Verified ?: return@mapNotNull null
-            if (verified.units.isZero) return@mapNotNull null
+            val shown = shownBalance(holding.reading) ?: return@mapNotNull null
+            if (shown.units.isZero) return@mapNotNull null
             val token = holding.token
             val symbol = displaySymbol(token.symbol)
             Row(
                 AssetRow(
                     symbol = symbol,
                     name = displayName(token.name),
-                    amount = formatUnits(verified.units.decimal, token.decimals, symbol),
+                    amount = formatUnits(shown.units.decimal, token.decimals, symbol),
                     icon = token.icon,
-                    verified = true,
-                    verifiedAt = verified.blockNumber?.let(::block),
+                    verified = shown.lastKnown == null,
+                    // A balance last verified says when in its note, not as a verified one does.
+                    verifiedAt = shown.blockNumber?.takeIf { shown.lastKnown == null }?.let(::block),
                     value = valuationText(valuation, value.currency, network),
                     contract = Eip55.format(token.address),
                     warning = if (holding.sharesBuiltInSymbol) "Not the built-in $symbol: another contract" else null,
+                    lastKnown = shown.lastKnown,
                 ),
                 valuation,
             )
         }
         return listOf(nativeRow) + tokenRows
     }
+
+    /**
+     * The token amount a row shows for [reading], the block it was verified at, and, for one
+     * last verified, what the row says of it; null when there is no amount to show.
+     */
+    private fun shownBalance(reading: TokenBalanceReading?): ShownBalance? = when (reading) {
+        is TokenBalanceReading.Verified -> ShownBalance(reading.units, reading.blockNumber, lastKnown = null)
+        is TokenBalanceReading.LastKnown -> ShownBalance(
+            reading.units,
+            reading.blockNumber,
+            lastKnownNote(reading.blockNumber, reading.asOf, formatTime),
+        )
+        else -> null
+    }
+
+    private class ShownBalance(val units: TokenUnits, val blockNumber: Long?, val lastKnown: String?)
 
     /** A row and the value it is sorted by. */
     private class Row(val asset: AssetRow, val value: Valuation?)
@@ -333,7 +359,11 @@ class AccountDetailViewModel(
      */
     private fun tokensNote(value: AccountValue): String? {
         val readings = value.tokens.map { it.holding.reading }
-        val checking = readings.count { it == null || it == TokenBalanceReading.Syncing }
+        // A token last known to hold none has no row, and is not known to hold none now.
+        val checking = readings.count {
+            it == null || it == TokenBalanceReading.Syncing ||
+                (it as? TokenBalanceReading.LastKnown)?.units?.isZero == true
+        }
         val refused = readings.count { (it as? TokenBalanceReading.Unavailable)?.reason == ReadUnavailable.REFUSED }
         val unverified = readings.count { it is TokenBalanceReading.Unavailable } - refused
         val notTokens = readings.count { it == TokenBalanceReading.NotAToken }

@@ -21,8 +21,15 @@ import kotlin.time.Duration
 /** One answer of [ProvenReads], before an adapter turns it into its port's reading. */
 internal sealed interface EngineReading<out T> {
 
-    /** No verified head to read at yet. */
+    /** No verified head to read at yet, and no earlier proof of the fact. */
     data object Syncing : EngineReading<Nothing>
+
+    /**
+     * No verified head to read at, and [value] is the fact's last proof, at [blockNumber], made
+     * at a verified head produced at [asOf] (unix seconds; null when unknown): it may have
+     * changed since. An adapter that has no use for an older answer reads it as [Syncing].
+     */
+    data class LastKnown<T>(val value: T, val blockNumber: Long, val asOf: Long?) : EngineReading<T>
 
     /** [value], proven at [blockNumber]. */
     data class Proven<T>(val value: T, val blockNumber: Long) : EngineReading<T>
@@ -37,7 +44,11 @@ internal sealed interface EngineReading<out T> {
  * polls the engine's state every [pollInterval]; while the client can serve verified reads
  * the fact is proven again whenever the verified head has moved, and labelled with the block
  * its proof anchors to. Whenever reads cannot be verified (syncing, asleep, a stale head, no
- * peer serving proofs) the reading says so instead of keeping an old answer on screen.
+ * peer serving proofs) the reading says so: [EngineReading.Syncing], or, once the fact was
+ * proven, [EngineReading.LastKnown] with that last proof, dated by the verified head it was made
+ * at — in this process, or [kept] from an earlier one — an older answer labelled as one, never
+ * passed off as current (owner's request, 2026-10-19). Every other failure (a refusal, a stale
+ * anchor, an unproven read) says so without it.
  *
  * The last proof per key is shared by all subscribers, so one that re-subscribes on the same
  * head gets it at once instead of fetching it again, and one that arrives while it is being
@@ -70,14 +81,22 @@ internal class ProvenReads<K, T>(
      */
     private val sharedForHeads: Long = 1,
     /**
+     * Where the last proof of each key is kept beyond the process ([KeptProofs]), so that a
+     * restart can say what was last verified before a head can be read; none by default.
+     */
+    private val kept: KeptProofs<K, T> = KeptProofs.none(),
+    /**
      * The fact about a key and the block its proof anchors to; a refusal ([EngineReading.Unavailable]);
      * or null when unproven. Blocks, and may suspend between its blocking calls (to check its
      * cancellation, or to pause before a retry).
      */
     private val prove: suspend (VerifiedChain, K) -> EngineReading<T>?,
 ) {
-    /** The last proof per key, with the head it was fetched at. */
-    private val proofs = mutableMapOf<K, Pair<Long, EngineReading.Proven<T>>>()
+    /** The last proof per key, with the head it was fetched at and that head's time. */
+    private val proofs = mutableMapOf<K, Kept<T>>()
+
+    /** A [reading] proven at verified head [head], produced at [headTimestamp] (unix seconds; null when unknown). */
+    private class Kept<T>(val head: Long, val headTimestamp: Long?, val reading: EngineReading.Proven<T>)
 
     /**
      * The read being made per key, with the head it is made at: a subscriber that finds one
@@ -116,14 +135,14 @@ internal class ProvenReads<K, T>(
     }
 
     private suspend fun readingAt(chain: VerifiedChain, key: K, snapshot: EngineSnapshot): EngineReading<T> {
-        if (snapshot !is EngineSnapshot.Running) return EngineReading.Syncing
+        if (snapshot !is EngineSnapshot.Running) return syncing(key)
         if (snapshot.phase == Phase.STALE_ANCHOR) return EngineReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
-        val head = snapshot.readableHead ?: return EngineReading.Syncing
+        val head = snapshot.readableHead ?: return syncing(key)
         while (true) {
             val pending = CompletableDeferred<EngineReading<T>?>()
             val running = proofsLock.withLock {
-                proofs[key]?.let { (provenAtHead, reading) ->
-                    if (head - provenAtHead in 0 until keptForHeads(reading.value)) return reading
+                proofs[key]?.let { kept ->
+                    if (head - kept.head in 0 until keptForHeads(kept.reading.value)) return kept.reading
                 }
                 inFlight[key]?.takeIf { (at, _) -> head - at in 0 until sharedForHeads }?.second ?: run {
                     inFlight[key] = head to pending
@@ -139,7 +158,7 @@ internal class ProvenReads<K, T>(
             // Null unless the read completes: a waiter is never left without an answer.
             var reading: EngineReading<T>? = null
             try {
-                reading = prove(chain, key, head)
+                reading = prove(chain, key, head, snapshot.headTimestamp)
                 return reading
             } finally {
                 withContext(NonCancellable) {
@@ -150,8 +169,16 @@ internal class ProvenReads<K, T>(
         }
     }
 
-    /** One read of [key] at [head], kept when it is a proof. */
-    private suspend fun prove(chain: VerifiedChain, key: K, head: Long): EngineReading<T> {
+    /**
+     * No head to read at: the last proof of [key], dated, when there is one — made in this
+     * process, or else [kept] from an earlier one; [EngineReading.Syncing] otherwise.
+     */
+    private suspend fun syncing(key: K): EngineReading<T> = proofsLock.withLock {
+        proofs[key]?.let { EngineReading.LastKnown(it.reading.value, it.reading.blockNumber, it.headTimestamp) }
+    } ?: kept.load(key) ?: EngineReading.Syncing
+
+    /** One read of [key] at [head], produced at [headTimestamp], kept when it is a proof. */
+    private suspend fun prove(chain: VerifiedChain, key: K, head: Long, headTimestamp: Long?): EngineReading<T> {
         val proven = try {
             prove(chain, key)
         } catch (e: Throwable) {
@@ -163,9 +190,10 @@ internal class ProvenReads<K, T>(
         if (proven !is EngineReading.Proven) return proven // a refusal: an answer, not a proof to keep
         proofsLock.withLock {
             proofs.remove(key) // re-inserted last: the map's order is the order of proving
-            proofs[key] = head to proven
+            proofs[key] = Kept(head, headTimestamp, proven)
             if (proofs.size > MAX_CACHED) proofs.remove(proofs.keys.first())
         }
+        kept.save(key, EngineReading.LastKnown(proven.value, proven.blockNumber, headTimestamp))
         return proven
     }
 

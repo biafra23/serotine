@@ -380,7 +380,8 @@ private fun tokenUnits(reading: TokenBalanceReading): TokenRead = when (reading)
     is TokenBalanceReading.Verified -> UInt256.parse(reading.units.decimal)
         ?.let { TokenRead.Units(it, reading.blockNumber) }
         ?: TokenRead.NotRead(SwapQuoting.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.BALANCE))
-    TokenBalanceReading.Syncing -> TokenRead.NotRead(SwapQuoting.Syncing)
+    // A last-known balance is the light client's own past proof: never quoted on, as nothing is.
+    TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown -> TokenRead.NotRead(SwapQuoting.Syncing)
     TokenBalanceReading.NotAToken -> TokenRead.NotRead(SwapQuoting.NotAToken)
     is TokenBalanceReading.Unavailable ->
         TokenRead.NotRead(SwapQuoting.Unavailable(reading.reason, QuoteFigure.BALANCE))

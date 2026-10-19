@@ -58,7 +58,7 @@ class VerifiedTokenMetadata internal constructor(
         val readings = reads.observe(token)
             .map { reading ->
                 when (reading) {
-                    EngineReading.Syncing -> MetadataReading.Syncing
+                    EngineReading.Syncing, is EngineReading.LastKnown -> MetadataReading.Syncing
                     is EngineReading.Proven -> reading.value
                     is EngineReading.Unavailable -> MetadataReading.Unavailable(reading.reason)
                 }

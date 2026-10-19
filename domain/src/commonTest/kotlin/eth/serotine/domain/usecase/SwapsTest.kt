@@ -148,6 +148,14 @@ class SwapsTest {
     }
 
     @Test
+    fun aLastKnownBalanceIsNeverQuotedOn() = runTest {
+        pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
+        tokens.of(account, usdcToken.address).value =
+            TokenBalanceReading.LastKnown(TokenUnits.of("500000000"), 110, asOf = null)
+        assertEquals(SwapQuoting.Syncing, quoteUsdcForLink())
+    }
+
+    @Test
     fun anAllowanceThatFallsShortAsksForTheApprovalFirst() = runTest {
         pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
         allow(UInt256.of(5))
