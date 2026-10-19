@@ -7,5 +7,5 @@ import kotlin.test.Test
 class RemoveAccountDialogPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(removeAccountDialogPreviews)
+    fun everyPreviewRenders() = renderEach("removeAccountDialog", removeAccountDialogPreviews)
 }

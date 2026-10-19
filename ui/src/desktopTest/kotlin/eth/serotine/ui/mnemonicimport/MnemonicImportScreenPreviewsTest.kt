@@ -7,5 +7,5 @@ import kotlin.test.Test
 class MnemonicImportScreenPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(mnemonicImportScreenPreviews)
+    fun everyPreviewRenders() = renderEach("mnemonicImportScreen", mnemonicImportScreenPreviews)
 }

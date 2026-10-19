@@ -19,6 +19,10 @@ standing rules, especially:
 - Android first: no JVM-only APIs desugaring can't cover (CLAUDE.md
   "minSdk 29 JDK-API budget"), no java.net.http, HTTP via Ktor;
   Java 17 class files for everything Android loads.
+- PR description: a PR that changes what the UI shows carries
+  screenshots of it, or says "No UI change" (CLAUDE.md, "Pull
+  requests and code review"); read it with `gh pr view` and flag a
+  visible change without them, or with them missing a state it adds.
 - Kotlin: immutable data, sealed UI states, structured concurrency
   (no GlobalScope, no blocking on the main thread), SOLID as
   CLAUDE.md spells it out.

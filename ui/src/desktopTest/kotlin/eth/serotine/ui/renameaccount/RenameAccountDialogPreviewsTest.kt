@@ -7,5 +7,5 @@ import kotlin.test.Test
 class RenameAccountDialogPreviewsTest {
 
     @Test
-    fun everyPreviewRenders() = renderEach(renameAccountDialogPreviews)
+    fun everyPreviewRenders() = renderEach("renameAccountDialog", renameAccountDialogPreviews)
 }
