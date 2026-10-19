@@ -148,7 +148,8 @@ class UInt256 private constructor(
     private fun limb(i: Int): Long = limbs[i].toLong() and LIMB_MASK
 
     /** `this / divisor` and `this % divisor`, for a [divisor] in 1..2^31 - 1. */
-    private fun divRem(divisor: Int): Pair<UInt256, Int> {
+    internal fun divRem(divisor: Int): Pair<UInt256, Int> {
+        require(divisor > 0) { "a divisor is positive: $divisor" }
         val quotient = IntArray(LIMBS)
         var remainder = 0L
         for (i in LIMBS - 1 downTo 0) {

@@ -2,7 +2,8 @@
 
 How Serotine swaps one token for another without a server it has to trust:
 on Uniswap's contracts directly, and through CoW Protocol. This page is a
-design, and nothing on it is built yet. Issue #69 tracks it. A swap PR is held
+design. Its Uniswap plan is being built on `feature/swaps-uniswap` (*The
+plan*), and nothing of CoW is. Issue #69 tracks it. A swap PR is held
 to this page together with docs/wallet-ux.md (the screens and their rules),
 docs/embedding-myotis.md (what the engine reads and sends) and
 docs/keys-and-signing.md (what is signed). Where this page and CLAUDE.md
@@ -61,8 +62,9 @@ signed.
     wrapper, which the router wraps and unwraps within the swap.
 - **The proceeds go to the account itself.** No other recipient is offered:
   sending somewhere else is Send's job.
-- **Slippage.** The tolerance applied to a verified quote, rounded down. The
-  default and the bounds are the owner's (*Open questions*).
+- **Slippage.** The tolerance applied to a verified quote, rounded down: 0.5 %
+  by default, between 0.1 % and 5 %, and no second confirmation for a large
+  price impact for now (owner ruling, 2026-10-19, decision 2).
 - **Approvals are their own transaction, for the exact amount.**
   - When the account's allowance for the venue's spender does not cover the
     amount, the swap review starts with an approval step: "Allow
@@ -78,8 +80,8 @@ signed.
     own:
     - SwapRouter02 pulls only from the account that calls it.
     - CoW's vault relayer pulls only for an order the account signed.
-  - Unlimited approvals and Permit2 are the owner's decision (*Open
-    questions*).
+  - The exact amount, one approval per swap whose allowance falls short: no
+    unlimited approval and no Permit2 (owner ruling, 2026-10-19, decision 3).
 - **Freshness, for a swap from an account held here**, as Send's quote
   (docs/wallet-ux.md, screen 8):
   - A quote is made when the review is entered, again on Refresh, and when
@@ -566,26 +568,29 @@ route being unavailable, never to a wrong swap:
 Two multi-PR plans, the second after the first, so that Uniswap swaps can
 reach `main` without waiting for CoW's ruling (CLAUDE.md, *Multi-PR plans*:
 the final PR opens only when every planned part is merged). Both branch from
-`main` once `feature/wallet-ux` has merged. Whether they are two plans or one
-is the owner's decision (*Open questions*). Each part follows the checklist
-in docs/architecture.md.
+`main`, now that `feature/wallet-ux` has merged. Two plans, not one (owner
+ruling, 2026-10-19, decision 9). Each part follows the checklist in
+docs/architecture.md.
 
 **`feature/swaps-uniswap`**
 
 1. **Domain.**
    - The pin type, and the ABI of `getPool`, `liquidity`, `slot0`, QuoterV2,
      `SwapRouter02.multicall`, `exactInputSingle`, `exactInput` and
-     `unwrapWETH9`.
-   - The route candidates, the slippage arithmetic, and `SentAction`'s
-     approval and swap.
+     `unwrapWETH9`, and ERC-20's `approve` and `allowance`.
+   - The route candidates and their choice, and the slippage arithmetic.
    - Vectors made with Foundry's `cast`.
 2. **Adapters.**
+   - The ports and use cases a route needs, with fakes in their tests.
    - The Sepolia pins with their code hashes, pool discovery and quotes over
      the engine.
    - The router overhead pinned for the gas figure.
    - How long a quote takes, and which built-in tokens have pools on
      Sepolia.
 3. **Swap screens.**
+   - `SentAction`'s approval and swap, with their record and hold-back: they
+     land with the screens that send them, so nothing is recorded that no
+     screen shows.
    - Swap, compose (22): from, sell, buy, amount, tolerance.
    - Swap, review (23): the approval step, then the swap.
    - The status (9) for a swap.
@@ -626,10 +631,11 @@ on issue #69 until answered.
 1. **A pair with no verified Uniswap quote.** Do not offer it on CoW (as
    built until decided), or sign on CoW's unverified estimate with a
    warning?
-2. **Tolerance.** 0.5 % by default, between 0.1 % and 5 %? Should a price
-   impact above some level need a second confirmation?
-3. **Approvals.** The exact amount (one approval per swap), unlimited, or
-   Permit2?
+2. **Tolerance.** *Answered (owner ruling, 2026-10-19):* 0.5 % by default,
+   between 0.1 % and 5 %, and no second confirmation for a large price
+   impact for now.
+3. **Approvals.** *Answered (owner ruling, 2026-10-19):* the exact amount,
+   one approval per swap; not unlimited, not Permit2.
 4. **A CoW order's validity, and the wait before a fallback.** A few
    minutes, 5 proposed, then proven at a finalized block, 12.8 to 19.2 more
    minutes on Sepolia. Or a margin of a few blocks in place of finality,
@@ -648,6 +654,6 @@ on issue #69 until answered.
      light client does not prove.
 8. **Mainnet**, once allowed: a Uniswap swap in the public mempool, bounded
    by its minimum, with no private relay.
-9. **One plan or two.** Two (proposed): Uniswap reaches `main` on its own
-   branch, and CoW follows on another once its ruling is made. Or one
-   `feature/swaps` that reaches `main` only with CoW.
+9. **One plan or two.** *Answered (owner ruling, 2026-10-19):* two. Uniswap
+   reaches `main` on `feature/swaps-uniswap`, and CoW follows on
+   `feature/swaps-cow` once its ruling is made.

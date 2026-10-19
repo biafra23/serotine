@@ -134,10 +134,7 @@ object SafeCreation {
      * The address a call returned as its one ABI word ([returnHex], lower-case hex without `0x`):
      * what `createProxyWithNonce` returns. Null when it returned anything else.
      */
-    fun returnedAddress(returnHex: String): Address? {
-        if (returnHex.length != 2 * WORD || returnHex.any { it !in '0'..'9' && it !in 'a'..'f' }) return null
-        return AbiWords.address(returnHex.hexToBytes())
-    }
+    fun returnedAddress(returnHex: String): Address? = AbiWords.returnedWord(returnHex)?.let(AbiWords::address)
 }
 
 /** The size of an address. */
