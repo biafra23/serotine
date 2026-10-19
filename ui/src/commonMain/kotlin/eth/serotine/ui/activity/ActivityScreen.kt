@@ -112,6 +112,8 @@ private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
     ListItem(
         modifier = Modifier.testTag(ACTIVITY_ROW_TAG).clickable(onClick = onClick),
         leadingContent = { AccountAvatar(row.about) },
+        // When, above what it did: beside it, the date would squeeze each row into narrow lines.
+        overlineContent = { Text(row.time) },
         headlineContent = { Text(row.title) },
         supportingContent = {
             Column {
@@ -119,7 +121,6 @@ private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
                 Text(row.status, style = MaterialTheme.typography.labelSmall, color = colorOf(row.state))
             }
         },
-        trailingContent = { Text(row.time, style = MaterialTheme.typography.labelSmall) },
     )
 }
 

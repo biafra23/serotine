@@ -23,7 +23,7 @@ class ActivityScreenTest {
         title = "Sent 0.25 ETH",
         detail = "To Bob · 0x5aAe…eAed",
         about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-        time = "19 Oct 2026, 14:02",
+        time = "Oct 19, 2026, 2:02 PM",
         status = "Reverted in block 9,401,220",
         state = ActivityState.FAILED,
     )
