@@ -134,7 +134,11 @@ private fun SafeTxPreview(
         SafeTxScreen(
             state = state,
             lightClient = lightClient,
-            actions = SafeTxActions(), onBack = {}, onCopy = {}, onShareText = {})
+            actions = SafeTxActions(),
+            onBack = {},
+            onCopy = {},
+            onShareText = {},
+        )
     }
 }
 
