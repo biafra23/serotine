@@ -397,6 +397,7 @@ class AppGraph(
         ObserveAddressKind(addressKinds),
         ObserveAccounts(accounts),
         WatchAddress(accounts, addressKinds),
+        ResolveRecipient(names),
     )
 
     fun settingsViewModel(): SettingsViewModel =

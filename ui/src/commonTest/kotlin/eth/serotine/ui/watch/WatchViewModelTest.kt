@@ -8,12 +8,15 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.FakeNames
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -45,6 +49,7 @@ class WatchViewModelTest {
     private val kinds = object : AddressKinds {
         override fun observeKind(address: Address): Flow<KindReading> = reading
     }
+    private val names = FakeNames()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -55,6 +60,7 @@ class WatchViewModelTest {
             ObserveAddressKind(kinds),
             ObserveAccounts(accounts),
             WatchAddress(accounts, kinds),
+            ResolveRecipient(names),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -139,6 +145,7 @@ class WatchViewModelTest {
             ObserveAddressKind(kinds),
             ObserveAccounts(accounts),
             WatchAddress(accounts, syncing),
+            ResolveRecipient(names),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -205,6 +212,7 @@ class WatchViewModelTest {
                 ObserveAddressKind(kinds),
                 ObserveAccounts(accounts),
                 WatchAddress(accounts, gatedKinds),
+                ResolveRecipient(names),
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -241,9 +249,18 @@ class WatchViewModelTest {
             viewModel.uiState.value.addressError,
         )
 
-        viewModel.onAddressChange("vitalik.eth")
+        viewModel.onAddressChange("vitalik")
         runCurrent()
-        assertEquals("Enter the address itself; names (ENS) come with sending.", viewModel.uiState.value.addressError)
+        assertNull(viewModel.uiState.value.addressError, "a name still being typed")
+        assertEquals("A name ends in its domain, as in name.eth.", viewModel.uiState.value.addressNote)
+
+        viewModel.onAddressChange("0x" + "00".repeat(20))
+        runCurrent()
+        assertEquals(
+            "The zero address: nobody holds its key, so there is no account to watch.",
+            viewModel.uiState.value.addressError,
+        )
+        assertNull(viewModel.uiState.value.detection)
 
         viewModel.onAddressChange("0xzz")
         runCurrent()
@@ -283,5 +300,96 @@ class WatchViewModelTest {
         viewModel.add()
         runCurrent()
         assertEquals(AccountKind.SAFE, accounts.accounts.value.last().kind)
+    }
+
+    @Test
+    fun aNameIsResolvedVerifiedAndItsAddressAdded() = runTest {
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        runCurrent()
+        assertEquals("Resolving the name with verified calls…", viewModel.uiState.value.addressNote)
+        assertNull(viewModel.uiState.value.detection, "no card before the name is resolved")
+        assertTrue(names.asked.isEmpty(), "not resolved while the typing may go on")
+
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(
+            "Resolves to $vitalik, verified at finalized block 9,412,040",
+            viewModel.uiState.value.addressNote,
+        )
+        assertNull(viewModel.uiState.value.addressError)
+        assertEquals(
+            Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),
+            viewModel.uiState.value.detection,
+        )
+
+        viewModel.add()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.done)
+        assertEquals(listOf("vitalik.eth", "vitalik.eth"), names.asked, "resolved again at Add")
+        // Nothing of the name is copied into the account's: an empty name stays the default one.
+        assertEquals(
+            Account(Address.of(vitalik), AccountKind.EOA, "Account 2", AccountCustody.Watched),
+            accounts.accounts.value.last(),
+        )
+    }
+
+    @Test
+    fun aNameThatMovedBeforeTheAddIsNotAddedAndTheCardFollowsIt() = runTest {
+        val elsewhere = Address.of("0x" + "44".repeat(20))
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.canAdd)
+
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", elsewhere, 9_412_072)
+        viewModel.add()
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.done)
+        assertEquals(
+            "“vitalik.eth” no longer resolves to the address that was shown: check the address it has now. " +
+                "Nothing was added.",
+            viewModel.uiState.value.error,
+        )
+        assertEquals(listOf(daily), accounts.accounts.value, "nothing added")
+        assertEquals(Eip55.format(elsewhere), (viewModel.uiState.value.detection as Detection.Account).address)
+    }
+
+    @Test
+    fun aNameWithoutAVerifiedAddressSaysWhyAndCanBeTriedAgain() = runTest {
+        val viewModel = viewModel()
+        names.names["offchain.eth"] = NameResolution.OffchainOnly
+        viewModel.onAddressChange("offchain.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(
+            "Only an off-chain gateway gives this name's address, and Serotine asks none: it cannot be resolved here.",
+            viewModel.uiState.value.addressError,
+        )
+        assertFalse(viewModel.uiState.value.canRetryLookup, "asking again changes nothing")
+
+        names.names["later.eth"] = NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.onAddressChange("later.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(
+            "The name could not be resolved with verified calls this time.",
+            viewModel.uiState.value.addressError,
+        )
+        assertTrue(viewModel.uiState.value.canRetryLookup)
+        assertNull(viewModel.uiState.value.detection)
+        assertFalse(viewModel.uiState.value.canAdd)
+
+        names.names["later.eth"] = NameResolution.Resolved("later.eth", Address.of(vitalik), 9_412_100)
+        viewModel.onRetryLookup()
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertNull(viewModel.uiState.value.addressError)
+        assertTrue(viewModel.uiState.value.canAdd)
     }
 }

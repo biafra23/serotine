@@ -249,6 +249,15 @@ upgrades*).
       Safe (version, `t of n`, the owners' blockies, enabled modules and a
       guard if any); or another contract.
     - The control badge the account will get (owners held here count).
+    - As built (`WatchViewModel`, issue #71): an ENS name is resolved as
+      Send's recipient is (`ResolveRecipient`, finalized state only, once the
+      typing pauses), the field saying the address it resolves to, in full,
+      and the finalized block it was resolved at, whatever the card says; a
+      name that could not be verified offers Try again. At Add the name is resolved again: what is
+      watched is the address it has then, and one that moved, or cannot be
+      verified again, is said and nothing is added. The account's name is
+      not filled from the ENS name (that waits for primary names, #67). The
+      zero address is refused: nobody holds its key.
 11. **Import recovery phrase**: today's seed screen, with the account's name,
     the wallet password (on the first key) and the biometric opt-in (still to
     come; until then it is turned on in Security, 21).
