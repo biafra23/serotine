@@ -77,14 +77,14 @@ class AccountsScreenTest {
         show(AccountsUiState.Ready("Sepolia", syncing, emptyList()))
 
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
-        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
     }
 
     @Test
     fun readyStateListsEveryAccountWithItsControlAndBalance() {
         show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
 
-        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithText("Daily").assertIsDisplayed()
         rule.onNodeWithText("0x8F3a…91c2").assertIsDisplayed()
         rule.onNodeWithText("Full control").assertIsDisplayed()

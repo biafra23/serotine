@@ -165,8 +165,9 @@ upgrades*).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
-     tap opens Send (7) with the asset chosen, greyed out as in 3 (the tap
-     then says why); a long press opens 5.
+     tap opens Send (7) with the asset chosen; where Send cannot be done
+     (as in 3) the row is drawn as ever and the tap says why, as the
+     greyed-out Send button does. A long press opens 5.
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·

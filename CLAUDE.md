@@ -516,7 +516,7 @@ discussion that produced this note.
   same artifact in the same round, so its link stays and its history keeps
   the earlier versions. A session that has neither (no browser, no
   Artifact tool) attaches the files to the conversation, each named after
-  its screen and state (`assets-head-too-old-after.png`) with its caption,
+  its screen and state (`accounts-head-too-old-after.png`) with its caption,
   and the section says they were shown in the session. A host where the
   files reach no one (CI, a plain `claude` terminal) lists
   in that section each state under its caption, with the

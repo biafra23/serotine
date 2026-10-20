@@ -57,7 +57,7 @@ import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
 
 /** Test tag of the account list, for UI tests. */
-const val ACCOUNT_LIST_TAG = "account-list"
+const val ACCOUNTS_LIST_TAG = "accounts-list"
 
 /** Test tag of the notice when the stored list is not what is shown: set aside, or unavailable. */
 const val ACCOUNTS_NOTICE_TAG = "accounts-notice"
@@ -271,12 +271,13 @@ private fun AccountList(
     onUnavailable: (UnavailableNotice) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier.fillMaxSize().testTag(ACCOUNT_LIST_TAG)) {
+    LazyColumn(modifier.fillMaxSize().testTag(ACCOUNTS_LIST_TAG)) {
         items(accounts, key = { it.address }) { account ->
             WithActionMenu(
                 actions = accountMenu(account, onAccountAction, onUnavailable),
                 menuLabel = "Actions for ${account.label}",
                 onClick = { onAccountAction(AccountAction.Open(account.address)) },
+                clickLabel = "Open ${account.label}",
             ) {
                 AccountRow(account)
             }

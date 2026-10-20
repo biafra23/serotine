@@ -402,12 +402,14 @@ private fun Assets(
                 contract?.let { MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(it) } },
                 contract?.let { MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) } },
             )
-            // A tap sends the asset, greyed out as the Send button is: a tap then says why.
+            // A tap sends the asset. The row stays as it is where Send cannot be done (its balance is
+            // still to be read, and its menu still works): the tap then says why, as the greyed-out
+            // Send button does, and accessibility services announce it as such.
             WithActionMenu(
                 actions = actions,
                 menuLabel = "Actions for ${asset.symbol}",
                 onClick = { onSend(contract) },
-                clickLabel = "Send ${asset.symbol}",
+                clickLabel = if (state.canSend) "Send ${asset.symbol}" else "Why Send ${asset.symbol} is unavailable",
             ) {
                 AssetItem(asset)
             }

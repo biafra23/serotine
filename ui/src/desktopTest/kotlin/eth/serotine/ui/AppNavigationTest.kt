@@ -88,10 +88,11 @@ import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_ASSET_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
-import eth.serotine.ui.accounts.ACCOUNT_LIST_TAG
+import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
 import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
@@ -413,7 +414,7 @@ class AppNavigationTest {
         assertEquals(listOf("update-required"), screens())
 
         status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
-        rule.waitUntil { rule.onAllNodesWithTag(ACCOUNT_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil { rule.onAllNodesWithTag(ACCOUNTS_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(
             listOf("accounts"),
             screens(),
@@ -452,7 +453,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         // Selecting the tab it is on returns to the tab's start.
         rule.onNodeWithText("Accounts").performClick()
-        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
     }
 
     @Test
@@ -570,12 +571,12 @@ class AppNavigationTest {
         rule.runOnIdle { navController.single().popBackStack() }
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         rule.runOnIdle { navController.single().popBackStack() }
-        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
 
         rule.onNodeWithText("Settings").performClick()
         rule.onNodeWithText("Accounts").performClick()
 
-        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertDoesNotExist()
     }
 
@@ -646,6 +647,26 @@ class AppNavigationTest {
 
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun aTapOnAnAssetRowSendsItFromAnAccountAndProposesItFromASafe() {
+        accounts.value = listOf(daily, treasury)
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG)[0].performClick()
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        assertEquals(listOf("accounts", "account/{address}", "send/{address}?asset={asset}"), screens())
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
+
+        rule.onNodeWithText("Treasury").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Co-signer").fetchSemanticsNodes().isNotEmpty() }
+        rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG)[0].performClick()
+        rule.onNodeWithText("Send from a Safe").assertIsDisplayed()
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/propose?asset={asset}"), screens())
     }
 
     @Test
@@ -844,7 +865,7 @@ class AppNavigationTest {
         // The signed review is gone from the back stack: Done returns to Accounts, right away.
         assertEquals(listOf("accounts", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
-        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
 
         // Mined and proven with the status screen long gone: the Safe is listed all the same.
         receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
