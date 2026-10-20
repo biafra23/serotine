@@ -154,7 +154,7 @@ class EngineLogIndex internal constructor(
             }
             is LogWatchKey.Mention -> putJsonArray("topics") {
                 add(topic0)
-                repeat(query.position - 1) { add(JsonNull) }
+                repeat(requireNotNull(query.position) - 1) { add(JsonNull) }
                 add(topicOf(key.address))
             }
         }
@@ -201,7 +201,7 @@ class EngineLogIndex internal constructor(
         if (query.topic0s.isNotEmpty() && topics.firstOrNull() !in query.topic0s) return false
         return when (val key = query.key) {
             is LogWatchKey.Emitter -> log.log.address == key.address
-            is LogWatchKey.Mention -> topics.getOrNull(query.position) == topicOf(key.address)
+            is LogWatchKey.Mention -> topics.getOrNull(requireNotNull(query.position)) == topicOf(key.address)
         }
     }
 

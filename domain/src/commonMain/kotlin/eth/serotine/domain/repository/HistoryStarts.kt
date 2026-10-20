@@ -18,8 +18,9 @@ interface HistoryStarts {
     fun observe(): Flow<HistoryStartList>
 
     /**
-     * Notes that [address] was added to the wallet at [atSeconds] (unix seconds), unless a start
-     * is held for it already, which is kept. False when it could not be saved.
+     * Notes that [address] was added to the wallet at [atSeconds] (unix seconds), in place of any
+     * start held for it: an account added anew starts anew, and a start left from before was the
+     * start of an account since removed. False when it could not be saved.
      */
     suspend fun note(address: Address, atSeconds: Long): Boolean
 
@@ -30,8 +31,11 @@ interface HistoryStarts {
      */
     suspend fun fix(address: Address, block: Long): Boolean
 
-    /** Forgets [address]'s start; true when none is held for it any more. */
-    suspend fun forget(address: Address): Boolean
+    /**
+     * Forgets [address]'s start if it is still [start], and keeps one that replaced it meanwhile
+     * (the account added anew). False when it could not be saved.
+     */
+    suspend fun forget(address: Address, start: HistoryStart): Boolean
 }
 
 /** What [HistoryStarts.observe] holds. */

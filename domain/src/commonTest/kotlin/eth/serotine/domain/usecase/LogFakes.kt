@@ -25,7 +25,7 @@ internal class MemoryHistoryStarts(vararg initial: Pair<Address, HistoryStart>) 
 
     override suspend fun note(address: Address, atSeconds: Long): Boolean {
         if (failSaves) return false
-        if (address !in starts.value) starts.value = starts.value + (address to HistoryStart.Noted(atSeconds))
+        starts.value = starts.value + (address to HistoryStart.Noted(atSeconds))
         return true
     }
 
@@ -35,9 +35,9 @@ internal class MemoryHistoryStarts(vararg initial: Pair<Address, HistoryStart>) 
         return true
     }
 
-    override suspend fun forget(address: Address): Boolean {
+    override suspend fun forget(address: Address, start: HistoryStart): Boolean {
         if (failSaves) return false
-        starts.value = starts.value - address
+        if (starts.value[address] == start) starts.value = starts.value - address
         return true
     }
 }

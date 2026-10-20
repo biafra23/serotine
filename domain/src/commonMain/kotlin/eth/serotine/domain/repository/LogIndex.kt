@@ -79,21 +79,22 @@ data class LogCoverage(val fromBlock: Long, val covered: LongRange?)
 /**
  * The logs of blocks [fromBlock] to [toBlock] that [key]'s entry holds: for an
  * [LogWatchKey.Emitter], those its contract emitted, of the events in [topic0s] (empty: any);
- * for a [LogWatchKey.Mention], those carrying its address as topic [position] (1 to 3), of the
- * events in [topic0s] (empty: any). [topic0s] are event signature hashes, `0x` and 64 lower-case
- * hex digits. The range is explicit at both ends: the index's answer does not say which range
- * it read.
+ * for a [LogWatchKey.Mention], those carrying its address as topic [position] (1 to 3, and only
+ * for a mention), of the events in [topic0s] (empty: any). [topic0s] are event signature hashes,
+ * `0x` and 64 lower-case hex digits. The range is explicit at both ends: the index's answer does
+ * not say which range it read.
  */
 data class LogQuery(
     val key: LogWatchKey,
     val fromBlock: Long,
     val toBlock: Long,
     val topic0s: List<String> = emptyList(),
-    val position: Int = 1,
+    val position: Int? = null,
 ) {
     init {
         require(fromBlock in 0..toBlock) { "a range from block $fromBlock to $toBlock" }
-        require(position in 1..3) { "a topic position is 1, 2 or 3" }
+        require((key is LogWatchKey.Mention) == (position != null)) { "a topic position for a mention, only for one" }
+        require(position == null || position in 1..3) { "a topic position is 1, 2 or 3" }
         require(topic0s.all { TOPIC.matches(it) }) { "a topic is 0x and 64 lower-case hex digits" }
     }
 

@@ -52,7 +52,8 @@ class AccountLogsTest {
     }
 
     @Test
-    fun anAddedAccountIsNotedFirstWithTheTimeAndTheAddAnswersAsTheListDoes() = runTest {
+    fun anAccountAddedIsNotedWithTheTimeInPlaceOfAStartLeftFromBefore() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(1_000))
         val noting = HistoryNotingAccounts(accounts, starts, clock = { HEAD_TIME - 60 })
 
         assertEquals(AccountAdd.Added, noting.add(alice))
@@ -60,11 +61,11 @@ class AccountLogsTest {
 
         val later = HistoryNotingAccounts(accounts, starts, clock = { HEAD_TIME })
         assertEquals(AccountAdd.AlreadyPresent, later.add(alice))
-        assertEquals(HistoryStart.Noted(HEAD_TIME - 60), starts.starts.value[alice.address], "the first note is kept")
+        assertEquals(HistoryStart.Noted(HEAD_TIME - 60), starts.starts.value[alice.address], "not added again")
 
         accounts.failSaves = true
         assertEquals(AccountAdd.NotSaved, later.add(vault))
-        assertEquals(HistoryStart.Noted(HEAD_TIME), starts.starts.value[vault.address], "noted before the add failed")
+        assertEquals(null, starts.starts.value[vault.address], "not added at all")
     }
 
     @Test
@@ -137,20 +138,16 @@ class AccountLogsTest {
     }
 
     @Test
-    fun aStartIsNotFixedWhileTheHistoryCannotBeRead() = runTest {
+    fun aHistoryThatCannotBeReadLeavesTheStartAtTheNote() = runTest {
         accounts.accounts.value = listOf(alice)
+        starts.starts.value = mapOf(alice.address to HistoryStart.Noted(HEAD_TIME))
+        history.entries.value = listOf(HistoryEntry(sent(alice.address, nativeTo(vault.address), DAY)))
         history.readable.value = false
         follow()
         sync()
         runCurrent()
 
-        assertEquals(emptyMap(), starts.starts.value)
-        assertEquals(emptyList(), index.asked)
-
-        history.readable.value = true
-        runCurrent()
-
-        assertEquals(HistoryStart.Fixed(10_000), starts.starts.value[alice.address])
+        assertEquals(HistoryStart.Fixed(9_700), starts.starts.value[alice.address])
     }
 
     @Test
@@ -180,14 +177,13 @@ class AccountLogsTest {
     }
 
     @Test
-    fun aNoteWhoseAccountIsNotListedIsLeftAlone() = runTest {
-        // An add on its way: noted, not listed yet.
+    fun theNoteOfAnAccountThatLeftBeforeItsStartWasFixedIsForgottenAndNothingUnwatched() = runTest {
         starts.starts.value = mapOf(alice.address to HistoryStart.Noted(HEAD_TIME))
         follow()
         sync()
         runCurrent()
 
-        assertEquals(mapOf(alice.address to HistoryStart.Noted(HEAD_TIME)), starts.starts.value)
+        assertEquals(emptyMap(), starts.starts.value)
         assertEquals(emptyList(), index.asked)
     }
 

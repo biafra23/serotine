@@ -153,12 +153,13 @@ class EngineLogIndexTest {
 
     @Test
     fun aRangeBelowTheEntrysBlockOrOfAnEntryNotFollowedIsNotAskedOfTheEngine() = runTest {
-        assertEquals(LogsReading.BeforeStart(100), index().logs(LogQuery(LogWatchKey.Mention(alice), 99, 200)))
+        val belowAlices = LogQuery(LogWatchKey.Mention(alice), 99, 200, position = 1)
+        assertEquals(LogsReading.BeforeStart(100), index().logs(belowAlices))
         assertEquals(LogsReading.NotWatched, index().logs(LogQuery(LogWatchKey.Emitter(alice), 100, 200)))
         chain.status = """{"error":"handle is paused"}"""
         assertEquals(
             LogsReading.Unavailable(ReadUnavailable.UNPROVEN),
-            index().logs(LogQuery(LogWatchKey.Mention(alice), 100, 200)),
+            index().logs(LogQuery(LogWatchKey.Mention(alice), 100, 200, position = 1)),
         )
 
         assertEquals(emptyList(), chain.filters)
@@ -167,14 +168,14 @@ class EngineLogIndexTest {
     @Test
     fun theEnginesRefusalsAreReadForWhatTheySay() = runTest {
         val query = LogQuery(LogWatchKey.Emitter(vault), 100, 200)
-        fun answer(json: String) = run {
+        suspend fun answer(json: String): LogsReading {
             chain.answer = json
-            index().logs(query)
+            return index().logs(query)
         }
 
         assertEquals(
             LogsReading.NotCovered(150L..300L),
-            answer("""{"error":"requested range is not indexed yet (covered: 150-300); retry as the index catches up"}"""),
+            answer("""{"error":"requested range is not indexed yet (covered: 150-300); retry as it catches up"}"""),
         )
         assertEquals(
             LogsReading.NotCovered(null),

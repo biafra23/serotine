@@ -50,7 +50,7 @@ class FileHistoryStarts(
     }
 
     override suspend fun note(address: Address, atSeconds: Long): Boolean = file.change(notSaved = false) { starts ->
-        if (address in starts) Decision(true) else Decision(true, starts + (address to HistoryStart.Noted(atSeconds)))
+        Decision(true, starts + (address to HistoryStart.Noted(atSeconds)))
     }
 
     override suspend fun fix(address: Address, block: Long): Boolean = file.change(notSaved = false) { starts ->
@@ -61,9 +61,10 @@ class FileHistoryStarts(
         }
     }
 
-    override suspend fun forget(address: Address): Boolean = file.change(notSaved = false) { starts ->
-        if (address !in starts) Decision(true) else Decision(true, starts - address)
-    }
+    override suspend fun forget(address: Address, start: HistoryStart): Boolean =
+        file.change(notSaved = false) { starts ->
+            if (starts[address] != start) Decision(true) else Decision(true, starts - address)
+        }
 
     /** The file's layout. [version] comes first and is always written. */
     @Serializable

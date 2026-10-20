@@ -25,9 +25,11 @@ import kotlinx.coroutines.flow.conflate
 /**
  * [accounts], which also notes in [starts] when each account is added ([HistoryStarts.note]):
  * what the composition roots hand every use case that adds one, so none of them has to know of
- * it. The note is made first, so an account is never listed without one; one whose add then
- * fails stays noted, and is noted from that earlier time if it is added later. What [add]
- * answers is [accounts]' answer. [clock] is in unix seconds.
+ * it. Only an account [accounts] added is noted, once it is listed, in place of any start left
+ * from when it was in the wallet before. What [add] answers is [accounts]' answer: an account
+ * whose note could not be saved, or that [FollowAccountLogs] fixes before its note is made,
+ * starts at the head its start is fixed at, which is still after it was added. [clock] is in
+ * unix seconds.
  */
 class HistoryNotingAccounts(
     private val accounts: AccountRepository,
@@ -36,8 +38,9 @@ class HistoryNotingAccounts(
 ) : AccountRepository by accounts {
 
     override suspend fun add(account: Account): AccountAdd {
-        starts.note(account.address, clock())
-        return accounts.add(account)
+        val added = accounts.add(account)
+        if (added == AccountAdd.Added) starts.note(account.address, clock())
+        return added
     }
 }
 
@@ -56,7 +59,8 @@ class HistoryNotingAccounts(
  * - **What is followed.** Every account from its start, as a [LogWatchKey.Mention] (the token
  *   transfers to and from it), and a Safe also as a [LogWatchKey.Emitter] (its own events).
  * - **What is dropped.** An account that left the wallet is unwatched, with what the index held
- *   of it, and its start forgotten once the engine took that.
+ *   of it, and its start forgotten once the engine took that; one that left before its start was
+ *   fixed was never watched, and its start is just forgotten.
  *
  * What the engine took is not asked of it again while this runs; what it did not take is asked
  * again at the next change of the light client's state (a new head, about every slot). Each
@@ -87,13 +91,18 @@ class FollowAccountLogs(
         val listed = (round.accounts as? AccountList.Loaded)?.accounts ?: return taken
         val held = (round.starts as? HistoryStartList.Loaded)?.starts ?: return taken
         val synced = round.status as? LightClientStatus.Synced ?: return taken
-        val fixed = held.filterValues { it is HistoryStart.Fixed }.mapValues { (it.value as HistoryStart.Fixed).block }
-            .toMutableMap()
-        val entries = (round.history as? HistoryList.Loaded)?.entries
-        // Fixed for good, so only with the history read: it may know of an earlier time.
-        if (entries != null && synced.headTimestamp != null) {
+        val listedAddresses = listed.map { it.address }.toSet()
+        held.filter { (address, start) -> address !in listedAddresses && start is HistoryStart.Noted }
+            .forEach { (address, start) -> starts.forget(address, start) }
+        val fixed = held.mapNotNull { (address, start) -> (start as? HistoryStart.Fixed)?.let { address to it.block } }
+            .toMap(mutableMapOf())
+        // An unreadable history only leaves out what it could add: a start no earlier than the note.
+        val entries = (round.history as? HistoryList.Loaded)?.entries.orEmpty()
+        val headTime = synced.headTimestamp
+        if (headTime != null) {
             listed.filter { it.address !in fixed }.forEach { account ->
-                val block = startOf(account.address, held[account.address] as? HistoryStart.Noted, entries, synced)
+                val noted = held[account.address] as? HistoryStart.Noted
+                val block = startOf(account.address, noted, entries, synced.headBlock, headTime)
                 if (starts.fix(account.address, block)) fixed[account.address] = block
             }
         }
@@ -104,36 +113,35 @@ class FollowAccountLogs(
                 LogWatch(LogWatchKey.Emitter(account.address), from).takeIf { account.kind == AccountKind.SAFE },
             )
         }.toSet()
-        // Only a fixed start can have been watched; a noted one alone is an add on its way.
-        val gone = fixed.keys - listed.map { it.address }.toSet()
+        val gone = fixed.keys - listedAddresses
         val asked = watch - taken
         if (asked.isEmpty() && gone.isEmpty()) return taken
         val unwatch = gone.flatMap { listOf(LogWatchKey.Mention(it), LogWatchKey.Emitter(it)) }
         if (!index.configure(asked.toList(), unwatch)) return taken
-        gone.forEach { starts.forget(it) }
+        gone.forEach { starts.forget(it, HistoryStart.Fixed(fixed.getValue(it))) }
         return (taken + asked).filterTo(HashSet()) { it.key.address !in gone }
     }
 
     /**
-     * The block [address]'s history starts at: counted back from [head] to the earliest time the
-     * device knows of it ([noted], or a transaction in [entries] concerning it), or to the head when
-     * it knows none; or a verified block of such a transaction, when earlier still.
+     * The block [address]'s history starts at: counted back from [headBlock], made at [headTime],
+     * to the earliest time the device knows of it ([noted], or a transaction in [entries]
+     * concerning it), or the head when it knows none; or a verified block of such a transaction,
+     * when earlier still.
      */
     private fun startOf(
         address: Address,
         noted: HistoryStart.Noted?,
         entries: List<HistoryEntry>,
-        head: LightClientStatus.Synced,
+        headBlock: Long,
+        headTime: Long,
     ): Long {
         val concerning = entries.filter { it.concerns(address) }
         val earliest = (concerning.map { it.transfer.sentAt } + listOfNotNull(noted?.atSeconds)).minOrNull()
         val counted = if (earliest == null) {
-            head.headBlock
+            headBlock
         } else {
-            val seconds = (head.headTimestamp ?: return head.headBlock) - earliest
-            val back = (seconds.coerceAtLeast(0) + CLOCK_MARGIN_SECONDS + network.secondsPerSlot - 1) /
-                network.secondsPerSlot
-            head.headBlock - back
+            val seconds = (headTime - earliest).coerceAtLeast(0) + CLOCK_MARGIN_SECONDS
+            headBlock - (seconds + network.secondsPerSlot - 1) / network.secondsPerSlot
         }
         val seen = concerning.mapNotNull { it.outcome.blockOrNull() }.minOrNull()
         return minOf(counted, seen ?: counted).coerceAtLeast(0)

@@ -52,9 +52,9 @@ class FileHistoryStartsTest {
         val starts = starts()
         assertEquals(emptyMap(), starts.held())
 
-        assertTrue(starts.note(alice, 1_800_000_000))
+        assertTrue(starts.note(alice, 1_700_000_000))
         assertTrue(starts.note(vault, 1_800_000_100))
-        assertTrue(starts.note(alice, 1_900_000_000), "kept, and said to be held")
+        assertTrue(starts.note(alice, 1_800_000_000), "added anew")
         assertTrue(starts.fix(vault, 9_400_000))
         assertFalse(starts.fix(vault, 9_000_000), "a fixed start is kept")
 
@@ -65,17 +65,17 @@ class FileHistoryStartsTest {
     }
 
     @Test
-    fun aForgottenStartIsGoneAndForgettingNoneIsDone() = runTest {
+    fun aStartIsForgottenOnlyWhileItIsTheOneSeen() = runTest {
         val starts = starts()
         starts.note(alice, 1_800_000_000)
         starts.fix(alice, 9_400_000)
+        starts.note(vault, 1_800_000_000)
 
-        assertTrue(starts.forget(alice))
-        assertTrue(starts.forget(alice))
-        assertEquals(emptyMap(), starts().held())
+        assertTrue(starts.forget(alice, HistoryStart.Fixed(9_400_000)))
+        assertTrue(starts.forget(alice, HistoryStart.Fixed(9_400_000)), "none held")
+        assertTrue(starts.forget(vault, HistoryStart.Fixed(9_400_000)), "replaced meanwhile: kept")
 
-        assertTrue(starts.note(alice, 1_900_000_000), "noted anew once forgotten")
-        assertEquals(mapOf(alice to HistoryStart.Noted(1_900_000_000)), starts.held())
+        assertEquals(mapOf(vault to HistoryStart.Noted(1_800_000_000)), starts().held())
     }
 
     @Test
@@ -87,8 +87,8 @@ class FileHistoryStartsTest {
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
         assertEquals(
             """{"version":1,"starts":[""" +
-                """{"address":"${alice.hex}","block":null,"addedAt":1800000000},""" +
-                """{"address":"${vault.hex}","block":9400000,"addedAt":null}]}""",
+                """{"address":"${alice.hex}","addedAt":1800000000},""" +
+                """{"address":"${vault.hex}","block":9400000}]}""",
             text,
         )
     }
