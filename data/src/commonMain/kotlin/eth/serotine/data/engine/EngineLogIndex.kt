@@ -69,10 +69,10 @@ internal interface LogIndexChain : VerifiedChain {
  * (`backfillPaused`), as the engine unions what is pushed with what it holds, and is asked
  * whenever the engine runs, since its walk can run before reads verify. The coverage is
  * polled every [pollInterval]; an entry this port does not model (restricted, or a topic that is
- * not an address at all three positions) is left out of it. A query is asked of the engine only from its entry's block on, which the status says;
- * logs are taken only when every one of them is what the query selects, in its range: anything
- * else is no answer, never a part of one. A device without an engine ([chain] null) answers
- * [ReadUnavailable.NO_ENGINE].
+ * not an address at all three positions) is left out of it. A query is asked of the engine only
+ * from its entry's block on, which the status says; logs are taken only when every one of them is
+ * what the query selects, in its range: anything else is no answer, never a part of one. A device
+ * without an engine ([chain] null) answers [ReadUnavailable.NO_ENGINE].
  */
 class EngineLogIndex internal constructor(
     private val chain: LogIndexChain?,
