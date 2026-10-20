@@ -120,7 +120,9 @@ jobs:
 
       # Starts the app on a simulator and checks it is still running a while later: a framework
       # that links but crashes at launch (a missing symbol, Compose's Info.plist check, the
-      # composition root) fails here. The screenshot is the run's artifact.
+      # composition root) fails here. So does an app that runs but draws nothing: below the
+      # status bar, the screenshot must hold more than one colour. The app's console output is
+      # printed either way, and the screenshot is the run's artifact.
       - name: Start the app on a simulator
         run: |
           set -euo pipefail
@@ -133,15 +135,40 @@ jobs:
           # Boots the device unless it already runs, then waits for the boot to finish.
           xcrun simctl bootstatus "$device" -b
           xcrun simctl install "$device" "$APP"
-          pid=$(xcrun simctl launch "$device" eth.serotine | awk '{print $NF}')
+          out="$RUNNER_TEMP/serotine-console.txt"
+          pid=$(xcrun simctl launch --stdout="$out" --stderr="$out" "$device" eth.serotine | awk '{print $NF}')
           sleep 30
-          xcrun simctl io "$device" screenshot "$RUNNER_TEMP/serotine-simulator.png"
+          shot="$RUNNER_TEMP/serotine-simulator.png"
+          xcrun simctl io "$device" screenshot "$shot"
+          echo "::group::The app's console"
+          cat "$out" || true
+          xcrun simctl spawn "$device" log show --last 2m --style compact \
+            --predicate 'process == "Serotine" AND messageType >= error' | tail -n 200 || true
+          echo "::endgroup::"
           if ! ps -p "$pid" > /dev/null; then
             echo "::error::Serotine exited within 30 s of its launch"
             exit 1
           fi
           echo "Serotine is running (pid $pid)"
-
+          sips -s format bmp "$shot" --out "$RUNNER_TEMP/shot.bmp" > /dev/null
+          python3 - "$RUNNER_TEMP/shot.bmp" <<'PY'
+          import struct, sys
+          data = open(sys.argv[1], "rb").read()
+          offset, = struct.unpack_from("<I", data, 10)
+          width, height, _, bits = struct.unpack_from("<iiHH", data, 18)
+          step = bits // 8
+          row = (width * step + 3) & ~3
+          colours = set()
+          # Rows below the status bar and above the home indicator, every 8th pixel.
+          for y in range(abs(height) * 15 // 100, abs(height) * 90 // 100, 8):
+              base = offset + y * row
+              for x in range(0, width, 8):
+                  colours.add(data[base + x * step : base + x * step + 3])
+          print(f"{len(colours)} colours below the status bar")
+          if len(colours) < 2:
+              print("::error::Serotine runs but its screen is blank: the Compose UI drew nothing")
+              sys.exit(1)
+          PY
       - name: Upload the simulator screenshot
         if: always()
         uses: actions/upload-artifact@v4

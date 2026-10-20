@@ -29,11 +29,6 @@ import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.experimental.ExperimentalNativeApi
-import kotlin.native.Platform
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +53,12 @@ import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIApplicationWillTerminateNotification
 import platform.UIKit.UIBackgroundTaskInvalid
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.Platform
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * The iOS composition root: the process's one wallet, which the Swift app creates once, before
@@ -76,6 +77,9 @@ import platform.UIKit.UIBackgroundTaskInvalid
  * runs no code, which the engine survives as any mobile app's state must.
  */
 class SerotineWallet {
+
+    /** When the wallet began to be built: a debug build says on the console how long the start took. */
+    private val began = TimeSource.Monotonic.markNow()
 
     /** The app's own Application Support directory: in its sandbox, never shown to the user. */
     private val dataDir: String = run {
@@ -201,6 +205,13 @@ class SerotineWallet {
             runBlocking { withTimeoutOrNull(TERMINATE_WAIT) { shutdown.join() } }
         }
         notifier.askPermission()
+        startupTime("wallet built")
+    }
+
+    /** Says on the console, in a debug build, how long after the wallet began [what] came. */
+    @OptIn(ExperimentalNativeApi::class)
+    internal fun startupTime(what: String) {
+        if (Platform.isDebugBinary) println("Serotine: $what ${began.elapsedNow()} after launch")
     }
 
     /**
