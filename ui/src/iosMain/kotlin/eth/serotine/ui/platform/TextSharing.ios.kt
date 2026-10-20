@@ -30,7 +30,8 @@ actual fun rememberShareText(): ((String) -> Unit)? {
 private fun share(controller: UIViewController, text: String) {
     var top: UIViewController = controller
     while (true) top = top.presentedViewController?.takeUnless { it.beingDismissed } ?: break
-    if (top is UIActivityViewController) return
+    // A sheet already up, or a dismissal still under way, which UIKit would refuse to present over.
+    if (top is UIActivityViewController || top.presentedViewController != null) return
     val sheet = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
     sheet.popoverPresentationController?.let { popover ->
         popover.sourceView = top.view

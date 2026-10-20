@@ -3,7 +3,6 @@ package eth.serotine.ui.platform
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.uikit.LocalUIViewController
 import eth.serotine.ui.components.ScreenCaptureEvent
 import eth.serotine.ui.components.ScreenCaptureWarningDialog
