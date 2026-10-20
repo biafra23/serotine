@@ -659,7 +659,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     signed in it.
 20. **Add token by address**: the contract's address, then its symbol, name
     and decimals read from the contract and labelled as its claim, with the
-    monogram icon it will get.
+    monogram icon it will get. The address only, never an ENS name (owner's
+    decision, 2026-10-20, on #121): anyone can point a name such as
+    `usdc-sepolia.eth` at a look-alike contract, and the name would lend it
+    a standing the contract's own claims do not have.
 21. **Security**
     - Wallet password: whether one is set, and how this device keeps the keys
       under it.
