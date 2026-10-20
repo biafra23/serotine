@@ -109,8 +109,9 @@ class SafeHistoriesTest {
         covered(9_050L..9_210L)
         runCurrent()
 
+        // The new blocks below, and the top 64 blocks read before again with the new ones above.
         assertEquals(
-            listOf(9_100L..9_200L, 9_050L..9_099L, 9_201L..9_210L),
+            listOf(9_100L..9_200L, 9_050L..9_099L, 9_137L..9_210L),
             index.queries.map { it.fromBlock..it.toBlock },
         )
         val grown = seen.last() as SafeHistory.Read
@@ -128,5 +129,19 @@ class SafeHistoriesTest {
 
         assertEquals(9_050L..9_190L, index.queries.last().let { it.fromBlock..it.toBlock }, "shrank: read again")
     }
-}
 
+    @Test
+    fun anEventABlockReorganisedAwayIsDroppedThoughTheSpanOnlyLooksGrown() = runTest {
+        starts.starts.value = mapOf(vault to HistoryStart.Fixed(9_000))
+        var logs = listOf(log(9_190, listOf(added, alicesTopic)))
+        index.answer = { query -> LogsReading.Logs(logs.filter { it.blockNumber in query.fromBlock..query.toBlock }) }
+        covered(9_000L..9_200L)
+        observe()
+        // Between two polls the index rewound past block 9,190 and walked a chain without it.
+        logs = emptyList()
+        covered(9_000L..9_205L)
+        runCurrent()
+
+        assertEquals(emptyList(), (seen.last() as SafeHistory.Read).events)
+    }
+}

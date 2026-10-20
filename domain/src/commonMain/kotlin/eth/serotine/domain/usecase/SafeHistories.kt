@@ -71,19 +71,26 @@ class ObserveSafeHistory(private val index: LogIndex, private val starts: Histor
 
     /**
      * The events of [span]: those of [before] (read for the same start) kept, and only the blocks
-     * it did not cover read; all of [span] when there is no [before] or the span shrank. A read
-     * that does not answer keeps [before], or says why there is none.
+     * it did not cover read, with its top [REORG_DEPTH] blocks read again; all of [span] when there
+     * is no [before] or the span shrank. A read that does not answer keeps [before], or says why
+     * there is none.
      */
     private suspend fun read(safe: Address, span: Span.Ready, before: SafeHistory.Read?): SafeHistory {
         val checked = span.checked
         val grown = before != null && checked.first <= before.checked.first && checked.last >= before.checked.last
+        // Coverage is polled: a rewind and its re-walk between two polls looks like growth, so the
+        // blocks a reorganisation can still replace are read again, not kept.
+        val keptBelow = if (before == null || !grown) {
+            checked.first
+        } else {
+            maxOf(before.checked.first, before.checked.last - REORG_DEPTH + 1)
+        }
         val ranges = if (before == null || !grown) {
             listOf(checked)
         } else {
-            listOf(checked.first until before.checked.first, before.checked.last + 1..checked.last)
-                .filterNot { it.isEmpty() }
+            listOf(checked.first until before.checked.first, keptBelow..checked.last).filterNot { it.isEmpty() }
         }
-        val kept = if (before != null && grown) before.events else emptyList()
+        val kept = if (before != null && grown) before.events.filter { it.blockNumber < keptBelow } else emptyList()
         val read = ranges.map { range ->
             val query = LogQuery(LogWatchKey.Emitter(safe), range.first, range.last, SafeEvents.TOPICS)
             when (val answer = index.logs(query)) {
@@ -106,6 +113,11 @@ class ObserveSafeHistory(private val index: LogIndex, private val starts: Histor
     private sealed interface Span {
         data class Ready(val start: Long, val checked: LongRange) : Span
         data class Other(val history: SafeHistory) : Span
+    }
+
+    private companion object {
+        /** The top blocks read again at each growth: two epochs, as deep as one not finalized reaches. */
+        const val REORG_DEPTH = 64L
     }
 }
 

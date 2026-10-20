@@ -339,5 +339,25 @@ class ActivityViewModelTest {
         assertEquals(ActivityState.WARNING, rows[1].state)
         assertEquals(ActivityState.FAILED, rows[3].state)
     }
-}
 
+    @Test
+    fun aFallbackHandlerOtherThanThePinnedOneWarnsAndThePinnedOneOrNoneDoesNot() = runTest {
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val handlerSet = "0x5ac6c46c93c8d0e53714ba3b53db3e7c046da994313d7ed0d192028bc7c228b0"
+        val pinned = "0x" + "00".repeat(12) + "fd0732dc9e303f09fcef3a7388ad10a83459ec99"
+        val none = "0x" + "00".repeat(32)
+        index.logs = listOf(
+            safeLog(9_401_000, listOf(handlerSet, bobsTopic), tx = "0x" + "a1".repeat(32)),
+            safeLog(9_402_000, listOf(handlerSet, pinned), tx = "0x" + "a2".repeat(32)),
+            safeLog(9_403_000, listOf(handlerSet, none), tx = "0x" + "a3".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(
+            listOf("Fallback handler removed", "Fallback handler set", "Fallback handler set"),
+            rows.map { it.title },
+        )
+        assertEquals(listOf(ActivityState.DONE, ActivityState.DONE, ActivityState.WARNING), rows.map { it.state })
+    }
+}
