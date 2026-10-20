@@ -10,11 +10,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.value
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -48,10 +44,7 @@ import kotlin.coroutines.resume
  * has no enclave, so the path is not offered there (rule 5).
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-class IosBiometricKey(
-    private val stateFile: String,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
-) : BiometricKey {
+class IosBiometricKey(private val stateFile: String) : BiometricKey {
 
     // Kotlin/Native has no @Synchronized: create and delete take turns by hand.
     private val lock = NSRecursiveLock()
@@ -125,46 +118,46 @@ class IosBiometricKey(
         }
     }
 
-    override suspend fun unwrap(wrapped: ByteArray, reason: String): BiometricUnwrap = withContext(dispatcher) {
+    // No withContext of its own: its exit would drop a finished Dek, un-zeroed, on a cancel. The
+    // store calls this on its dispatcher and opens the Dek before its next suspension point.
+    override suspend fun unwrap(wrapped: ByteArray, reason: String): BiometricUnwrap {
         val state = try {
             read()
         } catch (e: Exception) {
             println("Serotine: the biometric key's state cannot be read (${e.message ?: e::class.simpleName})")
             null
-        } ?: return@withContext BiometricUnwrap.Unusable(BiometricUnusable.OFF)
-        if (changedSince(state)) {
-            return@withContext BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
-        }
+        } ?: return BiometricUnwrap.Unusable(BiometricUnusable.OFF)
+        if (changedSince(state)) return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
         val context = LAContext()
         context.localizedFallbackTitle = USE_THE_PASSWORD
-        when (val code = evaluate(context, reason)) {
-            null -> Unit
-            LA_USER_CANCEL, LA_USER_FALLBACK, LA_SYSTEM_CANCEL, LA_APP_CANCEL ->
-                return@withContext BiometricUnwrap.Cancelled
-            // The face or finger was not recognised, try after try: not a dismissal.
-            LA_AUTHENTICATION_FAILED -> return@withContext BiometricUnwrap.Failed
-            LA_BIOMETRY_LOCKOUT -> return@withContext BiometricUnwrap.Unusable(BiometricUnusable.LOCKED_OUT)
-            LA_NOT_INTERACTIVE -> return@withContext BiometricUnwrap.Unusable(BiometricUnusable.NO_PROMPT)
-            LA_BIOMETRY_NOT_ENROLLED, LA_PASSCODE_NOT_SET ->
-                return@withContext BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
-            LA_BIOMETRY_NOT_AVAILABLE ->
-                return@withContext BiometricUnwrap.Unusable(BiometricUnusable.SENSOR_UNAVAILABLE)
-            else -> {
-                println("Serotine: the biometric prompt failed ($code)")
-                return@withContext BiometricUnwrap.Failed
-            }
-        }
         try {
-            // The context the user just passed: the enclave decrypts once, without a second prompt.
-            val key = IosSecurity.restoreEnclaveKey(state.key.fromHex(), context)
-            try {
-                BiometricUnwrap.Dek(IosSecurity.eciesDecrypt(key, wrapped))
-            } finally {
-                IosSecurity.release(key)
+            when (val code = evaluate(context, reason)) {
+                null -> Unit
+                LA_USER_CANCEL, LA_USER_FALLBACK, LA_SYSTEM_CANCEL, LA_APP_CANCEL -> return BiometricUnwrap.Cancelled
+                // The face or finger was not recognised, try after try: not a dismissal.
+                LA_AUTHENTICATION_FAILED -> return BiometricUnwrap.Failed
+                LA_BIOMETRY_LOCKOUT -> return BiometricUnwrap.Unusable(BiometricUnusable.LOCKED_OUT)
+                LA_NOT_INTERACTIVE -> return BiometricUnwrap.Unusable(BiometricUnusable.NO_PROMPT)
+                LA_BIOMETRY_NOT_ENROLLED, LA_PASSCODE_NOT_SET ->
+                    return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
+                LA_BIOMETRY_NOT_AVAILABLE -> return BiometricUnwrap.Unusable(BiometricUnusable.SENSOR_UNAVAILABLE)
+                else -> {
+                    println("Serotine: the biometric prompt failed ($code)")
+                    return BiometricUnwrap.Failed
+                }
             }
-        } catch (e: Exception) {
-            println("Serotine: the biometric key did not open its wrap (${e.message ?: e::class.simpleName})")
-            BiometricUnwrap.Failed
+            return try {
+                // The context the user just passed: the enclave decrypts once, without a second prompt.
+                val key = IosSecurity.restoreEnclaveKey(state.key.fromHex(), context)
+                try {
+                    BiometricUnwrap.Dek(IosSecurity.eciesDecrypt(key, wrapped))
+                } finally {
+                    IosSecurity.release(key)
+                }
+            } catch (e: Exception) {
+                println("Serotine: the biometric key did not open its wrap (${e.message ?: e::class.simpleName})")
+                BiometricUnwrap.Failed
+            }
         } finally {
             context.invalidate()
         }
