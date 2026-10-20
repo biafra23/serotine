@@ -37,3 +37,13 @@ kotlin {
         }
     }
 }
+
+// Off a Mac the iOS targets are disabled, and :data's along with them (its cinterop runs on a Mac
+// only), so its iOS code is not there for this module's shared iOS source set to compile
+// against: everything here is skipped instead, as the targets are. `clean` and the help tasks
+// stay usable.
+if ("mac" !in System.getProperty("os.name").lowercase()) {
+    tasks.configureEach {
+        if (name != "clean" && group != "help") enabled = false
+    }
+}
