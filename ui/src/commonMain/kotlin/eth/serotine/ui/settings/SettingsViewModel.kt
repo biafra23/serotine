@@ -35,7 +35,7 @@ class SettingsViewModel(
     observeKnownTokens: ObserveKnownTokens,
     observeDisplayCurrencies: ObserveDisplayCurrencies,
     observeHeavyDownloads: ObserveHeavyDownloads,
-    private val allowHeavyDownloadsOnMetered: AllowHeavyDownloadsOnMetered,
+    private val allowOnMetered: AllowHeavyDownloadsOnMetered,
     network: Network,
     /** Now, in unix seconds: what the light client's line dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
@@ -79,7 +79,7 @@ class SettingsViewModel(
     /** Allows the heavy downloads on a metered connection, or not; a choice not saved is said on the switch. */
     fun allowHeavyDownloadsOnMetered(allowed: Boolean) {
         viewModelScope.launch {
-            saving.withLock { notSaved.value = allowed.takeUnless { allowHeavyDownloadsOnMetered(allowed) } }
+            saving.withLock { notSaved.value = allowed.takeUnless { allowOnMetered(allowed) } }
         }
     }
 
