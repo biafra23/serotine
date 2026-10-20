@@ -79,6 +79,10 @@ consumer developed against an unreleased engine, Myotis's
   `TransactingChain` seam and the same common adapters. The engine there asks
   for no ports (its peer caches and snapshot live under its data directory)
   and answers a read on a paused or starting handle at once as unavailable.
+  The one part not yet twinned is the log index (*History*): the iOS
+  library's typed API does not expose it, so the iOS `logIndex` answers as
+  with no engine and Activity's Safe events and token transfers read as
+  unavailable there, never as empty (#123).
 
 ## What exists today
 
