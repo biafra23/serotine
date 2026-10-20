@@ -1,9 +1,10 @@
 name: iOS
 
-# The shared modules' iOS targets, which only a Mac builds (Kotlin/Native): Build and Test
-# (ci.yml) runs on Linux, where they are disabled. This compiles :domain, :data and :ui for
-# the device and the simulator and runs the common tests on the simulator, so iOS code is
-# checked on every PR, not first when the iOS app is built.
+# The iOS targets, which only a Mac builds (Kotlin/Native): Build and Test (ci.yml) runs on
+# Linux, where they are disabled. This compiles :domain, :data and :ui for the device and the
+# simulator and runs the common tests on the simulator, links the app's framework (:ios-app,
+# SerotineKit) for a device, and builds the app for the simulator from its XcodeGen spec and
+# starts it there, so iOS code is checked on every PR, not first on a phone.
 
 on:
   push:
@@ -43,7 +44,7 @@ jobs:
         run: chmod +x gradlew
 
       # The simulator tests run commonTest on iosSimulatorArm64 (the runner is Apple
-      # silicon); the device target is compiled, which links nothing yet.
+      # silicon); the device target is compiled, and the app job links it.
       - name: Compile and test the iOS targets
         # Retried like ci.yml's build, for transient repository-resolution blips (this job
         # resolves the iOS engine's klibs from the maven-repo branch cold).
@@ -60,3 +61,91 @@ jobs:
           done
           echo "::error::Gradle failed after 3 attempts"
           exit 1
+
+
+  app:
+    name: iOS app (build + start on a simulator)
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # :ui stamps the app's version from the nearest v* tag (git describe).
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # The app's framework for a device: the static archive with the engine, libsodium and
+      # libsecp256k1 in it. Retried like the job above.
+      - name: Link the framework for a device
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew --stacktrace :ios-app:linkDebugFrameworkIosArm64 && exit 0
+            echo "::warning::Gradle attempt $attempt failed; retrying in 25s (transient dependency resolution?)"
+            sleep 25
+          done
+          echo "::error::Gradle failed after 3 attempts"
+          exit 1
+
+      # The Xcode project is generated (ios-app/xcode/project.yml); the build's own Gradle phase
+      # links SerotineKit for the simulator, and its last phase stamps the release version.
+      - name: Build the app for the simulator
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          (cd ios-app/xcode && xcodegen generate)
+          xcodebuild -project ios-app/xcode/Serotine.xcodeproj -scheme Serotine -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/derived" \
+            CODE_SIGNING_ALLOWED=NO build
+          app="$RUNNER_TEMP/derived/Build/Products/Debug-iphonesimulator/Serotine.app"
+          expected=$(./gradlew -q :printReleaseVersion | sed -n 's/.*releaseVersion=\([0-9][0-9.]*\).*/\1/p' | tail -n1)
+          stamped=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist")
+          if [ "$stamped" != "$expected" ]; then
+            echo "::error::the app says version '$stamped', the build '$expected'"
+            exit 1
+          fi
+          echo "APP=$app" >> "$GITHUB_ENV"
+
+      # Starts the app on a simulator and checks it is still running a while later: a framework
+      # that links but crashes at launch (a missing symbol, Compose's Info.plist check, the
+      # composition root) fails here. The screenshot is the run's artifact.
+      - name: Start the app on a simulator
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = [d for runtime, ds in devices.items() if "iOS" in runtime for d in ds]
+          print(next(d["udid"] for d in ios if d["name"].startswith("iPhone")))
+          ')
+          # Boots the device unless it already runs, then waits for the boot to finish.
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" "$APP"
+          pid=$(xcrun simctl launch "$device" eth.serotine | awk '{print $NF}')
+          sleep 30
+          xcrun simctl io "$device" screenshot "$RUNNER_TEMP/serotine-simulator.png"
+          if ! ps -p "$pid" > /dev/null; then
+            echo "::error::Serotine exited within 30 s of its launch"
+            exit 1
+          fi
+          echo "Serotine is running (pid $pid)"
+
+      - name: Upload the simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serotine-simulator-${{ github.sha }}
+          path: ${{ runner.temp }}/serotine-simulator.png
+          if-no-files-found: ignore
