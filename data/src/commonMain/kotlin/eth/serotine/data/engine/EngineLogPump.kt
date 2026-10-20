@@ -50,5 +50,15 @@ internal class EngineLogPump(
 
         /** Lines taken per drain call; the ring is emptied in as many calls as it takes. */
         const val BATCH = 256
+
+        /** How many lines the engine's ring holds. */
+        const val RING_CAPACITY = 4096
+
+        /**
+         * The last [count] lines waiting in the ring, newline-joined, the rest drained with them:
+         * the ring gives the oldest first, and a refused start says why at the end.
+         */
+        fun lastLines(drain: (Int) -> String, count: Int): String =
+            drain(RING_CAPACITY).split('\n').takeLast(count).joinToString("\n")
     }
 }

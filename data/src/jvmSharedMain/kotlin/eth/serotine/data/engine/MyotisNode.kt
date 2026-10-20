@@ -192,10 +192,12 @@ class MyotisNode private constructor(
             state = State.Down
             current as? State.Running
         }
+        logScope.cancel()
         running?.stop()
+        // In a debug build, what the engine said while stopping, which the pump no longer drains.
+        if (running != null) debugLog?.let { EngineLogPump(Myotis::drainLogs, it).drainNow() }
         bootThread?.takeIf { it.isAlive && it != Thread.currentThread() }?.join(SHUTDOWN_WAIT_MS)
         control.shutdown()
-        logScope.cancel()
     }
 
     private fun boot(network: Network, dataDir: File, dnsServers: DnsServers?) {
@@ -250,8 +252,8 @@ class MyotisNode private constructor(
             val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
             val started = handle.start()
             // The engine says why only in its own log, which is drained, not printed: drained
-            // before anything stops the engine, so the refusal comes first, ahead of shutdown noise.
-            val refusal = if (started) null else Myotis.drainLogs(ENGINE_LOG_LINES)
+            // before anything stops the engine, so the refusal comes last, ahead of shutdown noise.
+            val refusal = if (started) null else EngineLogPump.lastLines(Myotis::drainLogs, ENGINE_LOG_LINES)
             val kept = synchronized(this) {
                 val keep = started && state == State.Booting
                 if (state == State.Booting) state = if (keep) running else State.Down
@@ -482,7 +484,7 @@ class MyotisNode private constructor(
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds
 
-        /** Engine log lines a failed start reports. */
+        /** Engine log lines a failed start reports: the last ones, where it says why. */
         private const val ENGINE_LOG_LINES = 40
 
         /** How often a debug build drains the engine's log; its ring holds hours of lines. */

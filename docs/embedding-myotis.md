@@ -89,8 +89,10 @@ consumer developed against an unreleased engine, Myotis's
   it every second while the engine runs (`EngineLogPump`) into the same
   `debugLog` the adapters write to, each line marked `Myotis:` (logcat in the
   debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build, so a
-  device's log has it without Xcode attached). A release build leaves it
-  undrained; a failed start still reports its last 40 lines.
+  device's log has it without Xcode attached; the iOS node's own reports,
+  why there is no light client among them, go there too, in every build). A
+  release build leaves it undrained; a failed start still reports its last
+  40 lines.
 
 ## What exists today
 

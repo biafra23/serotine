@@ -60,6 +60,16 @@ class EngineLogPumpTest {
     }
 
     @Test
+    fun aFailedStartReportsTheRingsLastLinesAndDrainsTheRest() {
+        ring.lines += List(100) { "line $it" }
+
+        val reported = EngineLogPump.lastLines(ring::drain, 3)
+
+        assertEquals("line 97\nline 98\nline 99", reported)
+        assertTrue(ring.lines.isEmpty())
+    }
+
+    @Test
     fun aDrainThatThrowsEndsThePumpWithoutEscaping() = runTest {
         val failing = EngineLogPump({ error("no engine") }) { logged += it }
 

@@ -145,11 +145,13 @@ val myotisLibraryDir: Provider<String> = providers.gradleProperty("myotisLibrary
 // Through a provider, not jvmArgs: Compose sets the run task's jvmArgs after this, replacing
 // whatever was added here, so neither property ever reached a development run.
 tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
+    // Locals, not the script's vals: a provider holding the script object cannot be cached.
     val libraryDir = myotisLibraryDir
+    val libraryName = myotisLibraryName
     jvmArgumentProviders.add(
         CommandLineArgumentProvider {
             listOfNotNull(
-                libraryDir.orNull?.let { "-Dmyotis.engine.lib=${File(it, myotisLibraryName).absolutePath}" },
+                libraryDir.orNull?.let { "-Dmyotis.engine.lib=${File(it, libraryName).absolutePath}" },
                 // The desktop's debug build: a development run logs the adapters' diagnostics
                 // (which proof of a Safe's read failed or straddled) and the engine's own log to
                 // stderr. No installer sets it.
