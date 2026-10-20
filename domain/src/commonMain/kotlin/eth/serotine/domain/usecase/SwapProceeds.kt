@@ -2,6 +2,7 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.AbiWords
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.toHex
@@ -17,7 +18,7 @@ import eth.serotine.domain.repository.SentAction
  */
 internal object SwapProceeds {
     /** `Transfer(address,address,uint256)`'s signature hash, pinned (`SwapProceedsTest` checks it). */
-    internal const val TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    internal const val TRANSFER = TokenTransfers.TRANSFER
 
     /** `Withdrawal(address,uint256)`'s signature hash, pinned (`SwapProceedsTest` checks it). */
     internal const val WITHDRAWAL = "0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65"

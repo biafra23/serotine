@@ -28,7 +28,7 @@ class SafeHistoriesTest {
     private val alice = Address.of("0x" + "11".repeat(20))
     private val index = RecordingLogIndex()
     private val starts = MemoryHistoryStarts()
-    private val seen = mutableListOf<SafeHistory>()
+    private val seen = mutableListOf<IndexedHistory<SafeChainEvent>>()
 
     private val added = "0x9465fa0c962cc76958e6373a993326400c1c94f8be2fe3a952adfa7f60b2ea26"
     private val alicesTopic = "0x" + "00".repeat(12) + "11".repeat(20)
@@ -52,7 +52,7 @@ class SafeHistoriesTest {
         covered(9_000L..9_100L)
         observe()
 
-        assertEquals(listOf<SafeHistory>(SafeHistory.NotFollowed), seen)
+        assertEquals(listOf<IndexedHistory<SafeChainEvent>>(IndexedHistory.NotFollowed), seen)
         assertEquals(emptyList(), index.queries)
     }
 
@@ -66,7 +66,7 @@ class SafeHistoriesTest {
         runCurrent()
 
         assertEquals(LogQuery(LogWatchKey.Emitter(vault), 9_100, 9_200, SafeEvents.TOPICS), index.queries.single())
-        val read = seen.last() as SafeHistory.Read
+        val read = seen.last() as IndexedHistory.Read
         assertEquals(
             listOf(SafeChainEvent(SafeEvent.OwnerAdded(alice), 9_150, "0x" + "cc".repeat(32), 0)),
             read.events,
@@ -75,13 +75,13 @@ class SafeHistoriesTest {
         assertEquals(9_100L..9_200L, read.checked)
         assertEquals(false, read.complete)
         // Unavailable until the coverage first answers, then nothing covered to read yet.
-        assertEquals(listOf(SafeHistory.Unavailable, SafeHistory.Checking(9_000)), seen.take(2))
+        assertEquals(listOf(IndexedHistory.Unavailable, IndexedHistory.Checking(9_000)), seen.take(2))
 
         covered(8_900L..9_201L, fromBlock = 8_900)
         runCurrent()
 
         assertEquals(9_000L, index.queries.minOf { it.fromBlock }, "never below its start")
-        assertEquals(true, (seen.last() as SafeHistory.Read).complete)
+        assertEquals(true, (seen.last() as IndexedHistory.Read).complete)
     }
 
     @Test
@@ -91,12 +91,12 @@ class SafeHistoriesTest {
         covered(9_000L..9_100L)
         observe()
 
-        assertEquals(SafeHistory.Checking(9_000), seen.last())
+        assertEquals(IndexedHistory.Checking(9_000), seen.last())
 
         index.coverage.value = LogCoverageReading.Unavailable
         runCurrent()
 
-        assertEquals(SafeHistory.Unavailable, seen.last())
+        assertEquals(IndexedHistory.Unavailable, seen.last())
     }
 
     @Test
@@ -114,7 +114,7 @@ class SafeHistoriesTest {
             listOf(9_100L..9_200L, 9_050L..9_099L, 9_137L..9_210L),
             index.queries.map { it.fromBlock..it.toBlock },
         )
-        val grown = seen.last() as SafeHistory.Read
+        val grown = seen.last() as IndexedHistory.Read
         assertEquals(listOf(9_150L), grown.events.map { it.blockNumber })
         assertEquals(9_050L..9_210L, grown.checked)
 
@@ -142,6 +142,6 @@ class SafeHistoriesTest {
         covered(9_000L..9_205L)
         runCurrent()
 
-        assertEquals(emptyList(), (seen.last() as SafeHistory.Read).events)
+        assertEquals(emptyList(), (seen.last() as IndexedHistory.Read).events)
     }
 }
