@@ -1,6 +1,8 @@
 package eth.serotine.ui.activity
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -181,9 +183,13 @@ private val safeRows = listOf(
 )
 
 @Composable
-private fun ActivityPreview(state: ActivityUiState, darkTheme: Boolean = false) {
+private fun ActivityPreview(
+    state: ActivityUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        ActivityScreen(state = state, onBack = {}, onOpen = {})
+        ActivityScreen(state = state, lightClient = lightClient, onBack = {}, onOpen = {})
     }
 }
 

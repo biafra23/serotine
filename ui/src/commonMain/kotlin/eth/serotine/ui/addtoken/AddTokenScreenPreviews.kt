@@ -1,6 +1,8 @@
 package eth.serotine.ui.addtoken
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -24,9 +26,13 @@ private val claimed = AddTokenUiState(
 )
 
 @Composable
-private fun AddTokenPreview(state: AddTokenUiState, darkTheme: Boolean = false) {
+private fun AddTokenPreview(
+    state: AddTokenUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        AddTokenScreen(state = state, onAddressChange = {}, onAdd = {}, onBack = {})
+        AddTokenScreen(state = state, lightClient = lightClient, onAddressChange = {}, onAdd = {}, onBack = {})
     }
 }
 

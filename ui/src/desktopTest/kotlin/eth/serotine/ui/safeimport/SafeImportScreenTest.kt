@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -32,6 +33,7 @@ class SafeImportScreenTest {
         SerotineTheme {
             SafeImportScreen(
                 state,
+                lightClient = verifiedStripSample,
                 onTextChange = { events += "text $it" },
                 onImport = { events += "import" },
                 onBack = { events += "back" },

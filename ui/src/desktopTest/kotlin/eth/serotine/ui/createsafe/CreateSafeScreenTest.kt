@@ -20,6 +20,7 @@ import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -87,6 +88,7 @@ class CreateSafeScreenTest {
         SerotineTheme {
             CreateSafeScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 actions = CreateSafeActions(
                     onNameChange = { events += "name $it" },
                     onToggleOwner = { events += "toggle $it" },

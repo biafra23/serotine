@@ -96,6 +96,7 @@ import eth.serotine.ui.assets.AssetsViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
@@ -205,6 +206,9 @@ class AppGraph(
             observeUpgradeWarning(),
             network,
         )
+
+    /** The light client's status strip of the screens that depend on it: one for the app, in the host's scope. */
+    fun lightClientViewModel(): LightClientViewModel = LightClientViewModel(ObserveLightClient(lightClient))
 
     fun accountDetailViewModel(address: Address): AccountDetailViewModel =
         AccountDetailViewModel(

@@ -82,6 +82,7 @@ review finding, whatever it saves.
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution, a Safe's deployment) |
 | `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `history` — where each account's history starts —, `files`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `safepropose` is Send from a Safe, on the same transfer form; `transferstatus` follows a transaction once sent; `safetx` is one Safe transaction with its signing, approval and execution steps; `safeimport` imports a signing request; `createsafe` holds one screen with three steps, owners, threshold and review) |
+| `eth.serotine.ui.lightclient` | `LightClientViewModel`, the light client's status strip as the screens that depend on it draw it: no screen of its own |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu, the transfer form, the unlock that signs, a Safe transaction's decoded action, a signing request shared) and the display helpers and display-ready types they share (EIP-55, amounts, the light client's line, the seed screens' password step, the transfer form's inputs and texts, what a Safe transaction does and why one is refused); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |
 | `eth.serotine.ui.theme` | Material 3 theme |
@@ -118,6 +119,13 @@ review finding, whatever it saves.
   anything else, so `App` creates it in the host's scope and navigates to the
   screen, clearing the back stack (both tabs' stacks included), while an
   update is required, and to the Assets tab's start once it no longer is.
+  The light client's status strip is the other ViewModel `App` creates in
+  the host's scope (`LightClientViewModel`): one for every screen that draws
+  the strip, so each of those screens' ViewModels and UiStates stay about
+  what the screen does. `App` hands it to those screens' routes, which
+  collect it beside their own ViewModel and give the screen its
+  display-ready `LightClientItem`; Assets and Settings keep the light
+  client's state in their own UiState.
 - **App-wide work runs in the hosts, not in `App`.** What no screen owns is a
   use case the composition root builds from its ports and runs for the
   process's life, beside the `AppGraph` (ports in, ViewModel factories out):

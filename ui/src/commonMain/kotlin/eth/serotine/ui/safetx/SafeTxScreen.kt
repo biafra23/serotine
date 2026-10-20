@@ -1,7 +1,6 @@
 package eth.serotine.ui.safetx
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -70,6 +69,7 @@ import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.GAS_TERMS_WARNING
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.QrCode
@@ -80,10 +80,12 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
@@ -115,6 +117,7 @@ const val SAFE_TX_SIGN_TAG = "safe-tx-sign"
 @Composable
 fun SafeTxRoute(
     viewModel: SafeTxViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     onProposeAgain: () -> Unit,
@@ -122,6 +125,7 @@ fun SafeTxRoute(
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? SafeTxUiState.Sent)?.hash
@@ -136,6 +140,7 @@ fun SafeTxRoute(
     }
     SafeTxScreen(
         state = state,
+        lightClient = strip,
         actions = SafeTxActions(
             onShare = viewModel::onShare,
             onShareClosed = viewModel::onShareClosed,
@@ -202,6 +207,7 @@ class SafeTxActions(
 @Composable
 fun SafeTxScreen(
     state: SafeTxUiState,
+    lightClient: LightClientItem,
     actions: SafeTxActions,
     onBack: () -> Unit,
     onCopy: (String) -> Unit,
@@ -265,7 +271,7 @@ fun SafeTxScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is SafeTxUiState.Loading, is SafeTxUiState.Sent, is SafeTxUiState.Removed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
