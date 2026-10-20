@@ -16,14 +16,22 @@ import kotlinx.serialization.json.Json
  * and a token); no key material. Shown only, never acted on: a quote and a signature read a fresh
  * proof (docs/wallet-ux.md).
  *
- * At most [MAX_KEPT] entries, the least recently proven dropped first. A balance is written
- * again only when it changed or its stored proof is [REWRITE_AFTER_BLOCKS] blocks old, not at
- * every head, so the time a row shows may be up to that much older than the last proof: an
- * earlier time at which the same amount was verified. A file that cannot be read keeps and
- * shows nothing; a damaged one is set aside as every [VersionedJsonFile] is. File work runs on
- * [dispatcher].
+ * At most [maxKept] entries ([MAX_KEPT] but in tests), the least recently proven dropped first.
+ * A balance is written again only when it changed or its stored proof is [REWRITE_AFTER_BLOCKS]
+ * blocks old, not at every head, so the time a row shows may be up to that much older than the
+ * last proof: an earlier time at which the same amount was verified. A file that cannot be read
+ * keeps and shows nothing; a damaged one is set aside as every [VersionedJsonFile] is. File work
+ * runs on [dispatcher], and every write is flushed to the disk (twice: the file, then its
+ * directory).
  */
-internal class LastBalancesFile(path: String, dispatcher: CoroutineDispatcher) {
+internal class LastBalancesFile(
+    path: String,
+    dispatcher: CoroutineDispatcher,
+    private val maxKept: Int = MAX_KEPT,
+) {
+    init {
+        require(maxKept > 0) { "maxKept must be positive" }
+    }
 
     private val file = VersionedJsonFile(
         path,
@@ -65,7 +73,7 @@ internal class LastBalancesFile(path: String, dispatcher: CoroutineDispatcher) {
                 if (stored?.units == amount && proof.blockNumber - stored.block < REWRITE_AFTER_BLOCKS) return
                 val entry = StoredBalance(entryId, amount, proof.blockNumber, proof.asOf)
                 // Re-inserted last: the map's order is the order of proving.
-                change { byId -> (byId - entryId + (entryId to entry)).toList().takeLast(MAX_KEPT).toMap() }
+                change { byId -> (byId - entryId + (entryId to entry)).toList().takeLast(maxKept).toMap() }
             }
         }
 
