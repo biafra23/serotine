@@ -149,8 +149,13 @@ class SafeTxTextTest {
             "Whatever this module does for the Safe stops: a spending limit, a delay, a recovery path.",
             item(SafeTxAction.SettingsChange(SafeSettingsChange.ModuleDisabled(module))).warning,
         )
-        // Taking the handler away makes the Safe answer no signature check: nothing to warn of.
-        assertNull(item(SafeTxAction.SettingsChange(SafeSettingsChange.FallbackHandlerSet(null))).warning)
+        // Taking the handler away stops what it answered: safe transfers to the Safe and its EIP-1271 checks.
+        assertEquals(
+            "Whatever the fallback handler answers for the Safe stops: tokens sent to it with a safe transfer " +
+                "(ERC-721, ERC-1155) are refused, and the signature checks (EIP-1271) other contracts make for it " +
+                "fail, so orders and permits signed for the Safe no longer work.",
+            item(SafeTxAction.SettingsChange(SafeSettingsChange.FallbackHandlerSet(null))).warning,
+        )
     }
 
     @Test

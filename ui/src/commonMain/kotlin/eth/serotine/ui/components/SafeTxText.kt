@@ -229,10 +229,19 @@ private fun settingsChange(change: SafeSettingsChange): SafeTxActionItem = when 
                 "Safe: one that accepts every signature lets anyone spend what the Safe has approved (Permit2, " +
                 "permits, orders), without its owners.",
         )
-    } ?: SafeTxActionItem(title = "Remove the fallback handler")
+    } ?: SafeTxActionItem(
+        title = "Remove the fallback handler",
+        warning = FALLBACK_HANDLER_REMOVED,
+    )
 }
 
 private fun threshold(threshold: Long) = "The threshold becomes $threshold"
+
+/** The warning on a fallback handler removed: what the handler answered for the Safe, and stops. */
+internal const val FALLBACK_HANDLER_REMOVED =
+    "Whatever the fallback handler answers for the Safe stops: tokens sent to it with a safe transfer " +
+        "(ERC-721, ERC-1155) are refused, and the signature checks (EIP-1271) other contracts make for it fail, " +
+        "so orders and permits signed for the Safe no longer work."
 
 /**
  * [action], when it is an approval or a swap, as [check] found it (null: still being checked),
