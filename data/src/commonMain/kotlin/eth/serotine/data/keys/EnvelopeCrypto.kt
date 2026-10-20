@@ -3,8 +3,8 @@ package eth.serotine.data.keys
 /**
  * The platform primitives the envelope is built from (docs/keys-and-signing.md, *The
  * envelope*): Argon2id from libsodium, AES-256-GCM and randomness from the platform, and a
- * write that reaches the disk before it replaces a file. Android and the desktop have them
- * (jvmSharedMain); iOS gets them with the iOS host, and until then [available] is false.
+ * write that reaches the disk before it replaces a file. Android and the desktop have them in
+ * jvmSharedMain, iOS in iosMain (libsodium for both ciphers there).
  */
 internal expect object EnvelopeCrypto {
 

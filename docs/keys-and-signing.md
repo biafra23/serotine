@@ -363,7 +363,9 @@ its KDoc and returns it as a result the UI shows as state.
   - Opening checks the 64 MiB, two-pass floor and a ceiling that takes every
     tier: at most 256 MiB, at most 16 passes, and memory × passes at most
     256 MiB × 4, so the most passes come only with the least memory.
-- **AES-256-GCM** comes from the JDK.
+- **AES-256-GCM** comes from the JDK, and on iOS from libsodium (its
+  `crypto_aead_aes256gcm`, on the ARMv8 crypto extensions), whose output has
+  the JDK's shape: the ciphertext, then the 16-byte tag.
 - **The hardware secret.** On Android it is `AndroidKeystoreSecret`, an
   HMAC-SHA256 key in StrongBox, or in the TEE when StrongBox is missing or
   failing. The Keystore reports where the key lives (rule 5), and the screen
@@ -424,8 +426,27 @@ its KDoc and returns it as a result the UI shows as state.
   works. This covers a Keystore key lost in an OS upgrade or a cleared key
   store, and a deleted enclave state. The way back is the reset and recovery
   flows.
-- **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
-  Until then the key store reports itself unavailable there.
+- **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16),
+  built as the Mac's: `IosSecureEnclaveSecret` is `MacSecureEnclaveSecret`'s
+  twin, the same key, ECIES-wrapped `S_hw` and `secure-enclave.json` state
+  file, through Kotlin/Native's Security.framework bindings.
+  - The enclave key is made with the access control CryptoKit gives one by
+    default: usable while the device is unlocked, on this device only, for
+    private-key operations. The app's sandbox keeps other apps from the
+    state file, which the Mac's design cannot.
+  - Argon2id and AES-256-GCM are libsodium's, from the bindings'
+    `libsodium.a`. Argon2id goes through Serotine's own cinterop declaration
+    of `crypto_pwhash`, which takes the password as bytes: the bindings'
+    declaration takes a `const char *`, which Kotlin/Native makes a String.
+  - The key directory is excluded from iCloud and computer backups.
+  - The factor (`iosHardwareSecret`): on an iPhone it is always the
+    enclave, chosen without asking whether it works, so a locked device
+    decides nothing; an enclave that fails makes sealing fail and the key
+    store unavailable. The simulator has no enclave, and only a simulator
+    build (a source set of its own, not a runtime check) lets a wallet stand
+    on the password alone, for development; its factor sticks to the wallet
+    as on the desktop.
+  - No biometric path yet, as on the desktop.
 - **What never leaves a call.**
   - The seed, the keys and the password's bytes exist only inside one call,
     in byte arrays and native buffers this code zeroes before it returns.

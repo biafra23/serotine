@@ -1,0 +1,14 @@
+# libsodium's crypto_pwhash for the iOS key envelope (EnvelopeCrypto.ios.kt), declared here
+# with the password as bytes. The libsodium bindings' own declaration takes `const char *`,
+# which Kotlin/Native turns into a String parameter: the password would have to become a
+# String the app cannot zero, and bytes that are not UTF-8 would not reach libsodium as they
+# are. The ABI is the same (a pointer), and the symbol is the one in the bindings' libsodium.a,
+# linked from their klib.
+package = eth.serotine.data.keys.sodium
+---
+#include <stddef.h>
+
+int crypto_pwhash(unsigned char * const out, unsigned long long outlen,
+                  const unsigned char * const passwd, unsigned long long passwdlen,
+                  const unsigned char * const salt, unsigned long long opslimit,
+                  size_t memlimit, int alg);
