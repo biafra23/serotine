@@ -96,7 +96,12 @@ the text wins.
   field typed into stays in view. The keyboard's Done key on a form's last
   field does what the form's button does (`submitOnDone`): it closes the
   keyboard and, when the button is enabled, submits; a field before it
-  shows Next, which moves to the next field to type in (`nextTo`).
+  shows Next, which moves to the next field to type in (`nextTo`). Two
+  exceptions: Create Safe's owner field adds the owner and keeps the
+  keyboard for the next one; and the password and recovery-phrase steps
+  (the unlock, Security, Create account, Import mnemonic), whose Done
+  predates this rule, submit without reading the button's state or
+  closing the keyboard, their ViewModels refusing what is not ready.
 - **Long press is never the only way.** A long press (a right click on
   desktop) opens an item's menu; every action in it is also reachable from a
   visible control (the detail screen's buttons), and the menu has an
