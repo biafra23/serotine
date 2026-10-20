@@ -71,8 +71,18 @@ consumer developed against an unreleased engine, Myotis's
   app never loads a library extracted to a temporary file, which a signed
   macOS bundle may refuse. A Windows build runs with no light client, and its
   balances say so.
-- **iOS** consumes the engine's plain C ABI, as Myotis's `:app-ios` does;
-  that is the iOS part of the plan, not this page.
+- **iOS** consumes the engine's plain C ABI through Myotis's iOS module
+  (`eth.myotis:myotis-engine-ios`, at the engine's version): its typed API
+  carries `io.myotis.api`'s names and meanings, and each target's cinterop
+  klib carries the engine's static library. `:data`'s iosMain has the iOS
+  `MyotisNode`, the JVM one's twin over that API, wired to the same
+  `TransactingChain` seam and the same common adapters. The engine there asks
+  for no ports (its peer caches and snapshot live under its data directory)
+  and answers a read on a paused or starting handle at once as unavailable.
+  The one part not yet twinned is the log index (*History*): the iOS
+  library's typed API does not expose it, so the iOS `logIndex` answers as
+  with no engine and Activity's Safe events and token transfers read as
+  unavailable there, never as empty (#123).
 
 ## What exists today
 

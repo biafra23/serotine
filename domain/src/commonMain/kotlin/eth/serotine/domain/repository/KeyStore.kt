@@ -125,7 +125,7 @@ enum class PasswordCost {
 /** The envelope's biometric path on this device, as [KeyStore.describe] reports it. */
 sealed interface BiometricUnlock {
 
-    /** Serotine has no biometric path on this platform yet (the desktop, iOS until its app). */
+    /** Serotine has no biometric path on this platform yet (the desktop). */
     data object NotOnThisDevice : BiometricUnlock
 
     /** This device cannot offer one now, for [reason]. */
@@ -161,6 +161,15 @@ enum class BiometricUnavailable {
 
     /** The key the path needs would not be in secure hardware here (rule 5), so it is not made. */
     NOT_IN_SECURE_HARDWARE,
+
+    /** A sensor and an enrolled face or finger, but the user turned biometrics off for Serotine. */
+    NOT_ALLOWED,
+
+    /** The device has no passcode, without which no biometric key can be made. */
+    NO_PASSCODE,
+
+    /** Biometrics are locked after too many failed tries until the device's passcode is entered. */
+    LOCKED_OUT,
 }
 
 /** The outcome of [KeyStore.enableBiometrics] and [KeyStore.disableBiometrics]. */

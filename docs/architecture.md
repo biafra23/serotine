@@ -10,7 +10,7 @@ rule in code.
 
 ```
                  ┌──────────────┐        ┌──────────────┐
-                 │ android-app  │        │ desktop-app  │      hosts: composition roots
+                 │ android-app  │        │ desktop-app  │      hosts, with ios-app: composition roots
                  └──────┬───────┘        └──────┬───────┘
                         │  build AppGraph from   │
                         ▼  :data, render :ui     ▼
@@ -86,7 +86,7 @@ review finding, whatever it saves.
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu, the transfer form, the unlock that signs, a Safe transaction's decoded action, a signing request shared) and the display helpers and display-ready types they share (EIP-55, amounts, the light client's line, the seed screens' password step, the transfer form's inputs and texts, what a Safe transaction does and why one is refused); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |
 | `eth.serotine.ui.theme` | Material 3 theme |
-| `eth.serotine.android`, `eth.serotine.desktop` | the hosts |
+| `eth.serotine.android`, `eth.serotine.desktop`, `eth.serotine.ios` | the hosts |
 
 ## MVVM, the contract
 
@@ -133,7 +133,7 @@ review finding, whatever it saves.
   `FollowSafeDeployments`, which lists the Safes this wallet deployed
   whatever screen is open (docs/wallet-ux.md, screen 15). On Android both run
   while the application holds the engine; on the desktop, while `main()`
-  runs.
+  runs; on iOS, while the app is in the foreground.
 - **Two tabs, Accounts | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
   Each tab is a nested graph. Settings opens over the Accounts tab's stack and

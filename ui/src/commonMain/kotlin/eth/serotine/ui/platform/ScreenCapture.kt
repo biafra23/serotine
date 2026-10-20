@@ -13,3 +13,11 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 expect fun protectFromScreenCapture(): Boolean
+
+/**
+ * Where a platform that cannot block a capture but sees one happen (iOS) warns about it: once,
+ * at the root of [eth.serotine.ui.App], so a warning outlives the protected screen it was raised
+ * on and two screens overlapping in a navigation transition show one. Draws nothing elsewhere.
+ */
+@Composable
+expect fun ScreenCaptureWarnings()
