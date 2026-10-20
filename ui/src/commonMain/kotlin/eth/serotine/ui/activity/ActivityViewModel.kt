@@ -77,9 +77,11 @@ class ActivityViewModel(
         }
         val sent = entries.map { Listed(row(it, names), it.outcome.blockOrNull()) }
         if (safe == null) return ActivityUiState.Shown(title, sent.map { it.row }, COVERAGE)
-        val hashes = entries.mapTo(HashSet()) { it.transfer.hash }
+        // Only a row that names its block says what its events say: one no block was seen for (a
+        // transaction mined while the app was closed) gets the verified event beside it.
+        val seenInBlocks = entries.filter { it.outcome.blockOrNull() != null }.mapTo(HashSet()) { it.transfer.hash }
         val events = (safe as? SafeHistory.Read)?.events.orEmpty()
-            .filterNot { it.transactionHash in hashes && it.event.saidBySentRow() }
+            .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
             .sortedWith(compareByDescending<SafeChainEvent> { it.blockNumber }.thenByDescending { it.logIndex })
             .map { eventRow(it, names) }
         val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
@@ -92,8 +94,9 @@ class ActivityViewModel(
     }
 
     /**
-     * What the sent row of a transaction that logged this event already says: its execution, its
-     * approval, its deployment. A failure, and any change of the Safe's settings, it does not.
+     * What the sent row of a transaction that logged this event says once it names the block: its
+     * execution, its approval, its deployment. A failure, and any change of the Safe's settings,
+     * it does not.
      */
     private fun SafeEvent.saidBySentRow(): Boolean = when (this) {
         is SafeEvent.Executed -> succeeded

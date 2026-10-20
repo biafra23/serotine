@@ -283,6 +283,20 @@ class ActivityViewModelTest {
     }
 
     @Test
+    fun anEventOfATransactionSentFromHereThatNoBlockWasSeenForIsListedBesideIt() = runTest {
+        // Mined while the app was closed: the row says only that its nonce was used.
+        history.entries.value = listOf(HistoryEntry(execution, SentOutcome.NonceUsed))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val topics = listOf(executionSuccess, "0x" + "ab".repeat(32))
+        index.logs = listOf(safeLog(9_410_000, topics, "0x" + "0".repeat(64), tx = execution.hash))
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(listOf("Executed transaction 4", "Executed a Safe transaction"), rows.map { it.title })
+        assertEquals("Block 9,410,000", rows.last().time)
+    }
+
+    @Test
     fun theCoverageSaysWhatIsStillBeingCheckedAndWhenTheSafeIsNotFollowedYet() = runTest {
         treasuryIndexed(9_410_000L..9_420_000L)
 
