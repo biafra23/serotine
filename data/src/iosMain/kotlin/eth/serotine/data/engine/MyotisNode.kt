@@ -57,7 +57,11 @@ import kotlin.time.TimeSource
  * below the iOS module's typed API is used.
  */
 @OptIn(ExperimentalAtomicApi::class)
-class MyotisNode private constructor(network: Network, lastBalancesPath: String?, debugLog: ((String) -> Unit)?) {
+class MyotisNode private constructor(
+    network: Network,
+    lastBalancesPath: String?,
+    private val debugLog: ((String) -> Unit)?,
+) {
 
     private sealed interface State {
         data object Booting : State
@@ -254,6 +258,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             // and resume the host asks for from here on queues there too, so the last one asked
             // for is the state the engine ends in.
             if (kept) followPauseWanted()
+            // The engine's own log, in a debug build: the one account of why a sync stalls.
+            if (kept && debugLog != null) {
+                scope.launch { EngineLogPump(Myotis::drainLogs, debugLog).run(ENGINE_LOG_INTERVAL) }
+            }
             refusal?.let { report("the engine refused to start $name:\n$it") }
         } catch (e: Throwable) {
             if (owned) {
@@ -436,6 +444,9 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         /** Engine log lines a failed start reports. */
         private const val ENGINE_LOG_LINES = 40
 
+        /** How often a debug build drains the engine's log; its ring holds hours of lines. */
+        private val ENGINE_LOG_INTERVAL = 1.seconds
+
         /** How long [shutdown] waits for a boot in progress to stop its own engine. */
         private val SHUTDOWN_WAIT = 15.seconds
 
@@ -443,7 +454,9 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
          * A node for [network] with its state under [dataDir] (a path in the app's own
          * container), booting off the caller's thread: creating the engine and starting it
          * block, and none of it may run on the main thread. [debugLog] takes the adapters'
-         * diagnostics: a debug build's log, null in a release build; public chain data only.
+         * diagnostics and, while the engine runs, the engine's own log ([EngineLogPump]): a
+         * debug build's log, null in a release build, which leaves the engine's log undrained;
+         * public chain data only.
          * [lastBalances] is the file the balances last verified are kept in, to be shown as such
          * after a restart until a head can be read ([LastBalancesFile]); null keeps them for the
          * process only. An engine that fails to start gets a node whose balances and light

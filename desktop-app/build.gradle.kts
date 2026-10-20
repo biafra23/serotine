@@ -142,11 +142,21 @@ if (stageMyotisLibrary != null) {
     tasks.configureEach { if (name == "prepareAppResources") dependsOn(stageMyotisLibrary) }
 }
 val myotisLibraryDir: Provider<String> = providers.gradleProperty("myotisLibraryDir")
+// Through a provider, not jvmArgs: Compose sets the run task's jvmArgs after this, replacing
+// whatever was added here, so neither property ever reached a development run.
 tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
-    myotisLibraryDir.orNull?.let { jvmArgs("-Dmyotis.engine.lib=${File(it, myotisLibraryName).absolutePath}") }
-    // The desktop's debug build: a development run logs the adapters' diagnostics (which proof
-    // of a Safe's read failed or straddled) to stderr. No installer sets it.
-    jvmArgs("-Dserotine.debugLog=true")
+    val libraryDir = myotisLibraryDir
+    jvmArgumentProviders.add(
+        CommandLineArgumentProvider {
+            listOfNotNull(
+                libraryDir.orNull?.let { "-Dmyotis.engine.lib=${File(it, myotisLibraryName).absolutePath}" },
+                // The desktop's debug build: a development run logs the adapters' diagnostics
+                // (which proof of a Safe's read failed or straddled) and the engine's own log to
+                // stderr. No installer sets it.
+                "-Dserotine.debugLog=true",
+            )
+        },
+    )
 }
 
 compose.desktop {

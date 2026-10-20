@@ -67,8 +67,8 @@ class SerotineApplication : Application() {
     // and keeps its state under the app's private files; on an ABI the engine library does
     // not ship (it has arm64-v8a and x86_64), balances say so. The balances last verified are
     // kept with the other files (none of which leave the device), to be shown as such after a
-    // restart until a head can be read. The adapters' diagnostics go to logcat in the debug app
-    // only (eth.serotine.debug is debuggable, the release app is not).
+    // restart until a head can be read. The adapters' diagnostics and the engine's own log go to
+    // logcat in the debug app only (eth.serotine.debug is debuggable, the release app is not).
     private val node: MyotisNode by lazy {
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         MyotisNode.start(
