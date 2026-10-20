@@ -5,8 +5,10 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -120,9 +122,13 @@ private val review = CreateSafeUiState.Review(
 )
 
 @Composable
-private fun CreateSafePreview(state: CreateSafeUiState, darkTheme: Boolean = false) {
+private fun CreateSafePreview(
+    state: CreateSafeUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        CreateSafeScreen(state, CreateSafeActions(), onBack = {})
+        CreateSafeScreen(state, lightClient, CreateSafeActions(), onBack = {})
     }
 }
 

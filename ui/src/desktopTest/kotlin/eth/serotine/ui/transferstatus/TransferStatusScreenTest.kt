@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -27,7 +28,12 @@ class TransferStatusScreenTest {
 
     private fun show(state: TransferStatusUiState) = rule.setContent {
         SerotineTheme {
-            TransferStatusScreen(state, onDone = { events += "done" }, onRetry = { events += "retry" })
+            TransferStatusScreen(
+                state,
+                verifiedStripSample,
+                onDone = { events += "done" },
+                onRetry = { events += "retry" },
+            )
         }
     }
 

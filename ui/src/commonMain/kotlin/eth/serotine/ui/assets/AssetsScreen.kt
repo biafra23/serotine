@@ -20,7 +20,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -44,8 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ControlBadge
-import eth.serotine.ui.components.LightClientHealthDot
-import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.LightClientStrip
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.SpeedDialAction
@@ -54,7 +52,6 @@ import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
-import eth.serotine.ui.components.healthColor
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
@@ -64,9 +61,6 @@ const val ASSETS_ACCOUNT_LIST_TAG = "assets-account-list"
 
 /** Test tag of the notice when the stored list is not what is shown: set aside, or unavailable. */
 const val ASSETS_NOTICE_TAG = "assets-notice"
-
-/** Test tag of the light client's status strip, for UI tests. */
-const val ASSETS_LIGHT_CLIENT_TAG = "assets-light-client"
 
 /** Test tag of the label naming the network the app works on, for UI tests. */
 const val ASSETS_NETWORK_TAG = "assets-network"
@@ -208,44 +202,6 @@ private fun PortfolioTotal(total: String, note: String?) {
         }
     }
 }
-
-/**
- * What the light client is doing, until and after it serves verified reads, in its health's
- * colour: a dot before the text, and the bar under it (owner's request, 2026-10-19).
- */
-@Composable
-private fun LightClientStrip(item: LightClientItem, modifier: Modifier = Modifier) {
-    val color = item.health.healthColor()
-    Column(modifier.fillMaxWidth().testTag(ASSETS_LIGHT_CLIENT_TAG)) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LightClientHealthDot(item.health)
-            Text(
-                item.text,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        val track = color.copy(alpha = TRACK_ALPHA)
-        when {
-            item.progress != null -> LinearProgressIndicator(
-                progress = { item.progress },
-                modifier = Modifier.fillMaxWidth(),
-                color = color,
-                trackColor = track,
-            )
-            item.working -> LinearProgressIndicator(Modifier.fillMaxWidth(), color = color, trackColor = track)
-            // Thinner than a progress bar: a settled state, not one under way.
-            else -> HorizontalDivider(thickness = 2.dp, color = color)
-        }
-    }
-}
-
-/** How strongly a progress bar's track shows its colour under the part done. */
-private const val TRACK_ALPHA = 0.4f
 
 @Composable
 private fun BoxScope.Rows(

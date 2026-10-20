@@ -30,6 +30,7 @@ import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -92,6 +93,7 @@ class SafeTxScreenTest {
         SerotineTheme {
             SafeTxScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 actions = SafeTxActions(
                     onShare = { events += "share" },
                     onShareClosed = { events += "share closed" },

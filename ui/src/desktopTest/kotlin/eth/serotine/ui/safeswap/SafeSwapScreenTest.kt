@@ -23,6 +23,7 @@ import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -88,6 +89,7 @@ class SafeSwapScreenTest {
         SerotineTheme {
             SafeSwapScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 actions = SafeSwapActions(
                     onSellChange = { events += "sell $it" },
                     onReview = { events += "review" },

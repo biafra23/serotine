@@ -38,10 +38,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.ActionDropdown
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -50,10 +53,18 @@ const val TOKENS_ROW_TAG = "tokens-row"
 
 /** Binds [TokensScreen] to its ViewModel; Copy is done here, on the platform's clipboard. */
 @Composable
-fun TokensRoute(viewModel: TokensViewModel, onBack: () -> Unit, onAddToken: () -> Unit, modifier: Modifier = Modifier) {
+fun TokensRoute(
+    viewModel: TokensViewModel,
+    lightClient: LightClientViewModel,
+    onBack: () -> Unit,
+    onAddToken: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     TokensScreen(
         state,
+        strip,
         onBack = onBack,
         onAddToken = onAddToken,
         onCopy = rememberCopyText(),
@@ -72,6 +83,7 @@ fun TokensRoute(viewModel: TokensViewModel, onBack: () -> Unit, onAddToken: () -
 @Composable
 fun TokensScreen(
     state: TokensUiState,
+    lightClient: LightClientItem,
     onBack: () -> Unit,
     onAddToken: () -> Unit,
     onCopy: (String) -> Unit,
@@ -107,30 +119,32 @@ fun TokensScreen(
             }
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            state.notice?.let {
-                Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
-            }
-            state.items.forEach { item ->
-                TokenRow(
-                    item,
-                    canChange = state.canChange,
-                    onCopy = {
-                        onCopy(item.address)
-                        scope.launch { snackbar.showSnackbar("Contract address copied") }
-                    },
-                    onSetHidden = { onSetHidden(item.address, it) },
-                    onRemove = { onRemove(item.address) },
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                state.notice?.let {
+                    Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
+                }
+                state.items.forEach { item ->
+                    TokenRow(
+                        item,
+                        canChange = state.canChange,
+                        onCopy = {
+                            onCopy(item.address)
+                            scope.launch { snackbar.showSnackbar("Contract address copied") }
+                        },
+                        onSetHidden = { onSetHidden(item.address, it) },
+                        onRemove = { onRemove(item.address) },
+                    )
+                }
+                Text(
+                    "A token is known by its contract address. Added tokens are described as their " +
+                        "contracts describe themselves; nothing is fetched from a token list.",
+                    // Room under it for the floating button, which would cover the last row's menu.
+                    Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                "A token is known by its contract address. Added tokens are described as their " +
-                    "contracts describe themselves; nothing is fetched from a token list.",
-                // Room under it for the floating button, which would cover the last row's menu.
-                Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

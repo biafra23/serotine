@@ -2,6 +2,7 @@ package eth.serotine.ios
 
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.IosBiometricKey
 import eth.serotine.data.keys.PasswordOnlyTier
@@ -17,20 +18,17 @@ import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.experimental.ExperimentalNativeApi
-import kotlin.native.Platform
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +53,12 @@ import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIApplicationWillTerminateNotification
 import platform.UIKit.UIBackgroundTaskInvalid
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.Platform
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * The iOS composition root: the process's one wallet, which the Swift app creates once, before
@@ -73,6 +77,9 @@ import platform.UIKit.UIBackgroundTaskInvalid
  * runs no code, which the engine survives as any mobile app's state must.
  */
 class SerotineWallet {
+
+    /** When the wallet began to be built: a debug build says on the console how long the start took. */
+    private val began = TimeSource.Monotonic.markNow()
 
     /** The app's own Application Support directory: in its sandbox, never shown to the user. */
     private val dataDir: String = run {
@@ -104,8 +111,10 @@ class SerotineWallet {
     private val notifier = IosUpgradeNotifier(Network.SEPOLIA)
     private val upgradeNotices = UpgradeNotices(knownUpgrades, notifier)
 
-    // One instance each, which the graph and the background work share.
-    private val accounts = FileAccountRepository("$dataDir/accounts.json")
+    // One instance each, which the graph and the background work share. Each account added is
+    // noted where its history starts (issue #85): addresses with a block or a time, public data only.
+    private val historyStarts = FileHistoryStarts("$dataDir/history-starts.json")
+    private val accounts = HistoryNotingAccounts(FileAccountRepository("$dataDir/accounts.json"), historyStarts)
 
     // The transactions signed here, with their signed bytes (public once broadcast), and every one
     // of them kept for good with how it ended (issue #85): each record goes into both.
@@ -148,6 +157,8 @@ class SerotineWallet {
             signer = keyStore,
             sentTransfers = sentTransfers,
             transactionHistory = transactionHistory,
+            historyStarts = historyStarts,
+            logIndex = node.logIndex,
             // The Safe transactions waiting for their owners, with the signatures collected (public).
             safeTxQueue = FileSafeTxQueue("$dataDir/safe-tx-queue.json"),
             signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
@@ -194,6 +205,13 @@ class SerotineWallet {
             runBlocking { withTimeoutOrNull(TERMINATE_WAIT) { shutdown.join() } }
         }
         notifier.askPermission()
+        startupTime("wallet built")
+    }
+
+    /** Says on the console, in a debug build, how long after the wallet began [what] came. */
+    @OptIn(ExperimentalNativeApi::class)
+    internal fun startupTime(what: String) {
+        if (Platform.isDebugBinary) println("Serotine: $what ${began.elapsedNow()} after launch")
     }
 
     /**
@@ -212,7 +230,13 @@ class SerotineWallet {
         job.invokeOnCompletion { end() }
     }
 
+    /**
+     * Starts the foreground work unless it runs: iOS posts the will-enter-foreground notice at
+     * launch too, after the wallet has started it, and a second set would outlive the first's
+     * cancellation in the background.
+     */
     private fun startForegroundWork() {
+        if (foregroundWork.isNotEmpty()) return
         foregroundWork = listOf(
             scope.launch {
                 reportingFailure("upgrade notices") { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
@@ -234,6 +258,19 @@ class SerotineWallet {
                 // How each transaction sent from here ends is recorded whatever screen is open (issue #85).
                 reportingFailure("following sent transactions") {
                     FollowSentTransactions(transactionHistory, sentRecord, node.receipts, node.transactionInputs)()
+                }
+            },
+            scope.launch {
+                // The engine's log index follows every account from where its history starts (issue #85).
+                reportingFailure("following the accounts' logs") {
+                    FollowAccountLogs(
+                        accounts,
+                        historyStarts,
+                        transactionHistory,
+                        node.lightClient,
+                        node.logIndex,
+                        Network.SEPOLIA,
+                    )()
                 }
             },
         )

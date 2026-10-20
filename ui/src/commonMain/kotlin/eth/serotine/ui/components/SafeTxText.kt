@@ -204,17 +204,17 @@ private fun settingsChange(change: SafeSettingsChange): SafeTxActionItem = when 
     is SafeSettingsChange.ModuleDisabled -> SafeTxActionItem(
         title = "Disable a module",
         addresses = listOf(ActionAddress("Module", Eip55.format(change.module))),
-        warning = "Whatever this module does for the Safe stops: a spending limit, a delay, a recovery path.",
+        warning = MODULE_DISABLED_WARNING,
     )
     is SafeSettingsChange.GuardSet -> change.guard?.let { guard ->
         SafeTxActionItem(
             title = "Set a guard",
             addresses = listOf(ActionAddress("Guard", Eip55.format(guard))),
-            warning = "A guard checks every transaction the owners sign: one that refuses them all locks the Safe.",
+            warning = GUARD_SET_WARNING,
         )
     } ?: SafeTxActionItem(
         title = "Remove the guard",
-        warning = "Whatever the guard enforces on the Safe's transactions stops: a limit, an allowlist, a delay.",
+        warning = GUARD_REMOVED_WARNING,
     )
     is SafeSettingsChange.FallbackHandlerSet -> change.handler?.let { handler ->
         SafeTxActionItem(
@@ -229,10 +229,31 @@ private fun settingsChange(change: SafeSettingsChange): SafeTxActionItem = when 
                 "Safe: one that accepts every signature lets anyone spend what the Safe has approved (Permit2, " +
                 "permits, orders), without its owners.",
         )
-    } ?: SafeTxActionItem(title = "Remove the fallback handler")
+    } ?: SafeTxActionItem(
+        title = "Remove the fallback handler",
+        warning = FALLBACK_HANDLER_REMOVED,
+    )
 }
 
 private fun threshold(threshold: Long) = "The threshold becomes $threshold"
+
+/** The warning on a module disabled: what it did for the Safe, and stops. */
+internal const val MODULE_DISABLED_WARNING =
+    "Whatever this module does for the Safe stops: a spending limit, a delay, a recovery path."
+
+/** The warning on a guard set: what it checks, and that it can lock the Safe. */
+internal const val GUARD_SET_WARNING =
+    "A guard checks every transaction the owners sign: one that refuses them all locks the Safe."
+
+/** The warning on a guard removed: what it enforced, and stops. */
+internal const val GUARD_REMOVED_WARNING =
+    "Whatever the guard enforces on the Safe's transactions stops: a limit, an allowlist, a delay."
+
+/** The warning on a fallback handler removed: what the handler answered for the Safe, and stops. */
+internal const val FALLBACK_HANDLER_REMOVED =
+    "Whatever the fallback handler answers for the Safe stops: tokens sent to it with a safe transfer " +
+        "(ERC-721, ERC-1155) are refused, and the signature checks (EIP-1271) other contracts make for it fail, " +
+        "so orders and permits signed for the Safe no longer work."
 
 /**
  * [action], when it is an approval or a swap, as [check] found it (null: still being checked),
