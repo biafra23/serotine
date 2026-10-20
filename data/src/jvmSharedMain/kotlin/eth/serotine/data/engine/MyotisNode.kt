@@ -522,11 +522,3 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
  * anywhere near this path.
  */
 private fun report(why: String) = System.err.println("Serotine: no light client: $why")
-
-/** The 20 bytes the engine's reads take for an address. */
-private fun Address.bytes(): ByteArray = hex.removePrefix("0x").fromHex()
-
-/** The engine's name for this network, as `MyotisEngine.availableNetworks()` lists it. */
-private fun Network.engineName(): String = when (this) {
-    Network.SEPOLIA -> "sepolia"
-}

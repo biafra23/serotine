@@ -1,7 +1,8 @@
 // :data — the adapters behind the domain's ports: repository implementations and the
 // data sources they read: the account list kept in a file, the key store that seals
 // imported seeds in envelopes (docs/keys-and-signing.md), and the Myotis engine behind an
-// `io.myotis.api` adapter (docs/embedding-myotis.md). Depends on
+// adapter over `io.myotis.api` on the JVM targets and over Myotis's iOS module on iOS
+// (docs/embedding-myotis.md). Depends on
 // :domain only; :ui never depends on this module — the hosts' composition roots wire
 // it in.
 //
@@ -27,8 +28,13 @@ kotlin {
         }
     }
     jvm("desktop")
-    iosArm64()
-    iosSimulatorArm64()
+    // The iOS envelope's own declaration of libsodium's crypto_pwhash, which takes the
+    // password as bytes (src/nativeInterop/cinterop/sodiumPwhash.def says why).
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.compilations.getByName("main").cinterops.create("sodiumPwhash") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/sodiumPwhash.def"))
+        }
+    }
 
     applyDefaultHierarchyTemplate()
 
@@ -67,8 +73,8 @@ kotlin {
         // - the Myotis engine adapter (eth.serotine.data.engine). The engine library exists
         //   for the two JVM targets (its AAR for Android, its jar for the desktop), so the
         //   glue over io.myotis.api lives here, as in Myotis's own :myotis-engine; what it
-        //   drives (VerifiedNativeBalances) is common code with common tests. iOS reaches
-        //   the engine through its C ABI, with the iOS host.
+        //   drives (VerifiedNativeBalances) is common code with common tests. iOS has its own
+        //   glue in iosMain, over the iOS module's API of the same names.
         val jvmSharedMain by creating {
             dependsOn(commonMain.get())
             dependencies {
@@ -104,6 +110,24 @@ kotlin {
                 implementation(libs.myotis.engine)
             }
         }
+        // The engine on iOS: Myotis's iOS module, its typed API over the engine's C ABI, with
+        // the engine's static library inside each target's cinterop klib (iosMain's MyotisNode).
+        iosMain.dependencies {
+            implementation(libs.myotis.ios)
+            // The key envelope's libsodium (Argon2id, AES-256-GCM) through the bindings'
+            // cinterop, and its libsodium.a, which they link into the app.
+            implementation(libs.libsodium.bindings)
+        }
+        // The envelope's tests, which need its primitives (EnvelopeCrypto) and so run where
+        // those are: the desktop and the iOS simulator. Android's unit tests run on the build
+        // machine's JVM, where the Android libsodium does not load.
+        val envelopeTest by creating {
+            dependsOn(commonTest.get())
+        }
+        val desktopTest by getting {
+            dependsOn(envelopeTest)
+        }
+        iosTest.get().dependsOn(envelopeTest)
         val androidUnitTest by getting {
             dependencies {
                 implementation(libs.secp256k1.kmp.jni.jvm)

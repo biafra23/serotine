@@ -180,6 +180,12 @@ class SecurityViewModel(
             "This device's biometrics are not strong enough to unlock a key (Class 3 is needed), so it is not offered."
         BiometricUnavailable.NOT_IN_SECURE_HARDWARE ->
             "This device cannot keep the biometric key in secure hardware, so biometric unlock is not offered."
+        BiometricUnavailable.NOT_ALLOWED ->
+            "Biometrics are turned off for Serotine: allow Face ID for Serotine in the system settings to use it."
+        BiometricUnavailable.NO_PASSCODE ->
+            "This device has no passcode: set one in the system settings to use biometric unlock."
+        BiometricUnavailable.LOCKED_OUT ->
+            "Biometrics are locked after too many failed tries: unlock the device with its passcode, then try again."
     }
 
     private companion object {

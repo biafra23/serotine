@@ -49,6 +49,7 @@ import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
+import eth.serotine.ui.platform.ScreenCaptureWarnings
 import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
@@ -140,6 +141,7 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
                 }
             }
         }
+        ScreenCaptureWarnings()
     }
 }
 
