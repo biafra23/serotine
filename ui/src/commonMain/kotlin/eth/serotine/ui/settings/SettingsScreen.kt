@@ -35,8 +35,8 @@ import eth.serotine.ui.components.unavailable
 /** Test tag of the app's version line, for UI tests. */
 const val SETTINGS_VERSION_TAG = "settings-version"
 
-/** Test tag of the switch for the heavy downloads on a metered connection, for UI tests. */
-const val SETTINGS_METERED_SWITCH_TAG = "settings-metered-switch"
+/** Test tag of the row that switches the heavy downloads on a metered connection, for UI tests. */
+const val SETTINGS_METERED_TAG = "settings-metered"
 
 /** Binds [SettingsScreen] to its ViewModel. */
 @Composable
@@ -141,7 +141,7 @@ private fun MeteredDownloads(
         )
     }
     ListItem(
-        modifier = row,
+        modifier = row.testTag(SETTINGS_METERED_TAG),
         colors = colors,
         headlineContent = { Text(METERED_DOWNLOADS_TITLE) },
         supportingContent = item?.let { { Text(it.text) } },
@@ -151,7 +151,6 @@ private fun MeteredDownloads(
                 checked = item?.on == true,
                 onCheckedChange = null,
                 enabled = enabled,
-                modifier = Modifier.testTag(SETTINGS_METERED_SWITCH_TAG),
             )
         },
     )

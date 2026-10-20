@@ -1,8 +1,11 @@
 package eth.serotine.ui.settings
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
@@ -98,7 +101,7 @@ class SettingsScreenTest {
     fun theMeteredDownloadsSwitchIsOffByDefaultAndATapOnItsRowAllowsThem() {
         show()
 
-        rule.onNodeWithTag(SETTINGS_METERED_SWITCH_TAG).assertIsOff()
+        rule.onNodeWithTag(SETTINGS_METERED_TAG).assertIsOff()
         rule.onNodeWithText(METERED_DOWNLOADS_OFF).performClick()
         assertEquals(listOf(true), meteredChoices)
     }
@@ -107,7 +110,7 @@ class SettingsScreenTest {
     fun aTapOnTheAllowedSwitchTurnsItOff() {
         show(MeteredDownloadsItem(on = true, text = METERED_DOWNLOADS_ON))
 
-        rule.onNodeWithTag(SETTINGS_METERED_SWITCH_TAG).assertIsOn()
+        rule.onNodeWithTag(SETTINGS_METERED_TAG).assertIsOn()
         rule.onNodeWithText(METERED_DOWNLOADS_ON).performClick()
         assertEquals(listOf(false), meteredChoices)
     }
@@ -116,7 +119,7 @@ class SettingsScreenTest {
     fun theMeteredDownloadsSwitchTakesNoTapUntilItsChoiceIsRead() {
         show(metered = null)
 
-        rule.onNodeWithTag(SETTINGS_METERED_SWITCH_TAG).assertIsNotEnabled()
+        rule.onNodeWithTag(SETTINGS_METERED_TAG).assertHasNoClickAction()
         rule.onNodeWithText("Heavy downloads on metered connections").performClick()
         assertEquals(emptyList(), meteredChoices)
         rule.onAllNodesWithTag(UNAVAILABLE_REASON_TAG).assertCountEquals(0)
@@ -126,7 +129,8 @@ class SettingsScreenTest {
     fun aGreyedMeteredDownloadsSwitchSaysWhyOnATapAndChangesNothing() {
         show(MeteredDownloadsItem(on = false, text = "Not reported here", unavailableReason = "No metering here."))
 
-        rule.onNodeWithTag(SETTINGS_METERED_SWITCH_TAG).assertIsNotEnabled()
+        rule.onNodeWithTag(SETTINGS_METERED_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
         rule.onNodeWithText("Not reported here").performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals("No metering here.")
         assertEquals(emptyList(), meteredChoices)
