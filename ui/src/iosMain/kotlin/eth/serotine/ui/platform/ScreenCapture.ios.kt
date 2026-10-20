@@ -46,18 +46,31 @@ actual fun protectFromScreenCapture(): Boolean {
 }
 
 /**
- * The warning [protectFromScreenCapture] raised, until the user dismisses it. A screenshot's
- * outlives the screen it was taken of: the picture is still in Photos. A recording's goes when it
- * stops, or when no protected screen is left to record.
+ * The warnings [protectFromScreenCapture] raised, each until the user dismisses it, the recording
+ * one first. A screenshot's outlives the screen it was taken of: the picture is still in Photos.
+ * A recording's goes when the recording stops, or when no protected screen is left to record,
+ * and comes back with the next recording.
  */
 @Composable
 actual fun ScreenCaptureWarnings() {
-    val event = warning.value ?: return
-    ScreenCaptureWarningDialog(event, onDismiss = { warning.value = null })
+    when {
+        recordingWarning.value -> ScreenCaptureWarningDialog(ScreenCaptureEvent.RECORDING) {
+            recordingWarning.value = false
+        }
+        screenshotWarning.value -> ScreenCaptureWarningDialog(ScreenCaptureEvent.SCREENSHOT) {
+            screenshotWarning.value = false
+        }
+    }
 }
 
 // Touched only from composition, its effects and main-queue observers: the main thread.
-private val warning = mutableStateOf<ScreenCaptureEvent?>(null)
+// Two slots: a screenshot during a recording must not take the recording's warning down, nor a
+// recording the screenshot's.
+private val recordingWarning = mutableStateOf(false)
+private val screenshotWarning = mutableStateOf(false)
+
+/** Whether the screen was captured when last looked at, so only a recording's start warns. */
+private var recording = false
 private var holders = 0
 private var observers: List<NSObjectProtocol> = emptyList()
 private var cover: UIView? = null
@@ -70,7 +83,7 @@ private fun acquire(controller: UIViewController) {
         center.addObserverForName(UIApplicationWillResignActiveNotification, null, main) { _ -> cover(controller) },
         center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, main) { _ -> uncover() },
         center.addObserverForName(UIApplicationUserDidTakeScreenshotNotification, null, main) { _ ->
-            warning.value = ScreenCaptureEvent.SCREENSHOT
+            screenshotWarning.value = true
         },
         center.addObserverForName(UIScreenCapturedDidChangeNotification, null, main) { _ -> followRecording() },
     )
@@ -87,20 +100,19 @@ private fun release() {
     observers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
     observers = emptyList()
     uncover()
-    if (warning.value == ScreenCaptureEvent.RECORDING) warning.value = null
+    recording = false
+    recordingWarning.value = false
 }
 
 /**
- * Raises the recording warning while the screen is captured, and takes it down once it no longer
- * is. `UIScreen.isCaptured` is deprecated from iOS 18 for the scene's capture state, which iOS
+ * Raises the recording warning when a capture of the screen starts, and takes it down when it
+ * stops. `UIScreen.isCaptured` is deprecated from iOS 18 for the scene's capture state, which iOS
  * 15, the app's floor, does not have.
  */
 private fun followRecording() {
-    if (UIScreen.mainScreen.captured) {
-        warning.value = ScreenCaptureEvent.RECORDING
-    } else if (warning.value == ScreenCaptureEvent.RECORDING) {
-        warning.value = null
-    }
+    val captured = UIScreen.mainScreen.captured
+    if (captured != recording) recordingWarning.value = captured
+    recording = captured
 }
 
 /** Lays a plain view over the whole window, above the Compose view, until [uncover]. */
