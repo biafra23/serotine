@@ -19,27 +19,25 @@ internal class EngineLogPump(
 ) {
 
     /**
-     * Drains what waits now, batch by batch, until the ring is empty. A drain that throws ends
-     * the pump's work quietly: the log is for watching the engine and must never stop it.
-     * Returns false then, true otherwise.
+     * Drains what waits now, batch by batch, until the ring is empty. A drain or a sink that
+     * throws ends the pump's work, said once in the log where it can be: the log is for watching
+     * the engine and must never stop it. Returns false then, true otherwise.
      */
     fun drainNow(): Boolean {
-        while (true) {
-            val batch = try {
-                drain(BATCH)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                return false
-            }
-            if (batch.isEmpty()) return true
-            val lines = batch.split('\n')
+        val failure = drainAll(drain) { lines ->
             lines.forEach { sink(PREFIX + it.trimStart()) } // the engine indents its level
-            if (lines.size < BATCH) return true
+        } ?: return true
+        try {
+            sink(PREFIX + "the engine's log can no longer be drained: $failure")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // The sink failed in the first place: nowhere left to say so.
         }
+        return false
     }
 
-    /** Drains every [interval] until cancelled, or until a drain throws. */
+    /** Drains every [interval] until cancelled, or until a drain or the sink throws. */
     suspend fun run(interval: Duration) {
         while (drainNow()) delay(interval)
     }
@@ -51,14 +49,38 @@ internal class EngineLogPump(
         /** Lines taken per drain call; the ring is emptied in as many calls as it takes. */
         const val BATCH = 256
 
-        /** How many lines the engine's ring holds. */
-        const val RING_CAPACITY = 4096
-
         /**
          * The last [count] lines waiting in the ring, newline-joined, the rest drained with them:
-         * the ring gives the oldest first, and a refused start says why at the end.
+         * the ring gives the oldest first, and a refused start says why at the end. Drained until
+         * empty, whatever the ring's size; a drain that throws leaves the lines taken before it.
          */
-        fun lastLines(drain: (Int) -> String, count: Int): String =
-            drain(RING_CAPACITY).split('\n').takeLast(count).joinToString("\n")
+        fun lastLines(drain: (Int) -> String, count: Int): String {
+            val tail = ArrayDeque<String>()
+            drainAll(drain) { lines ->
+                tail.addAll(lines)
+                while (tail.size > count) tail.removeFirst()
+            }
+            return tail.joinToString("\n")
+        }
+
+        /**
+         * Hands [take] each batch [drain] gives, split into lines, until the ring is empty.
+         * Returns what was thrown by [drain] or [take], which ends it; null once the ring is empty.
+         */
+        private fun drainAll(drain: (Int) -> String, take: (List<String>) -> Unit): Throwable? {
+            while (true) {
+                try {
+                    val batch = drain(BATCH)
+                    if (batch.isEmpty()) return null
+                    val lines = batch.split('\n')
+                    take(lines)
+                    if (lines.size < BATCH) return null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    return e
+                }
+            }
+        }
     }
 }

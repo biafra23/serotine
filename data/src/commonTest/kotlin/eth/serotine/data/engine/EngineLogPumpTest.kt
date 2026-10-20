@@ -61,22 +61,41 @@ class EngineLogPumpTest {
 
     @Test
     fun aFailedStartReportsTheRingsLastLinesAndDrainsTheRest() {
-        ring.lines += List(100) { "line $it" }
+        ring.lines += List(EngineLogPump.BATCH * 20 + 5) { "line $it" } // more than any one drain gives
 
         val reported = EngineLogPump.lastLines(ring::drain, 3)
 
-        assertEquals("line 97\nline 98\nline 99", reported)
+        val last = EngineLogPump.BATCH * 20 + 4
+        assertEquals("line ${last - 2}\nline ${last - 1}\nline $last", reported)
         assertTrue(ring.lines.isEmpty())
     }
 
     @Test
-    fun aDrainThatThrowsEndsThePumpWithoutEscaping() = runTest {
+    fun aFailedStartKeepsTheLinesTakenBeforeADrainThrew() {
+        var calls = 0
+        val fullBatch = List(EngineLogPump.BATCH) { "line $it" }.joinToString("\n")
+        val drain = { _: Int -> if (calls++ == 0) fullBatch else error("gone") }
+
+        assertEquals("line ${EngineLogPump.BATCH - 1}", EngineLogPump.lastLines(drain, 1))
+    }
+
+    @Test
+    fun aDrainThatThrowsEndsThePumpWithoutEscapingAndSaysSo() = runTest {
         val failing = EngineLogPump({ error("no engine") }) { logged += it }
 
         assertFalse(failing.drainNow())
         failing.run(1.seconds) // returns rather than throwing or looping
 
-        assertEquals(emptyList(), logged)
+        assertEquals(2, logged.size)
+        assertTrue(logged.all { it.startsWith("Myotis: the engine's log can no longer be drained") })
+    }
+
+    @Test
+    fun aSinkThatThrowsEndsThePumpWithoutEscaping() = runTest {
+        val failing = EngineLogPump({ "a line" }) { error("sink gone") } // a line always waits
+
+        assertFalse(failing.drainNow())
+        failing.run(1.seconds)
     }
 
     @Test
