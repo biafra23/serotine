@@ -272,7 +272,7 @@ private fun ComposeContent(
     ) {
         Heading("From")
         FromLine(form.from)
-        SwapFormFields(form, onSellChange, onBuyChange, onAmountChange, onMax, onToleranceChange)
+        SwapFormFields(form, onSellChange, onBuyChange, onAmountChange, onMax, onToleranceChange, onReview = onReview)
         Heading("Fee")
         FeeChoice(state.fee, enabled = !form.quoting, onFeeChange)
         Note("The fee is paid in the network's own currency; the review shows the most it can be.")

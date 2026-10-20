@@ -216,6 +216,7 @@ private fun ComposeContent(state: SafeSwapUiState.Compose, actions: SafeSwapActi
             actions.onAmountChange,
             actions.onMax,
             actions.onToleranceChange,
+            onReview = actions.onReview,
         )
         form.info?.let { Note(it) }
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

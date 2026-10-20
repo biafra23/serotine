@@ -25,9 +25,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -41,7 +44,11 @@ import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.done
+import eth.serotine.ui.components.next
+import eth.serotine.ui.components.nextTo
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.components.submitOnDone
 import eth.serotine.ui.lightclient.LightClientViewModel
 
 /** Test tag of the address field, for UI tests. */
@@ -103,6 +110,7 @@ fun WatchScreen(
     modifier: Modifier = Modifier,
     onRetryLookup: () -> Unit = {},
 ) {
+    val nameField = remember { FocusRequester() }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -135,18 +143,21 @@ fun WatchScreen(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrectEnabled = false,
                         keyboardType = KeyboardType.Ascii,
-                    ),
+                    ).next(),
+                    keyboardActions = nextTo(nameField),
                 )
                 if (state.canRetryLookup) TextButton(onClick = onRetryLookup) { Text("Try again") }
                 OutlinedTextField(
                     value = state.name,
                     onValueChange = onNameChange,
-                    modifier = Modifier.fillMaxWidth().testTag(WATCH_NAME_TAG),
+                    modifier = Modifier.fillMaxWidth().focusRequester(nameField).testTag(WATCH_NAME_TAG),
                     enabled = !state.adding,
                     label = { Text("Name (optional)") },
                     singleLine = true,
                     isError = state.nameError != null,
                     supportingText = state.nameError?.let { error -> { Text(error) } },
+                    keyboardOptions = KeyboardOptions.Default.done(),
+                    keyboardActions = submitOnDone(state.canAdd, onAdd),
                 )
                 state.detection?.let { DetectionCard(it) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

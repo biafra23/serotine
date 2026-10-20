@@ -88,6 +88,20 @@ the text wins.
   what is missing and how to get it (`UnavailableDialog`, with the ways to
   get it where there are some). An action that does not apply to a kind of
   account at all is not shown.
+- **The keyboard never hides a form's button** (owner's request,
+  2026-10-20). Every screen ends at the top of the on-screen keyboard (the
+  `imePadding` around the screens in `App.kt`, `adjustResize` on Android,
+  and on iOS `OnFocusBehavior.DoNothing`, so the view is not lifted a second
+  time), so what the keyboard would cover can be scrolled to while the
+  field typed into stays in view. The keyboard's Done key on a form's last
+  field does what the form's button does (`submitOnDone`): it closes the
+  keyboard and, when the button is enabled, submits; a field before it
+  shows Next, which moves to the next field to type in (`nextTo`). Two
+  exceptions: Create Safe's owner field adds the owner and keeps the
+  keyboard for the next one; and the password and recovery-phrase steps
+  (the unlock, Security, Create account, Import mnemonic), whose Done
+  predates this rule, submit without reading the button's state or
+  closing the keyboard, their ViewModels refusing what is not ready.
 - **Long press is never the only way.** A long press (a right click on
   desktop) opens an item's menu; every action in it is also reachable from a
   visible control (the detail screen's buttons), and the menu has an

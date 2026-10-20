@@ -5,12 +5,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
@@ -169,5 +171,38 @@ class WatchScreenTest {
         rule.onNodeWithText("Add").assertIsNotEnabled()
         rule.onNodeWithText("Try again").performClick()
         assertEquals(1, retries)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheNameAddsOnlyWhatAddWould() {
+        var detection by mutableStateOf<Detection>(Detection.Checking)
+        rule.setContent {
+            SerotineTheme {
+                WatchScreen(
+                    WatchUiState(address = vitalik, name = "Vitalik", detection = detection),
+                    verifiedStripSample,
+                    {},
+                    {},
+                    onAdd = { adds++ },
+                    onBack = {},
+                )
+            }
+        }
+
+        // Still checking: Add is greyed out, and Done only closes the keyboard.
+        rule.onNodeWithTag(WATCH_NAME_TAG).performImeAction()
+        assertEquals(0, adds)
+
+        detection = Detection.Account(vitalik, "Checked at block 7", null)
+        rule.onNodeWithTag(WATCH_NAME_TAG).performImeAction()
+        assertEquals(1, adds)
+    }
+
+    @Test
+    fun theKeyboardsNextOnTheAddressGoesToTheName() {
+        // A name not verified puts Try again between the two fields.
+        show(WatchUiState(address = "savings-example.eth", canRetryLookup = true))
+        rule.onNodeWithTag(WATCH_ADDRESS_TAG).performImeAction()
+        rule.onNodeWithTag(WATCH_NAME_TAG).assertIsFocused()
     }
 }

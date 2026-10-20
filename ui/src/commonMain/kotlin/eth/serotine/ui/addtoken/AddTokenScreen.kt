@@ -29,12 +29,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.submitOnDone
 import eth.serotine.ui.lightclient.LightClientViewModel
 
 /** Test tag of the address field, for UI tests. */
@@ -104,7 +106,12 @@ fun AddTokenScreen(
                     singleLine = true,
                     isError = state.addressError != null,
                     supportingText = { Text(state.addressError ?: "0x and 40 hexadecimal digits") },
-                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Ascii),
+                    keyboardOptions = KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Ascii,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = submitOnDone(state.canAdd, onAdd),
                 )
                 state.card?.let { Card(it) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

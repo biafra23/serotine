@@ -7,7 +7,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 
@@ -58,6 +61,8 @@ data class SwapForm(
 /**
  * The swap form's fields (screen 22): the asset sold, the amount, the asset bought and the
  * tolerance; all but the tolerance held while [SwapForm.fixed]. Swap and a Safe's swap share them.
+ * The keyboard's Next key on the amount goes to the tolerance, whose Done does what their Review
+ * button does: [onReview].
  */
 @Composable
 internal fun SwapFormFields(
@@ -67,7 +72,9 @@ internal fun SwapFormFields(
     onAmountChange: (String) -> Unit,
     onMax: () -> Unit,
     onToleranceChange: (String) -> Unit,
+    onReview: () -> Unit,
 ) {
+    val toleranceField = remember { FocusRequester() }
     Heading("Sell")
     Column {
         form.sellOptions.forEach { asset ->
@@ -89,7 +96,8 @@ internal fun SwapFormFields(
         trailingIcon = { TextButton(onClick = onMax, enabled = form.canMax && !form.fixed) { Text("Max") } },
         isError = form.amountError != null,
         supportingText = (form.amountError ?: form.amountHint)?.let { text -> { Text(text) } },
-        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal),
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).next(),
+        keyboardActions = nextTo(toleranceField),
     )
     Heading("Buy")
     Column {
@@ -105,7 +113,7 @@ internal fun SwapFormFields(
     OutlinedTextField(
         value = form.tolerance,
         onValueChange = onToleranceChange,
-        modifier = Modifier.fillMaxWidth().testTag(SWAP_TOLERANCE_TAG),
+        modifier = Modifier.fillMaxWidth().focusRequester(toleranceField).testTag(SWAP_TOLERANCE_TAG),
         enabled = !form.quoting,
         label = { Text("Tolerance in %") },
         singleLine = true,
@@ -113,6 +121,7 @@ internal fun SwapFormFields(
         supportingText = {
             Text(form.toleranceError ?: "How far below the verified quote the swap may return: 0.1 % to 5 %.")
         },
-        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal),
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).done(),
+        keyboardActions = submitOnDone(form.canReview, onReview),
     )
 }

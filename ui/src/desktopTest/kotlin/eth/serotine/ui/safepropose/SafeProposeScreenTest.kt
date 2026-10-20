@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
@@ -171,5 +172,12 @@ class SafeProposeScreenTest {
         show(SafeProposeUiState.CannotPropose("Sepolia", "No owner of this Safe has its key on this device."))
 
         rule.onNodeWithText("No owner of this Safe has its key on this device.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheAmountReviews() {
+        show(SafeProposeUiState.Compose(form.copy(canReview = true)))
+        rule.onNodeWithTag(SEND_AMOUNT_TAG).performScrollTo().performImeAction()
+        assertEquals(listOf("review"), events)
     }
 }

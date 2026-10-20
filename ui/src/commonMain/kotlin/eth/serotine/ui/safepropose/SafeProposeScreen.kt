@@ -241,6 +241,7 @@ fun SafeProposeScreen(
                         actions.onRetryLookup,
                         actions.onAmountChange,
                         actions.onMax,
+                        onReview = actions.onReview,
                     )
                     Note(
                         "A Safe transaction: the owners sign it, then any account of this wallet executes it " +

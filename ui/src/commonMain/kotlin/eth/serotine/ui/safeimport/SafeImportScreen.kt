@@ -40,6 +40,8 @@ import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.done
+import eth.serotine.ui.components.submitOnDone
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import kotlinx.coroutines.Dispatchers
@@ -158,7 +160,8 @@ private fun Entering(state: SafeImportUiState.Entering, onTextChange: (String) -
                 capitalization = KeyboardCapitalization.None,
                 autoCorrectEnabled = false,
                 keyboardType = KeyboardType.Ascii,
-            ),
+            ).done(),
+            keyboardActions = submitOnDone(state.canImport, onImport),
         )
         Button(
             onClick = onImport,
