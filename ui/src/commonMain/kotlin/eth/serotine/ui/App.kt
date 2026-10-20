@@ -47,6 +47,7 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
@@ -85,6 +86,8 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
     SerotineTheme {
         // Scoped to the host, not to a destination: it decides which destinations there are.
         val update = viewModel { graph.updateRequiredViewModel() }
+        // One strip for every screen that draws it, kept current for the next one opened.
+        val lightClient = viewModel { graph.lightClientViewModel() }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
             Tab.entries.firstOrNull { it.graph == destination.route }
@@ -127,7 +130,13 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
                         }
                     },
                 ) { padding ->
-                    Destinations(graph, navController, update, Modifier.padding(padding).consumeWindowInsets(padding))
+                    Destinations(
+                        graph,
+                        navController,
+                        update,
+                        lightClient,
+                        Modifier.padding(padding).consumeWindowInsets(padding),
+                    )
                 }
             }
         }
@@ -164,6 +173,7 @@ private fun Destinations(
     graph: AppGraph,
     navController: NavHostController,
     update: UpdateRequiredViewModel,
+    lightClient: LightClientViewModel,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -200,6 +210,7 @@ private fun Destinations(
             composable(Destination.WATCH) {
                 WatchRoute(
                     viewModel = viewModel { graph.watchViewModel() },
+                    lightClient = lightClient,
                     onBack = { navController.leave(Destination.WATCH) },
                     onAdded = { navController.leave(Destination.WATCH) },
                 )
@@ -207,6 +218,7 @@ private fun Destinations(
             withAddress(Destination.ACCOUNT, navController) { address ->
                 AccountDetailRoute(
                     viewModel = viewModel { graph.accountDetailViewModel(address) },
+                    lightClient = lightClient,
                     onBack = { navController.leave(Destination.ACCOUNT) },
                     onGone = { navController.leave(Destination.ACCOUNT) },
                     onSend = { contract -> navController.send(address.hex, contract) },
@@ -224,6 +236,7 @@ private fun Destinations(
             withAddress(Destination.ACTIVITY, navController) { address ->
                 ActivityRoute(
                     viewModel = viewModel { graph.activityViewModel(address) },
+                    lightClient = lightClient,
                     onBack = { navController.leave(Destination.ACTIVITY) },
                     onOpen = { hash -> navController.openTransfer(hash) },
                 )
@@ -274,6 +287,7 @@ private fun Destinations(
             composable(Destination.TOKENS) {
                 TokensRoute(
                     viewModel { graph.tokensViewModel() },
+                    lightClient,
                     onBack = { navController.leave(Destination.TOKENS) },
                     onAddToken = { navController.navigate(Destination.ADD_TOKEN) { launchSingleTop = true } },
                 )
@@ -281,6 +295,7 @@ private fun Destinations(
             composable(Destination.ADD_TOKEN) {
                 AddTokenRoute(
                     viewModel { graph.addTokenViewModel() },
+                    lightClient,
                     onBack = { navController.leave(Destination.ADD_TOKEN) },
                     onAdded = { navController.leave(Destination.ADD_TOKEN) },
                 )
@@ -298,6 +313,7 @@ private fun Destinations(
         composable(Destination.CREATE_SAFE) {
             CreateSafeRoute(
                 viewModel = viewModel { graph.createSafeViewModel() },
+                lightClient = lightClient,
                 onBack = { navController.leave(Destination.CREATE_SAFE) },
                 onSent = { hash ->
                     navController.navigate("${Destination.TRANSFER}/$hash") {
@@ -330,6 +346,7 @@ private fun Destinations(
             if (address != null && (asked == null || asset != null)) {
                 SendRoute(
                     viewModel = viewModel { graph.sendViewModel(address, asset) },
+                    lightClient = lightClient,
                     onBack = { navController.popBackStack(SEND_ROUTE, inclusive = true) },
                     // Back from the status goes where Send was opened from, not to a signed review.
                     onSent = { hash ->
@@ -363,6 +380,7 @@ private fun Destinations(
             if (address != null && (asked == null || asset != null)) {
                 SwapRoute(
                     viewModel = viewModel { graph.swapViewModel(address, asset) },
+                    lightClient = lightClient,
                     onBack = { navController.popBackStack(SWAP_ROUTE, inclusive = true) },
                     // Back from the status goes where Swap was opened from, not to a signed review.
                     onSent = { hash ->
@@ -397,6 +415,7 @@ private fun Destinations(
             if (address != null && (asked == null || asset != null)) {
                 SafeProposeRoute(
                     viewModel = viewModel { graph.safeProposeViewModel(address, asset) },
+                    lightClient = lightClient,
                     onBack = { navController.popBackStack(SAFE_PROPOSE_ROUTE, inclusive = true) },
                     // Signed and queued: the transaction's screen, and back from it to where Send was opened.
                     onProposed = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_PROPOSE_ROUTE) },
@@ -428,6 +447,7 @@ private fun Destinations(
             if (address != null && (asked == null || asset != null) && (replaced == null || replacing != null)) {
                 SafeSwapRoute(
                     viewModel = viewModel { graph.safeSwapViewModel(address, asset, replacing) },
+                    lightClient = lightClient,
                     onBack = { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) },
                     // Signed and queued: the swap's screen, and back from it to where Swap was opened.
                     onProposed = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_SWAP_ROUTE) },
@@ -441,6 +461,7 @@ private fun Destinations(
             if (address != null) {
                 SafeImportRoute(
                     viewModel = viewModel { graph.safeImportViewModel(address) },
+                    lightClient = lightClient,
                     onBack = { navController.popBackStack(SAFE_IMPORT_ROUTE, inclusive = true) },
                     // Checked and queued: the transaction's screen, which says where it went.
                     onImported = { hash ->
@@ -462,6 +483,7 @@ private fun Destinations(
                         val imported = entry.savedStateHandle.remove<Boolean>(IMPORTED) == true
                         graph.safeTxViewModel(address, hash, imported)
                     },
+                    lightClient = lightClient,
                     onBack = { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) },
                     // Back from the status goes where the transaction was opened from, not to a signed review.
                     onSent = { sent ->
@@ -481,6 +503,7 @@ private fun Destinations(
             if (hash != null) {
                 TransferStatusRoute(
                     viewModel = viewModel { graph.transferStatusViewModel(hash) },
+                    lightClient = lightClient,
                     onDone = { navController.popBackStack(TRANSFER_ROUTE, inclusive = true) },
                 )
             } else {

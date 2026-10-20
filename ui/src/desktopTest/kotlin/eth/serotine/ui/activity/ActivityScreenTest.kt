@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -30,7 +31,7 @@ class ActivityScreenTest {
     )
 
     private fun show(state: ActivityUiState) = rule.setContent {
-        SerotineTheme { ActivityScreen(state, onBack = {}, onOpen = { opened += it }) }
+        SerotineTheme { ActivityScreen(state, verifiedStripSample, onBack = {}, onOpen = { opened += it }) }
     }
 
     @Test

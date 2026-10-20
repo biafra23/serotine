@@ -1,7 +1,7 @@
 package eth.serotine.ui.activity
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -27,6 +27,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.lightclient.LightClientViewModel
 
 /** Test tag of each transaction row, for UI tests. */
 const val ACTIVITY_ROW_TAG = "activity-row"
@@ -35,12 +38,14 @@ const val ACTIVITY_ROW_TAG = "activity-row"
 @Composable
 fun ActivityRoute(
     viewModel: ActivityViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onOpen: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    ActivityScreen(state, onBack = onBack, onOpen = onOpen, modifier = modifier)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
+    ActivityScreen(state, strip, onBack = onBack, onOpen = onOpen, modifier = modifier)
 }
 
 /**
@@ -53,6 +58,7 @@ fun ActivityRoute(
 @Composable
 fun ActivityScreen(
     state: ActivityUiState,
+    lightClient: LightClientItem,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -75,36 +81,42 @@ fun ActivityScreen(
             )
         },
     ) { padding ->
-        when (state) {
-            is ActivityUiState.Loading -> Box(Modifier.padding(padding).fillMaxSize(), Alignment.Center) {
-                CircularProgressIndicator()
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+            ActivityContent(state, onOpen)
+        }
+    }
+}
+
+/** What the history says, under the strip. */
+@Composable
+private fun BoxScope.ActivityContent(state: ActivityUiState, onOpen: (hash: String) -> Unit) {
+    when (state) {
+        is ActivityUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+        is ActivityUiState.Unavailable -> Text(
+            state.message,
+            Modifier.padding(16.dp),
+            color = MaterialTheme.colorScheme.error,
+        )
+        is ActivityUiState.Shown -> LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                Text(
+                    state.coverage,
+                    Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            is ActivityUiState.Unavailable -> Text(
-                state.message,
-                Modifier.padding(padding).padding(16.dp),
-                color = MaterialTheme.colorScheme.error,
-            )
-            is ActivityUiState.Shown -> LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+            if (state.rows.isEmpty()) {
                 item {
                     Text(
-                        state.coverage,
-                        Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        state.empty,
+                        Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                if (state.rows.isEmpty()) {
-                    item {
-                        Text(
-                            state.empty,
-                            Modifier.padding(horizontal = 16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-                items(state.rows, key = { it.key }) { row ->
-                    ActivityItem(row, onClick = row.opens?.let { hash -> { onOpen(hash) } })
-                }
+            }
+            items(state.rows, key = { it.key }) { row ->
+                ActivityItem(row, onClick = row.opens?.let { hash -> { onOpen(hash) } })
             }
         }
     }

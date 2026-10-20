@@ -30,6 +30,17 @@ the text wins.
   value from another source, or an earlier value as if it were current. A
   value the user acts on (a balance on Send, a Safe's owners and threshold,
   a receipt) names the block it was verified at.
+- **The light client's state is in sight wherever it decides something**
+  (owner's request, 2026-10-20). Every screen whose content or actions
+  depend on what the light client can verify draws its status strip (as on
+  Assets, 1) under the top bar: Account detail and Safe detail (4, 16),
+  Send and its status (7 to 9), Swap (docs/swaps.md), Watch address (10),
+  Create Safe (13 to 15), a Safe's transaction (17) and its proposal, swap
+  and import, Activity (25), and the token list Settings opens and Add
+  token (18, 20). A screen that needs nothing verified draws none:
+  Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
+  Security (21) and Display currency (19). Settings itself (18) keeps its
+  own Light client row instead of the strip.
 - **A balance last verified is shown as such** (owner's request,
   2026-10-19). While the light client has no head it can read at (asleep,
   catching up, its verified head too old, or no peer serving state proofs),
@@ -89,7 +100,8 @@ The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
 one `NavHost`, and switching tabs keeps the user's place: Settings opens over
 the Assets tab's stack and closes back to it, with nothing saved aside (owner
 ruling, 2026-10-18, #49, for now; docs/architecture.md). The light
-client's status strip stays at the top of Assets. A flow that ends in a key
+client's status strip stays at the top of Assets, and of every other screen
+whose content or actions depend on it (*Rules every screen follows*). A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
 Safe transaction) is a destination that covers the bar until it ends. A
 Safe's transactions are `safe/{address}/tx/{hash}` (17),

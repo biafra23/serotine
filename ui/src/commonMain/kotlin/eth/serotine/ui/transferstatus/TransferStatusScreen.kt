@@ -38,9 +38,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.lightclient.LightClientViewModel
 
 /** Test tag of each step, for UI tests. */
 const val TRANSFER_STEP_TAG = "transfer-step"
@@ -59,9 +62,15 @@ const val TRANSFER_SAFE_TAG = "transfer-safe"
  * again is [TransferStatusViewModel.retry].
  */
 @Composable
-fun TransferStatusRoute(viewModel: TransferStatusViewModel, onDone: () -> Unit, modifier: Modifier = Modifier) {
+fun TransferStatusRoute(
+    viewModel: TransferStatusViewModel,
+    lightClient: LightClientViewModel,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    TransferStatusScreen(state, onDone, onRetry = viewModel::retry, modifier = modifier)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
+    TransferStatusScreen(state, strip, onDone, onRetry = viewModel::retry, modifier = modifier)
 }
 
 /**
@@ -73,6 +82,7 @@ fun TransferStatusRoute(viewModel: TransferStatusViewModel, onDone: () -> Unit, 
 @Composable
 fun TransferStatusScreen(
     state: TransferStatusUiState,
+    lightClient: LightClientItem,
     onDone: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -98,7 +108,7 @@ fun TransferStatusScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is TransferStatusUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is TransferStatusUiState.Shown -> Shown(state, onDone, onRetry)
