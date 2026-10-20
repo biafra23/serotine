@@ -16,6 +16,7 @@ import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +30,9 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
@@ -49,7 +53,14 @@ class SettingsViewModelTest {
         val currency = MemoryCurrencySetting()
         val currencies = ObserveDisplayCurrencies(FakeFeeds(), currency)
         val viewModel =
-            SettingsViewModel(ObserveLightClient(lightClient), known, currencies, Network.SEPOLIA, clock = { 1_000 })
+            SettingsViewModel(
+                ObserveLightClient(lightClient),
+                known,
+                currencies,
+                Network.SEPOLIA,
+                screenCapture = null,
+                clock = { 1_000 },
+            )
         backgroundScope.launch { viewModel.uiState.collect {} }
 
         status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
@@ -61,6 +72,7 @@ class SettingsViewModelTest {
         assertEquals(APP_VERSION, state.version)
         assertEquals("1 built in · 0 added", state.tokens)
         assertEquals("USD", state.currency)
+        assertNull(state.screenCaptureAllowed, "a release build has no screen-capture switch")
 
         currency.choose(DisplayCurrency.EUR)
         runCurrent()
@@ -69,5 +81,27 @@ class SettingsViewModelTest {
         currency.choice.value = CurrencyChoice.Unreadable
         runCurrent()
         assertEquals("USD (your choice cannot be read)", viewModel.uiState.value.currency)
+    }
+
+    @Test
+    fun theDebugBuildsSwitchAllowsScreenCaptureAndBlocksItAgain() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val known = ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata())
+        val currencies = ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting())
+        val switch = ScreenCaptureDebugSwitch()
+        val viewModel = SettingsViewModel(ObserveLightClient(lightClient), known, currencies, Network.SEPOLIA, switch)
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals(false, viewModel.uiState.value.screenCaptureAllowed, "every start begins with capture blocked")
+
+        viewModel.allowScreenCapture(true)
+        runCurrent()
+        assertTrue(switch.allowed.value)
+        assertEquals(true, viewModel.uiState.value.screenCaptureAllowed)
+
+        viewModel.allowScreenCapture(false)
+        runCurrent()
+        assertFalse(switch.allowed.value)
+        assertEquals(false, viewModel.uiState.value.screenCaptureAllowed)
     }
 }

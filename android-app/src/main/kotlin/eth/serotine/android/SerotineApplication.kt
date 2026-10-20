@@ -36,6 +36,7 @@ import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
+import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -61,9 +62,8 @@ class SerotineApplication : Application() {
     // not ship (it has arm64-v8a and x86_64), balances say so. The balances last verified are
     // kept with the other files (none of which leave the device), to be shown as such after a
     // restart until a head can be read. The adapters' diagnostics go to logcat in the debug app
-    // only (eth.serotine.debug is debuggable, the release app is not).
+    // only (debuggable below).
     private val node: MyotisNode by lazy {
-        val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         MyotisNode.start(
             Network.SEPOLIA,
             filesDir.resolve("myotis"),
@@ -72,6 +72,9 @@ class SerotineApplication : Application() {
             debugLog = if (debuggable) { line -> Log.d(LOG_TAG, line) } else null,
         )
     }
+
+    /** eth.serotine.debug is debuggable, the release app is not: what the debug app's extras hang on. */
+    private val debuggable by lazy { applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
 
     /**
      * The upgrade record, for this app version only: one instance, which the screens read and
@@ -142,6 +145,9 @@ class SerotineApplication : Application() {
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
             network = Network.SEPOLIA,
+            // The debug app only: Settings may lift FLAG_SECURE for a screen recording, until the
+            // process ends. The release app has no switch (docs/keys-and-signing.md, rule 8).
+            screenCaptureDebugSwitch = if (debuggable) ScreenCaptureDebugSwitch() else null,
         )
     }
 

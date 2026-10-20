@@ -285,6 +285,7 @@ class AppNavigationTest {
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
         },
         network = Network.SEPOLIA,
+        screenCaptureDebugSwitch = null,
     )
 
     private val daily = Account(

@@ -9,4 +9,4 @@ import androidx.compose.runtime.Composable
  * and it does not exist yet; until it does, this reports no protection.
  */
 @Composable
-actual fun protectFromScreenCapture(): Boolean = false
+internal actual fun protectFromScreenCapture(blockCapture: Boolean): Boolean = false

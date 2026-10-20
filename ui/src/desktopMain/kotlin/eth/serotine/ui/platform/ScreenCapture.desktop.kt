@@ -8,4 +8,4 @@ import androidx.compose.runtime.Composable
  * rule 8).
  */
 @Composable
-actual fun protectFromScreenCapture(): Boolean = false
+internal actual fun protectFromScreenCapture(blockCapture: Boolean): Boolean = false

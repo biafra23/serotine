@@ -30,7 +30,7 @@ private val synced = SettingsUiState(
 @Composable
 private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        SettingsScreen(state = state, onCurrency = {}, onTokens = {}, onSecurity = {})
+        SettingsScreen(state = state, onCurrency = {}, onTokens = {}, onSecurity = {}, onScreenCaptureChange = {})
     }
 }
 
@@ -74,6 +74,16 @@ private fun SettingsUnreadablePreview() = SettingsPreview(
     ),
 )
 
+/** The debug build as it starts: its screen-recording switch off. */
+@Preview
+@Composable
+private fun SettingsDebugBuildPreview() = SettingsPreview(synced.copy(screenCaptureAllowed = false))
+
+/** The debug build, its screen-recording switch on. */
+@Preview
+@Composable
+private fun SettingsDebugBuildCaptureAllowedPreview() = SettingsPreview(synced.copy(screenCaptureAllowed = true))
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsSyncedPreview() },
@@ -82,4 +92,6 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsUnreadablePreview() },
     { SettingsHeadTooOldPreview() },
     { SettingsHeadTooOldDarkPreview() },
+    { SettingsDebugBuildPreview() },
+    { SettingsDebugBuildCaptureAllowedPreview() },
 )
