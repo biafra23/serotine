@@ -26,10 +26,10 @@ import kotlinx.coroutines.flow.conflate
  * [accounts], which also notes in [starts] when each account is added ([HistoryStarts.note]):
  * what the composition roots hand every use case that adds one, so none of them has to know of
  * it. Only an account [accounts] added is noted, once it is listed, in place of any start left
- * from when it was in the wallet before. What [add] answers is [accounts]' answer: an account
- * whose note could not be saved, or that [FollowAccountLogs] fixes before its note is made,
- * starts at the head its start is fixed at, which is still after it was added. [clock] is in
- * unix seconds.
+ * from when it was in the wallet before. What [add] answers is [accounts]' answer. An account
+ * whose note could not be saved starts at the head its start is fixed at, which is still after it
+ * was added; one that [FollowAccountLogs] fixes at the head before its note is made has that start
+ * replaced by the note, and is fixed again from it, earlier. [clock] is in unix seconds.
  */
 class HistoryNotingAccounts(
     private val accounts: AccountRepository,
@@ -59,8 +59,7 @@ class HistoryNotingAccounts(
  * - **What is followed.** Every account from its start, as a [LogWatchKey.Mention] (the token
  *   transfers to and from it), and a Safe also as a [LogWatchKey.Emitter] (its own events).
  * - **What is dropped.** An account that left the wallet is unwatched, with what the index held
- *   of it, and its start forgotten once the engine took that; one that left before its start was
- *   fixed was never watched, and its start is just forgotten.
+ *   of it, whatever its start, and its start forgotten once the engine took that.
  *
  * What the engine took is not asked of it again while this runs; what it did not take is asked
  * again at the next change of the light client's state (a new head, about every slot). Each
@@ -92,8 +91,6 @@ class FollowAccountLogs(
         val held = (round.starts as? HistoryStartList.Loaded)?.starts ?: return taken
         val synced = round.status as? LightClientStatus.Synced ?: return taken
         val listedAddresses = listed.map { it.address }.toSet()
-        held.filter { (address, start) -> address !in listedAddresses && start is HistoryStart.Noted }
-            .forEach { (address, start) -> starts.forget(address, start) }
         val fixed = held.mapNotNull { (address, start) -> (start as? HistoryStart.Fixed)?.let { address to it.block } }
             .toMap(mutableMapOf())
         // An unreadable history only leaves out what it could add: a start no earlier than the note.
@@ -113,12 +110,14 @@ class FollowAccountLogs(
                 LogWatch(LogWatchKey.Emitter(account.address), from).takeIf { account.kind == AccountKind.SAFE },
             )
         }.toSet()
-        val gone = fixed.keys - listedAddresses
+        // Whatever its start, a noted one included: a start fixed and watched may have been
+        // replaced by the note of an add that raced it. Unwatching an entry never held is nothing.
+        val gone = held.filterKeys { it !in listedAddresses }
         val asked = watch - taken
         if (asked.isEmpty() && gone.isEmpty()) return taken
-        val unwatch = gone.flatMap { listOf(LogWatchKey.Mention(it), LogWatchKey.Emitter(it)) }
+        val unwatch = gone.keys.flatMap { listOf(LogWatchKey.Mention(it), LogWatchKey.Emitter(it)) }
         if (!index.configure(asked.toList(), unwatch)) return taken
-        gone.forEach { starts.forget(it, HistoryStart.Fixed(fixed.getValue(it))) }
+        gone.forEach { (address, start) -> starts.forget(address, start) }
         return (taken + asked).filterTo(HashSet()) { it.key.address !in gone }
     }
 
