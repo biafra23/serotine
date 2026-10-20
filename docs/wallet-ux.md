@@ -591,7 +591,11 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
 
 18. **Settings**: Display currency · Tokens (n built in, m added) · Security
     (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
-    for now) · Light client (status) · About. Tokens opens the list of every token the
+    for now, and the switch for heavy downloads on metered connections: off
+    by default, saying when the walk back over the account history is paused
+    because the connection is metered, and greyed out on a device that does
+    not report metering; a file of its own, `metered-downloads.json`) ·
+    Light client (status) · About. Tokens opens the list of every token the
     wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.

@@ -9,11 +9,13 @@ import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AccountAdd
+import eth.serotine.domain.repository.ConnectionCost
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryStart
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.LogWatch
 import eth.serotine.domain.repository.LogWatchKey
+import eth.serotine.domain.repository.MeteredDownloadsChoice
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
@@ -37,12 +39,22 @@ class AccountLogsTest {
     private val history = MemoryTransactionHistory()
     private val lightClient = FakeLightClient()
     private val index = RecordingLogIndex()
+    private val meter = FakeConnectionMeter()
+    private val metered = MemoryMeteredDownloads()
 
     /** The verified head the tests sync to, and its time. */
     private val head = LightClientStatus.Synced(headBlock = 10_000, headTimestamp = HEAD_TIME)
 
     private fun TestScope.follow() {
-        val follower = FollowAccountLogs(accounts, starts, history, lightClient, index, Network.SEPOLIA)
+        val follower = FollowAccountLogs(
+            accounts,
+            starts,
+            history,
+            lightClient,
+            index,
+            ObserveHeavyDownloads(meter, metered),
+            Network.SEPOLIA,
+        )
         backgroundScope.launch { follower() }
         runCurrent()
     }
@@ -204,6 +216,93 @@ class AccountLogsTest {
         val alices = listOf(LogWatch(LogWatchKey.Mention(alice.address), 9_000))
         assertEquals(listOf(alices to emptyList<LogWatchKey>(), alices to emptyList()), index.asked)
         assertTrue(index.watched.isNotEmpty())
+    }
+
+    @Test
+    fun onAMeteredConnectionTheWalkIsPausedUntilTheUserAllowsItOrWiFiReturns() = runTest {
+        accounts.accounts.value = listOf(alice)
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_000))
+        meter.cost.value = ConnectionCost.METERED
+        follow()
+        sync()
+        runCurrent()
+
+        val alices = listOf(LogWatch(LogWatchKey.Mention(alice.address), 9_000))
+        // The entry is asked for with the walk paused: the new blocks are still followed.
+        assertEquals(listOf(alices to emptyList<LogWatchKey>()), index.asked)
+        assertEquals(listOf(true), index.pauses)
+
+        metered.allow(true)
+        runCurrent()
+        metered.allow(false)
+        runCurrent()
+        meter.cost.value = ConnectionCost.UNMETERED
+        runCurrent()
+        // A new head with nothing changed asks nothing.
+        sync(head.copy(headBlock = 10_001))
+        runCurrent()
+
+        // Each resume or pause alone is a change with nothing to watch or unwatch.
+        val none = emptyList<LogWatch>() to emptyList<LogWatchKey>()
+        assertEquals(listOf(alices to emptyList(), none, none, none), index.asked)
+        assertEquals(listOf(true, false, true, false), index.pauses)
+    }
+
+    @Test
+    fun aChoiceThatCannotBeReadKeepsTheWalkPausedOnAMeteredConnection() = runTest {
+        accounts.accounts.value = listOf(alice)
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_000))
+        meter.cost.value = ConnectionCost.METERED
+        metered.choice.value = MeteredDownloadsChoice.Unreadable
+        follow()
+        sync()
+        runCurrent()
+
+        assertEquals(listOf(true), index.pauses)
+    }
+
+    @Test
+    fun aPauseIsNotAskedForWhileThereIsNothingToWalk() = runTest {
+        follow()
+        sync()
+        runCurrent()
+        meter.cost.value = ConnectionCost.METERED
+        runCurrent()
+
+        assertEquals(emptyList(), index.asked)
+    }
+
+    @Test
+    fun aMeteredConnectionPausesTheWalkWhileTheLightClientIsNotSyncedToo() = runTest {
+        accounts.accounts.value = listOf(alice)
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_000))
+        follow()
+        sync()
+        runCurrent()
+        sync(LightClientStatus.WaitingForHead(headAgeSeconds = 300))
+        meter.cost.value = ConnectionCost.METERED
+        runCurrent()
+
+        val none = emptyList<LogWatch>() to emptyList<LogWatchKey>()
+        assertEquals(none, index.asked.last())
+        assertEquals(listOf(false, true), index.pauses)
+    }
+
+    @Test
+    fun aPauseTheEngineDidNotTakeIsAskedAgainAtTheNextHead() = runTest {
+        accounts.accounts.value = listOf(alice)
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_000))
+        follow()
+        sync()
+        runCurrent()
+        index.takes = false
+        meter.cost.value = ConnectionCost.METERED
+        runCurrent()
+        index.takes = true
+        sync(head.copy(headBlock = 10_001))
+        runCurrent()
+
+        assertEquals(listOf(false, true, true), index.pauses)
     }
 
     private fun nativeTo(to: Address) = SentAction.Transfer(to, TransferAsset.Native, UInt256.ONE)

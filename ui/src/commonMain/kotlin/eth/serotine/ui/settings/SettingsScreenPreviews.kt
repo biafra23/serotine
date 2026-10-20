@@ -25,12 +25,13 @@ private val synced = SettingsUiState(
     VERSION,
     tokens = "3 built in · 1 added",
     currency = "EUR",
+    meteredDownloads = MeteredDownloadsItem.NOT_ALLOWED,
 )
 
 @Composable
 private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        SettingsScreen(state = state, onCurrency = {}, onTokens = {}, onSecurity = {})
+        SettingsScreen(state = state, onCurrency = {}, onTokens = {}, onSecurity = {}, onMeteredDownloads = {})
     }
 }
 
@@ -71,8 +72,50 @@ private fun SettingsUnreadablePreview() = SettingsPreview(
     synced.copy(
         tokens = "3 built in · added ones cannot be read",
         currency = "USD (your choice cannot be read)",
+        meteredDownloads = MeteredDownloadsItem(
+            on = false,
+            text = "$METERED_DOWNLOADS_OFF (your choice cannot be read)",
+            unavailableReason = "Your saved choice cannot be read.",
+        ),
     ),
 )
+
+/** The heavy downloads allowed on a metered connection. */
+@Preview
+@Composable
+private fun SettingsMeteredAllowedPreview() = SettingsPreview(
+    synced.copy(meteredDownloads = MeteredDownloadsItem(on = true, text = METERED_DOWNLOADS_ON)),
+)
+
+/** Not allowed, on a metered connection now: the walk back is paused. */
+@Preview
+@Composable
+private fun SettingsMeteredPausedPreview() = SettingsPreview(
+    synced.copy(
+        meteredDownloads = MeteredDownloadsItem(
+            on = false,
+            text = "$METERED_DOWNLOADS_OFF · Waiting now: no unmetered connection",
+        ),
+    ),
+)
+
+/** A desktop, which does not report metering: the switch greyed out. */
+private val meteredNotReported = synced.copy(
+    meteredDownloads = MeteredDownloadsItem(
+        on = false,
+        text = "This device does not say whether its connection is metered: the account history is walked " +
+            "back on any connection",
+        unavailableReason = "This device does not report whether its connection is metered.",
+    ),
+)
+
+@Preview
+@Composable
+private fun SettingsMeteredNotReportedPreview() = SettingsPreview(meteredNotReported)
+
+@Preview
+@Composable
+private fun SettingsMeteredNotReportedDarkPreview() = SettingsPreview(meteredNotReported, darkTheme = true)
 
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
@@ -82,4 +125,8 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsUnreadablePreview() },
     { SettingsHeadTooOldPreview() },
     { SettingsHeadTooOldDarkPreview() },
+    { SettingsMeteredAllowedPreview() },
+    { SettingsMeteredPausedPreview() },
+    { SettingsMeteredNotReportedPreview() },
+    { SettingsMeteredNotReportedDarkPreview() },
 )
