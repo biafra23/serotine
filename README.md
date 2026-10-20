@@ -39,8 +39,9 @@ What the app does today:
   transactions: a signing request travels between devices as a QR code or
   text, never through the Safe Transaction Service, and each co-signer
   decodes and checks it against the chain; an owner may approve on chain
-  instead. A transaction that would set any fallback handler but the pinned
-  one, remove it, or enable a module is shown and never signed.
+  instead. A transaction that would set the fallback handler to anything but
+  the pinned one or none (the zero address removes it), or enable a module,
+  is shown and never signed, approved or executed here.
 - **Swaps on Uniswap v3** from an account or a Safe: verified quotes from the
   pinned contracts, an exact-amount approval, a slippage tolerance (0.5 % by
   default) and the price impact, with the amount received read from the
