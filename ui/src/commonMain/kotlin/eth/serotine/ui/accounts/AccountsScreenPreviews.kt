@@ -130,7 +130,7 @@ private fun AccountsAccountsDarkPreview() = AccountsPreview(withAccounts, darkTh
 /** The screen on a narrow phone (#68): a control badge too wide for its row shows as its icon. */
 @Preview
 @Composable
-private fun AccountsNarrowPreview() = Box(Modifier.width(320.dp).fillMaxHeight()) { AccountsPreview(withAccounts) }
+private fun AccountsNarrowPreview() = Box(Modifier.width(360.dp).fillMaxHeight()) { AccountsPreview(withAccounts) }
 
 /** No verified head yet and no balance proven before: the strip red, every row syncing. */
 private val catchingUp = AccountsUiState.Ready(

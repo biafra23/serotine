@@ -96,7 +96,7 @@ fun NameWithControlBadge(name: String, control: Control, modifier: Modifier = Mo
             Text(name)
             // Both forms are composed and one is placed: neither speaks, the box after them does.
             BadgeChip(control, Modifier.clearAndSetSemantics { testTag = CONTROL_BADGE_TEXT_TAG }) {
-                BadgeText(control)
+                BadgeText(control, Modifier.clearAndSetSemantics {})
             }
             BadgeChip(control, Modifier.clearAndSetSemantics { testTag = CONTROL_BADGE_ICON_TAG }) {
                 Icon(control.icon, null, Modifier.padding(horizontal = IconPadding, vertical = 1.dp).size(iconSize()))
@@ -159,10 +159,10 @@ private fun BadgeChip(control: Control, modifier: Modifier = Modifier, content: 
 
 /** [control]'s text, as the badge shows it. */
 @Composable
-private fun BadgeText(control: Control) {
+private fun BadgeText(control: Control, modifier: Modifier = Modifier) {
     Text(
         control.label,
-        Modifier.padding(horizontal = TextPadding, vertical = 1.dp),
+        modifier.padding(horizontal = TextPadding, vertical = 1.dp),
         style = MaterialTheme.typography.labelSmall,
         softWrap = false,
         maxLines = 1,
