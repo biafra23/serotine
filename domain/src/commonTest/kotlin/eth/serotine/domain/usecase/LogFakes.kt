@@ -17,7 +17,6 @@ import eth.serotine.domain.repository.MeteredDownloadsSetting
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /** [HistoryStarts] in memory, as the port's contract says one behaves; [failSaves] makes every write fail. */
@@ -49,7 +48,8 @@ internal class MemoryHistoryStarts(vararg initial: Pair<Address, HistoryStart>) 
 /**
  * A [LogIndex] that records each change asked of it, with whether it paused the walk ([pauses]),
  * and [watched] what it took, the union an engine keeps (the lowest block of each entry); [takes]
- * false refuses every change.
+ * false refuses every change. Its [coverage] and the [answer] to each query ([queries]) are a
+ * test's to set.
  */
 internal class RecordingLogIndex : LogIndex {
     val asked = mutableListOf<Pair<List<LogWatch>, List<LogWatchKey>>>()
@@ -66,9 +66,16 @@ internal class RecordingLogIndex : LogIndex {
         return true
     }
 
-    override fun observeCoverage(): Flow<LogCoverageReading> = flowOf(LogCoverageReading.Unavailable)
+    val coverage = MutableStateFlow<LogCoverageReading>(LogCoverageReading.Unavailable)
+    val queries = mutableListOf<LogQuery>()
+    var answer: (LogQuery) -> LogsReading = { LogsReading.Unavailable(ReadUnavailable.UNPROVEN) }
 
-    override suspend fun logs(query: LogQuery): LogsReading = LogsReading.Unavailable(ReadUnavailable.UNPROVEN)
+    override fun observeCoverage(): Flow<LogCoverageReading> = coverage
+
+    override suspend fun logs(query: LogQuery): LogsReading {
+        queries += query
+        return answer(query)
+    }
 }
 
 /** A [ConnectionMeter] whose [cost] the test sets. */

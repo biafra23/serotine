@@ -489,16 +489,22 @@ answered with an empty list.
     2026-10-20).
   - An account removed is unwatched, and its start forgotten once the engine
     took that.
+- **`ObserveSafeHistory`** (`:domain`) reads a Safe's own events
+  (`SafeEvents`: Safe 1.3.0's and 1.4.1's, each in the form its version
+  indexes it in) from the index, for the Activity screen: from where the
+  Safe's history starts, or the lowest block the index covers of it when
+  higher, to the top of what it covers, read again as that moves.
 - **Only on a connection it may use.** The walk back is a heavy download
   (`HeavyDownloads`, CLAUDE.md, *Data sources*): `FollowAccountLogs` pauses
   it (`backfillPaused`) while the connection is metered and the user has
   not allowed heavy downloads there in Settings, and resumes it when either
   changes, whatever the light client's state: a pause alone is pushed
-  whenever the engine runs, verified reads or not. Every push says the bit, since the engine reads one left out as
-  "walk" and re-applies the last one after a pause; a change of it alone is
-  a push with nothing to watch or unwatch, which the engine unions with what
-  it holds. Paused, the index still follows the new blocks (the engine's
-  head-follow), and coverage below where the walk stood waits for it.
+  whenever the engine runs, verified reads or not. Every push says the bit,
+  since the engine reads one left out as "walk" and re-applies the last one
+  after a pause; a change of it alone is a push with nothing to watch or
+  unwatch, which the engine unions with what it holds. Paused, the index
+  still follows the new blocks (the engine's head-follow), and coverage
+  below where the walk stood waits for it.
 - **What the walk tells a peer.** Receipts are fetched only for the blocks
   whose bloom flags an entry, so the serving peer learns which blocks matter
   to this device. That is the trade-off the log index makes for any

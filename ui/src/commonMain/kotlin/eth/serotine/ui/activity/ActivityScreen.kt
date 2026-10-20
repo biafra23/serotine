@@ -45,8 +45,9 @@ fun ActivityRoute(
 
 /**
  * An account's Activity (docs/wallet-ux.md, screen 25) as a pure function of [state]: what the
- * list covers, then each transaction this device sent for it, newest first, with how it ended as
- * this device saw it; a tap opens its status.
+ * list covers, then each transaction this device sent for it and each event of a Safe on chain,
+ * newest first, with how it ended as this device saw it; a tap on a transaction sent from here
+ * opens its status.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,22 +96,26 @@ fun ActivityScreen(
                 if (state.rows.isEmpty()) {
                     item {
                         Text(
-                            "Nothing sent from this device yet.",
+                            state.empty,
                             Modifier.padding(horizontal = 16.dp),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                 }
-                items(state.rows, key = { it.hash }) { row -> ActivityItem(row, onClick = { onOpen(row.hash) }) }
+                items(state.rows, key = { it.key }) { row ->
+                    ActivityItem(row, onClick = row.opens?.let { hash -> { onOpen(hash) } })
+                }
             }
         }
     }
 }
 
+/** One row; tappable only with an [onClick], when it has a status to open. */
 @Composable
-private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
+private fun ActivityItem(row: ActivityRow, onClick: (() -> Unit)?) {
     ListItem(
-        modifier = Modifier.testTag(ACTIVITY_ROW_TAG).clickable(onClick = onClick),
+        modifier = Modifier.testTag(ACTIVITY_ROW_TAG)
+            .then(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier),
         leadingContent = { AccountAvatar(row.about) },
         // When, above what it did: beside it, the date would squeeze each row into narrow lines.
         overlineContent = { Text(row.time) },
@@ -124,10 +129,10 @@ private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
     )
 }
 
-/** The colour a row's status is said in: an error's for a revert, muted for what is not known yet. */
+/** The colour a row's status is said in: an error's for a revert or a warning, muted for what is not known yet. */
 @Composable
 private fun colorOf(state: ActivityState): Color = when (state) {
     ActivityState.DONE -> MaterialTheme.colorScheme.onSurfaceVariant
-    ActivityState.FAILED -> MaterialTheme.colorScheme.error
+    ActivityState.FAILED, ActivityState.WARNING -> MaterialTheme.colorScheme.error
     ActivityState.WAITING, ActivityState.UNCONFIRMED, ActivityState.UNKNOWN -> MaterialTheme.colorScheme.tertiary
 }

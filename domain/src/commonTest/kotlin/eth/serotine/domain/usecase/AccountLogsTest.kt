@@ -189,14 +189,27 @@ class AccountLogsTest {
     }
 
     @Test
-    fun theNoteOfAnAccountThatLeftBeforeItsStartWasFixedIsForgottenAndNothingUnwatched() = runTest {
-        starts.starts.value = mapOf(alice.address to HistoryStart.Noted(HEAD_TIME))
+    fun anAccountThatLeftWithItsStartOnlyNotedIsUnwatchedTooBeforeItIsForgotten() = runTest {
+        // Fixed at the head and watched before its note landed, the note then replacing the fixed
+        // start, and removed before a round fixed it again.
+        accounts.accounts.value = listOf(alice)
         follow()
         sync()
         runCurrent()
+        assertEquals(mapOf<LogWatchKey, Long>(LogWatchKey.Mention(alice.address) to 10_000), index.watched)
+        starts.starts.value = mapOf(alice.address to HistoryStart.Noted(HEAD_TIME))
+        index.takes = false
+        accounts.accounts.value = emptyList()
+        runCurrent()
 
+        assertEquals(mapOf(alice.address to HistoryStart.Noted(HEAD_TIME)), starts.starts.value, "kept until taken")
+
+        index.takes = true
+        sync(head.copy(headBlock = 10_001))
+        runCurrent()
+
+        assertEquals(emptyMap(), index.watched)
         assertEquals(emptyMap(), starts.starts.value)
-        assertEquals(emptyList(), index.asked)
     }
 
     @Test

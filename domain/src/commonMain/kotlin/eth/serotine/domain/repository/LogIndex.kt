@@ -7,7 +7,8 @@ import kotlinx.coroutines.flow.Flow
  * The port for the engine's verified log index (issue #85; Myotis `docs/eth-getlogs-design.md`):
  * a watch-list of entries, each walked back from its own block over the verified headers, whose
  * logs the index then serves verified, and only inside the span it covers. :data implements it
- * over the Myotis engine (`eth.serotine.data.engine`). Public chain data only. Never throws.
+ * over the Myotis engine (`eth.serotine.data.engine`). Public chain data only. Never throws, but
+ * for the caller's error [configure] names.
  */
 interface LogIndex {
 

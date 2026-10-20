@@ -556,12 +556,16 @@ upgrades*).
 
 Screens 22 to 24 are the swap screens (docs/swaps.md).
 
-25. **Activity**: the transactions this device sent for an account, newest
-    first, under the Assets tab like the account it is of
-    (`activity/{address}`).
-    - First, what the list covers: transactions sent from this device. Those
-      received, and those sent from the account elsewhere, are not listed
-      yet (issue #85 has the plan for them).
+25. **Activity**: the transactions this device sent for an account and, for
+    a Safe, its own events on chain, newest first, under the Assets tab like
+    the account it is of (`activity/{address}`).
+    - First, what the list covers: transactions sent from this device, and
+      for a Safe its events on chain from the block its history starts at
+      on (when it was deployed from this device, or added here: "since
+      added", owner ruling 2026-10-20), with the blocks still being walked
+      named, or why they are not listed yet. Token transfers, and for an EOA
+      what it received or sent elsewhere, are not listed yet (issue #85 has
+      the plan for them).
     - One row per transaction: the blockie of its other side, what it did
       ("Sent 0.25 ETH", "Swapped 100 USDC for at least 4.28845 LINK",
       "Executed a Safe transaction", "Deployed a Safe"),
@@ -574,6 +578,14 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - A Safe's Activity lists the approvals and executions of its
       transactions and its deployment, whichever account here sent them
       ("Executed transaction 4", "By Alice · …").
+    - And its events on chain, from the engine's verified log index
+      (`ObserveSafeHistory`): ETH received ("Received 0.5 ETH", "From Bob ·
+      …"), executions and failed ones, approvals, its set-up, owner,
+      threshold, module, guard and fallback-handler changes, a module's
+      transactions and messages signed. Each sits among the sent
+      transactions by its block ("Block 9,415,302") and opens nothing yet;
+      one whose transaction is listed as sent from here is left out, as its
+      row says more.
     - Where the list comes from: every transaction a peer took (or maybe
       took) goes into the history as it is recorded
       (`HistoryRecordingSentTransfers`), which is kept for good, unlike the
