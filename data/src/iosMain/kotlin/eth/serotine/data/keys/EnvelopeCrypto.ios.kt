@@ -171,7 +171,9 @@ internal actual object EnvelopeCrypto {
             if (!created) throw IOException("could not create the directory (${error.value?.code ?: "no error"})")
         }
         // Set every time, as on the JVM: owner only, which the app's sandbox makes the app only.
-        if (chmod(path, OWNER_ONLY_DIRECTORY.convert()) != 0) throw IOException("could not restrict the directory (errno $errno)")
+        if (chmod(path, OWNER_ONLY_DIRECTORY.convert()) != 0) {
+            throw IOException("could not restrict the directory (errno $errno)")
+        }
         // Out of iCloud and computer backups (docs/keys-and-signing.md, rule 8): the envelopes
         // are useless off this device anyway, their hardware factor being this one's enclave.
         val excluded = NSURL.fileURLWithPath(path, isDirectory = true)
@@ -196,7 +198,9 @@ internal actual object EnvelopeCrypto {
                 // link(2) refuses an existing name, where rename(2) would replace it.
                 if (link(temporary, path) != 0) {
                     val cause = errno
-                    throw IOException(if (cause == EEXIST) "the file exists already" else "could not store the file (errno $cause)")
+                    throw IOException(
+                        if (cause == EEXIST) "the file exists already" else "could not store the file (errno $cause)",
+                    )
                 }
             }
             syncDirectoryOf(path)

@@ -110,7 +110,9 @@ internal object IosSecurity {
     fun tokenObjectIdOf(key: SecKeyRef): ByteArray {
         val attributes = checkNotNull(SecKeyCopyAttributes(key)) { "SecKeyCopyAttributes failed" }
         try {
-            val handle = checkNotNull(CFDictionaryGetValue(attributes, tokenObjectId)) { "the key has no token object id" }
+            val handle = checkNotNull(CFDictionaryGetValue(attributes, tokenObjectId)) {
+                "the key has no token object id"
+            }
             check(CFGetTypeID(handle) == CFDataGetTypeID()) { "the key's token object id is not data" }
             return bytesOf(handle.reinterpret()) // owned by the attributes dictionary, so copied before it goes
         } finally {
@@ -153,7 +155,10 @@ internal object IosSecurity {
         }
     }
 
-    /** [ciphertext] decrypted by the enclave with [privateKey]. The caller zeroes the result; CF's copy is zeroed here. */
+    /**
+     * [ciphertext] decrypted by the enclave with [privateKey]. The caller zeroes the result; CF's
+     * copy is zeroed here.
+     */
     fun eciesDecrypt(privateKey: SecKeyRef, ciphertext: ByteArray): ByteArray = owning {
         val input = own(data(ciphertext))
         val output = own(

@@ -65,9 +65,11 @@ class EnvelopeCryptoTest {
     @Test
     fun aesGcmMatchesTheSpecificationsTestCases() {
         for (v in vectors) {
-            val sealed = EnvelopeCrypto.aesGcmSeal(v.key.fromHex(), v.nonce.fromHex(), v.plaintext.fromHex(), v.aad.fromHex())
+            val key = v.key.fromHex()
+            val nonce = v.nonce.fromHex()
+            val sealed = EnvelopeCrypto.aesGcmSeal(key, nonce, v.plaintext.fromHex(), v.aad.fromHex())
             assertEquals(v.sealed, sealed.toHex())
-            val opened = EnvelopeCrypto.aesGcmOpen(v.key.fromHex(), v.nonce.fromHex(), v.sealed.fromHex(), v.aad.fromHex())
+            val opened = EnvelopeCrypto.aesGcmOpen(key, nonce, v.sealed.fromHex(), v.aad.fromHex())
             assertEquals(v.plaintext, opened?.toHex())
         }
     }
@@ -122,5 +124,6 @@ class EnvelopeCryptoTest {
         assertEquals(listOf("state.json"), SystemFileSystem.list(directory).map { it.name })
     }
 
-    private fun read(file: String): ByteArray = SystemFileSystem.source(Path(file)).buffered().use { it.readByteArray() }
+    private fun read(file: String): ByteArray =
+        SystemFileSystem.source(Path(file)).buffered().use { it.readByteArray() }
 }

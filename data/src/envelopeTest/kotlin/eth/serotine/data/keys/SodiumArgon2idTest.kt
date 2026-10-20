@@ -9,8 +9,8 @@ import kotlin.test.assertTrue
 /**
  * The envelope's Argon2id through its own byte-array mapping of libsodium (JNA on the desktop,
  * its own cinterop declaration on iOS), against libsodium's own known answers
- * (test/default/pwhash_argon2id.c and .exp, the first three `tv` cases): passwords of arbitrary bytes and odd lengths, so a wrong length or encoding
- * anywhere in the mapping shows.
+ * (test/default/pwhash_argon2id.c and .exp, the first three `tv` cases): passwords of
+ * arbitrary bytes and odd lengths, so a wrong length or encoding anywhere in the mapping shows.
  */
 class SodiumArgon2idTest {
 
