@@ -16,6 +16,33 @@ class SafeEventsTest {
     private fun topic(address: Address) = "0x" + word(address)
 
     @Test
+    fun theTopicsAreTheHashesOfTheEventsSignatures() {
+        // The same in 1.3.0 and 1.4.1: which parameters are indexed is not part of a signature.
+        val signatures = listOf(
+            "SafeSetup(address,address[],uint256,address,address)",
+            "ExecutionSuccess(bytes32,uint256)",
+            "ExecutionFailure(bytes32,uint256)",
+            "SafeReceived(address,uint256)",
+            "ApproveHash(bytes32,address)",
+            "AddedOwner(address)",
+            "RemovedOwner(address)",
+            "ChangedThreshold(uint256)",
+            "EnabledModule(address)",
+            "DisabledModule(address)",
+            "ChangedGuard(address)",
+            "ChangedFallbackHandler(address)",
+            "ExecutionFromModuleSuccess(address)",
+            "ExecutionFromModuleFailure(address)",
+            "SignMsg(bytes32)",
+        )
+
+        assertEquals(
+            signatures.map { "0x" + keccak256(it.encodeToByteArray()).toHex() },
+            SafeEvents.TOPICS,
+        )
+    }
+
+    @Test
     fun anExecutionIsReadWithItsHashIndexedOrInTheData() {
         val success = "0x442e715f626346e8c54381002da614f62bee8d27386535b2521ec8540898556e"
         val failure = "0x23428b18acfb3ea64b08dc0c1d296ea9c09702c09083ca5272e64d115b687d23"

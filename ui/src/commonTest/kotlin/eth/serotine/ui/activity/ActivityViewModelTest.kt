@@ -36,6 +36,9 @@ import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.topicOf
 import eth.serotine.ui.MemoryTransactionHistory
+import eth.serotine.ui.components.GUARD_REMOVED_WARNING
+import eth.serotine.ui.components.GUARD_SET_WARNING
+import eth.serotine.ui.components.MODULE_DISABLED_WARNING
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -373,6 +376,54 @@ class ActivityViewModelTest {
         )
         // Removing it warns as its Safe transaction does (owner ruling, 2026-10-20, #106).
         assertEquals(listOf(ActivityState.WARNING, ActivityState.DONE, ActivityState.WARNING), rows.map { it.state })
+    }
+
+    @Test
+    fun aModuleDisabledAndAGuardSetOrRemovedWarnAsTheirSafeTransactionsDo() = runTest {
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val moduleDisabled = "0xaab4fa2b463f581b2b32cb3b7e3b704b9ce37cc209b5fb4d77e593ace4054276"
+        val guardChanged = "0x1151116914515bc0891ff9047a6cb32cf902546f83066499bcf8ba33d2353fa2"
+        index.logs = listOf(
+            safeLog(9_401_000, listOf(moduleDisabled, bobsTopic), tx = "0x" + "a1".repeat(32)),
+            safeLog(9_402_000, listOf(guardChanged, bobsTopic), tx = "0x" + "a2".repeat(32)),
+            safeLog(9_403_000, listOf(guardChanged, "0x" + "00".repeat(32)), tx = "0x" + "a3".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(listOf("Guard removed", "Guard set", "Module disabled"), rows.map { it.title })
+        assertEquals(List(3) { ActivityState.WARNING }, rows.map { it.state })
+        assertEquals(listOf(GUARD_REMOVED_WARNING, GUARD_SET_WARNING, MODULE_DISABLED_WARNING), rows.map { it.status })
+    }
+
+    @Test
+    fun aTransactionWaitingForItsBlockIsAboveEveryEvent() = runTest {
+        val earlier = sent(
+            8,
+            SentAction.SafeExecution(
+                SigningRequest.of(
+                    Network.SEPOLIA,
+                    treasury.address,
+                    SafeTx.call(bob, UInt256.ONE, ByteArray(0), nonce = 3),
+                ),
+            ),
+            400,
+        )
+        history.entries.value = listOf(
+            HistoryEntry(execution),
+            HistoryEntry(earlier, SentOutcome.Included(9_405_000, succeeded = true)),
+        )
+        treasuryIndexed(9_400_000L..9_420_000L)
+        index.logs = listOf(
+            safeLog(9_415_000, listOf(received, bobsTopic), "0x" + "1".padStart(64, '0'), tx = "0x" + "dd".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(
+            listOf("Executed transaction 4", "Received 0.000000000000000001 ETH", "Executed transaction 3"),
+            rows.map { it.title },
+        )
     }
 
     private val transfer = TokenTransfers.TRANSFER

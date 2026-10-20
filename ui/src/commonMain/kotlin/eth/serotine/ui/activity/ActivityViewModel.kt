@@ -30,6 +30,9 @@ import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.FALLBACK_HANDLER_REMOVED
+import eth.serotine.ui.components.GUARD_REMOVED_WARNING
+import eth.serotine.ui.components.GUARD_SET_WARNING
+import eth.serotine.ui.components.MODULE_DISABLED_WARNING
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.shortAddress
@@ -112,11 +115,13 @@ class ActivityViewModel(
             HistoryList.Unreadable -> return ActivityUiState.Unavailable(title, UNREADABLE)
             is HistoryList.Loaded -> history.entries
         }
-        val sent = entries.map { Listed(row(it, names), it.outcome.blockOrNull()) }
+        val sent = entries.map {
+            Listed(row(it, names), it.outcome.blockNumberOrNull, pending = it.outcome == SentOutcome.NotSeen)
+        }
         if (transfers == null) return ActivityUiState.Shown(title, sent.map { it.row }, COVERAGE)
         // Only a row that names its block says what its logs say: one no block was seen for (a
         // transaction mined while the app was closed) gets the verified log beside it.
-        val seenInBlocks = entries.filter { it.outcome.blockOrNull() != null }.associateBy { it.transfer.hash }
+        val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
         val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
             .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
             .map { eventRow(it, names) to it }
@@ -182,13 +187,16 @@ class ActivityViewModel(
 
     /**
      * The sent rows (newest first) and the [events] (newest first) in one list, newest block
-     * first. A sent row no block was seen for goes with the newest row sent before it that has one
-     * (at the top when none has), and before the events of that row's block.
+     * first. A sent row still waiting for its block is newer than every block: it goes at the top.
+     * One whose nonce was used with no block seen goes with the newest row sent before it that has
+     * one (at the top when none has), and before the events of that row's block.
      */
     private fun merged(sent: List<Listed>, events: List<Pair<ActivityRow, Long>>): List<ActivityRow> {
         val sentBlocks = ArrayList<Long>(sent.size)
         for ((at, listed) in sent.withIndex()) {
-            sentBlocks += listed.block ?: sent.drop(at + 1).firstNotNullOfOrNull { it.block }?.let { it + 1 }
+            sentBlocks += listed.block
+                ?: Long.MAX_VALUE.takeIf { listed.pending }
+                ?: sent.drop(at + 1).firstNotNullOfOrNull { it.block }?.let { it + 1 }
                 ?: Long.MAX_VALUE
         }
         val all = sent.mapIndexed { at, listed -> listed.row to sentBlocks[at] } + events
@@ -369,13 +377,17 @@ class ActivityViewModel(
     /**
      * How an event's row is marked: failed for a call that reverted; a warning for what can move
      * the Safe's funds without its owners (CLAUDE.md, *Trust*): a module enabled, or a fallback
-     * handler other than the pinned one; and for a fallback handler removed, with the warning its
-     * Safe transaction is signed with (what the handler answered for the Safe stops).
+     * handler other than the pinned one; and for every other change that weakens the Safe, with the
+     * warning its Safe transaction is signed with (docs/wallet-ux.md, 17): a module disabled, a
+     * guard set or removed, a fallback handler removed.
      */
     private fun statusOf(event: SafeEvent): Pair<String, ActivityState> = when {
         (event as? SafeEvent.Executed)?.succeeded == false ||
             (event as? SafeEvent.ModuleExecuted)?.succeeded == false -> FAILED_ON_CHAIN to ActivityState.FAILED
         event is SafeEvent.ModuleEnabled -> MODULE_WARNING to ActivityState.WARNING
+        event is SafeEvent.ModuleDisabled -> MODULE_DISABLED_WARNING to ActivityState.WARNING
+        event is SafeEvent.GuardChanged && event.guard == Address.ZERO -> GUARD_REMOVED_WARNING to ActivityState.WARNING
+        event is SafeEvent.GuardChanged -> GUARD_SET_WARNING to ActivityState.WARNING
         // Removing it is signed here, with a warning (owner ruling, 2026-10-20, #106): the row warns alike.
         event is SafeEvent.FallbackHandlerChanged && event.handler == Address.ZERO ->
             FALLBACK_HANDLER_REMOVED to ActivityState.WARNING
@@ -390,14 +402,11 @@ class ActivityViewModel(
     /** A 32-byte hash as screens shorten it, as they do an address: "0xab12…cd34". */
     private fun shortHash(hash: String): String = shortAddress(hash)
 
-    private fun SentOutcome.blockOrNull(): Long? = when (this) {
-        is SentOutcome.Included -> blockNumber
-        is SentOutcome.Finalized -> blockNumber
-        SentOutcome.NotSeen, SentOutcome.NonceUsed -> null
-    }
-
-    /** A sent transaction's [row], and the [block] it was seen in (null: none seen). */
-    private class Listed(val row: ActivityRow, val block: Long?)
+    /**
+     * A sent transaction's [row], the [block] it was seen in (null: none seen), and whether it is
+     * [pending]: no block seen yet, nor its nonce used.
+     */
+    private class Listed(val row: ActivityRow, val block: Long?, val pending: Boolean)
 
     private fun row(entry: HistoryEntry, names: Map<Address, String>): ActivityRow {
         val transfer = entry.transfer

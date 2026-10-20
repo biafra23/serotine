@@ -69,6 +69,14 @@ data class HistoryEntry(val transfer: SentTransfer, val outcome: SentOutcome = S
  */
 sealed interface SentOutcome {
 
+    /** The block its verified receipt was seen in; null when none was. */
+    val blockNumberOrNull: Long?
+        get() = when (this) {
+            is Included -> blockNumber
+            is Finalized -> blockNumber
+            NotSeen, NonceUsed -> null
+        }
+
     /** No verified block was seen to include it (yet). */
     data object NotSeen : SentOutcome
 

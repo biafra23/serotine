@@ -142,14 +142,8 @@ class FollowAccountLogs(
             val seconds = (headTime - earliest).coerceAtLeast(0) + CLOCK_MARGIN_SECONDS
             headBlock - (seconds + network.secondsPerSlot - 1) / network.secondsPerSlot
         }
-        val seen = concerning.mapNotNull { it.outcome.blockOrNull() }.minOrNull()
+        val seen = concerning.mapNotNull { it.outcome.blockNumberOrNull }.minOrNull()
         return minOf(counted, seen ?: counted).coerceAtLeast(0)
-    }
-
-    private fun SentOutcome.blockOrNull(): Long? = when (this) {
-        is SentOutcome.Included -> blockNumber
-        is SentOutcome.Finalized -> blockNumber
-        SentOutcome.NotSeen, SentOutcome.NonceUsed -> null
     }
 
     private class Round(
