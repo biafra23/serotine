@@ -439,6 +439,63 @@ a Safe transaction*). What the engine adds:
   text between devices (`JsonSigningRequestCodec`), and signatures are
   checked with libsecp256k1 (`Secp256k1Recovery`), not with the engine.
 
+## History
+
+An account's history beyond what this device sent (issue #85) comes from the
+engine's verified log index (Myotis `docs/eth-getlogs-design.md`), a
+watch-list the engine walks back over verified headers, fetching receipts
+only for the blocks whose `logsBloom` flags an entry. Its logs are served
+only inside the span it covers, and a query outside it is refused, never
+answered with an empty list.
+
+- **`EngineLogIndex`** (`LogIndex`): `ChainHandle.setLogIndexConfig`,
+  `logIndexStatusJson` and `VerifiedReads.getLogs`. Two kinds of entry:
+  - a `LogWatchKey.Emitter` is an address entry: every log the contract
+    emits, a Safe's own events (`SafeSetup`, `ExecutionSuccess`,
+    `SafeReceived`, …);
+  - a `LogWatchKey.Mention` is a topic entry (Myotis #673, in 0.1.17): every
+    log from any contract carrying the address, left-padded to 32 bytes, as
+    topic 1, 2 or 3, so every token's `Transfer` to or from the account,
+    listed or not.
+  - Entries are never restricted by event, never named (a name would put the
+    user's labels into the engine's files), and a topic entry always covers
+    positions 1 to 3. A push that disagreed with an entry the engine holds
+    on its restriction would replace the whole index.
+  - A change is pushed only while reads can be verified: the engine holds a
+    push made earlier until it is ready. The engine unions what is pushed
+    with what it holds and keeps each entry's lowest block, and `unwatch`
+    drops an entry with its coverage and logs.
+  - Logs are taken only when every one is what the query selects, inside its
+    range; anything else is no answer. A query names both ends of its range:
+    the answer does not say which range it read.
+  - The engine takes an entry's `fromBlock` as saying nothing of it comes
+    before that block, and answers a range reaching below it from there on.
+    For an account not created here that is not so, so the adapter reads the
+    entry's block from the status first and refuses such a range
+    (`LogsReading.BeforeStart`) rather than let it read as complete.
+- **`FollowAccountLogs`** (`:domain`, run by the hosts while the engine runs,
+  never by `App`) keeps the index following the accounts:
+  - Every account is a `Mention` entry, and a Safe an `Emitter` entry too,
+    from where its history starts (`HistoryStarts`, kept in
+    `history-starts.json`).
+  - An account is noted with the time it is added (`HistoryNotingAccounts`,
+    the account list the hosts hand everything). Once the light client is
+    synced, the time is turned into a block counted back from the verified
+    head, at 12 s a slot, plus an hour for a device clock that is off; or an
+    earlier block a transaction sent from here concerning it was seen in.
+    An account added before starts were noted starts at the head.
+  - Nothing before an account's start is walked: for an account not created
+    here, its history is checked since it was added (owner ruling,
+    2026-10-20).
+  - An account removed is unwatched, and its start forgotten once the engine
+    took that.
+- **What the walk tells a peer.** Receipts are fetched only for the blocks
+  whose bloom flags an entry, so the serving peer learns which blocks matter
+  to this device. That is the trade-off the log index makes for any
+  watch-list, accepted as is (owner ruling, 2026-10-20). The engine runs no
+  RPC listener here, so no other process or page can test addresses against
+  the index.
+
 ## Network upgrades
 
 A hard fork the engine's build does not implement is the one thing that ends
