@@ -45,7 +45,7 @@ data class ActivityRow(
     val time: String,
     val status: String,
     val state: ActivityState,
-    val opens: String? = key,
+    val opens: String?,
 )
 
 /** How a sent transaction ended, as an [ActivityRow] marks it. */
@@ -64,4 +64,7 @@ enum class ActivityState {
 
     /** Its nonce was used while the app was not watching: by it, unless another took its place. */
     UNKNOWN,
+
+    /** Done on chain, and what it did can move a Safe's funds without its owners. */
+    WARNING,
 }

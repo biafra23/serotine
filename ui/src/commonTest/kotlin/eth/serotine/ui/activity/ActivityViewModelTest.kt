@@ -127,6 +127,7 @@ class ActivityViewModelTest {
                     "at 500",
                     "No block seen to include it yet",
                     ActivityState.WAITING,
+                    execution.hash,
                 ),
                 ActivityRow(
                     native.hash,
@@ -136,6 +137,7 @@ class ActivityViewModelTest {
                     "at 400",
                     "Finalized in block 9,412,118",
                     ActivityState.DONE,
+                    native.hash,
                 ),
                 ActivityRow(
                     token.hash,
@@ -145,6 +147,7 @@ class ActivityViewModelTest {
                     "at 300",
                     "Reverted in block 9,401,220",
                     ActivityState.FAILED,
+                    token.hash,
                 ),
             ),
             shown.rows,
@@ -298,4 +301,29 @@ class ActivityViewModelTest {
 
         assertEquals(true, "listed once the light client is synced" in waiting.coverage)
     }
+
+    @Test
+    fun aFailureOrASettingsChangeOfATransactionSentFromHereIsListedAndWhatMovesFundsWarns() = runTest {
+        history.entries.value = listOf(HistoryEntry(execution, SentOutcome.Included(9_410_000, succeeded = true)))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val failure = "0x23428b18acfb3ea64b08dc0c1d296ea9c09702c09083ca5272e64d115b687d23"
+        val moduleEnabled = "0xecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440"
+        val threshold = "0x610f7ff2b304ae8903c3de74c60c6ab1f7d6226b3f52c5161905bb5ad4039c93"
+        index.logs = listOf(
+            safeLog(9_410_000, listOf(failure, "0x" + "ab".repeat(32)), "0x" + "0".repeat(64), tx = execution.hash),
+            safeLog(9_412_000, listOf(moduleEnabled, bobsTopic), tx = "0x" + "dd".repeat(32)),
+            safeLog(9_413_000, listOf(threshold), "0x" + "1".padStart(64, '0'), tx = "0x" + "ee".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(
+            listOf("Threshold changed", "Module enabled", "Executed transaction 4", "A Safe transaction failed"),
+            rows.map { it.title },
+        )
+        assertEquals("1 owner must sign now", rows[0].detail)
+        assertEquals(ActivityState.WARNING, rows[1].state)
+        assertEquals(ActivityState.FAILED, rows[3].state)
+    }
 }
+

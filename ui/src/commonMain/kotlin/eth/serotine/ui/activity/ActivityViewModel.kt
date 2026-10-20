@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.TransferAsset
@@ -78,7 +79,7 @@ class ActivityViewModel(
         if (safe == null) return ActivityUiState.Shown(title, sent.map { it.row }, COVERAGE)
         val hashes = entries.mapTo(HashSet()) { it.transfer.hash }
         val events = (safe as? SafeHistory.Read)?.events.orEmpty()
-            .filter { it.transactionHash !in hashes }
+            .filterNot { it.transactionHash in hashes && it.event.saidBySentRow() }
             .sortedWith(compareByDescending<SafeChainEvent> { it.blockNumber }.thenByDescending { it.logIndex })
             .map { eventRow(it, names) }
         val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
@@ -91,22 +92,29 @@ class ActivityViewModel(
     }
 
     /**
-     * The sent rows (newest first) with the [events] (newest first) put in among them by block: an
-     * event goes before a sent row of an earlier block; a sent row no block was seen for keeps its
-     * place among the others.
+     * What the sent row of a transaction that logged this event already says: its execution, its
+     * approval, its deployment. A failure, and any change of the Safe's settings, it does not.
+     */
+    private fun SafeEvent.saidBySentRow(): Boolean = when (this) {
+        is SafeEvent.Executed -> succeeded
+        is SafeEvent.Approved, is SafeEvent.SetUp -> true
+        else -> false
+    }
+
+    /**
+     * The sent rows (newest first) and the [events] (newest first) in one list, newest block
+     * first. A sent row no block was seen for goes with the newest row sent before it that has one
+     * (at the top when none has), and before the events of that row's block.
      */
     private fun merged(sent: List<Listed>, events: List<Pair<ActivityRow, Long>>): List<ActivityRow> {
-        val rows = ArrayList<ActivityRow>(sent.size + events.size)
-        var next = 0
-        for (listed in sent) {
-            val block = listed.block
-            if (block != null) {
-                while (next < events.size && events[next].second > block) rows += events[next++].first
-            }
-            rows += listed.row
+        val sentBlocks = ArrayList<Long>(sent.size)
+        for ((at, listed) in sent.withIndex()) {
+            sentBlocks += listed.block ?: sent.drop(at + 1).firstNotNullOfOrNull { it.block }?.let { it + 1 }
+                ?: Long.MAX_VALUE
         }
-        while (next < events.size) rows += events[next++].first
-        return rows
+        val all = sent.mapIndexed { at, listed -> listed.row to sentBlocks[at] } + events
+        // Stable: rows of one block keep the order they came in, the sent ones first.
+        return all.sortedByDescending { it.second }.map { it.first }
     }
 
     /** What the list covers for a Safe: the sent transactions, and its events as far as [safe] says. */
@@ -137,7 +145,7 @@ class ActivityViewModel(
         }
         val (title, other, detail) = when (val what = event.event) {
             is SafeEvent.SetUp ->
-                Triple("Set up", address, "${what.threshold} of ${what.owners.size} owners must sign")
+                Triple("Set up", address, "${what.threshold} of ${owners(what.owners.size.toLong())} must sign")
             is SafeEvent.Executed -> Triple(
                 if (what.succeeded) "Executed a Safe transaction" else "A Safe transaction failed",
                 address,
@@ -152,7 +160,7 @@ class ActivityViewModel(
             is SafeEvent.OwnerAdded -> Triple("Owner added", what.owner, named(what.owner))
             is SafeEvent.OwnerRemoved -> Triple("Owner removed", what.owner, named(what.owner))
             is SafeEvent.ThresholdChanged ->
-                Triple("Threshold changed", address, "${what.threshold} owners must sign now")
+                Triple("Threshold changed", address, "${owners(what.threshold)} must sign now")
             is SafeEvent.ModuleEnabled -> Triple("Module enabled", what.module, named(what.module))
             is SafeEvent.ModuleDisabled -> Triple("Module disabled", what.module, named(what.module))
             is SafeEvent.GuardChanged -> if (what.guard == Address.ZERO) {
@@ -172,23 +180,39 @@ class ActivityViewModel(
             )
             is SafeEvent.MessageSigned -> Triple("Signed a message", address, "Message ${shortHash(what.messageHash)}")
         }
-        val failed = (event.event as? SafeEvent.Executed)?.succeeded == false ||
-            (event.event as? SafeEvent.ModuleExecuted)?.succeeded == false
+        val (status, state) = statusOf(event.event)
         val row = ActivityRow(
             key = "${event.transactionHash}:${event.logIndex}",
             title = title,
             detail = detail,
             about = Eip55.format(other),
             time = "Block ${grouped(event.blockNumber)}",
-            status = if (failed) FAILED_ON_CHAIN else ON_CHAIN,
-            state = if (failed) ActivityState.FAILED else ActivityState.DONE,
+            status = status,
+            state = state,
             opens = null,
         )
         return row to event.blockNumber
     }
 
-    /** A 32-byte hash as screens shorten it: "0xab12…cd34". */
-    private fun shortHash(hash: String): String = hash.take(6) + "…" + hash.takeLast(4)
+    /**
+     * How an event's row is marked: failed for a call that reverted; a warning for what can move
+     * the Safe's funds without its owners (CLAUDE.md, *Trust*): a module enabled, or a fallback
+     * handler other than the pinned one or none.
+     */
+    private fun statusOf(event: SafeEvent): Pair<String, ActivityState> = when {
+        (event as? SafeEvent.Executed)?.succeeded == false ||
+            (event as? SafeEvent.ModuleExecuted)?.succeeded == false -> FAILED_ON_CHAIN to ActivityState.FAILED
+        event is SafeEvent.ModuleEnabled -> MODULE_WARNING to ActivityState.WARNING
+        event is SafeEvent.FallbackHandlerChanged && !PinnedFallbackHandlers.allowed(network, event.handler) ->
+            HANDLER_WARNING to ActivityState.WARNING
+        else -> ON_CHAIN to ActivityState.DONE
+    }
+
+    /** [count] owners, as a sentence says it: "1 owner", "2 owners". */
+    private fun owners(count: Long): String = if (count == 1L) "1 owner" else "$count owners"
+
+    /** A 32-byte hash as screens shorten it, as they do an address: "0xab12…cd34". */
+    private fun shortHash(hash: String): String = shortAddress(hash)
 
     private fun SentOutcome.blockOrNull(): Long? = when (this) {
         is SentOutcome.Included -> blockNumber
@@ -231,6 +255,7 @@ class ActivityViewModel(
         val (status, state) = statusOf(entry)
         return ActivityRow(
             key = transfer.hash,
+            opens = transfer.hash,
             title = title,
             detail = "$detail $named",
             about = Eip55.format(other),
@@ -291,5 +316,7 @@ class ActivityViewModel(
         const val UNREADABLE = "The history of your transactions cannot be read right now. Serotine keeps trying."
         const val ON_CHAIN = "On chain, from the Safe's verified logs"
         const val FAILED_ON_CHAIN = "Failed on chain: its call reverted"
+        const val MODULE_WARNING = "A module can move this Safe's funds without its owners"
+        const val HANDLER_WARNING = "Not the pinned fallback handler: it answers signature checks for this Safe"
     }
 }

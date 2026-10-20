@@ -21,6 +21,7 @@ private val rows = listOf(
         time = "Oct 19, 2026, 4:10 PM",
         status = "In block 9,412,190",
         state = ActivityState.DONE,
+        opens = "0x" + "6".repeat(64),
     ),
     ActivityRow(
         key = "0x" + "1".repeat(64),
@@ -30,6 +31,7 @@ private val rows = listOf(
         time = "Oct 19, 2026, 2:02 PM",
         status = "No block seen to include it yet",
         state = ActivityState.WAITING,
+        opens = "0x" + "1".repeat(64),
     ),
     ActivityRow(
         key = "0x" + "2".repeat(64),
@@ -39,6 +41,7 @@ private val rows = listOf(
         time = "Oct 18, 2026, 9:15 AM",
         status = "Finalized in block 9,412,118",
         state = ActivityState.DONE,
+        opens = "0x" + "2".repeat(64),
     ),
     ActivityRow(
         key = "0x" + "3".repeat(64),
@@ -48,6 +51,7 @@ private val rows = listOf(
         time = "Oct 17, 2026, 9:40 PM",
         status = "Reverted in block 9,401,220",
         state = ActivityState.FAILED,
+        opens = "0x" + "3".repeat(64),
     ),
     ActivityRow(
         key = "0x" + "4".repeat(64),
@@ -57,6 +61,7 @@ private val rows = listOf(
         time = "Oct 12, 2026, 11:03 AM",
         status = "Mined while the app was not watching, unless another transaction took its nonce",
         state = ActivityState.UNKNOWN,
+        opens = "0x" + "4".repeat(64),
     ),
     ActivityRow(
         key = "0x" + "5".repeat(64),
@@ -66,6 +71,7 @@ private val rows = listOf(
         time = "Oct 10, 2026, 8:30 AM",
         status = "No peer confirmed its broadcast",
         state = ActivityState.UNCONFIRMED,
+        opens = "0x" + "5".repeat(64),
     ),
 )
 
@@ -75,6 +81,16 @@ private const val SAFE_COVERAGE = "Transactions sent from this device. Its event
 
 /** A Safe's events among a transaction sent from here, as its Activity merges them by block. */
 private val safeRows = listOf(
+    ActivityRow(
+        key = "0x" + "a".repeat(64) + ":0",
+        title = "Module enabled",
+        detail = "0x8617…070D",
+        about = "0x8617E340B3D01FA5F11F306F4090FD50E238070D",
+        time = "Block 9,416,880",
+        status = "A module can move this Safe's funds without its owners",
+        state = ActivityState.WARNING,
+        opens = null,
+    ),
     ActivityRow(
         key = "0x" + "6".repeat(64) + ":0",
         title = "Received 0.5 ETH",
@@ -93,6 +109,7 @@ private val safeRows = listOf(
         time = "Oct 19, 2026, 2:02 PM",
         status = "In block 9,412,118",
         state = ActivityState.DONE,
+        opens = "0x" + "7".repeat(64),
     ),
     ActivityRow(
         key = "0x" + "8".repeat(64) + ":3",

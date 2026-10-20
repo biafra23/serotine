@@ -10,6 +10,7 @@ import eth.serotine.domain.repository.LogCoverageReading
 import eth.serotine.domain.repository.LogQuery
 import eth.serotine.domain.repository.LogWatchKey
 import eth.serotine.domain.repository.LogsReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -73,12 +74,13 @@ class SafeHistoriesTest {
         )
         assertEquals(9_100L..9_200L, read.checked)
         assertEquals(false, read.complete)
-        assertEquals(SafeHistory.Checking(9_000), seen.first())
+        // Unavailable until the coverage first answers, then nothing covered to read yet.
+        assertEquals(listOf(SafeHistory.Unavailable, SafeHistory.Checking(9_000)), seen.take(2))
 
         covered(8_900L..9_201L, fromBlock = 8_900)
         runCurrent()
 
-        assertEquals(9_000L, index.queries.last().fromBlock, "never below its start")
+        assertEquals(9_000L, index.queries.minOf { it.fromBlock }, "never below its start")
         assertEquals(true, (seen.last() as SafeHistory.Read).complete)
     }
 
@@ -96,4 +98,35 @@ class SafeHistoriesTest {
 
         assertEquals(SafeHistory.Unavailable, seen.last())
     }
+
+    @Test
+    fun aMovedSpanIsReadOnlyWhereItGrewAndAFailedReadKeepsWhatWasRead() = runTest {
+        starts.starts.value = mapOf(vault to HistoryStart.Fixed(9_000))
+        val logs = listOf(log(9_150, listOf(added, alicesTopic)))
+        index.answer = { query -> LogsReading.Logs(logs.filter { it.blockNumber in query.fromBlock..query.toBlock }) }
+        covered(9_100L..9_200L)
+        observe()
+        covered(9_050L..9_210L)
+        runCurrent()
+
+        assertEquals(
+            listOf(9_100L..9_200L, 9_050L..9_099L, 9_201L..9_210L),
+            index.queries.map { it.fromBlock..it.toBlock },
+        )
+        val grown = seen.last() as SafeHistory.Read
+        assertEquals(listOf(9_150L), grown.events.map { it.blockNumber })
+        assertEquals(9_050L..9_210L, grown.checked)
+
+        index.answer = { LogsReading.Unavailable(ReadUnavailable.UNPROVEN) }
+        covered(9_050L..9_220L)
+        runCurrent()
+
+        assertEquals(grown, seen.last(), "kept")
+
+        covered(9_050L..9_190L)
+        runCurrent()
+
+        assertEquals(9_050L..9_190L, index.queries.last().let { it.fromBlock..it.toBlock }, "shrank: read again")
+    }
 }
+

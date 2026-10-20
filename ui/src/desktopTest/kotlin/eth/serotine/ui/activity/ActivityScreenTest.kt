@@ -26,6 +26,7 @@ class ActivityScreenTest {
         time = "Oct 19, 2026, 2:02 PM",
         status = "Reverted in block 9,401,220",
         state = ActivityState.FAILED,
+        opens = "0x" + "1".repeat(64),
     )
 
     private fun show(state: ActivityUiState) = rule.setContent {

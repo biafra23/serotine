@@ -129,10 +129,10 @@ private fun ActivityItem(row: ActivityRow, onClick: (() -> Unit)?) {
     )
 }
 
-/** The colour a row's status is said in: an error's for a revert, muted for what is not known yet. */
+/** The colour a row's status is said in: an error's for a revert or a warning, muted for what is not known yet. */
 @Composable
 private fun colorOf(state: ActivityState): Color = when (state) {
     ActivityState.DONE -> MaterialTheme.colorScheme.onSurfaceVariant
-    ActivityState.FAILED -> MaterialTheme.colorScheme.error
+    ActivityState.FAILED, ActivityState.WARNING -> MaterialTheme.colorScheme.error
     ActivityState.WAITING, ActivityState.UNCONFIRMED, ActivityState.UNKNOWN -> MaterialTheme.colorScheme.tertiary
 }

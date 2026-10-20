@@ -65,13 +65,14 @@ object SafeEvents {
     fun decode(topics: List<String>, data: String): SafeEvent? {
         val signature = topics.firstOrNull() ?: return null
         val decoder = decoders[signature] ?: return null
-        val indexed = topics.drop(1).map { it.removePrefix("0x").hexToBytesOrNull() ?: return null }
-        if (indexed.any { it.size != WORD }) return null
-        val bytes = data.removePrefix("0x").takeIf { data.startsWith("0x") }?.hexToBytesOrNull() ?: return null
+        val indexed = topics.drop(1).map { topic ->
+            topic.takeIf { it.startsWith("0x") }?.let { AbiWords.returnedWord(it.removePrefix("0x")) } ?: return null
+        }
+        val bytes = data.takeIf { it.startsWith("0x") }?.let { AbiWords.returned(it.removePrefix("0x")) } ?: return null
         return decoder(indexed, bytes)
     }
 
-    private const val WORD = 32
+    private const val WORD = AbiWords.WORD
 
     private val decoders: Map<String, (List<ByteArray>, ByteArray) -> SafeEvent?> = mapOf(
         "0x141df868a6331af528e38c83b7aa03edc19be66e37ae67f9285bf4f8e3c6a1a8" to ::setUp,
@@ -161,7 +162,4 @@ object SafeEvents {
         if (indexed.size != 1 || data.isNotEmpty()) null else AbiWords.address(indexed[0])
 
     private fun hashOf(word: ByteArray): String = "0x" + word.toHex()
-
-    private fun String.hexToBytesOrNull(): ByteArray? =
-        if (length % 2 != 0 || any { it !in '0'..'9' && it !in 'a'..'f' }) null else hexToBytes()
 }

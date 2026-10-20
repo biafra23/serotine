@@ -21,7 +21,8 @@ class SafeEventsTest {
         val failure = "0x23428b18acfb3ea64b08dc0c1d296ea9c09702c09083ca5272e64d115b687d23"
 
         // 1.4.1: the hash indexed, the payment in the data.
-        assertEquals(SafeEvent.Executed(hash, succeeded = true), SafeEvents.decode(listOf(success, hash), "0x" + word(0)))
+        val indexed = SafeEvents.decode(listOf(success, hash), "0x" + word(0))
+        assertEquals(SafeEvent.Executed(hash, succeeded = true), indexed)
         // 1.3.0: both in the data.
         assertEquals(
             SafeEvent.Executed(hash, succeeded = false),
@@ -62,7 +63,8 @@ class SafeEventsTest {
         // Offset 0x80, threshold 2, initializer none, the handler, then two owners.
         val data = "0x" + word(0x80) + word(2) + word(Address.ZERO) + word(handler) + word(2) + word(alice) + word(bob)
 
-        assertEquals(SafeEvent.SetUp(alice, listOf(alice, bob), 2), SafeEvents.decode(listOf(setUp, topic(alice)), data))
+        val decoded = SafeEvents.decode(listOf(setUp, topic(alice)), data)
+        assertEquals(SafeEvent.SetUp(alice, listOf(alice, bob), 2), decoded)
         assertNull(SafeEvents.decode(listOf(setUp, topic(alice)), data + word(1)), "more words than owners")
     }
 
@@ -72,6 +74,7 @@ class SafeEventsTest {
 
         assertNull(SafeEvents.decode(listOf(transfer, topic(alice), topic(bob)), "0x" + word(1)))
         assertNull(SafeEvents.decode(emptyList(), "0x"))
-        assertNull(SafeEvents.decode(listOf("0x9465fa0c962cc76958e6373a993326400c1c94f8be2fe3a952adfa7f60b2ea26"), "0xzz"))
+        val added = "0x9465fa0c962cc76958e6373a993326400c1c94f8be2fe3a952adfa7f60b2ea26"
+        assertNull(SafeEvents.decode(listOf(added), "0xzz"))
     }
 }
