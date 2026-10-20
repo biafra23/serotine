@@ -1,6 +1,7 @@
 package eth.serotine.ui.swap
 
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
@@ -24,6 +26,7 @@ import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -82,6 +85,7 @@ class SwapScreenTest {
         SerotineTheme {
             SwapScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 onSellChange = { events += "sell $it" },
                 onBuyChange = { events += "buy $it" },
                 onAmountChange = { events += "amount $it" },
@@ -177,5 +181,27 @@ class SwapScreenTest {
         rule.onNodeWithText("Uniswap's SwapRouter02").assertExists()
         rule.onNodeWithText("It may take 5 USDC now.").performScrollTo()
         rule.onNodeWithTag(SWAP_SIGN_TAG).performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun theKeyboardsNextOnTheAmountGoesToTheTolerance() {
+        show(compose)
+        rule.onNodeWithTag(SWAP_AMOUNT_TAG).performScrollTo().performImeAction()
+        rule.onNodeWithTag(SWAP_TOLERANCE_TAG).assertIsFocused()
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheToleranceReviewsOnlyWhenReviewCan() {
+        show(compose)
+        rule.onNodeWithTag(SWAP_TOLERANCE_TAG).performScrollTo().performImeAction()
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheToleranceReviews() {
+        show(compose.copy(form = compose.form.copy(buy = ether, amount = "100", canReview = true)))
+        rule.onNodeWithTag(SWAP_TOLERANCE_TAG).performScrollTo().performImeAction()
+        assertEquals(listOf("review"), events)
     }
 }

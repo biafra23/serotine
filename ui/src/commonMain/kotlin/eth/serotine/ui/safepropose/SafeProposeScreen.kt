@@ -1,7 +1,6 @@
 package eth.serotine.ui.safepropose
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -42,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.OwnerChoices
 import eth.serotine.ui.components.RecipientCard
@@ -50,7 +50,9 @@ import eth.serotine.ui.components.ReviewButton
 import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.TransferFormFields
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
@@ -77,12 +79,14 @@ const val PROPOSE_DROP_UNSAVED_TAG = "propose-drop-unsaved"
 @Composable
 fun SafeProposeRoute(
     viewModel: SafeProposeViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onProposed: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val proposed = (state as? SafeProposeUiState.Proposed)?.hash
@@ -92,6 +96,7 @@ fun SafeProposeRoute(
     }
     SafeProposeScreen(
         state = state,
+        lightClient = strip,
         actions = SafeProposeActions(
             onAssetChange = viewModel::onAssetChange,
             onToChange = viewModel::onToChange,
@@ -155,6 +160,7 @@ class SafeProposeActions(
 @Composable
 fun SafeProposeScreen(
     state: SafeProposeUiState,
+    lightClient: LightClientItem,
     actions: SafeProposeActions,
     onBack: () -> Unit,
     onCopy: (String) -> Unit = {},
@@ -213,7 +219,7 @@ fun SafeProposeScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is SafeProposeUiState.Loading, is SafeProposeUiState.Proposed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -235,6 +241,7 @@ fun SafeProposeScreen(
                         actions.onRetryLookup,
                         actions.onAmountChange,
                         actions.onMax,
+                        onReview = actions.onReview,
                     )
                     Note(
                         "A Safe transaction: the owners sign it, then any account of this wallet executes it " +

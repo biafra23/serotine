@@ -41,8 +41,10 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
@@ -54,6 +56,7 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
+import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -71,6 +74,8 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentOutcome
+import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
@@ -79,16 +84,20 @@ import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_ASSET_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
+import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
+import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
+import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
-import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
-import eth.serotine.ui.assets.NO_ACCOUNTS_HINT
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.SAFE_TX_QR_TAG
 import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
@@ -135,6 +144,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
@@ -179,7 +189,9 @@ class AppNavigationTest {
     private val treasuryAddress = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
     private val carol = Address.of("0x" + "33".repeat(20))
     private val broadcaster = FakeBroadcaster()
-    private val sentTransfers = MemorySentTransfers()
+    private val history = MemoryTransactionHistory()
+    private val sentRecord = MemorySentTransfers()
+    private val sentTransfers = HistoryRecordingSentTransfers(sentRecord, history)
     private val receipts = FakeReceipts()
 
     /** The Safes deployed in this test, as the light client proves them once their code is there. */
@@ -273,6 +285,9 @@ class AppNavigationTest {
         names = FakeNames(),
         signer = signer,
         sentTransfers = sentTransfers,
+        transactionHistory = history,
+        historyStarts = MemoryHistoryStarts(),
+        logIndex = FakeLogIndex(),
         safeTxQueue = safeTxQueue,
         signingRequests = codec,
         signatureRecovery = recovery,
@@ -316,6 +331,10 @@ class AppNavigationTest {
         override val lifecycle = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
         override val viewModelStore = ViewModelStore()
     }
+
+    /** The host gone, as its window or activity ends: the ViewModels it scoped stop with it. */
+    @After
+    fun clearHost() = host.viewModelStore.clear()
 
     /**
      * Shows the [App] in the [host]; with [followDeployments], beside it the deployments' follower,
@@ -383,7 +402,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun aRequiredUpdateFromATabLeavesNothingUnderItAndRecoversToTheAssetsStart() {
+    fun aRequiredUpdateFromATabLeavesNothingUnderItAndRecoversToTheAccountsStart() {
         accounts.value = listOf(daily)
         showApp()
         rule.onNodeWithText("Daily").performClick()
@@ -396,8 +415,12 @@ class AppNavigationTest {
         assertEquals(listOf("update-required"), screens())
 
         status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
-        rule.waitUntil { rule.onAllNodesWithTag(ASSETS_ACCOUNT_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
-        assertEquals(listOf("assets"), screens(), "the Assets start, with neither the account nor Settings under it")
+        rule.waitUntil { rule.onAllNodesWithTag(ACCOUNTS_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(
+            listOf("accounts"),
+            screens(),
+            "the Accounts start, with neither the account nor Settings under it",
+        )
     }
 
     /** The screens on the back stack, bottom first, without the graphs that hold them. */
@@ -406,7 +429,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun theBackArrowReturnsToAssetsWithNothingAdded() {
+    fun theBackArrowReturnsToAccountsWithNothingAdded() {
         showApp()
 
         rule.onNodeWithContentDescription("Add account").performClick()
@@ -417,7 +440,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun theSettingsTabKeepsTheAssetsTabWhereItWas() {
+    fun theSettingsTabKeepsTheAccountsTabWhereItWas() {
         accounts.value = listOf(daily)
         showApp()
         rule.onNodeWithText("Daily").performClick()
@@ -427,11 +450,11 @@ class AppNavigationTest {
         rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
         rule.onNodeWithText("The only network for now").assertIsDisplayed()
 
-        rule.onNodeWithText("Assets").performClick()
+        rule.onNodeWithText("Accounts").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         // Selecting the tab it is on returns to the tab's start.
-        rule.onNodeWithText("Assets").performClick()
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Accounts").performClick()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
     }
 
     @Test
@@ -447,6 +470,31 @@ class AppNavigationTest {
         rule.onNodeWithText("Only send Sepolia assets to this address").assertIsDisplayed()
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun theLightClientsStripShowsWhereTheScreenDependsOnItAndNotInSettings() {
+        accounts.value = listOf(daily)
+        status.value = LightClientStatus.CatchingUp(done = 1, total = 4)
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        rule.onNodeWithText("Verified at block 100").assertIsDisplayed()
+
+        // An address and its QR code need nothing verified.
+        rule.onNodeWithText("Receive").performClick()
+        rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Back").performClick()
+
+        // Settings says it in a row of its own instead.
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertDoesNotExist()
     }
 
     @Test
@@ -515,7 +563,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun theBackKeyLeavesSettingsForTheAssetsScreenAndAScreenLeftNeverComesBack() {
+    fun theBackKeyLeavesSettingsForTheAccountsScreenAndAScreenLeftNeverComesBack() {
         accounts.value = listOf(daily)
         showApp()
         rule.onNodeWithText("Daily").performClick()
@@ -524,12 +572,12 @@ class AppNavigationTest {
         rule.runOnIdle { navController.single().popBackStack() }
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         rule.runOnIdle { navController.single().popBackStack() }
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
 
         rule.onNodeWithText("Settings").performClick()
-        rule.onNodeWithText("Assets").performClick()
+        rule.onNodeWithText("Accounts").performClick()
 
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertDoesNotExist()
     }
 
@@ -575,12 +623,12 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
 
         rule.onNodeWithText("Waiting for a block to include it").assertIsDisplayed()
-        val hash = sentTransfers.transfers.value.single().hash
+        val hash = sentRecord.transfers.value.single().hash
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(hash)
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(1, broadcaster.sent.size)
         // The signed review is gone from the back stack: Done returns to the account.
-        assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -596,10 +644,59 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        assertEquals(listOf("assets", "account/{address}", "swap/{address}?asset={asset}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "swap/{address}?asset={asset}"), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun aTapOnAnAssetRowSendsItFromAnAccountAndProposesItFromASafe() {
+        accounts.value = listOf(daily, treasury)
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG)[0].performClick()
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        assertEquals(listOf("accounts", "account/{address}", "send/{address}?asset={asset}"), screens())
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
+
+        rule.onNodeWithText("Treasury").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Co-signer").fetchSemanticsNodes().isNotEmpty() }
+        rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG)[0].performClick()
+        rule.onNodeWithText("Send from a Safe").assertIsDisplayed()
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/propose?asset={asset}"), screens())
+    }
+
+    @Test
+    fun anAccountsActivityListsWhatWasSentAndARowOpensWhereItStands() {
+        accounts.value = listOf(daily, savings)
+        val sent = SentTransfer(
+            account = daily.address,
+            nonce = 7,
+            signed = SignedTransfer(byteArrayOf(2, 7)),
+            action = SentAction.Transfer(savings.address, TransferAsset.Native, UInt256.of("100000000000000000")),
+            maxCost = UInt256.ONE,
+            sentAt = 1_800_000_000,
+        )
+        history.entries.value = listOf(HistoryEntry(sent, SentOutcome.Finalized(9_412_118, succeeded = true)))
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Activity").performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Finalized in block 9,412,118").assertIsDisplayed()
+        // Under the bar, as the account it is of.
+        rule.onNodeWithText("Settings").assertIsDisplayed()
+        rule.onNodeWithText("Sent 0.1 ETH").performClick()
+
+        rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(sent.hash)
+        assertEquals(listOf("accounts", "account/{address}", "activity/{address}", "transfer/{hash}"), screens())
+        rule.onNodeWithText("Done").performScrollTo().performClick()
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
     }
 
     @Test
@@ -622,7 +719,7 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(SAFE_TX_QR_TAG).performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag(SAFE_TX_REQUEST_TAG).performScrollTo().assertTextEquals(codec.encode(queued))
-        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -654,7 +751,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(SAFE_TX_HASH_TAG).performScrollTo().assertTextEquals("0x" + proposed.hash.hex)
         assertEquals(listOf("correct horse"), signer.passwords)
         // The proposal is gone from the back stack: back from the transaction returns to the Safe.
-        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
     }
 
     @Test
@@ -676,7 +773,7 @@ class AppNavigationTest {
         // The import's flag reached the new entry through its savedStateHandle: it says where it went.
         rule.onNodeWithText("Added to Treasury's queue on this device.").performScrollTo().assertIsDisplayed()
         assertEquals(listOf(carol), safeTxQueue.requests.value.single().signers)
-        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
     }
 
     @Test
@@ -698,11 +795,11 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
 
         rule.onNodeWithText("Approval of a Safe transaction").assertIsDisplayed()
-        val approval = sentTransfers.transfers.value.single()
+        val approval = sentRecord.transfers.value.single()
         assertEquals(SentAction.SafeApproval(queued), approval.action)
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(approval.hash)
         // The signed review is gone from the back stack: Done returns to the Safe.
-        assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -716,7 +813,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Receive").assertIsDisplayed()
         rule.onNodeWithText("Send").performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
-        assertEquals(listOf("assets", "account/{address}"), screens(), "nothing opened")
+        assertEquals(listOf("accounts", "account/{address}"), screens(), "nothing opened")
     }
 
     @Test
@@ -759,17 +856,17 @@ class AppNavigationTest {
         rule.onNodeWithTag(CREATE_SAFE_DEPLOY_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
 
-        val deployment = sentTransfers.transfers.value.single()
+        val deployment = sentRecord.transfers.value.single()
         val action = deployment.action as SentAction.SafeDeployment
         assertEquals(listOf(daily.address, savings.address), action.owners)
         assertEquals("Family vault", action.label)
         rule.onNodeWithText("Deployment of a Safe").assertIsDisplayed()
         rule.onNodeWithTag(TRANSFER_SAFE_TAG).assertTextEquals(Eip55.format(action.safe))
         assertEquals(listOf("correct horse"), signer.passwords)
-        // The signed review is gone from the back stack: Done returns to Assets, right away.
-        assertEquals(listOf("assets", "transfer/{hash}"), screens())
+        // The signed review is gone from the back stack: Done returns to Accounts, right away.
+        assertEquals(listOf("accounts", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
 
         // Mined and proven with the status screen long gone: the Safe is listed all the same.
         receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
@@ -796,10 +893,10 @@ class AppNavigationTest {
             "Creating a Safe needs an account whose key is on this device, to pay for its deployment. Import or " +
                 "create an account, and fund it, first.",
         )
-        assertEquals(listOf("assets"), screens(), "nothing opened")
+        assertEquals(listOf("accounts"), screens(), "nothing opened")
 
         // Its way out: Create account, straight from the dialog.
         rule.onNodeWithText("Create account").performClick()
-        assertEquals(listOf("assets", "create-account"), screens())
+        assertEquals(listOf("accounts", "create-account"), screens())
     }
 }

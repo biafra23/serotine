@@ -179,6 +179,19 @@ jobs:
             echo "$archs" | tr ' ' '\n' | grep -qx "$want" \
               || { echo "::error::arch mismatch: expected $want, got [$archs] for the ${{ matrix.arch }} dmg"; exit 1; }
           done
+          # The Myotis engine's host library and JNA's stub must ship inside the bundle, of
+          # the dmg's arch and validly signed (stageMyotisLibrary, desktop-app/build.gradle.kts):
+          # without them the app runs with no light client, which nothing else here would notice.
+          for lib in libmyotis_engine.dylib libjnidispatch.dylib; do
+            f=$(find "$mnt" -type f -name "$lib" | head -n1 || true)
+            [ -n "$f" ] || { echo "::error::$lib missing from the dmg"; exit 1; }
+            libarchs=$(lipo -archs "$f")
+            echo "$f -> [$libarchs]"
+            echo "$libarchs" | tr ' ' '\n' | grep -qx "$want" \
+              || { echo "::error::$lib arch mismatch: expected $want, got [$libarchs]"; exit 1; }
+            codesign --verify --verbose=2 "$f" \
+              || { echo "::error::$lib is not validly signed: jpackage did not sign it"; exit 1; }
+          done
           app=$(find "$mnt" -maxdepth 1 -type d -name '*.app' | head -n1)
           [ -n "$app" ] || { echo "::error::no .app bundle at the root of $dmg"; exit 1; }
           bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")

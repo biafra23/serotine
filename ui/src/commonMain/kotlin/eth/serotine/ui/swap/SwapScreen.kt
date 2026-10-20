@@ -1,7 +1,6 @@
 package eth.serotine.ui.swap
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,13 +52,16 @@ import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.FeeChoice
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.RouteSteps
 import eth.serotine.ui.components.Spender
 import eth.serotine.ui.components.SwapFormFields
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.lightclient.LightClientViewModel
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the Review button, for UI tests. */
@@ -90,6 +92,7 @@ const val SWAP_EARLIER_TAG = "swap-earlier"
 @Composable
 fun SwapRoute(
     viewModel: SwapViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
@@ -97,6 +100,7 @@ fun SwapRoute(
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? SwapUiState.Sent)?.hash
@@ -106,6 +110,7 @@ fun SwapRoute(
     }
     SwapScreen(
         state = state,
+        lightClient = strip,
         onSellChange = viewModel::onSellChange,
         onBuyChange = viewModel::onBuyChange,
         onAmountChange = viewModel::onAmountChange,
@@ -134,6 +139,7 @@ fun SwapRoute(
 @Composable
 fun SwapScreen(
     state: SwapUiState,
+    lightClient: LightClientItem,
     onSellChange: (contract: String?) -> Unit,
     onBuyChange: (contract: String?) -> Unit,
     onAmountChange: (String) -> Unit,
@@ -192,7 +198,7 @@ fun SwapScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is SwapUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is SwapUiState.Sent -> Column(
@@ -266,7 +272,7 @@ private fun ComposeContent(
     ) {
         Heading("From")
         FromLine(form.from)
-        SwapFormFields(form, onSellChange, onBuyChange, onAmountChange, onMax, onToleranceChange)
+        SwapFormFields(form, onSellChange, onBuyChange, onAmountChange, onMax, onToleranceChange, onReview = onReview)
         Heading("Fee")
         FeeChoice(state.fee, enabled = !form.quoting, onFeeChange)
         Note("The fee is paid in the network's own currency; the review shows the most it can be.")

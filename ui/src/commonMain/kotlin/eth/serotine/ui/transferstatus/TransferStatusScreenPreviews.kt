@@ -1,7 +1,9 @@
 package eth.serotine.ui.transferstatus
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -68,9 +70,13 @@ private val maybeSent = pending.copy(
 )
 
 @Composable
-private fun TransferStatusPreview(state: TransferStatusUiState, darkTheme: Boolean = false) {
+private fun TransferStatusPreview(
+    state: TransferStatusUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        TransferStatusScreen(state, onDone = {}, onRetry = {})
+        TransferStatusScreen(state, lightClient, onDone = {}, onRetry = {})
     }
 }
 
@@ -308,6 +314,42 @@ private fun TransferStatusSwapReceivedPreview() = TransferStatusPreview(
     ),
 )
 
+@Preview
+@Composable
+private fun TransferStatusMaybeSentNonceUsedPreview() = TransferStatusPreview(
+    pending.copy(
+        steps = listOf(
+            signed,
+            StatusStep("Broadcast", StepState.UNCONFIRMED, "No peer confirmed it, Oct 17, 2026, 3:04 PM"),
+            StatusStep(
+                "Included",
+                StepState.UNKNOWN,
+                "Its nonce was used on chain while the app was not watching: by this transaction, unless " +
+                    "another one took its place, such as one sent from this account elsewhere",
+            ),
+            StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device"),
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun TransferStatusNonceUsedPreview() = TransferStatusPreview(
+    pending.copy(
+        steps = listOf(
+            signed,
+            broadcast,
+            StatusStep(
+                "Included",
+                StepState.UNKNOWN,
+                "Its nonce was used on chain while the app was not watching: by this transaction, unless " +
+                    "another one took its place, such as one sent from this account elsewhere",
+            ),
+            StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device"),
+        ),
+    ),
+)
+
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
@@ -332,4 +374,6 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusAllowanceResetPreview() },
     { TransferStatusSwapDarkPreview() },
     { TransferStatusSwapReceivedPreview() },
+    { TransferStatusNonceUsedPreview() },
+    { TransferStatusMaybeSentNonceUsedPreview() },
 )

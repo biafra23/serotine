@@ -27,8 +27,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -57,7 +60,8 @@ const val SEND_RECIPIENT_TAG = "send-recipient"
 
 /**
  * The transfer form's fields (docs/wallet-ux.md, screen 7) — from, asset, to and amount — as Send
- * and a Safe's proposal of a transfer both draw them, in the caller's column.
+ * and a Safe's proposal of a transfer both draw them, in the caller's column. The keyboard's Done
+ * key on the amount does what [ReviewButton] does: [onReview].
  */
 @Composable
 internal fun TransferFormFields(
@@ -68,7 +72,9 @@ internal fun TransferFormFields(
     onRetryLookup: () -> Unit,
     onAmountChange: (String) -> Unit,
     onMax: () -> Unit,
+    onReview: () -> Unit,
 ) {
+    val amountField = remember { FocusRequester() }
     Heading("From")
     FromLine(form.from)
     Heading("Asset")
@@ -81,7 +87,7 @@ internal fun TransferFormFields(
         form.assetNote?.let { Note(it) }
     }
     Heading("To")
-    RecipientField(form, onToChange)
+    RecipientField(form, onToChange, amountField)
     form.recipient?.let { RecipientCard(it) }
     if (form.canRetryLookup) {
         TextButton(onClick = onRetryLookup) { Text("Try again") }
@@ -102,7 +108,7 @@ internal fun TransferFormFields(
         }
     }
     Heading("Amount")
-    AmountField(form, onAmountChange, onMax)
+    AmountField(form, amountField, onAmountChange, onMax, onReview)
 }
 
 /** Review, which quotes the form's transfer: "Checking on chain…" while it does. */
@@ -152,7 +158,7 @@ internal fun AssetChoiceRow(
 }
 
 @Composable
-private fun RecipientField(form: TransferForm, onToChange: (String) -> Unit) {
+private fun RecipientField(form: TransferForm, onToChange: (String) -> Unit, amountField: FocusRequester) {
     OutlinedTextField(
         value = form.to,
         onValueChange = onToChange,
@@ -169,7 +175,8 @@ private fun RecipientField(form: TransferForm, onToChange: (String) -> Unit) {
             capitalization = KeyboardCapitalization.None,
             autoCorrectEnabled = false,
             keyboardType = KeyboardType.Ascii,
-        ),
+        ).next(),
+        keyboardActions = nextTo(amountField),
     )
 }
 
@@ -209,18 +216,25 @@ internal fun RecipientCard(recipient: RecipientItem) {
 }
 
 @Composable
-private fun AmountField(form: TransferForm, onAmountChange: (String) -> Unit, onMax: () -> Unit) {
+private fun AmountField(
+    form: TransferForm,
+    focus: FocusRequester,
+    onAmountChange: (String) -> Unit,
+    onMax: () -> Unit,
+    onReview: () -> Unit,
+) {
     OutlinedTextField(
         value = form.amount,
         onValueChange = onAmountChange,
-        modifier = Modifier.fillMaxWidth().testTag(SEND_AMOUNT_TAG),
+        modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag(SEND_AMOUNT_TAG),
         enabled = !form.quoting && form.asset != null,
         label = { Text(form.asset?.let { "Amount in ${it.symbol}" } ?: "Amount") },
         singleLine = true,
         trailingIcon = { TextButton(onClick = onMax, enabled = form.canMax) { Text("Max") } },
         isError = form.amountError != null,
         supportingText = (form.amountError ?: form.amountHint)?.let { text -> { Text(text) } },
-        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal),
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).done(),
+        keyboardActions = submitOnDone(form.canReview, onReview),
     )
 }
 

@@ -1,7 +1,6 @@
 package eth.serotine.ui.safeswap
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,13 +41,16 @@ import eth.serotine.ui.components.AmountLine
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.OwnerChoices
 import eth.serotine.ui.components.RouteSteps
 import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.Spender
 import eth.serotine.ui.components.SwapFormFields
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import kotlinx.coroutines.Dispatchers
 
@@ -76,12 +78,14 @@ const val SAFE_SWAP_SIGN_TAG = "safe-swap-sign"
 @Composable
 fun SafeSwapRoute(
     viewModel: SafeSwapViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onProposed: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val proposed = (state as? SafeSwapUiState.Proposed)?.hash
@@ -91,6 +95,7 @@ fun SafeSwapRoute(
     }
     SafeSwapScreen(
         state = state,
+        lightClient = strip,
         actions = SafeSwapActions(
             onSellChange = viewModel::onSellChange,
             onBuyChange = viewModel::onBuyChange,
@@ -142,6 +147,7 @@ class SafeSwapActions(
 @Composable
 fun SafeSwapScreen(
     state: SafeSwapUiState,
+    lightClient: LightClientItem,
     actions: SafeSwapActions,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -177,7 +183,7 @@ fun SafeSwapScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is SafeSwapUiState.Loading, is SafeSwapUiState.Proposed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -210,6 +216,7 @@ private fun ComposeContent(state: SafeSwapUiState.Compose, actions: SafeSwapActi
             actions.onAmountChange,
             actions.onMax,
             actions.onToleranceChange,
+            onReview = actions.onReview,
         )
         form.info?.let { Note(it) }
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

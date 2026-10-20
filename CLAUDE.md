@@ -29,6 +29,12 @@ repository's own.
 # The debug Android app (eth.serotine.debug) on a connected device / emulator
 ./gradlew :android-app:installDebug
 
+# The iOS app (macOS, Xcode, `brew install xcodegen`): its Xcode project is generated from
+# ios-app/xcode/project.yml (not committed), and the Xcode build links SerotineKit through
+# Gradle. The team id signs for a device; the simulator needs none.
+cd ios-app/xcode && SEROTINE_DEVELOPMENT_TEAM=<team id> xcodegen generate && open Serotine.xcodeproj
+./gradlew :ios-app:linkDebugFrameworkIosSimulatorArm64   # the framework alone
+
 # The installers — jpackage is host-OS-bound, one per OS (the workflows build all three)
 ./gradlew :desktop-app:packageDeb   # Linux
 ./gradlew :desktop-app:packageDmg   # macOS
@@ -70,8 +76,9 @@ Modules (Gradle):
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
   token metadata, prices and address kinds, the peer-reported network-upgrade
   advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
-  names, a Safe's owners' approvals on chain, and Uniswap v3's pinned
-  contracts, proven by their code, and its verified calls), whose glue over
+  names, a Safe's owners' approvals on chain, Uniswap v3's pinned
+  contracts, proven by their code, and its verified calls, and the verified
+  log index that follows the accounts' histories), whose glue over
   `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
   (`eth.serotine.data.upgrade`); the built-in token list and the user's token
@@ -79,7 +86,9 @@ Modules (Gradle):
   (`eth.serotine.data.prices`); the pinned Safe deployments, the queue of
   Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
   the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
-  the record of sent transactions (`eth.serotine.data.transfers`); and the
+  the record of sent transactions and the history of them, kept for good
+  (`eth.serotine.data.transfers`); where each account's history starts
+  (`eth.serotine.data.history`); and the
   display currency
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
@@ -88,21 +97,24 @@ Modules (Gradle):
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
   `<Feature>ViewModel`, `<Feature>UiState`; `components` for what several
   screens draw (blockies, the QR code, EIP-55); the theme; `App` with the one
-  `NavHost` under the Assets | Settings bar (a destination per screen, whose
-  back-stack entry owns the screen's ViewModel; Settings opens over the Assets
+  `NavHost` under the Accounts | Settings bar (a destination per screen, whose
+  back-stack entry owns the screen's ViewModel; Settings opens over the Accounts
   tab's stack and closes back to it, with nothing saved aside: owner ruling,
   2026-10-18, #49, for now); and `AppGraph`, the
   composition root's contract (ports in, ViewModel factories out). Depends on
   `:domain` only.
-- **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
-  **desktop-app** — the hosts. Each has ONE composition root
-  (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
-  adapters and renders `App`, and runs the app-wide work no screen owns
+- **android-app** (`eth.serotine`; debug build `eth.serotine.debug`),
+  **desktop-app** and **ios-app** (`eth.serotine`; the SerotineKit framework
+  and, in `xcode/`, the SwiftUI shell's XcodeGen spec) — the hosts. Each has
+  ONE composition root (`SerotineApplication`, `main()`, `SerotineWallet`)
+  that builds the `AppGraph` from `:data`'s adapters and renders `App` (on
+  iOS through `MainViewController(wallet)`), and runs the app-wide work no screen owns
   (`FollowUpgradeReports`, `FollowSafeDeployments`), never from `App` or
   `AppGraph`. The desktop one runs once per user: it holds an
   `InstanceLock` on its data directory for the process's lifetime. A port
   whose adapter is the platform's own output (`UpgradeNotifier`: Android's
-  notifications and alarm, the desktop's tray) is implemented in the host.
+  notifications and alarm, the desktop's tray, iOS's local notifications) is
+  implemented in the host.
 
 **The dependency rule: arrows point inward only.** `:domain` depends on nothing
 of ours; `:ui` and `:data` depend on `:domain`; the hosts depend on `:ui` and
@@ -379,8 +391,9 @@ file already forbids.
    2026-09-24). ONE pin: `version = "X.Y.Z-SNAPSHOT"` in the root
    `build.gradle.kts` (`allprojects`). Everything else is derived from it: the
    Android `versionName`/`versionCode` (`releaseBuildNumber`, `X*1_000_000 +
-   Y*1_000 + Z`), the deb/msi versions, the dmg's `+1`-major version, the
-   on-screen version. Then verify with the SAME query the tag guard makes:
+   Y*1_000 + Z`), the deb/msi versions, the dmg's `+1`-major version, the iOS
+   app's version and build number (stamped by its Xcode build from
+   `:printReleaseVersion`), the on-screen version. Then verify with the SAME query the tag guard makes:
 
    ```bash
    ./gradlew -q :printReleaseVersion   # must print releaseVersion=X.Y.Z
@@ -513,7 +526,7 @@ discussion that produced this note.
   same artifact in the same round, so its link stays and its history keeps
   the earlier versions. A session that has neither (no browser, no
   Artifact tool) attaches the files to the conversation, each named after
-  its screen and state (`assets-head-too-old-after.png`) with its caption,
+  its screen and state (`accounts-head-too-old-after.png`) with its caption,
   and the section says they were shown in the session. A host where the
   files reach no one (CI, a plain `claude` terminal) lists
   in that section each state under its caption, with the
@@ -790,7 +803,16 @@ discussion that produced this note.
   that executes counts as its own confirmation (owner ruling, 2026-10-18,
   #56). The Safe Transaction Service
   stays unwired.
-- docs/wallet-ux.md applies these three rulings to the screens.
+- **An account's history comes from the engine's verified log index**
+  (owner rulings, 2026-10-20, #85; docs/embedding-myotis.md, *History*): a
+  Safe's own events and every log naming an account as a topic, walked back
+  over verified headers. An account not created here is walked from the
+  block it was added at, never further back ("since added"), and the history
+  says so. The walk fetches receipts only for the blocks whose bloom flags
+  an account, which tells the serving peer which blocks matter to this
+  device: accepted as is, as the log index makes that trade-off for any
+  watch-list.
+- docs/wallet-ux.md applies these rulings to the screens.
 - **Swaps: Uniswap first, then CoW Protocol, preferred while its servers
   work, with Uniswap as the fallback** (owner's direction, 2026-10-18;
   docs/swaps.md, issue #69). Uniswap's contracts are chain data like any

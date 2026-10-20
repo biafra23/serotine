@@ -2,7 +2,6 @@ package eth.serotine.ui.accountdetail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -16,6 +15,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -61,15 +61,18 @@ import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -102,6 +105,7 @@ const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
 @Composable
 fun AccountDetailRoute(
     viewModel: AccountDetailViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onGone: () -> Unit,
     onSend: (contract: String?) -> Unit,
@@ -109,6 +113,7 @@ fun AccountDetailRoute(
     onSwap: (contract: String?) -> Unit,
     onSafeSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
+    onActivity: () -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
     onOpenSafeTx: (hash: String) -> Unit,
@@ -116,6 +121,7 @@ fun AccountDetailRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     // A dialog destination over this one holds it at STARTED; it is RESUMED when in front.
     val inFront = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
@@ -127,10 +133,12 @@ fun AccountDetailRoute(
     val isSafe = (state as? AccountDetailUiState.Ready)?.kind == AccountKind.SAFE
     AccountDetailScreen(
         state = state,
+        lightClient = strip,
         onBack = onBack,
         onSend = { contract -> if (isSafe) onPropose(contract) else onSend(contract) },
         onSwap = { contract -> if (isSafe) onSafeSwap(contract) else onSwap(contract) },
         onReceive = onReceive,
+        onActivity = onActivity,
         onCopy = rememberCopyText(),
         onRename = onRename,
         onRemove = onRemove,
@@ -146,7 +154,8 @@ fun AccountDetailRoute(
 
 /**
  * One account (docs/wallet-ux.md, screens 4 and 16) as a pure function of [state]: its blockie,
- * balance, address and control, Send (where it can send) and Receive as buttons, and Copy,
+ * balance, address and control, Send (where it can send), Receive and Activity (the
+ * transactions this device sent for it, [onActivity]) as buttons, and Copy,
  * Rename and Remove in the top bar's menu, so none of them depends on the long press of the
  * account list. [onSend] opens Send with the token at a contract chosen, or the network's
  * currency (null). A Safe's Queue opens a transaction through [onOpenSafeTx] by its hash, and
@@ -156,10 +165,12 @@ fun AccountDetailRoute(
 @Composable
 fun AccountDetailScreen(
     state: AccountDetailUiState,
+    lightClient: LightClientItem,
     onBack: () -> Unit,
     onSend: (contract: String?) -> Unit,
     onSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
+    onActivity: () -> Unit,
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
@@ -227,7 +238,7 @@ fun AccountDetailScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 AccountDetailUiState.Loading, AccountDetailUiState.Gone ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -242,6 +253,7 @@ fun AccountDetailScreen(
                     send,
                     swap,
                     onReceive,
+                    onActivity,
                     copy,
                     onCopyContract = { contract ->
                         onCopy(contract)
@@ -264,6 +276,7 @@ private fun Details(
     onSend: (String?) -> Unit,
     onSwap: (String?) -> Unit,
     onReceive: () -> Unit,
+    onActivity: () -> Unit,
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
@@ -315,7 +328,7 @@ private fun Details(
                 Icon(SerotineIcons.ContentCopy, contentDescription = "Copy address", Modifier.size(18.dp))
             }
         }
-        // Three buttons: on a narrow phone, Receive goes to a second line rather than squeezed.
+        // Four buttons: on a narrow phone the last ones go to a second line rather than squeezed.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(
                 onClick = { onSend(null) },
@@ -340,6 +353,11 @@ private fun Details(
                 Spacer(Modifier.size(8.dp))
                 Text("Receive")
             }
+            FilledTonalButton(onClick = onActivity) {
+                Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Activity")
+            }
         }
         val safe = state.safe
         if (safe != null) SegmentChoice(state.segment, state.queue, onSegment)
@@ -358,7 +376,8 @@ private fun Details(
 
 /**
  * The asset rows (docs/wallet-ux.md, screen 4), each with the block its amount was verified
- * at, and what is not known yet about the other tokens.
+ * at, and what is not known yet about the other tokens. A tap on a row opens Send with its
+ * asset chosen, a long press its menu.
  */
 @Composable
 private fun Assets(
@@ -383,12 +402,16 @@ private fun Assets(
                 contract?.let { MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(it) } },
                 contract?.let { MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) } },
             )
-            if (actions.isEmpty()) {
+            // A tap sends the asset. The row stays as it is where Send cannot be done (its balance is
+            // still to be read, and its menu still works): the tap then says why, as the greyed-out
+            // Send button does, and accessibility services announce it as such.
+            WithActionMenu(
+                actions = actions,
+                menuLabel = "Actions for ${asset.symbol}",
+                onClick = { onSend(contract) },
+                clickLabel = if (state.canSend) "Send ${asset.symbol}" else "Why Send ${asset.symbol} is unavailable",
+            ) {
                 AssetItem(asset)
-            } else {
-                WithActionMenu(actions = actions, menuLabel = "Actions for ${asset.symbol}", onClick = {}) {
-                    AssetItem(asset)
-                }
             }
         }
         state.tokensNote?.let { note ->

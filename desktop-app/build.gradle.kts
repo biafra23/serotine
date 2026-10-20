@@ -40,15 +40,110 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
-// The Myotis engine's host library (libmyotis_engine.{dylib,so,dll}) is not inside its jar
-// (docs/embedding-myotis.md), and no Myotis release asset carries it yet. Until the
-// installers stage it, `-PmyotisLibraryDir=<dir>` points `:desktop-app:run` at one built
-// from Myotis (`./gradlew cargoBuildHost` there: rust/target/release); without it the app
-// runs with no light client and its balances say so. Only the run task gets it, so a local
-// packaging never bakes a developer's path into an installer.
+// The Myotis engine's host library (libmyotis_engine.{dylib,so}) is not inside its jar
+// (docs/embedding-myotis.md): eth.myotis:myotis-engine-natives-<platform> carries it, one
+// artifact per desktop platform at the engine's version. jpackage is host-bound, so each
+// installer leg ships its own host's: stageMyotisLibrary takes the library out of that jar
+// into Compose's app resources, with JNA's native stub beside it, and the packaged app loads
+// both from its bundle (Main.kt points the engine at the library; jna.boot.library.path
+// below takes the stub), never from a temporary file a signed macOS bundle may refuse to
+// load. `:desktop-app:run` loads them from the same staged resources. Windows has no
+// natives artifact yet: there the app runs with no light client, and its balances say so.
+// `-PmyotisLibraryDir=<dir>` makes the run task use a host library built from Myotis instead
+// (`./gradlew cargoBuildHost` there: rust/target/release); only the run task gets it, so a
+// local packaging never bakes a developer's path into an installer.
+val hostOs = System.getProperty("os.name").lowercase()
+val hostArch = System.getProperty("os.arch").lowercase()
+val hostArm = hostArch == "aarch64" || hostArch == "arm64"
+/** The host's natives artifact suffix, JNA's resource prefix; null where none is published. */
+val myotisPlatform: String? = run {
+    val arch = when (hostArch) {
+        "aarch64", "arm64" -> "aarch64"
+        "amd64", "x86_64" -> "x86-64"
+        else -> return@run null
+    }
+    when {
+        hostOs.contains("mac") -> "darwin-$arch"
+        hostOs.contains("linux") -> "linux-$arch"
+        else -> null
+    }
+}
+val myotisLibraryName = when {
+    hostOs.contains("mac") -> "libmyotis_engine.dylib"
+    hostOs.contains("win") -> "myotis_engine.dll"
+    else -> "libmyotis_engine.so"
+}
+val myotisResources = layout.buildDirectory.dir("myotisAppResources")
+val stageMyotisLibrary = myotisPlatform?.let { platform ->
+    tasks.register("stageMyotisLibrary") {
+        group = "build"
+        description = "Stage the Myotis engine's host library and JNA's stub into Compose app resources"
+        val natives = configurations.detachedConfiguration(
+            dependencies.create("eth.myotis:myotis-engine-natives-$platform:${libs.versions.myotis.get()}@jar"),
+        ).also { it.isTransitive = false }
+        val jna = configurations.detachedConfiguration(
+            dependencies.create("net.java.dev.jna:jna:${libs.versions.jna.get()}@jar"),
+        ).also { it.isTransitive = false }
+        // Compose's subdirectory for this host's resources; the bundle flattens it into one dir.
+        val osArchDir = (if (platform.startsWith("darwin")) "macos" else "linux") + if (hostArm) "-arm64" else "-x64"
+        // On a Mac under a .dylib name: jpackage's signing pass signs *.dylib and leaves a
+        // .jnilib unsigned, and JNA's boot-path lookup tries both names.
+        val (stubEntry, stubName) = if (platform.startsWith("darwin")) {
+            "com/sun/jna/$platform/libjnidispatch.jnilib" to "libjnidispatch.dylib"
+        } else {
+            "com/sun/jna/$platform/libjnidispatch.so" to "libjnidispatch.so"
+        }
+        // jpackage bundles the JDK 21 toolchain's architecture, the libraries here are the Gradle
+        // JVM's: a mixed pair packages an app whose engine never loads. The installer workflows
+        // pin both to one; a local packaging is refused instead.
+        val toolchainArch = javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(21))
+        }.map { launcher ->
+            val release = launcher.metadata.installationPath.asFile.resolve("release")
+            runCatching { Regex("OS_ARCH=\"([^\"]+)\"").find(release.readText())?.groupValues?.get(1) }
+                .getOrNull()?.lowercase() ?: "unknown"
+        }
+        inputs.files(natives, jna)
+        inputs.property("toolchainArch", toolchainArch)
+        outputs.dir(myotisResources)
+        doLast {
+            val toolchain = toolchainArch.get()
+            check(toolchain == "unknown" || (toolchain == "aarch64" || toolchain == "arm64") == hostArm) {
+                "Gradle runs under a $hostArch JVM but the JDK 21 toolchain jpackage bundles is $toolchain: " +
+                    "the app would carry another architecture's engine. Run Gradle under a JDK of the target " +
+                    "architecture (JAVA_HOME plus -Porg.gradle.java.installations.paths=\$JAVA_HOME, as the " +
+                    "installer workflows do)."
+            }
+            val root = myotisResources.get().asFile
+            root.deleteRecursively()
+            val dest = root.resolve(osArchDir)
+            copy {
+                from(zipTree(natives.singleFile)) { include("$platform/$myotisLibraryName") }
+                into(dest)
+                eachFile { path = name }
+                includeEmptyDirs = false
+            }
+            copy {
+                from(zipTree(jna.singleFile)) { include(stubEntry) }
+                into(dest)
+                eachFile { path = stubName }
+                includeEmptyDirs = false
+            }
+            check(dest.resolve(myotisLibraryName).isFile) {
+                "$platform/$myotisLibraryName not in ${natives.singleFile}"
+            }
+            check(dest.resolve(stubName).isFile) { "$stubEntry not in ${jna.singleFile}" }
+        }
+    }
+}
+// Compose's own prepareAppResources copies the resources into the run's and the bundle's
+// resources dir, so the staging runs before it.
+if (stageMyotisLibrary != null) {
+    tasks.configureEach { if (name == "prepareAppResources") dependsOn(stageMyotisLibrary) }
+}
 val myotisLibraryDir: Provider<String> = providers.gradleProperty("myotisLibraryDir")
 tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
-    myotisLibraryDir.orNull?.let { jvmArgs("-Djava.library.path=$it") }
+    myotisLibraryDir.orNull?.let { jvmArgs("-Dmyotis.engine.lib=${File(it, myotisLibraryName).absolutePath}") }
     // The desktop's debug build: a development run logs the adapters' diagnostics (which proof
     // of a Safe's read failed or straddled) to stderr. No installer sets it.
     jvmArgs("-Dserotine.debugLog=true")
@@ -57,6 +152,10 @@ tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
 compose.desktop {
     application {
         mainClass = "eth.serotine.desktop.MainKt"
+        // JNA loads its native stub from the bundle (stageMyotisLibrary); jpackage's launcher
+        // expands $APPDIR. A development run sees a literal, missing $APPDIR, and JNA extracts
+        // the stub from its jar as before.
+        jvmArgs += "-Djna.boot.library.path=\$APPDIR/resources"
         // Pin the runtime jpackage bundles (via jlink) to the Java 21 toolchain, the one
         // our class files target. Without this, jpackage defaults to whatever JDK runs
         // Gradle.
@@ -64,6 +163,7 @@ compose.desktop {
             languageVersion.set(JavaLanguageVersion.of(21))
         }.get().metadata.installationPath.asFile.absolutePath
         nativeDistributions {
+            if (stageMyotisLibrary != null) appResourcesRootDir.set(myotisResources)
             // jpackage is host-OS-bound: the .dmg can only be produced on macOS, the .deb
             // only on Linux, the .msi only on Windows (with WiX 3 on the PATH) — one
             // workflow per OS under .github/workflows.

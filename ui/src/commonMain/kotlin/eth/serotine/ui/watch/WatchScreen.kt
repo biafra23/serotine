@@ -20,13 +20,17 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -38,7 +42,14 @@ import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.done
+import eth.serotine.ui.components.next
+import eth.serotine.ui.components.nextTo
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.components.submitOnDone
+import eth.serotine.ui.lightclient.LightClientViewModel
 
 /** Test tag of the address field, for UI tests. */
 const val WATCH_ADDRESS_TAG = "watch-address"
@@ -52,32 +63,54 @@ const val WATCH_DETECTION_TAG = "watch-detection"
 /** Test tag of the checksummed address on the detection card, for UI tests. */
 const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
 
+/** What the address field says while nothing else is to be said of it. */
+private const val ADDRESS_HINT = "0x and 40 hexadecimal digits, or an ENS name like name.eth"
+
 /** Binds [WatchScreen] to its ViewModel; an added address ends the screen through [onAdded]. */
 @Composable
-fun WatchRoute(viewModel: WatchViewModel, onBack: () -> Unit, onAdded: () -> Unit, modifier: Modifier = Modifier) {
+fun WatchRoute(
+    viewModel: WatchViewModel,
+    lightClient: LightClientViewModel,
+    onBack: () -> Unit,
+    onAdded: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     val added by rememberUpdatedState(onAdded)
     LaunchedEffect(state.done) {
         if (state.done) added()
     }
-    WatchScreen(state, viewModel::onAddressChange, viewModel::onNameChange, viewModel::add, onBack, modifier)
+    WatchScreen(
+        state,
+        strip,
+        viewModel::onAddressChange,
+        viewModel::onNameChange,
+        viewModel::add,
+        onBack,
+        modifier,
+        onRetryLookup = viewModel::onRetryLookup,
+    )
 }
 
 /**
- * Watch address (docs/wallet-ux.md, screen 10) as a pure function of [state]: the address and
- * a name, the detection card built from verified code, and Add, enabled only for a verified
- * account.
+ * Watch address (docs/wallet-ux.md, screen 10) as a pure function of [state]: the address or
+ * ENS name and a name, the detection card built from verified code, and Add, enabled only for
+ * a verified account. [onRetryLookup] resolves a name again that could not be verified.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchScreen(
     state: WatchUiState,
+    lightClient: LightClientItem,
     onAddressChange: (String) -> Unit,
     onNameChange: (String) -> Unit,
     onAdd: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onRetryLookup: () -> Unit = {},
 ) {
+    val nameField = remember { FocusRequester() }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -91,39 +124,47 @@ fun WatchScreen(
             )
         },
     ) { padding ->
-        Column(
-            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedTextField(
-                value = state.address,
-                onValueChange = onAddressChange,
-                modifier = Modifier.fillMaxWidth().testTag(WATCH_ADDRESS_TAG),
-                enabled = !state.adding,
-                label = { Text("Address") },
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                singleLine = true,
-                isError = state.addressError != null,
-                supportingText = { Text(state.addressError ?: "0x and 40 hexadecimal digits") },
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Ascii,
-                ),
-            )
-            OutlinedTextField(
-                value = state.name,
-                onValueChange = onNameChange,
-                modifier = Modifier.fillMaxWidth().testTag(WATCH_NAME_TAG),
-                enabled = !state.adding,
-                label = { Text("Name (optional)") },
-                singleLine = true,
-                isError = state.nameError != null,
-                supportingText = state.nameError?.let { error -> { Text(error) } },
-            )
-            state.detection?.let { DetectionCard(it) }
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(onClick = onAdd, enabled = state.canAdd, modifier = Modifier.align(Alignment.End)) { Text("Add") }
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.address,
+                    onValueChange = onAddressChange,
+                    modifier = Modifier.fillMaxWidth().testTag(WATCH_ADDRESS_TAG),
+                    enabled = !state.adding,
+                    label = { Text("Address or ENS name") },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    singleLine = true,
+                    isError = state.addressError != null,
+                    supportingText = { Text(state.addressError ?: state.addressNote ?: ADDRESS_HINT) },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Ascii,
+                    ).next(),
+                    keyboardActions = nextTo(nameField),
+                )
+                if (state.canRetryLookup) TextButton(onClick = onRetryLookup) { Text("Try again") }
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = onNameChange,
+                    modifier = Modifier.fillMaxWidth().focusRequester(nameField).testTag(WATCH_NAME_TAG),
+                    enabled = !state.adding,
+                    label = { Text("Name (optional)") },
+                    singleLine = true,
+                    isError = state.nameError != null,
+                    supportingText = state.nameError?.let { error -> { Text(error) } },
+                    keyboardOptions = KeyboardOptions.Default.done(),
+                    keyboardActions = submitOnDone(state.canAdd, onAdd),
+                )
+                state.detection?.let { DetectionCard(it) }
+                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Button(onClick = onAdd, enabled = state.canAdd, modifier = Modifier.align(Alignment.End)) {
+                    Text("Add")
+                }
+            }
         }
     }
 }

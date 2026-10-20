@@ -1,11 +1,8 @@
 package eth.serotine.data.keys
 
 import eth.serotine.domain.repository.KeyProtection
-import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.readString
-import kotlinx.serialization.json.Json
 
 /**
  * The hardware secret for the desktop key store whose envelopes live in [keysDirectory]
@@ -32,17 +29,8 @@ fun desktopHardwareSecret(keysDirectory: String): HardwareSecret? {
         // itself unavailable, and the window still opens. Said here, where the cause is known.
         val reason = "the desktop's hardware factor cannot be determined (${e.message ?: e::class.simpleName})"
         println("Serotine: $reason")
-        UnknownFactor(reason)
+        UnavailableHardware(reason)
     }
-}
-
-/** The factor that could not be determined: every use fails, so the key store is unavailable. */
-private class UnknownFactor(private val reason: String) : HardwareSecret {
-    override val tag: String = "unknown"
-    override val protection: KeyProtection get() = error(reason)
-    override val everyGuessNeedsDevice: Boolean = false
-    override fun isProvisioned(): Boolean = error(reason)
-    override fun mix(input: ByteArray): ByteArray = error(reason)
 }
 
 /**
@@ -67,19 +55,4 @@ internal fun chooseDesktopFactor(
     envelopeTags.isNotEmpty() -> DesktopFactor.PASSWORD_ONLY
     enclaveUsable() -> DesktopFactor.SECURE_ENCLAVE
     else -> DesktopFactor.PASSWORD_ONLY
-}
-
-/** The hardware tags of the envelopes in [directory] that can be read; the others say nothing. */
-internal fun envelopeTagsIn(directory: String): Set<String> {
-    val dir = Path(directory)
-    if (!SystemFileSystem.exists(dir)) return emptySet()
-    return SystemFileSystem.list(dir).filter { it.name.endsWith(".seed") }.mapNotNullTo(HashSet()) { file ->
-        try {
-            SystemFileSystem.source(file).buffered().use { source ->
-                Json.decodeFromString(SealedSeed.serializer(), source.readString()).hardware
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
 }

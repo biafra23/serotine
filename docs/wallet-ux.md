@@ -21,7 +21,7 @@ the text wins.
 
 - **Sepolia only, and named.** The app works on Sepolia alone (owner ruling,
   2026-10-15), so there is no network picker; a plain label says "Sepolia" on
-  the screens that matter for it (Assets, Receive, Send review, Settings). Every
+  the screens that matter for it (Accounts, Receive, Send review, Settings). Every
   table this page mentions (tokens, price feeds, Safe singletons) is keyed by
   `Network`, so another network is a data addition once the owner allows it.
 - **Verified, or not available.** Every chain value comes from the embedded
@@ -30,11 +30,22 @@ the text wins.
   value from another source, or an earlier value as if it were current. A
   value the user acts on (a balance on Send, a Safe's owners and threshold,
   a receipt) names the block it was verified at.
+- **The light client's state is in sight wherever it decides something**
+  (owner's request, 2026-10-20). Every screen whose content or actions
+  depend on what the light client can verify draws its status strip (as on
+  Accounts, 1) under the top bar: Account detail and Safe detail (4, 16),
+  Send and its status (7 to 9), Swap (docs/swaps.md), Watch address (10),
+  Create Safe (13 to 15), a Safe's transaction (17) and its proposal, swap
+  and import, Activity (25), and the token list Settings opens and Add
+  token (18, 20). A screen that needs nothing verified draws none:
+  Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
+  Security (21) and Display currency (19). Settings itself (18) keeps its
+  own Light client row instead of the strip.
 - **A balance last verified is shown as such** (owner's request,
   2026-10-19). While the light client has no head it can read at (asleep,
   catching up, its verified head too old, or no peer serving state proofs),
   a balance it proved earlier, in this run or before a restart (kept in
-  `last-balances.json` with the app's other files), stays on the Assets and
+  `last-balances.json` with the app's other files), stays on the Accounts and
   Account detail rows instead of "Syncing…": dimmed, with "Last verified
   ‹time of its head› · may have changed since" under it (the block when the
   time is unknown). It is left out of every total and has no fiat value, and
@@ -71,12 +82,33 @@ the text wins.
   - *Co-signer*: a Safe with some owners held here, fewer than its threshold.
   - *Watch-only*: nothing held here. Send is greyed out (a tap says why);
     Receive and the balances are as for any account.
+
+  The badge shows its icon (a key, a person with a key, an eye) before its
+  text, so the icons are learned, and its text is never broken over two
+  lines: where icon and text do not fit on one line beside the name (a
+  narrow phone, a long name), the badge shows its icon alone, in the same
+  colours. A screen reader says its text either way, and the account's own
+  screen, where it fits, shows both (#68).
 - **A missing prerequisite greys an action out, never hides it** (owner
   ruling, 2026-10-18, #55). An action that cannot be done because something
   it needs is missing is shown disabled, and a tap on it still works: it says
   what is missing and how to get it (`UnavailableDialog`, with the ways to
   get it where there are some). An action that does not apply to a kind of
   account at all is not shown.
+- **The keyboard never hides a form's button** (owner's request,
+  2026-10-20). Every screen ends at the top of the on-screen keyboard (the
+  `imePadding` around the screens in `App.kt`, `adjustResize` on Android,
+  and on iOS `OnFocusBehavior.DoNothing`, so the view is not lifted a second
+  time), so what the keyboard would cover can be scrolled to while the
+  field typed into stays in view. The keyboard's Done key on a form's last
+  field does what the form's button does (`submitOnDone`): it closes the
+  keyboard and, when the button is enabled, submits; a field before it
+  shows Next, which moves to the next field to type in (`nextTo`). Two
+  exceptions: Create Safe's owner field adds the owner and keeps the
+  keyboard for the next one; and the password and recovery-phrase steps
+  (the unlock, Security, Create account, Import mnemonic), whose Done
+  predates this rule, submit without reading the button's state or
+  closing the keyboard, their ViewModels refusing what is not ready.
 - **Long press is never the only way.** A long press (a right click on
   desktop) opens an item's menu; every action in it is also reachable from a
   visible control (the detail screen's buttons), and the menu has an
@@ -84,12 +116,13 @@ the text wins.
 
 ## Navigation
 
-The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
+The bottom bar is **Accounts | Settings**: a `NavigationBar`, and a
 `NavigationRail` on a wide desktop window. Each tab is a nested graph of the
 one `NavHost`, and switching tabs keeps the user's place: Settings opens over
-the Assets tab's stack and closes back to it, with nothing saved aside (owner
+the Accounts tab's stack and closes back to it, with nothing saved aside (owner
 ruling, 2026-10-18, #49, for now; docs/architecture.md). The light
-client's status strip stays at the top of Assets. A flow that ends in a key
+client's status strip stays at the top of Accounts, and of every other screen
+whose content or actions depend on it (*Rules every screen follows*). A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
 Safe transaction) is a destination that covers the bar until it ends. A
 Safe's transactions are `safe/{address}/tx/{hash}` (17),
@@ -99,15 +132,15 @@ through its use cases. Create Safe is `create-safe` (13 to 15, one screen
 with three steps), and its deployment's status `transfer/{hash}` in its
 place. The
 update screen covers everything, the bar included, while a network upgrade
-has left this version unable to follow Sepolia, and gives way to the Assets
+has left this version unable to follow Sepolia, and gives way to the Accounts
 tab's start when it no longer has (docs/embedding-myotis.md, *Network
 upgrades*).
 
 ## Screens
 
-### Assets tab
+### Accounts tab
 
-1. **Assets**
+1. **Accounts**
    - The light client's status strip on top, coloured by what it can verify
      (owner's request, 2026-10-19): green while reads are verified at a fresh
      head; yellow while it has no fresh head to read at for a reason that
@@ -146,13 +179,16 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send, Swap and Receive buttons (Send greyed out as in 3; Swap, 22,
-     greyed out, a tap saying why, when watch-only; on a Safe, Swap opens
-     24 and is greyed out as Send is: docs/swaps.md, *A Safe's swap*).
+   - Send, Swap, Receive and Activity buttons (Send greyed out as in 3;
+     Swap, 22, greyed out, a tap saying why, when watch-only; on a Safe,
+     Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
+     swap*; Activity opens 25).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
-     long press opens 5.
+     tap opens Send (7) with the asset chosen; where Send cannot be done
+     (as in 3) the row is drawn as ever and the tap says why, as the
+     greyed-out Send button does. A long press opens 5.
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
@@ -248,6 +284,15 @@ upgrades*).
       Safe (version, `t of n`, the owners' blockies, enabled modules and a
       guard if any); or another contract.
     - The control badge the account will get (owners held here count).
+    - As built (`WatchViewModel`, issue #71): an ENS name is resolved as
+      Send's recipient is (`ResolveRecipient`, finalized state only, once the
+      typing pauses), the field saying the address it resolves to, in full,
+      and the finalized block it was resolved at, whatever the card says; a
+      name that could not be verified offers Try again. At Add the name is resolved again: what is
+      watched is the address it has then, and one that moved, or cannot be
+      verified again, is said and nothing is added. The account's name is
+      not filled from the ENS name (that waits for primary names, #67). The
+      zero address is refused: nobody holds its key.
 11. **Import recovery phrase**: today's seed screen, with the account's name,
     the wallet password (on the first key) and the biometric opt-in (still to
     come; until then it is turned on in Security, 21).
@@ -422,10 +467,13 @@ upgrades*).
     - A change that weakens the Safe carries a warning wherever it is shown
       (16's row, 17, the Sign step, the biometric prompt): a module disabled,
       a guard set or removed (its limits, allowlist or delay stop), a
-      fallback handler set
-      (it answers EIP-1271 for the Safe: one that accepts every signature
-      lets anyone spend what the Safe approved, through Permit2, permits or
-      orders). A fallback handler set that is not the pinned canonical
+      fallback handler set (it answers EIP-1271 for the Safe: one that
+      accepts every signature lets anyone spend what the Safe approved,
+      through Permit2, permits or orders) or removed (what it answered
+      stops: safe transfers of ERC-721 and ERC-1155 tokens to the Safe are
+      refused, and its EIP-1271 checks fail, so orders and permits signed
+      for it no longer work; owner's decision, 2026-10-20, on #106's
+      review). A fallback handler set that is not the pinned canonical
       CompatibilityFallbackHandler 1.4.1 (`0xfd0732Dc…Ec99`,
       `PinnedFallbackHandlers`) is refused: shown, and never signed,
       approved or executed here (`SafeTxRefusal.UnpinnedFallbackHandler`;
@@ -551,6 +599,73 @@ upgrades*).
       nonce passes it. One the Safe's nonce has passed says it ran, or that
       another transaction used its nonce.
 
+### Activity (issue #85)
+
+Screens 22 to 24 are the swap screens (docs/swaps.md).
+
+25. **Activity**: the transactions this device sent for an account, its
+    token transfers and, for a Safe, its own events on chain, newest first,
+    under the Accounts tab like the account it is of (`activity/{address}`).
+    - First, what the list covers: transactions sent from this device, and
+      on chain from the block its history starts at on (when it was
+      deployed from this device, or added here: "since added", owner ruling
+      2026-10-20) its token transfers and a Safe's events, each with how far
+      it is checked so far, or why it is not listed yet. For an EOA, ETH it
+      received and transactions sent from it elsewhere are not listed yet
+      (issue #85 has the plan for them).
+    - One row per transaction: the blockie of its other side, what it did
+      ("Sent 0.25 ETH", "Swapped 100 USDC for at least 4.28845 LINK",
+      "Executed a Safe transaction", "Deployed a Safe"),
+      whom or what else it concerns ("To Bob · 0x5aAe…eAed", "Safe nonce 4 ·
+      Treasury · …"), when a peer took it, and how it ended as this device
+      saw it: in its block or finalized there, reverted, no block seen yet,
+      no peer confirmed its broadcast, or mined while the app was not
+      watching unless another transaction took its nonce. A tap opens its
+      status (9).
+    - A Safe's Activity lists the approvals and executions of its
+      transactions and its deployment, whichever account here sent them
+      ("Executed transaction 4", "By Alice · …").
+    - And its events on chain, from the engine's verified log index
+      (`ObserveSafeHistory`): ETH received ("Received 0.5 ETH", "From Bob ·
+      …"), executions and failed ones, approvals, its set-up, owner,
+      threshold, module, guard and fallback-handler changes, a module's
+      transactions and messages signed. Each sits among the sent
+      transactions by its block ("Block 9,415,302") and opens nothing yet;
+      one whose transaction is listed as sent from here, in a block, is left
+      out when its row says the same (an execution, an approval, a
+      deployment); a failure and a settings change are not. A module
+      enabled, or a fallback handler other than the pinned one, is a
+      warning; so is every other change that weakens the Safe (a module
+      disabled, a guard set or removed, the handler removed), with the
+      warning its Safe transaction is signed with (17). A transaction sent
+      from here that waits for its block is above every event.
+    - And every ERC-20 and ERC-721 transfer to or from the account, whichever
+      token moved (`ObserveTokenTransfers`, the log index's topic entry):
+      "Received 250 USDC" / "From Treasury · …" for a token the wallet shows
+      (listed or added, not hidden), "Sent 1 USDC" for a fee its transfer
+      paid to another address, "USDC NFT #7" for an ERC-721. A contract the
+      wallet does not show can log any transfer it likes, so its row says
+      only "An unlisted token logged a transfer to it", names the contract
+      and not the other side, and is marked as unconfirmed. A transfer of
+      nothing is left out: anyone can have a token log one from any address,
+      which plants a look-alike address in a history. An added token whose
+      symbol is a built-in token's warns, as every screen does. By block like
+      the events, opening nothing yet; the transfer a row sent from here, in
+      a block, already says (its token, amount and recipient, or the amount
+      sold in a swap) is that row alone.
+    - Where the list comes from: every transaction a peer took (or maybe
+      took) goes into the history as it is recorded
+      (`HistoryRecordingSentTransfers`), which is kept for good, unlike the
+      record that holds nonces back, which forgets one once its nonce is
+      mined. How each ended is recorded by `FollowSentTransactions`, which
+      the hosts run while the app is open: the verified receipt's block and
+      result, then its finalization. The engine finds a receipt only for a
+      transaction mined while it watches for it, so one mined while the app
+      was closed is told by its account's verified mined count instead: its
+      nonce is used, by this transaction or by one that took its place,
+      which the device cannot tell apart. The status screen (9) reads the
+      same history once the record has forgotten a transaction.
+
 ### Settings tab
 
 18. **Settings**: Display currency · Tokens (n built in, m added) · Security
@@ -569,7 +684,10 @@ upgrades*).
     signed in it.
 20. **Add token by address**: the contract's address, then its symbol, name
     and decimals read from the contract and labelled as its claim, with the
-    monogram icon it will get.
+    monogram icon it will get. The address only, never an ENS name (owner's
+    decision, 2026-10-20, on #121): anyone can point a name such as
+    `usdc-sepolia.eth` at a look-alike contract, and the name would lend it
+    a standing the contract's own claims do not have.
 21. **Security**
     - Wallet password: whether one is set, and how this device keeps the keys
       under it.

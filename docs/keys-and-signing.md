@@ -154,7 +154,7 @@ The rules a reviewer holds the adapter against:
    screenshot, the window is covered when the app resigns active so the app
    switcher's snapshot holds nothing, and `UIScreen.isCaptured` plus the
    screenshot notification raise a warning; on desktop nothing comparable
-   exists and the seed screen says so. The debug app alone may lift the
+   exists and the seed screen says so. The debug Android app alone may lift the
    capture block for a screen recording (owner's request, 2026-10-21): a
    switch in Settings, held in memory and off at every start, under which
    those screens say capture cannot be blocked, as on desktop. The release
@@ -267,8 +267,27 @@ its KDoc and returns it as a result the UI shows as state.
   - The key store's calls take turns, `describe()` included: the biometric
     key's check opens a Keystore operation, which must not compete with the one
     a pending prompt holds (StrongBox has few).
-  - The desktop and iOS have no biometric path yet, and their Security screen
-    says so.
+  - The desktop has no biometric path yet, and its Security screen says so.
+- **Biometric unlock on iOS** works the same way, with `IosBiometricKey` as
+  `HW_bio`:
+  - a P-256 key made inside the Secure Enclave under
+    `[.privateKeyUsage, .biometryCurrentSet]` and
+    `WhenPasscodeSetThisDeviceOnly` (rule 3), with no passcode fallback. It is
+    kept only as the enclave's encrypted handle, in `biometric-key.json` next
+    to the envelopes, so deleting that file deletes the key (rule 4);
+  - beside the handle, the enrolled set's fingerprint
+    (`evaluatedPolicyDomainState`) at creation: a set that changed since, or
+    none left, reads as invalidated, as the enclave enforces too;
+  - each DEK wrapped by ECIES to the public half (X9.63 KDF, AES-GCM), which
+    needs no biometric, as `<address>.bio`;
+  - `sign(…, Unlock.WithBiometrics(reason))` shows the system's Face ID or
+    Touch ID prompt (`LAContext`, "Use the password" as its way out) and
+    hands the context the user passed to the enclave for that one
+    decryption;
+  - the simulator has no enclave, so the path is not offered there (rule 5);
+    where it is not offered, the Security screen says why and how to get it:
+    no face or finger enrolled, no passcode, Face ID turned off for Serotine,
+    or biometrics locked out until the passcode is entered.
 
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
@@ -367,7 +386,9 @@ its KDoc and returns it as a result the UI shows as state.
   - Opening checks the 64 MiB, two-pass floor and a ceiling that takes every
     tier: at most 256 MiB, at most 16 passes, and memory × passes at most
     256 MiB × 4, so the most passes come only with the least memory.
-- **AES-256-GCM** comes from the JDK.
+- **AES-256-GCM** comes from the JDK, and on iOS from libsodium (its
+  `crypto_aead_aes256gcm`, on the ARMv8 crypto extensions), whose output has
+  the JDK's shape: the ciphertext, then the 16-byte tag.
 - **The hardware secret.** On Android it is `AndroidKeystoreSecret`, an
   HMAC-SHA256 key in StrongBox, or in the TEE when StrongBox is missing or
   failing. The Keystore reports where the key lives (rule 5), and the screen
@@ -428,8 +449,28 @@ its KDoc and returns it as a result the UI shows as state.
   works. This covers a Keystore key lost in an OS upgrade or a cleared key
   store, and a deleted enclave state. The way back is the reset and recovery
   flows.
-- **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16).
-  Until then the key store reports itself unavailable there.
+- **iOS** gets its envelope with the iOS app (owner's decision, 2026-10-16),
+  built as the Mac's: `IosSecureEnclaveSecret` is `MacSecureEnclaveSecret`'s
+  twin, the same key, ECIES-wrapped `S_hw` and `secure-enclave.json` state
+  file, through Kotlin/Native's Security.framework bindings.
+  - The enclave key is made with the access control CryptoKit gives one by
+    default: usable while the device is unlocked, on this device only, for
+    private-key operations. The app's sandbox keeps other apps from the
+    state file, which the Mac's design cannot.
+  - Argon2id and AES-256-GCM are libsodium's, from the bindings'
+    `libsodium.a`. Argon2id goes through Serotine's own cinterop declaration
+    of `crypto_pwhash`, which takes the password as bytes: the bindings'
+    declaration takes a `const char *`, which Kotlin/Native makes a String.
+  - The key directory is excluded from iCloud and computer backups.
+  - The factor (`iosHardwareSecret`): on an iPhone it is always the
+    enclave, chosen without asking whether it works, so a locked device
+    decides nothing; an enclave that fails makes sealing fail and the key
+    store unavailable. The simulator has no enclave, and only a simulator
+    build (a source set of its own, not a runtime check) lets a wallet stand
+    on the password alone, for development; its factor sticks to the wallet
+    as on the desktop.
+  - Biometric unlock: Face ID or Touch ID, see *Biometric unlock on iOS*
+    above. The simulator has none.
 - **What never leaves a call.**
   - The seed, the keys and the password's bytes exist only inside one call,
     in byte arrays and native buffers this code zeroes before it returns.
@@ -457,19 +498,23 @@ its KDoc and returns it as a result the UI shows as state.
   through the unlock they share (`UnlockFields`), Send's review (8), Send
   from a Safe's review (16), the Safe transaction's Sign, Approve on chain
   and Execute steps (17) and Create Safe's review (15). That is
-  `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
-  until its host covers the window, the screen says that capture cannot be
-  blocked. The debug Android app's Settings → *Allow screen recording*
-  (`ScreenCaptureDebugSwitch`, which only a debuggable host builds) drops
-  `FLAG_SECURE` and keeps the autofill exclusion, and the screens then say
-  the same; it is off again when the process restarts. Create account also keeps the display on while its phrase is
-  shown and checked (`KeepScreenOn()`; Android's `keepScreenOn`), because a
+  `FLAG_SECURE` and an autofill exclusion on Android. On desktop and on iOS,
+  where no capture can be blocked, the screen says so. iOS also covers the
+  window while the app is not active, so the app switcher's snapshot holds
+  nothing, and warns (`ScreenCaptureWarningDialog`) when a screenshot is
+  taken and while the screen is recorded, mirrored or shared. The debug
+  Android app's Settings → *Allow screen recording*
+  (`ScreenCaptureDebugSwitch`, which only a debuggable Android host builds)
+  drops `FLAG_SECURE` and keeps the autofill exclusion, and the screens then
+  say that capture is not blocked; it is off again when the process
+  restarts. Create account also keeps the display on while its phrase is shown and checked
+  (`KeepScreenOn()`; Android's `keepScreenOn`, iOS's idle timer), because a
   display that times out stops the screen, and that stop is a leaving
   (owner ruling, 2026-10-18, #39).
 - **Not yet.**
-  - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`) and on
-    iOS, and the opt-in on the seed screens at the first key (Settings →
-    Security is where it is turned on today).
+  - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`), and
+    the opt-in on the seed screens at the first key (Settings → Security is
+    where it is turned on today).
   - Changing the wallet password, which re-wraps every envelope's DEK as one
     step a crash cannot leave half done.
   - A way back when no envelope opens any more (a lost Keystore key, a

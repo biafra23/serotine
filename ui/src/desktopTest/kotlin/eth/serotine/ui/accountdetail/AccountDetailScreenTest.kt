@@ -1,5 +1,6 @@
 package eth.serotine.ui.accountdetail
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -14,10 +15,15 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
+import eth.serotine.ui.components.catchingUpStripSample
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -40,14 +46,19 @@ class AccountDetailScreenTest {
     )
     private val events = mutableListOf<String>()
 
-    private fun show(state: AccountDetailUiState) = rule.setContent {
+    private fun show(
+        state: AccountDetailUiState,
+        lightClient: LightClientItem = verifiedStripSample,
+    ) = rule.setContent {
         SerotineTheme {
             AccountDetailScreen(
                 state,
+                lightClient = lightClient,
                 onBack = { events += "back" },
                 onSend = { events += "send $it" },
                 onSwap = { events += "swap $it" },
                 onReceive = { events += "receive" },
+                onActivity = { events += "activity" },
                 onCopy = { events += "copy $it" },
                 onRename = { events += "rename" },
                 onRemove = { events += "remove" },
@@ -71,6 +82,14 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Watch-only").assertIsDisplayed()
         rule.onNodeWithText("Testnet prices · 1 asset without a price").assertIsDisplayed()
         rule.onNodeWithText("Prices: Chainlink feeds, read through the light client, testnet prices").assertExists()
+    }
+
+    @Test
+    fun saysWhatTheLightClientIsDoingWhileTheAmountsWaitForIt() {
+        show(ready.copy(total = "Checking…"), lightClient = catchingUpStripSample)
+
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
     }
 
     @Test
@@ -120,12 +139,17 @@ class AccountDetailScreenTest {
         )
 
         rule.onNodeWithText("Send").performClick()
+        // A menu item by its action, not by a pointer: a menu opened upwards lies over the Send
+        // button, and the test's injected release would reach the button once the menu is gone.
         rule.onNodeWithText("5 USDC").performTouchInput { longClick() }
-        rule.onNodeWithText("Send USDC").performClick()
+        rule.onNodeWithText("Send USDC").performSemanticsAction(SemanticsActions.OnClick)
         rule.onNodeWithText("1.5 ETH").performTouchInput { longClick() }
-        rule.onNodeWithText("Send ETH").performClick()
+        rule.onNodeWithText("Send ETH").performSemanticsAction(SemanticsActions.OnClick)
+        // A tap on a row sends its asset.
+        rule.onNodeWithText("5 USDC").performClick()
+        rule.onNodeWithText("1.5 ETH").performClick()
 
-        assertEquals(listOf("send null", "send $contract", "send null"), events)
+        assertEquals(listOf("send null", "send $contract", "send null", "send $contract", "send null"), events)
     }
 
     @Test
@@ -140,6 +164,11 @@ class AccountDetailScreenTest {
             "This account is watch-only: its key is not on this device, so nothing can be sent from it. Import its " +
                 "recovery phrase to send from it.",
         )
+        rule.onNodeWithText("Close").performClick()
+        assertEquals(emptyList(), events.filter { it.startsWith("send") }, "nothing sent")
+        // A tap on the row says the same.
+        rule.onNodeWithText("5 USDC").performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
         rule.onNodeWithText("Close").performClick()
         assertEquals(emptyList(), events.filter { it.startsWith("send") }, "nothing sent")
         rule.onNodeWithText("5 USDC").performTouchInput { longClick() }

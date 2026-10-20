@@ -52,4 +52,4 @@ dependencyResolutionManagement {
     }
 }
 
-include("domain", "data", "ui", "android-app", "desktop-app")
+include("domain", "data", "ui", "android-app", "desktop-app", "ios-app")

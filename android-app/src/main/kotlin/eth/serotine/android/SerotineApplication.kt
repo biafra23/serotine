@@ -15,6 +15,7 @@ import eth.serotine.android.upgrade.UpgradeCheckJob
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.AndroidBiometricKey
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
@@ -27,10 +28,15 @@ import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
+import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.HistoryNotingAccounts
+import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -51,8 +57,9 @@ import kotlinx.coroutines.launch
  * (docs/embedding-myotis.md). Built once per process; activities read [graph]. The engine's
  * networking is on while something holds it ([holdEngine]: a visible activity, the daily
  * upgrade check), and while it is, the engine's upgrade reports are followed into
- * notifications ([upgradeNotices]) and the Safes this wallet deployed are listed once the light
- * client proves them ([FollowSafeDeployments]): the work no screen owns, run here beside the
+ * notifications ([upgradeNotices]), the Safes this wallet deployed are listed once the light
+ * client proves them ([FollowSafeDeployments]) and the engine's log index follows the accounts
+ * ([FollowAccountLogs]): the work no screen owns, run here beside the
  * [graph], on the same adapters, and never from the shared UI.
  */
 class SerotineApplication : Application() {
@@ -88,18 +95,37 @@ class SerotineApplication : Application() {
     }
 
     /**
-     * The account list in the app's private files, which the manifest keeps out of backups and
-     * device transfers; addresses and labels only, no keys. One instance, which the graph and the
-     * deployments' follower share.
+     * Where each account's history starts (issue #85), beside the account list: addresses with a
+     * block or the time each was added, public data only.
      */
-    private val accounts by lazy { FileAccountRepository(filesDir.resolve("accounts.json").path) }
+    private val historyStarts by lazy { FileHistoryStarts(filesDir.resolve("history-starts.json").path) }
+
+    /**
+     * The account list in the app's private files, which the manifest keeps out of backups and
+     * device transfers; addresses and labels only, no keys. Each account added is noted in
+     * [historyStarts] as it is. One instance, which the graph and the followers share.
+     */
+    private val accounts by lazy {
+        HistoryNotingAccounts(FileAccountRepository(filesDir.resolve("accounts.json").path), historyStarts)
+    }
 
     /**
      * The transactions signed here, with their signed bytes (public once broadcast, no key in
      * them), beside the account list. One instance, which the graph and the deployments' follower
      * share.
      */
-    private val sentTransfers by lazy { FileSentTransfers(filesDir.resolve("sent-transfers.json").path) }
+    private val sentRecord by lazy { FileSentTransfers(filesDir.resolve("sent-transfers.json").path) }
+
+    /**
+     * Every transaction sent from here, kept for good with how each ended (issue #85): what an
+     * account's Activity lists. Public data only, as [sentRecord]'s, beside it.
+     */
+    private val transactionHistory by lazy {
+        FileTransactionHistory(filesDir.resolve("transaction-history.json").path)
+    }
+
+    /** [sentRecord], each of whose records also goes into [transactionHistory]: what all that sends is handed. */
+    private val sentTransfers by lazy { HistoryRecordingSentTransfers(sentRecord, transactionHistory) }
 
     val graph: AppGraph by lazy {
         // Imported seeds in envelopes under the app's private files, the hardware factor a
@@ -134,6 +160,9 @@ class SerotineApplication : Application() {
             names = node.names,
             signer = keyStore,
             sentTransfers = sentTransfers,
+            transactionHistory = transactionHistory,
+            historyStarts = historyStarts,
+            logIndex = node.logIndex,
             // The Safe transactions waiting for their owners, with the signatures collected (public
             // data, no key in them), beside the account list in the app's private files.
             safeTxQueue = FileSafeTxQueue(filesDir.resolve("safe-tx-queue.json").path),
@@ -167,12 +196,18 @@ class SerotineApplication : Application() {
     private var holds = 0
     private var following: Job? = null
     private var deployments: Job? = null
+    private var sentTransactions: Job? = null
+    private var accountLogs: Job? = null
     private val sleep = Runnable {
         node.pause()
         following?.cancel()
         following = null
         deployments?.cancel()
         deployments = null
+        sentTransactions?.cancel()
+        sentTransactions = null
+        accountLogs?.cancel()
+        accountLogs = null
     }
 
     /** The activity in front, for the biometric prompt. */
@@ -197,9 +232,10 @@ class SerotineApplication : Application() {
     }
 
     /**
-     * Keeps the engine's networking on, its upgrade reports followed into notifications, and the
-     * Safes this wallet deployed listed once proven, until the matching [releaseEngine]. Main
-     * thread.
+     * Keeps the engine's networking on, its upgrade reports followed into notifications, the
+     * Safes this wallet deployed listed once proven, how the transactions sent from here end
+     * recorded, and the accounts followed by the engine's log index, until the matching
+     * [releaseEngine]. Main thread.
      */
     fun holdEngine() {
         if (holds++ > 0) return
@@ -210,6 +246,44 @@ class SerotineApplication : Application() {
             following = scope.launch { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
         }
         if (deployments?.isActive != true) deployments = scope.launch { followSafeDeployments() }
+        if (sentTransactions?.isActive != true) sentTransactions = scope.launch { followSentTransactions() }
+        if (accountLogs?.isActive != true) accountLogs = scope.launch { followAccountLogs() }
+    }
+
+    /**
+     * Keeps the engine's log index following every account from where its history starts (issue
+     * #85); runs until cancelled. A failure ends it, never the wallet: the next hold follows them
+     * again.
+     */
+    private suspend fun followAccountLogs() {
+        try {
+            FollowAccountLogs(
+                accounts,
+                historyStarts,
+                transactionHistory,
+                node.lightClient,
+                node.logIndex,
+                Network.SEPOLIA,
+            )()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following the accounts' logs stopped: ${e::class.simpleName}")
+        }
+    }
+
+    /**
+     * Records how each transaction sent from here ends, whatever screen is open (issue #85); runs
+     * until cancelled. A failure ends it, never the wallet: the next hold follows them again.
+     */
+    private suspend fun followSentTransactions() {
+        try {
+            FollowSentTransactions(transactionHistory, sentRecord, node.receipts, node.transactionInputs)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following sent transactions stopped: ${e::class.simpleName}")
+        }
     }
 
     /**

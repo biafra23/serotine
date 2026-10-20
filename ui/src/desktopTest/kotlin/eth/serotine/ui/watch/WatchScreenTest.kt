@@ -5,13 +5,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -27,7 +30,7 @@ class WatchScreenTest {
     private var adds = 0
 
     private fun show(state: WatchUiState) = rule.setContent {
-        SerotineTheme { WatchScreen(state, {}, {}, onAdd = { adds++ }, onBack = {}) }
+        SerotineTheme { WatchScreen(state, verifiedStripSample, {}, {}, onAdd = { adds++ }, onBack = {}) }
     }
 
     @Test
@@ -57,7 +60,9 @@ class WatchScreenTest {
     fun theOtherCardsSayWhyThereIsNoAdd() {
         var detection by mutableStateOf<Detection>(Detection.Checking)
         rule.setContent {
-            SerotineTheme { WatchScreen(WatchUiState(address = vitalik, detection = detection), {}, {}, {}, {}) }
+            SerotineTheme {
+                WatchScreen(WatchUiState(address = vitalik, detection = detection), verifiedStripSample, {}, {}, {}, {})
+            }
         }
 
         rule.onNodeWithText("Checking the address on chain…").assertIsDisplayed()
@@ -136,5 +141,68 @@ class WatchScreenTest {
         rule.onNodeWithText("Co-signer").assertExists()
         rule.onNodeWithText("Add").assertIsEnabled().performClick()
         assertEquals(1, adds)
+    }
+
+    @Test
+    fun aNameShowsWhereItWasResolvedAndOneNotVerifiedCanBeTriedAgain() {
+        var retries = 0
+        var state by mutableStateOf(
+            WatchUiState(
+                address = "savings-example.eth",
+                addressNote = "Resolves to $vitalik, verified at finalized block 9,412,040",
+                detection = Detection.Account(vitalik, "Checked at block 9,412,118", null),
+            ),
+        )
+        rule.setContent {
+            SerotineTheme { WatchScreen(state, verifiedStripSample, {}, {}, {}, {}, onRetryLookup = { retries++ }) }
+        }
+
+        rule.onNodeWithText("Address or ENS name").assertIsDisplayed()
+        rule.onNodeWithText("Resolves to $vitalik, verified at finalized block 9,412,040").assertIsDisplayed()
+        rule.onNodeWithTag(WATCH_CHECKSUMMED_TAG).assertTextEquals(vitalik)
+        rule.onNodeWithText("Try again").assertDoesNotExist()
+
+        state = WatchUiState(
+            address = "savings-example.eth",
+            addressError = "The name could not be resolved with verified calls this time.",
+            canRetryLookup = true,
+        )
+        rule.onNodeWithText("The name could not be resolved with verified calls this time.").assertIsDisplayed()
+        rule.onNodeWithText("Add").assertIsNotEnabled()
+        rule.onNodeWithText("Try again").performClick()
+        assertEquals(1, retries)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheNameAddsOnlyWhatAddWould() {
+        var detection by mutableStateOf<Detection>(Detection.Checking)
+        rule.setContent {
+            SerotineTheme {
+                WatchScreen(
+                    WatchUiState(address = vitalik, name = "Vitalik", detection = detection),
+                    verifiedStripSample,
+                    {},
+                    {},
+                    onAdd = { adds++ },
+                    onBack = {},
+                )
+            }
+        }
+
+        // Still checking: Add is greyed out, and Done only closes the keyboard.
+        rule.onNodeWithTag(WATCH_NAME_TAG).performImeAction()
+        assertEquals(0, adds)
+
+        detection = Detection.Account(vitalik, "Checked at block 7", null)
+        rule.onNodeWithTag(WATCH_NAME_TAG).performImeAction()
+        assertEquals(1, adds)
+    }
+
+    @Test
+    fun theKeyboardsNextOnTheAddressGoesToTheName() {
+        // A name not verified puts Try again between the two fields.
+        show(WatchUiState(address = "savings-example.eth", canRetryLookup = true))
+        rule.onNodeWithTag(WATCH_ADDRESS_TAG).performImeAction()
+        rule.onNodeWithTag(WATCH_NAME_TAG).assertIsFocused()
     }
 }

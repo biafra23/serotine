@@ -42,7 +42,7 @@ class ObserveSafe(
 
 /**
  * Every Safe in the wallet, read one by one ([readEach]): a Safe added or removed starts or stops
- * its own reading only. What the Assets rows show of each.
+ * its own reading only. What the Accounts rows show of each.
  */
 class ObserveSafes(
     private val accounts: AccountRepository,

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.ui.removeaccount.RemoveAccountDialog
 import eth.serotine.ui.removeaccount.RemoveAccountUiState
@@ -97,5 +98,22 @@ class AccountDialogsTest {
         }
 
         rule.onNodeWithText("You can watch it again at any time", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun theKeyboardsDoneSavesTheName() {
+        rule.setContent {
+            SerotineTheme {
+                RenameAccountDialog(
+                    RenameAccountUiState.Editing("Savings"),
+                    onNameChange = { events += "type $it" },
+                    onSave = { events += "save" },
+                    onCancel = { events += "cancel" },
+                )
+            }
+        }
+
+        rule.onNodeWithTag(RENAME_FIELD_TAG).performImeAction()
+        assertEquals(listOf("save"), events)
     }
 }

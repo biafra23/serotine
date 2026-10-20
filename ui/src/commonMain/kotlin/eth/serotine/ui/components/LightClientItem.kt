@@ -16,10 +16,10 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
 
 /**
- * The light client's state as the status strip shows it (Assets, Settings): [text] always;
- * [progress] (0 to 1) when there is a fraction to show, null for an open-ended wait;
- * [working] while the client is on its way to serving verified reads; and its [health], the
- * strip's colour.
+ * The light client's state as the status strip shows it (on Accounts and every other screen that
+ * depends on the light client) and Settings' row: [text] always; [progress] (0 to 1) when there
+ * is a fraction to show, null for an open-ended wait; [working] while the client is on its way
+ * to serving verified reads; and its [health], the strip's colour.
  */
 data class LightClientItem(
     val text: String,

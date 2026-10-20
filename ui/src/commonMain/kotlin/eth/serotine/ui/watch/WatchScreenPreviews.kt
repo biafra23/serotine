@@ -2,13 +2,15 @@ package eth.serotine.ui.watch
 
 import androidx.compose.runtime.Composable
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 // The Watch address screen in Android Studio's preview pane, one preview per state it draws
 // differently. Built from display-ready values, as the screen tests are, never from the
 // ViewModel. WatchScreenPreviewsTest renders each one in watchScreenPreviews, at the end. The
-// addresses are EIP-55's own examples, and the blocks are made up.
+// addresses are EIP-55's own examples, and the names and blocks are made up.
 
 private const val SAVINGS = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
 private const val TREASURY = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
@@ -22,9 +24,20 @@ private val account = WatchUiState(
 )
 
 @Composable
-private fun WatchPreview(state: WatchUiState, darkTheme: Boolean = false) {
+private fun WatchPreview(
+    state: WatchUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        WatchScreen(state = state, onAddressChange = {}, onNameChange = {}, onAdd = {}, onBack = {})
+        WatchScreen(
+            state = state,
+            lightClient = lightClient,
+            onAddressChange = {},
+            onNameChange = {},
+            onAdd = {},
+            onBack = {},
+        )
     }
 }
 
@@ -129,6 +142,44 @@ private fun WatchAddingPreview() = WatchPreview(account.copy(adding = true))
 private fun WatchNotSavedPreview() =
     WatchPreview(account.copy(error = "The account could not be saved. Nothing was added."))
 
+@Preview
+@Composable
+private fun WatchResolvingNamePreview() =
+    WatchPreview(
+        WatchUiState(address = "savings-example.eth", addressNote = "Resolving the name with verified calls…"),
+    )
+
+@Preview
+@Composable
+private fun WatchNameResolvedPreview() = WatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        addressNote = "Resolves to $SAVINGS, verified at finalized block 8,412,240",
+    ),
+)
+
+@Preview
+@Composable
+private fun WatchNameMovedPreview() = WatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        addressNote = "Resolves to $TREASURY, verified at finalized block 8,412,288",
+        detection = Detection.Account(TREASURY, "Checked at block 8,412,351", delegate = null),
+        error = "“savings-example.eth” no longer resolves to the address that was shown: check the address it " +
+            "has now. Nothing was added.",
+    ),
+)
+
+@Preview
+@Composable
+private fun WatchNameUnavailablePreview() = WatchPreview(
+    WatchUiState(
+        address = "savings-example.eth",
+        addressError = "The name could not be resolved with verified calls this time.",
+        canRetryLookup = true,
+    ),
+)
+
 /** Every preview above, which WatchScreenPreviewsTest renders: a new preview goes in here too. */
 internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchEmptyPreview() },
@@ -144,4 +195,8 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchNameTooLongPreview() },
     { WatchAddingPreview() },
     { WatchNotSavedPreview() },
+    { WatchResolvingNamePreview() },
+    { WatchNameResolvedPreview() },
+    { WatchNameMovedPreview() },
+    { WatchNameUnavailablePreview() },
 )

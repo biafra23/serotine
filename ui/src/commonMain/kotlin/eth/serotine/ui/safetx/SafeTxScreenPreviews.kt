@@ -5,7 +5,9 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.FALLBACK_HANDLER_REMOVED
 import eth.serotine.ui.components.GasTermsItem
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MODULE_ENABLED_REFUSAL
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.SafeSwapItem
@@ -14,6 +16,7 @@ import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -122,9 +125,20 @@ private val approval = review.copy(
 )
 
 @Composable
-private fun SafeTxPreview(state: SafeTxUiState, darkTheme: Boolean = false) {
+private fun SafeTxPreview(
+    state: SafeTxUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        SafeTxScreen(state = state, actions = SafeTxActions(), onBack = {}, onCopy = {}, onShareText = {})
+        SafeTxScreen(
+            state = state,
+            lightClient = lightClient,
+            actions = SafeTxActions(),
+            onBack = {},
+            onCopy = {},
+            onShareText = {},
+        )
     }
 }
 
@@ -217,6 +231,14 @@ private fun SafeTxUnpinnedFallbackHandlerPreview() = SafeTxPreview(
         canSign = false,
         canApprove = false,
         canExecute = false,
+    ),
+)
+
+@Preview
+@Composable
+private fun SafeTxFallbackHandlerRemovedPreview() = SafeTxPreview(
+    overview.copy(
+        action = SafeTxActionItem(title = "Remove the fallback handler", warning = FALLBACK_HANDLER_REMOVED),
     ),
 )
 
@@ -506,4 +528,5 @@ internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxSwapNotUniswapPreview() },
     { SafeTxSwapApprovalPreview() },
     { SafeTxSwapProposeAgainGreyedPreview() },
+    { SafeTxFallbackHandlerRemovedPreview() },
 )

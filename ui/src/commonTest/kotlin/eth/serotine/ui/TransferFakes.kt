@@ -10,10 +10,23 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.HistoryEntry
+import eth.serotine.domain.repository.HistoryList
+import eth.serotine.domain.repository.HistoryStart
+import eth.serotine.domain.repository.HistoryStartList
+import eth.serotine.domain.repository.HistoryStarts
+import eth.serotine.domain.repository.IndexedLog
+import eth.serotine.domain.repository.LogCoverageReading
+import eth.serotine.domain.repository.LogIndex
+import eth.serotine.domain.repository.LogQuery
+import eth.serotine.domain.repository.LogWatch
+import eth.serotine.domain.repository.LogWatchKey
+import eth.serotine.domain.repository.LogsReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.ReceiptTracker
+import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
@@ -21,12 +34,15 @@ import eth.serotine.domain.repository.prunable
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.TransactionHistory
+import eth.serotine.domain.repository.yieldsTo
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 /** One gwei, in wei. */
@@ -162,3 +178,75 @@ internal class FakeReceipts : ReceiptTracker {
 
     override fun observe(hash: String): Flow<TransactionProgress> = of(hash)
 }
+
+/** A [TransactionHistory] in memory, as the port's contract says one behaves; [unreadable] reads as such. */
+internal class MemoryTransactionHistory : TransactionHistory {
+    val entries = MutableStateFlow<List<HistoryEntry>>(emptyList())
+    val unreadable = MutableStateFlow(false)
+
+    override fun observe(): Flow<HistoryList> = combine(entries, unreadable) { list, broken ->
+        if (broken) HistoryList.Unreadable else HistoryList.Loaded(list)
+    }
+
+    override suspend fun record(transfer: SentTransfer): Boolean {
+        val outcome = entries.value.lastOrNull { it.transfer.hash == transfer.hash }?.outcome ?: SentOutcome.NotSeen
+        entries.value = entries.value.filterNot { it.transfer.hash == transfer.hash } + HistoryEntry(transfer, outcome)
+        return true
+    }
+
+    override suspend fun settle(hash: String, outcome: SentOutcome): Boolean {
+        val current = entries.value.lastOrNull { it.transfer.hash == hash }?.outcome ?: return false
+        if (!current.yieldsTo(outcome)) return false
+        entries.value = entries.value.map { if (it.transfer.hash == hash) it.copy(outcome = outcome) else it }
+        return true
+    }
+}
+
+/** [HistoryStarts] in memory: the [starts] a test sets. */
+internal class MemoryHistoryStarts : HistoryStarts {
+    val starts = MutableStateFlow<Map<Address, HistoryStart>>(emptyMap())
+
+    override fun observe(): Flow<HistoryStartList> = starts.map { HistoryStartList.Loaded(it) }
+
+    override suspend fun note(address: Address, atSeconds: Long): Boolean {
+        starts.value += address to HistoryStart.Noted(atSeconds)
+        return true
+    }
+
+    override suspend fun fix(address: Address, block: Long): Boolean {
+        if (starts.value[address] is HistoryStart.Fixed) return false
+        starts.value += address to HistoryStart.Fixed(block)
+        return true
+    }
+
+    override suspend fun forget(address: Address, start: HistoryStart): Boolean {
+        if (starts.value[address] == start) starts.value -= address
+        return true
+    }
+}
+
+/** A [LogIndex] whose [coverage] and [logs] a test sets; it takes every change asked of it. */
+internal class FakeLogIndex : LogIndex {
+    val coverage = MutableStateFlow<LogCoverageReading>(LogCoverageReading.Unavailable)
+    var logs: List<IndexedLog> = emptyList()
+
+    override suspend fun configure(watch: List<LogWatch>, unwatch: List<LogWatchKey>): Boolean = true
+
+    override fun observeCoverage(): Flow<LogCoverageReading> = coverage
+
+    /** The [logs] in the query's range that it selects, as the engine selects them. */
+    override suspend fun logs(query: LogQuery): LogsReading = LogsReading.Logs(
+        logs.filter { log ->
+            val topics = log.log.topics
+            log.blockNumber in query.fromBlock..query.toBlock &&
+                (query.topic0s.isEmpty() || topics.firstOrNull() in query.topic0s) &&
+                when (val key = query.key) {
+                    is LogWatchKey.Emitter -> log.log.address == key.address
+                    is LogWatchKey.Mention -> topics.getOrNull(query.position ?: 0) == topicOf(key.address)
+                }
+        },
+    )
+}
+
+/** [address] as a 32-byte log topic: left-padded with zeros. */
+internal fun topicOf(address: Address): String = "0x" + "00".repeat(12) + address.hex.removePrefix("0x")

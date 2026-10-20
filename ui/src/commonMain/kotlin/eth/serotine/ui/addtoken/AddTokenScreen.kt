@@ -29,10 +29,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.submitOnDone
+import eth.serotine.ui.lightclient.LightClientViewModel
 
 /** Test tag of the address field, for UI tests. */
 const val ADD_TOKEN_ADDRESS_TAG = "add-token-address"
@@ -44,16 +49,18 @@ const val ADD_TOKEN_CARD_TAG = "add-token-card"
 @Composable
 fun AddTokenRoute(
     viewModel: AddTokenViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onAdded: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     val added by rememberUpdatedState(onAdded)
     LaunchedEffect(state.done) {
         if (state.done) added()
     }
-    AddTokenScreen(state, viewModel::onAddressChange, viewModel::add, onBack, modifier)
+    AddTokenScreen(state, strip, viewModel::onAddressChange, viewModel::add, onBack, modifier)
 }
 
 /**
@@ -65,6 +72,7 @@ fun AddTokenRoute(
 @Composable
 fun AddTokenScreen(
     state: AddTokenUiState,
+    lightClient: LightClientItem,
     onAddressChange: (String) -> Unit,
     onAdd: () -> Unit,
     onBack: () -> Unit,
@@ -83,31 +91,38 @@ fun AddTokenScreen(
             )
         },
     ) { padding ->
-        Column(
-            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedTextField(
-                value = state.address,
-                onValueChange = onAddressChange,
-                modifier = Modifier.fillMaxWidth().testTag(ADD_TOKEN_ADDRESS_TAG),
-                enabled = !state.adding,
-                label = { Text("Contract address") },
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                singleLine = true,
-                isError = state.addressError != null,
-                supportingText = { Text(state.addressError ?: "0x and 40 hexadecimal digits") },
-                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Ascii),
-            )
-            state.card?.let { Card(it) }
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Text(
-                "Name and symbol are the contract's own claim: a token is identified by its address only.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(onClick = onAdd, enabled = state.canAdd, modifier = Modifier.align(Alignment.End)) {
-                Text("Add token")
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.address,
+                    onValueChange = onAddressChange,
+                    modifier = Modifier.fillMaxWidth().testTag(ADD_TOKEN_ADDRESS_TAG),
+                    enabled = !state.adding,
+                    label = { Text("Contract address") },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    singleLine = true,
+                    isError = state.addressError != null,
+                    supportingText = { Text(state.addressError ?: "0x and 40 hexadecimal digits") },
+                    keyboardOptions = KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Ascii,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = submitOnDone(state.canAdd, onAdd),
+                )
+                state.card?.let { Card(it) }
+                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Text(
+                    "Name and symbol are the contract's own claim: a token is identified by its address only.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(onClick = onAdd, enabled = state.canAdd, modifier = Modifier.align(Alignment.End)) {
+                    Text("Add token")
+                }
             }
         }
     }

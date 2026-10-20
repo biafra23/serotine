@@ -1,6 +1,8 @@
 package eth.serotine.ui.tokens
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -58,9 +60,21 @@ private val eurc = TokenItem(
 private val known = TokensUiState(listOf(usdc, link, uni, eurc))
 
 @Composable
-private fun TokensPreview(state: TokensUiState, darkTheme: Boolean = false) {
+private fun TokensPreview(
+    state: TokensUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        TokensScreen(state = state, onBack = {}, onAddToken = {}, onCopy = {}, onSetHidden = { _, _ -> }, onRemove = {})
+        TokensScreen(
+            state = state,
+            lightClient = lightClient,
+            onBack = {},
+            onAddToken = {},
+            onCopy = {},
+            onSetHidden = { _, _ -> },
+            onRemove = {},
+        )
     }
 }
 

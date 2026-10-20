@@ -31,7 +31,8 @@ class LastBalancesFileTest {
     private val address = Address.of("0x" + "ab".repeat(20))
     private val chain = FakeChain()
 
-    private fun TestScope.lastBalances() = LastBalancesFile(file.toString(), StandardTestDispatcher(testScheduler))
+    private fun TestScope.lastBalances(maxKept: Int = LastBalancesFile.MAX_KEPT) =
+        LastBalancesFile(file.toString(), StandardTestDispatcher(testScheduler), maxKept)
 
     private fun native(lastBalances: LastBalancesFile) =
         lastBalances.kept<Address, Wei>(id = { "native:${it.hex}" }, units = { it.decimal }, parse = Wei::parse)
@@ -87,13 +88,16 @@ class LastBalancesFileTest {
 
     @Test
     fun onlyTheMostRecentlyProvenBalancesAreKept() = runTest {
-        val kept = native(lastBalances())
-        val addresses = (0 until LastBalancesFile.MAX_KEPT + 1).map {
+        // A small cap, not MAX_KEPT: every save is a real write flushed to the disk twice, and
+        // runTest's timeout is wall-clock time, so MAX_KEPT + 1 of them overran it where fsync is slow.
+        val maxKept = 3
+        val kept = native(lastBalances(maxKept))
+        val addresses = (0 until maxKept + 1).map {
             Address.of("0x" + it.toString(16).padStart(40, '0'))
         }
         addresses.forEach { kept.save(it, EngineReading.LastKnown(Wei.of("1"), 9, null)) }
 
-        val reread = native(lastBalances())
+        val reread = native(lastBalances(maxKept))
         assertNull(reread.load(addresses.first()), "the oldest was let go")
         assertEquals(EngineReading.LastKnown(Wei.of("1"), 9, null), reread.load(addresses.last()))
     }

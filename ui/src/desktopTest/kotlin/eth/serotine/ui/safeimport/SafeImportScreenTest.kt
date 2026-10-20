@@ -8,7 +8,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -32,6 +34,7 @@ class SafeImportScreenTest {
         SerotineTheme {
             SafeImportScreen(
                 state,
+                lightClient = verifiedStripSample,
                 onTextChange = { events += "text $it" },
                 onImport = { events += "import" },
                 onBack = { events += "back" },
@@ -68,5 +71,19 @@ class SafeImportScreenTest {
 
         rule.onNodeWithText("Checking the Safe on chain…").assertIsDisplayed()
         rule.onNodeWithTag(IMPORT_REQUEST_BUTTON_TAG).assertIsNotEnabled()
+    }
+
+    @Test
+    fun theKeyboardsDoneImportsOnlyWhatImportWould() {
+        show(empty)
+        rule.onNodeWithTag(IMPORT_REQUEST_FIELD_TAG).performImeAction()
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun theKeyboardsDoneImports() {
+        show(empty.copy(text = "request"))
+        rule.onNodeWithTag(IMPORT_REQUEST_FIELD_TAG).performImeAction()
+        assertEquals(listOf("import"), events)
     }
 }

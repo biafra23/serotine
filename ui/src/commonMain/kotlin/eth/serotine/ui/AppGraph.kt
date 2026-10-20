@@ -7,9 +7,11 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.DisplayCurrencySetting
+import eth.serotine.domain.repository.HistoryStarts
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
@@ -25,6 +27,7 @@ import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
+import eth.serotine.domain.repository.TransactionHistory
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.UserTokens
@@ -43,6 +46,7 @@ import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -51,11 +55,13 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.PlanSafe
@@ -84,11 +90,13 @@ import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
+import eth.serotine.ui.accounts.AccountsViewModel
+import eth.serotine.ui.activity.ActivityViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
-import eth.serotine.ui.assets.AssetsViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import eth.serotine.ui.receive.ReceiveViewModel
@@ -160,8 +168,17 @@ class AppGraph(
      * whose calls take turns (docs/keys-and-signing.md).
      */
     private val signer: Signer,
-    /** The transfers this wallet signed, kept across restarts. */
+    /**
+     * The transfers this wallet signed, kept across restarts: the host's record that also adds
+     * each one to [transactionHistory] (`HistoryRecordingSentTransfers`).
+     */
     private val sentTransfers: SentTransfers,
+    /** Every transaction this wallet sent, kept for good, with how each ended (issue #85). */
+    private val transactionHistory: TransactionHistory,
+    /** Where each account's history starts, which the host's `FollowAccountLogs` fixes (issue #85). */
+    private val historyStarts: HistoryStarts,
+    /** The light client's verified log index, which the host's `FollowAccountLogs` keeps following the accounts. */
+    private val logIndex: LogIndex,
     /** The Safe transactions waiting for their owners, kept on this device across restarts. */
     private val safeTxQueue: SafeTxQueue,
     /** The text a Safe's signing request travels in between devices, for [network]. */
@@ -187,14 +204,17 @@ class AppGraph(
 
     private fun observeUpgradeWarning() = ObserveUpgradeWarning(networkUpgrades, knownUpgrades, lightClient)
 
-    fun assetsViewModel(): AssetsViewModel =
-        AssetsViewModel(
+    fun accountsViewModel(): AccountsViewModel =
+        AccountsViewModel(
             ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
             ObserveSafes(accounts, observeSafe()),
             ObserveLightClient(lightClient),
             observeUpgradeWarning(),
             network,
         )
+
+    /** The light client's status strip of the screens that depend on it: one for the app, in the host's scope. */
+    fun lightClientViewModel(): LightClientViewModel = LightClientViewModel(ObserveLightClient(lightClient))
 
     fun accountDetailViewModel(address: Address): AccountDetailViewModel =
         AccountDetailViewModel(
@@ -341,9 +361,23 @@ class AppGraph(
     /** Where the transfer [hash] stands, and for a Safe it deployed, where its listing does. */
     fun transferStatusViewModel(hash: String): TransferStatusViewModel = TransferStatusViewModel(
         hash,
-        ObserveSentTransfer(sentTransfers, receipts),
+        ObserveSentTransfer(sentTransfers, receipts, transactionHistory),
         ObserveAccounts(accounts),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
+        network,
+    )
+
+    /**
+     * The transactions this device sent for the account at [address], its token transfers and, for
+     * a Safe, its events on chain (docs/wallet-ux.md, screen 25).
+     */
+    fun activityViewModel(address: Address): ActivityViewModel = ActivityViewModel(
+        address,
+        ObserveAccountHistory(transactionHistory),
+        ObserveAccounts(accounts),
+        ObserveSafeHistory(logIndex, historyStarts),
+        ObserveTokenTransfers(logIndex, historyStarts),
+        knownTokens(),
         network,
     )
 
@@ -373,6 +407,7 @@ class AppGraph(
         ObserveAddressKind(addressKinds),
         ObserveAccounts(accounts),
         WatchAddress(accounts, addressKinds),
+        ResolveRecipient(names),
     )
 
     fun settingsViewModel(): SettingsViewModel =

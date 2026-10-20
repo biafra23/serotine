@@ -8,6 +8,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopHardwareSecret
@@ -19,10 +20,15 @@ import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
+import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowSafeDeployments
+import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.HistoryNotingAccounts
+import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -53,6 +59,7 @@ import kotlin.system.exitProcess
  * keys or the engine's state at once.
  */
 fun main() {
+    useBundledEngineLibrary()
     val dataDir = appDataDir()
     val instance = try {
         InstanceLock.acquire(dataDir.resolve("serotine.lock"))
@@ -73,6 +80,25 @@ fun main() {
         Reference.reachabilityFence(instance)
     }
 }
+
+/**
+ * Points the Myotis engine at the host library the app's resources carry
+ * (desktop-app/build.gradle.kts, `stageMyotisLibrary`), before anything loads it: the
+ * packaged app's bundle and a development run's prepared resources both have it, on macOS
+ * and Linux. A library already named (`-PmyotisLibraryDir` on the run task) stays. Where the
+ * resources have none (Windows, for now), the engine finds none and the balances say so.
+ */
+private fun useBundledEngineLibrary() {
+    if (!System.getProperty(ENGINE_LIBRARY_PROPERTY).isNullOrBlank()) return
+    // Blank would resolve against the working directory.
+    val resources = System.getProperty("compose.application.resources.dir")?.takeIf { it.isNotBlank() } ?: return
+    val mac = "mac" in System.getProperty("os.name").lowercase()
+    val library = File(resources, if (mac) "libmyotis_engine.dylib" else "libmyotis_engine.so")
+    if (library.isFile) System.setProperty(ENGINE_LIBRARY_PROPERTY, library.absolutePath)
+}
+
+/** The engine library's override of where its host library is loaded from. */
+private const val ENGINE_LIBRARY_PROPERTY = "myotis.engine.lib"
 
 /**
  * Says [message] (a dialog of [kind], a [JOptionPane] message type, where there is a screen;
@@ -96,7 +122,7 @@ private fun openWallet(dataDir: File) {
     // Before the window: on a Mac with no wallet yet this asks the Secure Enclave once.
     val hardware = desktopHardwareSecret(keys.path)
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
-    // background; without its host library on java.library.path, balances say so. The adapters'
+    // background; without its host library (useBundledEngineLibrary), balances say so. The adapters'
     // diagnostics go to stderr only in a development run (`:desktop-app:run` sets the property;
     // no installer does): the desktop's debug build.
     val debugLog: ((String) -> Unit)? =
@@ -111,10 +137,16 @@ private fun openWallet(dataDir: File) {
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
     val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
-    // One instance each, which the graph and the deployments' follower share.
-    val accounts = FileAccountRepository(dataDir.resolve("accounts.json").path)
-    // The transactions signed here, with their signed bytes (public once broadcast).
-    val sentTransfers = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
+    // One instance each, which the graph and the followers share. Each account added is noted
+    // where its history starts (issue #85): addresses with a block or a time, public data only.
+    val historyStarts = FileHistoryStarts(dataDir.resolve("history-starts.json").path)
+    val accounts =
+        HistoryNotingAccounts(FileAccountRepository(dataDir.resolve("accounts.json").path), historyStarts)
+    // The transactions signed here, with their signed bytes (public once broadcast), and every one
+    // of them kept for good with how it ended (issue #85): each record goes into both.
+    val sentRecord = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
+    val transactionHistory = FileTransactionHistory(dataDir.resolve("transaction-history.json").path)
+    val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
     application(exitProcessOnExit = false) {
         LaunchedEffect(Unit) {
             // A failure in the notices ends them, never the wallet (as on Android): the window
@@ -144,6 +176,35 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following Safe deployments stopped: ${e::class.simpleName}")
             }
         }
+        LaunchedEffect(Unit) {
+            // How each transaction sent from here ends is recorded whatever screen is open, while
+            // the app runs (issue #85). A failure ends it, never the wallet.
+            try {
+                FollowSentTransactions(transactionHistory, sentRecord, node.receipts, node.transactionInputs)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following sent transactions stopped: ${e::class.simpleName}")
+            }
+        }
+        LaunchedEffect(Unit) {
+            // The engine's log index follows every account from where its history starts, while
+            // the app runs (issue #85). A failure ends it, never the wallet.
+            try {
+                FollowAccountLogs(
+                    accounts,
+                    historyStarts,
+                    transactionHistory,
+                    node.lightClient,
+                    node.logIndex,
+                    Network.SEPOLIA,
+                )()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following the accounts' logs stopped: ${e::class.simpleName}")
+            }
+        }
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
@@ -170,6 +231,9 @@ private fun openWallet(dataDir: File) {
                 names = node.names,
                 signer = keyStore,
                 sentTransfers = sentTransfers,
+                transactionHistory = transactionHistory,
+                historyStarts = historyStarts,
+                logIndex = node.logIndex,
                 // The Safe transactions waiting for their owners, with the signatures collected (public).
                 safeTxQueue = FileSafeTxQueue(dataDir.resolve("safe-tx-queue.json").path),
                 signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.ui.components.AccountChoice
@@ -17,12 +18,14 @@ import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.RouteStep
 import eth.serotine.ui.components.SWAP_AMOUNT_TAG
 import eth.serotine.ui.components.SWAP_SELL_TAG
+import eth.serotine.ui.components.SWAP_TOLERANCE_TAG
 import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -88,6 +91,7 @@ class SafeSwapScreenTest {
         SerotineTheme {
             SafeSwapScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 actions = SafeSwapActions(
                     onSellChange = { events += "sell $it" },
                     onReview = { events += "review" },
@@ -138,5 +142,12 @@ class SafeSwapScreenTest {
         show(review.copy(signing = true, progress = "Transaction 2 of 2"))
 
         rule.onNodeWithText("Signing transaction 2 of 2…").performScrollTo()
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheToleranceReviews() {
+        show(SafeSwapUiState.Compose(form.copy(canReview = true)))
+        rule.onNodeWithTag(SWAP_TOLERANCE_TAG).performScrollTo().performImeAction()
+        assertEquals(listOf("review"), events)
     }
 }

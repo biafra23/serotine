@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
@@ -42,9 +43,10 @@ import kotlin.time.Duration.Companion.seconds
  * creates it with [start], hands [nativeBalances], [tokenBalances], [tokenMetadata],
  * [priceFeeds], [addressKinds], [lightClient] and [networkUpgrades] to the AppGraph, and for
  * sending [transactionInputs], [broadcaster], [receipts] and [names], and for a Safe's
- * transactions [safeApprovals], and for swaps [uniswap], and owns it for the life of the process:
- * [pause] and [resume] it around the app being in the background, [shutdown] on exit. Only
- * `io.myotis.api` and the library's default ports are used; nothing below them.
+ * transactions [safeApprovals], and for swaps [uniswap], and for the accounts' histories
+ * [logIndex], and owns it for the life of the process: [pause] and [resume] it around the app
+ * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default
+ * ports are used; nothing below them.
  */
 class MyotisNode private constructor(network: Network, lastBalancesPath: String?, debugLog: ((String) -> Unit)?) {
 
@@ -131,6 +133,9 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
     /** ENS names, resolved against beacon-finalized state. */
     val names: NameResolver = EngineNames(chain, Dispatchers.IO)
+
+    /** The engine's verified log index: what it follows of the accounts, and the logs it holds. */
+    val logIndex: LogIndex = EngineLogIndex(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
@@ -270,7 +275,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         }
     }
 
-    private inner class HandleChain : TransactingChain {
+    private inner class HandleChain : TransactingChain, LogIndexChain {
 
         /**
          * The last snapshot read and when (System.nanoTime). Every adapter, and each of its
@@ -295,10 +300,8 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             val handle = running.handle
             val status = handle.status() ?: return EngineSnapshot.Booting
             // The head block's time from its slot, the consensus rule for an execution
-            // payload's timestamp (genesis + slot × seconds per slot): verified data only.
-            // To check: a storage proof's optimisticSlot is the light client's signature slot,
-            // about one past the attested head (see storageProofLabel). If BeaconStatus's is that
-            // slot too, this time reads a slot (12 s) late; its API does not say which it is.
+            // payload's timestamp (genesis + slot × seconds per slot): verified data only. The
+            // optimistic slot is the head block's own, not the later signature slot (Myotis #658).
             val slot = handle.beaconStatus()?.optimisticSlot() ?: 0
             val headTimestamp = if (slot > 0 && running.genesisTime > 0 && running.secondsPerSlot > 0) {
                 running.genesisTime + slot * running.secondsPerSlot
@@ -359,9 +362,8 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
         // Accepted only with a verified storage proof tied to the beacon chain and a verdict, as
         // balances are; a proven empty slot is a proven zero. Labelled as storageProofLabel says:
-        // shown with the block the proof anchors to once it matched an attested slot from the
-        // finalized one up to the optimistic head (on a live engine the attested slot just behind
-        // the result's optimistic slot, its signature slot), or that a header-chain walk proved;
+        // shown with the block the proof anchors to once it matched an attested block's slot from
+        // the finalized one up to the head the reads resolved, or that a header-chain walk proved;
         // and anchored to that attested slot, which is what one reading's proofs must share.
         override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? {
             val handle = (state as? State.Running)?.handle ?: return null
@@ -374,7 +376,6 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
                 optimisticSlot = result.optimisticSlot(),
                 peerBlockNumber = result.peerBlockNumber(),
                 finalizedBlockNumber = result.finalizedBlockNumber(),
-                optimisticBlockNumber = result.optimisticBlockNumber(),
             ) ?: return null
             val value = if (result.exists()) result.valueHex()?.removePrefix("0x")?.lowercase() ?: return null else ""
             return value.padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
@@ -427,6 +428,21 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             return handle.reads().getTransactionReceipt(hash.removePrefix("0x").fromHex())
         }
 
+        override fun setLogIndexConfig(configJson: String): Boolean {
+            val handle = (state as? State.Running)?.handle ?: return false
+            return handle.setLogIndexConfig(configJson)
+        }
+
+        override fun logIndexStatus(): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.logIndexStatusJson()
+        }
+
+        override fun logs(filterJson: String): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getLogs(filterJson)
+        }
+
         // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.
         override fun resolveName(name: String): NameAnswer {
             val handle = (state as? State.Running)?.handle
@@ -473,8 +489,8 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
          * process only. Public chain data too.
          *
          * A device without an engine — an Android ABI the library does not ship, a desktop
-         * without the host library on `java.library.path` — or one whose engine fails to
-         * start gets a node whose balances and light client say so.
+         * whose resources carry no host library (Windows, for now) — or one whose engine fails
+         * to start gets a node whose balances and light client say so.
          */
         fun start(
             network: Network,
@@ -506,11 +522,3 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
  * anywhere near this path.
  */
 private fun report(why: String) = System.err.println("Serotine: no light client: $why")
-
-/** The 20 bytes the engine's reads take for an address. */
-private fun Address.bytes(): ByteArray = hex.removePrefix("0x").fromHex()
-
-/** The engine's name for this network, as `MyotisEngine.availableNetworks()` lists it. */
-private fun Network.engineName(): String = when (this) {
-    Network.SEPOLIA -> "sepolia"
-}

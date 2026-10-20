@@ -2,6 +2,7 @@ package eth.serotine.ui.send
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
@@ -27,6 +29,7 @@ import eth.serotine.ui.components.SEND_TO_TAG
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -72,6 +75,7 @@ class SendScreenTest {
         SerotineTheme {
             SendScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 onAssetChange = { events += "asset $it" },
                 onToChange = { events += "to $it" },
                 onPickAccount = { events += "pick $it" },
@@ -229,5 +233,27 @@ class SendScreenTest {
         rule.onNodeWithText("This account is watch-only.").assertIsDisplayed()
         rule.onNodeWithContentDescription("Back").performClick()
         assertEquals(listOf("back"), events)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheAmountReviewsOnlyWhenReviewCan() {
+        show(compose)
+        rule.onNodeWithTag(SEND_AMOUNT_TAG).performScrollTo().performImeAction()
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheAmountReviews() {
+        show(compose.copy(form = form.copy(to = savings, amount = "0.1", canReview = true)))
+        rule.onNodeWithTag(SEND_AMOUNT_TAG).performScrollTo().performImeAction()
+        assertEquals(listOf("review"), events)
+    }
+
+    @Test
+    fun theKeyboardsNextOnTheRecipientGoesToTheAmount() {
+        // A lookup that failed puts Try again and the account chips between the two fields.
+        show(compose.copy(form = form.copy(to = "savings.eth", canRetryLookup = true)))
+        rule.onNodeWithTag(SEND_TO_TAG).performScrollTo().performImeAction()
+        rule.onNodeWithTag(SEND_AMOUNT_TAG).assertIsFocused()
     }
 }

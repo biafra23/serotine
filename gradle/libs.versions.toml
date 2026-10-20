@@ -52,12 +52,11 @@ libsodium = "0.9.5"
 # (the bindings bring it at runtime, as the JNA AAR on Android). 5.18.1 is exactly the
 # version the Myotis engine library pins with a strict constraint: the two move together.
 jna = "5.18.1"
-# The embedded Myotis engine (docs/embedding-myotis.md). Its artifacts come from the
-# filtered `maven-repo` repository in settings.gradle.kts once a Myotis v* tag has
-# published them; 0.1.16 is the version the first tag after Myotis #654 publishes. Until
-# then a build resolves it only from a local `publishToMavenLocal -PpublishRelease` of
-# Myotis, with mavenLocal() added OUTSIDE the repository (an init script passed with -I).
-myotis = "0.1.16"
+# The embedded Myotis engine (docs/embedding-myotis.md), from the filtered `maven-repo`
+# repository in settings.gradle.kts. One version for the engine and the desktop's
+# eth.myotis:myotis-engine-natives-<platform> (desktop-app/build.gradle.kts): a host library
+# from another release would load and run that release's engine without a word.
+myotis = "0.1.17"
 # KotlinCrypto: pure-Kotlin multiplatform digests and MACs (Keccak-256 for
 # addresses, SHA-256 for the BIP-39 checksum, HMAC-SHA512 for BIP-39/BIP-32).
 # 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
@@ -96,6 +95,9 @@ secp256k1-kmp-jni-jvm      = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jv
 libsodium-bindings         = { module = "com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings", version.ref = "libsodium" }
 jna                        = { module = "net.java.dev.jna:jna",                         version.ref = "jna" }
 myotis-engine              = { module = "eth.myotis:myotis-engine",                     version.ref = "myotis" }
+# Not "myotis-engine-ios": an alias that extends another (myotis-engine) turns that one
+# into a group, which the build files would then have to read with asProvider().
+myotis-ios                 = { module = "eth.myotis:myotis-engine-ios",                 version.ref = "myotis" }
 kotlincrypto-sha2          = { module = "org.kotlincrypto.hash:sha2",                   version.ref = "kotlincrypto" }
 kotlincrypto-sha3          = { module = "org.kotlincrypto.hash:sha3",                   version.ref = "kotlincrypto" }
 kotlincrypto-hmac-sha2     = { module = "org.kotlincrypto.macs:hmac-sha2",              version.ref = "kotlincrypto" }

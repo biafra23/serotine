@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
@@ -24,6 +25,7 @@ import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -77,6 +79,7 @@ class SafeProposeScreenTest {
         SerotineTheme {
             SafeProposeScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 actions = SafeProposeActions(
                     onAmountChange = { events += "amount $it" },
                     onMax = { events += "max" },
@@ -169,5 +172,12 @@ class SafeProposeScreenTest {
         show(SafeProposeUiState.CannotPropose("Sepolia", "No owner of this Safe has its key on this device."))
 
         rule.onNodeWithText("No owner of this Safe has its key on this device.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheAmountReviews() {
+        show(SafeProposeUiState.Compose(form.copy(canReview = true)))
+        rule.onNodeWithTag(SEND_AMOUNT_TAG).performScrollTo().performImeAction()
+        assertEquals(listOf("review"), events)
     }
 }

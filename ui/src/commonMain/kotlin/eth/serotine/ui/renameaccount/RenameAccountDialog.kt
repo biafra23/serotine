@@ -1,5 +1,6 @@
 package eth.serotine.ui.renameaccount
 
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -11,6 +12,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.ui.components.done
+import eth.serotine.ui.components.submitOnDone
 
 /** Test tag of the name field, for UI tests. */
 const val RENAME_FIELD_TAG = "rename-field"
@@ -49,6 +52,8 @@ fun RenameAccountDialog(
                     singleLine = true,
                     isError = state.error != null,
                     supportingText = state.error?.let { error -> { Text(error) } },
+                    keyboardOptions = KeyboardOptions.Default.done(),
+                    keyboardActions = submitOnDone(!state.saving, onSave),
                 )
                 is RenameAccountUiState.Unavailable -> Text(state.message)
                 else -> Unit

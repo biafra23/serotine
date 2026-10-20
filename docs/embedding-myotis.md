@@ -61,12 +61,28 @@ consumer developed against an unreleased engine, Myotis's
   background, as in the Myotis app. Until then the one background run is the
   daily network-upgrade check (*Network upgrades*, below): a JobScheduler job
   that holds the engine awake for five minutes.
-- **Desktop:** the JVM jar does not carry the host library; the desktop
-  packaging stages it into the app's resources, as Myotis's own desktop app
-  does (`appResourcesRootDir`), one per OS/arch leg of the installer
-  workflows.
-- **iOS** consumes the engine's plain C ABI, as Myotis's `:app-ios` does;
-  that is the iOS part of the plan, not this page.
+- **Desktop:** the JVM jar does not carry the host library;
+  `eth.myotis:myotis-engine-natives-<platform>` does, at the engine's version
+  (macOS arm64 and x64, Linux x64 and arm64; Windows has none yet). The
+  desktop's `stageMyotisLibrary` takes the host's library out of it, with
+  JNA's native stub, into the app's resources (`appResourcesRootDir`), as
+  Myotis's own desktop app does, so each OS/arch leg of the installer
+  workflows ships its own, and `main()` points the engine at it. The packaged
+  app never loads a library extracted to a temporary file, which a signed
+  macOS bundle may refuse. A Windows build runs with no light client, and its
+  balances say so.
+- **iOS** consumes the engine's plain C ABI through Myotis's iOS module
+  (`eth.myotis:myotis-engine-ios`, at the engine's version): its typed API
+  carries `io.myotis.api`'s names and meanings, and each target's cinterop
+  klib carries the engine's static library. `:data`'s iosMain has the iOS
+  `MyotisNode`, the JVM one's twin over that API, wired to the same
+  `TransactingChain` seam and the same common adapters. The engine there asks
+  for no ports (its peer caches and snapshot live under its data directory)
+  and answers a read on a paused or starting handle at once as unavailable.
+  The one part not yet twinned is the log index (*History*): the iOS
+  library's typed API does not expose it, so the iOS `logIndex` answers as
+  with no engine and Activity's Safe events and token transfers read as
+  unavailable there, never as empty (#123).
 
 ## What exists today
 
@@ -141,7 +157,7 @@ consumer developed against an unreleased engine, Myotis's
 - **One fetch per key and head.** `ProvenReads` keeps the last proof per key,
   and a subscriber that arrives while that key's proof for its head is being
   fetched waits for that fetch rather than making the same blocking calls:
-  the account screen, the Assets screen and every account of the portfolio
+  the account screen, the Accounts screen and every account of the portfolio
   read the same prices and balances.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
@@ -169,14 +185,15 @@ consumer developed against an unreleased engine, Myotis's
   (`ProofAnchor`) is the attested slot whose state root it matched, from the
   light client's own state (for a header-chain match, the block walked from,
   whichever head it was walked to). Its label is the block it is shown with:
-  matched at the finalized slot, the finalized block; at the optimistic
-  slot, the optimistic block; at an attested slot between the two, the usual
-  case, the block the proof anchors to (`peerBlockNumber`, as balances and
-  code are shown), not below the finalized block. That number is the serving
-  peer's report on some engines, so it is shown, never relied on. The matched
-  slot is the attested slot the anchor recorded, while the result's
-  optimistic slot is the light client's signature slot, about one past it, so
-  an exact optimistic match seldom happens. Any other match is no proof.
+  the block of the root the proof was read at (`peerBlockNumber`, as balances
+  and code are shown), not below the finalized block, once the matched slot
+  lies from the finalized slot up to the head the reads resolved, the later of
+  it and the optimistic slot (from Gloas on the optimistic one can trail the
+  finalized one). Since Myotis 0.1.17 the slots are the blocks' own (Myotis
+  #658), and the result's block numbers are sampled at other moments than its
+  slots, so no slot picks one of them. That number is the serving peer's
+  report on some engines, so it is shown, never relied on. Any other match is
+  no proof.
   Every proof of a reading must share one anchor (and one label), and the
   state must not be before the code's, as their anchors tell: attested slots
   compared, walked blocks compared. A walk against a match, which nothing
@@ -226,7 +243,7 @@ consumer developed against an unreleased engine, Myotis's
   each singleton's `VERSION()` as a verified call, each proxy hash from a
   verified create call of its factory's `proxyCreationCode()`.
 - **The light client's progress.** `EngineLightClient` drives the
-  `LightClient` port, and the Assets tab shows it in a strip under the top bar:
+  `LightClient` port, and the Accounts tab shows it in a strip under the top bar:
   - starting;
   - bootstrapping from the checkpoint;
   - verifying sync-committee periods (*n of m*);
@@ -250,11 +267,12 @@ consumer developed against an unreleased engine, Myotis's
       }
   }
   ```
-- **Desktop, until the installers stage the host library.**
-  `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` puts a locally built
-  `libmyotis_engine.{dylib,so,dll}` on `java.library.path` (Myotis:
-  `./gradlew cargoBuildHost`, then `rust/target/release`). The same property
-  runs `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
+- **Desktop, a host library built from Myotis.** `:desktop-app:run` uses the
+  published one from the natives artifact.
+  `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` runs a locally built
+  `libmyotis_engine.{dylib,so}` instead (Myotis: `./gradlew cargoBuildHost`,
+  then `rust/target/release`). The same property runs
+  `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
 - **Android 10 and INTERNET.** An install that gains INTERNET on an update,
   rather than having it from the first install, can keep getting `EPERM` from
   netd's eBPF socket filter until it is reinstalled or the device reboots. The
@@ -342,7 +360,13 @@ verified read.
 - **`EngineReceipts`** (`ReceiptTracker`): `getTransactionReceipt` every poll,
   verified against the including block's receipts root. A receipt at or below
   the engine's finalized block (`StatusSnapshot.finalizedBlockNumber`) ends the
-  watch as finalized.
+  watch as finalized. The engine looks for a transaction from 8 blocks below
+  its head at the first poll of its hash and forward from there, so a
+  transaction mined while nothing watched it is never found by its hash.
+  That is why `FollowSentTransactions` watches every transaction sent while
+  the app is open and records what it sees in the history, and why the
+  history tells one mined while the app was closed by its account's mined
+  count (docs/wallet-ux.md, screen 25).
 - **`EngineNames`** (`NameResolver`): `ens().resolveAddress(name,
   EnsRoot.FINALIZED)` and nothing fresher. `PEER_HEAD` would be a peer's claim,
   and `AUTO` falls back to it, so an answer not `verified` is no answer.
@@ -425,6 +449,73 @@ a Safe transaction*). What the engine adds:
   text between devices (`JsonSigningRequestCodec`), and signatures are
   checked with libsecp256k1 (`Secp256k1Recovery`), not with the engine.
 
+## History
+
+An account's history beyond what this device sent (issue #85) comes from the
+engine's verified log index (Myotis `docs/eth-getlogs-design.md`), a
+watch-list the engine walks back over verified headers, fetching receipts
+only for the blocks whose `logsBloom` flags an entry. Its logs are served
+only inside the span it covers, and a query outside it is refused, never
+answered with an empty list.
+
+- **`EngineLogIndex`** (`LogIndex`): `ChainHandle.setLogIndexConfig`,
+  `logIndexStatusJson` and `VerifiedReads.getLogs`. Two kinds of entry:
+  - a `LogWatchKey.Emitter` is an address entry: every log the contract
+    emits, a Safe's own events (`SafeSetup`, `ExecutionSuccess`,
+    `SafeReceived`, …);
+  - a `LogWatchKey.Mention` is a topic entry (Myotis #673, in 0.1.17): every
+    log from any contract carrying the address, left-padded to 32 bytes, as
+    topic 1, 2 or 3, so every token's `Transfer` to or from the account,
+    listed or not.
+  - Entries are never restricted by event, never named (a name would put the
+    user's labels into the engine's files), and a topic entry always covers
+    positions 1 to 3. A push that disagreed with an entry the engine holds
+    on its restriction would replace the whole index.
+  - A change is pushed only while reads can be verified: the engine holds a
+    push made earlier until it is ready. The engine unions what is pushed
+    with what it holds and keeps each entry's lowest block, and `unwatch`
+    drops an entry with its coverage and logs.
+  - Logs are taken only when every one is what the query selects, inside its
+    range; anything else is no answer. A query names both ends of its range:
+    the answer does not say which range it read.
+  - The engine takes an entry's `fromBlock` as saying nothing of it comes
+    before that block, and answers a range reaching below it from there on.
+    For an account not created here that is not so, so the adapter reads the
+    entry's block from the status first and refuses such a range
+    (`LogsReading.BeforeStart`) rather than let it read as complete.
+- **`FollowAccountLogs`** (`:domain`, run by the hosts while the engine runs,
+  never by `App`) keeps the index following the accounts:
+  - Every account is a `Mention` entry, and a Safe an `Emitter` entry too,
+    from where its history starts (`HistoryStarts`, kept in
+    `history-starts.json`).
+  - An account is noted with the time it is added (`HistoryNotingAccounts`,
+    the account list the hosts hand everything). Once the light client is
+    synced, the time is turned into a block counted back from the verified
+    head, at 12 s a slot, plus an hour for a device clock that is off; or an
+    earlier block a transaction sent from here concerning it was seen in.
+    An account added before starts were noted starts at the head.
+  - Nothing before an account's start is walked: for an account not created
+    here, its history is checked since it was added (owner ruling,
+    2026-10-20).
+  - An account removed is unwatched, and its start forgotten once the engine
+    took that.
+- **`ObserveSafeHistory`** and **`ObserveTokenTransfers`** (`:domain`)
+  read, for the Activity screen, a Safe's own events (`SafeEvents`: Safe
+  1.3.0's and 1.4.1's, each in the form its version indexes it in) from its
+  `Emitter` entry, and an account's ERC-20 and ERC-721 `Transfer`s
+  (`TokenTransfers`) from its `Mention` entry, queried at topic 1 and topic
+  2. Both read as `IndexedReader` does: from where the account's history
+  starts, or the lowest block the index covers of it when higher, to the
+  top of what it covers; again as that moves, only the blocks it grew by
+  and the top 64 read before (coverage is polled, so a reorganisation can
+  look like growth); all again when it shrank.
+- **What the walk tells a peer.** Receipts are fetched only for the blocks
+  whose bloom flags an entry, so the serving peer learns which blocks matter
+  to this device. That is the trade-off the log index makes for any
+  watch-list, accepted as is (owner ruling, 2026-10-20). The engine runs no
+  RPC listener here, so no other process or page can test addresses against
+  the index.
+
 ## Network upgrades
 
 A hard fork the engine's build does not implement is the one thing that ends
@@ -454,7 +545,7 @@ user to update — before it, and, after it, nothing else.
   field becomes unknown rather than failing the status poll the light client
   and every verified read share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
   client's state and the upgrade recorded from earlier reports:
-  - *Ahead*: a banner on Assets, with the date and the way to the update;
+  - *Ahead*: a banner on Accounts, with the date and the way to the update;
   - *Activated*, as peers report or by its announced time on the clock, the
     light client not showing this version cut off: the banner says so;
   - *Update required*, an activation peers confirmed (reported now, or

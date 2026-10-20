@@ -72,3 +72,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
+
+/** `FLAG_SECURE` blocks the capture, so there is nothing to warn about. */
+@Composable
+actual fun ScreenCaptureWarnings() = Unit
