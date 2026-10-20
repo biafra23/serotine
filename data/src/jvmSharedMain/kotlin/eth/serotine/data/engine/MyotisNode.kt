@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
@@ -42,9 +43,10 @@ import kotlin.time.Duration.Companion.seconds
  * creates it with [start], hands [nativeBalances], [tokenBalances], [tokenMetadata],
  * [priceFeeds], [addressKinds], [lightClient] and [networkUpgrades] to the AppGraph, and for
  * sending [transactionInputs], [broadcaster], [receipts] and [names], and for a Safe's
- * transactions [safeApprovals], and for swaps [uniswap], and owns it for the life of the process:
- * [pause] and [resume] it around the app being in the background, [shutdown] on exit. Only
- * `io.myotis.api` and the library's default ports are used; nothing below them.
+ * transactions [safeApprovals], and for swaps [uniswap], and for the accounts' histories
+ * [logIndex], and owns it for the life of the process: [pause] and [resume] it around the app
+ * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default
+ * ports are used; nothing below them.
  */
 class MyotisNode private constructor(network: Network, lastBalancesPath: String?, debugLog: ((String) -> Unit)?) {
 
@@ -131,6 +133,9 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
     /** ENS names, resolved against beacon-finalized state. */
     val names: NameResolver = EngineNames(chain, Dispatchers.IO)
+
+    /** The engine's verified log index: what it follows of the accounts, and the logs it holds. */
+    val logIndex: LogIndex = EngineLogIndex(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
@@ -270,7 +275,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         }
     }
 
-    private inner class HandleChain : TransactingChain {
+    private inner class HandleChain : TransactingChain, LogIndexChain {
 
         /**
          * The last snapshot read and when (System.nanoTime). Every adapter, and each of its
@@ -421,6 +426,21 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         override fun receipt(hash: String): String? {
             val handle = (state as? State.Running)?.handle ?: return null
             return handle.reads().getTransactionReceipt(hash.removePrefix("0x").fromHex())
+        }
+
+        override fun setLogIndexConfig(configJson: String): Boolean {
+            val handle = (state as? State.Running)?.handle ?: return false
+            return handle.setLogIndexConfig(configJson)
+        }
+
+        override fun logIndexStatus(): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.logIndexStatusJson()
+        }
+
+        override fun logs(filterJson: String): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getLogs(filterJson)
         }
 
         // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.

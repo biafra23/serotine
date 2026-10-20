@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -27,7 +28,7 @@ class WatchScreenTest {
     private var adds = 0
 
     private fun show(state: WatchUiState) = rule.setContent {
-        SerotineTheme { WatchScreen(state, {}, {}, onAdd = { adds++ }, onBack = {}) }
+        SerotineTheme { WatchScreen(state, verifiedStripSample, {}, {}, onAdd = { adds++ }, onBack = {}) }
     }
 
     @Test
@@ -57,7 +58,9 @@ class WatchScreenTest {
     fun theOtherCardsSayWhyThereIsNoAdd() {
         var detection by mutableStateOf<Detection>(Detection.Checking)
         rule.setContent {
-            SerotineTheme { WatchScreen(WatchUiState(address = vitalik, detection = detection), {}, {}, {}, {}) }
+            SerotineTheme {
+                WatchScreen(WatchUiState(address = vitalik, detection = detection), verifiedStripSample, {}, {}, {}, {})
+            }
         }
 
         rule.onNodeWithText("Checking the address on chain…").assertIsDisplayed()

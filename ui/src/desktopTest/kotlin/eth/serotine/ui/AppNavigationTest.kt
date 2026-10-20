@@ -96,6 +96,7 @@ import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
 import eth.serotine.ui.assets.NO_ACCOUNTS_HINT
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.SAFE_TX_QR_TAG
 import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
@@ -142,6 +143,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
@@ -283,6 +285,8 @@ class AppNavigationTest {
         signer = signer,
         sentTransfers = sentTransfers,
         transactionHistory = history,
+        historyStarts = MemoryHistoryStarts(),
+        logIndex = FakeLogIndex(),
         safeTxQueue = safeTxQueue,
         signingRequests = codec,
         signatureRecovery = recovery,
@@ -325,6 +329,10 @@ class AppNavigationTest {
         override val lifecycle = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
         override val viewModelStore = ViewModelStore()
     }
+
+    /** The host gone, as its window or activity ends: the ViewModels it scoped stop with it. */
+    @After
+    fun clearHost() = host.viewModelStore.clear()
 
     /**
      * Shows the [App] in the [host]; with [followDeployments], beside it the deployments' follower,
@@ -456,6 +464,31 @@ class AppNavigationTest {
         rule.onNodeWithText("Only send Sepolia assets to this address").assertIsDisplayed()
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun theLightClientsStripShowsWhereTheScreenDependsOnItAndNotInSettings() {
+        accounts.value = listOf(daily)
+        status.value = LightClientStatus.CatchingUp(done = 1, total = 4)
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        rule.onNodeWithText("Verified at block 100").assertIsDisplayed()
+
+        // An address and its QR code need nothing verified.
+        rule.onNodeWithText("Receive").performClick()
+        rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Back").performClick()
+
+        // Settings says it in a row of its own instead.
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertDoesNotExist()
     }
 
     @Test

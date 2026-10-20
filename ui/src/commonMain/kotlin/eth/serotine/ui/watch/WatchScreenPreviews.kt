@@ -2,6 +2,8 @@ package eth.serotine.ui.watch
 
 import androidx.compose.runtime.Composable
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -22,9 +24,20 @@ private val account = WatchUiState(
 )
 
 @Composable
-private fun WatchPreview(state: WatchUiState, darkTheme: Boolean = false) {
+private fun WatchPreview(
+    state: WatchUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        WatchScreen(state = state, onAddressChange = {}, onNameChange = {}, onAdd = {}, onBack = {})
+        WatchScreen(
+            state = state,
+            lightClient = lightClient,
+            onAddressChange = {},
+            onNameChange = {},
+            onAdd = {},
+            onBack = {},
+        )
     }
 }
 

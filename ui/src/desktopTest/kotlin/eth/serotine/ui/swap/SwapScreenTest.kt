@@ -24,6 +24,7 @@ import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -82,6 +83,7 @@ class SwapScreenTest {
         SerotineTheme {
             SwapScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 onSellChange = { events += "sell $it" },
                 onBuyChange = { events += "buy $it" },
                 onAmountChange = { events += "amount $it" },

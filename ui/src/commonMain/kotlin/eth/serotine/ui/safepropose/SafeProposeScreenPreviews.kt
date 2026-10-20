@@ -5,12 +5,14 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.AssetChoice
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -65,9 +67,13 @@ private val review = SafeProposeUiState.Review(
 )
 
 @Composable
-private fun SafeProposePreview(state: SafeProposeUiState, darkTheme: Boolean = false) {
+private fun SafeProposePreview(
+    state: SafeProposeUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        SafeProposeScreen(state = state, actions = SafeProposeActions(), onBack = {})
+        SafeProposeScreen(state = state, lightClient = lightClient, actions = SafeProposeActions(), onBack = {})
     }
 }
 

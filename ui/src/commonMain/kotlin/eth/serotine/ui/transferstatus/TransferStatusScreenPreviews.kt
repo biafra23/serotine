@@ -1,7 +1,9 @@
 package eth.serotine.ui.transferstatus
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -68,9 +70,13 @@ private val maybeSent = pending.copy(
 )
 
 @Composable
-private fun TransferStatusPreview(state: TransferStatusUiState, darkTheme: Boolean = false) {
+private fun TransferStatusPreview(
+    state: TransferStatusUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        TransferStatusScreen(state, onDone = {}, onRetry = {})
+        TransferStatusScreen(state, lightClient, onDone = {}, onRetry = {})
     }
 }
 

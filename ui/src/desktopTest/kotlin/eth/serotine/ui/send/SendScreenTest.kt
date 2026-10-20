@@ -27,6 +27,7 @@ import eth.serotine.ui.components.SEND_TO_TAG
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -72,6 +73,7 @@ class SendScreenTest {
         SerotineTheme {
             SendScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 onAssetChange = { events += "asset $it" },
                 onToChange = { events += "to $it" },
                 onPickAccount = { events += "pick $it" },

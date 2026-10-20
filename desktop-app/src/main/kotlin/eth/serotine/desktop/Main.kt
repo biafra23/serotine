@@ -8,6 +8,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopHardwareSecret
@@ -22,9 +23,11 @@ import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
@@ -134,8 +137,11 @@ private fun openWallet(dataDir: File) {
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
     val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
-    // One instance each, which the graph and the deployments' follower share.
-    val accounts = FileAccountRepository(dataDir.resolve("accounts.json").path)
+    // One instance each, which the graph and the followers share. Each account added is noted
+    // where its history starts (issue #85): addresses with a block or a time, public data only.
+    val historyStarts = FileHistoryStarts(dataDir.resolve("history-starts.json").path)
+    val accounts =
+        HistoryNotingAccounts(FileAccountRepository(dataDir.resolve("accounts.json").path), historyStarts)
     // The transactions signed here, with their signed bytes (public once broadcast), and every one
     // of them kept for good with how it ended (issue #85): each record goes into both.
     val sentRecord = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
@@ -181,6 +187,24 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following sent transactions stopped: ${e::class.simpleName}")
             }
         }
+        LaunchedEffect(Unit) {
+            // The engine's log index follows every account from where its history starts, while
+            // the app runs (issue #85). A failure ends it, never the wallet.
+            try {
+                FollowAccountLogs(
+                    accounts,
+                    historyStarts,
+                    transactionHistory,
+                    node.lightClient,
+                    node.logIndex,
+                    Network.SEPOLIA,
+                )()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following the accounts' logs stopped: ${e::class.simpleName}")
+            }
+        }
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
@@ -208,6 +232,8 @@ private fun openWallet(dataDir: File) {
                 signer = keyStore,
                 sentTransfers = sentTransfers,
                 transactionHistory = transactionHistory,
+                historyStarts = historyStarts,
+                logIndex = node.logIndex,
                 // The Safe transactions waiting for their owners, with the signatures collected (public).
                 safeTxQueue = FileSafeTxQueue(dataDir.resolve("safe-tx-queue.json").path),
                 signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
