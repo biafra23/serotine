@@ -97,8 +97,8 @@ Modules (Gradle):
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
   `<Feature>ViewModel`, `<Feature>UiState`; `components` for what several
   screens draw (blockies, the QR code, EIP-55); the theme; `App` with the one
-  `NavHost` under the Assets | Settings bar (a destination per screen, whose
-  back-stack entry owns the screen's ViewModel; Settings opens over the Assets
+  `NavHost` under the Accounts | Settings bar (a destination per screen, whose
+  back-stack entry owns the screen's ViewModel; Settings opens over the Accounts
   tab's stack and closes back to it, with nothing saved aside: owner ruling,
   2026-10-18, #49, for now); and `AppGraph`, the
   composition root's contract (ports in, ViewModel factories out). Depends on
@@ -526,7 +526,7 @@ discussion that produced this note.
   same artifact in the same round, so its link stays and its history keeps
   the earlier versions. A session that has neither (no browser, no
   Artifact tool) attaches the files to the conversation, each named after
-  its screen and state (`assets-head-too-old-after.png`) with its caption,
+  its screen and state (`accounts-head-too-old-after.png`) with its caption,
   and the section says they were shown in the session. A host where the
   files reach no one (CI, a plain `claude` terminal) lists
   in that section each state under its caption, with the

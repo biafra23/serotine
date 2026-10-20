@@ -376,7 +376,8 @@ private fun Details(
 
 /**
  * The asset rows (docs/wallet-ux.md, screen 4), each with the block its amount was verified
- * at, and what is not known yet about the other tokens.
+ * at, and what is not known yet about the other tokens. A tap on a row opens Send with its
+ * asset chosen, a long press its menu.
  */
 @Composable
 private fun Assets(
@@ -401,12 +402,16 @@ private fun Assets(
                 contract?.let { MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(it) } },
                 contract?.let { MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) } },
             )
-            if (actions.isEmpty()) {
+            // A tap sends the asset. The row stays as it is where Send cannot be done (its balance is
+            // still to be read, and its menu still works): the tap then says why, as the greyed-out
+            // Send button does, and accessibility services announce it as such.
+            WithActionMenu(
+                actions = actions,
+                menuLabel = "Actions for ${asset.symbol}",
+                onClick = { onSend(contract) },
+                clickLabel = if (state.canSend) "Send ${asset.symbol}" else "Why Send ${asset.symbol} is unavailable",
+            ) {
                 AssetItem(asset)
-            } else {
-                WithActionMenu(actions = actions, menuLabel = "Actions for ${asset.symbol}", onClick = {}) {
-                    AssetItem(asset)
-                }
             }
         }
         state.tokensNote?.let { note ->

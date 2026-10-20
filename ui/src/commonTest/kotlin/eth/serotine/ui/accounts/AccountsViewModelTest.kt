@@ -1,4 +1,4 @@
-package eth.serotine.ui.assets
+package eth.serotine.ui.accounts
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
@@ -69,7 +69,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class AssetsViewModelTest {
+class AccountsViewModelTest {
 
     private val repository = FakeAccountRepository()
     private val balances = FakeBalances()
@@ -84,7 +84,7 @@ class AssetsViewModelTest {
     }
     private val currency = MemoryCurrencySetting()
 
-    private fun viewModel(): AssetsViewModel {
+    private fun viewModel(): AccountsViewModel {
         val currencies = ObserveDisplayCurrencies(feeds, currency)
         val value = ObserveAccountValue(
             ObserveNativeBalance(balances),
@@ -96,7 +96,7 @@ class AssetsViewModelTest {
             currencies,
             Network.SEPOLIA,
         )
-        return AssetsViewModel(
+        return AccountsViewModel(
             ObservePortfolio(ObserveAccounts(repository), value, currencies),
             ObserveSafes(repository, ObserveSafe(kinds, repository)),
             ObserveLightClient(lightClient),
@@ -132,16 +132,16 @@ class AssetsViewModelTest {
         val viewModel = viewModel()
 
         // Nothing collects yet: WhileSubscribed has not started the upstream.
-        assertEquals(AssetsUiState.Loading("Sepolia", starting), viewModel.uiState.value)
+        assertEquals(AccountsUiState.Loading("Sepolia", starting), viewModel.uiState.value)
 
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
-        assertEquals(AssetsUiState.Ready("Sepolia", starting, emptyList()), viewModel.uiState.value)
+        assertEquals(AccountsUiState.Ready("Sepolia", starting, emptyList()), viewModel.uiState.value)
 
         repository.accounts = listOf(treasury)
         runCurrent()
         assertEquals(
-            AssetsUiState.Ready(
+            AccountsUiState.Ready(
                 "Sepolia",
                 starting,
                 listOf(treasuryItem("Syncing…", verified = false)),
@@ -155,7 +155,7 @@ class AssetsViewModelTest {
         runCurrent()
         assertEquals(
             treasuryItem("2.5 ETH", verified = true).copy(value = "Checking price…"),
-            (viewModel.uiState.value as AssetsUiState.Ready).accounts.single(),
+            (viewModel.uiState.value as AccountsUiState.Ready).accounts.single(),
         )
     }
 
@@ -169,12 +169,12 @@ class AssetsViewModelTest {
         feeds.answer("ETH", 2_000.0)
         feeds.answer("EUR", 1.25)
         runCurrent()
-        val before = (viewModel.uiState.value as AssetsUiState.Ready).accounts.single().value
+        val before = (viewModel.uiState.value as AccountsUiState.Ready).accounts.single().value
         assertEquals("$2,000.00 · testnet prices", before)
 
         currency.choose(DisplayCurrency.EUR)
         runCurrent()
-        val values = (viewModel.uiState.value as AssetsUiState.Ready).accounts.map { it.value }
+        val values = (viewModel.uiState.value as AccountsUiState.Ready).accounts.map { it.value }
         assertEquals(listOf("€1,600.00 · testnet prices"), values, "never $2,000 marked €")
     }
 
@@ -191,7 +191,7 @@ class AssetsViewModelTest {
         feeds.answer("JPY", 0.0064) // USD per yen
         runCurrent()
 
-        val ready = viewModel.uiState.value as AssetsUiState.Ready
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
         assertEquals("¥937,500", ready.total)
         assertEquals("Testnet prices", ready.totalNote)
         assertEquals(
@@ -210,7 +210,7 @@ class AssetsViewModelTest {
         balances.of(daily.address).value = BalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
         runCurrent()
 
-        val rows = (viewModel.uiState.value as AssetsUiState.Ready).accounts
+        val rows = (viewModel.uiState.value as AccountsUiState.Ready).accounts
         assertEquals(listOf("Syncing…", "Not verified"), rows.map { it.balance })
     }
 
@@ -226,7 +226,7 @@ class AssetsViewModelTest {
             BalanceReading.LastKnown(Wei.of("2500000000000000000"), 9, asOf = 1_792_100_000)
         runCurrent()
 
-        val ready = viewModel.uiState.value as AssetsUiState.Ready
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
         assertEquals(
             treasuryItem("2.5 ETH", verified = false)
                 .copy(balanceNote = "Last verified <1792100000> · may have changed since"),
@@ -273,7 +273,7 @@ class AssetsViewModelTest {
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
 
-        val row = (viewModel.uiState.value as AssetsUiState.Ready).accounts.single()
+        val row = (viewModel.uiState.value as AccountsUiState.Ready).accounts.single()
         assertEquals("Checking…", row.balance)
         assertEquals(false, row.balanceVerified)
     }
@@ -287,7 +287,7 @@ class AssetsViewModelTest {
         repository.list.value = AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT)
         runCurrent()
         assertEquals(
-            AssetsUiState.ListUnavailable(
+            AccountsUiState.ListUnavailable(
                 "Sepolia",
                 starting,
                 "Your account list was saved by a newer version of Serotine. Update the app to see it.",
@@ -300,14 +300,14 @@ class AssetsViewModelTest {
         runCurrent()
         assertEquals(
             "Your saved account list was damaged and has been set aside. Add your accounts again.",
-            (viewModel.uiState.value as AssetsUiState.Ready).notice,
+            (viewModel.uiState.value as AccountsUiState.Ready).notice,
         )
 
         // Accounts added since the list was set aside: the notice stays, beside their balances.
         repository.list.value = AccountList.Loaded(listOf(treasury), damagedListSetAside = true)
         balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 9)
         runCurrent()
-        val ready = viewModel.uiState.value as AssetsUiState.Ready
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
         assertEquals(
             "Your saved account list was damaged and has been set aside. Add your accounts again.",
             ready.notice,
@@ -322,13 +322,13 @@ class AssetsViewModelTest {
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
-        assertEquals(AssetsUiState.ListUnavailable::class, viewModel.uiState.value::class)
+        assertEquals(AccountsUiState.ListUnavailable::class, viewModel.uiState.value::class)
 
         balances.of(treasury.address).value = BalanceReading.Verified(Wei.of("2500000000000000000"), 9)
         repository.list.value = AccountList.Loaded(listOf(treasury))
         runCurrent()
 
-        val ready = viewModel.uiState.value as AssetsUiState.Ready
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
         assertEquals(listOf("2.5 ETH"), ready.accounts.map { it.balance })
         assertEquals(null, ready.notice)
     }
@@ -362,7 +362,7 @@ class AssetsViewModelTest {
         runCurrent()
 
         val state = viewModel.uiState.value
-        assertIs<AssetsUiState.ListUnavailable>(state)
+        assertIs<AccountsUiState.ListUnavailable>(state)
         assertEquals("Network upgrade ahead: update Serotine", state.upgrade?.title)
     }
 
@@ -411,7 +411,7 @@ class AssetsViewModelTest {
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
-        val before = (viewModel.uiState.value as AssetsUiState.Ready).accounts.first()
+        val before = (viewModel.uiState.value as AccountsUiState.Ready).accounts.first()
         assertEquals(Control.WATCH_ONLY, before.control, "not read yet: never more than watch-only")
         assertEquals(null, before.signers)
 
@@ -420,7 +420,7 @@ class AssetsViewModelTest {
         kind.value = KindReading.Verified(AddressKind.Safe(state), 9)
         runCurrent()
 
-        val row = (viewModel.uiState.value as AssetsUiState.Ready).accounts.first()
+        val row = (viewModel.uiState.value as AccountsUiState.Ready).accounts.first()
         assertEquals("1/2", row.signers)
         assertEquals("Safe", row.kindNote)
         assertEquals(Control.FULL_CONTROL, row.control, "Daily's key is held here, and one signature is enough")
@@ -428,7 +428,7 @@ class AssetsViewModelTest {
         // The address no longer verifies as a Safe: said, and no more than watch-only.
         kind.value = KindReading.Verified(AddressKind.Contract, 10)
         runCurrent()
-        val after = (viewModel.uiState.value as AssetsUiState.Ready).accounts.first()
+        val after = (viewModel.uiState.value as AccountsUiState.Ready).accounts.first()
         assertEquals("Not a recognised Safe", after.kindNote)
         assertEquals(Control.WATCH_ONLY, after.control)
         assertEquals(null, after.signers)

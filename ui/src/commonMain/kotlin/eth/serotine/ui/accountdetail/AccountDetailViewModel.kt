@@ -161,7 +161,7 @@ class AccountDetailViewModel(
             }
         }.stateIn(
             scope = viewModelScope,
-            // As on Assets: a screen back after the timeout must not show an old balance as current.
+            // As on Accounts: a screen back after the timeout must not show an old balance as current.
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
             initialValue = AccountDetailUiState.Loading,
         )

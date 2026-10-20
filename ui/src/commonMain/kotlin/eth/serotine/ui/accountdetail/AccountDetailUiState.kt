@@ -1,8 +1,8 @@
 package eth.serotine.ui.accountdetail
 
 import eth.serotine.domain.model.AccountKind
-import eth.serotine.ui.assets.sendBlockedReason
-import eth.serotine.ui.assets.swapBlockedReason
+import eth.serotine.ui.accounts.sendBlockedReason
+import eth.serotine.ui.accounts.swapBlockedReason
 import eth.serotine.ui.components.Control
 
 /** Everything the account detail screen renders (docs/wallet-ux.md, screen 4). */

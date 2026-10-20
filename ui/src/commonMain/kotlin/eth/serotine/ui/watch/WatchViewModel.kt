@@ -13,15 +13,24 @@ import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.AddressWatch
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.RecipientLookup
 import eth.serotine.domain.usecase.RenameAccount
+import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.domain.usecase.control
 import eth.serotine.domain.usecase.ownersHeld
-import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.RecipientState
+import eth.serotine.ui.components.ResolvedAgain
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.recipientNote
+import eth.serotine.ui.components.recipientStates
+import eth.serotine.ui.components.recipientText
+import eth.serotine.ui.components.resolveAgain
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,16 +46,20 @@ import kotlinx.coroutines.launch
 
 /**
  * The Watch address screen's ViewModel: reads the typed text as an address (EIP-55 checked at
- * the input), shows what the light client proves is at it, and adds it through
- * [WatchAddress], which checks again before it adds.
+ * the input) or an ENS name, resolved as Send's recipient is ([ResolveRecipient], against
+ * finalized state), shows what the light client proves is at the address, and adds it through
+ * [WatchAddress], which checks again before it adds. A name is resolved again at Add: what is
+ * watched is the address it has then, and one that moved is said, not added (issue #71).
  */
 class WatchViewModel(
     observeAddressKind: ObserveAddressKind,
     observeAccounts: ObserveAccounts,
     private val watchAddress: WatchAddress,
+    private val resolveRecipient: ResolveRecipient,
 ) : ViewModel() {
 
-    private class Typed(val address: String = "", val name: String = "")
+    /** What is typed, and how often the user asked to resolve the name again ([lookupAttempt]). */
+    private data class Typed(val address: String = "", val name: String = "", val lookupAttempt: Int = 0)
 
     private class Outcome(
         val adding: Boolean = false,
@@ -58,27 +71,47 @@ class WatchViewModel(
     private val typed = MutableStateFlow(Typed())
     private val outcome = MutableStateFlow(Outcome())
 
-    private val input = typed.map { Eip55.parse(it.address) }.distinctUntilChanged()
+    /** The typed text resolved: an address at once, a name once the typing paused. */
+    private val lookup: StateFlow<RecipientState> =
+        recipientStates(typed.map { it.address.trim() to it.lookupAttempt }, ::lookUp).stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            RecipientState.Empty,
+        )
 
+    /** The card of the address the lookup found, with that address: uiState shows it only for the lookup's own. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val detection = input.flatMapLatest { parsed ->
-        when (parsed) {
-            // The one list says whether the address is in the wallet already, and, for a Safe,
-            // which of its owners' keys are held here.
-            is AddressInput.Valid -> combine(
-                observeAccounts(),
-                observeAddressKind(parsed.address).map<KindReading, KindReading?> { it }.onStart { emit(null) },
-            ) { list, reading -> detectionOf(parsed.address, list, reading) }
-            else -> flowOf(null)
-        }
-    }
+    private val detection: Flow<Pair<Address, Detection>?> =
+        lookup.map { ((it as? RecipientState.Done)?.result as? RecipientLookup.Found)?.address }
+            .distinctUntilChanged()
+            .flatMapLatest { address ->
+                when (address) {
+                    null -> flowOf(null)
+                    // The one list says whether the address is in the wallet already, and, for a Safe,
+                    // which of its owners' keys are held here.
+                    else -> combine(
+                        observeAccounts(),
+                        observeAddressKind(address).map<KindReading, KindReading?> { it }.onStart { emit(null) },
+                    ) { list, reading -> address to detectionOf(address, list, reading) }
+                }
+            }
 
-    val uiState: StateFlow<WatchUiState> = combine(typed, input, detection, outcome) { typed, parsed, card, outcome ->
+    val uiState: StateFlow<WatchUiState> = combine(typed, lookup, detection, outcome) { typed, lookup, card, outcome ->
+        val text = typed.address.trim()
+        // The lookup of what is typed now; one of an earlier text is no answer about it.
+        val current = lookup.takeIf { it.text == text }
+        val result = (current as? RecipientState.Done)?.result
+        val found = result as? RecipientLookup.Found
+        val (note, isError) = addressNote(text, current)
         WatchUiState(
             address = typed.address,
             name = typed.name,
-            addressError = addressError(typed.address, parsed),
-            detection = card,
+            addressError = note.takeIf { isError },
+            addressNote = note.takeUnless { isError },
+            canRetryLookup = result is RecipientLookup.Unavailable,
+            // Only the card of what is typed now: none while a new text is still being resolved, nor
+            // one of the address before for a moment after the text changed.
+            detection = card?.takeIf { (address, _) -> address == found?.address }?.second,
             adding = outcome.adding,
             nameError = outcome.nameError,
             error = outcome.error,
@@ -95,25 +128,44 @@ class WatchViewModel(
     /** The address field changed; ignored while an add runs, whose result is about what was typed then. */
     fun onAddressChange(text: String) {
         if (outcome.value.adding || outcome.value.done) return
-        typed.update { Typed(text, it.name) }
+        typed.update { it.copy(address = text) }
         outcome.value = Outcome()
     }
 
     /** The name field changed; ignored while an add runs. */
     fun onNameChange(text: String) {
         if (outcome.value.adding || outcome.value.done) return
-        typed.update { Typed(it.address, text) }
+        typed.update { it.copy(name = text) }
         outcome.value = Outcome()
     }
 
-    /** Adds the address, once; [WatchAddress] proves its kind again first. */
+    /** Resolves the typed name again, after a lookup that could not be verified. */
+    fun onRetryLookup() {
+        if (outcome.value.adding || outcome.value.done) return
+        typed.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
+        outcome.value = Outcome()
+    }
+
+    /**
+     * Adds the address, once: a name is resolved again first, and [WatchAddress] proves the
+     * address's kind again.
+     */
     fun add() {
-        val address = (Eip55.parse(typed.value.address) as? AddressInput.Valid)?.address ?: return
+        val found = foundInput() ?: return
         // outcome first: it is set synchronously below, while uiState follows it a step later,
         // so a second tap before that must still find the add running.
         if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
         outcome.value = Outcome(adding = true)
         viewModelScope.launch {
+            val address = when (val again = resolveAgain(found, ::lookUp, ::nameChanged)) {
+                is ResolvedAgain.Same -> again.found.address
+                is ResolvedAgain.Changed -> {
+                    // Resolved again for the card, which then shows what the name has now.
+                    typed.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
+                    outcome.value = Outcome(error = again.message)
+                    return@launch
+                }
+            }
             outcome.value = when (val result = watchAddress(address, typed.value.name)) {
                 is AddressWatch.Added -> Outcome(done = true)
                 is AddressWatch.AlreadyInWallet ->
@@ -187,23 +239,51 @@ class WatchViewModel(
             threshold = "${state.threshold}/${state.owners.size}",
         )
 
-    /** Why the typed text is no address, once that is clear: not while the user is still typing one. */
-    private fun addressError(text: String, parsed: AddressInput): String? {
-        val trimmed = text.trim()
+    /** The address typed, once the lookup found one for the text as it is now. */
+    private fun foundInput(): RecipientLookup.Found? {
+        val lookup = lookup.value as? RecipientState.Done ?: return null
+        if (lookup.text != typed.value.address.trim()) return null
+        return lookup.result as? RecipientLookup.Found
+    }
+
+    /**
+     * What the address field says under [text] ([lookup] its lookup, null while it is of an
+     * earlier text), and whether that is an error: as Send's recipient field, but for the zero
+     * address, which nobody can hold, and with the block a name was resolved at.
+     */
+    private fun addressNote(text: String, lookup: RecipientState?): Pair<String?, Boolean> {
+        val result = (lookup as? RecipientState.Done)?.result
+        val found = result as? RecipientLookup.Found
+        // A block only for a name: an address typed is no resolution.
+        val resolvedAt = found?.blockNumber
         return when {
-            trimmed.isEmpty() || parsed is AddressInput.Valid -> null
-            parsed is AddressInput.ChecksumMismatch ->
-                "The capitals do not match this address's checksum: check it for a typo."
-            "." in trimmed -> "Enter the address itself; names (ENS) come with sending."
-            trimmed.length >= ADDRESS_LENGTH || !HEX_SO_FAR.matches(trimmed) ->
-                "Not an address: an address is 0x and 40 hexadecimal digits."
-            else -> null
+            result == RecipientLookup.ZeroAddress -> ZERO_ADDRESS to true
+            // In full, whatever the card can say of it: the address the name points to is what is added.
+            found != null && resolvedAt != null ->
+                "Resolves to ${Eip55.format(found.address)}, verified at finalized block ${grouped(resolvedAt)}" to
+                    false
+            else -> recipientNote(text, lookup)
         }
     }
 
+    private suspend fun lookUp(text: String): RecipientLookup = try {
+        resolveRecipient(recipientText(text))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        RecipientLookup.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
+    }
+
+    /** Why [name]'s address is not added: it could not be verified again ([unverifiable]), or it moved. */
+    private fun nameChanged(name: String, unverifiable: Boolean): String = if (unverifiable) {
+        "“$name” could not be resolved with verified calls again just now. Nothing was added."
+    } else {
+        "“$name” no longer resolves to the address that was shown: check the address it has now. " +
+            "Nothing was added."
+    }
+
     private companion object {
-        const val ADDRESS_LENGTH = 42
-        val HEX_SO_FAR = Regex("^(0|0[xX][0-9a-fA-F]*)$")
+        const val ZERO_ADDRESS = "The zero address: nobody holds its key, so there is no account to watch."
         const val CONTRACT =
             "This address holds a contract that is not a recognised Safe. Serotine watches accounts and Safes."
     }

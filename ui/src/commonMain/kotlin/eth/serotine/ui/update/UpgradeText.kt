@@ -7,7 +7,7 @@ import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.ui.platform.formatDateTime
 
 // How a network upgrade this version does not support is put into words, the same on every
-// surface: the banner on Assets, the update screen, and the notifications the hosts show. Peers
+// surface: the banner on Accounts, the update screen, and the notifications the hosts show. Peers
 // report it and nothing verifies it, so each text says that peers report it, and only the
 // update screen, which needs the light client's own agreement, says the app is not verifying.
 

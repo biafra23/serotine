@@ -1,4 +1,4 @@
-package eth.serotine.ui.assets
+package eth.serotine.ui.accounts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -28,14 +28,14 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * The Assets screen's ViewModel: turns the domain's portfolio — the accounts, what each
+ * The Accounts screen's ViewModel: turns the domain's portfolio — the accounts, what each
  * holds and what it is worth ([ObservePortfolio]) — the light client's state and any network
- * upgrade this version does not support into [AssetsUiState], on the [network] the
+ * upgrade this version does not support into [AccountsUiState], on the [network] the
  * composition root runs the app on. It holds no platform reference and exposes state only
  * through [uiState]; what the user does with an account is navigation, which the screen's route
  * turns into the destination of the screen or dialog that does it.
  */
-class AssetsViewModel(
+class AccountsViewModel(
     observePortfolio: ObservePortfolio,
     observeSafes: ObserveSafes,
     observeLightClient: ObserveLightClient,
@@ -49,7 +49,7 @@ class AssetsViewModel(
 
     private val strip = observeLightClient().asItems(clock)
 
-    /** The upgrade banner, none until the first warning: Assets never waits for it. */
+    /** The upgrade banner, none until the first warning: Accounts never waits for it. */
     private val upgrade = observeUpgradeWarning()
         .map { UpgradeBannerItem.from(it, network, formatTime) }
         .onStart { emit(null) }
@@ -57,14 +57,14 @@ class AssetsViewModel(
     // The checksums once per account, not on every balance reading.
     private val checksums = mutableMapOf<Address, String>()
 
-    val uiState: StateFlow<AssetsUiState> = combine(observePortfolio(), observeSafes(), strip, upgrade, ::stateOf)
+    val uiState: StateFlow<AccountsUiState> = combine(observePortfolio(), observeSafes(), strip, upgrade, ::stateOf)
         .stateIn(
             scope = viewModelScope,
             // Keeps collecting across a configuration change (the screen re-subscribes within
             // the timeout) but stops when the screen is really gone, and then forgets the
             // last state: a screen back after that must not show old balances as current.
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-            initialValue = AssetsUiState.Loading(
+            initialValue = AccountsUiState.Loading(
                 network.displayName,
                 LightClientItem.from(LightClientStatus.Starting, now = 0),
             ),
@@ -75,9 +75,9 @@ class AssetsViewModel(
         safes: Map<Address, SafeReading>,
         lightClient: LightClientItem,
         upgrade: UpgradeBannerItem?,
-    ): AssetsUiState =
+    ): AccountsUiState =
         when (val list = portfolio.accounts) {
-            is AccountList.Unreadable -> AssetsUiState.ListUnavailable(
+            is AccountList.Unreadable -> AccountsUiState.ListUnavailable(
                 network.displayName,
                 lightClient,
                 when (list.reason) {
@@ -104,7 +104,7 @@ class AssetsViewModel(
                     )
                 }
                 val total = portfolio.total.takeIf { list.accounts.isNotEmpty() }
-                AssetsUiState.Ready(
+                AccountsUiState.Ready(
                     network.displayName,
                     lightClient,
                     items,

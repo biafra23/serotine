@@ -1,4 +1,4 @@
-package eth.serotine.ui.assets
+package eth.serotine.ui.accounts
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
@@ -18,11 +18,11 @@ import eth.serotine.ui.platform.formatDateTime
 import eth.serotine.ui.update.UpgradeBannerItem
 
 /**
- * Everything the Assets screen renders, as one immutable value: the screen is a pure
+ * Everything the Accounts screen renders, as one immutable value: the screen is a pure
  * function of it, which is what makes the screen testable without a ViewModel and the
  * ViewModel testable without Compose.
  */
-sealed interface AssetsUiState {
+sealed interface AccountsUiState {
     /** The display name of the one network the app works on, for the top bar. */
     val network: String
 
@@ -44,7 +44,7 @@ sealed interface AssetsUiState {
         override val network: String,
         override val lightClient: LightClientItem,
         override val upgrade: UpgradeBannerItem? = null,
-    ) : AssetsUiState {
+    ) : AccountsUiState {
         /** The accounts are not read yet: which of them could pay is not known. */
         override val createSafeReason: String
             get() = CREATE_SAFE_CHECKING
@@ -65,7 +65,7 @@ sealed interface AssetsUiState {
         val total: String? = null,
         val totalNote: String? = null,
         override val upgrade: UpgradeBannerItem? = null,
-    ) : AssetsUiState {
+    ) : AccountsUiState {
         init {
             require(accounts.distinctBy { it.address }.size == accounts.size) {
                 "duplicate addresses in the account list: the repository contract is one entry per address"
@@ -95,7 +95,7 @@ sealed interface AssetsUiState {
         override val lightClient: LightClientItem,
         val message: String,
         override val upgrade: UpgradeBannerItem? = null,
-    ) : AssetsUiState {
+    ) : AccountsUiState {
         /** Nothing can be added while the list cannot be read: [message] says why. */
         override val createSafeReason: String
             get() = message
