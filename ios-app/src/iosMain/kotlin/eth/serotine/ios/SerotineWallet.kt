@@ -3,6 +3,7 @@ package eth.serotine.ios
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.keys.EnvelopeKeyStore
+import eth.serotine.data.keys.IosBiometricKey
 import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.iosHardwareSecret
@@ -114,11 +115,13 @@ class SerotineWallet {
 
     internal val graph: AppGraph = run {
         // This device's Secure Enclave; the password alone on a simulator without one, its Argon2id
-        // tier sized by the memory the simulator reports (the Mac's). No biometric path yet. One
-        // instance is both the key store and the signer, so that their calls take turns.
+        // tier sized by the memory the simulator reports (the Mac's). One instance is both the key
+        // store and the signer, so that their calls take turns.
         val keyStore = EnvelopeKeyStore(
             keys,
             hardware,
+            // Face ID or Touch ID, the user's opt-in in Settings → Security (rule 3).
+            biometricKey = IosBiometricKey("$keys/${IosBiometricKey.STATE_FILE_NAME}"),
             passwordOnlyTier = PasswordOnlyTier.forDevice(
                 NSProcessInfo.processInfo.physicalMemory.toLong(),
                 lowRamDevice = false,

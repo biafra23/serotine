@@ -36,6 +36,8 @@ import platform.CoreFoundation.kCFNumberSInt32Type
 import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
+import platform.Foundation.CFBridgingRetain
+import platform.LocalAuthentication.LAContext
 import platform.Security.SecAccessControlCreateWithFlags
 import platform.Security.SecKeyCopyAttributes
 import platform.Security.SecKeyCopyPublicKey
@@ -44,8 +46,10 @@ import platform.Security.SecKeyCreateEncryptedData
 import platform.Security.SecKeyCreateRandomKey
 import platform.Security.SecKeyCreateWithData
 import platform.Security.SecKeyRef
+import platform.Security.kSecAccessControlBiometryCurrentSet
 import platform.Security.kSecAccessControlPrivateKeyUsage
 import platform.Security.kSecAttrAccessControl
+import platform.Security.kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
 import platform.Security.kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 import platform.Security.kSecAttrIsPermanent
 import platform.Security.kSecAttrKeyClass
@@ -57,10 +61,12 @@ import platform.Security.kSecAttrTokenID
 import platform.Security.kSecAttrTokenIDSecureEnclave
 import platform.Security.kSecKeyAlgorithmECIESEncryptionCofactorVariableIVX963SHA256AESGCM
 import platform.Security.kSecPrivateKeyAttrs
+import platform.Security.kSecUseAuthenticationContext
 import platform.posix.memset
 
 /**
- * The few CoreFoundation and Security.framework calls [IosSecureEnclaveSecret] needs: the iOS
+ * The few CoreFoundation and Security.framework calls [IosSecureEnclaveSecret] and
+ * [IosBiometricKey] need: the iOS
  * twin of the desktop's MacSecurity, the same calls through Kotlin/Native's bindings instead of
  * JNA. A failing call throws an [IllegalStateException] naming the call and its error code,
  * never key material.
@@ -82,15 +88,26 @@ internal object IosSecurity {
      * user-authentication requirement (the envelope's `HW_pw`): the access control CryptoKit
      * gives such a key by default. The caller releases it.
      */
-    fun createEnclaveKey(): SecKeyRef = owning {
+    fun createEnclaveKey(): SecKeyRef =
+        createEnclaveKey(kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecAccessControlPrivateKeyUsage)
+
+    /**
+     * A new P-256 key inside the Secure Enclave for the envelope's biometric path (`HW_bio`, rule 3
+     * of docs/keys-and-signing.md): `[.privateKeyUsage, .biometryCurrentSet]` under
+     * `WhenPasscodeSetThisDeviceOnly`, so every use of its private half needs a biometric of the
+     * set enrolled now, the enclave enforcing it, and removing the passcode or changing the set
+     * makes the key useless. No passcode fallback (`.userPresence` would be one). Kept, like
+     * [createEnclaveKey]'s, only in its own handle. The caller releases it.
+     */
+    fun createBiometricEnclaveKey(): SecKeyRef = createEnclaveKey(
+        kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+        kSecAccessControlPrivateKeyUsage or kSecAccessControlBiometryCurrentSet,
+    )
+
+    private fun createEnclaveKey(accessible: CFStringRef?, flags: ULong): SecKeyRef = owning {
         val access = own(
             call("SecAccessControlCreateWithFlags") { error ->
-                SecAccessControlCreateWithFlags(
-                    null,
-                    kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-                    kSecAccessControlPrivateKeyUsage,
-                    error,
-                )
+                SecAccessControlCreateWithFlags(null, accessible, flags, error)
             },
         )
         val privateAttributes = own(dictionary(kSecAttrIsPermanent to kCFBooleanFalse, kSecAttrAccessControl to access))
@@ -120,17 +137,22 @@ internal object IosSecurity {
         }
     }
 
-    /** The enclave key [handle] ([tokenObjectIdOf]) refers to. The caller releases it. */
-    fun restoreEnclaveKey(handle: ByteArray): SecKeyRef = owning {
+    /**
+     * The enclave key [handle] ([tokenObjectIdOf]) refers to. A key that needs a biometric uses
+     * [authentication], a context the user already passed, instead of asking again. The caller
+     * releases it.
+     */
+    fun restoreEnclaveKey(handle: ByteArray, authentication: LAContext? = null): SecKeyRef = owning {
         val data = own(data(handle))
-        val attributes = own(
-            dictionary(
-                kSecAttrKeyType to kSecAttrKeyTypeECSECPrimeRandom,
-                kSecAttrKeyClass to kSecAttrKeyClassPrivate,
-                kSecAttrTokenID to kSecAttrTokenIDSecureEnclave,
-                tokenObjectId to data,
-            ),
+        val context = authentication?.let { own(checkNotNull(CFBridgingRetain(it)) { "CFBridgingRetain failed" }) }
+        val entries = mutableListOf<Pair<CPointer<*>?, CPointer<*>?>>(
+            kSecAttrKeyType to kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeyClass to kSecAttrKeyClassPrivate,
+            kSecAttrTokenID to kSecAttrTokenIDSecureEnclave,
+            tokenObjectId to data,
         )
+        if (context != null) entries += kSecUseAuthenticationContext to context
+        val attributes = own(dictionary(*entries.toTypedArray()))
         call("SecKeyCreateWithData") { error -> SecKeyCreateWithData(data, attributes, error) }
     }
 
