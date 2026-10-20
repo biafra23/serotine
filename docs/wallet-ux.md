@@ -82,6 +82,12 @@ the text wins.
   - *Co-signer*: a Safe with some owners held here, fewer than its threshold.
   - *Watch-only*: nothing held here. Send is greyed out (a tap says why);
     Receive and the balances are as for any account.
+
+  The badge's text is never broken over two lines: where it does not fit on
+  one beside the name (a narrow phone, a long name), the badge shows its icon
+  instead, in the same colours (a key, a person with a key, an eye). A screen
+  reader says its text either way, and the account's own screen, where it
+  fits, shows the text (#68).
 - **A missing prerequisite greys an action out, never hides it** (owner
   ruling, 2026-10-18, #55). An action that cannot be done because something
   it needs is missing is shown disabled, and a tap on it still works: it says
