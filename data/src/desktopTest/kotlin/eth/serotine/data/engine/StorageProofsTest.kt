@@ -10,21 +10,23 @@ import kotlin.test.assertNull
  */
 class StorageProofsTest {
 
-    /** A storage proof's slots and blocks as a real Sepolia engine answered them, on the owner's phone. */
+    /**
+     * A storage proof's slots and blocks as a real Sepolia engine answered them, on the owner's
+     * phone, before Myotis #658 made the optimistic slot the head block's own (it was then the
+     * signature slot, 11_378_991).
+     */
     private fun label(
         method: String? = "stateRootMatch",
         matched: Long = 11_378_990,
         finalizedSlot: Long = 11_378_912,
-        optimisticSlot: Long = 11_378_991,
+        optimisticSlot: Long = 11_378_990,
         peerBlock: Long = 11_937_375,
         finalizedBlock: Long = 11_937_299,
-        optimisticBlock: Long = 11_937_375,
-    ) = storageProofLabel(method, matched, finalizedSlot, optimisticSlot, peerBlock, finalizedBlock, optimisticBlock)
+    ) = storageProofLabel(method, matched, finalizedSlot, optimisticSlot, peerBlock, finalizedBlock)
 
     @Test
-    fun aMatchJustBehindTheOptimisticSlotIsShownWithItsBlockAndAnchoredToTheSlotItMatched() {
-        // The attested slot the anchor recorded, one behind the light client's signature slot:
-        // every Safe slot on Sepolia was proven so, and thrown away before.
+    fun aMatchAtOrBehindTheOptimisticSlotIsShownWithItsBlockAndAnchoredToTheSlotItMatched() {
+        // A read proven at the head reports the head's own slot.
         assertEquals(ProofLabel(11_937_375, ProofAnchor.Attested(11_378_990)), label())
         // Three slots behind (missed slots between): the same.
         assertEquals(
@@ -36,7 +38,6 @@ class StorageProofsTest {
                 optimisticSlot = 11_378_968,
                 peerBlockNumber = 11_937_352,
                 finalizedBlockNumber = 11_937_268,
-                optimisticBlockNumber = 11_937_352,
             ),
         )
     }
@@ -53,21 +54,33 @@ class StorageProofsTest {
     @Test
     fun aProofOfAHeadTheOptimisticOneMovedPastIsStillItsOwnBlock() {
         // Not tied to the optimistic block: the reading's one-anchor check and its retry handle that.
-        assertEquals(11_937_372, label(peerBlock = 11_937_372, optimisticBlock = 11_937_376)?.blockNumber)
+        assertEquals(11_937_372, label(matched = 11_378_988, peerBlock = 11_937_372)?.blockNumber)
     }
 
     @Test
-    fun anExactMatchIsTheAnchorsOwnBlock() {
+    fun aMatchAtTheFinalizedSlotIsShownWithTheBlockItWasReadAt() {
         assertEquals(
             ProofLabel(11_937_299, ProofAnchor.Attested(11_378_912)),
-            label(matched = 11_378_912),
-            "the finalized slot: the finalized block",
+            label(matched = 11_378_912, peerBlock = 11_937_299),
         )
+    }
+
+    @Test
+    fun noSlotPicksOneOfTheResultsBlockNumbers() {
+        // Sampled at other moments than the slots: an exact match is still the proof's own block,
+        // and below the finalized one it is no label.
+        assertNull(label(matched = 11_378_990, peerBlock = 1))
+        assertNull(label(matched = 11_378_912, peerBlock = 11_937_298))
+    }
+
+    @Test
+    fun aHeadTrailingTheFinalityStillLabelsAProofAtTheFinalizedSlot() {
+        // From Gloas on the resolved optimistic head can trail the finalized one.
         assertEquals(
-            ProofLabel(11_937_375, ProofAnchor.Attested(11_378_991)),
-            label(matched = 11_378_991, peerBlock = 1),
-            "the optimistic slot: its block",
+            ProofLabel(11_937_299, ProofAnchor.Attested(11_378_912)),
+            label(matched = 11_378_912, optimisticSlot = 11_378_900, peerBlock = 11_937_299),
         )
+        assertNull(label(matched = 11_378_913, optimisticSlot = 11_378_900), "above the resolved head")
     }
 
     @Test
@@ -86,7 +99,7 @@ class StorageProofsTest {
     @Test
     fun aMatchOutsideTheVerifiedRangeOrNoMatchIsNoLabel() {
         assertNull(label(matched = 11_378_911), "below the finalized slot")
-        assertNull(label(matched = 11_378_992), "beyond the optimistic slot")
+        assertNull(label(matched = 11_378_991), "beyond the optimistic slot")
         assertNull(label(matched = -1), "no attestation matched")
     }
 

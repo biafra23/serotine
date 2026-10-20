@@ -122,6 +122,17 @@ jobs:
           echo "bundled libjvm: $info"
           echo "$info" | grep -q "$want_elf" \
             || { echo "::error::ELF arch mismatch: expected $want_elf in: $info"; exit 1; }
+          # The Myotis engine's host library and JNA's stub (stageMyotisLibrary,
+          # desktop-app/build.gradle.kts), of the deb's arch: without them the app runs with
+          # no light client, which nothing else here would notice.
+          for lib in libmyotis_engine.so libjnidispatch.so; do
+            f=$(find "$ex" -type f -name "$lib" -path '*/resources/*' | head -n1)
+            [ -n "$f" ] || { echo "::error::$lib missing from the deb's resources"; exit 1; }
+            info=$(file -b "$f")
+            echo "bundled $lib: $info"
+            echo "$info" | grep -q "$want_elf" \
+              || { echo "::error::$lib ELF arch mismatch: expected $want_elf in: $info"; exit 1; }
+          done
           echo "OK: ${{ matrix.arch }} deb is $want_deb/$want_elf"
 
       - name: Upload DEB

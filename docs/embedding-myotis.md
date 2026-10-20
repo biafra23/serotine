@@ -61,10 +61,16 @@ consumer developed against an unreleased engine, Myotis's
   background, as in the Myotis app. Until then the one background run is the
   daily network-upgrade check (*Network upgrades*, below): a JobScheduler job
   that holds the engine awake for five minutes.
-- **Desktop:** the JVM jar does not carry the host library; the desktop
-  packaging stages it into the app's resources, as Myotis's own desktop app
-  does (`appResourcesRootDir`), one per OS/arch leg of the installer
-  workflows.
+- **Desktop:** the JVM jar does not carry the host library;
+  `eth.myotis:myotis-engine-natives-<platform>` does, at the engine's version
+  (macOS arm64 and x64, Linux x64 and arm64; Windows has none yet). The
+  desktop's `stageMyotisLibrary` takes the host's library out of it, with
+  JNA's native stub, into the app's resources (`appResourcesRootDir`), as
+  Myotis's own desktop app does, so each OS/arch leg of the installer
+  workflows ships its own, and `main()` points the engine at it. The packaged
+  app never loads a library extracted to a temporary file, which a signed
+  macOS bundle may refuse. A Windows build runs with no light client, and its
+  balances say so.
 - **iOS** consumes the engine's plain C ABI, as Myotis's `:app-ios` does;
   that is the iOS part of the plan, not this page.
 
@@ -169,14 +175,15 @@ consumer developed against an unreleased engine, Myotis's
   (`ProofAnchor`) is the attested slot whose state root it matched, from the
   light client's own state (for a header-chain match, the block walked from,
   whichever head it was walked to). Its label is the block it is shown with:
-  matched at the finalized slot, the finalized block; at the optimistic
-  slot, the optimistic block; at an attested slot between the two, the usual
-  case, the block the proof anchors to (`peerBlockNumber`, as balances and
-  code are shown), not below the finalized block. That number is the serving
-  peer's report on some engines, so it is shown, never relied on. The matched
-  slot is the attested slot the anchor recorded, while the result's
-  optimistic slot is the light client's signature slot, about one past it, so
-  an exact optimistic match seldom happens. Any other match is no proof.
+  the block of the root the proof was read at (`peerBlockNumber`, as balances
+  and code are shown), not below the finalized block, once the matched slot
+  lies from the finalized slot up to the head the reads resolved, the later of
+  it and the optimistic slot (from Gloas on the optimistic one can trail the
+  finalized one). Since Myotis 0.1.17 the slots are the blocks' own (Myotis
+  #658), and the result's block numbers are sampled at other moments than its
+  slots, so no slot picks one of them. That number is the serving peer's
+  report on some engines, so it is shown, never relied on. Any other match is
+  no proof.
   Every proof of a reading must share one anchor (and one label), and the
   state must not be before the code's, as their anchors tell: attested slots
   compared, walked blocks compared. A walk against a match, which nothing
@@ -250,11 +257,12 @@ consumer developed against an unreleased engine, Myotis's
       }
   }
   ```
-- **Desktop, until the installers stage the host library.**
-  `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` puts a locally built
-  `libmyotis_engine.{dylib,so,dll}` on `java.library.path` (Myotis:
-  `./gradlew cargoBuildHost`, then `rust/target/release`). The same property
-  runs `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
+- **Desktop, a host library built from Myotis.** `:desktop-app:run` uses the
+  published one from the natives artifact.
+  `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` runs a locally built
+  `libmyotis_engine.{dylib,so}` instead (Myotis: `./gradlew cargoBuildHost`,
+  then `rust/target/release`). The same property runs
+  `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
 - **Android 10 and INTERNET.** An install that gains INTERNET on an update,
   rather than having it from the first install, can keep getting `EPERM` from
   netd's eBPF socket filter until it is reinstalled or the device reboots. The
