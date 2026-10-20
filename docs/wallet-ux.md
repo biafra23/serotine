@@ -90,8 +90,9 @@ the text wins.
   account at all is not shown.
 - **The keyboard never hides a form's button** (owner's request,
   2026-10-20). Every screen ends at the top of the on-screen keyboard (the
-  `imePadding` around the screens in `App.kt`, and `adjustResize` on
-  Android), so what the keyboard would cover can be scrolled to while the
+  `imePadding` around the screens in `App.kt`, `adjustResize` on Android,
+  and on iOS `OnFocusBehavior.DoNothing`, so the view is not lifted a second
+  time), so what the keyboard would cover can be scrolled to while the
   field typed into stays in view. The keyboard's Done key on a form's last
   field does what the form's button does (`submitOnDone`): it closes the
   keyboard and, when the button is enabled, submits; a field before it
