@@ -115,8 +115,8 @@ sealed interface SafeQueue {
  * its owners' signatures this device holds against the threshold ([signatures], "1 of 2
  * signatures on this device"), [refusal] when this wallet will not sign it ("Not signed here: a
  * delegate call"), and [warning], what to know before anyone signs it (a token that only takes a
- * built-in token's symbol, a module enabled, a guard removed, a fallback handler set); each null
- * when there is none.
+ * built-in token's symbol, a module enabled, a guard removed, a fallback handler set or removed);
+ * each null when there is none.
  */
 data class QueueRow(
     val hash: String,

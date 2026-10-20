@@ -5,6 +5,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.FALLBACK_HANDLER_REMOVED
 import eth.serotine.ui.components.GasTermsItem
 import eth.serotine.ui.components.MODULE_ENABLED_REFUSAL
 import eth.serotine.ui.components.NotSentItem
@@ -217,6 +218,14 @@ private fun SafeTxUnpinnedFallbackHandlerPreview() = SafeTxPreview(
         canSign = false,
         canApprove = false,
         canExecute = false,
+    ),
+)
+
+@Preview
+@Composable
+private fun SafeTxFallbackHandlerRemovedPreview() = SafeTxPreview(
+    overview.copy(
+        action = SafeTxActionItem(title = "Remove the fallback handler", warning = FALLBACK_HANDLER_REMOVED),
     ),
 )
 
@@ -506,4 +515,5 @@ internal val safeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SafeTxSwapNotUniswapPreview() },
     { SafeTxSwapApprovalPreview() },
     { SafeTxSwapProposeAgainGreyedPreview() },
+    { SafeTxFallbackHandlerRemovedPreview() },
 )

@@ -235,6 +235,19 @@ internal class FakeLogIndex : LogIndex {
 
     override fun observeCoverage(): Flow<LogCoverageReading> = coverage
 
-    override suspend fun logs(query: LogQuery): LogsReading =
-        LogsReading.Logs(logs.filter { it.blockNumber in query.fromBlock..query.toBlock })
+    /** The [logs] in the query's range that it selects, as the engine selects them. */
+    override suspend fun logs(query: LogQuery): LogsReading = LogsReading.Logs(
+        logs.filter { log ->
+            val topics = log.log.topics
+            log.blockNumber in query.fromBlock..query.toBlock &&
+                (query.topic0s.isEmpty() || topics.firstOrNull() in query.topic0s) &&
+                when (val key = query.key) {
+                    is LogWatchKey.Emitter -> log.log.address == key.address
+                    is LogWatchKey.Mention -> topics.getOrNull(query.position ?: 0) == topicOf(key.address)
+                }
+        },
+    )
 }
+
+/** [address] as a 32-byte log topic: left-padded with zeros. */
+internal fun topicOf(address: Address): String = "0x" + "00".repeat(12) + address.hex.removePrefix("0x")

@@ -65,6 +65,7 @@ import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.PlanSafe
@@ -368,14 +369,16 @@ class AppGraph(
     )
 
     /**
-     * The transactions this device sent for the account at [address] and, for a Safe, its events on
-     * chain (docs/wallet-ux.md, screen 25).
+     * The transactions this device sent for the account at [address], its token transfers and, for
+     * a Safe, its events on chain (docs/wallet-ux.md, screen 25).
      */
     fun activityViewModel(address: Address): ActivityViewModel = ActivityViewModel(
         address,
         ObserveAccountHistory(transactionHistory),
         ObserveAccounts(accounts),
         ObserveSafeHistory(logIndex, historyStarts),
+        ObserveTokenTransfers(logIndex, historyStarts),
+        knownTokens(),
         network,
     )
 

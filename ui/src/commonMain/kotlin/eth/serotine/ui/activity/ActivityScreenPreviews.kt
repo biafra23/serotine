@@ -75,9 +75,56 @@ private val rows = listOf(
     ),
 )
 
-private const val SAFE_COVERAGE = "Transactions sent from this device. Its events on chain from block " +
-    "9,400,000 on, when it was added here: checked from block 9,410,000 so far, the blocks before are still " +
-    "being checked. Token transfers are not listed yet."
+private const val SAFE_COVERAGE = "Transactions sent from this device. On chain from block 9,400,000 on, " +
+    "when it was added here: its events, checked from block 9,410,000 so far; its token transfers."
+
+private const val ACCOUNT_COVERAGE = "Transactions sent from this device. On chain from block 9,400,000 on, " +
+    "when it was added here: its token transfers. ETH it received, and transactions sent from it elsewhere, " +
+    "are not listed yet."
+
+/** An account's token transfers among a transaction sent from here. */
+private val tokenRows = listOf(
+    ActivityRow(
+        key = "0x" + "b".repeat(64) + ":2",
+        title = "Received 250 USDC",
+        detail = "From Treasury · 0xfB69…d359",
+        about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        time = "Block 9,417,045",
+        status = "On chain, from the token's verified logs",
+        state = ActivityState.DONE,
+        opens = null,
+    ),
+    ActivityRow(
+        key = "0x" + "c".repeat(64),
+        title = "Sent 40.5 USDC",
+        detail = "To Bob · 0x5aAe…eAed",
+        about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        time = "Oct 19, 2026, 2:02 PM",
+        status = "Finalized in block 9,412,118",
+        state = ActivityState.DONE,
+        opens = "0x" + "c".repeat(64),
+    ),
+    ActivityRow(
+        key = "0x" + "d".repeat(64) + ":0",
+        title = "An unlisted token logged a transfer to it",
+        detail = "Contract 0x27b1…1c26",
+        about = "0x27b1fdb04752bbc536007a920d24acb045561c26",
+        time = "Block 9,408,511",
+        status = "The claim of a contract the wallet does not list: add it in Settings to see what moved",
+        state = ActivityState.UNKNOWN,
+        opens = null,
+    ),
+    ActivityRow(
+        key = "0x" + "e".repeat(64) + ":5",
+        title = "Received 1.25 LINK",
+        detail = "From Carol · 0xdbF0…C6FB",
+        about = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+        time = "Block 9,402,980",
+        status = "On chain, from the token's verified logs",
+        state = ActivityState.DONE,
+        opens = null,
+    ),
+)
 
 /** A Safe's events among a transaction sent from here, as its Activity merges them by block. */
 private val safeRows = listOf(
@@ -164,6 +211,10 @@ private fun ActivitySafeDarkPreview() =
 
 @Preview
 @Composable
+private fun ActivityTokensPreview() = ActivityPreview(ActivityUiState.Shown("Alice", tokenRows, ACCOUNT_COVERAGE))
+
+@Preview
+@Composable
 private fun ActivityLoadingPreview() = ActivityPreview(ActivityUiState.Loading("Alice"))
 
 @Preview
@@ -184,4 +235,5 @@ internal val activityScreenPreviews: List<@Composable () -> Unit> = listOf(
     { ActivityUnavailablePreview() },
     { ActivitySafePreview() },
     { ActivitySafeDarkPreview() },
+    { ActivityTokensPreview() },
 )
