@@ -22,7 +22,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.isSpecified
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.usecase.SafeControl
@@ -127,9 +126,10 @@ fun NameWithControlBadge(name: String, control: Control, modifier: Modifier = Mo
         layout(layoutWidth, layoutHeight) {
             val badgeX = if (beside) named.width + gap else 0
             val badgeY = if (beside) Alignment.CenterVertically.align(badge.height, layoutHeight) else named.height
-            named.place(0, if (beside) Alignment.CenterVertically.align(named.height, layoutHeight) else 0)
-            badge.place(badgeX, badgeY)
-            voice.place(badgeX, badgeY)
+            // Relative: mirrored in a right-to-left layout, as the Row this replaced was.
+            named.placeRelative(0, if (beside) Alignment.CenterVertically.align(named.height, layoutHeight) else 0)
+            badge.placeRelative(badgeX, badgeY)
+            voice.placeRelative(badgeX, badgeY)
         }
     }
 }
@@ -173,5 +173,6 @@ private fun BadgeText(control: Control, modifier: Modifier = Modifier) {
 @Composable
 private fun iconSize(): Dp {
     val lineHeight = MaterialTheme.typography.labelSmall.lineHeight
-    return if (lineHeight.isSpecified) with(LocalDensity.current) { lineHeight.toDp() } else 16.dp
+    // Only an sp line height converts to dp; an em or unspecified one keeps labelSmall's 16.
+    return if (lineHeight.isSp) with(LocalDensity.current) { lineHeight.toDp() } else 16.dp
 }
