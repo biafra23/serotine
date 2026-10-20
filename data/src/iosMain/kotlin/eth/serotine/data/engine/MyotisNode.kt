@@ -261,7 +261,9 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             }
             // The head block's time from its slot, the consensus rule for an execution
             // payload's timestamp (genesis + slot × seconds per slot): verified data only. The
-            // optimistic slot is the head block's own (Myotis #658).
+            // optimistic slot is the head block's own (Myotis #658): the iOS module decodes it
+            // from the same status JSON key ("optimisticSlot") RustChainHandle.beaconStatus()
+            // reads on the JVM, so both nodes date the head alike.
             val slot = status.optimisticSlot
             val headTimestamp = if (slot > 0 && running.genesisTime > 0 && running.secondsPerSlot > 0) {
                 running.genesisTime + slot * running.secondsPerSlot

@@ -45,10 +45,18 @@ jobs:
       # The simulator tests run commonTest on iosSimulatorArm64 (the runner is Apple
       # silicon); the device target is compiled, which links nothing yet.
       - name: Compile and test the iOS targets
+        # Retried like ci.yml's build, for transient repository-resolution blips (this job
+        # resolves the iOS engine's klibs from the maven-repo branch cold).
         run: |
-          ./gradlew --stacktrace \
-            :domain:iosSimulatorArm64Test \
-            :data:iosSimulatorArm64Test \
-            :data:compileKotlinIosArm64 \
-            :ui:iosSimulatorArm64Test \
-            :ui:compileKotlinIosArm64
+          for attempt in 1 2 3; do
+            ./gradlew --stacktrace \
+              :domain:iosSimulatorArm64Test \
+              :data:iosSimulatorArm64Test \
+              :data:compileKotlinIosArm64 \
+              :ui:iosSimulatorArm64Test \
+              :ui:compileKotlinIosArm64 && exit 0
+            echo "::warning::Gradle attempt $attempt failed; retrying in 25s (transient dependency resolution?)"
+            sleep 25
+          done
+          echo "::error::Gradle failed after 3 attempts"
+          exit 1
