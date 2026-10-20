@@ -35,7 +35,7 @@ object SerotineIcons {
         )
     }
 
-    /** A wallet: the Assets tab. Material Symbols `account_balance_wallet`. */
+    /** A wallet: the Accounts tab. Material Symbols `account_balance_wallet`. */
     val Wallet: ImageVector by lazy {
         symbol(
             "Wallet",

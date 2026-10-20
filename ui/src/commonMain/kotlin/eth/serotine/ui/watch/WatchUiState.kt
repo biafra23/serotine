@@ -4,13 +4,18 @@ import eth.serotine.ui.components.Control
 
 /**
  * Everything the Watch address screen renders (docs/wallet-ux.md, screen 10): what is typed
- * ([address], [name]), why the address cannot be read ([addressError]), what the light client
- * says is at it ([detection], null until the text is an address), and how adding went.
+ * ([address]: an address or an ENS name; [name]), why it names no address ([addressError]),
+ * what the field says otherwise ([addressNote]: a name being resolved, the block it was
+ * resolved at), whether a name that could not be verified may be resolved again
+ * ([canRetryLookup]), what the light client says is at the address ([detection], null until
+ * the text names one), and how adding went.
  */
 data class WatchUiState(
     val address: String = "",
     val name: String = "",
     val addressError: String? = null,
+    val addressNote: String? = null,
+    val canRetryLookup: Boolean = false,
     val detection: Detection? = null,
     val adding: Boolean = false,
     val nameError: String? = null,

@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +56,9 @@ const val WATCH_DETECTION_TAG = "watch-detection"
 /** Test tag of the checksummed address on the detection card, for UI tests. */
 const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
 
+/** What the address field says while nothing else is to be said of it. */
+private const val ADDRESS_HINT = "0x and 40 hexadecimal digits, or an ENS name like name.eth"
+
 /** Binds [WatchScreen] to its ViewModel; an added address ends the screen through [onAdded]. */
 @Composable
 fun WatchRoute(
@@ -70,13 +74,22 @@ fun WatchRoute(
     LaunchedEffect(state.done) {
         if (state.done) added()
     }
-    WatchScreen(state, strip, viewModel::onAddressChange, viewModel::onNameChange, viewModel::add, onBack, modifier)
+    WatchScreen(
+        state,
+        strip,
+        viewModel::onAddressChange,
+        viewModel::onNameChange,
+        viewModel::add,
+        onBack,
+        modifier,
+        onRetryLookup = viewModel::onRetryLookup,
+    )
 }
 
 /**
- * Watch address (docs/wallet-ux.md, screen 10) as a pure function of [state]: the address and
- * a name, the detection card built from verified code, and Add, enabled only for a verified
- * account.
+ * Watch address (docs/wallet-ux.md, screen 10) as a pure function of [state]: the address or
+ * ENS name and a name, the detection card built from verified code, and Add, enabled only for
+ * a verified account. [onRetryLookup] resolves a name again that could not be verified.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +101,7 @@ fun WatchScreen(
     onAdd: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onRetryLookup: () -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier,
@@ -112,17 +126,18 @@ fun WatchScreen(
                     onValueChange = onAddressChange,
                     modifier = Modifier.fillMaxWidth().testTag(WATCH_ADDRESS_TAG),
                     enabled = !state.adding,
-                    label = { Text("Address") },
+                    label = { Text("Address or ENS name") },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                     singleLine = true,
                     isError = state.addressError != null,
-                    supportingText = { Text(state.addressError ?: "0x and 40 hexadecimal digits") },
+                    supportingText = { Text(state.addressError ?: state.addressNote ?: ADDRESS_HINT) },
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrectEnabled = false,
                         keyboardType = KeyboardType.Ascii,
                     ),
                 )
+                if (state.canRetryLookup) TextButton(onClick = onRetryLookup) { Text("Try again") }
                 OutlinedTextField(
                     value = state.name,
                     onValueChange = onNameChange,

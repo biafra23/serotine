@@ -140,4 +140,34 @@ class WatchScreenTest {
         rule.onNodeWithText("Add").assertIsEnabled().performClick()
         assertEquals(1, adds)
     }
+
+    @Test
+    fun aNameShowsWhereItWasResolvedAndOneNotVerifiedCanBeTriedAgain() {
+        var retries = 0
+        var state by mutableStateOf(
+            WatchUiState(
+                address = "savings-example.eth",
+                addressNote = "Resolves to $vitalik, verified at finalized block 9,412,040",
+                detection = Detection.Account(vitalik, "Checked at block 9,412,118", null),
+            ),
+        )
+        rule.setContent {
+            SerotineTheme { WatchScreen(state, verifiedStripSample, {}, {}, {}, {}, onRetryLookup = { retries++ }) }
+        }
+
+        rule.onNodeWithText("Address or ENS name").assertIsDisplayed()
+        rule.onNodeWithText("Resolves to $vitalik, verified at finalized block 9,412,040").assertIsDisplayed()
+        rule.onNodeWithTag(WATCH_CHECKSUMMED_TAG).assertTextEquals(vitalik)
+        rule.onNodeWithText("Try again").assertDoesNotExist()
+
+        state = WatchUiState(
+            address = "savings-example.eth",
+            addressError = "The name could not be resolved with verified calls this time.",
+            canRetryLookup = true,
+        )
+        rule.onNodeWithText("The name could not be resolved with verified calls this time.").assertIsDisplayed()
+        rule.onNodeWithText("Add").assertIsNotEnabled()
+        rule.onNodeWithText("Try again").performClick()
+        assertEquals(1, retries)
+    }
 }

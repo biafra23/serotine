@@ -90,9 +90,9 @@ import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
+import eth.serotine.ui.accounts.AccountsViewModel
 import eth.serotine.ui.activity.ActivityViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
-import eth.serotine.ui.assets.AssetsViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
@@ -198,8 +198,8 @@ class AppGraph(
 
     private fun observeUpgradeWarning() = ObserveUpgradeWarning(networkUpgrades, knownUpgrades, lightClient)
 
-    fun assetsViewModel(): AssetsViewModel =
-        AssetsViewModel(
+    fun accountsViewModel(): AccountsViewModel =
+        AccountsViewModel(
             ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
             ObserveSafes(accounts, observeSafe()),
             ObserveLightClient(lightClient),
@@ -401,6 +401,7 @@ class AppGraph(
         ObserveAddressKind(addressKinds),
         ObserveAccounts(accounts),
         WatchAddress(accounts, addressKinds),
+        ResolveRecipient(names),
     )
 
     fun settingsViewModel(): SettingsViewModel =

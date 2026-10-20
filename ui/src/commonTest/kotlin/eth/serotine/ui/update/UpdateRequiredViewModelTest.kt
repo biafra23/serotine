@@ -60,7 +60,7 @@ class UpdateRequiredViewModelTest {
         runCurrent()
         assertEquals(UpdateRequiredUiState.NotRequired, viewModel.uiState.value)
 
-        // Peers alone: the app keeps its screens, the Assets banner says to update.
+        // Peers alone: the app keeps its screens, the Accounts banner says to update.
         report.value = activated
         runCurrent()
         assertEquals(UpdateRequiredUiState.NotRequired, viewModel.uiState.value)
