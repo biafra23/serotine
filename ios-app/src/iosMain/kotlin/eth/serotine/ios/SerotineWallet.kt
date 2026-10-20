@@ -2,6 +2,7 @@ package eth.serotine.ios
 
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.IosBiometricKey
 import eth.serotine.data.keys.PasswordOnlyTier
@@ -17,9 +18,11 @@ import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
+import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.UpgradeNotices
@@ -104,8 +107,10 @@ class SerotineWallet {
     private val notifier = IosUpgradeNotifier(Network.SEPOLIA)
     private val upgradeNotices = UpgradeNotices(knownUpgrades, notifier)
 
-    // One instance each, which the graph and the background work share.
-    private val accounts = FileAccountRepository("$dataDir/accounts.json")
+    // One instance each, which the graph and the background work share. Each account added is
+    // noted where its history starts (issue #85): addresses with a block or a time, public data only.
+    private val historyStarts = FileHistoryStarts("$dataDir/history-starts.json")
+    private val accounts = HistoryNotingAccounts(FileAccountRepository("$dataDir/accounts.json"), historyStarts)
 
     // The transactions signed here, with their signed bytes (public once broadcast), and every one
     // of them kept for good with how it ended (issue #85): each record goes into both.
@@ -148,6 +153,8 @@ class SerotineWallet {
             signer = keyStore,
             sentTransfers = sentTransfers,
             transactionHistory = transactionHistory,
+            historyStarts = historyStarts,
+            logIndex = node.logIndex,
             // The Safe transactions waiting for their owners, with the signatures collected (public).
             safeTxQueue = FileSafeTxQueue("$dataDir/safe-tx-queue.json"),
             signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
@@ -234,6 +241,19 @@ class SerotineWallet {
                 // How each transaction sent from here ends is recorded whatever screen is open (issue #85).
                 reportingFailure("following sent transactions") {
                     FollowSentTransactions(transactionHistory, sentRecord, node.receipts, node.transactionInputs)()
+                }
+            },
+            scope.launch {
+                // The engine's log index follows every account from where its history starts (issue #85).
+                reportingFailure("following the accounts' logs") {
+                    FollowAccountLogs(
+                        accounts,
+                        historyStarts,
+                        transactionHistory,
+                        node.lightClient,
+                        node.logIndex,
+                        Network.SEPOLIA,
+                    )()
                 }
             },
         )

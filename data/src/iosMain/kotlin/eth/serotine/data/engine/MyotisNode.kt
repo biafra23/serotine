@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
@@ -134,6 +135,13 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
     /** ENS names, resolved against beacon-finalized state. */
     val names: NameResolver = EngineNames(chain, Dispatchers.IO)
+
+    /**
+     * The engine's verified log index, not yet on iOS: Myotis's iOS library exposes no log index
+     * in its typed API (`io.myotis.engine.ios`), so this one answers as with no engine, and the
+     * histories it feeds read as unavailable rather than empty.
+     */
+    val logIndex: LogIndex = EngineLogIndex(null, Dispatchers.IO, POLL_INTERVAL)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
