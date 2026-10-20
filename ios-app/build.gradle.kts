@@ -24,6 +24,10 @@ kotlin {
     }
 
     sourceSets {
+        // The host is platform calls through (Foundation, UIKit, UserNotifications).
+        all {
+            languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
+        }
         iosMain.dependencies {
             implementation(project(":ui"))
             implementation(project(":data"))
