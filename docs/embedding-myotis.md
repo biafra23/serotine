@@ -175,14 +175,15 @@ consumer developed against an unreleased engine, Myotis's
   (`ProofAnchor`) is the attested slot whose state root it matched, from the
   light client's own state (for a header-chain match, the block walked from,
   whichever head it was walked to). Its label is the block it is shown with:
-  matched at the finalized slot, the finalized block; at the optimistic
-  slot, the optimistic block; at an attested slot between the two, the usual
-  case, the block the proof anchors to (`peerBlockNumber`, as balances and
-  code are shown), not below the finalized block. That number is the serving
-  peer's report on some engines, so it is shown, never relied on. The matched
-  slot is the attested slot the anchor recorded, while the result's
-  optimistic slot is the light client's signature slot, about one past it, so
-  an exact optimistic match seldom happens. Any other match is no proof.
+  the block of the root the proof was read at (`peerBlockNumber`, as balances
+  and code are shown), not below the finalized block, once the matched slot
+  lies from the finalized slot up to the head the reads resolved, the later of
+  it and the optimistic slot (from Gloas on the optimistic one can trail the
+  finalized one). Since Myotis 0.1.17 the slots are the blocks' own (Myotis
+  #658), and the result's block numbers are sampled at other moments than its
+  slots, so no slot picks one of them. That number is the serving peer's
+  report on some engines, so it is shown, never relied on. Any other match is
+  no proof.
   Every proof of a reading must share one anchor (and one label), and the
   state must not be before the code's, as their anchors tell: attested slots
   compared, walked blocks compared. A walk against a match, which nothing
