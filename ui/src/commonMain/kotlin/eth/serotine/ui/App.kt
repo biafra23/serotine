@@ -39,10 +39,10 @@ import androidx.navigation.navArgument
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.ui.accountdetail.AccountDetailRoute
+import eth.serotine.ui.accounts.AccountAction
+import eth.serotine.ui.accounts.AccountsRoute
 import eth.serotine.ui.activity.ActivityRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
-import eth.serotine.ui.assets.AccountAction
-import eth.serotine.ui.assets.AssetsRoute
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
@@ -72,7 +72,7 @@ import eth.serotine.ui.watch.WatchRoute
  * The whole shared UI, identical on every host. A host renders this inside its own
  * window or activity, after building the [graph] with its platform adapters.
  *
- * Two tabs, Assets and Settings, under a bottom bar (a rail on a wide window), around the
+ * Two tabs, Accounts and Settings, under a bottom bar (a rail on a wide window), around the
  * one [NavHost] (docs/architecture.md). Each tab is a nested graph with its own back stack;
  * a flow that ends in a key operation covers the bar. While a network upgrade has left this
  * version unable to follow the network, it shows the update screen and nothing else.
@@ -145,13 +145,13 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
 
 /** The tabs of the bottom bar: each the [graph] of its screens, entered at [start]. */
 private enum class Tab(val label: String, val icon: ImageVector, val graph: String, val start: String) {
-    ASSETS("Assets", SerotineIcons.Wallet, "assets-tab", Destination.ASSETS),
+    ACCOUNTS("Accounts", SerotineIcons.Wallet, "accounts-tab", Destination.ACCOUNTS),
     SETTINGS("Settings", Icons.Filled.Settings, "settings-tab", Destination.SETTINGS),
 }
 
 /**
- * Shows [tab]. The current one again returns to its start. Settings opens over the Assets
- * tab's stack, which stays as the user left it, and Assets closes Settings back down to it
+ * Shows [tab]. The current one again returns to its start. Settings opens over the Accounts
+ * tab's stack, which stays as the user left it, and Accounts closes Settings back down to it
  * — as the back key does. No stack is saved aside, so none can come back after the user has
  * left it by another way (saveState/restoreState would bring back an account screen left by
  * the back key from Settings).
@@ -159,7 +159,7 @@ private enum class Tab(val label: String, val icon: ImageVector, val graph: Stri
 private fun NavController.select(tab: Tab, current: Tab?) {
     when {
         tab == current -> popBackStack(tab.start, inclusive = false)
-        tab == Tab.ASSETS -> popBackStack(Tab.SETTINGS.graph, inclusive = true)
+        tab == Tab.ACCOUNTS -> popBackStack(Tab.SETTINGS.graph, inclusive = true)
         else -> navigate(tab.graph) { launchSingleTop = true }
     }
 }
@@ -187,7 +187,7 @@ private fun Destinations(
                 popUpTo(navController.graph.id) { inclusive = true }
             }
         } else if (navController.currentDestination?.route == Destination.UPDATE_REQUIRED) {
-            navController.navigate(Tab.ASSETS.graph) {
+            navController.navigate(Tab.ACCOUNTS.graph) {
                 popUpTo(Destination.UPDATE_REQUIRED) { inclusive = true }
             }
         }
@@ -195,11 +195,11 @@ private fun Destinations(
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is
     // on the back stack, and is cleared when the screen is popped off it.
-    NavHost(navController, startDestination = Tab.ASSETS.graph, modifier = modifier) {
-        navigation(startDestination = Destination.ASSETS, route = Tab.ASSETS.graph) {
-            composable(Destination.ASSETS) {
-                AssetsRoute(
-                    viewModel = viewModel { graph.assetsViewModel() },
+    NavHost(navController, startDestination = Tab.ACCOUNTS.graph, modifier = modifier) {
+        navigation(startDestination = Destination.ACCOUNTS, route = Tab.ACCOUNTS.graph) {
+            composable(Destination.ACCOUNTS) {
+                AccountsRoute(
+                    viewModel = viewModel { graph.accountsViewModel() },
                     onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
                     onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
                     onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
@@ -248,7 +248,7 @@ private fun Destinations(
                     onGone = { navController.leave(Destination.RECEIVE) },
                 )
             }
-            // In the Assets graph, so the bar stays while they are open over its screens.
+            // In the Accounts graph, so the bar stays while they are open over its screens.
             dialogWithAddress(Destination.RENAME, navController) { address ->
                 RenameAccountRoute(
                     viewModel = viewModel { graph.renameAccountViewModel(address) },
@@ -309,7 +309,7 @@ private fun Destinations(
                 onCreated = { navController.leave(Destination.CREATE_ACCOUNT) },
             )
         }
-        // A Safe's creation ends in its deployment: then where that stands, and back from it to Assets.
+        // A Safe's creation ends in its deployment: then where that stands, and back from it to Accounts.
         composable(Destination.CREATE_SAFE) {
             CreateSafeRoute(
                 viewModel = viewModel { graph.createSafeViewModel() },
@@ -671,7 +671,7 @@ private fun WithAddress(
 }
 
 private object Destination {
-    const val ASSETS = "assets"
+    const val ACCOUNTS = "accounts"
     const val ACCOUNT = "account"
     const val RECEIVE = "receive"
     const val ACTIVITY = "activity"

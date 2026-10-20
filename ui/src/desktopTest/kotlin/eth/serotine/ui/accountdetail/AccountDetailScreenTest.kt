@@ -145,8 +145,11 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Send USDC").performSemanticsAction(SemanticsActions.OnClick)
         rule.onNodeWithText("1.5 ETH").performTouchInput { longClick() }
         rule.onNodeWithText("Send ETH").performSemanticsAction(SemanticsActions.OnClick)
+        // A tap on a row sends its asset.
+        rule.onNodeWithText("5 USDC").performClick()
+        rule.onNodeWithText("1.5 ETH").performClick()
 
-        assertEquals(listOf("send null", "send $contract", "send null"), events)
+        assertEquals(listOf("send null", "send $contract", "send null", "send $contract", "send null"), events)
     }
 
     @Test
@@ -161,6 +164,11 @@ class AccountDetailScreenTest {
             "This account is watch-only: its key is not on this device, so nothing can be sent from it. Import its " +
                 "recovery phrase to send from it.",
         )
+        rule.onNodeWithText("Close").performClick()
+        assertEquals(emptyList(), events.filter { it.startsWith("send") }, "nothing sent")
+        // A tap on the row says the same.
+        rule.onNodeWithText("5 USDC").performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
         rule.onNodeWithText("Close").performClick()
         assertEquals(emptyList(), events.filter { it.startsWith("send") }, "nothing sent")
         rule.onNodeWithText("5 USDC").performTouchInput { longClick() }

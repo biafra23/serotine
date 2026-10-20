@@ -33,9 +33,9 @@ class MenuAction(
 
 /**
  * [content] that opens [onClick] on a tap and its menu of [actions] on a long press, or on a
- * right click with a mouse (desktop). [menuLabel] is what accessibility services announce
- * for the long press. Every action must also be reachable from a visible control elsewhere
- * (docs/wallet-ux.md, *Long press is never the only way*).
+ * right click with a mouse (desktop). [clickLabel] and [menuLabel] are what accessibility
+ * services announce for the tap and the long press. Every action must also be reachable
+ * from a visible control elsewhere (docs/wallet-ux.md, *Long press is never the only way*).
  */
 @Composable
 fun WithActionMenu(
@@ -43,13 +43,19 @@ fun WithActionMenu(
     menuLabel: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    clickLabel: String? = null,
     content: @Composable () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val open by rememberUpdatedState { expanded = true }
     Box(
         modifier
-            .combinedClickable(onClick = onClick, onLongClick = { open() }, onLongClickLabel = menuLabel)
+            .combinedClickable(
+                onClickLabel = clickLabel,
+                onLongClickLabel = menuLabel,
+                onLongClick = { open() },
+                onClick = onClick,
+            )
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {

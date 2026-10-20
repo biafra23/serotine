@@ -1,4 +1,4 @@
-package eth.serotine.ui.assets
+package eth.serotine.ui.accounts
 
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.AccountKind
@@ -15,9 +15,9 @@ import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.update.UpgradeBannerItem
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
-// The Assets screen in Android Studio's preview pane, one preview per state it draws
+// The Accounts screen in Android Studio's preview pane, one preview per state it draws
 // differently. Built from display-ready values, as the screen tests are, never from the
-// ViewModel. AssetsScreenPreviewsTest renders each one in assetsScreenPreviews, at the end.
+// ViewModel. AccountsScreenPreviewsTest renders each one in accountsScreenPreviews, at the end.
 // The addresses are EIP-55's own examples, and the amounts are made up.
 
 private val network = Network.SEPOLIA.displayName
@@ -57,7 +57,7 @@ private val accounts = listOf(
     ),
 )
 
-private val withAccounts = AssetsUiState.Ready(
+private val withAccounts = AccountsUiState.Ready(
     network,
     synced,
     accounts,
@@ -66,9 +66,9 @@ private val withAccounts = AssetsUiState.Ready(
 )
 
 @Composable
-private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false, fabExpanded: Boolean = false) {
+private fun AccountsPreview(state: AccountsUiState, darkTheme: Boolean = false, fabExpanded: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        AssetsScreen(
+        AccountsScreen(
             state = state,
             onWatchAddress = {},
             onImportPhrase = {},
@@ -81,7 +81,7 @@ private fun AssetsPreview(state: AssetsUiState, darkTheme: Boolean = false, fabE
 }
 
 /** No account whose key is held here: Create Safe greyed out in the open + menu (owner ruling #55). */
-private val noKeyHere = AssetsUiState.Ready(
+private val noKeyHere = AccountsUiState.Ready(
     network,
     LightClientItem("Synced · verified head 9,412,118", null, false, VERIFIED),
     emptyList(),
@@ -89,11 +89,11 @@ private val noKeyHere = AssetsUiState.Ready(
 
 @Preview
 @Composable
-private fun AssetsCreateSafeGreyedOutPreview() = AssetsPreview(noKeyHere, fabExpanded = true)
+private fun AccountsCreateSafeGreyedOutPreview() = AccountsPreview(noKeyHere, fabExpanded = true)
 
 @Preview
 @Composable
-private fun AssetsCreateSafeReasonPreview() = SerotineTheme {
+private fun AccountsCreateSafeReasonPreview() = SerotineTheme {
     UnavailableDialog(
         UnavailableNotice(
             "Create Safe",
@@ -107,7 +107,7 @@ private fun AssetsCreateSafeReasonPreview() = SerotineTheme {
 /** The dialog a tap on a greyed-out Send opens, for a watched account (owner ruling, 2026-10-18, #55). */
 @Preview
 @Composable
-private fun AssetsSendReasonPreview() = SerotineTheme {
+private fun AccountsSendReasonPreview() = SerotineTheme {
     UnavailableDialog(
         UnavailableNotice("Send", sendBlockedReason(AccountKind.EOA, Control.WATCH_ONLY).orEmpty()),
         onDismiss = {},
@@ -116,14 +116,14 @@ private fun AssetsSendReasonPreview() = SerotineTheme {
 
 @Preview
 @Composable
-private fun AssetsAccountsPreview() = AssetsPreview(withAccounts)
+private fun AccountsAccountsPreview() = AccountsPreview(withAccounts)
 
 @Preview
 @Composable
-private fun AssetsAccountsDarkPreview() = AssetsPreview(withAccounts, darkTheme = true)
+private fun AccountsAccountsDarkPreview() = AccountsPreview(withAccounts, darkTheme = true)
 
 /** No verified head yet and no balance proven before: the strip red, every row syncing. */
-private val catchingUp = AssetsUiState.Ready(
+private val catchingUp = AccountsUiState.Ready(
     network,
     LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true, NOT_VERIFIED),
     // Until a Safe is read it is never shown as more than watch-only (AccountItem.from).
@@ -142,14 +142,14 @@ private val catchingUp = AssetsUiState.Ready(
 
 @Preview
 @Composable
-private fun AssetsCatchingUpPreview() = AssetsPreview(catchingUp)
+private fun AccountsCatchingUpPreview() = AccountsPreview(catchingUp)
 
 @Preview
 @Composable
-private fun AssetsCatchingUpDarkPreview() = AssetsPreview(catchingUp, darkTheme = true)
+private fun AccountsCatchingUpDarkPreview() = AccountsPreview(catchingUp, darkTheme = true)
 
 /** The verified head too old to read at: the amounts last verified, each said to be so. */
-private val headTooOld = AssetsUiState.Ready(
+private val headTooOld = AccountsUiState.Ready(
     network,
     LightClientItem("Synced · the verified head is 4 min old, waiting for a fresh one", null, true, STALE),
     accounts.map {
@@ -169,16 +169,16 @@ private val headTooOld = AssetsUiState.Ready(
 
 @Preview
 @Composable
-private fun AssetsHeadTooOldPreview() = AssetsPreview(headTooOld)
+private fun AccountsHeadTooOldPreview() = AccountsPreview(headTooOld)
 
 @Preview
 @Composable
-private fun AssetsHeadTooOldDarkPreview() = AssetsPreview(headTooOld, darkTheme = true)
+private fun AccountsHeadTooOldDarkPreview() = AccountsPreview(headTooOld, darkTheme = true)
 
 @Preview
 @Composable
-private fun AssetsNoAccountsPreview() = AssetsPreview(
-    AssetsUiState.Ready(
+private fun AccountsNoAccountsPreview() = AccountsPreview(
+    AccountsUiState.Ready(
         network,
         LightClientItem(
             "Bootstrapping from the trusted checkpoint · looking for light-client servers",
@@ -192,20 +192,20 @@ private fun AssetsNoAccountsPreview() = AssetsPreview(
 
 @Preview
 @Composable
-private fun AssetsLoadingPreview() =
-    AssetsPreview(AssetsUiState.Loading(network, starting))
+private fun AccountsLoadingPreview() =
+    AccountsPreview(AccountsUiState.Loading(network, starting))
 
 @Preview
 @Composable
-private fun AssetsLoadingCreateSafeGreyedOutPreview() = AssetsPreview(
-    AssetsUiState.Loading(network, starting),
+private fun AccountsLoadingCreateSafeGreyedOutPreview() = AccountsPreview(
+    AccountsUiState.Loading(network, starting),
     fabExpanded = true,
 )
 
 @Preview
 @Composable
-private fun AssetsListSetAsidePreview() = AssetsPreview(
-    AssetsUiState.Ready(
+private fun AccountsListSetAsidePreview() = AccountsPreview(
+    AccountsUiState.Ready(
         network,
         synced,
         listOf(accounts.first().copy(balance = "Checking…", balanceVerified = false, value = null)),
@@ -219,7 +219,7 @@ private const val UPGRADE_DETAILS = "Reported by peers in 5 networks, not verifi
 
 @Preview
 @Composable
-private fun AssetsUpgradeAheadPreview() = AssetsPreview(
+private fun AccountsUpgradeAheadPreview() = AccountsPreview(
     withAccounts.copy(
         upgrade = UpgradeBannerItem(
             "Network upgrade ahead: update Serotine",
@@ -233,7 +233,7 @@ private fun AssetsUpgradeAheadPreview() = AssetsPreview(
 
 @Preview
 @Composable
-private fun AssetsUpgradeActivatedDarkPreview() = AssetsPreview(
+private fun AccountsUpgradeActivatedDarkPreview() = AccountsPreview(
     withAccounts.copy(
         upgrade = UpgradeBannerItem(
             "Network upgrade reported: update Serotine",
@@ -248,8 +248,8 @@ private fun AssetsUpgradeActivatedDarkPreview() = AssetsPreview(
 
 @Preview
 @Composable
-private fun AssetsListUnavailablePreview() = AssetsPreview(
-    AssetsUiState.ListUnavailable(
+private fun AccountsListUnavailablePreview() = AccountsPreview(
+    AccountsUiState.ListUnavailable(
         network,
         synced,
         "Your saved account list cannot be read right now. Nothing has been changed, and no account can be " +
@@ -257,22 +257,22 @@ private fun AssetsListUnavailablePreview() = AssetsPreview(
     ),
 )
 
-/** Every preview above, which AssetsScreenPreviewsTest renders: a new preview goes in here too. */
-internal val assetsScreenPreviews: List<@Composable () -> Unit> = listOf(
-    { AssetsAccountsPreview() },
-    { AssetsAccountsDarkPreview() },
-    { AssetsCatchingUpPreview() },
-    { AssetsHeadTooOldPreview() },
-    { AssetsHeadTooOldDarkPreview() },
-    { AssetsNoAccountsPreview() },
-    { AssetsCreateSafeGreyedOutPreview() },
-    { AssetsCreateSafeReasonPreview() },
-    { AssetsSendReasonPreview() },
-    { AssetsLoadingPreview() },
-    { AssetsLoadingCreateSafeGreyedOutPreview() },
-    { AssetsListSetAsidePreview() },
-    { AssetsUpgradeAheadPreview() },
-    { AssetsUpgradeActivatedDarkPreview() },
-    { AssetsListUnavailablePreview() },
-    { AssetsCatchingUpDarkPreview() },
+/** Every preview above, which AccountsScreenPreviewsTest renders: a new preview goes in here too. */
+internal val accountsScreenPreviews: List<@Composable () -> Unit> = listOf(
+    { AccountsAccountsPreview() },
+    { AccountsAccountsDarkPreview() },
+    { AccountsCatchingUpPreview() },
+    { AccountsHeadTooOldPreview() },
+    { AccountsHeadTooOldDarkPreview() },
+    { AccountsNoAccountsPreview() },
+    { AccountsCreateSafeGreyedOutPreview() },
+    { AccountsCreateSafeReasonPreview() },
+    { AccountsSendReasonPreview() },
+    { AccountsLoadingPreview() },
+    { AccountsLoadingCreateSafeGreyedOutPreview() },
+    { AccountsListSetAsidePreview() },
+    { AccountsUpgradeAheadPreview() },
+    { AccountsUpgradeActivatedDarkPreview() },
+    { AccountsListUnavailablePreview() },
+    { AccountsCatchingUpDarkPreview() },
 )

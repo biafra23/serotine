@@ -2,7 +2,7 @@
 
 Serotine is laid out as a clean architecture with MVVM in the presentation
 layer. This page is the contract every change is held to (the reviewer reads
-it through CLAUDE.md); the Assets tab listing the managed accounts, an
+it through CLAUDE.md); the Accounts tab listing the managed accounts, an
 account's own screens, and the recovery-phrase screen that adds one show each
 rule in code.
 
@@ -90,8 +90,8 @@ review finding, whatever it saves.
 
 ## MVVM, the contract
 
-- **A screen is a pure function of its UiState.** `AssetsScreen(state)` renders
-  any `AssetsUiState` and holds no state of its own beyond transient UI details
+- **A screen is a pure function of its UiState.** `AccountsScreen(state)` renders
+  any `AccountsUiState` and holds no state of its own beyond transient UI details
   (scroll position, an expanded row). A UiState is a sealed interface or an
   immutable data class; its leaves are display-ready values (strings, enums),
   never a `Flow`, a repository or a platform type.
@@ -118,13 +118,13 @@ review finding, whatever it saves.
   exception is the update screen: its ViewModel decides whether the app shows
   anything else, so `App` creates it in the host's scope and navigates to the
   screen, clearing the back stack (both tabs' stacks included), while an
-  update is required, and to the Assets tab's start once it no longer is.
+  update is required, and to the Accounts tab's start once it no longer is.
   The light client's status strip is the other ViewModel `App` creates in
   the host's scope (`LightClientViewModel`): one for every screen that draws
   the strip, so each of those screens' ViewModels and UiStates stay about
   what the screen does. `App` hands it to those screens' routes, which
   collect it beside their own ViewModel and give the screen its
-  display-ready `LightClientItem`; Assets and Settings keep the light
+  display-ready `LightClientItem`; Accounts and Settings keep the light
   client's state in their own UiState.
 - **App-wide work runs in the hosts, not in `App`.** What no screen owns is a
   use case the composition root builds from its ports and runs for the
@@ -134,10 +134,10 @@ review finding, whatever it saves.
   whatever screen is open (docs/wallet-ux.md, screen 15). On Android both run
   while the application holds the engine; on the desktop, while `main()`
   runs.
-- **Two tabs, Assets | Settings, under a bottom bar** — a `NavigationBar`, and
+- **Two tabs, Accounts | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
-  Each tab is a nested graph. Settings opens over the Assets tab's stack and
-  closes back down to it, so switching tabs keeps the user's place in Assets
+  Each tab is a nested graph. Settings opens over the Accounts tab's stack and
+  closes back down to it, so switching tabs keeps the user's place in Accounts
   with no stack saved aside to go stale (owner ruling, 2026-10-18, #49: this
   tab model stands for now); re-selecting the current tab returns
   to its start. A route's arguments are identifiers only
