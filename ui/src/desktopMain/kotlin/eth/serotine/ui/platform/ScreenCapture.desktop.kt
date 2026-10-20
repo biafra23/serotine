@@ -9,3 +9,7 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 actual fun protectFromScreenCapture(): Boolean = false
+
+/** The desktop sees no capture to warn about. */
+@Composable
+actual fun ScreenCaptureWarnings() = Unit
