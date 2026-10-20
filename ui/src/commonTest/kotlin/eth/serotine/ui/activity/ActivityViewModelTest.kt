@@ -490,5 +490,30 @@ class ActivityViewModelTest {
         assertEquals(listOf("Sent 40.5 USDC", "Sent 1 USDC"), rows.map { it.title })
         assertEquals("To 0x5290…9EE7", rows.last().detail)
     }
+
+    @Test
+    fun aRowOfATokenNotNamedSaysWhatWouldNameIt() = runTest {
+        val hidden = Token(Address.of("0x27b1fdb04752bbc536007a920d24acb045561c26"), "FREE", "Free", 18, null)
+        userTokens.settings.value = TokenSettings.Loaded(listOf(hidden), setOf(hidden.address))
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val stranger = Address.of("0x8617e340b3d01fa5f11f306f4090fd50e238070d")
+        index.logs = listOf(
+            tokenLog(hidden.address, 9_401_000, bob, alice.address, word("1"), "0x" + "e7".repeat(32)),
+            tokenLog(stranger, 9_402_000, bob, alice.address, word("1"), "0x" + "e8".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+
+        assertEquals(
+            listOf(
+                "The claim of a contract the wallet does not list: add it in Settings to see what moved",
+                "The claim of a token you hid: show it again in Settings → Tokens to see what moved",
+            ),
+            rows.map { it.status },
+        )
+    }
 }
 

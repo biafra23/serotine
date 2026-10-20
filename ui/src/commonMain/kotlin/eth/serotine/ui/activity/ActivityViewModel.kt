@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.usecase.ObserveAccountHistory
+import eth.serotine.domain.usecase.BuiltInCheck
 import eth.serotine.domain.usecase.KnownToken
 import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.IndexedEvent
@@ -82,13 +83,12 @@ class ActivityViewModel(
     private val transfers = kind.flatMapLatest { if (it != null) observeTokenTransfers(address) else flowOf(null) }
 
     /**
-     * The tokens the wallet shows (not hidden, not contradicted by its contract), by address; null
-     * until the list is read, so that the rows already known never wait for the tokens' checks.
+     * The tokens the wallet knows, by address, shown or not (a row says why one it does not show
+     * is not named); null until the list is read, so that the rows already known never wait for
+     * the tokens' checks.
      */
     private val tokens = observeKnownTokens()
-        .map<KnownTokenList, Map<Address, KnownToken>?> { list ->
-            list.tokens.filter { it.shown }.associateBy { it.token.address }
-        }
+        .map<KnownTokenList, Map<Address, KnownToken>?> { list -> list.tokens.associateBy { it.token.address } }
         .onStart { emit(null) }
 
     val uiState: StateFlow<ActivityUiState> =
@@ -240,7 +240,8 @@ class ActivityViewModel(
     ): ActivityRow {
         val transfer = event.transfer
         val contract = shortAddress(Eip55.format(transfer.token))
-        val known = tokens[transfer.token]
+        val listed = tokens[transfer.token]
+        val known = listed?.takeIf { it.shown }
         val direction = when {
             transfer.from == address && transfer.to == address -> Direction.ITSELF
             transfer.to == address -> Direction.IN
@@ -262,10 +263,16 @@ class ActivityViewModel(
                 Direction.OUT -> "An unlisted token logged a transfer from it"
                 Direction.ITSELF -> "An unlisted token logged a transfer to itself"
             }
+            // What would name it, for the reason it is not named.
+            val status = when {
+                listed == null -> UNLISTED
+                listed.check is BuiltInCheck.Disagrees -> CONTRADICTED
+                else -> HIDDEN
+            }
             return row.copy(
                 title = title,
                 detail = "Contract $contract",
-                status = UNLISTED,
+                status = status,
                 state = ActivityState.UNKNOWN,
             )
         }
@@ -480,6 +487,8 @@ class ActivityViewModel(
         const val ON_CHAIN = "On chain, from the Safe's verified logs"
         const val TOKEN_ON_CHAIN = "On chain, from the token's verified logs"
         const val UNLISTED = "The claim of a contract the wallet does not list: add it in Settings to see what moved"
+        const val HIDDEN = "The claim of a token you hid: show it again in Settings → Tokens to see what moved"
+        const val CONTRADICTED = "The claim of a built-in token whose contract says otherwise: what moved is not shown"
         const val FAILED_ON_CHAIN = "Failed on chain: its call reverted"
         const val MODULE_WARNING = "A module can move this Safe's funds without its owners"
         const val HANDLER_WARNING = "Not the pinned fallback handler: it answers signature checks for this Safe"
