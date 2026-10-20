@@ -474,10 +474,13 @@ its KDoc and returns it as a result the UI shows as state.
   through the unlock they share (`UnlockFields`), Send's review (8), Send
   from a Safe's review (16), the Safe transaction's Sign, Approve on chain
   and Execute steps (17) and Create Safe's review (15). That is
-  `FLAG_SECURE` and an autofill exclusion on Android. On desktop, and on iOS
-  until its host covers the window, the screen says that capture cannot be
-  blocked. Create account also keeps the display on while its phrase is
-  shown and checked (`KeepScreenOn()`; Android's `keepScreenOn`), because a
+  `FLAG_SECURE` and an autofill exclusion on Android. On desktop and on iOS,
+  where no capture can be blocked, the screen says so. iOS also covers the
+  window while the app is not active, so the app switcher's snapshot holds
+  nothing, and warns (`ScreenCaptureWarningDialog`) when a screenshot is
+  taken and while the screen is recorded, mirrored or shared. Create account
+  also keeps the display on while its phrase is shown and checked
+  (`KeepScreenOn()`; Android's `keepScreenOn`, iOS's idle timer), because a
   display that times out stops the screen, and that stop is a leaving
   (owner ruling, 2026-10-18, #39).
 - **Not yet.**

@@ -26,6 +26,10 @@ targets:
         CFBundleShortVersionString: "0.0.0"
         CFBundleVersion: "0"
         UILaunchScreen: {}
+        # One window: the screen protections (:ui's ScreenCapture.ios.kt) follow the app's
+        # active state, which with several scenes would not be each window's.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
         # Compose Multiplatform refuses to start without it (its own render loop's frame rate).
         CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations:
