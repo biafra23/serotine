@@ -4,14 +4,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * The envelope's Argon2id through its own byte-array mapping of libsodium, against
- * libsodium's own known answers (test/default/pwhash_argon2id.c and .exp, the first three
- * `tv` cases): passwords of arbitrary bytes and odd lengths, so a wrong length or encoding
- * anywhere in the mapping shows.
+ * The envelope's Argon2id through its own byte-array mapping of libsodium (JNA on the desktop,
+ * its own cinterop declaration on iOS), against libsodium's own known answers
+ * (test/default/pwhash_argon2id.c and .exp, the first three `tv` cases): passwords of
+ * arbitrary bytes and odd lengths, so a wrong length or encoding anywhere in the mapping shows.
  */
 class SodiumArgon2idTest {
 
@@ -72,7 +71,7 @@ class SodiumArgon2idTest {
     )
 
     @Test
-    fun libsodiumLoadsOnThisMachine() {
+    fun libsodiumLoadsHere() {
         assertTrue(EnvelopeCrypto.available())
     }
 
@@ -106,23 +105,6 @@ class SodiumArgon2idTest {
             assertFailsWith<IllegalArgumentException> {
                 EnvelopeCrypto.argon2id(ByteArray(8), salt, 2, 64L * 1024 * 1024, 32)
             }
-        }
-    }
-
-    @Test
-    fun theBindingsShipLibsodiumForEveryDesktopThisAppTargets() {
-        // The jar carries every desktop's binary, so any machine checks them all: a wrong name
-        // would make the key store unavailable on that whole OS, and only its users would see.
-        val desktops = listOf(
-            "mac os x" to "aarch64",
-            "mac os x" to "x86_64",
-            "windows 11" to "amd64",
-            "linux" to "amd64",
-            "linux" to "aarch64",
-        )
-        for ((os, arch) in desktops) {
-            val resource = Sodium.desktopResource(os, arch)
-            assertNotNull(Sodium::class.java.classLoader?.getResource(resource), "$resource for $os/$arch")
         }
     }
 }

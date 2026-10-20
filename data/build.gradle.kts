@@ -28,8 +28,13 @@ kotlin {
         }
     }
     jvm("desktop")
-    iosArm64()
-    iosSimulatorArm64()
+    // The iOS envelope's own declaration of libsodium's crypto_pwhash, which takes the
+    // password as bytes (src/nativeInterop/cinterop/sodiumPwhash.def says why).
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.compilations.getByName("main").cinterops.create("sodiumPwhash") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/sodiumPwhash.def"))
+        }
+    }
 
     applyDefaultHierarchyTemplate()
 
@@ -109,7 +114,20 @@ kotlin {
         // the engine's static library inside each target's cinterop klib (iosMain's MyotisNode).
         iosMain.dependencies {
             implementation(libs.myotis.ios)
+            // The key envelope's libsodium (Argon2id, AES-256-GCM) through the bindings'
+            // cinterop, and its libsodium.a, which they link into the app.
+            implementation(libs.libsodium.bindings)
         }
+        // The envelope's tests, which need its primitives (EnvelopeCrypto) and so run where
+        // those are: the desktop and the iOS simulator. Android's unit tests run on the build
+        // machine's JVM, where the Android libsodium does not load.
+        val envelopeTest by creating {
+            dependsOn(commonTest.get())
+        }
+        val desktopTest by getting {
+            dependsOn(envelopeTest)
+        }
+        iosTest.get().dependsOn(envelopeTest)
         val androidUnitTest by getting {
             dependencies {
                 implementation(libs.secp256k1.kmp.jni.jvm)

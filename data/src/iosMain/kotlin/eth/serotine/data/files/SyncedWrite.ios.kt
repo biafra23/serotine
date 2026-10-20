@@ -20,19 +20,24 @@ internal actual fun writeSynced(path: String, bytes: ByteArray) {
     val fd = open(path, O_WRONLY or O_CREAT or O_TRUNC, NEW_FILE_MODE)
     if (fd < 0) throw IOException("could not open the file (errno $errno)")
     try {
-        var written = 0
-        if (bytes.isNotEmpty()) {
-            bytes.usePinned { pinned ->
-                while (written < bytes.size) {
-                    val n = write(fd, pinned.addressOf(written), (bytes.size - written).convert())
-                    if (n < 0) throw IOException("could not write the file (errno $errno)")
-                    written += n.toInt()
-                }
-            }
-        }
+        writeFully(fd, bytes)
         if (fsync(fd) != 0) throw IOException("could not flush the file (errno $errno)")
     } finally {
         close(fd)
+    }
+}
+
+/** Writes all of [bytes] to the open file [fd], however many writes it takes. */
+@OptIn(ExperimentalForeignApi::class)
+internal fun writeFully(fd: Int, bytes: ByteArray) {
+    if (bytes.isEmpty()) return
+    var written = 0
+    bytes.usePinned { pinned ->
+        while (written < bytes.size) {
+            val n = write(fd, pinned.addressOf(written), (bytes.size - written).convert())
+            if (n < 0) throw IOException("could not write the file (errno $errno)")
+            written += n.toInt()
+        }
     }
 }
 

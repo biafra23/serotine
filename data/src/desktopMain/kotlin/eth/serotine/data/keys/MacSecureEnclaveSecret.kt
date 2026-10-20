@@ -5,7 +5,6 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readString
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
@@ -148,7 +147,3 @@ class MacSecureEnclaveSecret(private val stateFile: String) : HardwareSecret {
         }
     }
 }
-
-/** [MacSecureEnclaveSecret]'s state file: the enclave key's handle and `S_hw` encrypted to it, both hex. */
-@Serializable
-internal class EnclaveState(val version: Int, val key: String, val secret: String)
