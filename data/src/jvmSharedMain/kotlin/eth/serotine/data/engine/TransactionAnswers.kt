@@ -29,7 +29,7 @@ internal fun nameAnswer(result: EnsResolutionResult): NameAnswer = NameAnswer(
     blockNumber = result.blockNumber(),
     verified = result.verified(),
     error = result.error(),
-    offchain = result.error()?.let(::isOffchain) == true,
+    offchain = result.error()?.let(::isOffchainNameError) == true,
 )
 
 /**
@@ -39,9 +39,6 @@ internal fun nameAnswer(result: EnsResolutionResult): NameAnswer = NameAnswer(
 internal fun nameAnswerOf(resolve: () -> EnsResolutionResult): NameAnswer = try {
     nameAnswer(resolve())
 } catch (e: EngineException) {
-    if (!isOffchain(e.message.orEmpty())) throw e
+    if (!isOffchainNameError(e.message.orEmpty())) throw e
     NameAnswer(null, -1, verified = false, error = e.message, offchain = true)
 }
-
-/** The engine's words for a name only an off-chain gateway (ERC-3668) can answer. */
-private fun isOffchain(message: String): Boolean = "offchain" in message.lowercase() || "ERC-3668" in message
