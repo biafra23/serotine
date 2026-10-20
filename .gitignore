@@ -48,7 +48,10 @@ out/
 .kotlin/
 *.log
 
-# Xcode (a future ios-app) — per-user state
+# Xcode: the iOS app's project and Info.plist are generated from ios-app/xcode/project.yml
+# (XcodeGen), and per-user state
+ios-app/xcode/Serotine.xcodeproj/
+ios-app/xcode/Serotine/Info.plist
 xcuserdata/
 *.xcworkspace/xcuserdata/
 DerivedData/

@@ -29,6 +29,12 @@ repository's own.
 # The debug Android app (eth.serotine.debug) on a connected device / emulator
 ./gradlew :android-app:installDebug
 
+# The iOS app (macOS, Xcode, `brew install xcodegen`): its Xcode project is generated from
+# ios-app/xcode/project.yml (not committed), and the Xcode build links SerotineKit through
+# Gradle. The team id signs for a device; the simulator needs none.
+cd ios-app/xcode && SEROTINE_DEVELOPMENT_TEAM=<team id> xcodegen generate && open Serotine.xcodeproj
+./gradlew :ios-app:linkDebugFrameworkIosSimulatorArm64   # the framework alone
+
 # The installers — jpackage is host-OS-bound, one per OS (the workflows build all three)
 ./gradlew :desktop-app:packageDeb   # Linux
 ./gradlew :desktop-app:packageDmg   # macOS
@@ -95,15 +101,18 @@ Modules (Gradle):
   2026-10-18, #49, for now); and `AppGraph`, the
   composition root's contract (ports in, ViewModel factories out). Depends on
   `:domain` only.
-- **android-app** (`eth.serotine`; debug build `eth.serotine.debug`) and
-  **desktop-app** — the hosts. Each has ONE composition root
-  (`SerotineApplication`, `main()`) that builds the `AppGraph` from `:data`'s
+- **android-app** (`eth.serotine`; debug build `eth.serotine.debug`),
+  **desktop-app** and **ios-app** (`eth.serotine`; the SerotineKit framework
+  and, in `xcode/`, the SwiftUI shell's XcodeGen spec) — the hosts. Each has
+  ONE composition root (`SerotineApplication`, `main()`,
+  `MainViewController()`) that builds the `AppGraph` from `:data`'s
   adapters and renders `App`, and runs the app-wide work no screen owns
   (`FollowUpgradeReports`, `FollowSafeDeployments`), never from `App` or
   `AppGraph`. The desktop one runs once per user: it holds an
   `InstanceLock` on its data directory for the process's lifetime. A port
   whose adapter is the platform's own output (`UpgradeNotifier`: Android's
-  notifications and alarm, the desktop's tray) is implemented in the host.
+  notifications and alarm, the desktop's tray, iOS's local notifications) is
+  implemented in the host.
 
 **The dependency rule: arrows point inward only.** `:domain` depends on nothing
 of ours; `:ui` and `:data` depend on `:domain`; the hosts depend on `:ui` and
@@ -380,8 +389,9 @@ file already forbids.
    2026-09-24). ONE pin: `version = "X.Y.Z-SNAPSHOT"` in the root
    `build.gradle.kts` (`allprojects`). Everything else is derived from it: the
    Android `versionName`/`versionCode` (`releaseBuildNumber`, `X*1_000_000 +
-   Y*1_000 + Z`), the deb/msi versions, the dmg's `+1`-major version, the
-   on-screen version. Then verify with the SAME query the tag guard makes:
+   Y*1_000 + Z`), the deb/msi versions, the dmg's `+1`-major version, the iOS
+   app's version and build number (stamped by its Xcode build from
+   `:printReleaseVersion`), the on-screen version. Then verify with the SAME query the tag guard makes:
 
    ```bash
    ./gradlew -q :printReleaseVersion   # must print releaseVersion=X.Y.Z

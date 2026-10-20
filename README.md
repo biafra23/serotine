@@ -4,8 +4,9 @@ A Compose Multiplatform wallet for Ethereum accounts (EOAs) and
 [Safe{Wallet}](https://safe.global) smart accounts, built on an embedded
 [Myotis](https://github.com/biafra23/myotis) engine: every chain read is
 verified against Ethereum's sync committee by a light client running inside
-the app, with no RPC provider in the loop. Android and desktop (Linux, macOS,
-Windows) today; iOS next. For now the app works on the Sepolia testnet only.
+the app, with no RPC provider in the loop. Android, desktop (Linux, macOS,
+Windows) and iOS (a development build for now). For now the app works on the
+Sepolia testnet only.
 
 **Status: skeleton.** The module graph, the MVVM/clean-architecture seams, the
 tests and the release workflows are in place. The first screen lists the
@@ -28,11 +29,17 @@ the upgrade has cut it off shows nothing but the way to the update
 ./gradlew :desktop-app:packageDeb        # the Linux installer   (on Linux)
 ./gradlew :desktop-app:packageDmg        # the macOS installer   (on macOS)
 ./gradlew :desktop-app:packageMsi        # the Windows installer (on Windows, WiX 3 on the PATH)
+
+# The iOS app (on macOS, with Xcode): generate its Xcode project, then build and run it from Xcode
+brew install xcodegen
+cd ios-app/xcode && SEROTINE_DEVELOPMENT_TEAM=<team id> xcodegen generate && open Serotine.xcodeproj
 ```
 
 Needs JDK 21 and, for the Android modules, an Android SDK (`ANDROID_HOME`, or
 `sdk.dir` in a git-ignored `local.properties`). The iOS targets of the shared
-modules build on macOS only and are skipped elsewhere.
+modules and the iOS app build on macOS only and are skipped elsewhere. The
+team id (Xcode > Settings > Accounts) signs the iOS app for a device; the
+simulator needs none.
 
 ## Layout
 
@@ -43,6 +50,7 @@ modules build on macOS only and are skipped elsewhere.
 | `ui` | the shared Compose Multiplatform UI: screens, ViewModels, UI state, `AppGraph` |
 | `android-app` | the Android host (package `eth.serotine`; the debug build is `eth.serotine.debug`) |
 | `desktop-app` | the desktop JVM host and the jpackage configuration for the three installers |
+| `ios-app` | the iOS host: the SerotineKit framework (its composition root) and the Xcode shell's XcodeGen spec (`xcode/`) |
 
 The dependency rule, the MVVM contract and how to add a feature:
 [docs/architecture.md](docs/architecture.md). How keys are held, what the

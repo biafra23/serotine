@@ -20,8 +20,9 @@ allprojects {
 
 // The release version — project.version minus the -SNAPSHOT suffix — and the
 // BUILD NUMBER the installable apps derive from it, defined ONCE here and read
-// by :android-app (versionCode) via rootProject.extra, so a release sweep can
-// never leave an app reporting the previous release.
+// by :android-app (versionCode) via rootProject.extra and by the iOS app's
+// Xcode build via :printReleaseVersion (ios-app/xcode/project.yml), so a
+// release sweep can never leave an app reporting the previous release.
 //
 // MAJOR*1_000_000 + MINOR*1_000 + PATCH is order-preserving for every semver
 // bump (0.1.0 -> 1000, 0.2.0 -> 2000, 1.0.0 -> 1_000_000), so it is strictly
@@ -54,10 +55,20 @@ extra["releaseBuildNumber"] = releaseBuildNumber
 // Marker-prefixed output: `./gradlew -q` still lets non-task text reach stdout
 // (wrapper distribution download progress on a cold runner, JVM/plugin warnings),
 // so the consumer greps for the marker instead of trusting the last line.
+//
+// It also prints releaseBuildNumber=<n>, for the iOS app's Xcode build, which
+// stamps both into the built Info.plist: Xcode reads its build settings before
+// any script runs, so they cannot come from Gradle as settings, and a committed
+// copy would be a second pin. The guard's pattern does not match that line.
 tasks.register("printReleaseVersion") {
     group = "help"
-    description = "Print the release version (project.version without -SNAPSHOT) as releaseVersion=<x.y.z>"
-    // The task action captures a plain String, so it stays configuration-cache
+    description = "Print the release version (project.version without -SNAPSHOT) as releaseVersion=<x.y.z>, " +
+        "and the build number as releaseBuildNumber=<n>"
+    // The task action captures plain values, so it stays configuration-cache
     // compatible.
-    doLast { println("releaseVersion=$releaseVersion") }
+    doLast {
+        println("releaseVersion=$releaseVersion")
+        println("releaseBuildNumber=$releaseBuildNumber")
+    }
 }
+
