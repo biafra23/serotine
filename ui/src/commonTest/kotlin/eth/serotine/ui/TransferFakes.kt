@@ -12,6 +12,16 @@ import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
+import eth.serotine.domain.repository.HistoryStart
+import eth.serotine.domain.repository.HistoryStartList
+import eth.serotine.domain.repository.HistoryStarts
+import eth.serotine.domain.repository.IndexedLog
+import eth.serotine.domain.repository.LogCoverageReading
+import eth.serotine.domain.repository.LogIndex
+import eth.serotine.domain.repository.LogQuery
+import eth.serotine.domain.repository.LogWatch
+import eth.serotine.domain.repository.LogWatchKey
+import eth.serotine.domain.repository.LogsReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NonceReading
@@ -191,3 +201,52 @@ internal class MemoryTransactionHistory : TransactionHistory {
         return true
     }
 }
+
+/** [HistoryStarts] in memory: the [starts] a test sets. */
+internal class MemoryHistoryStarts : HistoryStarts {
+    val starts = MutableStateFlow<Map<Address, HistoryStart>>(emptyMap())
+
+    override fun observe(): Flow<HistoryStartList> = starts.map { HistoryStartList.Loaded(it) }
+
+    override suspend fun note(address: Address, atSeconds: Long): Boolean {
+        starts.value += address to HistoryStart.Noted(atSeconds)
+        return true
+    }
+
+    override suspend fun fix(address: Address, block: Long): Boolean {
+        if (starts.value[address] is HistoryStart.Fixed) return false
+        starts.value += address to HistoryStart.Fixed(block)
+        return true
+    }
+
+    override suspend fun forget(address: Address, start: HistoryStart): Boolean {
+        if (starts.value[address] == start) starts.value -= address
+        return true
+    }
+}
+
+/** A [LogIndex] whose [coverage] and [logs] a test sets; it takes every change asked of it. */
+internal class FakeLogIndex : LogIndex {
+    val coverage = MutableStateFlow<LogCoverageReading>(LogCoverageReading.Unavailable)
+    var logs: List<IndexedLog> = emptyList()
+
+    override suspend fun configure(watch: List<LogWatch>, unwatch: List<LogWatchKey>): Boolean = true
+
+    override fun observeCoverage(): Flow<LogCoverageReading> = coverage
+
+    /** The [logs] in the query's range that it selects, as the engine selects them. */
+    override suspend fun logs(query: LogQuery): LogsReading = LogsReading.Logs(
+        logs.filter { log ->
+            val topics = log.log.topics
+            log.blockNumber in query.fromBlock..query.toBlock &&
+                (query.topic0s.isEmpty() || topics.firstOrNull() in query.topic0s) &&
+                when (val key = query.key) {
+                    is LogWatchKey.Emitter -> log.log.address == key.address
+                    is LogWatchKey.Mention -> topics.getOrNull(query.position ?: 0) == topicOf(key.address)
+                }
+        },
+    )
+}
+
+/** [address] as a 32-byte log topic: left-padded with zeros. */
+internal fun topicOf(address: Address): String = "0x" + "00".repeat(12) + address.hex.removePrefix("0x")

@@ -7,9 +7,11 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.DisplayCurrencySetting
+import eth.serotine.domain.repository.HistoryStarts
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
@@ -53,11 +55,13 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.PlanSafe
@@ -169,6 +173,10 @@ class AppGraph(
     private val sentTransfers: SentTransfers,
     /** Every transaction this wallet sent, kept for good, with how each ended (issue #85). */
     private val transactionHistory: TransactionHistory,
+    /** Where each account's history starts, which the host's `FollowAccountLogs` fixes (issue #85). */
+    private val historyStarts: HistoryStarts,
+    /** The light client's verified log index, which the host's `FollowAccountLogs` keeps following the accounts. */
+    private val logIndex: LogIndex,
     /** The Safe transactions waiting for their owners, kept on this device across restarts. */
     private val safeTxQueue: SafeTxQueue,
     /** The text a Safe's signing request travels in between devices, for [network]. */
@@ -349,11 +357,17 @@ class AppGraph(
         network,
     )
 
-    /** The transactions this device sent for the account at [address] (docs/wallet-ux.md, screen 25). */
+    /**
+     * The transactions this device sent for the account at [address], its token transfers and, for
+     * a Safe, its events on chain (docs/wallet-ux.md, screen 25).
+     */
     fun activityViewModel(address: Address): ActivityViewModel = ActivityViewModel(
         address,
         ObserveAccountHistory(transactionHistory),
         ObserveAccounts(accounts),
+        ObserveSafeHistory(logIndex, historyStarts),
+        ObserveTokenTransfers(logIndex, historyStarts),
+        knownTokens(),
         network,
     )
 

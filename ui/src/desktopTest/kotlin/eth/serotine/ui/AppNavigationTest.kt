@@ -283,6 +283,8 @@ class AppNavigationTest {
         signer = signer,
         sentTransfers = sentTransfers,
         transactionHistory = history,
+        historyStarts = MemoryHistoryStarts(),
+        logIndex = FakeLogIndex(),
         safeTxQueue = safeTxQueue,
         signingRequests = codec,
         signatureRecovery = recovery,

@@ -70,8 +70,9 @@ Modules (Gradle):
   (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
   token metadata, prices and address kinds, the peer-reported network-upgrade
   advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
-  names, a Safe's owners' approvals on chain, and Uniswap v3's pinned
-  contracts, proven by their code, and its verified calls), whose glue over
+  names, a Safe's owners' approvals on chain, Uniswap v3's pinned
+  contracts, proven by their code, and its verified calls, and the verified
+  log index that follows the accounts' histories), whose glue over
   `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
   (`eth.serotine.data.upgrade`); the built-in token list and the user's token
@@ -80,7 +81,8 @@ Modules (Gradle):
   Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
   the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
   the record of sent transactions and the history of them, kept for good
-  (`eth.serotine.data.transfers`); and the
+  (`eth.serotine.data.transfers`); where each account's history starts
+  (`eth.serotine.data.history`); and the
   display currency
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
@@ -791,7 +793,16 @@ discussion that produced this note.
   that executes counts as its own confirmation (owner ruling, 2026-10-18,
   #56). The Safe Transaction Service
   stays unwired.
-- docs/wallet-ux.md applies these three rulings to the screens.
+- **An account's history comes from the engine's verified log index**
+  (owner rulings, 2026-10-20, #85; docs/embedding-myotis.md, *History*): a
+  Safe's own events and every log naming an account as a topic, walked back
+  over verified headers. An account not created here is walked from the
+  block it was added at, never further back ("since added"), and the history
+  says so. The walk fetches receipts only for the blocks whose bloom flags
+  an account, which tells the serving peer which blocks matter to this
+  device: accepted as is, as the log index makes that trade-off for any
+  watch-list.
+- docs/wallet-ux.md applies these rulings to the screens.
 - **Swaps: Uniswap first, then CoW Protocol, preferred while its servers
   work, with Uniswap as the fallback** (owner's direction, 2026-10-18;
   docs/swaps.md, issue #69). Uniswap's contracts are chain data like any

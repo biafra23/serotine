@@ -559,12 +559,16 @@ upgrades*).
 
 Screens 22 to 24 are the swap screens (docs/swaps.md).
 
-25. **Activity**: the transactions this device sent for an account, newest
-    first, under the Assets tab like the account it is of
-    (`activity/{address}`).
-    - First, what the list covers: transactions sent from this device. Those
-      received, and those sent from the account elsewhere, are not listed
-      yet (issue #85 has the plan for them).
+25. **Activity**: the transactions this device sent for an account, its
+    token transfers and, for a Safe, its own events on chain, newest first,
+    under the Assets tab like the account it is of (`activity/{address}`).
+    - First, what the list covers: transactions sent from this device, and
+      on chain from the block its history starts at on (when it was
+      deployed from this device, or added here: "since added", owner ruling
+      2026-10-20) its token transfers and a Safe's events, each with how far
+      it is checked so far, or why it is not listed yet. For an EOA, ETH it
+      received and transactions sent from it elsewhere are not listed yet
+      (issue #85 has the plan for them).
     - One row per transaction: the blockie of its other side, what it did
       ("Sent 0.25 ETH", "Swapped 100 USDC for at least 4.28845 LINK",
       "Executed a Safe transaction", "Deployed a Safe"),
@@ -577,6 +581,34 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - A Safe's Activity lists the approvals and executions of its
       transactions and its deployment, whichever account here sent them
       ("Executed transaction 4", "By Alice · …").
+    - And its events on chain, from the engine's verified log index
+      (`ObserveSafeHistory`): ETH received ("Received 0.5 ETH", "From Bob ·
+      …"), executions and failed ones, approvals, its set-up, owner,
+      threshold, module, guard and fallback-handler changes, a module's
+      transactions and messages signed. Each sits among the sent
+      transactions by its block ("Block 9,415,302") and opens nothing yet;
+      one whose transaction is listed as sent from here, in a block, is left
+      out when its row says the same (an execution, an approval, a
+      deployment); a failure and a settings change are not. A module
+      enabled, or a fallback handler other than the pinned one, is a
+      warning; so is every other change that weakens the Safe (a module
+      disabled, a guard set or removed, the handler removed), with the
+      warning its Safe transaction is signed with (17). A transaction sent
+      from here that waits for its block is above every event.
+    - And every ERC-20 and ERC-721 transfer to or from the account, whichever
+      token moved (`ObserveTokenTransfers`, the log index's topic entry):
+      "Received 250 USDC" / "From Treasury · …" for a token the wallet shows
+      (listed or added, not hidden), "Sent 1 USDC" for a fee its transfer
+      paid to another address, "USDC NFT #7" for an ERC-721. A contract the
+      wallet does not show can log any transfer it likes, so its row says
+      only "An unlisted token logged a transfer to it", names the contract
+      and not the other side, and is marked as unconfirmed. A transfer of
+      nothing is left out: anyone can have a token log one from any address,
+      which plants a look-alike address in a history. An added token whose
+      symbol is a built-in token's warns, as every screen does. By block like
+      the events, opening nothing yet; the transfer a row sent from here, in
+      a block, already says (its token, amount and recipient, or the amount
+      sold in a swap) is that row alone.
     - Where the list comes from: every transaction a peer took (or maybe
       took) goes into the history as it is recorded
       (`HistoryRecordingSentTransfers`), which is kept for good, unlike the
