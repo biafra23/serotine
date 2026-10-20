@@ -361,6 +361,32 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun aNameThatCannotBeVerifiedAgainAtTheAddIsNotAddedAndCanBeTriedAgain() = runTest {
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.canAdd)
+
+        names.names["vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
+        viewModel.add()
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.done)
+        assertEquals(
+            "“vitalik.eth” could not be resolved with verified calls again just now. Nothing was added.",
+            viewModel.uiState.value.error,
+        )
+        assertEquals(listOf(daily), accounts.accounts.value, "nothing added")
+        // The lookup made again for the card cannot be verified either: no card, and Try again.
+        assertNull(viewModel.uiState.value.detection)
+        assertTrue(viewModel.uiState.value.canRetryLookup)
+        assertFalse(viewModel.uiState.value.canAdd)
+    }
+
+    @Test
     fun aNameWithoutAVerifiedAddressSaysWhyAndCanBeTriedAgain() = runTest {
         val viewModel = viewModel()
         names.names["offchain.eth"] = NameResolution.OffchainOnly
