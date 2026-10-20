@@ -56,6 +56,7 @@ import kotlin.system.exitProcess
  * keys or the engine's state at once.
  */
 fun main() {
+    useBundledEngineLibrary()
     val dataDir = appDataDir()
     val instance = try {
         InstanceLock.acquire(dataDir.resolve("serotine.lock"))
@@ -76,6 +77,25 @@ fun main() {
         Reference.reachabilityFence(instance)
     }
 }
+
+/**
+ * Points the Myotis engine at the host library the app's resources carry
+ * (desktop-app/build.gradle.kts, `stageMyotisLibrary`), before anything loads it: the
+ * packaged app's bundle and a development run's prepared resources both have it, on macOS
+ * and Linux. A library already named (`-PmyotisLibraryDir` on the run task) stays. Where the
+ * resources have none (Windows, for now), the engine finds none and the balances say so.
+ */
+private fun useBundledEngineLibrary() {
+    if (!System.getProperty(ENGINE_LIBRARY_PROPERTY).isNullOrBlank()) return
+    // Blank would resolve against the working directory.
+    val resources = System.getProperty("compose.application.resources.dir")?.takeIf { it.isNotBlank() } ?: return
+    val mac = "mac" in System.getProperty("os.name").lowercase()
+    val library = File(resources, if (mac) "libmyotis_engine.dylib" else "libmyotis_engine.so")
+    if (library.isFile) System.setProperty(ENGINE_LIBRARY_PROPERTY, library.absolutePath)
+}
+
+/** The engine library's override of where its host library is loaded from. */
+private const val ENGINE_LIBRARY_PROPERTY = "myotis.engine.lib"
 
 /**
  * Says [message] (a dialog of [kind], a [JOptionPane] message type, where there is a screen;
@@ -99,7 +119,7 @@ private fun openWallet(dataDir: File) {
     // Before the window: on a Mac with no wallet yet this asks the Secure Enclave once.
     val hardware = desktopHardwareSecret(keys.path)
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
-    // background; without its host library on java.library.path, balances say so. The adapters'
+    // background; without its host library (useBundledEngineLibrary), balances say so. The adapters'
     // diagnostics go to stderr only in a development run (`:desktop-app:run` sets the property;
     // no installer does): the desktop's debug build.
     val debugLog: ((String) -> Unit)? =

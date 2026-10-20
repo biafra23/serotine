@@ -61,10 +61,16 @@ consumer developed against an unreleased engine, Myotis's
   background, as in the Myotis app. Until then the one background run is the
   daily network-upgrade check (*Network upgrades*, below): a JobScheduler job
   that holds the engine awake for five minutes.
-- **Desktop:** the JVM jar does not carry the host library; the desktop
-  packaging stages it into the app's resources, as Myotis's own desktop app
-  does (`appResourcesRootDir`), one per OS/arch leg of the installer
-  workflows.
+- **Desktop:** the JVM jar does not carry the host library;
+  `eth.myotis:myotis-engine-natives-<platform>` does, at the engine's version
+  (macOS arm64 and x64, Linux x64 and arm64; Windows has none yet). The
+  desktop's `stageMyotisLibrary` takes the host's library out of it, with
+  JNA's native stub, into the app's resources (`appResourcesRootDir`), as
+  Myotis's own desktop app does, so each OS/arch leg of the installer
+  workflows ships its own, and `main()` points the engine at it. The packaged
+  app never loads a library extracted to a temporary file, which a signed
+  macOS bundle may refuse. A Windows build runs with no light client, and its
+  balances say so.
 - **iOS** consumes the engine's plain C ABI, as Myotis's `:app-ios` does;
   that is the iOS part of the plan, not this page.
 
@@ -250,11 +256,12 @@ consumer developed against an unreleased engine, Myotis's
       }
   }
   ```
-- **Desktop, until the installers stage the host library.**
-  `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` puts a locally built
-  `libmyotis_engine.{dylib,so,dll}` on `java.library.path` (Myotis:
-  `./gradlew cargoBuildHost`, then `rust/target/release`). The same property
-  runs `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
+- **Desktop, a host library built from Myotis.** `:desktop-app:run` uses the
+  published one from the natives artifact.
+  `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` runs a locally built
+  `libmyotis_engine.{dylib,so}` instead (Myotis: `./gradlew cargoBuildHost`,
+  then `rust/target/release`). The same property runs
+  `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
 - **Android 10 and INTERNET.** An install that gains INTERNET on an update,
   rather than having it from the first install, can keep getting `EPERM` from
   netd's eBPF socket filter until it is reinstalled or the device reboots. The

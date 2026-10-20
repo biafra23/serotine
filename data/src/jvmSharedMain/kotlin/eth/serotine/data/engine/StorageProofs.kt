@@ -11,18 +11,17 @@ package eth.serotine.data.engine
  * - `headerChain`: the walk from the proof's block up to an attested one proves that block,
  *   [peerBlockNumber], itself; the anchor is that block ([ProofAnchor.Walked]), not the slot it
  *   was walked to, so two walks of one block from two heads are one state.
- * - `stateRootMatch`: the anchor is [matchedBeaconSlot], the attested slot whose state root the
- *   proof matched. Matched at the [finalizedSlot], the block shown is [finalizedBlockNumber]; at
- *   the [optimisticSlot], [optimisticBlockNumber]. Matched at a slot above the finalized one and
- *   below the optimistic one, the common case, the block shown is [peerBlockNumber], the block the
- *   account proof anchors to, as balances and code are shown. That number is the serving peer's
- *   report on some engines, so it is shown, never relied on: whether two proofs are of one state
- *   is the anchor's to say. (The matched slot is the attested slot the engine recorded with the
- *   anchor, while the result's optimistic slot is the light client's signature slot, about one
- *   past it, so an exact optimistic match seldom happens; and a proof may match a recent attested
- *   head after the optimistic one moved on.) A block of 0, or one below the finalized block, is
- *   no label.
- * - Any other match (none, below the finalized slot, above the optimistic one): null.
+ * - `stateRootMatch`: the anchor is [matchedBeaconSlot], the attested block's own slot whose
+ *   state root the proof matched, and the block shown is [peerBlockNumber], the block of the root
+ *   the account proof was read at, as balances and code are shown. The match must lie from the
+ *   [finalizedSlot] up to the head the reads resolved, the later of it and the [optimisticSlot]
+ *   (from Gloas on the optimistic one can trail the finalized one while a newer head waits for
+ *   its execution header). The result's own block numbers are sampled at another moment than its
+ *   slots, so no slot here picks one of them (`StorageProofResult`'s KDoc, Myotis #658); the
+ *   [finalizedBlockNumber] only bounds the block shown from below. That number is shown, never
+ *   relied on: whether two proofs are of one state is the anchor's to say. A block of 0, or one
+ *   below the finalized block, is no label.
+ * - Any other match (none, below the finalized slot, above the resolved head): null.
  */
 internal fun storageProofLabel(
     verifyMethod: String?,
@@ -31,7 +30,6 @@ internal fun storageProofLabel(
     optimisticSlot: Long,
     peerBlockNumber: Long,
     finalizedBlockNumber: Long,
-    optimisticBlockNumber: Long,
 ): ProofLabel? {
     val block = when {
         verifyMethod == null -> return null
@@ -41,9 +39,7 @@ internal fun storageProofLabel(
             return ProofLabel(peerBlockNumber, ProofAnchor.Walked(peerBlockNumber))
         }
         verifyMethod != STATE_ROOT_MATCH -> return null
-        matchedBeaconSlot == finalizedSlot -> finalizedBlockNumber
-        matchedBeaconSlot == optimisticSlot -> optimisticBlockNumber
-        matchedBeaconSlot in (finalizedSlot + 1)..optimisticSlot ->
+        matchedBeaconSlot in finalizedSlot..maxOf(finalizedSlot, optimisticSlot) ->
             peerBlockNumber.takeIf { it >= finalizedBlockNumber } ?: return null
         else -> return null
     }
