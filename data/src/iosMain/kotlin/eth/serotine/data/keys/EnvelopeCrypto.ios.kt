@@ -5,11 +5,17 @@ import eth.serotine.data.files.writeFully
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UByteVar
+import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 import kotlinx.io.IOException
+import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSString
 import platform.Foundation.NSURL
@@ -154,13 +160,16 @@ internal actual object EnvelopeCrypto {
     }
 
     actual fun createPrivateDirectory(path: String) {
-        val created = NSFileManager.defaultManager.createDirectoryAtPath(
-            path,
-            withIntermediateDirectories = true,
-            attributes = null,
-            error = null,
-        )
-        if (!created) throw IOException("could not create the directory")
+        memScoped {
+            val error = alloc<ObjCObjectVar<NSError?>>()
+            val created = NSFileManager.defaultManager.createDirectoryAtPath(
+                path,
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = error.ptr,
+            )
+            if (!created) throw IOException("could not create the directory (${error.value?.code ?: "no error"})")
+        }
         // Set every time, as on the JVM: owner only, which the app's sandbox makes the app only.
         if (chmod(path, OWNER_ONLY_DIRECTORY.convert()) != 0) throw IOException("could not restrict the directory (errno $errno)")
         // Out of iCloud and computer backups (docs/keys-and-signing.md, rule 8): the envelopes
