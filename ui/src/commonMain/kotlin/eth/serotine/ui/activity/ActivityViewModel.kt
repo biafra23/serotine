@@ -8,7 +8,6 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SigningRequest
-import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -18,7 +17,8 @@ import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.usecase.ObserveAccountHistory
-import eth.serotine.domain.usecase.BuiltInCheck
+import eth.serotine.domain.usecase.KnownToken
+import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.IndexedEvent
 import eth.serotine.domain.usecase.IndexedHistory
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -80,10 +81,15 @@ class ActivityViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val transfers = kind.flatMapLatest { if (it != null) observeTokenTransfers(address) else flowOf(null) }
 
-    /** The tokens the wallet knows and its contract does not contradict, by address. */
-    private val tokens = observeKnownTokens().map { list ->
-        list.tokens.filter { it.check !is BuiltInCheck.Disagrees }.associate { it.token.address to it.token }
-    }
+    /**
+     * The tokens the wallet shows (not hidden, not contradicted by its contract), by address; null
+     * until the list is read, so that the rows already known never wait for the tokens' checks.
+     */
+    private val tokens = observeKnownTokens()
+        .map<KnownTokenList, Map<Address, KnownToken>?> { list ->
+            list.tokens.filter { it.shown }.associateBy { it.token.address }
+        }
+        .onStart { emit(null) }
 
     val uiState: StateFlow<ActivityUiState> =
         combine(observeAccountHistory(address), accounts, safeHistory, transfers, tokens, ::render).stateIn(
@@ -97,7 +103,7 @@ class ActivityViewModel(
         list: AccountList,
         safe: IndexedHistory<SafeChainEvent>?,
         transfers: IndexedHistory<TokenTransferEvent>?,
-        tokens: Map<Address, Token>,
+        tokens: Map<Address, KnownToken>?,
     ): ActivityUiState {
         val names = (list as? AccountList.Loaded)?.accounts.orEmpty().associate { it.address to it.label }
         val title = names[address] ?: shortAddress(Eip55.format(address))
@@ -113,9 +119,12 @@ class ActivityViewModel(
         val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
             .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
             .map { eventRow(it, names) to it }
+        // Until the tokens are known, a transfer's amount cannot be said: none is listed yet.
         val tokenEvents = (transfers as? IndexedHistory.Read)?.events.orEmpty()
+            .takeIf { tokens != null }.orEmpty()
+            .filterNot { it.transfer.movesNothing() }
             .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
-            .map { transferRow(it, names, tokens) to it }
+            .map { transferRow(it, names, tokens.orEmpty()) to it }
         val events = (safeEvents + tokenEvents)
             .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
                 .thenByDescending { it.second.logIndex })
@@ -148,18 +157,26 @@ class ActivityViewModel(
     }
 
     /**
-     * Whether [entry]'s row, which names its block, says this transfer: what the account sent in a
-     * transfer of that token, or sold of it in a swap. What it received, and any other token moved,
-     * it does not.
+     * A fungible transfer of nothing: it moves no value, and anyone can have a token log one from
+     * any address (`transferFrom` of zero needs no allowance), which is how a look-alike address is
+     * planted in a history for the user to copy. Left out.
+     */
+    private fun TokenTransfer.movesNothing(): Boolean = this is TokenTransfer.Fungible && amount.isZero
+
+    /**
+     * Whether [entry]'s row, which names its block, says this transfer: the token, the amount and
+     * the recipient the account sent in a transfer, or the token and the amount it sold in a swap.
+     * What it received, and any other move of a token (a fee, a share to a third address), it does
+     * not.
      */
     private fun TokenTransfer.saidBy(entry: HistoryEntry): Boolean {
-        if (from != entry.transfer.account || from == to) return false
-        val asset = when (val action = entry.transfer.action) {
-            is SentAction.Transfer -> action.asset
-            is SentAction.Swap -> action.sell
+        if (this !is TokenTransfer.Fungible || from != entry.transfer.account) return false
+        val (asset, sent) = when (val action = entry.transfer.action) {
+            is SentAction.Transfer -> if (action.to == to) action.asset to action.amount else return false
+            is SentAction.Swap -> action.sell to action.amountIn
             else -> return false
         }
-        return (asset as? TransferAsset.Erc20Token)?.token?.address == token
+        return (asset as? TransferAsset.Erc20Token)?.token?.address == token && sent == amount
     }
 
     /**
@@ -209,42 +226,74 @@ class ActivityViewModel(
         return "On chain from block ${grouped(start)} on, $since: $said."
     }
 
-    /** A token's [event] as a row: what moved, to or from whom, in which block. */
+    /**
+     * A token's [event] as a row: what moved, to or from whom, in which block. Only a token the
+     * wallet shows has its transfer said as one: an unlisted contract can log any transfer it likes,
+     * between any addresses, so its row says that the contract logged one, names the contract and
+     * not the other side, and is marked as unconfirmed. A token the user added whose symbol is a
+     * built-in token's says it is another contract, as every screen does.
+     */
     private fun transferRow(
         event: TokenTransferEvent,
         names: Map<Address, String>,
-        tokens: Map<Address, Token>,
+        tokens: Map<Address, KnownToken>,
     ): ActivityRow {
         val transfer = event.transfer
-        val token = tokens[transfer.token]
-        val what = when (transfer) {
-            is TokenTransfer.Fungible -> token
-                ?.let { "${transfer.amount.formatUnits(it.decimals)} ${displaySymbol(it.symbol)}" }
-                ?: "an unlisted token"
-            is TokenTransfer.Nft -> {
-                val collection = token?.let { displaySymbol(it.symbol) + " " } ?: "an "
-                "${collection}NFT #${tokenId(transfer.tokenId)}"
-            }
+        val contract = shortAddress(Eip55.format(transfer.token))
+        val known = tokens[transfer.token]
+        val direction = when {
+            transfer.from == address && transfer.to == address -> Direction.ITSELF
+            transfer.to == address -> Direction.IN
+            else -> Direction.OUT
         }
-        val unlisted = if (token == null) " · token ${shortAddress(Eip55.format(transfer.token))}" else ""
-        val (title, other, detail) = when {
-            transfer.from == address && transfer.to == address ->
-                Triple("Moved $what to itself", transfer.token, "Token ${shortAddress(Eip55.format(transfer.token))}")
-            transfer.to == address ->
-                Triple("Received $what", transfer.from, "From ${named(transfer.from, names)}$unlisted")
-            else -> Triple("Sent $what", transfer.to, "To ${named(transfer.to, names)}$unlisted")
-        }
-        return ActivityRow(
+        val row = ActivityRow(
             key = "${event.transactionHash}:${event.logIndex}",
-            title = title,
-            detail = detail,
-            about = Eip55.format(other),
+            title = "",
+            detail = "",
+            about = Eip55.format(transfer.token),
             time = "Block ${grouped(event.blockNumber)}",
             status = TOKEN_ON_CHAIN,
             state = ActivityState.DONE,
             opens = null,
         )
+        if (known == null) {
+            val title = when (direction) {
+                Direction.IN -> "An unlisted token logged a transfer to it"
+                Direction.OUT -> "An unlisted token logged a transfer from it"
+                Direction.ITSELF -> "An unlisted token logged a transfer to itself"
+            }
+            return row.copy(
+                title = title,
+                detail = "Contract $contract",
+                status = UNLISTED,
+                state = ActivityState.UNKNOWN,
+            )
+        }
+        val symbol = displaySymbol(known.token.symbol)
+        val what = when (transfer) {
+            is TokenTransfer.Fungible -> "${transfer.amount.formatUnits(known.token.decimals)} $symbol"
+            is TokenTransfer.Nft -> "$symbol NFT #${tokenId(transfer.tokenId)}"
+        }
+        val (title, other, detail) = when (direction) {
+            Direction.ITSELF -> Triple("Moved $what to itself", transfer.token, "Token $contract")
+            Direction.IN -> Triple("Received $what", transfer.from, "From ${named(transfer.from, names)}")
+            Direction.OUT -> Triple("Sent $what", transfer.to, "To ${named(transfer.to, names)}")
+        }
+        return if (known.sharesBuiltInSymbol) {
+            row.copy(
+                title = title,
+                detail = "$detail · token $contract",
+                about = Eip55.format(other),
+                status = "Not the built-in $symbol: another contract",
+                state = ActivityState.WARNING,
+            )
+        } else {
+            row.copy(title = title, detail = detail, about = Eip55.format(other))
+        }
     }
+
+    /** Which way a token moved, as the account sees it. */
+    private enum class Direction { IN, OUT, ITSELF }
 
     /** An NFT's id as screens show it: whole when short, its ends when long. */
     private fun tokenId(id: UInt256): String =
@@ -297,7 +346,7 @@ class ActivityViewModel(
             is SafeEvent.MessageSigned -> Triple("Signed a message", address, "Message ${shortHash(what.messageHash)}")
         }
         val (status, state) = statusOf(event.event)
-        val row = ActivityRow(
+        return ActivityRow(
             key = "${event.transactionHash}:${event.logIndex}",
             title = title,
             detail = detail,
@@ -307,7 +356,6 @@ class ActivityViewModel(
             state = state,
             opens = null,
         )
-        return row
     }
 
     /**
@@ -366,14 +414,12 @@ class ActivityViewModel(
                 Triple("Deployed", transfer.account, "Paid by")
             }
         }
-        val short = shortAddress(Eip55.format(other))
-        val named = names[other]?.let { "$it · $short" } ?: short
         val (status, state) = statusOf(entry)
         return ActivityRow(
             key = transfer.hash,
             opens = transfer.hash,
             title = title,
-            detail = "$detail $named",
+            detail = "$detail ${named(other, names)}",
             about = Eip55.format(other),
             time = formatTime(transfer.sentAt),
             status = status,
@@ -433,6 +479,7 @@ class ActivityViewModel(
         const val UNREADABLE = "The history of your transactions cannot be read right now. Serotine keeps trying."
         const val ON_CHAIN = "On chain, from the Safe's verified logs"
         const val TOKEN_ON_CHAIN = "On chain, from the token's verified logs"
+        const val UNLISTED = "The claim of a contract the wallet does not list: add it in Settings to see what moved"
         const val FAILED_ON_CHAIN = "Failed on chain: its call reverted"
         const val MODULE_WARNING = "A module can move this Safe's funds without its owners"
         const val HANDLER_WARNING = "Not the pinned fallback handler: it answers signature checks for this Safe"

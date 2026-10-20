@@ -591,12 +591,18 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       warning.
     - And every ERC-20 and ERC-721 transfer to or from the account, whichever
       token moved (`ObserveTokenTransfers`, the log index's topic entry):
-      "Received 250 USDC" / "From Treasury · …" for a token the wallet lists,
-      "Received an unlisted token" with its contract for one it does not
-      (the amount of a token without a listed symbol and decimals says
-      nothing), "Sent an NFT #7". By block like the events, opening nothing
-      yet; what the account sent in a transfer or sold in a swap sent from
-      here, in a block, is its row alone.
+      "Received 250 USDC" / "From Treasury · …" for a token the wallet shows
+      (listed or added, not hidden), "Sent 1 USDC" for a fee its transfer
+      paid to another address, "USDC NFT #7" for an ERC-721. A contract the
+      wallet does not show can log any transfer it likes, so its row says
+      only "An unlisted token logged a transfer to it", names the contract
+      and not the other side, and is marked as unconfirmed. A transfer of
+      nothing is left out: anyone can have a token log one from any address,
+      which plants a look-alike address in a history. An added token whose
+      symbol is a built-in token's warns, as every screen does. By block like
+      the events, opening nothing yet; the transfer a row sent from here, in
+      a block, already says (its token, amount and recipient, or the amount
+      sold in a swap) is that row alone.
     - Where the list comes from: every transaction a peer took (or maybe
       took) goes into the history as it is recorded
       (`HistoryRecordingSentTransfers`), which is kept for good, unlike the
