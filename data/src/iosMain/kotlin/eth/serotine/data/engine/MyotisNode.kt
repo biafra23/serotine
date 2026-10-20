@@ -189,10 +189,17 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         // directory, and asks the host for no ports. It has no CCIP-Read gateway either: an
         // off-chain ENS answer (EIP-3668) comes from an HTTP gateway the resolver names, an
         // off-chain source no ruling allows; the engine refuses such a name, and says so.
+        // The JVM node's snap-peer target and strict freshness flag have no counterpart here:
+        // the Rust engine behind both hosts takes only the name and the data directory
+        // (RustMyotisEngine.create passes those two to nativeCreate), so both run the same.
         val handle = try {
             engine.create(EngineConfig(name, dataDir))
         } catch (e: Throwable) {
-            engine.shutdownAll()
+            try {
+                engine.shutdownAll()
+            } catch (t: Throwable) {
+                e.addSuppressed(t)
+            }
             throw e
         }
         // From here until the running state is published, this boot owns the engine: whatever
