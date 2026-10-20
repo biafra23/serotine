@@ -232,6 +232,8 @@ private fun openWallet(dataDir: File) {
                 signer = keyStore,
                 sentTransfers = sentTransfers,
                 transactionHistory = transactionHistory,
+                historyStarts = historyStarts,
+                logIndex = node.logIndex,
                 // The Safe transactions waiting for their owners, with the signatures collected (public).
                 safeTxQueue = FileSafeTxQueue(dataDir.resolve("safe-tx-queue.json").path),
                 signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),

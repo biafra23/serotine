@@ -489,6 +489,11 @@ answered with an empty list.
     2026-10-20).
   - An account removed is unwatched, and its start forgotten once the engine
     took that.
+- **`ObserveSafeHistory`** (`:domain`) reads a Safe's own events
+  (`SafeEvents`: Safe 1.3.0's and 1.4.1's, each in the form its version
+  indexes it in) from the index, for the Activity screen: from where the
+  Safe's history starts, or the lowest block the index covers of it when
+  higher, to the top of what it covers, read again as that moves.
 - **What the walk tells a peer.** Receipts are fetched only for the blocks
   whose bloom flags an entry, so the serving peer learns which blocks matter
   to this device. That is the trade-off the log index makes for any

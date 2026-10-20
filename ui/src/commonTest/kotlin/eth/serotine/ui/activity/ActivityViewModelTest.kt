@@ -12,12 +12,21 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.HistoryEntry
+import eth.serotine.domain.repository.HistoryStart
+import eth.serotine.domain.repository.IndexedLog
+import eth.serotine.domain.repository.LogCoverage
+import eth.serotine.domain.repository.LogCoverageReading
+import eth.serotine.domain.repository.LogWatchKey
+import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.FakeLogIndex
+import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemoryTransactionHistory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -52,6 +61,8 @@ class ActivityViewModelTest {
     private val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc")
     private val history = MemoryTransactionHistory()
     private val accounts = FakeAccounts(alice, treasury)
+    private val starts = MemoryHistoryStarts()
+    private val index = FakeLogIndex()
 
     private fun sent(nonce: Long, action: SentAction, sentAt: Long, maybeSent: Boolean = false) = SentTransfer(
         account = alice.address,
@@ -87,6 +98,7 @@ class ActivityViewModelTest {
             address,
             ObserveAccountHistory(history),
             ObserveAccounts(accounts),
+            ObserveSafeHistory(index, starts),
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -115,6 +127,7 @@ class ActivityViewModelTest {
                     "at 500",
                     "No block seen to include it yet",
                     ActivityState.WAITING,
+                    execution.hash,
                 ),
                 ActivityRow(
                     native.hash,
@@ -124,6 +137,7 @@ class ActivityViewModelTest {
                     "at 400",
                     "Finalized in block 9,412,118",
                     ActivityState.DONE,
+                    native.hash,
                 ),
                 ActivityRow(
                     token.hash,
@@ -133,6 +147,7 @@ class ActivityViewModelTest {
                     "at 300",
                     "Reverted in block 9,401,220",
                     ActivityState.FAILED,
+                    token.hash,
                 ),
             ),
             shown.rows,
@@ -211,5 +226,138 @@ class ActivityViewModelTest {
         )
         assertEquals("On Uniswap · 0x3bFA…e48E", rows.first().detail)
         assertEquals("Router 0x3bFA…e48E", rows.last().detail)
+    }
+
+    /** The treasury followed from block 9,400,000, its events indexed over [covered]. */
+    private fun treasuryIndexed(covered: LongRange) {
+        starts.starts.value = mapOf(treasury.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Emitter(treasury.address) to LogCoverage(9_400_000, covered)),
+        )
+    }
+
+    private fun safeLog(block: Long, topics: List<String>, data: String = "0x", tx: String = "0x" + "cc".repeat(32)) =
+        IndexedLog(ReceiptLog(treasury.address, topics, data), block, "0x" + "bb".repeat(32), tx, 0)
+
+    private val received = "0x3d0ce9bfc3ed7d6862dbb28b2dea94561fe714a1b4d019aa8af39730d1ad7c3d"
+    private val executionSuccess = "0x442e715f626346e8c54381002da614f62bee8d27386535b2521ec8540898556e"
+    private val bobsTopic = "0x" + "00".repeat(12) + bob.hex.removePrefix("0x")
+
+    @Test
+    fun aSafesEventsGoInAmongItsSentTransactionsByBlockAndOpenNothing() = runTest {
+        history.entries.value = listOf(HistoryEntry(execution, SentOutcome.Included(9_410_000, succeeded = true)))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        index.logs = listOf(
+            safeLog(9_405_000, listOf(received, bobsTopic), "0x" + "0de0b6b3a7640000".padStart(64, '0')),
+            safeLog(9_415_000, listOf(received, bobsTopic), "0x" + "1".padStart(64, '0'), tx = "0x" + "dd".repeat(32)),
+        )
+
+        val shown = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
+
+        assertEquals(
+            listOf("Received 0.000000000000000001 ETH", "Executed transaction 4", "Received 1 ETH"),
+            shown.rows.map { it.title },
+        )
+        val event = shown.rows.last()
+        assertEquals("From 0x5aAe…eAed", event.detail)
+        assertEquals("Block 9,405,000", event.time)
+        assertEquals(null, event.opens)
+        assertEquals(execution.hash, shown.rows[1].opens)
+        assertEquals(
+            "Transactions sent from this device. Its events on chain from block 9,400,000 on, when it was " +
+                "added here. Token transfers are not listed yet.",
+            shown.coverage,
+        )
+    }
+
+    @Test
+    fun anEventOfATransactionSentFromHereIsLeftOutForItsRow() = runTest {
+        history.entries.value = listOf(HistoryEntry(execution, SentOutcome.Included(9_410_000, succeeded = true)))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val topics = listOf(executionSuccess, "0x" + "ab".repeat(32))
+        index.logs = listOf(safeLog(9_410_000, topics, "0x" + "0".repeat(64), tx = execution.hash))
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(listOf("Executed transaction 4"), rows.map { it.title })
+    }
+
+    @Test
+    fun anEventOfATransactionSentFromHereThatNoBlockWasSeenForIsListedBesideIt() = runTest {
+        // Mined while the app was closed: the row says only that its nonce was used.
+        history.entries.value = listOf(HistoryEntry(execution, SentOutcome.NonceUsed))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val topics = listOf(executionSuccess, "0x" + "ab".repeat(32))
+        index.logs = listOf(safeLog(9_410_000, topics, "0x" + "0".repeat(64), tx = execution.hash))
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(listOf("Executed transaction 4", "Executed a Safe transaction"), rows.map { it.title })
+        assertEquals("Block 9,410,000", rows.last().time)
+    }
+
+    @Test
+    fun theCoverageSaysWhatIsStillBeingCheckedAndWhenTheSafeIsNotFollowedYet() = runTest {
+        treasuryIndexed(9_410_000L..9_420_000L)
+
+        val partly = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
+
+        assertEquals(
+            "Transactions sent from this device. Its events on chain from block 9,400,000 on, when it was " +
+                "added here: checked from block 9,410,000 so far, the blocks before are still being checked. " +
+                "Token transfers are not listed yet.",
+            partly.coverage,
+        )
+        assertEquals("Nothing listed yet.", partly.empty)
+
+        starts.starts.value = emptyMap()
+        val waiting = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
+
+        assertEquals(true, "listed once the light client is synced" in waiting.coverage)
+    }
+
+    @Test
+    fun aFailureOrASettingsChangeOfATransactionSentFromHereIsListedAndWhatMovesFundsWarns() = runTest {
+        history.entries.value = listOf(HistoryEntry(execution, SentOutcome.Included(9_410_000, succeeded = true)))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val failure = "0x23428b18acfb3ea64b08dc0c1d296ea9c09702c09083ca5272e64d115b687d23"
+        val moduleEnabled = "0xecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440"
+        val threshold = "0x610f7ff2b304ae8903c3de74c60c6ab1f7d6226b3f52c5161905bb5ad4039c93"
+        index.logs = listOf(
+            safeLog(9_410_000, listOf(failure, "0x" + "ab".repeat(32)), "0x" + "0".repeat(64), tx = execution.hash),
+            safeLog(9_412_000, listOf(moduleEnabled, bobsTopic), tx = "0x" + "dd".repeat(32)),
+            safeLog(9_413_000, listOf(threshold), "0x" + "1".padStart(64, '0'), tx = "0x" + "ee".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(
+            listOf("Threshold changed", "Module enabled", "Executed transaction 4", "A Safe transaction failed"),
+            rows.map { it.title },
+        )
+        assertEquals("1 owner must sign now", rows[0].detail)
+        assertEquals(ActivityState.WARNING, rows[1].state)
+        assertEquals(ActivityState.FAILED, rows[3].state)
+    }
+
+    @Test
+    fun aFallbackHandlerOtherThanThePinnedOneWarnsAndThePinnedOneOrNoneDoesNot() = runTest {
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val handlerSet = "0x5ac6c46c93c8d0e53714ba3b53db3e7c046da994313d7ed0d192028bc7c228b0"
+        val pinned = "0x" + "00".repeat(12) + "fd0732dc9e303f09fcef3a7388ad10a83459ec99"
+        val none = "0x" + "00".repeat(32)
+        index.logs = listOf(
+            safeLog(9_401_000, listOf(handlerSet, bobsTopic), tx = "0x" + "a1".repeat(32)),
+            safeLog(9_402_000, listOf(handlerSet, pinned), tx = "0x" + "a2".repeat(32)),
+            safeLog(9_403_000, listOf(handlerSet, none), tx = "0x" + "a3".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(
+            listOf("Fallback handler removed", "Fallback handler set", "Fallback handler set"),
+            rows.map { it.title },
+        )
+        assertEquals(listOf(ActivityState.DONE, ActivityState.DONE, ActivityState.WARNING), rows.map { it.state })
     }
 }

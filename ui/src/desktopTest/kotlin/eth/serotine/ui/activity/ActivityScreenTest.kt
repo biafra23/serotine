@@ -19,13 +19,14 @@ class ActivityScreenTest {
 
     private val opened = mutableListOf<String>()
     private val row = ActivityRow(
-        hash = "0x" + "1".repeat(64),
+        key = "0x" + "1".repeat(64),
         title = "Sent 0.25 ETH",
         detail = "To Bob · 0x5aAe…eAed",
         about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
         time = "Oct 19, 2026, 2:02 PM",
         status = "Reverted in block 9,401,220",
         state = ActivityState.FAILED,
+        opens = "0x" + "1".repeat(64),
     )
 
     private fun show(state: ActivityUiState) = rule.setContent {
@@ -41,7 +42,17 @@ class ActivityScreenTest {
         rule.onNodeWithText("To Bob · 0x5aAe…eAed").assertIsDisplayed()
         rule.onNodeWithText("Sent 0.25 ETH").performClick()
 
-        assertEquals(listOf(row.hash), opened)
+        assertEquals(listOf(row.key), opened)
+    }
+
+    @Test
+    fun aSafesEventOpensNothing() {
+        val event = row.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = null)
+        show(ActivityUiState.Shown("Treasury", listOf(event), "Its events on chain."))
+
+        rule.onNodeWithText("Received 1 ETH").performClick()
+
+        assertEquals(emptyList(), opened)
     }
 
     @Test
