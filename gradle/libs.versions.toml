@@ -95,6 +95,7 @@ secp256k1-kmp-jni-jvm      = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jv
 libsodium-bindings         = { module = "com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings", version.ref = "libsodium" }
 jna                        = { module = "net.java.dev.jna:jna",                         version.ref = "jna" }
 myotis-engine              = { module = "eth.myotis:myotis-engine",                     version.ref = "myotis" }
+myotis-engine-ios          = { module = "eth.myotis:myotis-engine-ios",                 version.ref = "myotis" }
 kotlincrypto-sha2          = { module = "org.kotlincrypto.hash:sha2",                   version.ref = "kotlincrypto" }
 kotlincrypto-sha3          = { module = "org.kotlincrypto.hash:sha3",                   version.ref = "kotlincrypto" }
 kotlincrypto-hmac-sha2     = { module = "org.kotlincrypto.macs:hmac-sha2",              version.ref = "kotlincrypto" }
