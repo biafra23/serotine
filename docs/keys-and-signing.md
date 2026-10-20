@@ -263,8 +263,27 @@ its KDoc and returns it as a result the UI shows as state.
   - The key store's calls take turns, `describe()` included: the biometric
     key's check opens a Keystore operation, which must not compete with the one
     a pending prompt holds (StrongBox has few).
-  - The desktop and iOS have no biometric path yet, and their Security screen
-    says so.
+  - The desktop has no biometric path yet, and its Security screen says so.
+- **Biometric unlock on iOS** works the same way, with `IosBiometricKey` as
+  `HW_bio`:
+  - a P-256 key made inside the Secure Enclave under
+    `[.privateKeyUsage, .biometryCurrentSet]` and
+    `WhenPasscodeSetThisDeviceOnly` (rule 3), with no passcode fallback. It is
+    kept only as the enclave's encrypted handle, in `biometric-key.json` next
+    to the envelopes, so deleting that file deletes the key (rule 4);
+  - beside the handle, the enrolled set's fingerprint
+    (`evaluatedPolicyDomainState`) at creation: a set that changed since, or
+    none left, reads as invalidated, as the enclave enforces too;
+  - each DEK wrapped by ECIES to the public half (X9.63 KDF, AES-GCM), which
+    needs no biometric, as `<address>.bio`;
+  - `sign(…, Unlock.WithBiometrics(reason))` shows the system's Face ID or
+    Touch ID prompt (`LAContext`, "Use the password" as its way out) and
+    hands the context the user passed to the enclave for that one
+    decryption;
+  - the simulator has no enclave, so the path is not offered there (rule 5);
+    where it is not offered, the Security screen says why and how to get it:
+    no face or finger enrolled, no passcode, Face ID turned off for Serotine,
+    or biometrics locked out until the passcode is entered.
 
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
@@ -446,7 +465,8 @@ its KDoc and returns it as a result the UI shows as state.
     build (a source set of its own, not a runtime check) lets a wallet stand
     on the password alone, for development; its factor sticks to the wallet
     as on the desktop.
-  - No biometric path yet, as on the desktop.
+  - Biometric unlock: Face ID or Touch ID, see *Biometric unlock on iOS*
+    above. The simulator has none.
 - **What never leaves a call.**
   - The seed, the keys and the password's bytes exist only inside one call,
     in byte arrays and native buffers this code zeroes before it returns.
@@ -484,9 +504,9 @@ its KDoc and returns it as a result the UI shows as state.
   display that times out stops the screen, and that stop is a leaving
   (owner ruling, 2026-10-18, #39).
 - **Not yet.**
-  - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`) and on
-    iOS, and the opt-in on the seed screens at the first key (Settings →
-    Security is where it is turned on today).
+  - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`), and
+    the opt-in on the seed screens at the first key (Settings → Security is
+    where it is turned on today).
   - Changing the wallet password, which re-wraps every envelope's DEK as one
     step a crash cannot leave half done.
   - A way back when no envelope opens any more (a lost Keystore key, a

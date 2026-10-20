@@ -8,8 +8,8 @@ import eth.serotine.domain.repository.BiometricUnusable
  * 5): a second hardware key, apart from the password path's, that wraps each envelope's DEK and
  * gives it back only after a per-use strong biometric in the system's prompt. Wrapping needs no
  * biometric, since it uses the key's public half; unwrapping always does, and the hardware, not
- * the UI, enforces it. Android's is an RSA key in the Keystore; the other platforms have none
- * yet, and their key store reports so.
+ * the UI, enforces it. Android's is an RSA key in the Keystore, iOS's a P-256 key in the Secure
+ * Enclave; the desktop has none yet, and its key store reports so.
  */
 interface BiometricKey {
 

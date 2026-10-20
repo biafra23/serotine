@@ -36,6 +36,11 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # Biometric unlock (Settings > Security), the user's opt-in: iOS asks once before the
+        # first Face ID check, and refuses Face ID to an app without this.
+        NSFaceIDUsageDescription: >-
+          Face ID can unlock your keys to sign, instead of the wallet password, once you turn it
+          on in Settings.
         # The engine dials devp2p and libp2p peers directly, which on a device can include
         # peers on the local network.
         NSLocalNetworkUsageDescription: >-
@@ -51,10 +56,10 @@ targets:
         # A static framework: the frameworks its archives call into are named here, since
         # auto-linking cannot see into them. Security: the Secure Enclave and the system's
         # randomness; SystemConfiguration: the engine's network-interface watching (libp2p);
-        # UserNotifications: the upgrade notices.
+        # UserNotifications: the upgrade notices; LocalAuthentication: biometric unlock.
         OTHER_LDFLAGS: >-
           $(inherited) -framework SerotineKit -framework Security -framework SystemConfiguration
-          -framework UserNotifications
+          -framework UserNotifications -framework LocalAuthentication
         # The Gradle phase writes outside Xcode's sandbox (the build directories).
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_VERSION: "5.0"
