@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import eth.serotine.ui.addtoken.AddTokenScreen
 import eth.serotine.ui.addtoken.AddTokenUiState
 import eth.serotine.ui.addtoken.TokenCard
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -51,6 +52,7 @@ class TokenScreensTest {
             SerotineTheme {
                 TokensScreen(
                     TokensUiState(listOf(usdc, added)),
+                    verifiedStripSample,
                     onBack = {},
                     onAddToken = { events += "add" },
                     onCopy = { events += "copy $it" },
@@ -89,6 +91,7 @@ class TokenScreensTest {
                             warning = null,
                         ),
                     ),
+                    verifiedStripSample,
                     onAddressChange = {},
                     onAdd = { events += "add" },
                     onBack = {},
@@ -112,6 +115,7 @@ class TokenScreensTest {
                         address = added.address,
                         card = TokenCard.Unavailable("This address does not answer as a token."),
                     ),
+                    verifiedStripSample,
                     onAddressChange = {},
                     onAdd = {},
                     onBack = {},

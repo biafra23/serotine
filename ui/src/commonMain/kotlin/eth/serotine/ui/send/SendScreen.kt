@@ -1,7 +1,6 @@
 package eth.serotine.ui.send
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,13 +43,16 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.FeeChoice
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.RecipientCard
 import eth.serotine.ui.components.ReviewButton
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.TransferFormFields
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers
 
@@ -75,6 +77,7 @@ const val SEND_EARLIER_TAG = "send-earlier"
 @Composable
 fun SendRoute(
     viewModel: SendViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
@@ -82,6 +85,7 @@ fun SendRoute(
 ) {
     // Main.immediate: as on the seed screens, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? SendUiState.Sent)?.hash
@@ -91,6 +95,7 @@ fun SendRoute(
     }
     SendScreen(
         state = state,
+        lightClient = strip,
         onAssetChange = viewModel::onAssetChange,
         onToChange = viewModel::onToChange,
         onPickAccount = viewModel::onPickAccount,
@@ -121,6 +126,7 @@ fun SendRoute(
 @Composable
 fun SendScreen(
     state: SendUiState,
+    lightClient: LightClientItem,
     onAssetChange: (contract: String?) -> Unit,
     onToChange: (String) -> Unit,
     onPickAccount: (address: String) -> Unit,
@@ -180,7 +186,7 @@ fun SendScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is SendUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is SendUiState.Sent -> Column(

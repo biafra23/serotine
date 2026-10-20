@@ -1,6 +1,8 @@
 package eth.serotine.ui.safeimport
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -17,9 +19,13 @@ private const val TEXT = "{\"v\":1,\"chainId\":11155111,\"safe\":\"0xdbf03b407c0
 private val empty = SafeImportUiState.Entering("Sepolia", label = "Treasury", address = TREASURY, text = "")
 
 @Composable
-private fun SafeImportPreview(state: SafeImportUiState, darkTheme: Boolean = false) {
+private fun SafeImportPreview(
+    state: SafeImportUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
-        SafeImportScreen(state, onTextChange = {}, onImport = {}, onBack = {})
+        SafeImportScreen(state, lightClient, onTextChange = {}, onImport = {}, onBack = {})
     }
 }
 

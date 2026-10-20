@@ -1,7 +1,6 @@
 package eth.serotine.ui.safeimport
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,6 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.CHECKING_SAFE
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import kotlinx.coroutines.Dispatchers
 
@@ -52,18 +54,20 @@ const val IMPORT_REQUEST_BUTTON_TAG = "import-request-button"
 @Composable
 fun SafeImportRoute(
     viewModel: SafeImportViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onImported: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: a paste reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     val imported = (state as? SafeImportUiState.Imported)?.hash
     val currentOnImported by rememberUpdatedState(onImported)
     LaunchedEffect(imported) {
         if (imported != null) currentOnImported(imported)
     }
-    SafeImportScreen(state, viewModel::onTextChange, viewModel::import, onBack, modifier)
+    SafeImportScreen(state, strip, viewModel::onTextChange, viewModel::import, onBack, modifier)
 }
 
 /**
@@ -75,6 +79,7 @@ fun SafeImportRoute(
 @Composable
 fun SafeImportScreen(
     state: SafeImportUiState,
+    lightClient: LightClientItem,
     onTextChange: (String) -> Unit,
     onImport: () -> Unit,
     onBack: () -> Unit,
@@ -103,7 +108,7 @@ fun SafeImportScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is SafeImportUiState.Imported -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is SafeImportUiState.Entering -> Entering(state, onTextChange, onImport)

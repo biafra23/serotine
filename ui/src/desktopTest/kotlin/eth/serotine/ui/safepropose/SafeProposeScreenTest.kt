@@ -24,6 +24,7 @@ import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -77,6 +78,7 @@ class SafeProposeScreenTest {
         SerotineTheme {
             SafeProposeScreen(
                 state = state,
+                lightClient = verifiedStripSample,
                 actions = SafeProposeActions(
                     onAmountChange = { events += "amount $it" },
                     onMax = { events += "max" },

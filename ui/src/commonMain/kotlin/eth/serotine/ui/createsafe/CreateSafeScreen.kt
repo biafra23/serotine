@@ -1,7 +1,6 @@
 package eth.serotine.ui.createsafe
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -62,11 +61,14 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.lightclient.LightClientViewModel
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the Safe's name field, for UI tests. */
@@ -105,12 +107,14 @@ const val CREATE_SAFE_DEPLOY_TAG = "create-safe-deploy"
 @Composable
 fun CreateSafeRoute(
     viewModel: CreateSafeViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? CreateSafeUiState.Sent)?.hash
@@ -120,6 +124,7 @@ fun CreateSafeRoute(
     }
     CreateSafeScreen(
         state = state,
+        lightClient = strip,
         actions = CreateSafeActions(
             onNameChange = viewModel::onNameChange,
             onToggleOwner = viewModel::onToggleOwner,
@@ -179,6 +184,7 @@ class CreateSafeActions(
 @Composable
 fun CreateSafeScreen(
     state: CreateSafeUiState,
+    lightClient: LightClientItem,
     actions: CreateSafeActions,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -228,7 +234,7 @@ fun CreateSafeScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 is CreateSafeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is CreateSafeUiState.Sent -> Column(

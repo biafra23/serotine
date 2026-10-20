@@ -3,6 +3,10 @@ package eth.serotine.ui.accountdetail
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.catchingUpStripSample
+import eth.serotine.ui.components.staleStripSample
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -108,10 +112,15 @@ private val treasury = AccountDetailUiState.Ready(
 )
 
 @Composable
-private fun AccountDetailPreview(state: AccountDetailUiState, darkTheme: Boolean = false) {
+private fun AccountDetailPreview(
+    state: AccountDetailUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
         AccountDetailScreen(
             state = state,
+            lightClient = lightClient,
             onBack = {},
             onSend = {},
             onSwap = {},
@@ -150,6 +159,7 @@ private fun AccountDetailCheckingPreview() = AccountDetailPreview(
         assets = listOf(ether.copy(amount = "Checking…", verified = false, verifiedAt = null, value = null)),
         tokensNote = "Checking 3 tokens",
     ),
+    lightClient = catchingUpStripSample,
 )
 
 private const val LAST_KNOWN = "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
@@ -165,6 +175,7 @@ private fun AccountDetailHeadTooOldPreview() = AccountDetailPreview(
             it.copy(verified = false, verifiedAt = null, value = null, lastKnown = LAST_KNOWN)
         },
     ),
+    lightClient = staleStripSample,
 )
 
 @Preview

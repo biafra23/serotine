@@ -2,7 +2,6 @@ package eth.serotine.ui.accountdetail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -62,15 +61,18 @@ import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
+import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -103,6 +105,7 @@ const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
 @Composable
 fun AccountDetailRoute(
     viewModel: AccountDetailViewModel,
+    lightClient: LightClientViewModel,
     onBack: () -> Unit,
     onGone: () -> Unit,
     onSend: (contract: String?) -> Unit,
@@ -118,6 +121,7 @@ fun AccountDetailRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val strip by lightClient.item.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     // A dialog destination over this one holds it at STARTED; it is RESUMED when in front.
     val inFront = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
@@ -129,6 +133,7 @@ fun AccountDetailRoute(
     val isSafe = (state as? AccountDetailUiState.Ready)?.kind == AccountKind.SAFE
     AccountDetailScreen(
         state = state,
+        lightClient = strip,
         onBack = onBack,
         onSend = { contract -> if (isSafe) onPropose(contract) else onSend(contract) },
         onSwap = { contract -> if (isSafe) onSafeSwap(contract) else onSwap(contract) },
@@ -160,6 +165,7 @@ fun AccountDetailRoute(
 @Composable
 fun AccountDetailScreen(
     state: AccountDetailUiState,
+    lightClient: LightClientItem,
     onBack: () -> Unit,
     onSend: (contract: String?) -> Unit,
     onSwap: (contract: String?) -> Unit,
@@ -232,7 +238,7 @@ fun AccountDetailScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
             when (state) {
                 AccountDetailUiState.Loading, AccountDetailUiState.Gone ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))

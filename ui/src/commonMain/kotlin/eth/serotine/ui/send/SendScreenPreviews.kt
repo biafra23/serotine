@@ -6,11 +6,14 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -105,10 +108,15 @@ private val tokenReview = review.copy(
 )
 
 @Composable
-private fun SendPreview(state: SendUiState, darkTheme: Boolean = false) {
+private fun SendPreview(
+    state: SendUiState,
+    darkTheme: Boolean = false,
+    lightClient: LightClientItem = verifiedStripSample,
+) {
     SerotineTheme(darkTheme = darkTheme) {
         SendScreen(
             state = state,
+            lightClient = lightClient,
             onAssetChange = {},
             onToChange = {},
             onPickAccount = {},
@@ -301,7 +309,7 @@ private fun SendReviewRejectedPreview() = SendPreview(
 
 @Preview
 @Composable
-private fun SendLoadingPreview() = SendPreview(SendUiState.Loading("Sepolia"))
+private fun SendLoadingPreview() = SendPreview(SendUiState.Loading("Sepolia"), lightClient = catchingUpStripSample)
 
 @Preview
 @Composable
