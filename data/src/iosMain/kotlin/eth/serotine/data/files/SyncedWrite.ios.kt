@@ -11,6 +11,7 @@ import platform.posix.O_TRUNC
 import platform.posix.O_WRONLY
 import platform.posix.close
 import platform.posix.errno
+import platform.posix.fcntl
 import platform.posix.fsync
 import platform.posix.open
 import platform.posix.write
@@ -41,14 +42,22 @@ internal fun writeFully(fd: Int, bytes: ByteArray) {
     }
 }
 
+/**
+ * Flushes the directory [path] is in, so the name a write just published survives a power loss:
+ * F_FULLFSYNC, which empties the disk's own cache as the file's flush does, and fsync where the
+ * file system does not take it. Best effort, as on the JVM: the file itself is flushed already.
+ */
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun syncDirectoryOf(path: String) {
     val directory = path.substringBeforeLast('/', missingDelimiterValue = ".").ifEmpty { "/" }
     val fd = open(directory, O_RDONLY)
     if (fd < 0) return
-    fsync(fd)
+    if (fcntl(fd, F_FULLFSYNC) != 0) fsync(fd)
     close(fd)
 }
+
+/** fcntl.h's F_FULLFSYNC on Darwin. */
+private const val F_FULLFSYNC = 51
 
 /** 0666 before the umask: the mode fopen gives a new file, as kotlinx-io's own writes have it. */
 private const val NEW_FILE_MODE = 0x1B6

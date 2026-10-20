@@ -147,11 +147,18 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
      * Turns the engine's networking off, keeping its state, for while the app is in the
      * background. Returns at once with the job the pause runs in, off the caller's thread, so
      * the host can keep the app awake until it has finished. Asked for while the engine is still
-     * starting, it is applied once the engine runs (the job then ends at once).
+     * starting, it is applied once the engine runs, and the job ends only then, so the host
+     * keeps the app awake through the rest of the boot and the pause.
      */
     fun pause(): Job {
         pauseWanted = true
-        return followPauseWanted()
+        val boot = bootJob
+        if (state.load() !is State.Booting || boot == null) return followPauseWanted()
+        // The boot follows pauseWanted itself once the engine runs; this waits for that switch.
+        return scope.launch {
+            boot.join()
+            followPauseWanted().join()
+        }
     }
 
     /**
