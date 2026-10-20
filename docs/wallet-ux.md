@@ -591,7 +591,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       out when its row says the same (an execution, an approval, a
       deployment); a failure and a settings change are not. A module
       enabled, or a fallback handler other than the pinned one, is a
-      warning.
+      warning, and so is the handler removed, with the warning its Safe
+      transaction is signed with (17).
     - And every ERC-20 and ERC-721 transfer to or from the account, whichever
       token moved (`ObserveTokenTransfers`, the log index's topic entry):
       "Received 250 USDC" / "From Treasury · …" for a token the wallet shows

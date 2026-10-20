@@ -354,7 +354,7 @@ class ActivityViewModelTest {
     }
 
     @Test
-    fun aFallbackHandlerOtherThanThePinnedOneWarnsAndThePinnedOneOrNoneDoesNot() = runTest {
+    fun aFallbackHandlerOtherThanThePinnedOneOrNoneWarnsAndThePinnedOneDoesNot() = runTest {
         treasuryIndexed(9_400_000L..9_420_000L)
         val handlerSet = "0x5ac6c46c93c8d0e53714ba3b53db3e7c046da994313d7ed0d192028bc7c228b0"
         val pinned = "0x" + "00".repeat(12) + "fd0732dc9e303f09fcef3a7388ad10a83459ec99"
@@ -371,7 +371,8 @@ class ActivityViewModelTest {
             listOf("Fallback handler removed", "Fallback handler set", "Fallback handler set"),
             rows.map { it.title },
         )
-        assertEquals(listOf(ActivityState.DONE, ActivityState.DONE, ActivityState.WARNING), rows.map { it.state })
+        // Removing it warns as its Safe transaction does (owner ruling, 2026-10-20, #106).
+        assertEquals(listOf(ActivityState.WARNING, ActivityState.DONE, ActivityState.WARNING), rows.map { it.state })
     }
 
     private val transfer = TokenTransfers.TRANSFER

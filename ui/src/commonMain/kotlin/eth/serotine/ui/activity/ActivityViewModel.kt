@@ -29,6 +29,7 @@ import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.FALLBACK_HANDLER_REMOVED
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.shortAddress
@@ -368,12 +369,16 @@ class ActivityViewModel(
     /**
      * How an event's row is marked: failed for a call that reverted; a warning for what can move
      * the Safe's funds without its owners (CLAUDE.md, *Trust*): a module enabled, or a fallback
-     * handler other than the pinned one or none.
+     * handler other than the pinned one; and for a fallback handler removed, with the warning its
+     * Safe transaction is signed with (what the handler answered for the Safe stops).
      */
     private fun statusOf(event: SafeEvent): Pair<String, ActivityState> = when {
         (event as? SafeEvent.Executed)?.succeeded == false ||
             (event as? SafeEvent.ModuleExecuted)?.succeeded == false -> FAILED_ON_CHAIN to ActivityState.FAILED
         event is SafeEvent.ModuleEnabled -> MODULE_WARNING to ActivityState.WARNING
+        // Removing it is signed here, with a warning (owner ruling, 2026-10-20, #106): the row warns alike.
+        event is SafeEvent.FallbackHandlerChanged && event.handler == Address.ZERO ->
+            FALLBACK_HANDLER_REMOVED to ActivityState.WARNING
         event is SafeEvent.FallbackHandlerChanged && !PinnedFallbackHandlers.allowed(network, event.handler) ->
             HANDLER_WARNING to ActivityState.WARNING
         else -> ON_CHAIN to ActivityState.DONE
