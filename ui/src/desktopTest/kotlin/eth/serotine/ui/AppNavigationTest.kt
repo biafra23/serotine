@@ -91,10 +91,10 @@ import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
+import eth.serotine.ui.accounts.ACCOUNT_LIST_TAG
+import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
-import eth.serotine.ui.assets.ASSETS_ACCOUNT_LIST_TAG
-import eth.serotine.ui.assets.NO_ACCOUNTS_HINT
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.SAFE_TX_QR_TAG
@@ -400,7 +400,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun aRequiredUpdateFromATabLeavesNothingUnderItAndRecoversToTheAssetsStart() {
+    fun aRequiredUpdateFromATabLeavesNothingUnderItAndRecoversToTheAccountsStart() {
         accounts.value = listOf(daily)
         showApp()
         rule.onNodeWithText("Daily").performClick()
@@ -413,8 +413,12 @@ class AppNavigationTest {
         assertEquals(listOf("update-required"), screens())
 
         status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
-        rule.waitUntil { rule.onAllNodesWithTag(ASSETS_ACCOUNT_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
-        assertEquals(listOf("assets"), screens(), "the Assets start, with neither the account nor Settings under it")
+        rule.waitUntil { rule.onAllNodesWithTag(ACCOUNT_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(
+            listOf("accounts"),
+            screens(),
+            "the Accounts start, with neither the account nor Settings under it",
+        )
     }
 
     /** The screens on the back stack, bottom first, without the graphs that hold them. */
@@ -423,7 +427,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun theBackArrowReturnsToAssetsWithNothingAdded() {
+    fun theBackArrowReturnsToAccountsWithNothingAdded() {
         showApp()
 
         rule.onNodeWithContentDescription("Add account").performClick()
@@ -434,7 +438,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun theSettingsTabKeepsTheAssetsTabWhereItWas() {
+    fun theSettingsTabKeepsTheAccountsTabWhereItWas() {
         accounts.value = listOf(daily)
         showApp()
         rule.onNodeWithText("Daily").performClick()
@@ -444,11 +448,11 @@ class AppNavigationTest {
         rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
         rule.onNodeWithText("The only network for now").assertIsDisplayed()
 
-        rule.onNodeWithText("Assets").performClick()
+        rule.onNodeWithText("Accounts").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         // Selecting the tab it is on returns to the tab's start.
-        rule.onNodeWithText("Assets").performClick()
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Accounts").performClick()
+        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
     }
 
     @Test
@@ -557,7 +561,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun theBackKeyLeavesSettingsForTheAssetsScreenAndAScreenLeftNeverComesBack() {
+    fun theBackKeyLeavesSettingsForTheAccountsScreenAndAScreenLeftNeverComesBack() {
         accounts.value = listOf(daily)
         showApp()
         rule.onNodeWithText("Daily").performClick()
@@ -566,12 +570,12 @@ class AppNavigationTest {
         rule.runOnIdle { navController.single().popBackStack() }
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         rule.runOnIdle { navController.single().popBackStack() }
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
 
         rule.onNodeWithText("Settings").performClick()
-        rule.onNodeWithText("Assets").performClick()
+        rule.onNodeWithText("Accounts").performClick()
 
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertDoesNotExist()
     }
 
@@ -622,7 +626,7 @@ class AppNavigationTest {
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(1, broadcaster.sent.size)
         // The signed review is gone from the back stack: Done returns to the account.
-        assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -638,7 +642,7 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        assertEquals(listOf("assets", "account/{address}", "swap/{address}?asset={asset}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "swap/{address}?asset={asset}"), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
@@ -668,7 +672,7 @@ class AppNavigationTest {
 
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(sent.hash)
-        assertEquals(listOf("assets", "account/{address}", "activity/{address}", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "activity/{address}", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
     }
@@ -693,7 +697,7 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(SAFE_TX_QR_TAG).performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag(SAFE_TX_REQUEST_TAG).performScrollTo().assertTextEquals(codec.encode(queued))
-        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -725,7 +729,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(SAFE_TX_HASH_TAG).performScrollTo().assertTextEquals("0x" + proposed.hash.hex)
         assertEquals(listOf("correct horse"), signer.passwords)
         // The proposal is gone from the back stack: back from the transaction returns to the Safe.
-        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
     }
 
     @Test
@@ -747,7 +751,7 @@ class AppNavigationTest {
         // The import's flag reached the new entry through its savedStateHandle: it says where it went.
         rule.onNodeWithText("Added to Treasury's queue on this device.").performScrollTo().assertIsDisplayed()
         assertEquals(listOf(carol), safeTxQueue.requests.value.single().signers)
-        assertEquals(listOf("assets", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
     }
 
     @Test
@@ -773,7 +777,7 @@ class AppNavigationTest {
         assertEquals(SentAction.SafeApproval(queued), approval.action)
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(approval.hash)
         // The signed review is gone from the back stack: Done returns to the Safe.
-        assertEquals(listOf("assets", "account/{address}", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{address}", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -787,7 +791,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Receive").assertIsDisplayed()
         rule.onNodeWithText("Send").performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
-        assertEquals(listOf("assets", "account/{address}"), screens(), "nothing opened")
+        assertEquals(listOf("accounts", "account/{address}"), screens(), "nothing opened")
     }
 
     @Test
@@ -837,10 +841,10 @@ class AppNavigationTest {
         rule.onNodeWithText("Deployment of a Safe").assertIsDisplayed()
         rule.onNodeWithTag(TRANSFER_SAFE_TAG).assertTextEquals(Eip55.format(action.safe))
         assertEquals(listOf("correct horse"), signer.passwords)
-        // The signed review is gone from the back stack: Done returns to Assets, right away.
-        assertEquals(listOf("assets", "transfer/{hash}"), screens())
+        // The signed review is gone from the back stack: Done returns to Accounts, right away.
+        assertEquals(listOf("accounts", "transfer/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
 
         // Mined and proven with the status screen long gone: the Safe is listed all the same.
         receipts.of(deployment.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
@@ -867,10 +871,10 @@ class AppNavigationTest {
             "Creating a Safe needs an account whose key is on this device, to pay for its deployment. Import or " +
                 "create an account, and fund it, first.",
         )
-        assertEquals(listOf("assets"), screens(), "nothing opened")
+        assertEquals(listOf("accounts"), screens(), "nothing opened")
 
         // Its way out: Create account, straight from the dialog.
         rule.onNodeWithText("Create account").performClick()
-        assertEquals(listOf("assets", "create-account"), screens())
+        assertEquals(listOf("accounts", "create-account"), screens())
     }
 }

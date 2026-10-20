@@ -1,4 +1,4 @@
-package eth.serotine.ui.assets
+package eth.serotine.ui.accounts
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,25 +57,25 @@ import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
 
 /** Test tag of the account list, for UI tests. */
-const val ASSETS_ACCOUNT_LIST_TAG = "assets-account-list"
+const val ACCOUNT_LIST_TAG = "account-list"
 
 /** Test tag of the notice when the stored list is not what is shown: set aside, or unavailable. */
-const val ASSETS_NOTICE_TAG = "assets-notice"
+const val ACCOUNTS_NOTICE_TAG = "accounts-notice"
 
 /** Test tag of the label naming the network the app works on, for UI tests. */
-const val ASSETS_NETWORK_TAG = "assets-network"
+const val ACCOUNTS_NETWORK_TAG = "accounts-network"
 
 /** Test tag of the portfolio's total, for UI tests. */
-const val ASSETS_TOTAL_TAG = "assets-total"
+const val ACCOUNTS_TOTAL_TAG = "accounts-total"
 
 /**
- * Binds [AssetsScreen] to its ViewModel: the only composable that knows the ViewModel
+ * Binds [AccountsScreen] to its ViewModel: the only composable that knows the ViewModel
  * exists. Copy is done here, on the platform's clipboard; every other action is
  * [onAccountAction]'s, which navigates.
  */
 @Composable
-fun AssetsRoute(
-    viewModel: AssetsViewModel,
+fun AccountsRoute(
+    viewModel: AccountsViewModel,
     onWatchAddress: () -> Unit,
     onImportPhrase: () -> Unit,
     onCreateAccount: () -> Unit,
@@ -85,7 +85,7 @@ fun AssetsRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val copy = rememberCopyText()
-    AssetsScreen(
+    AccountsScreen(
         state = state,
         onWatchAddress = onWatchAddress,
         onImportPhrase = onImportPhrase,
@@ -99,7 +99,7 @@ fun AssetsRoute(
 }
 
 /**
- * The Assets screen as a pure function of [state]; stateless, so a test can render any
+ * The Accounts screen as a pure function of [state]; stateless, so a test can render any
  * state directly. Its floating action button fans out into Watch address ([onWatchAddress]),
  * Import recovery phrase ([onImportPhrase]), Create account ([onCreateAccount]) and Create Safe
  * ([onCreateSafe]), greyed out until an account's key is known to be held here to pay for its
@@ -110,8 +110,8 @@ fun AssetsRoute(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AssetsScreen(
-    state: AssetsUiState,
+fun AccountsScreen(
+    state: AccountsUiState,
     onWatchAddress: () -> Unit,
     onImportPhrase: () -> Unit,
     onCreateAccount: () -> Unit,
@@ -133,12 +133,12 @@ fun AssetsScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             // No add to offer while the stored list cannot be read: it would be refused.
-            if (state !is AssetsUiState.ListUnavailable) {
+            if (state !is AccountsUiState.ListUnavailable) {
                 // An account held here pays for the deployment (docs/wallet-ux.md, screen 2): until one
                 // is known to be, Create Safe is greyed out, and says so; the ways to get one only once
                 // the list is read and has none.
                 val createSafeReason = state.createSafeReason
-                val createSafeFixes = if (state is AssetsUiState.Ready) {
+                val createSafeFixes = if (state is AccountsUiState.Ready) {
                     listOf(
                         UnavailableFix("Import recovery phrase", onImportPhrase),
                         UnavailableFix("Create account", onCreateAccount),
@@ -166,7 +166,7 @@ fun AssetsScreen(
         },
         topBar = {
             TopAppBar(
-                title = { Text("Assets") },
+                title = { Text("Accounts") },
                 // The one network the app works on, always in sight, so a testnet wallet
                 // is never mistaken for a mainnet one.
                 actions = { NetworkLabel(state.network, Modifier.padding(end = 12.dp)) },
@@ -176,11 +176,11 @@ fun AssetsScreen(
         Column(Modifier.padding(padding).fillMaxSize()) {
             LightClientStrip(state.lightClient)
             state.upgrade?.let { UpgradeBanner(it) }
-            (state as? AssetsUiState.Ready)?.let { ready -> ready.total?.let { PortfolioTotal(it, ready.totalNote) } }
-            (state as? AssetsUiState.Ready)?.notice?.let { notice ->
+            (state as? AccountsUiState.Ready)?.let { ready -> ready.total?.let { PortfolioTotal(it, ready.totalNote) } }
+            (state as? AccountsUiState.Ready)?.notice?.let { notice ->
                 Text(
                     notice,
-                    Modifier.padding(16.dp).testTag(ASSETS_NOTICE_TAG),
+                    Modifier.padding(16.dp).testTag(ACCOUNTS_NOTICE_TAG),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -196,7 +196,7 @@ fun AssetsScreen(
 @Composable
 private fun PortfolioTotal(total: String, note: String?) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-        Text(total, Modifier.testTag(ASSETS_TOTAL_TAG), style = MaterialTheme.typography.headlineMedium)
+        Text(total, Modifier.testTag(ACCOUNTS_TOTAL_TAG), style = MaterialTheme.typography.headlineMedium)
         note?.let {
             Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -205,20 +205,20 @@ private fun PortfolioTotal(total: String, note: String?) {
 
 @Composable
 private fun BoxScope.Rows(
-    state: AssetsUiState,
+    state: AccountsUiState,
     onAccountAction: (AccountAction) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ) {
     when (state) {
-        is AssetsUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-        is AssetsUiState.ListUnavailable -> Text(
+        is AccountsUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+        is AccountsUiState.ListUnavailable -> Text(
             state.message,
-            Modifier.align(Alignment.Center).padding(24.dp).testTag(ASSETS_NOTICE_TAG),
+            Modifier.align(Alignment.Center).padding(24.dp).testTag(ACCOUNTS_NOTICE_TAG),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.error,
             textAlign = TextAlign.Center,
         )
-        is AssetsUiState.Ready ->
+        is AccountsUiState.Ready ->
             if (state.accounts.isEmpty()) {
                 NoAccounts(Modifier.align(Alignment.Center))
             } else {
@@ -237,14 +237,14 @@ private fun NetworkLabel(network: String, modifier: Modifier = Modifier) {
     ) {
         Text(
             network,
-            Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag(ASSETS_NETWORK_TAG),
+            Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag(ACCOUNTS_NETWORK_TAG),
             style = MaterialTheme.typography.labelMedium,
         )
     }
 }
 
 /**
- * What the empty Assets screen says: every way the + button adds an account, and why Create Safe
+ * What the empty Accounts screen says: every way the + button adds an account, and why Create Safe
  * is greyed out there until an account whose key is on this device can pay for its deployment
  * (docs/wallet-ux.md, screen 2).
  */
@@ -271,7 +271,7 @@ private fun AccountList(
     onUnavailable: (UnavailableNotice) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier.fillMaxSize().testTag(ASSETS_ACCOUNT_LIST_TAG)) {
+    LazyColumn(modifier.fillMaxSize().testTag(ACCOUNT_LIST_TAG)) {
         items(accounts, key = { it.address }) { account ->
             WithActionMenu(
                 actions = accountMenu(account, onAccountAction, onUnavailable),

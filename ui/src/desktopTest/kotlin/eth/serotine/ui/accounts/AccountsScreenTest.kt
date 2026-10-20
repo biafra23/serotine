@@ -1,4 +1,4 @@
-package eth.serotine.ui.assets
+package eth.serotine.ui.accounts
 
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -31,8 +31,8 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
 
-/** Renders the stateless [AssetsScreen] headless (skiko software rendering) for each state. */
-class AssetsScreenTest {
+/** Renders the stateless [AccountsScreen] headless (skiko software rendering) for each state. */
+class AccountsScreenTest {
 
     @get:Rule
     val rule = createComposeRule()
@@ -58,10 +58,10 @@ class AssetsScreenTest {
 
     private val adds = mutableListOf<String>()
 
-    private fun show(state: AssetsUiState) =
+    private fun show(state: AccountsUiState) =
         rule.setContent {
             SerotineTheme {
-                AssetsScreen(
+                AccountsScreen(
                     state,
                     onWatchAddress = { adds += "watch" },
                     onImportPhrase = { adds += "import" },
@@ -74,17 +74,17 @@ class AssetsScreenTest {
 
     @Test
     fun emptyStateInvitesTheFirstAccount() {
-        show(AssetsUiState.Ready("Sepolia", syncing, emptyList()))
+        show(AccountsUiState.Ready("Sepolia", syncing, emptyList()))
 
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertDoesNotExist()
     }
 
     @Test
     fun readyStateListsEveryAccountWithItsControlAndBalance() {
-        show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
 
-        rule.onNodeWithTag(ASSETS_ACCOUNT_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNT_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithText("Daily").assertIsDisplayed()
         rule.onNodeWithText("0x8F3a…91c2").assertIsDisplayed()
         rule.onNodeWithText("Full control").assertIsDisplayed()
@@ -97,7 +97,7 @@ class AssetsScreenTest {
     fun aBalanceLastVerifiedSaysSinceWhenItMayHaveChanged() {
         val note = "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
         show(
-            AssetsUiState.Ready(
+            AccountsUiState.Ready(
                 "Sepolia",
                 syncing,
                 listOf(daily.copy(balanceVerified = false, balanceNote = note), savings),
@@ -110,7 +110,7 @@ class AssetsScreenTest {
 
     @Test
     fun aTapOpensTheAccount() {
-        show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
 
         rule.onNodeWithText("Daily").performClick()
 
@@ -119,7 +119,7 @@ class AssetsScreenTest {
 
     @Test
     fun aLongPressOpensTheAccountMenu() {
-        show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
 
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Receive").assertIsDisplayed()
@@ -133,7 +133,7 @@ class AssetsScreenTest {
 
     @Test
     fun sendWorksInTheMenuOfAnAccountWhoseKeyIsHeldHereAndElseSaysWhy() {
-        show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
 
         rule.onNodeWithText("Savings").performTouchInput { longClick() }
         rule.onNodeWithText("Receive").assertIsDisplayed()
@@ -159,8 +159,8 @@ class AssetsScreenTest {
         val calls = mutableListOf<String>()
         rule.setContent {
             SerotineTheme {
-                AssetsScreen(
-                    state = AssetsUiState.Ready("Sepolia", syncing, listOf(savings)),
+                AccountsScreen(
+                    state = AccountsUiState.Ready("Sepolia", syncing, listOf(savings)),
                     onWatchAddress = {},
                     onImportPhrase = { calls += "import" },
                     onCreateAccount = { calls += "create account" },
@@ -185,8 +185,8 @@ class AssetsScreenTest {
         val calls = mutableListOf<String>()
         rule.setContent {
             SerotineTheme {
-                AssetsScreen(
-                    state = AssetsUiState.Loading("Sepolia", syncing),
+                AccountsScreen(
+                    state = AccountsUiState.Loading("Sepolia", syncing),
                     onWatchAddress = {},
                     onImportPhrase = { calls += "import" },
                     onCreateAccount = { calls += "create account" },
@@ -210,7 +210,7 @@ class AssetsScreenTest {
     fun sendFromASafeWithAnOwnerHeldHereProposesASafeTransaction() {
         val treasury = savings.copy(label = "Treasury", kind = AccountKind.SAFE, control = Control.CO_SIGNER)
         val watched = daily.copy(label = "Watched Safe", kind = AccountKind.SAFE, control = Control.WATCH_ONLY)
-        show(AssetsUiState.Ready("Sepolia", syncing, listOf(watched, treasury)))
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(watched, treasury)))
 
         rule.onNodeWithText("Watched Safe").performTouchInput { longClick() }
         rule.onNodeWithText("Send")
@@ -225,7 +225,7 @@ class AssetsScreenTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun aRightClickOpensTheSameMenu() {
-        show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
 
         rule.onNodeWithText("Daily").performMouseInput { rightClick() }
         rule.onNodeWithText("Receive").performClick()
@@ -235,7 +235,7 @@ class AssetsScreenTest {
 
     @Test
     fun copyingSaysSo() {
-        show(AssetsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
 
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Copy address").performClick()
@@ -246,9 +246,9 @@ class AssetsScreenTest {
 
     @Test
     fun theTopBarNamesTheNetworkFromItsState() {
-        show(AssetsUiState.Loading("Sepolia", syncing))
+        show(AccountsUiState.Loading("Sepolia", syncing))
 
-        rule.onNodeWithTag(ASSETS_NETWORK_TAG).assertTextEquals("Sepolia")
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_TAG).assertTextEquals("Sepolia")
     }
 
     @Test
@@ -259,7 +259,7 @@ class AssetsScreenTest {
             "Reported by peers in 5 networks, not verified · fork id 0x6c1d9423",
             urgent = false,
         )
-        show(AssetsUiState.Ready("Sepolia", syncing, emptyList(), upgrade = banner))
+        show(AccountsUiState.Ready("Sepolia", syncing, emptyList(), upgrade = banner))
 
         rule.onNodeWithTag(UPGRADE_BANNER_TAG).assertIsDisplayed()
         rule.onNodeWithText(banner.text).assertIsDisplayed()
@@ -270,7 +270,7 @@ class AssetsScreenTest {
 
     @Test
     fun noUpgradeNoBanner() {
-        show(AssetsUiState.Ready("Sepolia", syncing, emptyList()))
+        show(AccountsUiState.Ready("Sepolia", syncing, emptyList()))
 
         rule.onNodeWithTag(UPGRADE_BANNER_TAG).assertDoesNotExist()
     }
@@ -278,9 +278,9 @@ class AssetsScreenTest {
     @Test
     fun aSetAsideNoticeIsShownAboveTheList() {
         val notice = "Your saved account list was damaged and has been set aside. Add your accounts again."
-        show(AssetsUiState.Ready("Sepolia", syncing, emptyList(), notice))
+        show(AccountsUiState.Ready("Sepolia", syncing, emptyList(), notice))
 
-        rule.onNodeWithTag(ASSETS_NOTICE_TAG).assertTextEquals(notice)
+        rule.onNodeWithTag(ACCOUNTS_NOTICE_TAG).assertTextEquals(notice)
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
         rule.onNodeWithContentDescription("Add account").assertExists()
     }
@@ -288,16 +288,16 @@ class AssetsScreenTest {
     @Test
     fun anUnavailableListIsExplainedWithoutInvitingAnAdd() {
         val message = "Your saved account list cannot be read right now."
-        show(AssetsUiState.ListUnavailable("Sepolia", syncing, message))
+        show(AccountsUiState.ListUnavailable("Sepolia", syncing, message))
 
-        rule.onNodeWithTag(ASSETS_NOTICE_TAG).assertTextEquals(message)
+        rule.onNodeWithTag(ACCOUNTS_NOTICE_TAG).assertTextEquals(message)
         rule.onNodeWithText("No accounts yet").assertDoesNotExist()
         rule.onNodeWithContentDescription("Add account").assertDoesNotExist()
     }
 
     @Test
     fun theStatusStripShowsWhatTheLightClientIsDoing() {
-        show(AssetsUiState.Loading("Sepolia", syncing))
+        show(AccountsUiState.Loading("Sepolia", syncing))
 
         rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
         rule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.25f, 0f..1f))).assertExists()
@@ -305,7 +305,7 @@ class AssetsScreenTest {
 
     @Test
     fun theFloatingActionButtonFansOutIntoWatchAndImport() {
-        show(AssetsUiState.Ready("Sepolia", syncing, emptyList()))
+        show(AccountsUiState.Ready("Sepolia", syncing, emptyList()))
 
         rule.onNodeWithContentDescription("Add account").performClick()
         rule.onNodeWithText("Watch address").performClick()
@@ -319,7 +319,7 @@ class AssetsScreenTest {
     @Test
     fun theHeaderTotalsThePortfolioAndEachRowHasItsValue() {
         show(
-            AssetsUiState.Ready(
+            AccountsUiState.Ready(
                 "Sepolia",
                 syncing,
                 listOf(daily.copy(value = "$1,000.00")),
@@ -328,7 +328,7 @@ class AssetsScreenTest {
             ),
         )
 
-        rule.onNodeWithTag(ASSETS_TOTAL_TAG).assertTextEquals("$1,000.00")
+        rule.onNodeWithTag(ACCOUNTS_TOTAL_TAG).assertTextEquals("$1,000.00")
         rule.onNodeWithText("Testnet prices").assertIsDisplayed()
         // The header's total and the row's value.
         rule.onAllNodesWithText("$1,000.00", useUnmergedTree = true).assertCountEquals(2)
@@ -337,7 +337,7 @@ class AssetsScreenTest {
     @Test
     fun aSafesBlockieCarriesItsThresholdAndItsRowItsKind() {
         show(
-            AssetsUiState.Ready(
+            AccountsUiState.Ready(
                 "Sepolia",
                 syncing,
                 listOf(daily.copy(kind = AccountKind.SAFE, signers = "2/3", kindNote = "Safe")),

@@ -99,7 +99,7 @@ internal fun SwapFormFields(
                 onBuyChange(asset.contract)
             }
         }
-        Note("Only the assets your wallet lists: what a swap buys shows on Assets and can be sent.")
+        Note("Only the assets your wallet lists: what a swap buys shows among the account's assets and can be sent.")
     }
     Heading("Slippage tolerance")
     OutlinedTextField(

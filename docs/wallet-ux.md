@@ -21,7 +21,7 @@ the text wins.
 
 - **Sepolia only, and named.** The app works on Sepolia alone (owner ruling,
   2026-10-15), so there is no network picker; a plain label says "Sepolia" on
-  the screens that matter for it (Assets, Receive, Send review, Settings). Every
+  the screens that matter for it (Accounts, Receive, Send review, Settings). Every
   table this page mentions (tokens, price feeds, Safe singletons) is keyed by
   `Network`, so another network is a data addition once the owner allows it.
 - **Verified, or not available.** Every chain value comes from the embedded
@@ -33,7 +33,7 @@ the text wins.
 - **The light client's state is in sight wherever it decides something**
   (owner's request, 2026-10-20). Every screen whose content or actions
   depend on what the light client can verify draws its status strip (as on
-  Assets, 1) under the top bar: Account detail and Safe detail (4, 16),
+  Accounts, 1) under the top bar: Account detail and Safe detail (4, 16),
   Send and its status (7 to 9), Swap (docs/swaps.md), Watch address (10),
   Create Safe (13 to 15), a Safe's transaction (17) and its proposal, swap
   and import, Activity (25), and the token list Settings opens and Add
@@ -45,7 +45,7 @@ the text wins.
   2026-10-19). While the light client has no head it can read at (asleep,
   catching up, its verified head too old, or no peer serving state proofs),
   a balance it proved earlier, in this run or before a restart (kept in
-  `last-balances.json` with the app's other files), stays on the Assets and
+  `last-balances.json` with the app's other files), stays on the Accounts and
   Account detail rows instead of "Syncing…": dimmed, with "Last verified
   ‹time of its head› · may have changed since" under it (the block when the
   time is unknown). It is left out of every total and has no fiat value, and
@@ -95,12 +95,12 @@ the text wins.
 
 ## Navigation
 
-The bottom bar is **Assets | Settings**: a `NavigationBar`, and a
+The bottom bar is **Accounts | Settings**: a `NavigationBar`, and a
 `NavigationRail` on a wide desktop window. Each tab is a nested graph of the
 one `NavHost`, and switching tabs keeps the user's place: Settings opens over
-the Assets tab's stack and closes back to it, with nothing saved aside (owner
+the Accounts tab's stack and closes back to it, with nothing saved aside (owner
 ruling, 2026-10-18, #49, for now; docs/architecture.md). The light
-client's status strip stays at the top of Assets, and of every other screen
+client's status strip stays at the top of Accounts, and of every other screen
 whose content or actions depend on it (*Rules every screen follows*). A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
 Safe transaction) is a destination that covers the bar until it ends. A
@@ -111,15 +111,15 @@ through its use cases. Create Safe is `create-safe` (13 to 15, one screen
 with three steps), and its deployment's status `transfer/{hash}` in its
 place. The
 update screen covers everything, the bar included, while a network upgrade
-has left this version unable to follow Sepolia, and gives way to the Assets
+has left this version unable to follow Sepolia, and gives way to the Accounts
 tab's start when it no longer has (docs/embedding-myotis.md, *Network
 upgrades*).
 
 ## Screens
 
-### Assets tab
+### Accounts tab
 
-1. **Assets**
+1. **Accounts**
    - The light client's status strip on top, coloured by what it can verify
      (owner's request, 2026-10-19): green while reads are verified at a fresh
      head; yellow while it has no fresh head to read at for a reason that
@@ -165,7 +165,8 @@ upgrades*).
    - Sort: Value | Name. Under Value, assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
-     long press opens 5.
+     tap opens Send (7) with the asset chosen, greyed out as in 3 (the tap
+     then says why); a long press opens 5.
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
@@ -573,7 +574,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
 
 25. **Activity**: the transactions this device sent for an account, its
     token transfers and, for a Safe, its own events on chain, newest first,
-    under the Assets tab like the account it is of (`activity/{address}`).
+    under the Accounts tab like the account it is of (`activity/{address}`).
     - First, what the list covers: transactions sent from this device, and
       on chain from the block its history starts at on (when it was
       deployed from this device, or added here: "since added", owner ruling

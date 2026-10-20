@@ -147,7 +147,7 @@ consumer developed against an unreleased engine, Myotis's
 - **One fetch per key and head.** `ProvenReads` keeps the last proof per key,
   and a subscriber that arrives while that key's proof for its head is being
   fetched waits for that fetch rather than making the same blocking calls:
-  the account screen, the Assets screen and every account of the portfolio
+  the account screen, the Accounts screen and every account of the portfolio
   read the same prices and balances.
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
@@ -233,7 +233,7 @@ consumer developed against an unreleased engine, Myotis's
   each singleton's `VERSION()` as a verified call, each proxy hash from a
   verified create call of its factory's `proxyCreationCode()`.
 - **The light client's progress.** `EngineLightClient` drives the
-  `LightClient` port, and the Assets tab shows it in a strip under the top bar:
+  `LightClient` port, and the Accounts tab shows it in a strip under the top bar:
   - starting;
   - bootstrapping from the checkpoint;
   - verifying sync-committee periods (*n of m*);
@@ -535,7 +535,7 @@ user to update — before it, and, after it, nothing else.
   field becomes unknown rather than failing the status poll the light client
   and every verified read share. `ObserveUpgradeWarning` (`:domain`) joins it with the light
   client's state and the upgrade recorded from earlier reports:
-  - *Ahead*: a banner on Assets, with the date and the way to the update;
+  - *Ahead*: a banner on Accounts, with the date and the way to the update;
   - *Activated*, as peers report or by its announced time on the clock, the
     light client not showing this version cut off: the banner says so;
   - *Update required*, an activation peers confirmed (reported now, or

@@ -376,7 +376,8 @@ private fun Details(
 
 /**
  * The asset rows (docs/wallet-ux.md, screen 4), each with the block its amount was verified
- * at, and what is not known yet about the other tokens.
+ * at, and what is not known yet about the other tokens. A tap on a row opens Send with its
+ * asset chosen, a long press its menu.
  */
 @Composable
 private fun Assets(
@@ -401,12 +402,14 @@ private fun Assets(
                 contract?.let { MenuAction("Copy contract", SerotineIcons.ContentCopy) { onCopyContract(it) } },
                 contract?.let { MenuAction("Hide token", SerotineIcons.Visibility) { onHideToken(asset) } },
             )
-            if (actions.isEmpty()) {
+            // A tap sends the asset, greyed out as the Send button is: a tap then says why.
+            WithActionMenu(
+                actions = actions,
+                menuLabel = "Actions for ${asset.symbol}",
+                onClick = { onSend(contract) },
+                clickLabel = "Send ${asset.symbol}",
+            ) {
                 AssetItem(asset)
-            } else {
-                WithActionMenu(actions = actions, menuLabel = "Actions for ${asset.symbol}", onClick = {}) {
-                    AssetItem(asset)
-                }
             }
         }
         state.tokensNote?.let { note ->

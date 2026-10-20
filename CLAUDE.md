@@ -91,8 +91,8 @@ Modules (Gradle):
   `<Feature>Screen` (stateless), `<Feature>Route` (binds the ViewModel),
   `<Feature>ViewModel`, `<Feature>UiState`; `components` for what several
   screens draw (blockies, the QR code, EIP-55); the theme; `App` with the one
-  `NavHost` under the Assets | Settings bar (a destination per screen, whose
-  back-stack entry owns the screen's ViewModel; Settings opens over the Assets
+  `NavHost` under the Accounts | Settings bar (a destination per screen, whose
+  back-stack entry owns the screen's ViewModel; Settings opens over the Accounts
   tab's stack and closes back to it, with nothing saved aside: owner ruling,
   2026-10-18, #49, for now); and `AppGraph`, the
   composition root's contract (ports in, ViewModel factories out). Depends on
