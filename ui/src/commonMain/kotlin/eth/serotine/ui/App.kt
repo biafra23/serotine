@@ -86,7 +86,7 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
     SerotineTheme {
         // Scoped to the host, not to a destination: it decides which destinations there are.
         val update = viewModel { graph.updateRequiredViewModel() }
-        // One strip for every screen that draws it, kept current for the next one opened.
+        // One strip for every screen that draws it, followed while one of them is shown.
         val lightClient = viewModel { graph.lightClientViewModel() }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->

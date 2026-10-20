@@ -23,14 +23,16 @@ class LightClientViewModel(
     clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
-    /** The strip as it is now, whether or not a screen shows it. */
+    /** The strip as it is now; followed while a screen that draws it is shown. */
     val item: StateFlow<LightClientItem> = observeLightClient().asItems(clock)
         .stateIn(
             scope = viewModelScope,
-            // Kept current from the start: a screen opened later draws the light client as it
-            // is, never "Starting" again nor an earlier head while the flow restarts. It is
-            // one map of a state already held, re-dated each second only while a head is.
-            started = SharingStarted.Eagerly,
+            // Each subscription polls the engine's status (every second, on the desktop and
+            // Android adapters), so it stops 5 s after the last screen with the strip has gone.
+            // It keeps its last item, though: a screen opened later starts from the strip as it
+            // was, never from "Starting" again, and the poll's first answer, read at once,
+            // replaces it.
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
             initialValue = LightClientItem.from(LightClientStatus.Starting, now = 0),
         )
 }
