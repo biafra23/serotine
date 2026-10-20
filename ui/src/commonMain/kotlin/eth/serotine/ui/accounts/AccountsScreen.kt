@@ -42,9 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
-import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.LightClientStrip
 import eth.serotine.ui.components.MenuAction
+import eth.serotine.ui.components.NameWithControlBadge
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.SpeedDialAction
 import eth.serotine.ui.components.SpeedDialFab
@@ -317,12 +317,7 @@ private fun accountMenu(
 private fun AccountRow(account: AccountItem) {
     ListItem(
         leadingContent = { AccountAvatar(account.address, threshold = account.signers) },
-        headlineContent = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(account.label)
-                ControlBadge(account.control)
-            }
-        },
+        headlineContent = { NameWithControlBadge(account.label, account.control) },
         supportingContent = {
             Column {
                 Text(account.kindNote?.let { "${account.shortAddress} · $it" } ?: account.shortAddress)
