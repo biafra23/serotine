@@ -81,7 +81,7 @@ modules build on macOS only and are skipped elsewhere.
 | module | role |
 |---|---|
 | `domain` | entities, value objects, ports (repository interfaces) and use cases — pure Kotlin |
-| `data` | the adapters behind the ports: the files the wallet keeps (accounts, tokens, the Safe queue, sent transactions, settings), the key store, the pinned Safe, Uniswap and Chainlink deployments, and the Myotis engine adapter |
+| `data` | the adapters behind the ports: the files the wallet keeps (accounts, tokens, the Safe queue, sent transactions, the known network upgrade, settings), the key store, the pinned Safe, Uniswap and Chainlink deployments, and the Myotis engine adapter |
 | `ui` | the shared Compose Multiplatform UI: screens, ViewModels, UI state, `AppGraph` |
 | `android-app` | the Android host (package `eth.serotine`; the debug build is `eth.serotine.debug`) |
 | `desktop-app` | the desktop JVM host and the jpackage configuration for the three installers |
