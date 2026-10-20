@@ -423,10 +423,13 @@ upgrades*).
     - A change that weakens the Safe carries a warning wherever it is shown
       (16's row, 17, the Sign step, the biometric prompt): a module disabled,
       a guard set or removed (its limits, allowlist or delay stop), a
-      fallback handler set
-      (it answers EIP-1271 for the Safe: one that accepts every signature
-      lets anyone spend what the Safe approved, through Permit2, permits or
-      orders). A fallback handler set that is not the pinned canonical
+      fallback handler set (it answers EIP-1271 for the Safe: one that
+      accepts every signature lets anyone spend what the Safe approved,
+      through Permit2, permits or orders) or removed (what it answered
+      stops: safe transfers of ERC-721 and ERC-1155 tokens to the Safe are
+      refused, and its EIP-1271 checks fail, so orders and permits signed
+      for it no longer work; owner's decision, 2026-10-20, on #106's
+      review). A fallback handler set that is not the pinned canonical
       CompatibilityFallbackHandler 1.4.1 (`0xfd0732Dc…Ec99`,
       `PinnedFallbackHandlers`) is refused: shown, and never signed,
       approved or executed here (`SafeTxRefusal.UnpinnedFallbackHandler`;
