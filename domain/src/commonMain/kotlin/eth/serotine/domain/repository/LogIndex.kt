@@ -20,8 +20,14 @@ interface LogIndex {
      * nothing. True once the engine has taken all of it, and an unwatch is kept across a restart;
      * false when it took none of it (no engine, still starting, or it refused), and the same
      * change may be asked again.
+     *
+     * [walkPaused] pauses the walk back of every entry, the heavy part (it fetches a header per
+     * block, and receipts): the index then only keeps up with the new blocks, and coverage below
+     * where the walk stood waits until a change asks with it false. Every change says it, as the
+     * engine keeps the one asked last; a change with nothing to [watch] or [unwatch] only sets it,
+     * and is taken whenever the engine runs, before its reads can be verified too.
      */
-    suspend fun configure(watch: List<LogWatch>, unwatch: List<LogWatchKey>): Boolean
+    suspend fun configure(watch: List<LogWatch>, unwatch: List<LogWatchKey>, walkPaused: Boolean): Boolean
 
     /**
      * What the index covers of each entry it follows, polled, re-emitted when it changes; or

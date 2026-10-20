@@ -21,10 +21,12 @@ import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
+import eth.serotine.data.network.AndroidConnectionMeter
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileMeteredDownloads
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -38,6 +40,7 @@ import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -98,6 +101,14 @@ class SerotineApplication : Application() {
     private val historyStarts by lazy { FileHistoryStarts(filesDir.resolve("history-starts.json").path) }
 
     /**
+     * Whether the heavy downloads may run now: the user's choice for a metered connection, opt-in
+     * and beside the account list, and the default network's cost. One instance of each, which the
+     * graph and the accounts' log follower share.
+     */
+    private val connectionMeter by lazy { AndroidConnectionMeter(this) }
+    private val meteredDownloads by lazy { FileMeteredDownloads(filesDir.resolve("metered-downloads.json").path) }
+
+    /**
      * The account list in the app's private files, which the manifest keeps out of backups and
      * device transfers; addresses and labels only, no keys. Each account added is noted in
      * [historyStarts] as it is. One instance, which the graph and the followers share.
@@ -147,6 +158,8 @@ class SerotineApplication : Application() {
             userTokens = FileUserTokens(filesDir.resolve("tokens.json").path),
             priceFeeds = node.priceFeeds,
             displayCurrency = FileDisplayCurrency(filesDir.resolve("display-currency.json").path),
+            connectionMeter = connectionMeter,
+            meteredDownloads = meteredDownloads,
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             networkUpgrades = node.networkUpgrades,
@@ -257,6 +270,7 @@ class SerotineApplication : Application() {
                 transactionHistory,
                 node.lightClient,
                 node.logIndex,
+                ObserveHeavyDownloads(connectionMeter, meteredDownloads),
                 Network.SEPOLIA,
             )()
         } catch (e: CancellationException) {

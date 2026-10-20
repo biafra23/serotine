@@ -6,12 +6,14 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.ConnectionMeter
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.HistoryStarts
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LogIndex
+import eth.serotine.domain.repository.MeteredDownloadsSetting
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
@@ -32,6 +34,7 @@ import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
+import eth.serotine.domain.usecase.AllowHeavyDownloadsOnMetered
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
 import eth.serotine.domain.usecase.DeploySafe
@@ -50,6 +53,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
@@ -142,6 +146,13 @@ class AppGraph(
     private val priceFeeds: PriceFeeds,
     /** The user's choice of display currency. */
     private val displayCurrency: DisplayCurrencySetting,
+    /** Whether the device's connection is metered now. */
+    private val connectionMeter: ConnectionMeter,
+    /**
+     * The user's choice whether the heavy downloads may use a metered connection. The host's own
+     * work reads it too (`FollowAccountLogs`), so it is one instance per process, shared with it.
+     */
+    private val meteredDownloads: MeteredDownloadsSetting,
     /** What is at an address, verified by that light client. */
     private val addressKinds: AddressKinds,
     /** That light client's own state. */
@@ -400,7 +411,14 @@ class AppGraph(
     )
 
     fun settingsViewModel(): SettingsViewModel =
-        SettingsViewModel(ObserveLightClient(lightClient), knownTokens(), displayCurrencies(), network)
+        SettingsViewModel(
+            ObserveLightClient(lightClient),
+            knownTokens(),
+            displayCurrencies(),
+            ObserveHeavyDownloads(connectionMeter, meteredDownloads),
+            AllowHeavyDownloadsOnMetered(meteredDownloads),
+            network,
+        )
 
     fun currencyViewModel(): CurrencyViewModel =
         CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency))

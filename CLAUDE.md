@@ -82,9 +82,10 @@ Modules (Gradle):
   the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
   the record of sent transactions and the history of them, kept for good
   (`eth.serotine.data.transfers`); where each account's history starts
-  (`eth.serotine.data.history`); and the
-  display currency
-  (`eth.serotine.data.settings`).
+  (`eth.serotine.data.history`); the
+  display currency and whether the heavy downloads may use a metered
+  connection (`eth.serotine.data.settings`), and the connection's cost
+  (`eth.serotine.data.network`).
   Targets Android + desktop + iOS; the Android target is what resolves the
   engine's AAR.
 - **ui** — the shared Compose Multiplatform UI: one package per screen with
@@ -802,6 +803,17 @@ discussion that produced this note.
   an account, which tells the serving peer which blocks matter to this
   device: accepted as is, as the log index makes that trade-off for any
   watch-list.
+- **Heavy downloads stay off a metered connection unless the user allows
+  them** (owner ruling, 2026-10-20). A heavy download is network work that
+  can run to hundreds of megabytes and that nobody is waiting on, the log
+  index's walk back over the account history first; a read the user waits
+  on (a balance, a send's review) never is one. On a connection the platform
+  reports as metered, or one whose cost cannot be read, it waits for an
+  unmetered one, and Settings has the opt-in switch that lets it run there
+  (`MeteredDownloadsSetting`, off by default; a choice that cannot be read
+  is off). A platform that reports no metering (the desktop) runs it on any
+  connection, as Myotis's desktop host does, and the switch is greyed out
+  there and says why. Paused, the log index still follows the new blocks.
 - docs/wallet-ux.md applies these rulings to the screens.
 - **Swaps: Uniswap first, then CoW Protocol, preferred while its servers
   work, with Uniswap as the fallback** (owner's direction, 2026-10-18;

@@ -230,7 +230,8 @@ internal class FakeLogIndex : LogIndex {
     val coverage = MutableStateFlow<LogCoverageReading>(LogCoverageReading.Unavailable)
     var logs: List<IndexedLog> = emptyList()
 
-    override suspend fun configure(watch: List<LogWatch>, unwatch: List<LogWatchKey>): Boolean = true
+    override suspend fun configure(watch: List<LogWatch>, unwatch: List<LogWatchKey>, walkPaused: Boolean): Boolean =
+        true
 
     override fun observeCoverage(): Flow<LogCoverageReading> = coverage
 

@@ -13,10 +13,12 @@ import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
+import eth.serotine.data.network.UnreportedConnectionMeter
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileMeteredDownloads
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -30,6 +32,7 @@ import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -140,6 +143,10 @@ private fun openWallet(dataDir: File) {
     // One instance each, which the graph and the followers share. Each account added is noted
     // where its history starts (issue #85): addresses with a block or a time, public data only.
     val historyStarts = FileHistoryStarts(dataDir.resolve("history-starts.json").path)
+    // Whether the heavy downloads may run now: the user's choice for a metered connection, and a
+    // desktop's connection, which its JVM cannot tell metered from not and is taken as unmetered.
+    val connectionMeter = UnreportedConnectionMeter()
+    val meteredDownloads = FileMeteredDownloads(dataDir.resolve("metered-downloads.json").path)
     val accounts =
         HistoryNotingAccounts(FileAccountRepository(dataDir.resolve("accounts.json").path), historyStarts)
     // The transactions signed here, with their signed bytes (public once broadcast), and every one
@@ -197,6 +204,7 @@ private fun openWallet(dataDir: File) {
                     transactionHistory,
                     node.lightClient,
                     node.logIndex,
+                    ObserveHeavyDownloads(connectionMeter, meteredDownloads),
                     Network.SEPOLIA,
                 )()
             } catch (e: CancellationException) {
@@ -221,6 +229,8 @@ private fun openWallet(dataDir: File) {
                 userTokens = FileUserTokens(dataDir.resolve("tokens.json").path),
                 priceFeeds = node.priceFeeds,
                 displayCurrency = FileDisplayCurrency(dataDir.resolve("display-currency.json").path),
+                connectionMeter = connectionMeter,
+                meteredDownloads = meteredDownloads,
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
                 networkUpgrades = node.networkUpgrades,

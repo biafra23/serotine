@@ -265,6 +265,8 @@ class AppNavigationTest {
         userTokens = userTokens,
         priceFeeds = FakeFeeds(),
         displayCurrency = MemoryCurrencySetting(),
+        connectionMeter = FakeConnectionMeter(),
+        meteredDownloads = MemoryMeteredDownloads(),
         addressKinds = addressKinds,
         lightClient = object : LightClient {
             override fun observeStatus(): Flow<LightClientStatus> = status
