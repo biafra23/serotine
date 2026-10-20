@@ -108,7 +108,7 @@ kotlin {
         // The engine on iOS: Myotis's iOS module, its typed API over the engine's C ABI, with
         // the engine's static library inside each target's cinterop klib (iosMain's MyotisNode).
         iosMain.dependencies {
-            implementation(libs.myotis.engine.ios)
+            implementation(libs.myotis.ios)
         }
         val androidUnitTest by getting {
             dependencies {
