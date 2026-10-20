@@ -130,8 +130,8 @@ jobs:
           ios = [d for runtime, ds in devices.items() if "iOS" in runtime for d in ds]
           print(next(d["udid"] for d in ios if d["name"].startswith("iPhone")))
           ')
-          xcrun simctl boot "$device"
-          xcrun simctl bootstatus "$device"
+          # Boots the device unless it already runs, then waits for the boot to finish.
+          xcrun simctl bootstatus "$device" -b
           xcrun simctl install "$device" "$APP"
           pid=$(xcrun simctl launch "$device" eth.serotine | awk '{print $NF}')
           sleep 30

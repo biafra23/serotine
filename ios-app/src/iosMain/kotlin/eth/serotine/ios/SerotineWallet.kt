@@ -25,15 +25,21 @@ import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.Platform
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotificationCenter
@@ -43,8 +49,11 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUserDomainMask
+import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
+import platform.UIKit.UIApplicationWillTerminateNotification
+import platform.UIKit.UIBackgroundTaskInvalid
 
 /**
  * The iOS composition root: the process's one wallet, which the Swift app creates once, before
@@ -57,7 +66,10 @@ import platform.UIKit.UIApplicationWillEnterForegroundNotification
  * how the transactions sent from here end recorded. That work runs while the app is in the
  * foreground; in the background the engine's networking is paused (a suspended app keeps no
  * sockets open) and resumed on return, and a reminder due meanwhile comes as the notification
- * [IosUpgradeNotifier] scheduled.
+ * [IosUpgradeNotifier] scheduled. The pause runs as a background task, so iOS lets it close the
+ * engine's connections before it suspends the app. An app terminated while running shuts the
+ * engine down, waiting for that only briefly ([TERMINATE_WAIT]); an app killed while suspended
+ * runs no code, which the engine survives as any mobile app's state must.
  */
 class SerotineWallet {
 
@@ -164,7 +176,7 @@ class SerotineWallet {
         startForegroundWork()
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
-            node.pause()
+            keepAwakeUntil("pause the engine", node.pause())
             foregroundWork.forEach { it.cancel() }
             foregroundWork = emptyList()
         }
@@ -172,7 +184,29 @@ class SerotineWallet {
             node.resume()
             startForegroundWork()
         }
+        center.addObserverForName(UIApplicationWillTerminateNotification, null, NSOperationQueue.mainQueue) {
+            // The shutdown blocks, so it runs off the main thread; the process ends when this
+            // returns, so it is waited for, but only as long as the system's watchdog allows.
+            val shutdown = scope.launch(Dispatchers.IO) { node.shutdown() }
+            runBlocking { withTimeoutOrNull(TERMINATE_WAIT) { shutdown.join() } }
+        }
         notifier.askPermission()
+    }
+
+    /**
+     * Asks iOS to keep the app running in the background until [job] has finished, or until the
+     * system's own limit; the task ends exactly once, whichever comes first.
+     */
+    @OptIn(ExperimentalAtomicApi::class)
+    private fun keepAwakeUntil(name: String, job: Job) {
+        val app = UIApplication.sharedApplication
+        val ended = AtomicBoolean(false)
+        var task = UIBackgroundTaskInvalid
+        val end = {
+            if (ended.compareAndSet(false, true) && task != UIBackgroundTaskInvalid) app.endBackgroundTask(task)
+        }
+        task = app.beginBackgroundTaskWithName(name) { end() }
+        job.invokeOnCompletion { end() }
     }
 
     private fun startForegroundWork() {
@@ -211,6 +245,11 @@ class SerotineWallet {
         } catch (e: Exception) {
             println("Serotine: $what stopped: ${e::class.simpleName}")
         }
+    }
+
+    private companion object {
+        /** How long a termination waits for the engine's shutdown; iOS allows about five seconds. */
+        val TERMINATE_WAIT = 3.seconds
     }
 }
 

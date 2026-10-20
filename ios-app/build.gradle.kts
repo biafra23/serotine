@@ -1,8 +1,9 @@
-// :ios-app — the iOS host: a Kotlin/Native framework, SerotineKit, whose MainViewController()
-// is the composition root (it builds the AppGraph from :data's adapters and renders the shared
-// :ui), and the Xcode shell in xcode/ that shows it (xcode/project.yml, generated into an
-// Xcode project with XcodeGen). The Xcode build runs embedAndSignAppleFrameworkForXcode, which
-// links the framework for the configuration and SDK Xcode is building. Kotlin/Native builds
+// :ios-app — the iOS host: a Kotlin/Native framework, SerotineKit, whose SerotineWallet is the
+// composition root (it builds the AppGraph from :data's adapters) and whose MainViewController()
+// renders the shared :ui on that graph, and the Xcode shell in xcode/ that shows it
+// (xcode/project.yml, generated into an Xcode project with XcodeGen). The Xcode build runs
+// embedAndSignAppleFrameworkForXcode, which links the framework for the configuration and SDK
+// Xcode is building. Kotlin/Native builds
 // on macOS only: elsewhere both targets are disabled (gradle.properties) and this module
 // builds nothing.
 

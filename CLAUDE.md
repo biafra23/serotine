@@ -104,9 +104,9 @@ Modules (Gradle):
 - **android-app** (`eth.serotine`; debug build `eth.serotine.debug`),
   **desktop-app** and **ios-app** (`eth.serotine`; the SerotineKit framework
   and, in `xcode/`, the SwiftUI shell's XcodeGen spec) — the hosts. Each has
-  ONE composition root (`SerotineApplication`, `main()`,
-  `MainViewController()`) that builds the `AppGraph` from `:data`'s
-  adapters and renders `App`, and runs the app-wide work no screen owns
+  ONE composition root (`SerotineApplication`, `main()`, `SerotineWallet`)
+  that builds the `AppGraph` from `:data`'s adapters and renders `App` (on
+  iOS through `MainViewController(wallet)`), and runs the app-wide work no screen owns
   (`FollowUpgradeReports`, `FollowSafeDeployments`), never from `App` or
   `AppGraph`. The desktop one runs once per user: it holds an
   `InstanceLock` on its data directory for the process's lifetime. A port

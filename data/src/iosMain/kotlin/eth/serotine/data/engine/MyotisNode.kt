@@ -52,7 +52,8 @@ import kotlin.time.TimeSource
  * adapters, wired to the same [TransactingChain] seam, and the same lifecycle. The iOS host's
  * composition root creates it with [start], hands its adapters to the AppGraph and owns it
  * for the life of the process: [pause] and [resume] it around the app being in the
- * background, [shutdown] on exit. Nothing below the iOS module's typed API is used.
+ * background, [shutdown] on exit, as far as iOS lets an app's exit run code at all. Nothing
+ * below the iOS module's typed API is used.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class MyotisNode private constructor(network: Network, lastBalancesPath: String?, debugLog: ((String) -> Unit)?) {
@@ -136,25 +137,26 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
-     * background. Returns at once; the pause runs off the caller's thread. Asked for while the
-     * engine is still starting, it is applied once the engine runs.
+     * background. Returns at once with the job the pause runs in, off the caller's thread, so
+     * the host can keep the app awake until it has finished. Asked for while the engine is still
+     * starting, it is applied once the engine runs (the job then ends at once).
      */
-    fun pause() {
+    fun pause(): Job {
         pauseWanted = true
-        onControlThread("pause") { it.pause() }
+        return onControlThread("pause") { it.pause() }
     }
 
     /**
      * Turns networking back on after [pause]; a warm start. Returns at once. A resume the
      * engine refuses (it stays paused) is said on the console; the next resume tries again.
      */
-    fun resume() {
+    fun resume(): Job {
         pauseWanted = false
-        onControlThread("resume") { it.resume() }
+        return onControlThread("resume") { it.resume() }
     }
 
     /** Runs [action] (it answers whether the engine did it) on the control dispatcher. */
-    private fun onControlThread(what: String, action: (ChainHandle) -> Boolean) {
+    private fun onControlThread(what: String, action: (ChainHandle) -> Boolean): Job =
         scope.launch(control) {
             try {
                 val handle = (state.load() as? State.Running)?.handle ?: return@launch
@@ -164,14 +166,15 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
                 println("Serotine: the engine's networking could not be switched: $e")
             }
         }
-    }
 
     /**
      * Stops the chain and the engine; idempotent. A boot still in progress stops its own
      * engine when it finishes; this waits for that, up to [SHUTDOWN_WAIT], so a process that
      * exits right after does not cut it off mid-start. Blocks: never call it on the main
-     * thread, where iOS's watchdog ends an app that blocks; the host calls it from a
-     * background task.
+     * thread, where iOS's watchdog ends an app that blocks; the host calls it off the main
+     * thread when the app is terminated while running, and waits for it only briefly. An app
+     * killed while suspended runs no code at all, so on iOS this is best effort: the engine
+     * has to come back from an abrupt end anyway.
      */
     fun shutdown() {
         val running = state.exchange(State.Down) as? State.Running
