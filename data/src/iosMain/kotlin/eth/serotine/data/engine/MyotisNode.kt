@@ -136,12 +136,8 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     /** ENS names, resolved against beacon-finalized state. */
     val names: NameResolver = EngineNames(chain, Dispatchers.IO)
 
-    /**
-     * The engine's verified log index, not yet on iOS: Myotis's iOS library exposes no log index
-     * in its typed API (`io.myotis.engine.ios`), so this one answers as with no engine, and the
-     * histories it feeds read as unavailable rather than empty.
-     */
-    val logIndex: LogIndex = EngineLogIndex(null, Dispatchers.IO, POLL_INTERVAL)
+    /** The engine's verified log index, which follows the accounts' histories. */
+    val logIndex: LogIndex = EngineLogIndex(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
@@ -267,7 +263,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         }
     }
 
-    private inner class HandleChain : TransactingChain {
+    private inner class HandleChain : TransactingChain, LogIndexChain {
 
         /**
          * The last snapshot read and when. Every adapter, and each of its subscribers, polls on
@@ -407,6 +403,13 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
         override fun receipt(hash: String): String? =
             handle()?.reads()?.getTransactionReceipt(hash.removePrefix("0x").fromHex())
+
+        override fun setLogIndexConfig(configJson: String): Boolean =
+            handle()?.setLogIndexConfig(configJson) ?: false
+
+        override fun logIndexStatus(): String? = handle()?.logIndexStatusJson()
+
+        override fun logs(filterJson: String): String? = handle()?.reads()?.getLogs(filterJson)
 
         // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.
         override fun resolveName(name: String): NameAnswer {
