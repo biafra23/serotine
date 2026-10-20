@@ -74,10 +74,10 @@ fun ControlBadge(control: Control, modifier: Modifier = Modifier) {
 }
 
 /** The tag of [NameWithControlBadge]'s badge in its text form, for tests. */
-const val CONTROL_BADGE_TEXT_TAG = "controlBadgeText"
+const val CONTROL_BADGE_TEXT_TAG = "control-badge-text"
 
 /** The tag of [NameWithControlBadge]'s badge in its icon form, for tests. */
-const val CONTROL_BADGE_ICON_TAG = "controlBadgeIcon"
+const val CONTROL_BADGE_ICON_TAG = "control-badge-icon"
 
 /**
  * An account's [name] with its [control] badge after it, on one line (#68). The badge shows its
