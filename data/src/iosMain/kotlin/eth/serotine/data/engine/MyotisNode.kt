@@ -151,7 +151,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
      */
     fun pause(): Job {
         pauseWanted = true
-        return onControlThread("pause") { it.pause() }
+        return followPauseWanted()
     }
 
     /**
@@ -160,15 +160,32 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
      */
     fun resume(): Job {
         pauseWanted = false
-        return onControlThread("resume") { it.resume() }
+        return followPauseWanted()
     }
 
-    /** Runs [action] (it answers whether the engine did it) on the control dispatcher. */
-    private fun onControlThread(what: String, action: (ChainHandle) -> Boolean): Job =
+    /**
+     * Whether the engine's networking is off, as the last switch left it: touched only on the
+     * control dispatcher.
+     */
+    private var networkingPaused = false
+
+    /**
+     * Brings the engine's networking, on the control dispatcher, to what the host last asked
+     * for ([pauseWanted], read there), so the last pause or resume asked for is the state the
+     * engine ends in. A switch to the state it is already in is not asked of the engine, which
+     * refuses it (a resume of a running engine, at the first foregrounding).
+     */
+    private fun followPauseWanted(): Job =
         scope.launch(control) {
             try {
                 val handle = (state.load() as? State.Running)?.handle ?: return@launch
-                if (!action(handle)) println("Serotine: the engine did not $what its networking")
+                val wanted = pauseWanted
+                if (networkingPaused == wanted) return@launch
+                if (if (wanted) handle.pause() else handle.resume()) {
+                    networkingPaused = wanted
+                } else {
+                    println("Serotine: the engine did not ${if (wanted) "pause" else "resume"} its networking")
+                }
             } catch (e: Throwable) {
                 // The engine keeps its last networking state.
                 println("Serotine: the engine's networking could not be switched: $e")
@@ -229,7 +246,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             // A pause asked for during the boot, decided on the control dispatcher: every pause
             // and resume the host asks for from here on queues there too, so the last one asked
             // for is the state the engine ends in.
-            if (kept) onControlThread("pause") { !pauseWanted || it.pause() }
+            if (kept) followPauseWanted()
             refusal?.let { report("the engine refused to start $name:\n$it") }
         } catch (e: Throwable) {
             if (owned) {

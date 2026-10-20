@@ -230,7 +230,13 @@ class SerotineWallet {
         job.invokeOnCompletion { end() }
     }
 
+    /**
+     * Starts the foreground work unless it runs: iOS posts the will-enter-foreground notice at
+     * launch too, after the wallet has started it, and a second set would outlive the first's
+     * cancellation in the background.
+     */
     private fun startForegroundWork() {
+        if (foregroundWork.isNotEmpty()) return
         foregroundWork = listOf(
             scope.launch {
                 reportingFailure("upgrade notices") { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
