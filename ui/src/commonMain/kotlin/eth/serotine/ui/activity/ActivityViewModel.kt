@@ -8,6 +8,8 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AccountList
@@ -16,10 +18,15 @@ import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.usecase.ObserveAccountHistory
+import eth.serotine.domain.usecase.BuiltInCheck
+import eth.serotine.domain.usecase.IndexedEvent
+import eth.serotine.domain.usecase.IndexedHistory
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.SafeChainEvent
-import eth.serotine.domain.usecase.SafeHistory
+import eth.serotine.domain.usecase.TokenTransferEvent
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
@@ -37,38 +44,61 @@ import kotlinx.coroutines.flow.stateIn
 
 /**
  * The Activity screen's ViewModel (docs/wallet-ux.md, screen 25; issue #85): the transactions this
- * device sent for the account at [address] ([ObserveAccountHistory]) and, for a Safe of the
- * wallet, its own events on chain ([ObserveSafeHistory]), with the names the wallet gives the
- * addresses they concern ([ObserveAccounts]), as [ActivityUiState]. An event of a transaction
- * listed as sent is left out: its row says more. [formatTime] dates each in the user's own time
- * zone. No intents: a row opens its transaction's status, which is navigation.
+ * device sent for the account at [address] ([ObserveAccountHistory]) and, for an account of the
+ * wallet, what the engine's verified log index holds of it: every token transfer to or from it
+ * ([ObserveTokenTransfers]) and, for a Safe, its own events ([ObserveSafeHistory]). The names the
+ * wallet gives the addresses they concern come from [ObserveAccounts], the tokens' symbols and
+ * decimals from the tokens it knows ([ObserveKnownTokens]). A log of a transaction listed as sent,
+ * in a block, is left out when its row says the same. [formatTime] dates each in the user's own
+ * time zone. No intents: a row opens its transaction's status, which is navigation.
  */
 class ActivityViewModel(
     private val address: Address,
     observeAccountHistory: ObserveAccountHistory,
     observeAccounts: ObserveAccounts,
     observeSafeHistory: ObserveSafeHistory,
+    observeTokenTransfers: ObserveTokenTransfers,
+    observeKnownTokens: ObserveKnownTokens,
     private val network: Network,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
-    /** The Safe's history while the account is a Safe of the wallet; null for any other. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val safeHistory = observeAccounts()
-        .map { list ->
-            (list as? AccountList.Loaded)?.accounts?.any { it.address == address && it.kind == AccountKind.SAFE }
-        }
+    private val accounts = observeAccounts()
+
+    /** The account's kind while it is in the wallet; null while it is not. */
+    private val kind = accounts
+        .map { list -> (list as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == address }?.kind }
         .distinctUntilChanged()
-        .flatMapLatest { safe -> if (safe == true) observeSafeHistory(address) else flowOf(null) }
+
+    /** The Safe's own events while the account is a Safe of the wallet; null for any other. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val safeHistory = kind.flatMapLatest {
+        if (it == AccountKind.SAFE) observeSafeHistory(address) else flowOf(null)
+    }
+
+    /** The account's token transfers while it is in the wallet; null while it is not. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val transfers = kind.flatMapLatest { if (it != null) observeTokenTransfers(address) else flowOf(null) }
+
+    /** The tokens the wallet knows and its contract does not contradict, by address. */
+    private val tokens = observeKnownTokens().map { list ->
+        list.tokens.filter { it.check !is BuiltInCheck.Disagrees }.associate { it.token.address to it.token }
+    }
 
     val uiState: StateFlow<ActivityUiState> =
-        combine(observeAccountHistory(address), observeAccounts(), safeHistory, ::render).stateIn(
+        combine(observeAccountHistory(address), accounts, safeHistory, transfers, tokens, ::render).stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
             ActivityUiState.Loading(shortAddress(Eip55.format(address))),
         )
 
-    private fun render(history: HistoryList, list: AccountList, safe: SafeHistory?): ActivityUiState {
+    private fun render(
+        history: HistoryList,
+        list: AccountList,
+        safe: IndexedHistory<SafeChainEvent>?,
+        transfers: IndexedHistory<TokenTransferEvent>?,
+        tokens: Map<Address, Token>,
+    ): ActivityUiState {
         val names = (list as? AccountList.Loaded)?.accounts.orEmpty().associate { it.address to it.label }
         val title = names[address] ?: shortAddress(Eip55.format(address))
         val entries = when (history) {
@@ -76,19 +106,32 @@ class ActivityViewModel(
             is HistoryList.Loaded -> history.entries
         }
         val sent = entries.map { Listed(row(it, names), it.outcome.blockOrNull()) }
-        if (safe == null) return ActivityUiState.Shown(title, sent.map { it.row }, COVERAGE)
-        // Only a row that names its block says what its events say: one no block was seen for (a
-        // transaction mined while the app was closed) gets the verified event beside it.
-        val seenInBlocks = entries.filter { it.outcome.blockOrNull() != null }.mapTo(HashSet()) { it.transfer.hash }
-        val events = (safe as? SafeHistory.Read)?.events.orEmpty()
+        if (transfers == null) return ActivityUiState.Shown(title, sent.map { it.row }, COVERAGE)
+        // Only a row that names its block says what its logs say: one no block was seen for (a
+        // transaction mined while the app was closed) gets the verified log beside it.
+        val seenInBlocks = entries.filter { it.outcome.blockOrNull() != null }.associateBy { it.transfer.hash }
+        val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
             .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
-            .sortedWith(compareByDescending<SafeChainEvent> { it.blockNumber }.thenByDescending { it.logIndex })
-            .map { eventRow(it, names) }
+            .map { eventRow(it, names) to it }
+        val tokenEvents = (transfers as? IndexedHistory.Read)?.events.orEmpty()
+            .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
+            .map { transferRow(it, names, tokens) to it }
+        val events = (safeEvents + tokenEvents)
+            .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
+                .thenByDescending { it.second.logIndex })
+            .map { (row, event) -> row to event.blockNumber }
         val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
+        val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
+        val parts = listOfNotNull(safe?.let { "its events" to it }, "its token transfers" to transfers)
+        val covered = listOfNotNull(
+            "Transactions sent from this device.",
+            onChainCoverage(parts, since),
+            if (safe == null) "ETH it received, and transactions sent from it elsewhere, are not listed yet." else null,
+        )
         return ActivityUiState.Shown(
             title = title,
             rows = merged(sent, events),
-            coverage = safeCoverage(safe, deployedHere),
+            coverage = covered.joinToString(" "),
             empty = "Nothing listed yet.",
         )
     }
@@ -102,6 +145,21 @@ class ActivityViewModel(
         is SafeEvent.Executed -> succeeded
         is SafeEvent.Approved, is SafeEvent.SetUp -> true
         else -> false
+    }
+
+    /**
+     * Whether [entry]'s row, which names its block, says this transfer: what the account sent in a
+     * transfer of that token, or sold of it in a swap. What it received, and any other token moved,
+     * it does not.
+     */
+    private fun TokenTransfer.saidBy(entry: HistoryEntry): Boolean {
+        if (from != entry.transfer.account || from == to) return false
+        val asset = when (val action = entry.transfer.action) {
+            is SentAction.Transfer -> action.asset
+            is SentAction.Swap -> action.sell
+            else -> return false
+        }
+        return (asset as? TransferAsset.Erc20Token)?.token?.address == token
     }
 
     /**
@@ -120,32 +178,87 @@ class ActivityViewModel(
         return all.sortedByDescending { it.second }.map { it.first }
     }
 
-    /** What the list covers for a Safe: the sent transactions, and its events as far as [safe] says. */
-    private fun safeCoverage(safe: SafeHistory, deployedHere: Boolean): String {
-        val events = when (safe) {
-            SafeHistory.NotFollowed -> "Its events on chain are listed once the light client is synced."
-            is SafeHistory.Checking -> "Its events on chain from block ${grouped(safe.start)} on are being checked."
-            SafeHistory.Unavailable -> "Its events on chain cannot be read right now."
-            is SafeHistory.Read -> {
-                val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
-                val checked = "Its events on chain from block ${grouped(safe.start)} on, $since"
-                if (safe.complete) {
-                    "$checked."
-                } else {
-                    "$checked: checked from block ${grouped(safe.checked.first)} so far, the blocks before " +
-                        "are still being checked."
-                }
+    /**
+     * What the list covers on chain: from which block on ([since] says why from there) each of the
+     * [parts] ("its events" and its history) is listed, and how far each is checked; or why none is.
+     */
+    private fun onChainCoverage(parts: List<Pair<String, IndexedHistory<*>>>, since: String): String {
+        val start = parts.firstNotNullOfOrNull { (_, history) ->
+            (history as? IndexedHistory.Read)?.start ?: (history as? IndexedHistory.Checking)?.start
+        }
+        val all = parts.joinToString(" and ") { it.first }.replaceFirstChar { it.uppercase() }
+        if (start == null) {
+            return if (parts.all { it.second == IndexedHistory.NotFollowed }) {
+                "$all on chain are listed once the light client is synced."
+            } else {
+                "$all on chain cannot be read right now."
             }
         }
-        return "Transactions sent from this device. $events Token transfers are not listed yet."
+        val said = parts.joinToString("; ") { (what, history) ->
+            when (history) {
+                is IndexedHistory.Read -> if (history.complete) {
+                    what
+                } else {
+                    "$what, checked from block ${grouped(history.checked.first)} so far"
+                }
+                is IndexedHistory.Checking -> "$what, being checked"
+                IndexedHistory.Unavailable -> "$what, which cannot be read right now"
+                IndexedHistory.NotFollowed -> "$what, once the light client is synced"
+            }
+        }
+        return "On chain from block ${grouped(start)} on, $since: $said."
     }
 
-    /** A Safe's [event] as a row, and its block. */
-    private fun eventRow(event: SafeChainEvent, names: Map<Address, String>): Pair<ActivityRow, Long> {
-        fun named(other: Address): String {
-            val short = shortAddress(Eip55.format(other))
-            return names[other]?.let { "$it · $short" } ?: short
+    /** A token's [event] as a row: what moved, to or from whom, in which block. */
+    private fun transferRow(
+        event: TokenTransferEvent,
+        names: Map<Address, String>,
+        tokens: Map<Address, Token>,
+    ): ActivityRow {
+        val transfer = event.transfer
+        val token = tokens[transfer.token]
+        val what = when (transfer) {
+            is TokenTransfer.Fungible -> token
+                ?.let { "${transfer.amount.formatUnits(it.decimals)} ${displaySymbol(it.symbol)}" }
+                ?: "an unlisted token"
+            is TokenTransfer.Nft -> {
+                val collection = token?.let { displaySymbol(it.symbol) + " " } ?: "an "
+                "${collection}NFT #${tokenId(transfer.tokenId)}"
+            }
         }
+        val unlisted = if (token == null) " · token ${shortAddress(Eip55.format(transfer.token))}" else ""
+        val (title, other, detail) = when {
+            transfer.from == address && transfer.to == address ->
+                Triple("Moved $what to itself", transfer.token, "Token ${shortAddress(Eip55.format(transfer.token))}")
+            transfer.to == address ->
+                Triple("Received $what", transfer.from, "From ${named(transfer.from, names)}$unlisted")
+            else -> Triple("Sent $what", transfer.to, "To ${named(transfer.to, names)}$unlisted")
+        }
+        return ActivityRow(
+            key = "${event.transactionHash}:${event.logIndex}",
+            title = title,
+            detail = detail,
+            about = Eip55.format(other),
+            time = "Block ${grouped(event.blockNumber)}",
+            status = TOKEN_ON_CHAIN,
+            state = ActivityState.DONE,
+            opens = null,
+        )
+    }
+
+    /** An NFT's id as screens show it: whole when short, its ends when long. */
+    private fun tokenId(id: UInt256): String =
+        id.toDecimal().let { if (it.length > MAX_ID_DIGITS) it.take(6) + "…" + it.takeLast(4) else it }
+
+    /** [other] as screens name it: the wallet's name for it and its short address, or the short address. */
+    private fun named(other: Address, names: Map<Address, String>): String {
+        val short = shortAddress(Eip55.format(other))
+        return names[other]?.let { "$it · $short" } ?: short
+    }
+
+    /** A Safe's [event] as a row. */
+    private fun eventRow(event: SafeChainEvent, names: Map<Address, String>): ActivityRow {
+        fun named(other: Address): String = named(other, names)
         val (title, other, detail) = when (val what = event.event) {
             is SafeEvent.SetUp ->
                 Triple("Set up", address, "${what.threshold} of ${owners(what.owners.size.toLong())} must sign")
@@ -194,7 +307,7 @@ class ActivityViewModel(
             state = state,
             opens = null,
         )
-        return row to event.blockNumber
+        return row
     }
 
     /**
@@ -314,10 +427,12 @@ class ActivityViewModel(
 
     private companion object {
         const val NATIVE_DECIMALS = 18
+        const val MAX_ID_DIGITS = 12
         const val COVERAGE = "Transactions sent from this device. Transactions received, and those sent " +
             "from this account elsewhere, are not listed yet."
         const val UNREADABLE = "The history of your transactions cannot be read right now. Serotine keeps trying."
         const val ON_CHAIN = "On chain, from the Safe's verified logs"
+        const val TOKEN_ON_CHAIN = "On chain, from the token's verified logs"
         const val FAILED_ON_CHAIN = "Failed on chain: its call reverted"
         const val MODULE_WARNING = "A module can move this Safe's funds without its owners"
         const val HANDLER_WARNING = "Not the pinned fallback handler: it answers signature checks for this Safe"

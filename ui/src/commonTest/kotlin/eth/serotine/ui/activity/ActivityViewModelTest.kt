@@ -23,10 +23,16 @@ import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
+import eth.serotine.ui.FakeMetadata
+import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryHistoryStarts
+import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.topicOf
 import eth.serotine.ui.MemoryTransactionHistory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -99,6 +105,8 @@ class ActivityViewModelTest {
             ObserveAccountHistory(history),
             ObserveAccounts(accounts),
             ObserveSafeHistory(index, starts),
+            ObserveTokenTransfers(index, starts),
+            ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata()),
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -228,11 +236,14 @@ class ActivityViewModelTest {
         assertEquals("Router 0x3bFA…e48E", rows.last().detail)
     }
 
-    /** The treasury followed from block 9,400,000, its events indexed over [covered]. */
-    private fun treasuryIndexed(covered: LongRange) {
+    /** The treasury followed from block 9,400,000: its events indexed over [covered], its transfers [transfers]. */
+    private fun treasuryIndexed(covered: LongRange, transfers: LongRange = covered) {
         starts.starts.value = mapOf(treasury.address to HistoryStart.Fixed(9_400_000))
         index.coverage.value = LogCoverageReading.Read(
-            mapOf(LogWatchKey.Emitter(treasury.address) to LogCoverage(9_400_000, covered)),
+            mapOf(
+                LogWatchKey.Emitter(treasury.address) to LogCoverage(9_400_000, covered),
+                LogWatchKey.Mention(treasury.address) to LogCoverage(9_400_000, transfers),
+            ),
         )
     }
 
@@ -264,8 +275,8 @@ class ActivityViewModelTest {
         assertEquals(null, event.opens)
         assertEquals(execution.hash, shown.rows[1].opens)
         assertEquals(
-            "Transactions sent from this device. Its events on chain from block 9,400,000 on, when it was " +
-                "added here. Token transfers are not listed yet.",
+            "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
+                "its events; its token transfers.",
             shown.coverage,
         )
     }
@@ -298,14 +309,13 @@ class ActivityViewModelTest {
 
     @Test
     fun theCoverageSaysWhatIsStillBeingCheckedAndWhenTheSafeIsNotFollowedYet() = runTest {
-        treasuryIndexed(9_410_000L..9_420_000L)
+        treasuryIndexed(9_410_000L..9_420_000L, transfers = 9_400_000L..9_420_000L)
 
         val partly = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
 
         assertEquals(
-            "Transactions sent from this device. Its events on chain from block 9,400,000 on, when it was " +
-                "added here: checked from block 9,410,000 so far, the blocks before are still being checked. " +
-                "Token transfers are not listed yet.",
+            "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
+                "its events, checked from block 9,410,000 so far; its token transfers.",
             partly.coverage,
         )
         assertEquals("Nothing listed yet.", partly.empty)
@@ -360,4 +370,75 @@ class ActivityViewModelTest {
         )
         assertEquals(listOf(ActivityState.DONE, ActivityState.DONE, ActivityState.WARNING), rows.map { it.state })
     }
+
+    private val transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+    /** One data word of the hex [digits]. */
+    private fun word(digits: String) = "0x" + digits.padStart(64, '0')
+
+    private fun tokenLog(
+        token: Address,
+        block: Long,
+        from: Address,
+        to: Address,
+        data: String,
+        tx: String,
+        index: Int = 0,
+        tokenId: String? = null,
+    ) = IndexedLog(
+        ReceiptLog(token, listOfNotNull(transfer, topicOf(from), topicOf(to), tokenId), data),
+        block,
+        "0x" + "bb".repeat(32),
+        tx,
+        index,
+    )
+
+    @Test
+    fun anAccountsTokenTransfersAreListedListedOnesWithTheirAmountOthersByTheirContract() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val spam = Address.of("0x8617e340b3d01fa5f11f306f4090fd50e238070d")
+        val nft = Address.of("0xde709f2102306220921060314715629080e2fb77")
+        val seven = "0x" + "7".padStart(64, '0')
+        index.logs = listOf(
+            tokenLog(usdc.address, 9_401_000, bob, alice.address, word("2625a00"), "0x" + "e1".repeat(32)),
+            tokenLog(spam, 9_402_000, bob, alice.address, word("1"), "0x" + "e2".repeat(32)),
+            tokenLog(nft, 9_403_000, alice.address, bob, "0x", "0x" + "e3".repeat(32), tokenId = seven),
+        )
+
+        val shown = assertIs<ActivityUiState.Shown>(viewModel().uiState.value)
+
+        assertEquals(
+            listOf("Sent an NFT #7", "Received an unlisted token", "Received 40 USDC"),
+            shown.rows.map { it.title },
+        )
+        assertEquals("From 0x5aAe…eAed · token 0x8617…070D", shown.rows[1].detail)
+        assertEquals("From 0x5aAe…eAed", shown.rows[2].detail)
+        assertEquals(
+            "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
+                "its token transfers. ETH it received, and transactions sent from it elsewhere, are not listed yet.",
+            shown.coverage,
+        )
+    }
+
+    @Test
+    fun aTokenSentFromHereInABlockIsItsRowAloneAndWhatCameBackIsListed() = runTest {
+        history.entries.value = listOf(HistoryEntry(token, SentOutcome.Included(9_410_000, succeeded = true)))
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        index.logs = listOf(
+            tokenLog(usdc.address, 9_410_000, alice.address, bob, word("269fb20"), token.hash),
+            tokenLog(usdc.address, 9_411_000, bob, alice.address, word("f4240"), "0x" + "e4".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+
+        assertEquals(listOf("Received 1 USDC", "Sent 40.5 USDC"), rows.map { it.title })
+        assertEquals(token.hash, rows.last().opens)
+    }
 }
+
