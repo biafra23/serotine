@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -130,12 +131,14 @@ internal fun App(graph: AppGraph, navController: NavHostController) {
                         }
                     },
                 ) { padding ->
+                    // Every screen ends at the top of the on-screen keyboard (imePadding, less the
+                    // bar it already clears), so what the keyboard would cover can be scrolled to.
                     Destinations(
                         graph,
                         navController,
                         update,
                         lightClient,
-                        Modifier.padding(padding).consumeWindowInsets(padding),
+                        Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
                     )
                 }
             }

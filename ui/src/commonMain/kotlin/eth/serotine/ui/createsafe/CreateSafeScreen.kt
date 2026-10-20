@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -50,6 +51,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -66,6 +68,7 @@ import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.components.done
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.lightclient.LightClientViewModel
@@ -339,6 +342,11 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
                 capitalization = KeyboardCapitalization.None,
                 autoCorrectEnabled = false,
                 keyboardType = KeyboardType.Ascii,
+            ).done(),
+            // Done adds the owner typed, as the button under the field does, and keeps the keyboard
+            // for the next one; with nothing to add it only closes the keyboard.
+            keyboardActions = KeyboardActions(
+                onDone = { if (state.canAdd) actions.onAddOwner() else defaultKeyboardAction(ImeAction.Done) },
             ),
         )
         state.inputOwner?.let { owner ->

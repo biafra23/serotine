@@ -237,7 +237,16 @@ private fun ComposeContent(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        TransferFormFields(state.form, onAssetChange, onToChange, onPickAccount, onRetryLookup, onAmountChange, onMax)
+        TransferFormFields(
+            state.form,
+            onAssetChange,
+            onToChange,
+            onPickAccount,
+            onRetryLookup,
+            onAmountChange,
+            onMax,
+            onReview = onReview,
+        )
         Heading("Fee")
         FeeChoice(state.fee, enabled = !state.form.quoting, onFeeChange)
         Note("The fee is paid in the network's own currency; the review shows the most it can be.")

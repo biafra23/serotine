@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.WalletPassword
@@ -197,5 +198,19 @@ class CreateSafeScreenTest {
         rule.onNodeWithContentDescription("Back").performClick()
 
         assertEquals(listOf("retry", "back"), events)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheTypedOwnerAddsItOnlyWhenItCanBeAdded() {
+        show(owners.copy(input = friend))
+        rule.onNodeWithTag(CREATE_SAFE_INPUT_TAG).performScrollTo().performImeAction()
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun theKeyboardsDoneOnTheTypedOwnerAddsIt() {
+        show(owners.copy(input = friend, canAdd = true))
+        rule.onNodeWithTag(CREATE_SAFE_INPUT_TAG).performScrollTo().performImeAction()
+        assertEquals(listOf("add"), events)
     }
 }
