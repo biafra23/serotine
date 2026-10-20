@@ -1,6 +1,8 @@
 package eth.serotine.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -38,7 +40,7 @@ enum class Control(val label: String) {
     WATCH_ONLY("Watch-only"),
     ;
 
-    /** What [NameWithControlBadge] shows in place of [label] where that does not fit on one line. */
+    /** What the badge shows before [label], and alone where the label does not fit on one line. */
     val icon: ImageVector
         get() = when (this) {
             FULL_CONTROL -> SerotineIcons.Key
@@ -67,10 +69,10 @@ enum class Control(val label: String) {
     }
 }
 
-/** [control] as a small label: its text, on one line. Beside a name, [NameWithControlBadge]. */
+/** [control] as a small label: its icon and its text, on one line. Beside a name, [NameWithControlBadge]. */
 @Composable
 fun ControlBadge(control: Control, modifier: Modifier = Modifier) {
-    BadgeChip(control, modifier) { BadgeText(control) }
+    BadgeChip(control, modifier) { BadgeLabel(control) }
 }
 
 /** The tag of [NameWithControlBadge]'s badge in its text form, for tests. */
@@ -81,9 +83,10 @@ const val CONTROL_BADGE_ICON_TAG = "control-badge-icon"
 
 /**
  * An account's [name] with its [control] badge after it, on one line (#68). The badge shows its
- * text where name and text fit side by side on one line, else its [Control.icon] in the same
- * colours and height, never its text broken over two lines. The name keeps at least its longest
- * word; where even the icon finds no room beside that, the badge goes under the name.
+ * [Control.icon] and its text where name and badge fit side by side on one line, so the icon's
+ * meaning is learned, else the icon alone, in the same colours and height: never its text broken
+ * over two lines. The name keeps at least its longest word; where even the icon finds no room
+ * beside that, the badge goes under the name.
  *
  * Either way a screen reader hears the badge's text after the name, and the account's own
  * screen shows the badge in full.
@@ -95,7 +98,7 @@ fun NameWithControlBadge(name: String, control: Control, modifier: Modifier = Mo
             Text(name)
             // Both forms are composed and one is placed: neither speaks, the box after them does.
             BadgeChip(control, Modifier.clearAndSetSemantics { testTag = CONTROL_BADGE_TEXT_TAG }) {
-                BadgeText(control, Modifier.clearAndSetSemantics {})
+                BadgeLabel(control, spoken = false)
             }
             BadgeChip(control, Modifier.clearAndSetSemantics { testTag = CONTROL_BADGE_ICON_TAG }) {
                 Icon(control.icon, null, Modifier.padding(horizontal = IconPadding, vertical = 1.dp).size(iconSize()))
@@ -137,10 +140,10 @@ fun NameWithControlBadge(name: String, control: Control, modifier: Modifier = Mo
 /** The room between an account's name and its badge. */
 private val NameToBadge = 8.dp
 
-/** The badge's padding beside its text. */
+/** The badge's padding after its text. */
 private val TextPadding = 6.dp
 
-/** The badge's padding beside its icon. */
+/** The badge's padding beside its icon, and between its icon and its text. */
 private val IconPadding = 4.dp
 
 /** The badge's shape, in [control]'s colours, around [content]. */
@@ -157,16 +160,26 @@ private fun BadgeChip(control: Control, modifier: Modifier = Modifier, content: 
     }
 }
 
-/** [control]'s text, as the badge shows it. */
+/**
+ * [control]'s icon and text, as the badge shows them where they fit. Not [spoken] where another
+ * node says the text: the text form of [NameWithControlBadge], which may be composed but not placed.
+ */
 @Composable
-private fun BadgeText(control: Control, modifier: Modifier = Modifier) {
-    Text(
-        control.label,
-        modifier.padding(horizontal = TextPadding, vertical = 1.dp),
-        style = MaterialTheme.typography.labelSmall,
-        softWrap = false,
-        maxLines = 1,
-    )
+private fun BadgeLabel(control: Control, spoken: Boolean = true) {
+    Row(
+        Modifier.padding(start = IconPadding, end = TextPadding, top = 1.dp, bottom = 1.dp),
+        horizontalArrangement = Arrangement.spacedBy(IconPadding),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(control.icon, null, Modifier.size(iconSize()))
+        Text(
+            control.label,
+            if (spoken) Modifier else Modifier.clearAndSetSemantics {},
+            style = MaterialTheme.typography.labelSmall,
+            softWrap = false,
+            maxLines = 1,
+        )
+    }
 }
 
 /** The badge's icon, as tall as a line of its text: the badge keeps its height in either form. */
