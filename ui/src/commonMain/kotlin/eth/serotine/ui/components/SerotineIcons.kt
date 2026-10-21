@@ -93,6 +93,11 @@ object SerotineIcons {
         )
     }
 
+    /** Three lines, shortest last: the order of a list. Material Symbols `sort`. */
+    val Sort: ImageVector by lazy {
+        symbol("Sort", "M120-240v-80h240v80H120Zm0-200v-80h480v80H120Zm0-200v-80h720v80H120Z")
+    }
+
     /** An arrow into a tray: importing a recovery phrase. Material Symbols `download`. */
     val Download: ImageVector by lazy {
         symbol(
