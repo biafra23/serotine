@@ -210,7 +210,7 @@ class TransactionHistoriesTest {
     }
 
     @Test
-    fun theAddressesSentToAreTheRecipientsOfTransfersAndOfSafeTransactionsAndNoneWhileUnreadable() = runTest {
+    fun whatWasSentIsTheRecipientsOfTransfersAndOfSafeTransactionsAndTheirHashesAndNothingWhileUnreadable() = runTest {
         val carol = Address.of("0x" + "bb".repeat(20))
         val transferred = transfer(5)
         val payment = SafeTx.call(carol, UInt256.of(5), ByteArray(0), nonce = 4)
@@ -219,9 +219,11 @@ class TransactionHistoriesTest {
             .copy(action = SentAction.SafeDeployment(world.safe, listOf(world.alice.address), 1, "1.4.1", "Vault"))
         listOf(transferred, executed, deployed).forEach { history.record(it) }
 
-        assertEquals(setOf(bob, carol), ObserveSentToAddresses(history)().first())
+        val sent = ObserveSentTo(history)().first()
+        assertEquals(setOf(bob, carol), sent.addresses)
+        assertEquals(setOf(transferred.hash, executed.hash, deployed.hash), sent.transactions)
         history.readable.value = false
-        assertEquals(emptySet(), ObserveSentToAddresses(history)().first())
+        assertEquals(SentTo(emptySet(), emptySet()), ObserveSentTo(history)().first())
     }
 
     @Test

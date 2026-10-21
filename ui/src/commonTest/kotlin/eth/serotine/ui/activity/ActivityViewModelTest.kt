@@ -27,7 +27,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
-import eth.serotine.domain.usecase.ObserveSentToAddresses
+import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
@@ -114,7 +114,7 @@ class ActivityViewModelTest {
             ObserveSafeHistory(index, starts),
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
-            ObserveSentToAddresses(history),
+            ObserveSentTo(history),
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -284,7 +284,7 @@ class ActivityViewModelTest {
         assertEquals(ActivityKey(execution.hash), shown.rows[1].opens)
         assertEquals(
             "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
-                "its events; its token transfers.",
+                "its events; its token and ETH transfers.",
             shown.coverage,
         )
     }
@@ -323,7 +323,7 @@ class ActivityViewModelTest {
 
         assertEquals(
             "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
-                "its events, checked from block 9,410,000 so far; its token transfers.",
+                "its events, checked from block 9,410,000 so far; its token and ETH transfers.",
             partly.coverage,
         )
         assertEquals("Nothing listed yet.", partly.empty)
@@ -480,7 +480,8 @@ class ActivityViewModelTest {
         assertEquals("From 0x5aAe…eAed", shown.rows[2].detail)
         assertEquals(
             "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
-                "its token transfers. ETH it received, and transactions sent from it elsewhere, are not listed yet.",
+                "its token and ETH transfers. ETH it received before the network logged ETH transfers, and " +
+                "transactions sent from it elsewhere, are not listed yet.",
             shown.coverage,
         )
     }
@@ -508,6 +509,55 @@ class ActivityViewModelTest {
             "From an address you have not sent to: compare every character before you copy it",
             rows.last().status,
         )
+    }
+
+    @Test
+    fun theNetworksLogOfEthTransfersIsListedAsEthAndWhatASentRowSaysIsItsAlone() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val router = Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e")
+        val pool = Address.of("0x6418eec70f50913ff0d756b48d32ce7c02b47c47")
+        val eth = TokenTransfers.ETH
+        val stranger = Address.of("0x" + "ab".repeat(20))
+        history.entries.value = listOf(
+            HistoryEntry(native, SentOutcome.Included(9_410_000, succeeded = true)),
+            HistoryEntry(token, SentOutcome.Included(9_405_000, succeeded = true)),
+        )
+        index.logs = listOf(
+            tokenLog(eth, 9_401_000, stranger, alice.address, word("de0b6b3a7640000"), "0x" + "e1".repeat(32)),
+            tokenLog(eth, 9_402_000, alice.address, router, word("6f05b59d3b20000"), "0x" + "e2".repeat(32)),
+            // Sent from here: the ETH its row says, and a swap's proceeds from a pool never sent to.
+            tokenLog(eth, 9_410_000, alice.address, treasury.address, word("3782dace9d90000"), native.hash),
+            tokenLog(usdc.address, 9_405_000, pool, alice.address, word("f4240"), token.hash, index = 1),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+
+        assertEquals(
+            listOf("Sent 0.25 ETH", "Sent 40.5 USDC", "Received 1 USDC", "Sent 0.5 ETH", "Received 1 ETH"),
+            rows.map { it.title },
+        )
+        assertEquals(ActivityState.DONE, rows[2].state, "proceeds of a transaction sent from here")
+        assertEquals("To 0x3bFA…e48E", rows[3].detail)
+        assertEquals("On chain, from the network's own verified log of ETH transfers", rows[3].status)
+        assertEquals(ActivityState.CAUTION, rows[4].state, "never sent to")
+    }
+
+    @Test
+    fun ethASafeReceivedIsItsOwnEventAloneNotAlsoTheNetworksLogOfIt() = runTest {
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val tx = "0x" + "dd".repeat(32)
+        index.logs = listOf(
+            safeLog(9_415_000, listOf(received, bobsTopic), word("de0b6b3a7640000"), tx = tx),
+            tokenLog(TokenTransfers.ETH, 9_415_000, bob, treasury.address, word("de0b6b3a7640000"), tx, index = 1),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+
+        assertEquals(listOf("Received 1 ETH"), rows.map { it.title })
+        assertEquals(ActivityKey(tx, 0), rows.single().opens, "the Safe's own event, not the network's log")
     }
 
     @Test

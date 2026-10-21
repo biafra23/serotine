@@ -192,16 +192,29 @@ class ObserveAccountHistory(private val history: TransactionHistory) {
 }
 
 /**
- * The addresses this wallet has sent to, as this device's history of its transactions holds them
- * (owner's request on #136, 2026-10-21: incoming transfers from any other address are cautioned):
- * the recipient of each transfer any of its accounts sent, and of each Safe transaction one of them
- * approved or executed (its ETH or token transfer, decoded as the Safe transaction screen decodes
- * it; a call of anything else names no recipient). Empty while the history cannot be read, so that
- * no sender passes for one sent to.
+ * What this wallet sent, as this device's history of its transactions holds it (owner's request on
+ * #136, 2026-10-21: incoming transfers from anyone else are cautioned): the [addresses] it sent
+ * to, and the [transactions] it sent (their hashes). A transfer logged by one of those cannot be a
+ * stranger's planted one, whoever it names: a swap's proceeds, from a pool, are such a transfer.
  */
-class ObserveSentToAddresses(private val history: TransactionHistory) {
-    operator fun invoke(): Flow<Set<Address>> = history.observe()
-        .map { list -> (list as? HistoryList.Loaded)?.entries.orEmpty().mapNotNullTo(HashSet()) { it.recipient() } }
+data class SentTo(val addresses: Set<Address>, val transactions: Set<String>)
+
+/**
+ * What this wallet sent ([SentTo]): the recipient of each transfer any of its accounts sent, and
+ * of each Safe transaction one of them approved or executed (its ETH or token transfer, decoded as
+ * the Safe transaction screen decodes it; a call of anything else names no recipient), and the
+ * hash of every transaction in the history. Nothing while the history cannot be read, so that no
+ * sender passes for one sent to.
+ */
+class ObserveSentTo(private val history: TransactionHistory) {
+    operator fun invoke(): Flow<SentTo> = history.observe()
+        .map { list ->
+            val entries = (list as? HistoryList.Loaded)?.entries.orEmpty()
+            SentTo(
+                addresses = entries.mapNotNullTo(HashSet()) { it.recipient() },
+                transactions = entries.mapTo(HashSet()) { it.transfer.hash },
+            )
+        }
         .distinctUntilChanged()
 
     /** Whom this transaction sent value to, when it is a transfer: the account's own or its Safe's. */

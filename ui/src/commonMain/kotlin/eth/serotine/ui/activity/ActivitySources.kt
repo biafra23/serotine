@@ -10,9 +10,10 @@ import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
-import eth.serotine.domain.usecase.ObserveSentToAddresses
+import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.SafeChainEvent
+import eth.serotine.domain.usecase.SentTo
 import eth.serotine.domain.usecase.TokenTransferEvent
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.shortAddress
@@ -28,8 +29,8 @@ import kotlinx.coroutines.flow.onStart
 /**
  * What the Activity of the account at [address] and the detail of its rows are read from, besides
  * its sent transactions (docs/wallet-ux.md, screens 25 and 26): one place, so a row and its detail
- * are read alike. Cold flows: each collector reads them anew. [observeSentTo] gives the addresses
- * the wallet sent to ([Parties.familiar]).
+ * are read alike. Cold flows: each collector reads them anew. [observeSentTo] gives what the wallet
+ * sent ([Parties.familiar]).
  */
 internal class ActivitySources(
     private val address: Address,
@@ -37,11 +38,11 @@ internal class ActivitySources(
     observeSafeHistory: ObserveSafeHistory,
     observeTokenTransfers: ObserveTokenTransfers,
     observeKnownTokens: ObserveKnownTokens,
-    observeSentTo: ObserveSentToAddresses,
+    observeSentTo: ObserveSentTo,
 ) {
     private val accounts: Flow<AccountList> = observeAccounts()
 
-    /** The wallet's accounts and the addresses it sent to: whom the rows name, and which senders they caution about. */
+    /** The wallet's accounts and what it sent: whom the rows name, and which senders they caution about. */
     val parties: Flow<Parties> = combine(accounts, observeSentTo(), ::Parties)
 
     /** The account's kind while it is in the wallet; null while it is not. */
@@ -85,20 +86,25 @@ internal class ActivitySources(
 internal fun TokenTransfer.movesNothing(): Boolean = this is TokenTransfer.Fungible && amount.isZero
 
 /**
- * The wallet's accounts as [list] holds them, and the addresses it has sent to ([sentTo],
- * `ObserveSentToAddresses`): the names rows give addresses, and the senders they trust.
+ * The wallet's accounts as [list] holds them, and what it sent ([sent], `ObserveSentTo`): the
+ * names rows give addresses, and the senders they trust.
  */
-internal class Parties(val list: AccountList, private val sentTo: Set<Address>) {
+internal class Parties(val list: AccountList, private val sent: SentTo) {
 
     /** The wallet's names for addresses, by address; none while the accounts cannot be read. */
     val names: Map<Address, String> =
         (list as? AccountList.Loaded)?.accounts.orEmpty().associate { it.address to it.label }
 
     /**
-     * Whether a transfer from [sender] is from someone the user deals with: one of the wallet's
-     * accounts, an address it sent to, or none (the zero address, a mint). Any other sender may be a
-     * look-alike of an address the user uses, sending a little so that it is copied from the history
-     * later (owner's request on #136, 2026-10-21): its rows and detail caution about it.
+     * Whether a transfer from [sender], logged by the transaction [transaction], is from someone
+     * the user deals with: one of the wallet's accounts, an address it sent to, or none (the zero
+     * address, a mint); or whoever it is, in a transaction this wallet sent (a swap's proceeds from
+     * its pool), which no stranger can log into. Any other sender may be a look-alike of an address
+     * the user uses, sending a little so that it is copied from the history later (owner's request
+     * on #136, 2026-10-21): its rows and detail caution about it.
      */
-    fun familiar(sender: Address): Boolean = sender == Address.ZERO || sender in names || sender in sentTo
+    fun familiar(sender: Address, transaction: String): Boolean = sender == Address.ZERO ||
+        sender in names ||
+        sender in sent.addresses ||
+        transaction in sent.transactions
 }

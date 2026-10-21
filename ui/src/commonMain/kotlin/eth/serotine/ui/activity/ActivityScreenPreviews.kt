@@ -78,11 +78,11 @@ private val rows = listOf(
 )
 
 private const val SAFE_COVERAGE = "Transactions sent from this device. On chain from block 9,400,000 on, " +
-    "when it was added here: its events, checked from block 9,410,000 so far; its token transfers."
+    "when it was added here: its events, checked from block 9,410,000 so far; its token and ETH transfers."
 
 private const val ACCOUNT_COVERAGE = "Transactions sent from this device. On chain from block 9,400,000 on, " +
-    "when it was added here: its token transfers. ETH it received, and transactions sent from it elsewhere, " +
-    "are not listed yet."
+    "when it was added here: its token and ETH transfers. ETH it received before the network logged ETH " +
+    "transfers, and transactions sent from it elsewhere, are not listed yet."
 
 /** An account's token transfers among a transaction sent from here. */
 private val tokenRows = listOf(
@@ -95,6 +95,16 @@ private val tokenRows = listOf(
         status = "From an address you have not sent to: compare every character before you copy it",
         state = ActivityState.CAUTION,
         opens = ActivityKey("0x" + "f".repeat(64), 1),
+    ),
+    ActivityRow(
+        key = "0x" + "2f".repeat(32) + ":5",
+        title = "Sent 0.5 ETH",
+        detail = "To 0x3bFA…e48E",
+        about = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+        time = "Block 9,417,600",
+        status = "On chain, from the network's own verified log of ETH transfers",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "2f".repeat(32), 5),
     ),
     ActivityRow(
         key = "0x" + "b".repeat(64) + ":2",

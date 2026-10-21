@@ -52,6 +52,7 @@ internal class ActivityRows(
     ): ActivityRow {
         val names = parties.names
         val transfer = event.transfer
+        if (transfer is TokenTransfer.Fungible && transfer.isEth) return ethRow(event, transfer, parties)
         val contract = shortAddress(Eip55.format(transfer.token))
         val listed = tokens[transfer.token]
         val known = listed?.takeIf { it.shown }
@@ -107,7 +108,7 @@ internal class ActivityRows(
                 status = "Not the built-in $symbol: another contract",
                 state = ActivityState.WARNING,
             )
-            direction == Direction.IN && !parties.familiar(transfer.from) -> row.copy(
+            direction == Direction.IN && !parties.familiar(transfer.from, event.transactionHash) -> row.copy(
                 title = title,
                 detail = detail,
                 about = Eip55.format(other),
@@ -116,6 +117,28 @@ internal class ActivityRows(
             )
             else -> row.copy(title = title, detail = detail, about = Eip55.format(other))
         }
+    }
+
+    /**
+     * The protocol's log of an ETH [transfer] (EIP-7708) as a row: ETH sent or received, whoever
+     * the other side is, said as the chain's own word; cautioned as a token's is when received
+     * from a sender the user does not deal with.
+     */
+    private fun ethRow(event: TokenTransferEvent, transfer: TokenTransfer.Fungible, parties: Parties): ActivityRow {
+        val what = amount(transfer.amount, TransferAsset.Native)
+        val incoming = transfer.to == address
+        val other = if (incoming) transfer.from else transfer.to
+        val cautioned = incoming && !parties.familiar(transfer.from, event.transactionHash)
+        return ActivityRow(
+            key = "${event.transactionHash}:${event.logIndex}",
+            title = if (incoming) "Received $what" else "Sent $what",
+            detail = (if (incoming) "From " else "To ") + named(other, parties.names),
+            about = Eip55.format(other),
+            time = "Block ${grouped(event.blockNumber)}",
+            status = if (cautioned) UNFAMILIAR_SENDER else ETH_ON_CHAIN,
+            state = if (cautioned) ActivityState.CAUTION else ActivityState.DONE,
+            opens = ActivityKey(event.transactionHash, event.logIndex),
+        )
     }
 
     /** Which way a token moved, as the account sees it. */
@@ -172,7 +195,7 @@ internal class ActivityRows(
             is SafeEvent.MessageSigned -> Triple("Signed a message", address, "Message ${shortHash(what.messageHash)}")
         }
         val received = event.event as? SafeEvent.Received
-        val (status, state) = if (received != null && !parties.familiar(received.from)) {
+        val (status, state) = if (received != null && !parties.familiar(received.from, event.transactionHash)) {
             UNFAMILIAR_SENDER to ActivityState.CAUTION
         } else {
             statusOf(event.event)
@@ -309,6 +332,7 @@ internal class ActivityRows(
         const val MAX_ID_DIGITS = 12
         const val ON_CHAIN = "On chain, from the Safe's verified logs"
         const val TOKEN_ON_CHAIN = "On chain, from the token's verified logs"
+        const val ETH_ON_CHAIN = "On chain, from the network's own verified log of ETH transfers"
         const val UNLISTED =
             "The claim of a contract the wallet does not list: open it to add it as a token and see what moved"
         const val HIDDEN = "The claim of a token you hid: show it again in Settings → Tokens to see what moved"

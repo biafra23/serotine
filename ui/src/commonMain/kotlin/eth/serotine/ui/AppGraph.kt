@@ -58,7 +58,7 @@ import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
-import eth.serotine.domain.usecase.ObserveSentToAddresses
+import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
@@ -371,7 +371,7 @@ class AppGraph(
     )
 
     /**
-     * The transactions this device sent for the account at [address], its token transfers and, for
+     * The transactions this device sent for the account at [address], its token and ETH transfers and, for
      * a Safe, its events on chain (docs/wallet-ux.md, screen 25).
      */
     fun activityViewModel(address: Address): ActivityViewModel = ActivityViewModel(
@@ -381,7 +381,7 @@ class AppGraph(
         ObserveSafeHistory(logIndex, historyStarts),
         ObserveTokenTransfers(logIndex, historyStarts),
         knownTokens(),
-        ObserveSentToAddresses(transactionHistory),
+        ObserveSentTo(transactionHistory),
         network,
     )
 
@@ -397,7 +397,7 @@ class AppGraph(
         ObserveSafeHistory(logIndex, historyStarts),
         ObserveTokenTransfers(logIndex, historyStarts),
         knownTokens(),
-        ObserveSentToAddresses(transactionHistory),
+        ObserveSentTo(transactionHistory),
         network,
     )
 

@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
+import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
@@ -18,7 +19,7 @@ import eth.serotine.domain.usecase.IndexedHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
-import eth.serotine.domain.usecase.ObserveSentToAddresses
+import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
@@ -37,7 +38,7 @@ import kotlinx.coroutines.flow.stateIn
  * ([ObserveTokenTransfers]) and, for a Safe, its own events ([ObserveSafeHistory]). The names the
  * wallet gives the addresses they concern come from [ObserveAccounts], the tokens' symbols and
  * decimals from the tokens it knows ([ObserveKnownTokens]); a transfer received from an address the
- * wallet never sent to ([ObserveSentToAddresses]) and that is none of its accounts is cautioned. A
+ * wallet never sent to ([ObserveSentTo]) and that is none of its accounts is cautioned. A
  * log of a transaction listed as sent, in a block, is left out when its row says the same.
  * [formatTime] dates each in the user's own time zone. No intents: a row opens its detail, which is navigation.
  */
@@ -48,7 +49,7 @@ class ActivityViewModel(
     observeSafeHistory: ObserveSafeHistory,
     observeTokenTransfers: ObserveTokenTransfers,
     observeKnownTokens: ObserveKnownTokens,
-    observeSentTo: ObserveSentToAddresses,
+    observeSentTo: ObserveSentTo,
     network: Network,
     formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -101,10 +102,15 @@ class ActivityViewModel(
         val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
             .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
             .map { rows.eventRow(it, parties) to it }
+        // ETH a Safe received is its own event too: the protocol's log of it is left out beside it.
+        val receivedEvents = (safe as? IndexedHistory.Read)?.events.orEmpty().mapNotNullTo(HashSet()) { event ->
+            (event.event as? SafeEvent.Received)?.let { Triple(event.transactionHash, it.from, it.amount) }
+        }
         // Until the tokens are known, a transfer's amount cannot be said: none is listed yet.
         val tokenEvents = (transfers as? IndexedHistory.Read)?.events.orEmpty()
             .takeIf { tokens != null }.orEmpty()
             .filterNot { it.transfer.movesNothing() }
+            .filterNot { it.saidBySafeEvent(receivedEvents) }
             .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
             .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
         val events = (safeEvents + tokenEvents)
@@ -113,11 +119,11 @@ class ActivityViewModel(
             .map { (row, event) -> row to event.blockNumber }
         val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
         val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
-        val parts = listOfNotNull(safe?.let { "its events" to it }, "its token transfers" to transfers)
+        val parts = listOfNotNull(safe?.let { "its events" to it }, "its token and ETH transfers" to transfers)
         val covered = listOfNotNull(
             "Transactions sent from this device.",
             onChainCoverage(parts, since),
-            if (safe == null) "ETH it received, and transactions sent from it elsewhere, are not listed yet." else null,
+            if (safe == null) ELSEWHERE else null,
         )
         return ActivityUiState.Shown(
             title = title,
@@ -138,11 +144,17 @@ class ActivityViewModel(
         else -> false
     }
 
+    /** Whether this is the protocol's log of ETH the Safe received that one of its [received] events says. */
+    private fun TokenTransferEvent.saidBySafeEvent(received: Set<Triple<String, Address, UInt256>>): Boolean {
+        val eth = transfer as? TokenTransfer.Fungible ?: return false
+        return eth.isEth && eth.to == address && Triple(transactionHash, eth.from, eth.amount) in received
+    }
+
     /**
      * Whether [entry]'s row, which names its block, says this transfer: the token, the amount and
-     * the recipient the account sent in a transfer, or the token and the amount it sold in a swap.
-     * What it received, and any other move of a token (a fee, a share to a third address), it does
-     * not.
+     * the recipient the account sent in a transfer, or the token and the amount it sold in a swap;
+     * for ETH sent, the protocol's log of it (EIP-7708). What it received, and any other move of a
+     * token (a fee, a share to a third address), it does not.
      */
     private fun TokenTransfer.saidBy(entry: HistoryEntry): Boolean {
         if (this !is TokenTransfer.Fungible || from != entry.transfer.account) return false
@@ -151,7 +163,11 @@ class ActivityViewModel(
             is SentAction.Swap -> action.sell to action.amountIn
             else -> return false
         }
-        return (asset as? TransferAsset.Erc20Token)?.token?.address == token && sent == amount
+        val same = when (asset) {
+            TransferAsset.Native -> isEth
+            is TransferAsset.Erc20Token -> asset.token.address == token
+        }
+        return same && sent == amount
     }
 
     /**
@@ -213,6 +229,8 @@ class ActivityViewModel(
     private companion object {
         const val COVERAGE = "Transactions sent from this device. Transactions received, and those sent " +
             "from this account elsewhere, are not listed yet."
+        const val ELSEWHERE = "ETH it received before the network logged ETH transfers, and transactions sent " +
+            "from it elsewhere, are not listed yet."
         const val UNREADABLE = "The history of your transactions cannot be read right now. Serotine keeps trying."
     }
 }

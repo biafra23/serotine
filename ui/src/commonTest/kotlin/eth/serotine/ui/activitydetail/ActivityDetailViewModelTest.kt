@@ -26,7 +26,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
-import eth.serotine.domain.usecase.ObserveSentToAddresses
+import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
@@ -102,7 +102,7 @@ class ActivityDetailViewModelTest {
             ObserveSafeHistory(index, starts),
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
-            ObserveSentToAddresses(history),
+            ObserveSentTo(history),
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -327,5 +327,28 @@ class ActivityDetailViewModelTest {
             shown.fields,
         )
         assertEquals(execution.hash, shown.opensStatus)
+    }
+
+    @Test
+    fun theNetworksLogOfAnEthTransferIsDetailedAsEthWithNoContract() = runTest {
+        indexed(alice.address)
+        val tx = "0x" + "e6".repeat(32)
+        index.logs = listOf(tokenLog(TokenTransfers.ETH, alice.address, bob, word("6f05b59d3b20000"), tx))
+
+        val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(ActivityKey(tx, 3)).uiState.value)
+
+        assertEquals("Sent 0.5 ETH", shown.headline)
+        assertEquals(
+            listOf(
+                DetailField("From", Eip55.format(alice.address), DetailKind.ADDRESS, "Alice"),
+                DetailField("To", Eip55.format(bob), DetailKind.ADDRESS),
+                DetailField("Amount", "0.5 ETH"),
+                DetailField("Transaction hash", tx, DetailKind.HASH),
+                DetailField("Block", "9,402,000"),
+            ),
+            shown.fields,
+        )
+        assertNull(shown.addToken)
+        assertTrue(shown.note.orEmpty().startsWith("A plain ETH transfer"))
     }
 }
