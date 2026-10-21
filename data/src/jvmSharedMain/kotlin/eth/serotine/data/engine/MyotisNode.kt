@@ -30,7 +30,11 @@ import io.myotis.api.ports.DnsServers
 import io.myotis.api.ports.EnginePorts
 import io.myotis.engine.Myotis
 import io.myotis.engine.ports.DefaultEnginePorts
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -48,7 +52,11 @@ import kotlin.time.Duration.Companion.seconds
  * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default
  * ports are used; nothing below them.
  */
-class MyotisNode private constructor(network: Network, lastBalancesPath: String?, debugLog: ((String) -> Unit)?) {
+class MyotisNode private constructor(
+    network: Network,
+    lastBalancesPath: String?,
+    private val debugLog: ((String) -> Unit)?,
+) {
 
     private sealed interface State {
         data object Booting : State
@@ -88,6 +96,9 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     private val control = Executors.newSingleThreadExecutor { task ->
         Thread(task, "myotis-control").apply { isDaemon = true }
     }
+
+    /** Where the engine's own log is drained into [debugLog] while the engine runs. */
+    private val logScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val chain = HandleChain()
 
@@ -181,7 +192,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             state = State.Down
             current as? State.Running
         }
+        logScope.cancel()
         running?.stop()
+        // In a debug build, what the engine said while stopping, which the pump no longer drains.
+        if (running != null) debugLog?.let { EngineLogPump(Myotis::drainLogs, it).drainNow() }
         bootThread?.takeIf { it.isAlive && it != Thread.currentThread() }?.join(SHUTDOWN_WAIT_MS)
         control.shutdown()
     }
@@ -238,8 +252,8 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             val running = State.Running(engine, ports, handle, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
             val started = handle.start()
             // The engine says why only in its own log, which is drained, not printed: drained
-            // before anything stops the engine, so the refusal comes first, ahead of shutdown noise.
-            val refusal = if (started) null else Myotis.drainLogs(ENGINE_LOG_LINES)
+            // before anything stops the engine, so the refusal comes last, ahead of shutdown noise.
+            val refusal = if (started) null else EngineLogPump.lastLines(Myotis::drainLogs, ENGINE_LOG_LINES)
             val kept = synchronized(this) {
                 val keep = started && state == State.Booting
                 if (state == State.Booting) state = if (keep) running else State.Down
@@ -251,6 +265,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             // resume the host asks for from here on queues there too, so the last one asked for
             // is the state the engine ends in.
             if (kept) onControlThread { if (pauseWanted) it.pause() }
+            // The engine's own log, in a debug build: the one account of why a sync stalls.
+            if (kept && debugLog != null) {
+                logScope.launch { EngineLogPump(Myotis::drainLogs, debugLog).run(ENGINE_LOG_INTERVAL) }
+            }
             refusal?.let { report("the engine refused to start $name:\n$it") }
         } catch (e: Throwable) {
             if (owned) releaseAfter(e, engine, ports)
@@ -466,8 +484,11 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds
 
-        /** Engine log lines a failed start reports. */
+        /** Engine log lines a failed start reports: the last ones, where it says why. */
         private const val ENGINE_LOG_LINES = 40
+
+        /** How often a debug build drains the engine's log; its ring holds hours of lines. */
+        private val ENGINE_LOG_INTERVAL = 1.seconds
 
         /** How long [shutdown] waits for a boot in progress to stop its own engine. */
         private const val SHUTDOWN_WAIT_MS = 15_000L
@@ -482,8 +503,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
          * IPs for EIP-1459 peer discovery, which a mobile host must supply (null where the
          * engine reads the system's); a plain function, so no Myotis type leaves this module.
          * [debugLog] takes the adapters' diagnostics (which proof of a Safe's read failed or
-         * straddled, and how many reads it took): a debug build's log, null in a release build.
-         * Public chain data only; no key material is on any path that writes to it.
+         * straddled, and how many reads it took) and, while the engine runs, the engine's own
+         * log ([EngineLogPump]): a debug build's log, null in a release build, which leaves the
+         * engine's log undrained. Public chain data only; no key material is on any path that
+         * writes to it.
          * [lastBalances] is the file the balances last verified are kept in, to be shown as such
          * after a restart until a head can be read ([LastBalancesFile]); null keeps them for the
          * process only. Public chain data too.

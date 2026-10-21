@@ -80,6 +80,16 @@ consumer developed against an unreleased engine, Myotis's
   for no ports (its peer caches and snapshot live under its data directory)
   and answers a read on a paused or starting handle at once as unavailable.
   The log index (*History*) is twinned too, from Myotis 0.1.18 (its #687).
+- **The engine's own log** is not printed by the engine: its tracing lines go
+  into a ring in the library (4096 lines, the oldest dropped when full), which
+  a host drains with `Myotis.drainLogs`. A debug build's `MyotisNode` drains
+  it every second while the engine runs (`EngineLogPump`) into the same
+  `debugLog` the adapters write to, each line marked `Myotis:` (logcat in the
+  debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build, so a
+  device's log has it without Xcode attached; the iOS node's own reports,
+  why there is no light client among them, go there too, in every build). A
+  release build leaves it undrained; a failed start still reports its last
+  40 lines.
 
 ## What exists today
 
@@ -211,7 +221,8 @@ consumer developed against an unreleased engine, Myotis's
   block (biafra23/myotis#662), and once it lands a Safe is proven in one
   request. Until then the debug builds log which proof failed or straddled
   and how many reads a Safe took (`MyotisNode.start`'s `debugLog`: logcat in
-  the debug app, stderr in `:desktop-app:run`; public chain data only). A
+  the debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build;
+  public chain data only). A
   one-shot check of a Safe (an import, the checks before Sign, Approve,
   Execute and a proposal, and a transaction's owners as its screen reads
   them) waits out an unproven reading for the next one, for up to 45 s

@@ -123,8 +123,8 @@ private fun openWallet(dataDir: File) {
     val hardware = desktopHardwareSecret(keys.path)
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
     // background; without its host library (useBundledEngineLibrary), balances say so. The adapters'
-    // diagnostics go to stderr only in a development run (`:desktop-app:run` sets the property;
-    // no installer does): the desktop's debug build.
+    // diagnostics and the engine's own log go to stderr only in a development run
+    // (`:desktop-app:run` sets the property; no installer does): the desktop's debug build.
     val debugLog: ((String) -> Unit)? =
         if (System.getProperty(DEBUG_LOG_PROPERTY) == "true") { line -> System.err.println(line) } else null
     // The balances last verified are kept beside it, to be shown as such after a restart.

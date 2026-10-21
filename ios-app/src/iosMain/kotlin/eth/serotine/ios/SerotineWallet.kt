@@ -41,6 +41,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSLog
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSProcessInfo
@@ -96,13 +97,17 @@ class SerotineWallet {
 
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background;
     // its state can be fetched again, so it stays out of backups. The balances last verified are
-    // kept beside it, to be shown as such after a restart. The adapters' diagnostics go to the
-    // console in a debug build only.
+    // kept beside it, to be shown as such after a restart. The adapters' diagnostics and the
+    // engine's own log go to the device's log in a debug build only: NSLog, not println, whose
+    // stdout reaches no one on a device unless Xcode launched the app.
     @OptIn(ExperimentalNativeApi::class)
     private val node: MyotisNode = run {
         val engineDir = "$dataDir/myotis"
         createDirectoryOutOfBackups(engineDir)
-        val debugLog: ((String) -> Unit)? = if (Platform.isDebugBinary) { line -> println(line) } else null
+        // The line is NSLog's format, its `%` escaped, so nothing crosses NSLog's C varargs: with
+        // NSLog("%@", line) the debug app died at launch on the simulator (#129's CI).
+        val debugLog: ((String) -> Unit)? =
+            if (Platform.isDebugBinary) { line -> NSLog(line.replace("%", "%%")) } else null
         MyotisNode.start(Network.SEPOLIA, engineDir, lastBalances = "$dataDir/last-balances.json", debugLog = debugLog)
     }
 
