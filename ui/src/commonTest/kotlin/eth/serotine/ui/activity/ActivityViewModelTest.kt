@@ -561,7 +561,7 @@ class ActivityViewModelTest {
 
         assertEquals(
             listOf(
-                "The claim of a contract the wallet does not list: add it in Settings to see what moved",
+                "The claim of a contract the wallet does not list: open it to add it as a token and see what moved",
                 "The claim of a token you hid: show it again in Settings → Tokens to see what moved",
             ),
             rows.map { it.status },

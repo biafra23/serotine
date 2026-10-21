@@ -5,7 +5,9 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.TransferAsset
@@ -274,5 +276,45 @@ class ActivityDetailViewModelTest {
 
         assertFalse(gone.message.isBlank())
         assertTrue("reorganisation" in gone.message)
+    }
+
+    @Test
+    fun aTransferOfNothingIsNotDetailedAndAnUnreadableHistoryLoads() = runTest {
+        val tx = "0x" + "e5".repeat(32)
+        index.logs = listOf(tokenLog(usdc.address, bob, alice.address, word("0"), tx))
+
+        // What every history says until its first coverage answers.
+        assertIs<ActivityDetailUiState.Loading>(viewModel(ActivityKey(tx, 3)).uiState.value)
+
+        indexed(alice.address)
+        assertIs<ActivityDetailUiState.Unavailable>(viewModel(ActivityKey(tx, 3)).uiState.value)
+    }
+
+    @Test
+    fun aSafeExecutionSentFromHereNamesTheSafeAndItsTransaction() = runTest {
+        val request =
+            SigningRequest.of(Network.SEPOLIA, treasury.address, SafeTx.call(bob, UInt256.ONE, ByteArray(0), 4))
+        val execution =
+            sent.copy(nonce = 9, signed = SignedTransfer(byteArrayOf(2, 9)), action = SentAction.SafeExecution(request))
+        history.entries.value = listOf(HistoryEntry(execution))
+
+        val state = viewModel(ActivityKey(execution.hash), treasury.address).uiState.value
+
+        val shown = assertIs<ActivityDetailUiState.Shown>(state)
+        assertEquals("Executed transaction 4", shown.headline)
+        assertEquals(
+            listOf(
+                DetailField("From", Eip55.format(alice.address), DetailKind.ADDRESS, "Alice"),
+                DetailField("Safe", Eip55.format(treasury.address), DetailKind.ADDRESS, "Treasury"),
+                DetailField("Safe nonce", "4"),
+                DetailField("Safe transaction hash", "0x${request.hash.hex}", DetailKind.HASH),
+                DetailField("Safe transaction to", Eip55.format(bob), DetailKind.ADDRESS),
+                DetailField("Transaction hash", execution.hash, DetailKind.HASH),
+                DetailField("Nonce", "9"),
+                DetailField("Sent", "at 300"),
+            ),
+            shown.fields,
+        )
+        assertEquals(execution.hash, shown.opensStatus)
     }
 }

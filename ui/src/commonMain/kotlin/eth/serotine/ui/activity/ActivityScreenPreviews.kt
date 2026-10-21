@@ -112,7 +112,7 @@ private val tokenRows = listOf(
         detail = "Contract 0x27b1…1c26",
         about = "0x27b1fdb04752bbc536007a920d24acb045561c26",
         time = "Block 9,408,511",
-        status = "The claim of a contract the wallet does not list: add it in Settings to see what moved",
+        status = "The claim of a contract the wallet does not list: open it to add it as a token and see what moved",
         state = ActivityState.UNKNOWN,
         opens = ActivityKey("0x" + "d".repeat(64), 0),
     ),

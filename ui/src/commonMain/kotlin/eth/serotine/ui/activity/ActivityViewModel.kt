@@ -2,7 +2,6 @@ package eth.serotine.ui.activity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -15,7 +14,6 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.KnownToken
-import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.IndexedEvent
 import eth.serotine.domain.usecase.IndexedHistory
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -24,19 +22,12 @@ import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
-import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.grouped
-import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.formatDateTime
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -62,37 +53,21 @@ class ActivityViewModel(
 
     private val rows = ActivityRows(address, network, formatTime)
 
-    private val accounts = observeAccounts()
-
-    /** The account's kind while it is in the wallet; null while it is not. */
-    private val kind = accounts
-        .map { list -> (list as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == address }?.kind }
-        .distinctUntilChanged()
-
-    /** The Safe's own events while the account is a Safe of the wallet; null for any other. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val safeHistory = kind.flatMapLatest {
-        if (it == AccountKind.SAFE) observeSafeHistory(address) else flowOf(null)
-    }
-
-    /** The account's token transfers while it is in the wallet; null while it is not. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val transfers = kind.flatMapLatest { if (it != null) observeTokenTransfers(address) else flowOf(null) }
-
-    /**
-     * The tokens the wallet knows, by address, shown or not (a row says why one it does not show
-     * is not named); null until the list is read, so that the rows already known never wait for
-     * the tokens' checks.
-     */
-    private val tokens = observeKnownTokens()
-        .map<KnownTokenList, Map<Address, KnownToken>?> { list -> list.tokens.associateBy { it.token.address } }
-        .onStart { emit(null) }
+    private val sources =
+        ActivitySources(address, observeAccounts, observeSafeHistory, observeTokenTransfers, observeKnownTokens)
 
     val uiState: StateFlow<ActivityUiState> =
-        combine(observeAccountHistory(address), accounts, safeHistory, transfers, tokens, ::render).stateIn(
+        combine(
+            observeAccountHistory(address),
+            sources.accounts,
+            sources.safeHistory,
+            sources.transfers,
+            sources.tokens,
+            ::render,
+        ).stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-            ActivityUiState.Loading(shortAddress(Eip55.format(address))),
+            ActivityUiState.Loading(sources.shortTitle),
         )
 
     private fun render(
@@ -102,8 +77,8 @@ class ActivityViewModel(
         transfers: IndexedHistory<TokenTransferEvent>?,
         tokens: Map<Address, KnownToken>?,
     ): ActivityUiState {
-        val names = (list as? AccountList.Loaded)?.accounts.orEmpty().associate { it.address to it.label }
-        val title = names[address] ?: shortAddress(Eip55.format(address))
+        val names = sources.namesOf(list)
+        val title = sources.titleOf(names)
         val entries = when (history) {
             HistoryList.Unreadable -> return ActivityUiState.Unavailable(title, UNREADABLE)
             is HistoryList.Loaded -> history.entries
@@ -154,13 +129,6 @@ class ActivityViewModel(
         is SafeEvent.Approved, is SafeEvent.SetUp -> true
         else -> false
     }
-
-    /**
-     * A fungible transfer of nothing: it moves no value, and anyone can have a token log one from
-     * any address (`transferFrom` of zero needs no allowance), which is how a look-alike address is
-     * planted in a history for the user to copy. Left out.
-     */
-    private fun TokenTransfer.movesNothing(): Boolean = this is TokenTransfer.Fungible && amount.isZero
 
     /**
      * Whether [entry]'s row, which names its block, says this transfer: the token, the amount and

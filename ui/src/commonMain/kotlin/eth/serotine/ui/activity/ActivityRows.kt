@@ -295,7 +295,8 @@ internal class ActivityRows(
         const val MAX_ID_DIGITS = 12
         const val ON_CHAIN = "On chain, from the Safe's verified logs"
         const val TOKEN_ON_CHAIN = "On chain, from the token's verified logs"
-        const val UNLISTED = "The claim of a contract the wallet does not list: add it in Settings to see what moved"
+        const val UNLISTED =
+            "The claim of a contract the wallet does not list: open it to add it as a token and see what moved"
         const val HIDDEN = "The claim of a token you hid: show it again in Settings → Tokens to see what moved"
         const val CONTRADICTED = "The claim of a built-in token whose contract says otherwise: what moved is not shown"
         const val FAILED_ON_CHAIN = "Failed on chain: its call reverted"

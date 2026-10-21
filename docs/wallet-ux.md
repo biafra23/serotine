@@ -693,8 +693,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - A Safe's event: what it names (the sender of ETH received, an owner,
       a module, a guard, a handler, the hashes), and the Safe.
     - One no longer there (a reorganisation replaced its block, once every
-      block from the history's start is checked again) or not readable says
-      so; while the blocks it is in are still being checked, it is loading.
+      block from the history's start is checked again) says so; while the
+      blocks it is in are still being checked, or its history cannot be
+      read yet, it is loading (the strip says why the light client is not
+      answering). A transfer of nothing is not detailed, as it is not listed.
 
 ### Settings tab
 

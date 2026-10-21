@@ -2,7 +2,6 @@ package eth.serotine.ui.activitydetail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -16,7 +15,6 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.usecase.IndexedEvent
 import eth.serotine.domain.usecase.IndexedHistory
 import eth.serotine.domain.usecase.KnownToken
-import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
@@ -27,21 +25,16 @@ import eth.serotine.domain.usecase.TokenTransferEvent
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityRow
 import eth.serotine.ui.activity.ActivityRows
+import eth.serotine.ui.activity.ActivitySources
+import eth.serotine.ui.activity.movesNothing
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
-import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.formatDateTime
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -69,49 +62,25 @@ class ActivityDetailViewModel(
 
     private val rows = ActivityRows(address, network, formatTime)
 
-    private val accounts = observeAccounts()
-
-    /** The account's kind while it is in the wallet; null while it is not. */
-    private val kind = accounts
-        .map { list -> (list as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == address }?.kind }
-        .distinctUntilChanged()
-
-    /** The Safe's own events while the account is a Safe of the wallet; null for any other. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val safeHistory = kind.flatMapLatest {
-        if (it == AccountKind.SAFE) observeSafeHistory(address) else flowOf(null)
-    }
-
-    /** The account's token transfers while it is in the wallet; null while it is not. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val transfers = kind.flatMapLatest { if (it != null) observeTokenTransfers(address) else flowOf(null) }
-
-    /** The tokens the wallet knows, by address, shown or not; null until the list is read. */
-    private val tokens = observeKnownTokens()
-        .map<KnownTokenList, Map<Address, KnownToken>?> { list -> list.tokens.associateBy { it.token.address } }
-        .onStart { emit(null) }
+    private val sources =
+        ActivitySources(address, observeAccounts, observeSafeHistory, observeTokenTransfers, observeKnownTokens)
 
     /** Only what the row is read from is followed: the history for a sent one, the log index for an event. */
     private val shown: Flow<ActivityDetailUiState> = if (key.logIndex == null) {
-        combine(observeAccountHistory(address), accounts, ::renderSent)
+        combine(observeAccountHistory(address), sources.accounts, ::renderSent)
     } else {
-        combine(accounts, safeHistory, transfers, tokens, ::renderLogged)
+        combine(sources.accounts, sources.safeHistory, sources.transfers, sources.tokens, ::renderLogged)
     }
 
     val uiState: StateFlow<ActivityDetailUiState> = shown.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-        ActivityDetailUiState.Loading(shortAddress(Eip55.format(address))),
+        ActivityDetailUiState.Loading(sources.shortTitle),
     )
 
-    private fun namesOf(list: AccountList): Map<Address, String> =
-        (list as? AccountList.Loaded)?.accounts.orEmpty().associate { it.address to it.label }
-
-    private fun titleOf(names: Map<Address, String>): String = names[address] ?: shortAddress(Eip55.format(address))
-
     private fun renderSent(history: HistoryList, list: AccountList): ActivityDetailUiState {
-        val names = namesOf(list)
-        val title = titleOf(names)
+        val names = sources.namesOf(list)
+        val title = sources.titleOf(names)
         val entries = when (history) {
             HistoryList.Unreadable -> return ActivityDetailUiState.Unavailable(title, UNREADABLE)
             is HistoryList.Loaded -> history.entries
@@ -127,13 +96,15 @@ class ActivityDetailViewModel(
         transfers: IndexedHistory<TokenTransferEvent>?,
         tokens: Map<Address, KnownToken>?,
     ): ActivityDetailUiState {
-        val names = namesOf(list)
-        val title = titleOf(names)
+        val names = sources.namesOf(list)
+        val title = sources.titleOf(names)
         if (list !is AccountList.Loaded) return ActivityDetailUiState.Unavailable(title, ACCOUNTS_UNREADABLE)
         // Only an account of the wallet has its logs followed.
         if (transfers == null) return ActivityDetailUiState.Unavailable(title, NOT_IN_WALLET)
         safe.found()?.let { return shownOf(title, rows.eventRow(it, names), safeFields(it, names)) }
-        val transfer = transfers.found() ?: return missing(title, listOfNotNull(safe, transfers))
+        // A transfer of nothing is not listed, and not detailed either: it plants a look-alike address.
+        val transfer = transfers.found()?.takeUnless { it.transfer.movesNothing() }
+            ?: return missing(title, listOfNotNull(safe, transfers))
         // Until the tokens are known, what moved cannot be said.
         if (tokens == null) return ActivityDetailUiState.Loading(title)
         return transferShown(title, transfer, names, tokens)
@@ -145,14 +116,16 @@ class ActivityDetailViewModel(
 
     /**
      * Why the event is not shown when no history read has it: gone once every one is checked from
-     * its start (a reorganisation replaced its block), unreadable when one cannot be read, and
-     * still loading while the blocks it may be in are being checked.
+     * its start (a reorganisation replaced its block), and loading otherwise: while the blocks it
+     * may be in are being checked, and while a history cannot be read, which is also what one says
+     * until its first coverage answers (the strip says when the light client is not running).
      */
-    private fun missing(title: String, histories: List<IndexedHistory<*>>): ActivityDetailUiState = when {
-        histories.all { it is IndexedHistory.Read && it.complete } -> ActivityDetailUiState.Unavailable(title, GONE)
-        histories.any { it == IndexedHistory.Unavailable } -> ActivityDetailUiState.Unavailable(title, LOGS_UNREADABLE)
-        else -> ActivityDetailUiState.Loading(title)
-    }
+    private fun missing(title: String, histories: List<IndexedHistory<*>>): ActivityDetailUiState =
+        if (histories.all { it is IndexedHistory.Read && it.complete }) {
+            ActivityDetailUiState.Unavailable(title, GONE)
+        } else {
+            ActivityDetailUiState.Loading(title)
+        }
 
     private fun shownOf(
         title: String,
@@ -325,7 +298,6 @@ class ActivityDetailViewModel(
         const val NOT_IN_WALLET = "This account is not in the wallet any more, so its history on chain is not read."
         const val GONE = "This event is not in the account's verified history any more: a reorganisation of the " +
             "chain may have replaced its block."
-        const val LOGS_UNREADABLE = "The account's history on chain cannot be read right now. Serotine keeps trying."
         const val ZERO_NAME = "The zero address"
         const val CLAIM_NOTE = "A contract the wallet does not show can log any transfer it likes, between any " +
             "addresses, so only the contract is named here: an address it names could be a look-alike planted " +
