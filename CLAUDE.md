@@ -408,15 +408,20 @@ file already forbids.
    dependency change like any other and goes through the release PR when the
    owner wants it in the release.
 3. **The Android release key.** `sign-release` (android-apk.yml) signs the
-   release APK on the tag with the key in the `android-release` environment
-   and refuses a tree without `android-app/release-signing-cert.sha256`; until
+   release APK on the tag with the key in the `android-release` environment,
+   and only for a tree with `android-app/release-signing-cert.sha256`; until
    the owner has set that up (docs/android-release-signing.md), a tag publishes
-   the desktop installers and NO Android asset. Say so in the release PR.
+   the desktop installers and the debug APK, and NO release-signed Android app
+   (owner's request, 2026-10-21). Once the pin is there, a signing failure
+   publishes no Android asset at all. Say so in the release PR.
 
-Every `v*` tag publishes a pre-release with the signed Android APK, the debug
-APK, the macOS dmgs (arm64 + x64), the Linux debs (x64; arm64 while the
-repository is public, the free arm64 runner's condition) and the Windows msi;
-each workflow creates the release race-tolerantly and uploads its assets.
+Every `v*` tag publishes a pre-release with the signed Android APK (once the
+release key is set up, step 3), the debug APK, the macOS dmgs (arm64 + x64) and
+the Linux debs (x64; arm64 while the repository is public, the free arm64
+runner's condition); each workflow creates the release race-tolerantly and
+uploads its assets. The Windows msi is left out of tags until Myotis ships a
+Windows engine library (owner's decision, 2026-10-21): it builds on `main`, and
+a dispatch on a tag publishes it.
 
 ## Pull requests and code review
 

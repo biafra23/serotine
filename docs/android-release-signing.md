@@ -3,7 +3,8 @@
 (Inherited from biafra23/myotis's docs/android-release-signing.md; the
 mechanism is identical.)
 
-Every release carries two Android APKs:
+Every release carries two Android APKs once the release key is set up, and the
+debug one alone until then:
 
 | asset | app | package | signed with |
 |---|---|---|---|
@@ -33,7 +34,7 @@ then reach only the debug app. Both apps install side by side.
    release build type has no `signingConfig`, so it writes
    `android-app-release-unsigned.apk`. The minSdk-29 check
    (`scripts/check_apk_min_api.py`) runs on both APKs. On a tag the unsigned
-   APK is uploaded as an artifact.
+   APK is uploaded as an artifact (only when the tree pins a release certificate).
 2. **`sign-release`** (v* tags only) is the only job that ever holds the key.
    - Its secrets live in the `android-release` **environment**, whose deployment
      rule admits v* tags only. A PR branch can't read them, whatever workflow it
@@ -46,13 +47,17 @@ then reach only the debug app. Both apps install side by side.
      requires exactly one signer, equal to the pinned certificate (and the pin
      must not be the debug certificate).
 3. **`release`** (v* tags only, `contents: write`, no key) checks the two package
-   ids with `aapt2` and uploads both APKs.
+   ids with `aapt2` and uploads both APKs (the debug one alone without a pin).
 
-It fails closed. Without the secrets, without a pinned certificate, or with a key
+Until the release key is set up, a tag publishes the debug APK alone. A tree
+without `android-app/release-signing-cert.sha256` has no release app to sign:
+`sign-release` is skipped and `release` uploads `Serotine-<tag>-android-debug.apk`
+only. Every earlier run of the `build` job warns while the pin file is missing.
+
+Once the pin is committed, it fails closed. Without the secrets, or with a key
 that doesn't match the pin, `sign-release` fails and `release` is skipped. That
-tag then publishes **no** Android asset, the debug APK included, rather than
-shipping half the pair. Every earlier run of the `build` job warns while the pin
-file is missing.
+tag then publishes **no** Android asset, the debug APK included: a broken key is
+never quietly turned into a debug-only release.
 
 ## One-time setup (owner)
 
