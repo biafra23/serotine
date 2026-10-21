@@ -33,6 +33,13 @@ import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.repository.ReceiptLog
+import eth.serotine.domain.repository.LogWatchKey
+import eth.serotine.domain.repository.LogCoverageReading
+import eth.serotine.domain.repository.LogCoverage
+import eth.serotine.domain.repository.IndexedLog
+import eth.serotine.domain.repository.HistoryStart
+import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
@@ -95,6 +102,7 @@ import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
 import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
+import eth.serotine.ui.activitydetail.ACTIVITY_DETAIL_FIELD_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
@@ -176,6 +184,8 @@ class AppNavigationTest {
     private var failKeyDeletes = false
     private val navController = mutableListOf<NavHostController>()
     private val tokenMetadata = FakeMetadata()
+    private val historyStarts = MemoryHistoryStarts()
+    private val logIndex = FakeLogIndex()
     private val userTokens = MemoryUserTokens()
     private val report = MutableStateFlow<NetworkUpgrade?>(null)
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
@@ -286,8 +296,8 @@ class AppNavigationTest {
         signer = signer,
         sentTransfers = sentTransfers,
         transactionHistory = history,
-        historyStarts = MemoryHistoryStarts(),
-        logIndex = FakeLogIndex(),
+        historyStarts = historyStarts,
+        logIndex = logIndex,
         safeTxQueue = safeTxQueue,
         signingRequests = codec,
         signatureRecovery = recovery,
@@ -671,7 +681,7 @@ class AppNavigationTest {
     }
 
     @Test
-    fun anAccountsActivityListsWhatWasSentAndARowOpensWhereItStands() {
+    fun anAccountsActivityListsWhatWasSentAndARowOpensItsDetailAndFromThereWhereItStands() {
         accounts.value = listOf(daily, savings)
         val sent = SentTransfer(
             account = daily.address,
@@ -692,11 +702,82 @@ class AppNavigationTest {
         rule.onNodeWithText("Settings").assertIsDisplayed()
         rule.onNodeWithText("Sent 0.1 ETH").performClick()
 
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_DETAIL_FIELD_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText(sent.hash).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Status").performClick()
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(sent.hash)
-        assertEquals(listOf("accounts", "account/{address}", "activity/{address}", "transfer/{hash}"), screens())
+        assertEquals(
+            listOf("accounts", "account/{address}", "activity/{address}", DETAIL_ROUTE, "transfer/{hash}"),
+            screens(),
+        )
         rule.onNodeWithText("Done").performScrollTo().performClick()
+        rule.onNodeWithText("Status").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Back").performClick()
         rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
+    }
+
+    @Test
+    fun anUnlistedTokensTransferIsAddedAsATokenFromItsDetail() {
+        accounts.value = listOf(daily, savings)
+        val contract = Address.of("0x8617e340b3d01fa5f11f306f4090fd50e238070d")
+        tokenMetadata.of(contract).value = MetadataReading.Verified("SPAM", "Spam Coin", 18, 9_402_000)
+        historyStarts.starts.value = mapOf(daily.address to HistoryStart.Fixed(9_400_000))
+        logIndex.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(daily.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        logIndex.logs = listOf(
+            IndexedLog(
+                ReceiptLog(
+                    contract,
+                    listOf(TokenTransfers.TRANSFER, topicOf(savings.address), topicOf(daily.address)),
+                    "0x" + "de0b6b3a7640000".padStart(64, '0'),
+                ),
+                9_402_000,
+                "0x" + "bb".repeat(32),
+                "0x" + "e2".repeat(32),
+                3,
+            ),
+        )
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Activity").performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("An unlisted token logged a transfer to it").performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Add token").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Add token").performClick()
+
+        // Add token by address, under the bar, with the contract filled in and read.
+        rule.waitUntil { rule.onAllNodesWithText("Spam Coin · SPAM").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(
+            listOf("accounts", "account/{address}", "activity/{address}", DETAIL_ROUTE, "activity-add-token/{address}"),
+            screens(),
+        )
+        rule.onNodeWithText("Settings").assertIsDisplayed()
+        rule.onNode(hasText("Add token") and hasClickAction()).performClick()
+
+        // Back on the detail, which says what moved now that the wallet lists the token.
+        rule.waitUntil { rule.onAllNodesWithText("Received 1 SPAM").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(listOf("accounts", "account/{address}", "activity/{address}", DETAIL_ROUTE), screens())
+    }
+
+    @Test
+    fun settingsAddTokenLeavesToTokensWhileOneOpenedFromActivityIsOnTheAccountsStack() {
+        accounts.value = listOf(daily)
+        showApp()
+        rule.runOnIdle {
+            navController.single().navigate("activity-add-token/0x8617e340b3d01fa5f11f306f4090fd50e238070d")
+        }
+
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithText("0 built in · 0 added").performClick()
+        rule.onNodeWithText("Add token").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
+
+        // Back on Tokens, and the Accounts tab's Add token is still where it was.
+        rule.waitUntil { screens().last() == "tokens" }
+        assertEquals(listOf("accounts", "activity-add-token/{address}", "settings", "tokens"), screens())
     }
 
     @Test
@@ -900,3 +981,6 @@ class AppNavigationTest {
         assertEquals(listOf("accounts", "create-account"), screens())
     }
 }
+
+/** The route of an Activity detail, as the back stack names it. */
+private const val DETAIL_ROUTE = "activity/{address}/tx/{hash}?log={log}"

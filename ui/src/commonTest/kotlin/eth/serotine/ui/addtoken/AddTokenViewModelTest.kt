@@ -44,10 +44,11 @@ class AddTokenViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun TestScope.viewModel(): AddTokenViewModel {
+    private fun TestScope.viewModel(address: String = ""): AddTokenViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val known = ObserveKnownTokens(ListCatalog(usdc), userTokens, metadata)
-        val viewModel = AddTokenViewModel(known, ObserveTokenMetadata(metadata), AddToken(userTokens, metadata, known))
+        val viewModel =
+            AddTokenViewModel(known, ObserveTokenMetadata(metadata), AddToken(userTokens, metadata, known), address)
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
     }
@@ -70,6 +71,19 @@ class AddTokenViewModelTest {
         assertEquals(
             listOf(Token(Address.of(eurc), "EURC", "EURC", 6, null)),
             (userTokens.settings.value as TokenSettings.Loaded).added,
+        )
+    }
+
+    @Test
+    fun aContractFilledInFromAnActivityDetailIsReadAtOnce() = runTest {
+        metadata.of(Address.of(eurc)).value = MetadataReading.Verified("EURC", "EURC", 6, 9)
+        val viewModel = viewModel(address = eurc)
+        runCurrent()
+
+        assertEquals(eurc, viewModel.uiState.value.address)
+        assertEquals(
+            TokenCard.Claim(eurc, "EURC", "EURC", 6, "Read from the contract at block 9", warning = null),
+            viewModel.uiState.value.card,
         )
     }
 

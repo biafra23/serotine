@@ -43,8 +43,11 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
 import eth.serotine.ui.accounts.AccountsRoute
+import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityRoute
+import eth.serotine.ui.activitydetail.ActivityDetailRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
+import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
@@ -253,7 +256,44 @@ private fun Destinations(
                     viewModel = viewModel { graph.activityViewModel(address) },
                     lightClient = lightClient,
                     onBack = { navController.leave(Destination.ACTIVITY) },
-                    onOpen = { hash -> navController.openTransfer(hash) },
+                    onOpen = { key -> navController.openActivityDetail(address, key) },
+                )
+            }
+            composable(
+                ACTIVITY_DETAIL_ROUTE,
+                arguments = listOf(
+                    navArgument(LOG) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+                val hash = entry.savedStateHandle.get<String>(HASH)?.lowercase()?.takeIf(TRANSACTION_HASH::matches)
+                val log = entry.savedStateHandle.get<String>(LOG)
+                val logIndex = log?.toIntOrNull()?.takeIf { it >= 0 }
+                if (address != null && hash != null && (log == null || logIndex != null)) {
+                    ActivityDetailRoute(
+                        viewModel = viewModel { graph.activityDetailViewModel(address, ActivityKey(hash, logIndex)) },
+                        lightClient = lightClient,
+                        onBack = { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) },
+                        onStatus = { sent -> navController.openTransfer(sent) },
+                        onAddToken = { contract -> navController.addToken(contract) },
+                    )
+                } else {
+                    LaunchedEffect(Unit) { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) }
+                }
+            }
+            // Add token from an Activity detail: in this tab, its field filled in with the contract. A
+            // name of its own, so that leaving Settings' Add token never finds this one (leave() tries
+            // the /{address} form of a pattern first).
+            withAddress(Destination.ACTIVITY_ADD_TOKEN, navController) { contract ->
+                AddTokenRoute(
+                    viewModel { graph.addTokenViewModel(Eip55.format(contract)) },
+                    lightClient,
+                    onBack = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
+                    onAdded = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
                 )
             }
             withAddress(Destination.RECEIVE, navController) { address ->
@@ -608,6 +648,25 @@ private fun NavController.openActivity(address: Address) {
     navigate("${Destination.ACTIVITY}/${address.hex}")
 }
 
+/** Opens the detail of the row [key] of the Activity of the account at [address]. */
+private fun NavController.openActivityDetail(address: Address, key: ActivityKey) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    // (Not launchSingleTop: that would reuse the entry, and its key, for another one.)
+    if (currentDestination?.route == ACTIVITY_DETAIL_ROUTE) return
+    val hash = key.hash.lowercase().takeIf(TRANSACTION_HASH::matches) ?: return
+    navigate(
+        "${Destination.ACTIVITY}/${address.hex}/${Destination.ACTIVITY_DETAIL}/$hash" +
+            (key.logIndex?.let { "?$LOG=$it" } ?: ""),
+    )
+}
+
+/** Opens Add token by address over the Accounts tab, with the [contract] (an address) filled in. */
+private fun NavController.addToken(contract: String) {
+    if (currentDestination?.route == "${Destination.ACTIVITY_ADD_TOKEN}/{$ADDRESS}") return
+    val address = Address.parse(contract) ?: return
+    navigate("${Destination.ACTIVITY_ADD_TOKEN}/${address.hex}")
+}
+
 /** Opens the status of the transaction [hash] (`0x` and 64 hex digits), as a route carries it: in lower case. */
 private fun NavController.openTransfer(hash: String) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
@@ -690,6 +749,7 @@ private object Destination {
     const val ACCOUNT = "account"
     const val RECEIVE = "receive"
     const val ACTIVITY = "activity"
+    const val ACTIVITY_DETAIL = "tx"
     const val WATCH = "watch"
     const val RENAME = "rename"
     const val REMOVE = "remove"
@@ -698,6 +758,7 @@ private object Destination {
     const val TOKENS = "tokens"
     const val SECURITY = "security"
     const val ADD_TOKEN = "add-token"
+    const val ACTIVITY_ADD_TOKEN = "activity-add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
     const val CREATE_ACCOUNT = "create-account"
     const val CREATE_SAFE = "create-safe"
@@ -717,8 +778,11 @@ private const val ADDRESS = "address"
 /** Send's and Swap's optional route argument: the contract of the token chosen (sold, for a swap). */
 private const val ASSET = "asset"
 
-/** The transfer status's and a Safe transaction's route argument: the transaction hash. */
+/** The transfer status's, a Safe transaction's and an Activity detail's route argument: the transaction hash. */
 private const val HASH = "hash"
+
+/** An Activity detail's optional route argument: the log index of an event's log in its block. */
+private const val LOG = "log"
 
 /** A Safe's swap's optional route argument: the hash of the queued swap it is proposed again in place of. */
 private const val REPLACING = "replacing"
@@ -731,6 +795,10 @@ private const val SEND_ROUTE = "${Destination.SEND}/{$ADDRESS}?$ASSET={$ASSET}"
 
 /** Swap from an account, selling a token or the network's currency. */
 private const val SWAP_ROUTE = "${Destination.SWAP}/{$ADDRESS}?$ASSET={$ASSET}"
+
+/** The detail of a row of an account's Activity: a transaction by its hash, an event by its log too. */
+private const val ACTIVITY_DETAIL_ROUTE =
+    "${Destination.ACTIVITY}/{$ADDRESS}/${Destination.ACTIVITY_DETAIL}/{$HASH}?$LOG={$LOG}"
 
 /** Where a transfer stands, by its hash. */
 private const val TRANSFER_ROUTE = "${Destination.TRANSFER}/{$HASH}"

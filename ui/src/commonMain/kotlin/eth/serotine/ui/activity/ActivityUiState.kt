@@ -33,9 +33,8 @@ sealed interface ActivityUiState {
  * what it did ([title]: "Sent 0.5 ETH", "Received 0.1 ETH"), who or what else it concerns
  * ([detail]: "To Bob · 0x12…5678", "Treasury · Safe nonce 4"), the EIP-55 address its blockie is of
  * ([about]), when a peer took it or the block it is in ([time]), and how it ended as this device saw
- * it ([status], "In block 9,412,118", and its [state]). [opens] is the transaction hash (`0x` and 64
- * lower-case hex digits) whose status a tap opens: a transaction sent from here; null for an event,
- * which opens nothing yet.
+ * it ([status], "In block 9,412,118", and its [state]). [opens] is what a tap opens the detail of
+ * (docs/wallet-ux.md, screen 26): the transaction, and for an event its log.
  */
 data class ActivityRow(
     val key: String,
@@ -45,8 +44,15 @@ data class ActivityRow(
     val time: String,
     val status: String,
     val state: ActivityState,
-    val opens: String?,
+    val opens: ActivityKey,
 )
+
+/**
+ * Which row of an account's Activity a detail is of: the transaction [hash] (`0x` and 64 lower-case
+ * hex digits), and for an event of the log index the [logIndex] of its log in the block; null for a
+ * transaction sent from this device.
+ */
+data class ActivityKey(val hash: String, val logIndex: Int? = null)
 
 /** How a sent transaction ended, as an [ActivityRow] marks it. */
 enum class ActivityState {
@@ -67,4 +73,10 @@ enum class ActivityState {
 
     /** Done on chain, and what it did can move a Safe's funds without its owners. */
     WARNING,
+
+    /**
+     * Done on chain, received from an address the user has not sent to and that is none of their
+     * accounts: it may be a look-alike, planted for them to copy.
+     */
+    CAUTION,
 }

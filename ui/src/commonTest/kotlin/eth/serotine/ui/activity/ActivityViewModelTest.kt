@@ -27,6 +27,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
@@ -113,6 +114,7 @@ class ActivityViewModelTest {
             ObserveSafeHistory(index, starts),
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
+            ObserveSentToAddresses(history),
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -141,7 +143,7 @@ class ActivityViewModelTest {
                     "at 500",
                     "No block seen to include it yet",
                     ActivityState.WAITING,
-                    execution.hash,
+                    ActivityKey(execution.hash),
                 ),
                 ActivityRow(
                     native.hash,
@@ -151,7 +153,7 @@ class ActivityViewModelTest {
                     "at 400",
                     "Finalized in block 9,412,118",
                     ActivityState.DONE,
-                    native.hash,
+                    ActivityKey(native.hash),
                 ),
                 ActivityRow(
                     token.hash,
@@ -161,7 +163,7 @@ class ActivityViewModelTest {
                     "at 300",
                     "Reverted in block 9,401,220",
                     ActivityState.FAILED,
-                    token.hash,
+                    ActivityKey(token.hash),
                 ),
             ),
             shown.rows,
@@ -261,7 +263,7 @@ class ActivityViewModelTest {
     private val bobsTopic = "0x" + "00".repeat(12) + bob.hex.removePrefix("0x")
 
     @Test
-    fun aSafesEventsGoInAmongItsSentTransactionsByBlockAndOpenNothing() = runTest {
+    fun aSafesEventsGoInAmongItsSentTransactionsByBlockAndOpenTheirLog() = runTest {
         history.entries.value = listOf(HistoryEntry(execution, SentOutcome.Included(9_410_000, succeeded = true)))
         treasuryIndexed(9_400_000L..9_420_000L)
         index.logs = listOf(
@@ -278,8 +280,8 @@ class ActivityViewModelTest {
         val event = shown.rows.last()
         assertEquals("From 0x5aAe…eAed", event.detail)
         assertEquals("Block 9,405,000", event.time)
-        assertEquals(null, event.opens)
-        assertEquals(execution.hash, shown.rows[1].opens)
+        assertEquals(ActivityKey("0x" + "cc".repeat(32), 0), event.opens)
+        assertEquals(ActivityKey(execution.hash), shown.rows[1].opens)
         assertEquals(
             "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
                 "its events; its token transfers.",
@@ -484,6 +486,31 @@ class ActivityViewModelTest {
     }
 
     @Test
+    fun aTransferReceivedFromAnAddressNeverSentToIsCautionedAndOneSentToIsNot() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val lookAlike = Address.of("0x5aae" + "0".repeat(31) + "beaed")
+        index.logs = listOf(
+            tokenLog(usdc.address, 9_401_000, lookAlike, alice.address, word("f4240"), "0x" + "e1".repeat(32)),
+            tokenLog(usdc.address, 9_402_000, bob, alice.address, word("f4240"), "0x" + "e2".repeat(32)),
+            tokenLog(usdc.address, 9_403_000, treasury.address, alice.address, word("f4240"), "0x" + "e3".repeat(32)),
+        )
+        // Alice sent to Bob before; the treasury is an account of the wallet.
+        history.entries.value = listOf(HistoryEntry(token))
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+            .filter { it.title == "Received 1 USDC" }
+
+        assertEquals(listOf(ActivityState.DONE, ActivityState.DONE, ActivityState.CAUTION), rows.map { it.state })
+        assertEquals(
+            "From an address you have not sent to: compare every character before you copy it",
+            rows.last().status,
+        )
+    }
+
+    @Test
     fun aTokenSentFromHereInABlockIsItsRowAloneAndWhatCameBackIsListed() = runTest {
         history.entries.value = listOf(HistoryEntry(token, SentOutcome.Included(9_410_000, succeeded = true)))
         starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
@@ -498,7 +525,7 @@ class ActivityViewModelTest {
         val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
 
         assertEquals(listOf("Received 1 USDC", "Sent 40.5 USDC"), rows.map { it.title })
-        assertEquals(token.hash, rows.last().opens)
+        assertEquals(ActivityKey(token.hash), rows.last().opens)
     }
 
     @Test
@@ -561,7 +588,7 @@ class ActivityViewModelTest {
 
         assertEquals(
             listOf(
-                "The claim of a contract the wallet does not list: add it in Settings to see what moved",
+                "The claim of a contract the wallet does not list: open it to add it as a token and see what moved",
                 "The claim of a token you hid: show it again in Settings → Tokens to see what moved",
             ),
             rows.map { it.status },

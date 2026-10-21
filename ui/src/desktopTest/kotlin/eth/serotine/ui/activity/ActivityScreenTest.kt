@@ -18,7 +18,7 @@ class ActivityScreenTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private val opened = mutableListOf<String>()
+    private val opened = mutableListOf<ActivityKey>()
     private val row = ActivityRow(
         key = "0x" + "1".repeat(64),
         title = "Sent 0.25 ETH",
@@ -27,7 +27,7 @@ class ActivityScreenTest {
         time = "Oct 19, 2026, 2:02 PM",
         status = "Reverted in block 9,401,220",
         state = ActivityState.FAILED,
-        opens = "0x" + "1".repeat(64),
+        opens = ActivityKey("0x" + "1".repeat(64)),
     )
 
     private fun show(state: ActivityUiState) = rule.setContent {
@@ -35,7 +35,7 @@ class ActivityScreenTest {
     }
 
     @Test
-    fun aRowSaysWhatItDidAndHowItEndedAndATapOpensItsStatus() {
+    fun aRowSaysWhatItDidAndHowItEndedAndATapOpensItsDetail() {
         show(ActivityUiState.Shown("Alice", listOf(row), "Transactions sent from this device."))
 
         rule.onNodeWithText("Transactions sent from this device.").assertIsDisplayed()
@@ -43,17 +43,18 @@ class ActivityScreenTest {
         rule.onNodeWithText("To Bob · 0x5aAe…eAed").assertIsDisplayed()
         rule.onNodeWithText("Sent 0.25 ETH").performClick()
 
-        assertEquals(listOf(row.key), opened)
+        assertEquals(listOf(row.opens), opened)
     }
 
     @Test
-    fun aSafesEventOpensNothing() {
-        val event = row.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = null)
+    fun aSafesEventOpensTheDetailOfItsLog() {
+        val opens = ActivityKey("0x" + "2".repeat(64), 0)
+        val event = row.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = opens)
         show(ActivityUiState.Shown("Treasury", listOf(event), "Its events on chain."))
 
         rule.onNodeWithText("Received 1 ETH").performClick()
 
-        assertEquals(emptyList(), opened)
+        assertEquals(listOf(opens), opened)
     }
 
     @Test

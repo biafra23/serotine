@@ -31,17 +31,19 @@ import kotlinx.coroutines.launch
 /**
  * Add token's ViewModel: reads the typed text as an address (EIP-55 checked at the input),
  * shows what the contract there says about itself, verified, and adds it through [AddToken],
- * which reads it again before it adds.
+ * which reads it again before it adds. [address] is the text the field starts with: a contract an
+ * Activity detail found, opened from there (docs/wallet-ux.md, screen 26); empty from Settings.
  */
 class AddTokenViewModel(
     observeKnownTokens: ObserveKnownTokens,
     observeTokenMetadata: ObserveTokenMetadata,
     private val addToken: AddToken,
+    address: String = "",
 ) : ViewModel() {
 
     private class Outcome(val adding: Boolean = false, val error: String? = null, val done: Boolean = false)
 
-    private val typed = MutableStateFlow("")
+    private val typed = MutableStateFlow(address)
     private val outcome = MutableStateFlow(Outcome())
     private val input = typed.map { Eip55.parse(it) }.distinctUntilChanged()
 
@@ -84,7 +86,7 @@ class AddTokenViewModel(
             error = outcome.error,
             done = outcome.done,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddTokenUiState())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddTokenUiState(address = address))
 
     /** The address field changed; ignored while an add runs. */
     fun onAddressChange(text: String) {
