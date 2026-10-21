@@ -28,11 +28,12 @@ kotlin {
         }
     }
     jvm("desktop")
-    // The iOS envelope's own declaration of libsodium's crypto_pwhash, which takes the
-    // password as bytes (src/nativeInterop/cinterop/sodiumPwhash.def says why).
+    // The iOS envelope's own declarations of the libsodium functions it calls: commonized, so
+    // the shared iosMain sees them, and crypto_pwhash taking the password as bytes
+    // (src/nativeInterop/cinterop/sodium.def says why).
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-        target.compilations.getByName("main").cinterops.create("sodiumPwhash") {
-            definitionFile.set(project.file("src/nativeInterop/cinterop/sodiumPwhash.def"))
+        target.compilations.getByName("main").cinterops.create("sodium") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/sodium.def"))
         }
     }
 
@@ -114,8 +115,8 @@ kotlin {
         // the engine's static library inside each target's cinterop klib (iosMain's MyotisNode).
         iosMain.dependencies {
             implementation(libs.myotis.ios)
-            // The key envelope's libsodium (Argon2id, AES-256-GCM) through the bindings'
-            // cinterop, and its libsodium.a, which they link into the app.
+            // The key envelope's libsodium.a (Argon2id, AES-256-GCM), which the bindings' klib
+            // links into the app; the calls are declared in src/nativeInterop/cinterop/sodium.def.
             implementation(libs.libsodium.bindings)
         }
         // The envelope's tests, which need its primitives (EnvelopeCrypto) and so run where
