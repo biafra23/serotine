@@ -52,6 +52,8 @@ out/
 # (XcodeGen), and per-user state
 ios-app/xcode/Serotine.xcodeproj/
 ios-app/xcode/Serotine/Info.plist
+# The app icon, rendered by the Xcode build's Gradle phase (:ios-app:generateAppIcon)
+ios-app/xcode/Serotine/Assets.xcassets/AppIcon.appiconset/AppIcon.png
 xcuserdata/
 *.xcworkspace/xcuserdata/
 DerivedData/

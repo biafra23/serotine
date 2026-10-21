@@ -2,6 +2,8 @@ package eth.serotine.desktop
 
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -251,6 +253,9 @@ private fun openWallet(dataDir: File) {
         Window(
             onCloseRequest = ::exitApplication,
             title = "Serotine",
+            // The title bar's and taskbar's icon; an installed app's dock and launcher icon is
+            // the installer's (iconFile, desktop-app/build.gradle.kts).
+            icon = remember { AppIcon.image?.let { BitmapPainter(it.toComposeImageBitmap()) } },
             state = rememberWindowState(width = 480.dp, height = 760.dp),
         ) {
             App(graph)

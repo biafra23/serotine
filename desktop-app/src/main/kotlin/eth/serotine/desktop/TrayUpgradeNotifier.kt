@@ -4,13 +4,10 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.UpgradeNotice
 import eth.serotine.domain.repository.UpgradeNotifier
 import eth.serotine.ui.update.UpgradeNotificationText
-import java.awt.Color
 import java.awt.EventQueue
 import java.awt.GraphicsEnvironment
-import java.awt.RenderingHints
 import java.awt.SystemTray
 import java.awt.TrayIcon
-import java.awt.image.BufferedImage
 
 /**
  * [UpgradeNotifier] on the desktop: a message from the system tray, while the app runs, on a
@@ -29,7 +26,9 @@ class TrayUpgradeNotifier(private val network: Network) : UpgradeNotifier {
             try {
                 if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) return@invokeLater
                 val text = UpgradeNotificationText.from(notice, network)
-                val tray = icon ?: TrayIcon(mark(), "Serotine").also {
+                // No icon to show in the tray (AppIcon): the window still says it.
+                val image = AppIcon.image ?: return@invokeLater
+                val tray = icon ?: TrayIcon(image, "Serotine").also {
                     it.isImageAutoSize = true
                     SystemTray.getSystemTray().add(it)
                     icon = it
@@ -45,20 +44,4 @@ class TrayUpgradeNotifier(private val network: Network) : UpgradeNotifier {
 
     /** Nothing to arm: reminders come while the app runs, or from the record at its next start. */
     override fun remindAt(at: Long?) = Unit
-
-    /** The tray's mark: an amber disc, drawn here since the app has no icon file yet. */
-    private fun mark(): BufferedImage = BufferedImage(MARK_SIZE, MARK_SIZE, BufferedImage.TYPE_INT_ARGB).apply {
-        val graphics = createGraphics()
-        try {
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            graphics.color = Color(0xFF, 0xB3, 0x00)
-            graphics.fillOval(4, 4, MARK_SIZE - 8, MARK_SIZE - 8)
-        } finally {
-            graphics.dispose()
-        }
-    }
-
-    private companion object {
-        const val MARK_SIZE = 64
-    }
 }
