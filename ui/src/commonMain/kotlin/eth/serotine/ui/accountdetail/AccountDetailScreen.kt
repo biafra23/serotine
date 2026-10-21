@@ -312,6 +312,10 @@ private fun Details(
                     ControlBadge(state.control)
                     state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                 }
+                // Why the title is the address: the ENS name it was named by no longer points here.
+                state.nameNote?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                }
             }
         }
         // In full, as docs/wallet-ux.md's screen 4 has it, with Copy beside it.

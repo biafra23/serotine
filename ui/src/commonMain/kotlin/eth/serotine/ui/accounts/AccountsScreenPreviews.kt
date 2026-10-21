@@ -267,6 +267,29 @@ private fun AccountsListUnavailablePreview() = AccountsPreview(
     ),
 )
 
+@Preview
+@Composable
+private fun AccountsEnsNamesPreview() = AccountsPreview(
+    withAccounts.copy(
+        accounts = listOf(
+            accounts[0],
+            // Named by the ENS name it was watched by, which still points to it.
+            accounts[1].copy(label = "savings-example.eth"),
+            // Its ENS name no longer points to it: the address stands in for the name.
+            AccountItem(
+                "0xD122…9aDb",
+                "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+                AccountKind.EOA,
+                Control.WATCH_ONLY,
+                "0.42 ETH",
+                balanceVerified = true,
+                value = "$1,050.00 · testnet prices",
+                nameNote = "ENS name “old-savings-example.eth” no longer points to this address",
+            ),
+        ),
+    ),
+)
+
 /** Every preview above, which AccountsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val accountsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountsAccountsPreview() },
@@ -286,4 +309,5 @@ internal val accountsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountsListUnavailablePreview() },
     { AccountsCatchingUpDarkPreview() },
     { AccountsNarrowPreview() },
+    { AccountsEnsNamesPreview() },
 )

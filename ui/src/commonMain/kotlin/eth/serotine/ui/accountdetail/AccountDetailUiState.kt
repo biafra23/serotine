@@ -22,7 +22,9 @@ sealed interface AccountDetailUiState {
      * the transactions waiting for its owners on this device (both null for any other account);
      * the screen shows its Assets, its Owners or its Queue ([segment]), [kindNote] says what it is
      * ("Safe", or "Not a recognised Safe" once its address no longer verifies as one) and
-     * [threshold] its verified threshold of its owners ("2/3"), for its blockie.
+     * [threshold] its verified threshold of its owners ("2/3"), for its blockie. [label] is the
+     * account's name, or its short address once the ENS name its name follows no longer points
+     * to it, which [nameNote] then says.
      */
     data class Ready(
         val label: String,
@@ -41,6 +43,7 @@ sealed interface AccountDetailUiState {
         val kindNote: String? = null,
         val threshold: String? = null,
         val queue: SafeQueue? = null,
+        val nameNote: String? = null,
     ) : AccountDetailUiState {
 
         /**

@@ -217,7 +217,9 @@ class AppNavigationTest {
         }
 
         override suspend fun rename(address: Address, label: String): AccountChange {
-            accounts.update { list -> list.map { if (it.address == address) it.copy(label = label) else it } }
+            accounts.update { list ->
+                list.map { if (it.address == address) it.copy(label = label, ensName = null) else it }
+            }
             return AccountChange.Changed
         }
 

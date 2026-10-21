@@ -31,7 +31,9 @@ import kotlinx.serialization.json.Json
  *
  * Format 2 records each account's custody. A format-1 file, written before watched accounts
  * existed, held only accounts added from a recovery phrase, so its entries read as
- * [AccountCustody.InKeyStore]; the next change writes the file as format 2.
+ * [AccountCustody.InKeyStore]; the next change writes the file as format 2. Format 3 records
+ * the ENS name an account's name follows ([Account.ensName]); an entry without one, as every
+ * entry of an older file, follows none. The next change writes the file as format 3.
  */
 class FileAccountRepository(
     path: String,
@@ -72,7 +74,7 @@ class FileAccountRepository(
     }
 
     override suspend fun rename(address: Address, label: String): AccountChange =
-        updateEntry(address) { it.copy(label = label) }
+        updateEntry(address) { it.copy(label = label, ensName = null) }
 
     override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
         updateEntry(address) { it.copy(custody = custody) }
@@ -107,6 +109,8 @@ class FileAccountRepository(
         val label: String,
         /** [WATCHED] or [IN_KEY_STORE]; absent in format 1, whose accounts all came from a recovery phrase. */
         val custody: String? = null,
+        /** [Account.ensName]; absent when the name follows none, and before format 3. */
+        val ens: String? = null,
     ) {
         constructor(account: Account) : this(
             account.address.hex,
@@ -116,6 +120,7 @@ class FileAccountRepository(
                 AccountCustody.Watched -> WATCHED
                 AccountCustody.InKeyStore -> IN_KEY_STORE
             },
+            account.ensName,
         )
 
         /** Throws on anything [Account] would not accept, in a file of [version]: the whole file is then damaged. */
@@ -129,12 +134,13 @@ class FileAccountRepository(
                 custody == IN_KEY_STORE -> AccountCustody.InKeyStore
                 else -> error("an account without a known custody")
             },
+            ens,
         )
     }
 
     private companion object {
-        /** 2 since watched accounts: each entry records its custody. */
-        const val FORMAT_VERSION = 2
+        /** 2 since watched accounts: each entry records its custody; 3 since names that follow ENS. */
+        const val FORMAT_VERSION = 3
         const val WATCHED = "watched"
         const val IN_KEY_STORE = "key-store"
         val STRICT = Json
