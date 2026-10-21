@@ -842,8 +842,10 @@ home screen, and iOS's widget (a WidgetKit extension) is still to come.
   many rounds back as heartbeats fit, so an hourly feed takes two calls, and
   the rounds read are kept in memory (a round, once written, never changes),
   so a search soon after reads few or none again.
-- **Refresh now.** A button beside the rate reads it at once, on any
-  network, metered included, since the user asked for it: one job, expedited
+- **Refresh now.** A small button beside the 24-hour change (the rate below
+  keeps the whole width; on a narrow widget the pair gives way first, then
+  the change, and the button stays) reads it at once, on any network, metered
+  included, since the user asked for it: one job, expedited
   where Android offers that (12 and later) and its quota allows, waking the
   engine for that read alone as the background refresh does, and joining a
   background read already under way rather than making a second. A spinner
