@@ -91,7 +91,9 @@ import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.accounts.AccountsViewModel
+import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityViewModel
+import eth.serotine.ui.activitydetail.ActivityDetailViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
@@ -381,6 +383,21 @@ class AppGraph(
         network,
     )
 
+    /**
+     * The detail of the row [key] of the Activity of the account at [address] (docs/wallet-ux.md,
+     * screen 26), read from what its Activity is read from.
+     */
+    fun activityDetailViewModel(address: Address, key: ActivityKey): ActivityDetailViewModel = ActivityDetailViewModel(
+        address,
+        key,
+        ObserveAccountHistory(transactionHistory),
+        ObserveAccounts(accounts),
+        ObserveSafeHistory(logIndex, historyStarts),
+        ObserveTokenTransfers(logIndex, historyStarts),
+        knownTokens(),
+        network,
+    )
+
     /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
     fun createSafeViewModel(): CreateSafeViewModel = CreateSafeViewModel(
         ObserveAccounts(accounts),
@@ -425,11 +442,13 @@ class AppGraph(
     fun tokensViewModel(): TokensViewModel =
         TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens))
 
-    fun addTokenViewModel(): AddTokenViewModel =
+    /** Add token by address (docs/wallet-ux.md, screen 20), its field starting with [address]. */
+    fun addTokenViewModel(address: String = ""): AddTokenViewModel =
         AddTokenViewModel(
             knownTokens(),
             ObserveTokenMetadata(tokenMetadata),
             AddToken(userTokens, tokenMetadata, knownTokens()),
+            address,
         )
 
     private fun knownTokens() = ObserveKnownTokens(tokenCatalog, userTokens, tokenMetadata)

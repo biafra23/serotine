@@ -141,7 +141,7 @@ class ActivityViewModelTest {
                     "at 500",
                     "No block seen to include it yet",
                     ActivityState.WAITING,
-                    execution.hash,
+                    ActivityKey(execution.hash),
                 ),
                 ActivityRow(
                     native.hash,
@@ -151,7 +151,7 @@ class ActivityViewModelTest {
                     "at 400",
                     "Finalized in block 9,412,118",
                     ActivityState.DONE,
-                    native.hash,
+                    ActivityKey(native.hash),
                 ),
                 ActivityRow(
                     token.hash,
@@ -161,7 +161,7 @@ class ActivityViewModelTest {
                     "at 300",
                     "Reverted in block 9,401,220",
                     ActivityState.FAILED,
-                    token.hash,
+                    ActivityKey(token.hash),
                 ),
             ),
             shown.rows,
@@ -261,7 +261,7 @@ class ActivityViewModelTest {
     private val bobsTopic = "0x" + "00".repeat(12) + bob.hex.removePrefix("0x")
 
     @Test
-    fun aSafesEventsGoInAmongItsSentTransactionsByBlockAndOpenNothing() = runTest {
+    fun aSafesEventsGoInAmongItsSentTransactionsByBlockAndOpenTheirLog() = runTest {
         history.entries.value = listOf(HistoryEntry(execution, SentOutcome.Included(9_410_000, succeeded = true)))
         treasuryIndexed(9_400_000L..9_420_000L)
         index.logs = listOf(
@@ -278,8 +278,8 @@ class ActivityViewModelTest {
         val event = shown.rows.last()
         assertEquals("From 0x5aAe…eAed", event.detail)
         assertEquals("Block 9,405,000", event.time)
-        assertEquals(null, event.opens)
-        assertEquals(execution.hash, shown.rows[1].opens)
+        assertEquals(ActivityKey("0x" + "cc".repeat(32), 0), event.opens)
+        assertEquals(ActivityKey(execution.hash), shown.rows[1].opens)
         assertEquals(
             "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
                 "its events; its token transfers.",
@@ -498,7 +498,7 @@ class ActivityViewModelTest {
         val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
 
         assertEquals(listOf("Received 1 USDC", "Sent 40.5 USDC"), rows.map { it.title })
-        assertEquals(token.hash, rows.last().opens)
+        assertEquals(ActivityKey(token.hash), rows.last().opens)
     }
 
     @Test

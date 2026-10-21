@@ -34,13 +34,13 @@ import eth.serotine.ui.lightclient.LightClientViewModel
 /** Test tag of each transaction row, for UI tests. */
 const val ACTIVITY_ROW_TAG = "activity-row"
 
-/** Binds [ActivityScreen] to its ViewModel; a row opens its transaction's status ([onOpen], by its hash). */
+/** Binds [ActivityScreen] to its ViewModel; a row opens its detail ([onOpen], by its key). */
 @Composable
 fun ActivityRoute(
     viewModel: ActivityViewModel,
     lightClient: LightClientViewModel,
     onBack: () -> Unit,
-    onOpen: (hash: String) -> Unit,
+    onOpen: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -51,8 +51,7 @@ fun ActivityRoute(
 /**
  * An account's Activity (docs/wallet-ux.md, screen 25) as a pure function of [state]: what the
  * list covers, then each transaction this device sent for it and each event of a Safe on chain,
- * newest first, with how it ended as this device saw it; a tap on a transaction sent from here
- * opens its status.
+ * newest first, with how it ended as this device saw it; a tap on a row opens its detail.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +59,7 @@ fun ActivityScreen(
     state: ActivityUiState,
     lightClient: LightClientItem,
     onBack: () -> Unit,
-    onOpen: (String) -> Unit,
+    onOpen: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -89,7 +88,7 @@ fun ActivityScreen(
 
 /** What the history says, under the strip. */
 @Composable
-private fun BoxScope.ActivityContent(state: ActivityUiState, onOpen: (hash: String) -> Unit) {
+private fun BoxScope.ActivityContent(state: ActivityUiState, onOpen: (ActivityKey) -> Unit) {
     when (state) {
         is ActivityUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
         is ActivityUiState.Unavailable -> Text(
@@ -116,18 +115,17 @@ private fun BoxScope.ActivityContent(state: ActivityUiState, onOpen: (hash: Stri
                 }
             }
             items(state.rows, key = { it.key }) { row ->
-                ActivityItem(row, onClick = row.opens?.let { hash -> { onOpen(hash) } })
+                ActivityItem(row, onClick = { onOpen(row.opens) })
             }
         }
     }
 }
 
-/** One row; tappable only with an [onClick], when it has a status to open. */
+/** One row; a tap opens its detail ([onClick]). */
 @Composable
-private fun ActivityItem(row: ActivityRow, onClick: (() -> Unit)?) {
+private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
     ListItem(
-        modifier = Modifier.testTag(ACTIVITY_ROW_TAG)
-            .then(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier),
+        modifier = Modifier.testTag(ACTIVITY_ROW_TAG).clickable(onClick = onClick),
         leadingContent = { AccountAvatar(row.about) },
         // When, above what it did: beside it, the date would squeeze each row into narrow lines.
         overlineContent = { Text(row.time) },
@@ -135,15 +133,18 @@ private fun ActivityItem(row: ActivityRow, onClick: (() -> Unit)?) {
         supportingContent = {
             Column {
                 Text(row.detail)
-                Text(row.status, style = MaterialTheme.typography.labelSmall, color = colorOf(row.state))
+                Text(row.status, style = MaterialTheme.typography.labelSmall, color = statusColor(row.state))
             }
         },
     )
 }
 
-/** The colour a row's status is said in: an error's for a revert or a warning, muted for what is not known yet. */
+/**
+ * The colour a row's status is said in, here and on its detail: an error's for a revert or a
+ * warning, muted for what is not known yet.
+ */
 @Composable
-private fun colorOf(state: ActivityState): Color = when (state) {
+internal fun statusColor(state: ActivityState): Color = when (state) {
     ActivityState.DONE -> MaterialTheme.colorScheme.onSurfaceVariant
     ActivityState.FAILED, ActivityState.WARNING -> MaterialTheme.colorScheme.error
     ActivityState.WAITING, ActivityState.UNCONFIRMED, ActivityState.UNKNOWN -> MaterialTheme.colorScheme.tertiary

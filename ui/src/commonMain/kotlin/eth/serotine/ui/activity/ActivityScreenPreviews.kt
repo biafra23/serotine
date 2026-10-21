@@ -23,7 +23,7 @@ private val rows = listOf(
         time = "Oct 19, 2026, 4:10 PM",
         status = "In block 9,412,190",
         state = ActivityState.DONE,
-        opens = "0x" + "6".repeat(64),
+        opens = ActivityKey("0x" + "6".repeat(64)),
     ),
     ActivityRow(
         key = "0x" + "1".repeat(64),
@@ -33,7 +33,7 @@ private val rows = listOf(
         time = "Oct 19, 2026, 2:02 PM",
         status = "No block seen to include it yet",
         state = ActivityState.WAITING,
-        opens = "0x" + "1".repeat(64),
+        opens = ActivityKey("0x" + "1".repeat(64)),
     ),
     ActivityRow(
         key = "0x" + "2".repeat(64),
@@ -43,7 +43,7 @@ private val rows = listOf(
         time = "Oct 18, 2026, 9:15 AM",
         status = "Finalized in block 9,412,118",
         state = ActivityState.DONE,
-        opens = "0x" + "2".repeat(64),
+        opens = ActivityKey("0x" + "2".repeat(64)),
     ),
     ActivityRow(
         key = "0x" + "3".repeat(64),
@@ -53,7 +53,7 @@ private val rows = listOf(
         time = "Oct 17, 2026, 9:40 PM",
         status = "Reverted in block 9,401,220",
         state = ActivityState.FAILED,
-        opens = "0x" + "3".repeat(64),
+        opens = ActivityKey("0x" + "3".repeat(64)),
     ),
     ActivityRow(
         key = "0x" + "4".repeat(64),
@@ -63,7 +63,7 @@ private val rows = listOf(
         time = "Oct 12, 2026, 11:03 AM",
         status = "Mined while the app was not watching, unless another transaction took its nonce",
         state = ActivityState.UNKNOWN,
-        opens = "0x" + "4".repeat(64),
+        opens = ActivityKey("0x" + "4".repeat(64)),
     ),
     ActivityRow(
         key = "0x" + "5".repeat(64),
@@ -73,7 +73,7 @@ private val rows = listOf(
         time = "Oct 10, 2026, 8:30 AM",
         status = "No peer confirmed its broadcast",
         state = ActivityState.UNCONFIRMED,
-        opens = "0x" + "5".repeat(64),
+        opens = ActivityKey("0x" + "5".repeat(64)),
     ),
 )
 
@@ -94,7 +94,7 @@ private val tokenRows = listOf(
         time = "Block 9,417,045",
         status = "On chain, from the token's verified logs",
         state = ActivityState.DONE,
-        opens = null,
+        opens = ActivityKey("0x" + "b".repeat(64), 2),
     ),
     ActivityRow(
         key = "0x" + "c".repeat(64),
@@ -104,7 +104,7 @@ private val tokenRows = listOf(
         time = "Oct 19, 2026, 2:02 PM",
         status = "Finalized in block 9,412,118",
         state = ActivityState.DONE,
-        opens = "0x" + "c".repeat(64),
+        opens = ActivityKey("0x" + "c".repeat(64)),
     ),
     ActivityRow(
         key = "0x" + "d".repeat(64) + ":0",
@@ -114,7 +114,7 @@ private val tokenRows = listOf(
         time = "Block 9,408,511",
         status = "The claim of a contract the wallet does not list: add it in Settings to see what moved",
         state = ActivityState.UNKNOWN,
-        opens = null,
+        opens = ActivityKey("0x" + "d".repeat(64), 0),
     ),
     ActivityRow(
         key = "0x" + "e".repeat(64) + ":5",
@@ -124,7 +124,7 @@ private val tokenRows = listOf(
         time = "Block 9,402,980",
         status = "On chain, from the token's verified logs",
         state = ActivityState.DONE,
-        opens = null,
+        opens = ActivityKey("0x" + "e".repeat(64), 5),
     ),
 )
 
@@ -138,7 +138,7 @@ private val safeRows = listOf(
         time = "Block 9,416,880",
         status = "A module can move this Safe's funds without its owners",
         state = ActivityState.WARNING,
-        opens = null,
+        opens = ActivityKey("0x" + "a".repeat(64), 0),
     ),
     ActivityRow(
         key = "0x" + "6".repeat(64) + ":0",
@@ -148,7 +148,7 @@ private val safeRows = listOf(
         time = "Block 9,415,302",
         status = "On chain, from the Safe's verified logs",
         state = ActivityState.DONE,
-        opens = null,
+        opens = ActivityKey("0x" + "6".repeat(64), 0),
     ),
     ActivityRow(
         key = "0x" + "7".repeat(64),
@@ -158,7 +158,7 @@ private val safeRows = listOf(
         time = "Oct 19, 2026, 2:02 PM",
         status = "In block 9,412,118",
         state = ActivityState.DONE,
-        opens = "0x" + "7".repeat(64),
+        opens = ActivityKey("0x" + "7".repeat(64)),
     ),
     ActivityRow(
         key = "0x" + "8".repeat(64) + ":3",
@@ -168,7 +168,7 @@ private val safeRows = listOf(
         time = "Block 9,411,040",
         status = "On chain, from the Safe's verified logs",
         state = ActivityState.DONE,
-        opens = null,
+        opens = ActivityKey("0x" + "8".repeat(64), 3),
     ),
     ActivityRow(
         key = "0x" + "9".repeat(64) + ":1",
@@ -178,7 +178,7 @@ private val safeRows = listOf(
         time = "Block 9,410,377",
         status = "Failed on chain: its call reverted",
         state = ActivityState.FAILED,
-        opens = null,
+        opens = ActivityKey("0x" + "9".repeat(64), 1),
     ),
 )
 

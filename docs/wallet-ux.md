@@ -621,7 +621,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       saw it: in its block or finalized there, reverted, no block seen yet,
       no peer confirmed its broadcast, or mined while the app was not
       watching unless another transaction took its nonce. A tap opens its
-      status (9).
+      detail (26), and from there its status (9).
     - A Safe's Activity lists the approvals and executions of its
       transactions and its deployment, whichever account here sent them
       ("Executed transaction 4", "By Alice · …").
@@ -630,7 +630,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       …"), executions and failed ones, approvals, its set-up, owner,
       threshold, module, guard and fallback-handler changes, a module's
       transactions and messages signed. Each sits among the sent
-      transactions by its block ("Block 9,415,302") and opens nothing yet;
+      transactions by its block ("Block 9,415,302") and opens its detail (26);
       one whose transaction is listed as sent from here, in a block, is left
       out when its row says the same (an execution, an approval, a
       deployment); a failure and a settings change are not. A module
@@ -650,7 +650,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       nothing is left out: anyone can have a token log one from any address,
       which plants a look-alike address in a history. An added token whose
       symbol is a built-in token's warns, as every screen does. By block like
-      the events, opening nothing yet; the transfer a row sent from here, in
+      the events, opening its detail (26); the transfer a row sent from here, in
       a block, already says (its token, amount and recipient, or the amount
       sold in a swap) is that row alone.
     - Where the list comes from: every transaction a peer took (or maybe
@@ -665,6 +665,36 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       nonce is used, by this transaction or by one that took its place,
       which the device cannot tell apart. The status screen (9) reads the
       same history once the record has forgotten a transaction.
+26. **Activity detail**: one row of 25 in full, under the Accounts tab like
+    its list (`activity/{address}/tx/{hash}`, `?log=` the log index for an
+    event). Its row's headline and status first, then every party it
+    concerns, each address in full (EIP-55, its blockie, the wallet's name
+    for it) and every hash (the transaction's, a Safe transaction's, a
+    message's), each selectable and with Copy, then what it moved, its
+    nonce, when a peer took it and its block. Read from what 25 is read
+    from, so it says what the row says.
+    - A transaction sent from here: From, its other side by kind (To, the
+      token contract and the amount; the spender and the allowance; the
+      router and both tokens of a swap; the Safe, its nonce, the Safe
+      transaction's hash and whom it calls; a deployment's Safe, owners,
+      threshold and version), and Status, which opens 9 (Try again is
+      there).
+    - A token's transfer the wallet shows: From, To, the amount or the
+      token id, and the contract. One of a contract it does not show names
+      the contract alone, as its row does, and says why: such a contract can
+      log any transfer between any addresses, and an address copied from it
+      could be a look-alike planted for the user. An ERC-20 one the wallet
+      does not list has Add token, which opens 20 under the Accounts tab
+      with the contract filled in and read; its claim is shown before it is
+      added, as from Settings, and once added the detail says what moved.
+      An ERC-721 one, a hidden token or a built-in one its contract
+      contradicts has none (the wallet adds ERC-20 tokens, and lists the
+      others already).
+    - A Safe's event: what it names (the sender of ETH received, an owner,
+      a module, a guard, a handler, the hashes), and the Safe.
+    - One no longer there (a reorganisation replaced its block, once every
+      block from the history's start is checked again) or not readable says
+      so; while the blocks it is in are still being checked, it is loading.
 
 ### Settings tab
 
