@@ -28,11 +28,12 @@ kotlin {
         }
     }
     jvm("desktop")
-    // The iOS envelope's own declaration of libsodium's crypto_pwhash, which takes the
-    // password as bytes (src/nativeInterop/cinterop/sodiumPwhash.def says why).
+    // The iOS envelope's own declarations of the libsodium functions it calls: commonized, so
+    // the shared iosMain sees them, and crypto_pwhash taking the password as bytes
+    // (src/nativeInterop/cinterop/sodium.def says why).
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-        target.compilations.getByName("main").cinterops.create("sodiumPwhash") {
-            definitionFile.set(project.file("src/nativeInterop/cinterop/sodiumPwhash.def"))
+        target.compilations.getByName("main").cinterops.create("sodium") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/sodium.def"))
         }
     }
 
