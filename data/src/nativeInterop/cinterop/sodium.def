@@ -8,8 +8,9 @@
 #   which Kotlin/Native turns into a String parameter: the password would have to become a
 #   String the app cannot zero, and bytes that are not UTF-8 would not reach libsodium as they
 #   are.
-# The declarations are libsodium's own (sodium.h of the bindings' libsodium.a, 1.0.19), and the
-# symbols are the ones in that libsodium.a, linked from the bindings' klib.
+# Apart from that passwd type (the ABI is the same: a pointer), the declarations are libsodium's
+# own (sodium.h of the bindings' libsodium.a, 1.0.19), and the symbols are the ones in that
+# libsodium.a, linked from the bindings' klib.
 package = eth.serotine.data.keys.sodium
 ---
 #include <stddef.h>
