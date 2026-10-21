@@ -102,9 +102,9 @@ class ActivityDetailViewModel(
         // Only an account of the wallet has its logs followed.
         if (transfers == null) return ActivityDetailUiState.Unavailable(title, NOT_IN_WALLET)
         safe.found()?.let { return shownOf(title, rows.eventRow(it, names), safeFields(it, names)) }
+        val transfer = transfers.found() ?: return missing(title, listOfNotNull(safe, transfers))
         // A transfer of nothing is not listed, and not detailed either: it plants a look-alike address.
-        val transfer = transfers.found()?.takeUnless { it.transfer.movesNothing() }
-            ?: return missing(title, listOfNotNull(safe, transfers))
+        if (transfer.transfer.movesNothing()) return ActivityDetailUiState.Unavailable(title, MOVED_NOTHING)
         // Until the tokens are known, what moved cannot be said.
         if (tokens == null) return ActivityDetailUiState.Loading(title)
         return transferShown(title, transfer, names, tokens)
@@ -262,8 +262,10 @@ class ActivityDetailViewModel(
             val fields = listOf(contract) + loggedAt(event)
             if (transfer !is TokenTransfer.Fungible) return shownOf(title, row, fields, note = "$CLAIM_NOTE $NFT_NOTE")
             val add = Eip55.format(transfer.token).takeIf { listed == null }
-            val note = if (add != null) "$CLAIM_NOTE $ADD_NOTE" else CLAIM_NOTE
-            return shownOf(title, row, fields, note = note, addToken = add)
+                ?: return shownOf(title, row, fields, note = CLAIM_NOTE)
+            // The row's status asks to open it to add it; here, Add token is on screen.
+            val shown = shownOf(title, row.copy(status = UNLISTED), fields, note = "$CLAIM_NOTE $ADD_NOTE")
+            return shown.copy(addToken = add)
         }
         val moved = when (transfer) {
             is TokenTransfer.Fungible ->
@@ -298,6 +300,9 @@ class ActivityDetailViewModel(
         const val NOT_IN_WALLET = "This account is not in the wallet any more, so its history on chain is not read."
         const val GONE = "This event is not in the account's verified history any more: a reorganisation of the " +
             "chain may have replaced its block."
+        const val MOVED_NOTHING = "This transfer moved nothing, so it is not shown: anyone can have a token log " +
+            "one from any address, to plant a look-alike address for you to copy."
+        const val UNLISTED = "The claim of a contract the wallet does not list"
         const val ZERO_NAME = "The zero address"
         const val CLAIM_NOTE = "A contract the wallet does not show can log any transfer it likes, between any " +
             "addresses, so only the contract is named here: an address it names could be a look-alike planted " +

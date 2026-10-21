@@ -182,6 +182,7 @@ class ActivityDetailViewModelTest {
         val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(ActivityKey(tx, 3)).uiState.value)
 
         assertEquals("An unlisted token logged a transfer to it", shown.headline)
+        assertEquals("The claim of a contract the wallet does not list", shown.status, "Add token is on screen")
         assertEquals(
             listOf(
                 DetailField("Token contract", Eip55.format(spam), DetailKind.ADDRESS),
@@ -287,7 +288,8 @@ class ActivityDetailViewModelTest {
         assertIs<ActivityDetailUiState.Loading>(viewModel(ActivityKey(tx, 3)).uiState.value)
 
         indexed(alice.address)
-        assertIs<ActivityDetailUiState.Unavailable>(viewModel(ActivityKey(tx, 3)).uiState.value)
+        val withheld = assertIs<ActivityDetailUiState.Unavailable>(viewModel(ActivityKey(tx, 3)).uiState.value)
+        assertTrue(withheld.message.startsWith("This transfer moved nothing"), "not said to be gone")
     }
 
     @Test

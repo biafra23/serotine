@@ -55,7 +55,7 @@ private val unlisted = ActivityDetailUiState.Shown(
     title = "Alice",
     headline = "An unlisted token logged a transfer to it",
     about = UNLISTED,
-    status = "The claim of a contract the wallet does not list: open it to add it as a token and see what moved",
+    status = "The claim of a contract the wallet does not list",
     state = ActivityState.UNKNOWN,
     fields = listOf(
         DetailField("Token contract", UNLISTED, DetailKind.ADDRESS),

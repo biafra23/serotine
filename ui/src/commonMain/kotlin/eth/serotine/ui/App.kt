@@ -285,13 +285,15 @@ private fun Destinations(
                     LaunchedEffect(Unit) { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) }
                 }
             }
-            // Add token from an Activity detail: in this tab, its field filled in with the contract.
-            withAddress(Destination.ADD_TOKEN, navController) { contract ->
+            // Add token from an Activity detail: in this tab, its field filled in with the contract. A
+            // name of its own, so that leaving Settings' Add token never finds this one (leave() tries
+            // the /{address} form of a pattern first).
+            withAddress(Destination.ACTIVITY_ADD_TOKEN, navController) { contract ->
                 AddTokenRoute(
                     viewModel { graph.addTokenViewModel(Eip55.format(contract)) },
                     lightClient,
-                    onBack = { navController.leave(Destination.ADD_TOKEN) },
-                    onAdded = { navController.leave(Destination.ADD_TOKEN) },
+                    onBack = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
+                    onAdded = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
                 )
             }
             withAddress(Destination.RECEIVE, navController) { address ->
@@ -660,9 +662,9 @@ private fun NavController.openActivityDetail(address: Address, key: ActivityKey)
 
 /** Opens Add token by address over the Accounts tab, with the [contract] (an address) filled in. */
 private fun NavController.addToken(contract: String) {
-    if (currentDestination?.route == "${Destination.ADD_TOKEN}/{$ADDRESS}") return
+    if (currentDestination?.route == "${Destination.ACTIVITY_ADD_TOKEN}/{$ADDRESS}") return
     val address = Address.parse(contract) ?: return
-    navigate("${Destination.ADD_TOKEN}/${address.hex}")
+    navigate("${Destination.ACTIVITY_ADD_TOKEN}/${address.hex}")
 }
 
 /** Opens the status of the transaction [hash] (`0x` and 64 hex digits), as a route carries it: in lower case. */
@@ -756,6 +758,7 @@ private object Destination {
     const val TOKENS = "tokens"
     const val SECURITY = "security"
     const val ADD_TOKEN = "add-token"
+    const val ACTIVITY_ADD_TOKEN = "activity-add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
     const val CREATE_ACCOUNT = "create-account"
     const val CREATE_SAFE = "create-safe"
