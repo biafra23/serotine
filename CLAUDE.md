@@ -78,7 +78,8 @@ Modules (Gradle):
   advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
   names, a Safe's owners' approvals on chain, Uniswap v3's pinned
   contracts, proven by their code, and its verified calls, and the verified
-  log index that follows the accounts' histories), whose glue over
+  log index that follows the accounts' histories, and a feed's round of a
+  day ago from its round history), whose glue over
   `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
   (`eth.serotine.data.upgrade`); the built-in token list and the user's token
@@ -88,7 +89,8 @@ Modules (Gradle):
   the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
   the record of sent transactions and the history of them, kept for good
   (`eth.serotine.data.transfers`); where each account's history starts
-  (`eth.serotine.data.history`); and the
+  (`eth.serotine.data.history`); the exchange rate last verified, for the
+  home-screen widget (`eth.serotine.data.rates`); and the
   display currency
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
@@ -109,12 +111,14 @@ Modules (Gradle):
   ONE composition root (`SerotineApplication`, `main()`, `SerotineWallet`)
   that builds the `AppGraph` from `:data`'s adapters and renders `App` (on
   iOS through `MainViewController(wallet)`), and runs the app-wide work no screen owns
-  (`FollowUpgradeReports`, `FollowSafeDeployments`), never from `App` or
+  (`FollowUpgradeReports`, `FollowSafeDeployments`, and on Android the
+  exchange-rate widget's `FollowExchangeRate`), never from `App` or
   `AppGraph`. The desktop one runs once per user: it holds an
   `InstanceLock` on its data directory for the process's lifetime. A port
   whose adapter is the platform's own output (`UpgradeNotifier`: Android's
   notifications and alarm, the desktop's tray, iOS's local notifications) is
-  implemented in the host.
+  implemented in the host, and so is a home-screen widget (Android's
+  `RateWidget`, drawing `:ui`'s display-ready `rateWidgetContent`).
 
 **The dependency rule: arrows point inward only.** `:domain` depends on nothing
 of ours; `:ui` and `:data` depend on `:domain`; the hosts depend on `:ui` and

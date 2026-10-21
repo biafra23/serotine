@@ -47,6 +47,45 @@ internal object Abi {
     /** A feed's [answer] (a non-negative decimal integer; null when negative) as of [updatedAt], in unix seconds. */
     data class Round(val answer: String?, val updatedAt: Long)
 
+    /**
+     * Chainlink's `getRoundData(uint80)` on a feed's proxy: the selector and [id] as the proxy's
+     * round id, its [RoundId.phase] in the top 16 of the 80 bits and the phase aggregator's
+     * [RoundId.round] in the low 64. It answers as `latestRoundData()` does ([round]).
+     */
+    fun getRoundData(id: RoundId): ByteArray =
+        (
+            "9a6fc8f5" + "0".repeat(WORD_HEX_DIGITS - ROUND_ID_HEX_DIGITS) +
+                id.phase.toString(16).padStart(PHASE_HEX_DIGITS, '0') +
+                id.round.toULong().toString(16).padStart(AGGREGATOR_ROUND_HEX_DIGITS, '0')
+            ).fromHex()
+
+    /**
+     * The proxy round id a round answer in [returnedHex] (five words, as [round] reads them)
+     * starts with, split into its phase and the phase aggregator's round; null when it is not
+     * five words or its first word is no uint80 round id.
+     */
+    fun roundId(returnedHex: String): RoundId? {
+        if (returnedHex.length != ROUND_WORDS * WORD_HEX_DIGITS || !returnedHex.all { it in HEX }) return null
+        val word = returnedHex.substring(0, WORD_HEX_DIGITS)
+        if (word.take(WORD_HEX_DIGITS - ROUND_ID_HEX_DIGITS).any { it != '0' }) return null
+        val phase = word.substring(WORD_HEX_DIGITS - ROUND_ID_HEX_DIGITS, WORD_HEX_DIGITS - AGGREGATOR_ROUND_HEX_DIGITS)
+            .toInt(16)
+        // A round past what a Long holds is none any aggregator has written.
+        val round = word.takeLast(AGGREGATOR_ROUND_HEX_DIGITS).toULong(16).takeIf { it <= Long.MAX_VALUE.toULong() }
+            ?: return null
+        return RoundId(phase, round.toLong())
+    }
+
+    /**
+     * A round of a Chainlink proxy: the [phase] (which of its aggregators answered it, never
+     * changed once set) and that aggregator's own [round] number, counted from 1.
+     */
+    data class RoundId(val phase: Int, val round: Long) {
+        init {
+            require(phase in 0..0xffff && round >= 0) { "not a round id: $phase/$round" }
+        }
+    }
+
     /** `symbol()`, `name()`, `decimals()`: no arguments, the selector alone. */
     val SYMBOL: ByteArray = "95d89b41".fromHex()
     val NAME: ByteArray = "06fdde03".fromHex()
@@ -155,6 +194,11 @@ internal object Abi {
     private const val WORD = 32
     private const val ROUND_WORDS = 5
     private const val WORD_HEX_DIGITS = 64
+
+    /** A uint80 round id: a 16-bit phase over a 64-bit aggregator round. */
+    private const val ROUND_ID_HEX_DIGITS = 20
+    private const val PHASE_HEX_DIGITS = 4
+    private const val AGGREGATOR_ROUND_HEX_DIGITS = 16
 
     /** Longer than any symbol or name a screen shows: what a contract says beyond this is refused. */
     private const val MAX_TEXT_BYTES = 1_024L

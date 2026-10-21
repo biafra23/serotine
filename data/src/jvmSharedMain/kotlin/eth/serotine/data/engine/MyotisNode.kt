@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
+import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.TokenBalances
@@ -48,9 +49,10 @@ import kotlin.time.Duration.Companion.seconds
  * [priceFeeds], [addressKinds], [lightClient] and [networkUpgrades] to the AppGraph, and for
  * sending [transactionInputs], [broadcaster], [receipts] and [names], and for a Safe's
  * transactions [safeApprovals], and for swaps [uniswap], and for the accounts' histories
- * [logIndex], and owns it for the life of the process: [pause] and [resume] it around the app
- * being in the background, [shutdown] on exit. Only `io.myotis.api` and the library's default
- * ports are used; nothing below them.
+ * [logIndex], and for a home-screen widget's daily change [priceHistory], and owns it for the
+ * life of the process: [pause] and [resume] it around the app being in the background,
+ * [shutdown] on exit. Only `io.myotis.api` and the library's default ports are used; nothing
+ * below them.
  */
 class MyotisNode private constructor(
     network: Network,
@@ -117,6 +119,9 @@ class MyotisNode private constructor(
 
     /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
     val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
+
+    /** What the same feeds answered some time ago, from their round histories, as verified calls. */
+    val priceHistory: PriceHistory = VerifiedPriceHistory(chain, Dispatchers.IO, ChainlinkFeeds.of(network))
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
     val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)

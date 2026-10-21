@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The exchange-rate widget, dark: a rise and a fall light enough to read on the dark card. -->
+    <color name="widget_background">#F21C1B1F</color>
+    <color name="widget_text">#E6E1E5</color>
+    <color name="widget_text_secondary">#B0ADB6</color>
+    <color name="rate_up">#5ED47E</color>
+    <color name="rate_down">#FF7A7A</color>
+</resources>

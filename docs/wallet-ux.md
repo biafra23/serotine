@@ -755,6 +755,49 @@ read through the light client. Applied:
   contract says; it does not make the oracle right. That is the reason a
   price never becomes a signed amount.
 
+## Home-screen widget
+
+An Android home-screen widget with one exchange rate: the network's native
+currency in the display currency (screen 19), in USD where that is ETH
+itself or none is chosen — "ETH · EUR", "€2,046.20" — with its change over
+the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
+"24h 0.00%" when it rounds to no move, and a line that dates it: "Verified
+Oct 21, 2:05 PM · may have changed since · testnet prices". A tap opens the
+app. The desktop has no
+home screen, and iOS's widget (a WidgetKit extension) is still to come.
+
+- **Only verified rates, dated.** The rate is the price the screens show
+  (*Prices*, above), every check included; the change is the same path read
+  from each feed's own round history, a day back by the head's own time:
+  `getRoundData` calls of the feed's proxy at the verified head, never a
+  call at a past block and never a rate the device kept, so both ends of the
+  change are what the light client proved. A day back with no verified,
+  fresh round on the path (a stale or unproven feed, an aggregator that took
+  over since) shows "24h —", never a change against something else. The
+  widget shows the last rate read, from a file of its own
+  (`last-exchange-rate.json`: a price and its times, public data only), with
+  the date and time it was verified and marked as possibly changed since,
+  as the one older answer CLAUDE.md's *Trust* allows is (a balance; a kept
+  rate is not on that list, so this is for the owner to rule on); a stale
+  one says how old its price was ("price 2 h old"), and none read yet says
+  "No verified rate yet". It is a price like any other: shown, never
+  signed.
+- **Sparing the battery and metered data.** Drawing the widget never starts
+  the light client, and the widget never wakes the device on a timer of its
+  own (`updatePeriodMillis` 0). While the app is closed, a JobScheduler job
+  refreshes it about every three hours, and only while a widget is placed,
+  on an unmetered network and a battery that is not low, so the system
+  batches it and holds it back in Doze and Data Saver; it wakes the engine
+  for that read alone (none of the app's other background work), gives the
+  light client four minutes, and lets it sleep again. Placing a widget asks
+  for one such run at once. While the app is open, whose light client runs
+  anyway, the rate is read again when it is half an hour old or the display
+  currency changes: the rate now is the screens' own reading, and the day
+  back is a handful of calls. The search for a day back's round starts at as
+  many rounds back as heartbeats fit, so an hourly feed takes two calls, and
+  the rounds read are kept in memory (a round, once written, never changes),
+  so a search soon after reads few or none again.
+
 ## Tokens
 
 The ruling (CLAUDE.md, *Data sources*, 2026-10-16): a built-in list, more by
