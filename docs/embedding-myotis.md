@@ -58,9 +58,12 @@ consumer developed against an unreleased engine, Myotis's
 - **Android:** the `:data` module's Android target is what resolves the AAR;
   minSdk 29, two ABIs — a build that ships other ABIs has no engine there.
   The engine's start belongs in a foreground service once sync runs in the
-  background, as in the Myotis app. Until then the one background run is the
-  daily network-upgrade check (*Network upgrades*, below): a JobScheduler job
-  that holds the engine awake for five minutes.
+  background, as in the Myotis app. Until then the background runs are two
+  JobScheduler jobs: the daily network-upgrade check (*Network upgrades*,
+  below), which holds the engine awake for five minutes, and, while an
+  exchange-rate widget is placed, its refresh on an unmetered network about
+  every three hours, which wakes the engine for that one read
+  (docs/wallet-ux.md, *Home-screen widget*).
 - **Desktop:** the JVM jar does not carry the host library;
   `eth.myotis:myotis-engine-natives-<platform>` does, at the engine's version
   (macOS arm64 and x64, Linux x64 and arm64; Windows has none yet). The
