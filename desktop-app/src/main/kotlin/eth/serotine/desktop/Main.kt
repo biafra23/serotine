@@ -244,6 +244,8 @@ private fun openWallet(dataDir: File) {
                 // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
                 uniswap = node.uniswap,
                 network = Network.SEPOLIA,
+                // The desktop keeps no window out of screen capture, so there is nothing to lift.
+                screenCaptureDebugSwitch = null,
             )
         }
         Window(

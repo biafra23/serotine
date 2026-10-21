@@ -670,7 +670,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
 
 18. **Settings**: Display currency · Tokens (n built in, m added) · Security
     (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
-    for now) · Light client (status) · About. Tokens opens the list of every token the
+    for now) · Light client (status) · Debug build (the debug Android app
+    only: *Allow screen recording*, rule 8 of docs/keys-and-signing.md) ·
+    About. Tokens opens the list of every token the
     wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
