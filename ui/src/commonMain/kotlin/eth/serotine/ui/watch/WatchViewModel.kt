@@ -49,7 +49,8 @@ import kotlinx.coroutines.launch
  * the input) or an ENS name, resolved as Send's recipient is ([ResolveRecipient], against
  * finalized state), shows what the light client proves is at the address, and adds it through
  * [WatchAddress], which checks again before it adds. A name is resolved again at Add: what is
- * watched is the address it has then, and one that moved is said, not added (issue #71).
+ * watched is the address it has then, and one that moved is said, not added (issue #71). Added
+ * by a name and given none of the user's, the account's name follows that ENS name (issue #67).
  */
 class WatchViewModel(
     observeAddressKind: ObserveAddressKind,
@@ -109,6 +110,8 @@ class WatchViewModel(
             addressError = note.takeIf { isError },
             addressNote = note.takeUnless { isError },
             canRetryLookup = result is RecipientLookup.Unavailable,
+            // The name an empty field leaves the account with: the ENS name, when it is one to follow.
+            nameDefault = found?.name?.takeIf { it.length <= RenameAccount.MAX_LABEL_LENGTH },
             // Only the card of what is typed now: none while a new text is still being resolved, nor
             // one of the address before for a moment after the text changed.
             detection = card?.takeIf { (address, _) -> address == found?.address }?.second,
@@ -157,8 +160,8 @@ class WatchViewModel(
         if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
         outcome.value = Outcome(adding = true)
         viewModelScope.launch {
-            val address = when (val again = resolveAgain(found, ::lookUp, ::nameChanged)) {
-                is ResolvedAgain.Same -> again.found.address
+            val resolved = when (val again = resolveAgain(found, ::lookUp, ::nameChanged)) {
+                is ResolvedAgain.Same -> again.found
                 is ResolvedAgain.Changed -> {
                     // Resolved again for the card, which then shows what the name has now.
                     typed.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
@@ -166,7 +169,7 @@ class WatchViewModel(
                     return@launch
                 }
             }
-            outcome.value = when (val result = watchAddress(address, typed.value.name)) {
+            outcome.value = when (val result = watchAddress(resolved.address, typed.value.name, resolved.name)) {
                 is AddressWatch.Added -> Outcome(done = true)
                 is AddressWatch.AlreadyInWallet ->
                     Outcome(error = "Already in your wallet as “${result.account.label}”.")

@@ -6,6 +6,8 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.usecase.EnsNameCheck
+import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafes
@@ -29,7 +31,8 @@ import kotlinx.coroutines.flow.stateIn
 
 /**
  * The Accounts screen's ViewModel: turns the domain's portfolio — the accounts, what each
- * holds and what it is worth ([ObservePortfolio]) — the light client's state and any network
+ * holds and what it is worth ([ObservePortfolio]), whether the ENS name an account's name
+ * follows still points to it ([ObserveEnsNames]) — the light client's state and any network
  * upgrade this version does not support into [AccountsUiState], on the [network] the
  * composition root runs the app on. It holds no platform reference and exposes state only
  * through [uiState]; what the user does with an account is navigation, which the screen's route
@@ -38,6 +41,7 @@ import kotlinx.coroutines.flow.stateIn
 class AccountsViewModel(
     observePortfolio: ObservePortfolio,
     observeSafes: ObserveSafes,
+    observeEnsNames: ObserveEnsNames,
     observeLightClient: ObserveLightClient,
     observeUpgradeWarning: ObserveUpgradeWarning,
     private val network: Network,
@@ -57,7 +61,17 @@ class AccountsViewModel(
     // The checksums once per account, not on every balance reading.
     private val checksums = mutableMapOf<Address, String>()
 
-    val uiState: StateFlow<AccountsUiState> = combine(observePortfolio(), observeSafes(), strip, upgrade, ::stateOf)
+    // Accounts never waits for a name's check: until it comes, a name stands as it was verified at Watch.
+    private val ensNames = observeEnsNames().onStart { emit(emptyMap()) }
+
+    val uiState: StateFlow<AccountsUiState> = combine(
+        observePortfolio(),
+        combine(observeSafes(), ensNames, ::Pair),
+        strip,
+        upgrade,
+    ) { portfolio, (safes, ensNames), lightClient, upgrade ->
+        stateOf(portfolio, safes, ensNames, lightClient, upgrade)
+    }
         .stateIn(
             scope = viewModelScope,
             // Keeps collecting across a configuration change (the screen re-subscribes within
@@ -73,6 +87,7 @@ class AccountsViewModel(
     private fun stateOf(
         portfolio: Portfolio,
         safes: Map<Address, SafeReading>,
+        ensNames: Map<Address, EnsNameCheck>,
         lightClient: LightClientItem,
         upgrade: UpgradeBannerItem?,
     ): AccountsUiState =
@@ -101,6 +116,7 @@ class AccountsViewModel(
                         value?.let { it.nativeValue to it.currency },
                         safes[account.address],
                         formatTime,
+                        ensNames[account.address],
                     )
                 }
                 val total = portfolio.total.takeIf { list.accounts.isNotEmpty() }

@@ -15,8 +15,10 @@ import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DecodedSafeTx
+import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
@@ -28,9 +30,11 @@ import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
 import eth.serotine.ui.components.displaySymbol
+import eth.serotine.ui.components.ensNameNote
 import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
@@ -58,9 +62,10 @@ import kotlinx.coroutines.launch
 /**
  * The account detail screen's ViewModel: the account under [address], what it holds and what
  * that is worth in the display currency ([ObserveAccountValue]), on [network], as
- * [AccountDetailUiState]; for a Safe also its verified owners ([ObserveSafe]) and the
- * transactions queued for them on this device ([ObserveSafeTxQueue], decoded here, a token
- * transfer's amount in the units of a token the wallet knows: [ObserveKnownTokens]). Its intents
+ * [AccountDetailUiState], named as [ObserveEnsNames] finds; for a Safe also its verified
+ * owners ([ObserveSafe]) and the transactions queued for them on this device
+ * ([ObserveSafeTxQueue], decoded here, a token transfer's amount in the units of a token the
+ * wallet knows: [ObserveKnownTokens]). Its intents
  * are the order of the rows ([sortBy]), the segment shown ([show]) and hiding a token
  * ([hideToken], said through [messageShown]); what else the user does from the screen is
  * navigation (Send, Receive, Rename, Remove, a queued transaction, Import a request) or the
@@ -75,6 +80,8 @@ class AccountDetailViewModel(
     observeKnownTokens: ObserveKnownTokens,
     private val setTokenHidden: SetTokenHidden,
     private val network: Network,
+    /** Whether the ENS name the account's name follows still points to it. */
+    observeEnsNames: ObserveEnsNames,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -109,6 +116,18 @@ class AccountDetailViewModel(
         }
     }
 
+    /** The check of the ENS name the account's name follows; none for a name of the user's, nor before the first. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val ensName = lookup.map { (it as? AccountLookup.Found)?.account?.ensName }
+        .distinctUntilChanged()
+        .flatMapLatest { name ->
+            if (name == null) {
+                flowOf(null)
+            } else {
+                observeEnsNames.check(address, name).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
+            }
+        }
+
     /** A Safe's queue, with the tokens its transfers are shown in; none for any other account. */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val queue = isSafe.flatMapLatest { isSafe ->
@@ -129,10 +148,16 @@ class AccountDetailViewModel(
     }
 
     val uiState: StateFlow<AccountDetailUiState> =
-        combine(lookup, observeAccountValue(address), safe, queue, view) { lookup, value, safe, queue, view ->
+        combine(
+            lookup,
+            observeAccountValue(address),
+            safe,
+            queue,
+            combine(view, ensName, ::Pair),
+        ) { lookup, value, safe, queue, (view, ensName) ->
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
-                    label = lookup.account.label,
+                    label = accountName(lookup.account, display, ensName),
                     address = display,
                     kind = lookup.account.kind,
                     // A Safe's control is its verified owners'; until they are read, watch-only.
@@ -155,6 +180,7 @@ class AccountDetailViewModel(
                     threshold = (safe as? SafeReading.Verified)
                         ?.let { "${it.state.threshold}/${it.state.owners.size}" },
                     queue = queueOf(queue, safe),
+                    nameNote = ensNameNote(lookup.account, ensName),
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)

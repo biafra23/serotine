@@ -323,16 +323,52 @@ class WatchViewModelTest {
             Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),
             viewModel.uiState.value.detection,
         )
+        assertEquals("vitalik.eth", viewModel.uiState.value.nameDefault, "what an empty name field leaves")
 
         viewModel.add()
         runCurrent()
         assertTrue(viewModel.uiState.value.done)
         assertEquals(listOf("vitalik.eth", "vitalik.eth"), names.asked, "resolved again at Add")
-        // Nothing of the name is copied into the account's: an empty name stays the default one.
+        // Given no name, the account's name follows the ENS name it was added by.
         assertEquals(
-            Account(Address.of(vitalik), AccountKind.EOA, "Account 2", AccountCustody.Watched),
+            Account(
+                Address.of(vitalik),
+                AccountKind.EOA,
+                "vitalik.eth",
+                AccountCustody.Watched,
+                ensName = "vitalik.eth",
+            ),
             accounts.accounts.value.last(),
         )
+    }
+
+    @Test
+    fun aNameGivenWithAnEnsNameIsTheUsers() = runTest {
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        viewModel.onNameChange("Vitalik")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        viewModel.add()
+        runCurrent()
+        assertEquals(
+            Account(Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
+            accounts.accounts.value.last(),
+        )
+    }
+
+    @Test
+    fun anAddressTypedHasNoNameToFollow() = runTest {
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+        assertNull(viewModel.uiState.value.nameDefault)
+
+        viewModel.add()
+        runCurrent()
+        assertEquals("Account 2", accounts.accounts.value.last().label)
     }
 
     @Test

@@ -50,6 +50,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
@@ -208,6 +209,7 @@ class AppGraph(
         AccountsViewModel(
             ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
             ObserveSafes(accounts, observeSafe()),
+            ObserveEnsNames(accounts, names),
             ObserveLightClient(lightClient),
             observeUpgradeWarning(),
             network,
@@ -226,6 +228,7 @@ class AppGraph(
             knownTokens(),
             SetTokenHidden(userTokens),
             network,
+            ObserveEnsNames(accounts, names),
         )
 
     /**

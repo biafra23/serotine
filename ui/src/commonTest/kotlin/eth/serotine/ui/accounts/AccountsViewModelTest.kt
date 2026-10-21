@@ -20,6 +20,7 @@ import eth.serotine.domain.repository.KnownUpgrade
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.ReadUnavailable
@@ -27,6 +28,7 @@ import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
@@ -39,6 +41,7 @@ import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
+import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.MemoryCurrencySetting
@@ -47,6 +50,7 @@ import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.update.UpgradeBannerItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -67,6 +71,8 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountsViewModelTest {
@@ -83,6 +89,7 @@ class AccountsViewModelTest {
         override fun observeKind(address: Address): Flow<KindReading> = kind
     }
     private val currency = MemoryCurrencySetting()
+    private val names = FakeNames()
 
     private fun viewModel(): AccountsViewModel {
         val currencies = ObserveDisplayCurrencies(feeds, currency)
@@ -99,6 +106,7 @@ class AccountsViewModelTest {
         return AccountsViewModel(
             ObservePortfolio(ObserveAccounts(repository), value, currencies),
             ObserveSafes(repository, ObserveSafe(kinds, repository)),
+            ObserveEnsNames(repository, names),
             ObserveLightClient(lightClient),
             ObserveUpgradeWarning(upgrades, NoRecord, lightClient) { now },
             Network.SEPOLIA,
@@ -432,6 +440,34 @@ class AccountsViewModelTest {
         assertEquals("Not a recognised Safe", after.kindNote)
         assertEquals(Control.WATCH_ONLY, after.control)
         assertEquals(null, after.signers)
+    }
+
+    @Test
+    fun anAccountNamedByAnEnsNameShowsItUntilTheNameNoLongerPointsToIt() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val savings = Account(
+            Address.of("0x" + "ef".repeat(20)),
+            AccountKind.EOA,
+            "savings.eth",
+            AccountCustody.Watched,
+            ensName = "savings.eth",
+        )
+        repository.accounts = listOf(savings)
+        names.names["savings.eth"] = NameResolution.Resolved("savings.eth", savings.address, 90)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val named = (viewModel.uiState.value as AccountsUiState.Ready).accounts.single()
+        assertEquals("savings.eth", named.label)
+        assertEquals(null, named.nameNote)
+
+        // Checked again after the interval: the name points elsewhere now.
+        names.names["savings.eth"] = NameResolution.Resolved("savings.eth", daily.address, 140)
+        advanceTimeBy(10.minutes + 1.seconds)
+        val moved = (viewModel.uiState.value as AccountsUiState.Ready).accounts.single()
+        assertEquals(shortAddress(Eip55.format(savings.address)), moved.label)
+        assertEquals("ENS name “savings.eth” no longer points to this address", moved.nameNote)
     }
 
     private class FakeAccountRepository : AccountRepository {

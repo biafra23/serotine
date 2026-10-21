@@ -180,6 +180,17 @@ private fun WatchNameUnavailablePreview() = WatchPreview(
     ),
 )
 
+@Preview
+@Composable
+private fun WatchNameResolvedNoNamePreview() = WatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        name = "",
+        addressNote = "Resolves to $SAVINGS, verified at finalized block 8,412,240",
+        nameDefault = "savings-example.eth",
+    ),
+)
+
 /** Every preview above, which WatchScreenPreviewsTest renders: a new preview goes in here too. */
 internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchEmptyPreview() },
@@ -199,4 +210,5 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchNameResolvedPreview() },
     { WatchNameMovedPreview() },
     { WatchNameUnavailablePreview() },
+    { WatchNameResolvedNoNamePreview() },
 )

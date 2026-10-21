@@ -21,12 +21,14 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveSafe
@@ -38,6 +40,7 @@ import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
+import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeRecovery
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
@@ -46,6 +49,7 @@ import eth.serotine.ui.MemorySafeTxQueue
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.shortAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -75,6 +79,7 @@ class AccountDetailViewModelTest {
         AccountCustody.InKeyStore,
     )
     private val accounts = FakeAccounts(daily)
+    private val names = FakeNames()
     private val balances = FakeBalances()
     private val usdc =
         Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc", PriceId("USDC"))
@@ -109,6 +114,7 @@ class AccountDetailViewModelTest {
         ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
         Network.SEPOLIA,
+        ObserveEnsNames(accounts, names),
         formatTime = { "<$it>" },
     )
 
@@ -210,6 +216,28 @@ class AccountDetailViewModelTest {
         accounts.accounts.value = emptyList()
         runCurrent()
         assertEquals(AccountDetailUiState.Gone, viewModel.uiState.value)
+    }
+
+    @Test
+    fun aNameThatFollowsAnEnsNameGivesWayToTheAddressOnceTheNameMoves() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        names.names["daily.eth"] = NameResolution.Resolved("daily.eth", daily.address, 90)
+        accounts.accounts.value = listOf(daily.copy(label = "daily.eth", ensName = "daily.eth"))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        val named = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals("daily.eth", named.label)
+        assertEquals(null, named.nameNote)
+
+        // The name now points nowhere: the screen opened again checks it at once.
+        names.names["daily.eth"] = NameResolution.NoAddress
+        val again = viewModel()
+        backgroundScope.launch { again.uiState.collect {} }
+        runCurrent()
+        val moved = again.uiState.value as AccountDetailUiState.Ready
+        assertEquals(shortAddress(Eip55.format(daily.address)), moved.label)
+        assertEquals("ENS name “daily.eth” no longer points to this address", moved.nameNote)
     }
 
     @Test
@@ -575,6 +603,7 @@ class AccountDetailViewModelTest {
             ObserveKnownTokens(catalog, userTokens, metadata),
             SetTokenHidden(userTokens),
             Network.SEPOLIA,
+            ObserveEnsNames(accounts, names),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

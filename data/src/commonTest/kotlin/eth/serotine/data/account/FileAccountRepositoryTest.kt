@@ -40,6 +40,13 @@ class FileAccountRepositoryTest {
         Account(Address.of("0x" + "bb".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
     private val watched =
         Account(Address.of("0x" + "dd".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched)
+    private val byName = Account(
+        Address.of("0x" + "ee".repeat(20)),
+        AccountKind.EOA,
+        "savings.eth",
+        AccountCustody.Watched,
+        ensName = "savings.eth",
+    )
 
     private fun TestScope.repository(at: Path = file) =
         FileAccountRepository(at.toString(), StandardTestDispatcher(testScheduler))
@@ -82,22 +89,25 @@ class FileAccountRepositoryTest {
     }
 
     @Test
-    fun theFileIsVersionedAndHoldsAddressesKindsLabelsAndCustodyOnly() = runTest {
+    fun theFileIsVersionedAndHoldsAddressesKindsLabelsCustodyAndEnsNamesOnly() = runTest {
         repository().add(eoa)
         repository().add(watched)
+        repository().add(byName)
 
         assertEquals(
-            """{"version":2,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
+            """{"version":3,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
                 """"kind":"EOA","label":"Account 1","custody":"key-store"},""" +
                 """{"address":"0xdddddddddddddddddddddddddddddddddddddddd",""" +
-                """"kind":"EOA","label":"Savings","custody":"watched"}]}""",
+                """"kind":"EOA","label":"Savings","custody":"watched"},""" +
+                """{"address":"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",""" +
+                """"kind":"EOA","label":"savings.eth","custody":"watched","ens":"savings.eth"}]}""",
             text(file),
         )
-        assertEquals(AccountList.Loaded(listOf(eoa, watched)), repository().observeAccounts().first())
+        assertEquals(AccountList.Loaded(listOf(eoa, watched, byName)), repository().observeAccounts().first())
     }
 
     @Test
-    fun aFormatOneFileReadsAsAccountsInTheKeyStoreAndIsWrittenAsFormatTwo() = runTest {
+    fun aFormatOneFileReadsAsAccountsInTheKeyStoreAndIsWrittenAsTheCurrentFormat() = runTest {
         // Format 1 knew no custody: every account in it came from a recovery phrase.
         put(
             file,
@@ -108,8 +118,47 @@ class FileAccountRepositoryTest {
 
         assertEquals(AccountList.Loaded(listOf(eoa)), repository.observeAccounts().first())
         assertEquals(AccountAdd.Added, repository.add(watched))
-        assertTrue(text(file).startsWith("""{"version":2,"""))
+        assertTrue(text(file).startsWith("""{"version":3,"""))
         assertEquals(AccountList.Loaded(listOf(eoa, watched)), repository().observeAccounts().first())
+    }
+
+    @Test
+    fun aFormatTwoFileReadsAsNamesThatFollowNoEnsName() = runTest {
+        put(
+            file,
+            """{"version":2,"accounts":[{"address":"0xdddddddddddddddddddddddddddddddddddddddd",""" +
+                """"kind":"EOA","label":"Savings","custody":"watched"}]}""",
+        )
+        val repository = repository()
+
+        assertEquals(AccountList.Loaded(listOf(watched)), repository.observeAccounts().first())
+        assertEquals(AccountAdd.Added, repository.add(byName))
+        assertTrue(text(file).startsWith("""{"version":3,"""))
+        assertEquals(AccountList.Loaded(listOf(watched, byName)), repository().observeAccounts().first())
+    }
+
+    @Test
+    fun aRenameMakesTheNameTheUsersAndSurvivesARestart() = runTest {
+        val repository = repository()
+        repository.add(byName)
+
+        assertEquals(AccountChange.Changed, repository.rename(byName.address, "Savings"))
+        val renamed = byName.copy(label = "Savings", ensName = null)
+        assertEquals(AccountList.Loaded(listOf(renamed)), repository().observeAccounts().first())
+    }
+
+    @Test
+    fun anEntryWhoseNameIsNotTheEnsNameItFollowsIsDamage() = runTest {
+        put(
+            file,
+            """{"version":3,"accounts":[{"address":"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",""" +
+                """"kind":"EOA","label":"Savings","custody":"watched","ens":"savings.eth"}]}""",
+        )
+
+        assertEquals(
+            AccountList.Loaded(emptyList(), damagedListSetAside = true),
+            repository().observeAccounts().first(),
+        )
     }
 
     @Test
@@ -209,7 +258,7 @@ class FileAccountRepositoryTest {
 
     @Test
     fun aNewerFormatIsLeftUntouchedAndNothingIsAdded() = runTest {
-        val newer = """{"version":3,"accounts":[],"wallets":[]}"""
+        val newer = """{"version":4,"accounts":[],"wallets":[]}"""
         put(file, newer)
         val repository = repository()
 

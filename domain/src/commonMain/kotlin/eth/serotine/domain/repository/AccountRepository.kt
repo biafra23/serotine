@@ -28,10 +28,11 @@ interface AccountRepository {
     suspend fun add(account: Account): AccountAdd
 
     /**
-     * Gives the entry under [address] the name [label], keeping everything else about it
-     * ([AccountChange.Changed]); or, when no entry has that address, changes nothing
-     * ([AccountChange.NotFound]); or, when the list cannot be stored or is
-     * [AccountList.Unreadable], changes nothing ([AccountChange.NotSaved]). [label] follows
+     * Gives the entry under [address] the name [label], the user's own from then on (its
+     * [Account.ensName] cleared), keeping everything else about it ([AccountChange.Changed]);
+     * or, when no entry has that address, changes nothing ([AccountChange.NotFound]); or, when
+     * the list cannot be stored or is [AccountList.Unreadable], changes nothing
+     * ([AccountChange.NotSaved]). [label] follows
      * [Account.label]'s rule: a blank one is the caller's error and throws. Never throws
      * otherwise.
      */
