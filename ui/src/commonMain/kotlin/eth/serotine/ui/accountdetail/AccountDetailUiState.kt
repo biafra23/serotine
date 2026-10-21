@@ -70,6 +70,17 @@ sealed interface AccountDetailUiState {
         /** Why Swap cannot be done from this account, and how to get there; null when it can. */
         val swapReason: String?
             get() = swapBlockedReason(kind, control)
+
+        /**
+         * Whether the screen shows the [assets]: always, but for a Safe's Owners and Queue
+         * [segment]. The top bar's menu offers the other [sort] order while it does.
+         */
+        val showsAssets: Boolean
+            get() = when (segment) {
+                DetailSegment.ASSETS -> true
+                DetailSegment.OWNERS -> safe == null
+                DetailSegment.QUEUE -> queue == null
+            }
     }
 
     /** The account is not in the wallet (removed): the screen leaves. */
@@ -162,7 +173,7 @@ sealed interface SafeDetails {
  */
 data class OwnerRow(val address: String, val label: String?, val heldHere: Boolean)
 
-/** How the asset rows are ordered (docs/wallet-ux.md, screen 4: Sort: Value | Name). */
+/** How the asset rows are ordered (docs/wallet-ux.md, screen 4: Sort by value / by name). */
 enum class AssetSort {
     /** Highest value first; the assets without a price follow the priced ones, by name. */
     VALUE,

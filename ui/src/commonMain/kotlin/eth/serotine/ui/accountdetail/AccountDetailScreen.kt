@@ -157,7 +157,8 @@ fun AccountDetailRoute(
  * balance, address and control, Send (where it can send), Receive and Activity (the
  * transactions this device sent for it, [onActivity]) as buttons, and Copy,
  * Rename and Remove in the top bar's menu, so none of them depends on the long press of the
- * account list. [onSend] opens Send with the token at a contract chosen, or the network's
+ * account list; while the asset rows are shown, the menu also sorts them the other way
+ * ([onSort]). [onSend] opens Send with the token at a contract chosen, or the network's
  * currency (null). A Safe's Queue opens a transaction through [onOpenSafeTx] by its hash, and
  * Import a request through [onImportRequest].
  */
@@ -224,8 +225,17 @@ fun AccountDetailScreen(
                         IconButton(onClick = { menu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
                         }
+                        // The order of the rows, offered while they are shown: the other order than the current one.
+                        val sort = if (!state.showsAssets) {
+                            null
+                        } else if (state.sort == AssetSort.VALUE) {
+                            MenuAction("Sort by name", SerotineIcons.Sort) { onSort(AssetSort.NAME) }
+                        } else {
+                            MenuAction("Sort by value", SerotineIcons.Sort) { onSort(AssetSort.VALUE) }
+                        }
                         ActionDropdown(
-                            actions = listOf(
+                            actions = listOfNotNull(
+                                sort,
                                 MenuAction("Copy address", SerotineIcons.ContentCopy) { copy(state.address) },
                                 MenuAction("Rename", Icons.Filled.Edit, onClick = onRename),
                                 MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove),
@@ -260,7 +270,6 @@ fun AccountDetailScreen(
                         scope.launch { snackbar.showSnackbar("Contract address copied") }
                     },
                     onHideToken = { asset -> asset.contract?.let { onHideToken(it, asset.symbol) } },
-                    onSort = onSort,
                     onSegment = onSegment,
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
@@ -280,7 +289,6 @@ private fun Details(
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
-    onSort: (AssetSort) -> Unit,
     onSegment: (DetailSegment) -> Unit,
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
@@ -365,15 +373,11 @@ private fun Details(
         }
         val safe = state.safe
         if (safe != null) SegmentChoice(state.segment, state.queue, onSegment)
-        val queue = state.queue
+        // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
-            safe != null && state.segment == DetailSegment.OWNERS -> SafeOwners(safe)
-            queue != null && state.segment == DetailSegment.QUEUE ->
-                SafeQueueList(queue, onOpenSafeTx, onImportRequest)
-            else -> {
-                SortChoice(state.sort, onSort)
-                Assets(state, onSend, onSwap, onCopyContract, onHideToken)
-            }
+            state.showsAssets -> Assets(state, onSend, onSwap, onCopyContract, onHideToken)
+            state.segment == DetailSegment.OWNERS -> SafeOwners(checkNotNull(safe))
+            else -> SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest)
         }
     }
 }
@@ -550,22 +554,6 @@ private fun SafeOwners(safe: SafeDetails) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-    }
-}
-
-/** Sort: Value | Name (docs/wallet-ux.md, screen 4). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SortChoice(sort: AssetSort, onSort: (AssetSort) -> Unit) {
-    SingleChoiceSegmentedButtonRow {
-        AssetSort.entries.forEachIndexed { index, order ->
-            SegmentedButton(
-                selected = sort == order,
-                onClick = { onSort(order) },
-                shape = SegmentedButtonDefaults.itemShape(index, AssetSort.entries.size),
-                label = { Text(if (order == AssetSort.VALUE) "Value" else "Name") },
-            )
         }
     }
 }

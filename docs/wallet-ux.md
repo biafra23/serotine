@@ -183,8 +183,10 @@ upgrades*).
      Swap, 22, greyed out, a tap saying why, when watch-only; on a Safe,
      Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
      swap*; Activity opens 25).
-   - Sort: Value | Name. Under Value, assets without a price follow the
-     priced ones, by name; a stale price sorts by the value it shows.
+   - Sorted by value, highest first: assets without a price follow the
+     priced ones, by name; a stale price sorts by the value it shows. The
+     top bar's menu sorts by name instead ("Sort by name", then "Sort by
+     value" back), offered while the asset rows are shown.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
      tap opens Send (7) with the asset chosen; where Send cannot be done
      (as in 3) the row is drawn as ever and the tap says why, as the
