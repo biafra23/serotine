@@ -27,6 +27,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
@@ -113,6 +114,7 @@ class ActivityViewModelTest {
             ObserveSafeHistory(index, starts),
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
+            ObserveSentToAddresses(history),
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -480,6 +482,31 @@ class ActivityViewModelTest {
             "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
                 "its token transfers. ETH it received, and transactions sent from it elsewhere, are not listed yet.",
             shown.coverage,
+        )
+    }
+
+    @Test
+    fun aTransferReceivedFromAnAddressNeverSentToIsCautionedAndOneSentToIsNot() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val lookAlike = Address.of("0x5aae" + "0".repeat(31) + "beaed")
+        index.logs = listOf(
+            tokenLog(usdc.address, 9_401_000, lookAlike, alice.address, word("f4240"), "0x" + "e1".repeat(32)),
+            tokenLog(usdc.address, 9_402_000, bob, alice.address, word("f4240"), "0x" + "e2".repeat(32)),
+            tokenLog(usdc.address, 9_403_000, treasury.address, alice.address, word("f4240"), "0x" + "e3".repeat(32)),
+        )
+        // Alice sent to Bob before; the treasury is an account of the wallet.
+        history.entries.value = listOf(HistoryEntry(token))
+
+        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+            .filter { it.title == "Received 1 USDC" }
+
+        assertEquals(listOf(ActivityState.DONE, ActivityState.DONE, ActivityState.CAUTION), rows.map { it.state })
+        assertEquals(
+            "From an address you have not sent to: compare every character before you copy it",
+            rows.last().status,
         )
     }
 

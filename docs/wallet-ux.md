@@ -649,7 +649,15 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       and not the other side, and is marked as unconfirmed. A transfer of
       nothing is left out: anyone can have a token log one from any address,
       which plants a look-alike address in a history. An added token whose
-      symbol is a built-in token's warns, as every screen does. By block like
+      symbol is a built-in token's warns, as every screen does. One received
+      from an address this wallet never sent to and that is none of its
+      accounts (`ObserveSentToAddresses`: the recipients of the transfers
+      and Safe transactions its accounts sent, approved or executed) is
+      cautioned, "From an address you have not sent to: compare every
+      character before you copy it" (owner's request on #136, 2026-10-21):
+      anyone can send a little from a look-alike of an address the user
+      uses, so that it is copied from the history later. ETH a Safe
+      received is cautioned alike. By block like
       the events, opening its detail (26); the transfer a row sent from here, in
       a block, already says (its token, amount and recipient, or the amount
       sold in a swap) is that row alone.
@@ -692,6 +700,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       others already).
     - A Safe's event: what it names (the sender of ETH received, an owner,
       a module, a guard, a handler, the hashes), and the Safe.
+    - A transfer whose row is cautioned about its sender says why beside
+      its fields: the sender is none of the user's accounts and was never
+      sent to from this device, and a look-alike is compared in full before
+      anything is sent to it.
     - One no longer there (a reorganisation replaced its block, once every
       block from the history's start is checked again) says so; while the
       blocks it is in are still being checked, or its history cannot be

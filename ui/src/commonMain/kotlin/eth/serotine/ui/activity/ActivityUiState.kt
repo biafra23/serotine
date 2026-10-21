@@ -73,4 +73,10 @@ enum class ActivityState {
 
     /** Done on chain, and what it did can move a Safe's funds without its owners. */
     WARNING,
+
+    /**
+     * Done on chain, received from an address the user has not sent to and that is none of their
+     * accounts: it may be a look-alike, planted for them to copy.
+     */
+    CAUTION,
 }

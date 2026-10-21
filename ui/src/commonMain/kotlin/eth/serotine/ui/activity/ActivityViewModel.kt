@@ -7,7 +7,6 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
-import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
@@ -19,6 +18,7 @@ import eth.serotine.domain.usecase.IndexedHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
@@ -36,9 +36,10 @@ import kotlinx.coroutines.flow.stateIn
  * wallet, what the engine's verified log index holds of it: every token transfer to or from it
  * ([ObserveTokenTransfers]) and, for a Safe, its own events ([ObserveSafeHistory]). The names the
  * wallet gives the addresses they concern come from [ObserveAccounts], the tokens' symbols and
- * decimals from the tokens it knows ([ObserveKnownTokens]). A log of a transaction listed as sent,
- * in a block, is left out when its row says the same. [formatTime] dates each in the user's own
- * time zone. No intents: a row opens its detail, which is navigation.
+ * decimals from the tokens it knows ([ObserveKnownTokens]); a transfer received from an address the
+ * wallet never sent to ([ObserveSentToAddresses]) and that is none of its accounts is cautioned. A
+ * log of a transaction listed as sent, in a block, is left out when its row says the same.
+ * [formatTime] dates each in the user's own time zone. No intents: a row opens its detail, which is navigation.
  */
 class ActivityViewModel(
     private val address: Address,
@@ -47,19 +48,26 @@ class ActivityViewModel(
     observeSafeHistory: ObserveSafeHistory,
     observeTokenTransfers: ObserveTokenTransfers,
     observeKnownTokens: ObserveKnownTokens,
+    observeSentTo: ObserveSentToAddresses,
     network: Network,
     formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
     private val rows = ActivityRows(address, network, formatTime)
 
-    private val sources =
-        ActivitySources(address, observeAccounts, observeSafeHistory, observeTokenTransfers, observeKnownTokens)
+    private val sources = ActivitySources(
+        address,
+        observeAccounts,
+        observeSafeHistory,
+        observeTokenTransfers,
+        observeKnownTokens,
+        observeSentTo,
+    )
 
     val uiState: StateFlow<ActivityUiState> =
         combine(
             observeAccountHistory(address),
-            sources.accounts,
+            sources.parties,
             sources.safeHistory,
             sources.transfers,
             sources.tokens,
@@ -72,12 +80,12 @@ class ActivityViewModel(
 
     private fun render(
         history: HistoryList,
-        list: AccountList,
+        parties: Parties,
         safe: IndexedHistory<SafeChainEvent>?,
         transfers: IndexedHistory<TokenTransferEvent>?,
         tokens: Map<Address, KnownToken>?,
     ): ActivityUiState {
-        val names = sources.namesOf(list)
+        val names = parties.names
         val title = sources.titleOf(names)
         val entries = when (history) {
             HistoryList.Unreadable -> return ActivityUiState.Unavailable(title, UNREADABLE)
@@ -92,13 +100,13 @@ class ActivityViewModel(
         val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
         val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
             .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
-            .map { rows.eventRow(it, names) to it }
+            .map { rows.eventRow(it, parties) to it }
         // Until the tokens are known, a transfer's amount cannot be said: none is listed yet.
         val tokenEvents = (transfers as? IndexedHistory.Read)?.events.orEmpty()
             .takeIf { tokens != null }.orEmpty()
             .filterNot { it.transfer.movesNothing() }
             .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
-            .map { rows.transferRow(it, names, tokens.orEmpty()) to it }
+            .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
         val events = (safeEvents + tokenEvents)
             .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
                 .thenByDescending { it.second.logIndex })

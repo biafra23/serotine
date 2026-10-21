@@ -10,6 +10,7 @@ import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
@@ -17,6 +18,7 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.shortAddress
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -26,7 +28,8 @@ import kotlinx.coroutines.flow.onStart
 /**
  * What the Activity of the account at [address] and the detail of its rows are read from, besides
  * its sent transactions (docs/wallet-ux.md, screens 25 and 26): one place, so a row and its detail
- * are read alike. Cold flows: each collector reads them anew.
+ * are read alike. Cold flows: each collector reads them anew. [observeSentTo] gives the addresses
+ * the wallet sent to ([Parties.familiar]).
  */
 internal class ActivitySources(
     private val address: Address,
@@ -34,9 +37,12 @@ internal class ActivitySources(
     observeSafeHistory: ObserveSafeHistory,
     observeTokenTransfers: ObserveTokenTransfers,
     observeKnownTokens: ObserveKnownTokens,
+    observeSentTo: ObserveSentToAddresses,
 ) {
-    /** The wallet's accounts, whose names the rows give the addresses they concern. */
-    val accounts: Flow<AccountList> = observeAccounts()
+    private val accounts: Flow<AccountList> = observeAccounts()
+
+    /** The wallet's accounts and the addresses it sent to: whom the rows name, and which senders they caution about. */
+    val parties: Flow<Parties> = combine(accounts, observeSentTo(), ::Parties)
 
     /** The account's kind while it is in the wallet; null while it is not. */
     private val kind = accounts
@@ -63,10 +69,6 @@ internal class ActivitySources(
         .map<KnownTokenList, Map<Address, KnownToken>?> { list -> list.tokens.associateBy { it.token.address } }
         .onStart { emit(null) }
 
-    /** The wallet's names for addresses, by address. */
-    fun namesOf(list: AccountList): Map<Address, String> =
-        (list as? AccountList.Loaded)?.accounts.orEmpty().associate { it.address to it.label }
-
     /** The account's name, or its short address while it is not in the wallet. */
     fun titleOf(names: Map<Address, String>): String = names[address] ?: shortTitle
 
@@ -81,3 +83,22 @@ internal class ActivitySources(
  * in a history for the user to copy. Neither listed nor detailed.
  */
 internal fun TokenTransfer.movesNothing(): Boolean = this is TokenTransfer.Fungible && amount.isZero
+
+/**
+ * The wallet's accounts as [list] holds them, and the addresses it has sent to ([sentTo],
+ * `ObserveSentToAddresses`): the names rows give addresses, and the senders they trust.
+ */
+internal class Parties(val list: AccountList, private val sentTo: Set<Address>) {
+
+    /** The wallet's names for addresses, by address; none while the accounts cannot be read. */
+    val names: Map<Address, String> =
+        (list as? AccountList.Loaded)?.accounts.orEmpty().associate { it.address to it.label }
+
+    /**
+     * Whether a transfer from [sender] is from someone the user deals with: one of the wallet's
+     * accounts, an address it sent to, or none (the zero address, a mint). Any other sender may be a
+     * look-alike of an address the user uses, sending a little so that it is copied from the history
+     * later (owner's request on #136, 2026-10-21): its rows and detail caution about it.
+     */
+    fun familiar(sender: Address): Boolean = sender == Address.ZERO || sender in names || sender in sentTo
+}

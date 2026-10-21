@@ -41,13 +41,16 @@ internal class ActivityRows(
      * wallet shows has its transfer said as one: an unlisted contract can log any transfer it likes,
      * between any addresses, so its row says that the contract logged one, names the contract and
      * not the other side, and is marked as unconfirmed. A token the user added whose symbol is a
-     * built-in token's says it is another contract, as every screen does.
+     * built-in token's says it is another contract, as every screen does. One received from a
+     * sender the user does not deal with ([Parties.familiar]) is cautioned: the sender may be a
+     * look-alike of an address the user uses, planted for them to copy.
      */
     fun transferRow(
         event: TokenTransferEvent,
-        names: Map<Address, String>,
+        parties: Parties,
         tokens: Map<Address, KnownToken>,
     ): ActivityRow {
+        val names = parties.names
         val transfer = event.transfer
         val contract = shortAddress(Eip55.format(transfer.token))
         val listed = tokens[transfer.token]
@@ -96,16 +99,22 @@ internal class ActivityRows(
             Direction.IN -> Triple("Received $what", transfer.from, "From ${named(transfer.from, names)}")
             Direction.OUT -> Triple("Sent $what", transfer.to, "To ${named(transfer.to, names)}")
         }
-        return if (known.sharesBuiltInSymbol) {
-            row.copy(
+        return when {
+            known.sharesBuiltInSymbol -> row.copy(
                 title = title,
                 detail = "$detail · token $contract",
                 about = Eip55.format(other),
                 status = "Not the built-in $symbol: another contract",
                 state = ActivityState.WARNING,
             )
-        } else {
-            row.copy(title = title, detail = detail, about = Eip55.format(other))
+            direction == Direction.IN && !parties.familiar(transfer.from) -> row.copy(
+                title = title,
+                detail = detail,
+                about = Eip55.format(other),
+                status = UNFAMILIAR_SENDER,
+                state = ActivityState.CAUTION,
+            )
+            else -> row.copy(title = title, detail = detail, about = Eip55.format(other))
         }
     }
 
@@ -122,9 +131,9 @@ internal class ActivityRows(
         return names[other]?.let { "$it · $short" } ?: short
     }
 
-    /** A Safe's [event] as a row. */
-    fun eventRow(event: SafeChainEvent, names: Map<Address, String>): ActivityRow {
-        fun named(other: Address): String = named(other, names)
+    /** A Safe's [event] as a row; ETH received from a sender the user does not deal with is cautioned. */
+    fun eventRow(event: SafeChainEvent, parties: Parties): ActivityRow {
+        fun named(other: Address): String = named(other, parties.names)
         val (title, other, detail) = when (val what = event.event) {
             is SafeEvent.SetUp ->
                 Triple("Set up", address, "${what.threshold} of ${owners(what.owners.size.toLong())} must sign")
@@ -162,7 +171,12 @@ internal class ActivityRows(
             )
             is SafeEvent.MessageSigned -> Triple("Signed a message", address, "Message ${shortHash(what.messageHash)}")
         }
-        val (status, state) = statusOf(event.event)
+        val received = event.event as? SafeEvent.Received
+        val (status, state) = if (received != null && !parties.familiar(received.from)) {
+            UNFAMILIAR_SENDER to ActivityState.CAUTION
+        } else {
+            statusOf(event.event)
+        }
         return ActivityRow(
             key = "${event.transactionHash}:${event.logIndex}",
             title = title,
@@ -301,6 +315,7 @@ internal class ActivityRows(
         const val CONTRADICTED = "The claim of a built-in token whose contract says otherwise: what moved is not shown"
         const val FAILED_ON_CHAIN = "Failed on chain: its call reverted"
         const val MODULE_WARNING = "A module can move this Safe's funds without its owners"
+        const val UNFAMILIAR_SENDER = "From an address you have not sent to: compare every character before you copy it"
         const val HANDLER_WARNING = "Not the pinned fallback handler: it answers signature checks for this Safe"
     }
 }

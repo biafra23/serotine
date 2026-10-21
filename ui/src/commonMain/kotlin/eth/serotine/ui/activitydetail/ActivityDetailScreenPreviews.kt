@@ -16,6 +16,7 @@ private const val BOB = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 private const val TREASURY = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
 private const val USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
 private const val UNLISTED = "0x8617E340B3D01FA5F11F306F4090FD50E238070D"
+private const val STRANGER = "0x52908400098527886E0F7030069857D2E4169EE7"
 
 private val sent = ActivityDetailUiState.Shown(
     title = "Alice",
@@ -68,6 +69,25 @@ private val unlisted = ActivityDetailUiState.Shown(
     addToken = UNLISTED,
 )
 
+private val unfamiliarSender = ActivityDetailUiState.Shown(
+    title = "Alice",
+    headline = "Received 0.01 USDC",
+    about = STRANGER,
+    status = "From an address you have not sent to: compare every character before you copy it",
+    state = ActivityState.CAUTION,
+    fields = listOf(
+        DetailField("From", STRANGER, DetailKind.ADDRESS),
+        DetailField("To", ALICE, DetailKind.ADDRESS, "Alice"),
+        DetailField("Amount", "0.01 USDC"),
+        DetailField("Token contract", USDC, DetailKind.ADDRESS, "USDC"),
+        DetailField("Transaction hash", "0x" + "f".repeat(64), DetailKind.HASH),
+        DetailField("Block", "9,418,200"),
+    ),
+    note = "You have not sent to the sender's address from this device, and it is not one of your accounts. " +
+        "Anyone can send you a little from an address made to look like one you use, so that you copy it from " +
+        "your history later: compare every character before you send anything to it.",
+)
+
 private val safeEvent = ActivityDetailUiState.Shown(
     title = "Treasury",
     headline = "Module enabled",
@@ -114,6 +134,10 @@ private fun ActivityDetailUnlistedTokenPreview() = ActivityDetailPreview(unliste
 
 @Preview
 @Composable
+private fun ActivityDetailUnfamiliarSenderPreview() = ActivityDetailPreview(unfamiliarSender)
+
+@Preview
+@Composable
 private fun ActivityDetailSafeEventPreview() = ActivityDetailPreview(safeEvent)
 
 @Preview
@@ -138,4 +162,5 @@ internal val activityDetailScreenPreviews: List<@Composable () -> Unit> = listOf
     { ActivityDetailSafeEventPreview() },
     { ActivityDetailLoadingPreview() },
     { ActivityDetailUnavailablePreview() },
+    { ActivityDetailUnfamiliarSenderPreview() },
 )

@@ -87,6 +87,16 @@ private const val ACCOUNT_COVERAGE = "Transactions sent from this device. On cha
 /** An account's token transfers among a transaction sent from here. */
 private val tokenRows = listOf(
     ActivityRow(
+        key = "0x" + "f".repeat(64) + ":1",
+        title = "Received 0.01 USDC",
+        detail = "From 0x5290…9EE7",
+        about = "0x52908400098527886E0F7030069857D2E4169EE7",
+        time = "Block 9,418,200",
+        status = "From an address you have not sent to: compare every character before you copy it",
+        state = ActivityState.CAUTION,
+        opens = ActivityKey("0x" + "f".repeat(64), 1),
+    ),
+    ActivityRow(
         key = "0x" + "b".repeat(64) + ":2",
         title = "Received 250 USDC",
         detail = "From Treasury · 0xfB69…d359",

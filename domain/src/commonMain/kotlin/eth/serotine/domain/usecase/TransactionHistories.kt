@@ -1,6 +1,8 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.SafeTxAction
+import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.NonceReading
@@ -18,6 +20,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -185,6 +188,34 @@ class ObserveAccountHistory(private val history: TransactionHistory) {
             )
             HistoryList.Unreadable -> list
         }
+    }
+}
+
+/**
+ * The addresses this wallet has sent to, as this device's history of its transactions holds them
+ * (owner's request on #136, 2026-10-21: incoming transfers from any other address are cautioned):
+ * the recipient of each transfer any of its accounts sent, and of each Safe transaction one of them
+ * approved or executed (its ETH or token transfer, decoded as the Safe transaction screen decodes
+ * it; a call of anything else names no recipient). Empty while the history cannot be read, so that
+ * no sender passes for one sent to.
+ */
+class ObserveSentToAddresses(private val history: TransactionHistory) {
+    operator fun invoke(): Flow<Set<Address>> = history.observe()
+        .map { list -> (list as? HistoryList.Loaded)?.entries.orEmpty().mapNotNullTo(HashSet()) { it.recipient() } }
+        .distinctUntilChanged()
+
+    /** Whom this transaction sent value to, when it is a transfer: the account's own or its Safe's. */
+    private fun HistoryEntry.recipient(): Address? = when (val action = transfer.action) {
+        is SentAction.Transfer -> action.to
+        is SentAction.SafeApproval -> action.request.recipient()
+        is SentAction.SafeExecution -> action.request.recipient()
+        is SentAction.TokenApproval, is SentAction.Swap, is SentAction.SafeDeployment -> null
+    }
+
+    private fun SigningRequest.recipient(): Address? = when (val action = SafeTxAction.of(safe, tx)) {
+        is SafeTxAction.NativeTransfer -> action.to
+        is SafeTxAction.TokenTransfer -> action.to
+        else -> null
     }
 }
 

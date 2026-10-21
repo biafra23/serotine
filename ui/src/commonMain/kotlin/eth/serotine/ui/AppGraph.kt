@@ -58,6 +58,7 @@ import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
@@ -380,6 +381,7 @@ class AppGraph(
         ObserveSafeHistory(logIndex, historyStarts),
         ObserveTokenTransfers(logIndex, historyStarts),
         knownTokens(),
+        ObserveSentToAddresses(transactionHistory),
         network,
     )
 
@@ -395,6 +397,7 @@ class AppGraph(
         ObserveSafeHistory(logIndex, historyStarts),
         ObserveTokenTransfers(logIndex, historyStarts),
         knownTokens(),
+        ObserveSentToAddresses(transactionHistory),
         network,
     )
 

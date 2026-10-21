@@ -26,6 +26,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
@@ -101,6 +102,7 @@ class ActivityDetailViewModelTest {
             ObserveSafeHistory(index, starts),
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
+            ObserveSentToAddresses(history),
             Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -218,6 +220,8 @@ class ActivityDetailViewModelTest {
         val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(ActivityKey(tx, 3)).uiState.value)
 
         assertEquals("Received 40 USDC", shown.headline)
+        assertEquals(ActivityState.CAUTION, shown.state, "Bob was never sent to")
+        assertTrue(shown.note.orEmpty().startsWith("You have not sent to the sender's address"))
         assertEquals(
             listOf(
                 DetailField("From", Eip55.format(bob), DetailKind.ADDRESS),
@@ -230,6 +234,11 @@ class ActivityDetailViewModelTest {
             shown.fields,
         )
         assertNull(shown.addToken)
+
+        history.entries.value = listOf(HistoryEntry(sent))
+        val familiar = assertIs<ActivityDetailUiState.Shown>(viewModel(ActivityKey(tx, 3)).uiState.value)
+        assertEquals(ActivityState.DONE, familiar.state, "once sent to, Bob is familiar")
+        assertNull(familiar.note)
     }
 
     @Test
