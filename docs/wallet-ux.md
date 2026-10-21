@@ -295,9 +295,11 @@ upgrades*).
       that ENS name (`Account.ensName`, issue #67) until the user renames it:
       the name field says so and shows the name. Wherever the name is shown
       (Accounts rows, the account's header) it is resolved again, at once and
-      every 10 minutes (`ObserveEnsNames`); once a verified answer says it no
-      longer points to the account, the row and header show the short address
-      and say why. A name with no verified answer right now stands as last
+      every 10 minutes (every 30 s until a first verified answer,
+      `ObserveEnsNames`); once a verified answer says it no longer points to
+      the account, or that it can no longer be verified to (its resolver
+      answers only off-chain), the row and header show the short address and
+      say why. A name with no verified answer right now stands as last
       verified. Primary names (the reverse record, any account) are still to
       come in #67. The zero address is refused: nobody holds its key.
 11. **Import recovery phrase**: today's seed screen, with the account's name,

@@ -241,6 +241,20 @@ class AccountDetailViewModelTest {
     }
 
     @Test
+    fun aNameThatResolvesOnlyOffchainIsSaidToBeUnverifiable() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        names.names["daily.eth"] = NameResolution.OffchainOnly
+        accounts.accounts.value = listOf(daily.copy(label = "daily.eth", ensName = "daily.eth"))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(shortAddress(Eip55.format(daily.address)), ready.label)
+        assertEquals("ENS name “daily.eth” can no longer be verified to point to this address", ready.nameNote)
+    }
+
+    @Test
     fun anUnreadableListIsSaidSo() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         accounts.unreadable.value = true

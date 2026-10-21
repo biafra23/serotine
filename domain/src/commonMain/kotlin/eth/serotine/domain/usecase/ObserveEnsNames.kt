@@ -18,8 +18,9 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Whether the ENS name each account's name follows ([Account.ensName]) still points to the
  * account's address (issue #67): resolved again as Watch resolved it ([NameResolver], against
- * finalized state), at once and then every [interval] while observed, or every [retryDelay]
- * while no verified answer can be had. One reader per account ([readEach]), started when it
+ * finalized state), at once and then every [interval] while observed; every [retryDelay] instead
+ * until the first verified answer, since nothing is known of the name before it, while after it
+ * the answer stands until a verified one replaces it. One reader per account ([readEach]), started when it
  * follows a name and stopped when it no longer does (a rename, a removal). What the Accounts
  * rows and an account's header show of its name.
  */
@@ -48,8 +49,9 @@ class ObserveEnsNames(
             val check = when (val resolved = names.resolve(name)) {
                 is NameResolution.Resolved ->
                     if (resolved.address == address) EnsNameCheck.Verified(resolved.blockNumber) else EnsNameCheck.Moved
-                // Verified answers too: the name has no address, or cannot be resolved here.
-                NameResolution.NoAddress, NameResolution.NotAName, NameResolution.OffchainOnly -> EnsNameCheck.Moved
+                NameResolution.NoAddress -> EnsNameCheck.Moved
+                // Verified answers too, of a name that may still point here through what is not verified.
+                NameResolution.NotAName, NameResolution.OffchainOnly -> EnsNameCheck.Unverifiable
                 is NameResolution.Unavailable -> EnsNameCheck.Unavailable(resolved.reason)
             }
             if (check !is EnsNameCheck.Unavailable) {
@@ -58,7 +60,7 @@ class ObserveEnsNames(
             } else if (verified == null) {
                 emit(check)
             }
-            delay(if (check is EnsNameCheck.Unavailable) retryDelay else interval)
+            delay(if (verified == null) retryDelay else interval)
         }
     }
 }
@@ -70,10 +72,17 @@ sealed interface EnsNameCheck {
     data class Verified(val blockNumber: Long) : EnsNameCheck
 
     /**
-     * A verified answer that it no longer does: it points to another address, to none, or can
-     * no longer be resolved here. The name is then not shown as the account's.
+     * A verified answer that it no longer does: it points to another address, or to none. The
+     * name is then not shown as the account's.
      */
     data object Moved : EnsNameCheck
+
+    /**
+     * A verified answer that it can no longer be resolved here: its resolver answers only
+     * through an off-chain gateway (CCIP-Read), or it is no name this resolver takes. It may
+     * still point to the address, unverifiably, so the name is not shown as the account's.
+     */
+    data object Unverifiable : EnsNameCheck
 
     /** No verified answer yet, for [reason]; once there was one, that answer stands instead. */
     data class Unavailable(val reason: ReadUnavailable) : EnsNameCheck

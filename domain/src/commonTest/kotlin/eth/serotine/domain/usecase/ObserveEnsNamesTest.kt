@@ -57,7 +57,7 @@ class ObserveEnsNamesTest {
     }
 
     @Test
-    fun aNameThatPointsElsewhereOrNowhereHasMoved() = runTest {
+    fun aNameThatPointsElsewhereOrNowhereHasMovedAndOneOnlyOffchainCannotBeVerified() = runTest {
         names.answer = NameResolution.Resolved("savings.eth", elsewhere, 100)
         assertEquals(mapOf(savings to EnsNameCheck.Moved), latest(observe())())
 
@@ -65,7 +65,7 @@ class ObserveEnsNamesTest {
         assertEquals(mapOf(savings to EnsNameCheck.Moved), latest(observe())())
 
         names.answer = NameResolution.OffchainOnly
-        assertEquals(mapOf(savings to EnsNameCheck.Moved), latest(observe())())
+        assertEquals(mapOf(savings to EnsNameCheck.Unverifiable), latest(observe())())
     }
 
     @Test
@@ -95,6 +95,12 @@ class ObserveEnsNamesTest {
         advanceTimeBy(10.minutes + 1.seconds)
         assertEquals(mapOf(savings to EnsNameCheck.Moved), checks(), "not shown as the account's name again")
         assertEquals(2, names.asked.size)
+
+        // With an answer standing, an unverifiable check is retried at the interval, not sooner.
+        advanceTimeBy(9.minutes)
+        assertEquals(2, names.asked.size)
+        advanceTimeBy(1.minutes + 1.seconds)
+        assertEquals(3, names.asked.size)
     }
 
     @Test
