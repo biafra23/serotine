@@ -48,11 +48,15 @@ then reach only the debug app. Both apps install side by side.
 3. **`release`** (v* tags only, `contents: write`, no key) checks the two package
    ids with `aapt2` and uploads both APKs.
 
-It fails closed. Without the secrets, without a pinned certificate, or with a key
+Until the release key is set up, a tag publishes the debug APK alone. A tree
+without `android-app/release-signing-cert.sha256` has no release app to sign:
+`sign-release` is skipped and `release` uploads `Serotine-<tag>-android-debug.apk`
+only. Every earlier run of the `build` job warns while the pin file is missing.
+
+Once the pin is committed, it fails closed. Without the secrets, or with a key
 that doesn't match the pin, `sign-release` fails and `release` is skipped. That
-tag then publishes **no** Android asset, the debug APK included, rather than
-shipping half the pair. Every earlier run of the `build` job warns while the pin
-file is missing.
+tag then publishes **no** Android asset, the debug APK included: a broken key is
+never quietly turned into a debug-only release.
 
 ## One-time setup (owner)
 

@@ -333,9 +333,10 @@ jobs:
           cat > "$notes" <<'NOTES'
           Pre-release build of the Serotine wallet apps.
 
-          **Android (`*-android.apk`)** — the Serotine app, signed with Serotine's own release key
-          (its certificate's SHA-256 is in `android-app/release-signing-cert.sha256` in the
-          repository). Install via "Install unknown apps" and switch that off again afterwards;
+          **Android (`*-android.apk`)**, in a release that has it — the Serotine app, signed with
+          Serotine's own release key (its certificate's SHA-256 is in
+          `android-app/release-signing-cert.sha256` in the repository). A release without it carries
+          only the debug app below. Install via "Install unknown apps" and switch that off again afterwards;
           only ever install Serotine, and its updates, from this releases page.
 
           **Android debug (`*-android-debug.apk`)** — a separate test app ("Serotine Debug", amber

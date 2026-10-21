@@ -408,10 +408,12 @@ file already forbids.
    dependency change like any other and goes through the release PR when the
    owner wants it in the release.
 3. **The Android release key.** `sign-release` (android-apk.yml) signs the
-   release APK on the tag with the key in the `android-release` environment
-   and refuses a tree without `android-app/release-signing-cert.sha256`; until
+   release APK on the tag with the key in the `android-release` environment,
+   and only for a tree with `android-app/release-signing-cert.sha256`; until
    the owner has set that up (docs/android-release-signing.md), a tag publishes
-   the desktop installers and NO Android asset. Say so in the release PR.
+   the desktop installers and the debug APK, and NO release-signed Android app.
+   Once the pin is there, a signing failure publishes no Android asset at all.
+   Say so in the release PR.
 
 Every `v*` tag publishes a pre-release with the signed Android APK, the debug
 APK, the macOS dmgs (arm64 + x64), the Linux debs (x64; arm64 while the
