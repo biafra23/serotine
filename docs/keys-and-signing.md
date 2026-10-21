@@ -458,9 +458,11 @@ its KDoc and returns it as a result the UI shows as state.
     private-key operations. The app's sandbox keeps other apps from the
     state file, which the Mac's design cannot.
   - Argon2id and AES-256-GCM are libsodium's, from the bindings'
-    `libsodium.a`. Argon2id goes through Serotine's own cinterop declaration
-    of `crypto_pwhash`, which takes the password as bytes: the bindings'
-    declaration takes a `const char *`, which Kotlin/Native makes a String.
+    `libsodium.a`. Every call goes through Serotine's own cinterop
+    declarations (`sodium.def`), not the bindings': theirs are published per
+    target only, which the shared iOS code cannot see, and theirs of
+    `crypto_pwhash` takes a `const char *`, which Kotlin/Native makes a
+    String; Serotine's takes the password as bytes.
   - The key directory is excluded from iCloud and computer backups.
   - The factor (`iosHardwareSecret`): on an iPhone it is always the
     enclave, chosen without asking whether it works, so a locked device

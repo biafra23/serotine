@@ -115,8 +115,8 @@ kotlin {
         // the engine's static library inside each target's cinterop klib (iosMain's MyotisNode).
         iosMain.dependencies {
             implementation(libs.myotis.ios)
-            // The key envelope's libsodium (Argon2id, AES-256-GCM) through the bindings'
-            // cinterop, and its libsodium.a, which they link into the app.
+            // The key envelope's libsodium.a (Argon2id, AES-256-GCM), which the bindings' klib
+            // links into the app; the calls are declared in src/nativeInterop/cinterop/sodium.def.
             implementation(libs.libsodium.bindings)
         }
         // The envelope's tests, which need its primitives (EnvelopeCrypto) and so run where
