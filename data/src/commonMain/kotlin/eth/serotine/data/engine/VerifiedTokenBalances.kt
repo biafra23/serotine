@@ -13,7 +13,10 @@ import kotlin.time.Duration
 /**
  * [TokenBalances] over a verified light client: the token contract's `balanceOf(holder)` run
  * as a verified call ([VerifiedChain.call]), polled, cached and refused as [ProvenReads]
- * describes. A call that reverts, or returns anything but one word, is a verified "not a
+ * describes, and called again only at a head that [activity] cannot vouch for: one whose blocks
+ * since the call it did not all check for a log naming the holder, as a transfer's does. (A
+ * token that moves balances without a log naming the holder, such as a rebasing one, is called
+ * again only when something else touches the holder.) A call that reverts, or returns anything but one word, is a verified "not a
  * token" ([TokenBalanceReading.NotAToken]); one the engine refuses for good is
  * [ReadUnavailable.REFUSED]; one it cannot answer right now is unproven. While no head can be
  * read, the last proof, made in this process or kept in [LastBalancesFile] from an earlier one,
@@ -25,6 +28,8 @@ class VerifiedTokenBalances internal constructor(
     pollInterval: Duration,
     /** Where the last balances are kept across restarts; null keeps them for this process only. */
     lastBalances: LastBalancesFile? = null,
+    /** What vouches for an unchanged balance between heads; none: a call at every head. */
+    activity: AddressActivity? = null,
 ) : TokenBalances {
 
     /** One holder's balance of one token. */
@@ -40,6 +45,10 @@ class VerifiedTokenBalances internal constructor(
             units = { it?.decimal },
             parse = TokenUnits::parse,
         ) ?: KeptProofs.none(),
+        // A call whose block the engine did not name (UNKNOWN_BLOCK, negative) is never vouched for.
+        unchangedSince = { key, provenAt, head ->
+            activity?.unchangedSince(key.holder, AddressActivity.Kind.LOG, provenAt, head) == true
+        },
     ) { verified, key ->
         when (val outcome = verified.call(key.token, Abi.balanceOf(key.holder))) {
             is CallOutcome.Returned -> EngineReading.Proven(

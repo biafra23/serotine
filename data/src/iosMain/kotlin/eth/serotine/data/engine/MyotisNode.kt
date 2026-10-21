@@ -93,11 +93,14 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
     private val chain = HandleChain()
 
+    /** Which accounts the verified blocks touched, so a proof stands until one did (Myotis #691). */
+    private val activity = AddressActivity(chain)
+
     /** The balances last verified, kept for after a restart; none kept without a path. */
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
 
     /** Native-currency balances, verified by this node's light client. */
-    val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances, activity)
 
     /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
     val addressKinds: AddressKinds =
@@ -110,7 +113,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
-    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances, activity)
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
@@ -263,7 +266,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         }
     }
 
-    private inner class HandleChain : TransactingChain, LogIndexChain {
+    private inner class HandleChain : TransactingChain, LogIndexChain, ActivityChain {
 
         /**
          * The last snapshot read and when. Every adapter, and each of its subscribers, polls on
@@ -410,6 +413,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         override fun logIndexStatus(): String? = handle()?.logIndexStatusJson()
 
         override fun logs(filterJson: String): String? = handle()?.reads()?.getLogs(filterJson)
+
+        override fun setActivityWatch(configJson: String): Boolean = handle()?.setActivityWatch(configJson) ?: false
+
+        override fun addressActivity(afterBlock: Long): String? = handle()?.addressActivityJson(afterBlock)
 
         // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.
         override fun resolveName(name: String): NameAnswer {
