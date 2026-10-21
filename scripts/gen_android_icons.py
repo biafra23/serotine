@@ -60,7 +60,7 @@ for pattern, why in (
     (r'<(rect|circle|ellipse|line|polyline|polygon|use|image|text)\b',
      'it draws with an element other than <path> (convert it to paths first; it would otherwise be dropped)'),
     (r'fill-rule=', 'it sets a fill-rule (the VectorDrawable renders nonZero; evenodd holes would fill in)'),
-    (r'fill="url\(', 'it fills with a gradient or pattern (only a solid opaque fill maps onto the icon)'),
+    (r'fill="url\(', 'it fills with a gradient or pattern (the mark is one solid ink, which this script recolours)'),
     (r'<g\b[^>]*\bopacity=', 'a <g> carries an opacity (it would be dropped; bake it into the paths)'),
     # Not in Myotis's script: CSS and masking change how a path renders without the
     # attributes the <path> scan below reads, so an SVG exported with them must fail too.
@@ -71,6 +71,7 @@ for pattern, why in (
     if re.search(pattern, svg):
         sys.exit('refusing %s: %s' % (SVG, why))
 paths = []
+fills = set()
 for elem in re.findall(r'<path\b[^>]*>', svg):
     d = re.search(r'\bd="\s*([^"]+)"', elem)
     fill = re.search(r'\bfill="([^"]*)"', elem)
@@ -84,8 +85,14 @@ for elem in re.findall(r'<path\b[^>]*>', svg):
         sys.exit('refusing %s: every <path> must be an opaque plain fill with a d= attribute, got %s'
                  % (SVG, re.sub(r'\s+', ' ', elem)[:100]))
     paths.append(d.group(1))
+    fills.add(fill.group(1).upper())
 if not paths:
     sys.exit('no <path> elements in ' + SVG)
+# Every path is repainted in FG / DEBUG_FG below, so a second ink would be flattened into the
+# first without a word: the mark must be one #RRGGBB colour.
+if len(fills) > 1 or not all(re.fullmatch(r'#[0-9A-F]{6}', c) for c in fills):
+    sys.exit('refusing %s: every <path> must carry the same #RRGGBB fill (the mark is one ink, '
+             'which this script recolours), got %s' % (SVG, ', '.join(sorted(fills))))
 
 TOKEN = re.compile(r'[A-Za-z]|-?\d*\.?\d+(?:e-?\d+)?')
 

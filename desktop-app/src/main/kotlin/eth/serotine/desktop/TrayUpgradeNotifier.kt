@@ -6,6 +6,7 @@ import eth.serotine.domain.repository.UpgradeNotifier
 import eth.serotine.ui.update.UpgradeNotificationText
 import java.awt.EventQueue
 import java.awt.GraphicsEnvironment
+import java.awt.Image
 import java.awt.SystemTray
 import java.awt.TrayIcon
 
@@ -26,9 +27,17 @@ class TrayUpgradeNotifier(private val network: Network) : UpgradeNotifier {
             try {
                 if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) return@invokeLater
                 val text = UpgradeNotificationText.from(notice, network)
-                // No icon to show in the tray (AppIcon): the window still says it.
-                val image = AppIcon.image ?: return@invokeLater
-                val tray = icon ?: TrayIcon(image, "Serotine").also {
+                val image = AppIcon.image
+                if (image == null) {
+                    // No icon to show in the tray (AppIcon): the window still says it.
+                    println("Serotine: no tray notice (no app icon)")
+                    return@invokeLater
+                }
+                // Scaled smoothly to the tray's own size: the icon is 512 px, and auto-sizing
+                // scales it down with a coarse filter on some platforms.
+                val size = SystemTray.getSystemTray().trayIconSize
+                val mark = image.getScaledInstance(size.width, size.height, Image.SCALE_SMOOTH)
+                val tray = icon ?: TrayIcon(mark, "Serotine").also {
                     it.isImageAutoSize = true
                     SystemTray.getSystemTray().add(it)
                     icon = it
