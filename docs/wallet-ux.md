@@ -763,8 +763,8 @@ itself, or none is chosen, or the network does not offer the one stored (as
 the screens have it) — "ETH · EUR", "€2,046.20" — with its change over
 the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
 "24h 0.00%" when it rounds to no move, and a line that dates it: "Verified
-Oct 21, 2:05 PM · may have changed since · testnet prices". A tap opens the
-app. The desktop has no
+Oct 21, 2:05 PM · may have changed since · testnet prices". A tap on the
+refresh button reads it now (below); a tap anywhere else opens the app. The desktop has no
 home screen, and iOS's widget (a WidgetKit extension) is still to come.
 
 - **Only verified rates, dated.** The rate is the price the screens show
@@ -798,6 +798,16 @@ home screen, and iOS's widget (a WidgetKit extension) is still to come.
   many rounds back as heartbeats fit, so an hourly feed takes two calls, and
   the rounds read are kept in memory (a round, once written, never changes),
   so a search soon after reads few or none again.
+- **Refresh now.** A button beside the rate reads it at once, on any
+  network, metered included, since the user asked for it: one job, expedited
+  where Android offers that (12 and later) and its quota allows, waking the
+  engine for that read alone as the background refresh does, and joining a
+  background read already under way rather than making a second. A spinner
+  stands in the button's place until it ends. Without a network that reaches
+  the internet (a captive portal included) it says so and reads nothing; a
+  refresh Android has not started within two minutes is given up and said
+  so; a read that gets no verified rate says so too and leaves the last one
+  shown. A second tap while one is on its way adds nothing.
 
 ## Tokens
 

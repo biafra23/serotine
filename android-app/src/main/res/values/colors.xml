@@ -7,4 +7,5 @@
     <color name="widget_text_secondary">#5F5D66</color>
     <color name="rate_up">#1B7F3B</color>
     <color name="rate_down">#C0262D</color>
+    <color name="widget_button">#14000000</color>
 </resources>

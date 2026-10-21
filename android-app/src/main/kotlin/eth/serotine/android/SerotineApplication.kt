@@ -4,10 +4,13 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
 import android.content.pm.ApplicationInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import eth.serotine.android.keys.ForegroundActivity
 import eth.serotine.android.keys.PlatformBiometricPrompter
 import eth.serotine.android.upgrade.AndroidUpgradeNotifier
@@ -34,6 +37,7 @@ import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.RateSnapshot
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowExchangeRate
 import eth.serotine.domain.usecase.FollowSafeDeployments
@@ -53,12 +57,21 @@ import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The Android composition root: the one place that knows which adapters implement the
@@ -278,7 +291,11 @@ class SerotineApplication : Application() {
         // launcher, say): the job's own period is kept.
         scope.launch(jobScheduling) {
             val app = this@SerotineApplication
-            if (RateWidget.placed(app)) RateRefreshJob.schedule(app, now = false)
+            if (RateWidget.placed(app)) {
+                RateRefreshJob.schedule(app, now = false)
+                // From the file: a spinner a process that ended left on the widget stops.
+                RateWidget.draw(app, lastRate.load())
+            }
         }
     }
 
@@ -340,34 +357,166 @@ class SerotineApplication : Application() {
         }
     }
 
+    /** Where a refresh the user asked for (the widget's refresh button) stands. */
+    enum class ManualRefresh {
+        /** None asked for, or the last one ended: the button shows. */
+        NONE,
+
+        /** Tapped, its job not started yet: the spinner shows. */
+        REQUESTED,
+
+        /** Its job runs: the spinner shows until its last draw. */
+        RUNNING,
+    }
+
+    private val manualRefresh = AtomicReference(ManualRefresh.NONE)
+
+    /** Whether a draw shows the spinner in the refresh button's place. Any thread. */
+    val refreshShown: Boolean
+        get() = manualRefresh.get() != ManualRefresh.NONE
+
+    /**
+     * The widget's read in progress, which a read asked for meanwhile joins, with how many wait
+     * for it: the last to stop waiting gives it up. Under [readLock].
+     */
+    private class SharedRead(val read: Deferred<RateSnapshot?>) {
+        var waiting = 0
+    }
+    private var sharedRead: SharedRead? = null
+    private val readLock = Mutex()
+
     /**
      * Reads the exchange rate once for the widget, with the engine awake for this read alone and
      * none of the app's other background work, draws it, and then calls [done] on the main
-     * thread. Without a placed widget nothing wakes: the refresh is cancelled, [done] is called
-     * and null returned. Cancelling the job it returns gives the read up; [done] is called then
-     * too. Main thread.
+     * thread; a read already in progress for another job is joined, each waiting as long as its
+     * own timeout. A [manual] read (the widget's refresh button) shows the spinner from its
+     * start and stops it with a last draw before [done], saying so when it ended without a rate
+     * unless it was stopped. Without a placed widget nothing wakes: the refresh is cancelled,
+     * [done] is called and null returned. Cancelling the job it returns gives the read up;
+     * [done] is called then too. Main thread.
      */
-    fun refreshRateInBackground(done: () -> Unit): Job? {
-        if (!RateWidget.placed(this)) {
-            scope.launch(jobScheduling) { RateRefreshJob.cancel(this@SerotineApplication) }
+    fun refreshRateInBackground(manual: Boolean, done: () -> Unit): Job? {
+        val app = this
+        if (!RateWidget.placed(app)) {
+            scope.launch(jobScheduling) { RateRefreshJob.cancel(app) }
+            if (manual) manualRefresh.set(ManualRefresh.NONE)
             handler.post(done)
             return null
         }
         wakeEngine()
+        var read: RateSnapshot? = null
         return scope.launch {
-            withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() }
-                ?.let { RateWidget.draw(this@SerotineApplication, it) }
+            if (manual) {
+                // Also in a process started for the job alone, which knows of no tap.
+                manualRefresh.set(ManualRefresh.RUNNING)
+                RateWidget.draw(app, lastRate.load())
+            }
+            read = joinRead(if (manual) MANUAL_READ_TIMEOUT else RATE_READ_TIMEOUT)
+            if (!manual) read?.let { RateWidget.draw(app, it) }
         }.also { job ->
             // On completion, not in a finally: a job cancelled before it started never runs its
             // body, and the hold must end anyway.
-            job.invokeOnCompletion {
-                handler.post {
-                    sleepEngine()
-                    done()
+            job.invokeOnCompletion { cause ->
+                if (!manual) {
+                    handler.post {
+                        sleepEngine()
+                        done()
+                    }
+                    return@invokeOnCompletion
+                }
+                val failed = read == null && cause !is CancellationException
+                scope.launch(NonCancellable) {
+                    try {
+                        RateWidget.draw(app, read ?: lastRate.load(), refreshing = false)
+                    } finally {
+                        handler.post {
+                            if (failed) toast(R.string.rate_widget_not_refreshed)
+                            sleepEngine()
+                            // The job ends first: a tap from here on schedules a new one, never
+                            // in place of this one while it still counts as running.
+                            done()
+                            manualRefresh.set(ManualRefresh.NONE)
+                        }
+                    }
                 }
             }
         }
     }
+
+    /**
+     * The widget's read: the one in progress, or a new one given [RATE_READ_TIMEOUT], waited for
+     * at most [timeout]; null when none was read in that time. The last waiter to stop gives it
+     * up, so no read outlives everyone who asked for it.
+     */
+    private suspend fun joinRead(timeout: Duration): RateSnapshot? {
+        val shared = readLock.withLock {
+            val current = sharedRead?.takeIf { it.read.isActive }
+                ?: SharedRead(scope.async { withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() } })
+            sharedRead = current
+            current.waiting++
+            current
+        }
+        try {
+            return withTimeoutOrNull(timeout) { shared.read.await() }
+        } finally {
+            withContext(NonCancellable) {
+                readLock.withLock { if (--shared.waiting == 0) shared.read.cancel() }
+            }
+        }
+    }
+
+    /**
+     * The widget's refresh button: asks for a refresh now, on any network (the user asked for
+     * it), and shows the spinner until it ends. With no network that reaches the internet it
+     * says so instead; a tap while one is asked for or runs adds nothing; a refresh Android has
+     * not started within [MANUAL_START_TIMEOUT] is given up and said so. Then [done], so the
+     * broadcast that brought the tap ends only once this is settled. Main thread.
+     */
+    fun refreshRateWidgetsNow(done: () -> Unit) {
+        if (!online()) {
+            toast(R.string.rate_widget_no_network)
+            done()
+            return
+        }
+        if (!manualRefresh.compareAndSet(ManualRefresh.NONE, ManualRefresh.REQUESTED)) {
+            done()
+            return
+        }
+        val app = this
+        scope.launch(jobScheduling) {
+            try {
+                RateWidget.draw(app, lastRate.load())
+                if (!RateRefreshJob.refreshNow(app)) giveUpManualRefresh(R.string.rate_widget_not_started)
+            } finally {
+                done()
+            }
+        }
+        handler.postDelayed({
+            if (manualRefresh.get() == ManualRefresh.REQUESTED) {
+                scope.launch(jobScheduling) {
+                    RateRefreshJob.cancelRefreshNow(app)
+                    giveUpManualRefresh(R.string.rate_widget_not_started)
+                }
+            }
+        }, MANUAL_START_TIMEOUT.inWholeMilliseconds)
+    }
+
+    /** Ends a refresh asked for that never started: the button again, and [text] said. */
+    private suspend fun giveUpManualRefresh(text: Int) {
+        if (!manualRefresh.compareAndSet(ManualRefresh.REQUESTED, ManualRefresh.NONE)) return
+        RateWidget.draw(this, lastRate.load())
+        handler.post { toast(text) }
+    }
+
+    /** Whether the active network reaches the internet, as the system checked it (no captive portal). */
+    private fun online(): Boolean {
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return false
+        val capabilities = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    /** Says [text] briefly, from wherever the app is. Main thread. */
+    private fun toast(text: Int) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
     /** Draws every placed widget from the rate kept, without the engine; then [done]. */
     fun drawRateWidgets(done: () -> Unit) {
@@ -519,6 +668,15 @@ class SerotineApplication : Application() {
 
         /** How long one read of the widget's rate may wait for the light client. */
         val RATE_READ_TIMEOUT = 4.minutes
+
+        /**
+         * The same for a read the user asked for: within an expedited job's few minutes, so the
+         * system does not stop it first.
+         */
+        val MANUAL_READ_TIMEOUT = 150.seconds
+
+        /** How long a refresh the user asked for may wait for Android to start it before it is given up. */
+        val MANUAL_START_TIMEOUT = 2.minutes
 
         /** The logcat tag of the debug app's diagnostics. */
         const val LOG_TAG = "Serotine"
