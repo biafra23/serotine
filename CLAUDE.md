@@ -416,9 +416,12 @@ file already forbids.
    publishes no Android asset at all. Say so in the release PR.
 
 Every `v*` tag publishes a pre-release with the signed Android APK (once the
-release key is set up, step 3), the debug APK, the macOS dmgs (arm64 + x64), the Linux debs (x64; arm64 while the
-repository is public, the free arm64 runner's condition) and the Windows msi;
-each workflow creates the release race-tolerantly and uploads its assets.
+release key is set up, step 3), the debug APK, the macOS dmgs (arm64 + x64) and
+the Linux debs (x64; arm64 while the repository is public, the free arm64
+runner's condition); each workflow creates the release race-tolerantly and
+uploads its assets. The Windows msi is left out of tags until Myotis ships a
+Windows engine library (owner's decision, 2026-10-21): it builds on `main`, and
+a dispatch on a tag publishes it.
 
 ## Pull requests and code review
 

@@ -281,8 +281,7 @@ jobs:
           **Desktop Linux (`Serotine-v<version>-<arch>.deb`)** — install with
           `sudo apt install ./Serotine-v<version>-<arch>.deb`.
 
-          **Desktop Windows (`Serotine-v<version>-x64.msi`)** — unsigned; per-user install, no
-          administrator rights needed. SmartScreen warns on the first run.
+          **Desktop Windows** — not in this release: the embedded engine has no Windows build yet.
           NOTES
           # Create the release if it doesn't exist yet. The dmg/apk workflows may
           # win this race for the same tag: if `create` fails, re-check with

@@ -107,8 +107,10 @@ and the rules they follow: [docs/wallet-ux.md](docs/wallet-ux.md); swaps:
 ## Releases
 
 Every `v*` tag publishes a pre-release with the signed Android APK (once its
-release key is set up, docs/android-release-signing.md), the debug APK, the macOS dmgs (arm64 + x64), the Linux debs (x64, and arm64 while the
-repository is public) and the Windows msi. The
+release key is set up, docs/android-release-signing.md), the debug APK, the
+macOS dmgs (arm64 + x64) and the Linux debs (x64, and arm64 while the
+repository is public). The Windows msi joins them once Myotis ships a Windows
+engine library; until then it is built on `main` but not published. The
 tag's version must match the `version` in `build.gradle.kts`
 (release-version-guard.yml refuses otherwise), and the Android release key
 lives only in the `android-release` environment
