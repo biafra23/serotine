@@ -34,7 +34,7 @@ then reach only the debug app. Both apps install side by side.
    release build type has no `signingConfig`, so it writes
    `android-app-release-unsigned.apk`. The minSdk-29 check
    (`scripts/check_apk_min_api.py`) runs on both APKs. On a tag the unsigned
-   APK is uploaded as an artifact.
+   APK is uploaded as an artifact (only when the tree pins a release certificate).
 2. **`sign-release`** (v* tags only) is the only job that ever holds the key.
    - Its secrets live in the `android-release` **environment**, whose deployment
      rule admits v* tags only. A PR branch can't read them, whatever workflow it

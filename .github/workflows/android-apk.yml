@@ -297,7 +297,7 @@ jobs:
   # their assets — the create step below tolerates that race.
   release:
     name: Publish APKs to release
-    # version-guard carries the same `if` as this job. sign-release is skipped
+    # version-guard runs exactly on the tags this job runs for. sign-release is skipped
     # on a tag only when the tree pins no release certificate, and then this job
     # publishes the debug APK alone; a pin whose signing fails publishes nothing
     # (fail closed: a broken key is not quietly turned into a debug-only release).
