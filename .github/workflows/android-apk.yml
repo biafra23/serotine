@@ -198,7 +198,7 @@ jobs:
       # Only a tag needs it (sign-release below): an unsigned APK installs nowhere,
       # so on a PR or main it would only be dead artifact storage.
       - name: Upload the unsigned release APK
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && steps.cert.outputs.present == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: android-app-release-unsigned-${{ github.sha }}
@@ -226,9 +226,11 @@ jobs:
   #     key is on disk;
   #   - it gets a read-only token, and publishing (contents: write) is a separate
   #     job that never sees the key.
-  # Fails closed: with no secrets, no pinned certificate, or a key that does not
-  # match the pin, nothing is signed and the release job below is skipped, so a
-  # tag publishes no Android asset at all rather than a debug-signed one.
+  # Skipped when the tree pins no certificate (no release app yet: the tag
+  # publishes the debug APK alone). With a pin it fails closed: with no secrets
+  # or a key that does not match the pin, nothing is signed and the release job
+  # below is skipped, so the tag publishes no Android asset at all rather than
+  # a debug-signed one.
   # Its actions are pinned to commit SHAs, unlike the rest of the repo: the
   # runner hands a job every secret it references when the job STARTS, so each
   # action here runs while the key is readable from the runner process (how the
@@ -299,11 +301,11 @@ jobs:
     # on a tag only when the tree pins no release certificate, and then this job
     # publishes the debug APK alone; a pin whose signing fails publishes nothing
     # (fail closed: a broken key is not quietly turned into a debug-only release).
-    # always() lets this job run past that one skip; every other failure or skip
-    # above it still stops it.
+    # !cancelled() lets this job run past that one skip; every other failure or
+    # skip above it, and a cancelled run, still stops it.
     needs: [build, sign-release, version-guard]
     if: >-
-      always() && startsWith(github.ref, 'refs/tags/v')
+      !cancelled() && startsWith(github.ref, 'refs/tags/v')
       && needs.build.result == 'success'
       && needs.version-guard.result == 'success'
       && (needs.sign-release.result == 'success'
@@ -326,7 +328,7 @@ jobs:
           name: android-app-release-${{ github.sha }}
           path: apk/release
 
-      - name: Check both APKs' package ids and give them stable, versioned asset names
+      - name: Check the APKs' package ids and give them stable, versioned asset names
         env:
           SIGNED: ${{ needs.sign-release.result == 'success' }}
         run: |

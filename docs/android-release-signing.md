@@ -3,7 +3,8 @@
 (Inherited from biafra23/myotis's docs/android-release-signing.md; the
 mechanism is identical.)
 
-Every release carries two Android APKs:
+Every release carries two Android APKs once the release key is set up, and the
+debug one alone until then:
 
 | asset | app | package | signed with |
 |---|---|---|---|
@@ -46,7 +47,7 @@ then reach only the debug app. Both apps install side by side.
      requires exactly one signer, equal to the pinned certificate (and the pin
      must not be the debug certificate).
 3. **`release`** (v* tags only, `contents: write`, no key) checks the two package
-   ids with `aapt2` and uploads both APKs.
+   ids with `aapt2` and uploads both APKs (the debug one alone without a pin).
 
 Until the release key is set up, a tag publishes the debug APK alone. A tree
 without `android-app/release-signing-cert.sha256` has no release app to sign:

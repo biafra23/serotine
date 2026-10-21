@@ -411,12 +411,12 @@ file already forbids.
    release APK on the tag with the key in the `android-release` environment,
    and only for a tree with `android-app/release-signing-cert.sha256`; until
    the owner has set that up (docs/android-release-signing.md), a tag publishes
-   the desktop installers and the debug APK, and NO release-signed Android app.
-   Once the pin is there, a signing failure publishes no Android asset at all.
-   Say so in the release PR.
+   the desktop installers and the debug APK, and NO release-signed Android app
+   (owner's request, 2026-10-21). Once the pin is there, a signing failure
+   publishes no Android asset at all. Say so in the release PR.
 
-Every `v*` tag publishes a pre-release with the signed Android APK, the debug
-APK, the macOS dmgs (arm64 + x64), the Linux debs (x64; arm64 while the
+Every `v*` tag publishes a pre-release with the signed Android APK (once the
+release key is set up, step 3), the debug APK, the macOS dmgs (arm64 + x64), the Linux debs (x64; arm64 while the
 repository is public, the free arm64 runner's condition) and the Windows msi;
 each workflow creates the release race-tolerantly and uploads its assets.
 
