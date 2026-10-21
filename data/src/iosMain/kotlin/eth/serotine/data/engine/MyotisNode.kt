@@ -502,8 +502,12 @@ class MyotisNode private constructor(
  */
 private fun report(why: String) = log("Serotine: no light client: $why")
 
-/** [line] in the device's log: NSLog, since println's stdout reaches no one unless Xcode runs the app. */
-private fun log(line: String) = NSLog("%@", line)
+/**
+ * [line] in the device's log: NSLog, since println's stdout reaches no one unless Xcode runs the
+ * app. The line is the format itself, its `%` escaped, so nothing crosses NSLog's C varargs: with
+ * `NSLog("%@", line)` the debug app died at launch on the simulator (#129's CI).
+ */
+private fun log(line: String) = NSLog(line.replace("%", "%%"))
 
 /** Creates [path] and its parents; an existing directory is fine, a failure the engine's to tell. */
 @OptIn(ExperimentalForeignApi::class)

@@ -104,7 +104,10 @@ class SerotineWallet {
     private val node: MyotisNode = run {
         val engineDir = "$dataDir/myotis"
         createDirectoryOutOfBackups(engineDir)
-        val debugLog: ((String) -> Unit)? = if (Platform.isDebugBinary) { line -> NSLog("%@", line) } else null
+        // The line is NSLog's format, its `%` escaped, so nothing crosses NSLog's C varargs: with
+        // NSLog("%@", line) the debug app died at launch on the simulator (#129's CI).
+        val debugLog: ((String) -> Unit)? =
+            if (Platform.isDebugBinary) { line -> NSLog(line.replace("%", "%%")) } else null
         MyotisNode.start(Network.SEPOLIA, engineDir, lastBalances = "$dataDir/last-balances.json", debugLog = debugLog)
     }
 
