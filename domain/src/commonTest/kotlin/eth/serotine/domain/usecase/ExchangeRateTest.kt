@@ -4,6 +4,7 @@ import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.RateSnapshot
+import eth.serotine.domain.repository.CurrencyChoice
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.LastExchangeRate
 import eth.serotine.domain.repository.NoPriceReason
@@ -32,7 +33,8 @@ class ExchangeRateTest {
     private val read = ReadExchangeRate(feeds, history)
     private val setting = MemoryCurrencySetting()
     private val last = MemoryLastRate()
-    private val refresh = RefreshExchangeRate(setting, read, last, Network.SEPOLIA)
+    private val currencies = ObserveDisplayCurrencies(feeds, setting)
+    private val refresh = RefreshExchangeRate(currencies, read, last, Network.SEPOLIA)
 
     /** A day back that has no round, which is a lasting answer: read once, no retries. */
     private fun noDayBack() {
@@ -133,6 +135,15 @@ class ExchangeRateTest {
         val inEth = refresh()!!
         assertEquals(DisplayCurrency.USD, inEth.quote)
         assertEquals(inEth, last.kept)
+    }
+
+    @Test
+    fun aStoredCurrencyTheNetworkDoesNotOfferIsShownInUsdAsTheScreensDo() = runTest {
+        feeds.answer(ETH, 2_400.0)
+        setting.choice.value = CurrencyChoice.Chosen(DisplayCurrency.CHF) // no CHF feed here
+
+        assertEquals(DisplayCurrency.USD, refresh()!!.quote)
+        assertFalse(refresh.isDue(nowSeconds = 1_060, maxAgeSeconds = 600))
     }
 
     @Test

@@ -42,6 +42,7 @@ import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ReadExchangeRate
 import eth.serotine.domain.usecase.RefreshExchangeRate
 import eth.serotine.domain.usecase.UpgradeNotices
@@ -153,7 +154,7 @@ class SerotineApplication : Application() {
     /** Reads the widget's rate, and the one of a day before, through the engine, and keeps it in [lastRate]. */
     private val refreshRate by lazy {
         RefreshExchangeRate(
-            displayCurrency,
+            ObserveDisplayCurrencies(node.priceFeeds, displayCurrency),
             ReadExchangeRate(node.priceFeeds, node.priceHistory),
             lastRate,
             Network.SEPOLIA,
@@ -224,6 +225,12 @@ class SerotineApplication : Application() {
         },
     )
 
+    /**
+     * Where the widget's refresh is scheduled and cancelled: one at a time, in the order asked,
+     * so a cancel asked for before a schedule never lands after it.
+     */
+    private val jobScheduling = Dispatchers.Default.limitedParallelism(1)
+
     // The holds on the engine, and what they keep running: main thread only. [holds] counts every
     // hold, [appHolds] those that run the app's background work too (all but the widget's
     // refresh), [visible] the activities started, while which a placed widget's rate is followed.
@@ -269,7 +276,7 @@ class SerotineApplication : Application() {
         scope.launch { UpgradeCheckJob.schedule(this@SerotineApplication) }
         // Kept scheduled while a widget is placed, whatever cancelled it (a widget restored by a
         // launcher, say): the job's own period is kept.
-        scope.launch {
+        scope.launch(jobScheduling) {
             val app = this@SerotineApplication
             if (RateWidget.placed(app)) RateRefreshJob.schedule(app, now = false)
         }
@@ -342,16 +349,18 @@ class SerotineApplication : Application() {
      */
     fun refreshRateInBackground(done: () -> Unit): Job? {
         if (!RateWidget.placed(this)) {
-            scope.launch { RateRefreshJob.cancel(this@SerotineApplication) }
+            scope.launch(jobScheduling) { RateRefreshJob.cancel(this@SerotineApplication) }
             handler.post(done)
             return null
         }
         wakeEngine()
         return scope.launch {
-            try {
-                withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() }
-                    ?.let { RateWidget.draw(this@SerotineApplication, it) }
-            } finally {
+            withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() }
+                ?.let { RateWidget.draw(this@SerotineApplication, it) }
+        }.also { job ->
+            // On completion, not in a finally: a job cancelled before it started never runs its
+            // body, and the hold must end anyway.
+            job.invokeOnCompletion {
                 handler.post {
                     sleepEngine()
                     done()
@@ -373,7 +382,7 @@ class SerotineApplication : Application() {
 
     /** The first widget was placed: schedules its refresh, and follows its rate if the app is open. Main thread. */
     fun rateWidgetPlaced() {
-        scope.launch { RateRefreshJob.schedule(this@SerotineApplication, now = true) }
+        scope.launch(jobScheduling) { RateRefreshJob.schedule(this@SerotineApplication, now = true) }
         followRateForWidgets()
     }
 
@@ -381,7 +390,7 @@ class SerotineApplication : Application() {
     fun rateWidgetsRemoved() {
         rateFollowing?.cancel()
         rateFollowing = null
-        scope.launch { RateRefreshJob.cancel(this@SerotineApplication) }
+        scope.launch(jobScheduling) { RateRefreshJob.cancel(this@SerotineApplication) }
     }
 
     /**

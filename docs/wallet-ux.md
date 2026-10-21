@@ -759,7 +759,8 @@ read through the light client. Applied:
 
 An Android home-screen widget with one exchange rate: the network's native
 currency in the display currency (screen 19), in USD where that is ETH
-itself or none is chosen — "ETH · EUR", "€2,046.20" — with its change over
+itself, or none is chosen, or the network does not offer the one stored (as
+the screens have it) — "ETH · EUR", "€2,046.20" — with its change over
 the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
 "24h 0.00%" when it rounds to no move, and a line that dates it: "Verified
 Oct 21, 2:05 PM · may have changed since · testnet prices". A tap opens the
