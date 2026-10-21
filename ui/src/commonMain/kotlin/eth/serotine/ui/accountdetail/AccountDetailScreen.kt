@@ -369,13 +369,11 @@ private fun Details(
         }
         val safe = state.safe
         if (safe != null) SegmentChoice(state.segment, state.queue, onSegment)
-        val queue = state.queue
+        // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
-            safe != null && state.segment == DetailSegment.OWNERS -> SafeOwners(safe)
-            queue != null && state.segment == DetailSegment.QUEUE ->
-                SafeQueueList(queue, onOpenSafeTx, onImportRequest)
-            // The rows the top bar's menu sorts (state.showsAssets).
-            else -> Assets(state, onSend, onSwap, onCopyContract, onHideToken)
+            state.showsAssets -> Assets(state, onSend, onSwap, onCopyContract, onHideToken)
+            state.segment == DetailSegment.OWNERS -> SafeOwners(checkNotNull(safe))
+            else -> SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest)
         }
     }
 }
