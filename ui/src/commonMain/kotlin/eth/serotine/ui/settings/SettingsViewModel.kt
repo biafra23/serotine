@@ -12,20 +12,25 @@ import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
+import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 
 /**
  * The Settings screen's ViewModel: the display currency, the known tokens, the [network], the
- * light client's state and the version.
+ * light client's state and the version; and, in a debug build, the switch that allows screen
+ * recordings of the protected screens.
  */
 class SettingsViewModel(
     observeLightClient: ObserveLightClient,
     observeKnownTokens: ObserveKnownTokens,
     observeDisplayCurrencies: ObserveDisplayCurrencies,
     network: Network,
+    /** The debug build's screen-capture switch; null in a release build, which offers none. */
+    private val screenCapture: ScreenCaptureDebugSwitch?,
     /** Now, in unix seconds: what the light client's line dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
@@ -35,7 +40,8 @@ class SettingsViewModel(
             observeLightClient().asItems(clock),
             observeKnownTokens(),
             observeDisplayCurrencies(),
-        ) { item, known, currencies ->
+            screenCapture?.allowed ?: flowOf(null),
+        ) { item, known, currencies, captureAllowed ->
             val builtIn = known.tokens.count { it.origin == TokenOrigin.BUILT_IN }
             val added = if (known.settingsUnavailable) {
                 "added ones cannot be read"
@@ -48,12 +54,22 @@ class SettingsViewModel(
                 currencies.setAside -> " (your saved choice was damaged and set aside)"
                 else -> ""
             }
-            SettingsUiState(network.displayName, item, APP_VERSION, tokens, currency)
+            SettingsUiState(network.displayName, item, APP_VERSION, tokens, currency, captureAllowed)
         }
         .stateIn(
             viewModelScope,
             // A tab back after the timeout must not show an old head as current.
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-            SettingsUiState(network.displayName, LightClientItem.from(LightClientStatus.Starting, 0), APP_VERSION),
+            SettingsUiState(
+                network.displayName,
+                LightClientItem.from(LightClientStatus.Starting, 0),
+                APP_VERSION,
+                screenCaptureAllowed = screenCapture?.allowed?.value,
+            ),
         )
+
+    /** Allows screen recordings of the protected screens, or blocks them again; a release build has no switch. */
+    fun allowScreenCapture(allowed: Boolean) {
+        screenCapture?.allow(allowed)
+    }
 }

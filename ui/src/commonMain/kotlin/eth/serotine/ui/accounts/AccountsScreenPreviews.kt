@@ -1,6 +1,11 @@
 package eth.serotine.ui.accounts
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.components.Control
@@ -121,6 +126,11 @@ private fun AccountsAccountsPreview() = AccountsPreview(withAccounts)
 @Preview
 @Composable
 private fun AccountsAccountsDarkPreview() = AccountsPreview(withAccounts, darkTheme = true)
+
+/** The screen on a narrow phone (#68): a control badge too wide for its row shows as its icon. */
+@Preview
+@Composable
+private fun AccountsNarrowPreview() = Box(Modifier.width(360.dp).fillMaxHeight()) { AccountsPreview(withAccounts) }
 
 /** No verified head yet and no balance proven before: the strip red, every row syncing. */
 private val catchingUp = AccountsUiState.Ready(
@@ -275,4 +285,5 @@ internal val accountsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountsUpgradeActivatedDarkPreview() },
     { AccountsListUnavailablePreview() },
     { AccountsCatchingUpDarkPreview() },
+    { AccountsNarrowPreview() },
 )

@@ -32,10 +32,11 @@ import platform.darwin.NSObjectProtocol
  * or shared (`UIScreen.isCaptured`), raises a warning, which [ScreenCaptureWarnings] shows.
  * Counted, because two protected screens overlap during a navigation transition. The app has
  * one window (its scene manifest allows no second one), so the app's active state is the
- * window's.
+ * window's. [blockCapture] changes nothing here: iOS blocks no capture, and its host builds no
+ * [ScreenCaptureDebugSwitch], so it is always true.
  */
 @Composable
-actual fun protectFromScreenCapture(): Boolean {
+internal actual fun protectFromScreenCapture(blockCapture: Boolean): Boolean {
     val controller = LocalUIViewController.current
     DisposableEffect(controller) {
         acquire(controller)

@@ -82,6 +82,13 @@ the text wins.
   - *Co-signer*: a Safe with some owners held here, fewer than its threshold.
   - *Watch-only*: nothing held here. Send is greyed out (a tap says why);
     Receive and the balances are as for any account.
+
+  The badge shows its icon (a key, a person with a key, an eye) before its
+  text, so the icons are learned, and its text is never broken over two
+  lines: where icon and text do not fit on one line beside the name (a
+  narrow phone, a long name), the badge shows its icon alone, in the same
+  colours. A screen reader says its text either way, and the account's own
+  screen, where it fits, shows both (#68).
 - **A missing prerequisite greys an action out, never hides it** (owner
   ruling, 2026-10-18, #55). An action that cannot be done because something
   it needs is missing is shown disabled, and a tap on it still works: it says
@@ -663,7 +670,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
 
 18. **Settings**: Display currency · Tokens (n built in, m added) · Security
     (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
-    for now) · Light client (status) · About. Tokens opens the list of every token the
+    for now) · Light client (status) · Debug build (the debug Android app
+    only: *Allow screen recording*, rule 8 of docs/keys-and-signing.md) ·
+    About. Tokens opens the list of every token the
     wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.

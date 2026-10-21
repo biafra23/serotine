@@ -154,7 +154,11 @@ The rules a reviewer holds the adapter against:
    screenshot, the window is covered when the app resigns active so the app
    switcher's snapshot holds nothing, and `UIScreen.isCaptured` plus the
    screenshot notification raise a warning; on desktop nothing comparable
-   exists and the seed screen says so.
+   exists and the seed screen says so. The debug Android app alone may lift the
+   capture block for a screen recording (owner's request, 2026-10-21): a
+   switch in Settings, held in memory and off at every start, under which
+   those screens say capture cannot be blocked, as on desktop. The release
+   app has no such switch.
 9. **Desktop stands on the password path alone where no hardware exists**
    (the owner's ruling of 2026-10-15, CLAUDE.md *Trust*).
    macOS on Apple silicon or T2 uses the Secure Enclave as iOS does, signed
@@ -498,8 +502,12 @@ its KDoc and returns it as a result the UI shows as state.
   where no capture can be blocked, the screen says so. iOS also covers the
   window while the app is not active, so the app switcher's snapshot holds
   nothing, and warns (`ScreenCaptureWarningDialog`) when a screenshot is
-  taken and while the screen is recorded, mirrored or shared. Create account
-  also keeps the display on while its phrase is shown and checked
+  taken and while the screen is recorded, mirrored or shared. The debug
+  Android app's Settings → *Allow screen recording*
+  (`ScreenCaptureDebugSwitch`, which only a debuggable Android host builds)
+  drops `FLAG_SECURE` and keeps the autofill exclusion, and the screens then
+  say that capture is not blocked; it is off again when the process
+  restarts. Create account also keeps the display on while its phrase is shown and checked
   (`KeepScreenOn()`; Android's `keepScreenOn`, iOS's idle timer), because a
   display that times out stops the screen, and that stop is a leaving
   (owner ruling, 2026-10-18, #39).

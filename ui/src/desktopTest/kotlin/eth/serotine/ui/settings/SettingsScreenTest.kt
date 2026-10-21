@@ -2,8 +2,11 @@ package eth.serotine.ui.settings
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import eth.serotine.ui.APP_VERSION
@@ -23,8 +26,9 @@ class SettingsScreenTest {
     private var tokensOpened = 0
     private var currencyOpened = 0
     private var securityOpened = 0
+    private val screenCaptureChanges = mutableListOf<Boolean>()
 
-    private fun show() = rule.setContent {
+    private fun show(screenCaptureAllowed: Boolean? = null) = rule.setContent {
         SerotineTheme {
             val lightClient = LightClientItem("Verified at block 9,412,118 · 8 s ago", null, false, VERIFIED)
             SettingsScreen(
@@ -34,10 +38,12 @@ class SettingsScreenTest {
                     APP_VERSION,
                     tokens = "3 built in · 1 added",
                     currency = "EUR",
+                    screenCaptureAllowed = screenCaptureAllowed,
                 ),
                 onCurrency = { currencyOpened++ },
                 onTokens = { tokensOpened++ },
                 onSecurity = { securityOpened++ },
+                onScreenCaptureChange = { screenCaptureChanges += it },
             )
         }
     }
@@ -82,5 +88,30 @@ class SettingsScreenTest {
         // Exactly one node carries both strings: proof they merged, which is what a screen
         // reader announces.
         rule.onAllNodes(hasText("Serotine") and hasText("Version $APP_VERSION")).assertCountEquals(1)
+    }
+
+    @Test
+    fun aReleaseBuildHasNoScreenRecordingRow() {
+        show()
+
+        rule.onNodeWithTag(SETTINGS_SCREEN_CAPTURE_TAG).assertDoesNotExist()
+        rule.onNodeWithText("Debug build").assertDoesNotExist()
+    }
+
+    @Test
+    fun theDebugBuildsRowShowsTheSwitchAndTogglesIt() {
+        show(screenCaptureAllowed = false)
+
+        rule.onNodeWithText("Allow screen recording").assertExists()
+        rule.onNodeWithTag(SETTINGS_SCREEN_CAPTURE_TAG).assertIsOff().performClick()
+        assertEquals(listOf(true), screenCaptureChanges)
+    }
+
+    @Test
+    fun theDebugBuildsRowSaysWhenCaptureIsAllowed() {
+        show(screenCaptureAllowed = true)
+
+        rule.onNodeWithTag(SETTINGS_SCREEN_CAPTURE_TAG).assertIsOn().performClick()
+        assertEquals(listOf(false), screenCaptureChanges)
     }
 }

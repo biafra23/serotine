@@ -98,6 +98,7 @@ import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
+import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
@@ -192,6 +193,11 @@ class AppGraph(
     private val uniswap: UniswapV3Chain,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
+    /**
+     * The debug build's switch that allows screen recordings of the protected screens; null in a
+     * release build, and on a host whose screens block nothing (docs/keys-and-signing.md, rule 8).
+     */
+    internal val screenCaptureDebugSwitch: ScreenCaptureDebugSwitch?,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -405,7 +411,13 @@ class AppGraph(
     )
 
     fun settingsViewModel(): SettingsViewModel =
-        SettingsViewModel(ObserveLightClient(lightClient), knownTokens(), displayCurrencies(), network)
+        SettingsViewModel(
+            ObserveLightClient(lightClient),
+            knownTokens(),
+            displayCurrencies(),
+            network,
+            screenCaptureDebugSwitch,
+        )
 
     fun currencyViewModel(): CurrencyViewModel =
         CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency))

@@ -171,6 +171,8 @@ class SerotineWallet {
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
             network = Network.SEPOLIA,
+            // iOS blocks no capture, so there is nothing for a debug switch to lift.
+            screenCaptureDebugSwitch = null,
         )
     }
 

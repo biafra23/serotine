@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -50,6 +51,7 @@ import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
+import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
 import eth.serotine.ui.platform.ScreenCaptureWarnings
 import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
@@ -85,6 +87,14 @@ fun App(graph: AppGraph) = App(graph, rememberNavController())
 /** [App] with the [navController] a test drives. */
 @Composable
 internal fun App(graph: AppGraph, navController: NavHostController) {
+    CompositionLocalProvider(LocalScreenCaptureDebugSwitch provides graph.screenCaptureDebugSwitch) {
+        AppContent(graph, navController)
+    }
+}
+
+/** [App] under the host's screen-capture switch. */
+@Composable
+private fun AppContent(graph: AppGraph, navController: NavHostController) {
     SerotineTheme {
         // Scoped to the host, not to a destination: it decides which destinations there are.
         val update = viewModel { graph.updateRequiredViewModel() }
