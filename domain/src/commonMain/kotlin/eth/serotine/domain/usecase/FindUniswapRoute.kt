@@ -87,6 +87,7 @@ class FindUniswapRoute(
         withFee: Boolean = false,
     ): RouteFinding {
         require(!amountIn.isZero) { "a swap sells something" }
+        require(!withFee || ranking == RouteRanking.NET_OF_FEES) { "a route's fee is had only net of fees" }
         val deployment = when (val venue = chain.venue(network)) {
             is VenueReading.Verified -> venue.deployment
             VenueReading.NotPinned -> return RouteFinding.NotPinned

@@ -156,9 +156,24 @@ class CowOrderEndsTest {
     }
 
     @Test
-    fun aRangeBelowTheEntrysStartCanNeverBeProven() = runTest {
+    fun aRangeBelowTheEntrysStartCanNeverBeProvenButIsSaidSoOnlyOnceItCanFillNoMore() = runTest {
         index.answer = { LogsReading.BeforeStart(110) }
-        assertEquals(CowOrderEnd.NotProvable, prove.endOf(record, FinalizedBlock(140, validTo + 12)))
+        assertNull(prove.endOf(record, FinalizedBlock(140, validTo)), "it may still fill: its tokens stay held back")
+        assertEquals(CowOrderEnd.NotProvable, prove.endOf(record, FinalizedBlock(141, validTo + 12)))
+    }
+
+    @Test
+    fun aSettlementLogThatDoesNotDecodeProvesNothing() = runTest {
+        val garbled = trade(at = 120).let { it.copy(log = it.log.copy(data = it.log.data.dropLast(2))) }
+        answer(garbled)
+        assertNull(prove.endOf(record, FinalizedBlock(141, validTo + 12)), "it could hide this order's fill")
+        // Another contract's log of any shape is no settlement's.
+        val elsewhere = garbled.copy(log = garbled.log.copy(address = Address.of("0x" + "99".repeat(20))))
+        answer(elsewhere)
+        assertEquals(
+            CowOrderEnd.Unfilled(endBlock = 141, cancelled = false),
+            prove.endOf(record, FinalizedBlock(141, validTo + 12)),
+        )
     }
 
     @Test

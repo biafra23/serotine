@@ -35,8 +35,12 @@ import kotlinx.coroutines.flow.map
  *   ([CowOrderEnd.Unfilled]); nothing settles an order after it, and a settlement earlier in the
  *   same block would be a `Trade` in the range.
  * - Else, once the finalized block's own timestamp is past the order's `validTo`: never filled.
- * - A range below the entry's start can never be proven ([CowOrderEnd.NotProvable]); a range not
- *   covered yet, an entry not followed yet, or no answer right now is tried again.
+ * - A settlement log of either event that does not decode proves nothing, and is tried again:
+ *   skipped, it could hide this order's fill.
+ * - A range below the entry's start can never be proven ([CowOrderEnd.NotProvable]), but is said
+ *   so only once a finalized block is past `validTo`: until then the order may still fill, and its
+ *   tokens stay held back. A range not covered yet, an entry not followed yet, or no answer right
+ *   now is tried again.
  */
 class ProveCowOrderEnds(
     private val cowOrders: CowOrders,
@@ -72,16 +76,29 @@ class ProveCowOrderEnds(
         )
         val logs = when (val reading = logIndex.logs(query)) {
             is LogsReading.Logs -> reading.logs
-            is LogsReading.BeforeStart -> return CowOrderEnd.NotProvable
+            is LogsReading.BeforeStart ->
+                return CowOrderEnd.NotProvable.takeIf { finalized.timestamp > order.order.validTo }
             is LogsReading.NotCovered, LogsReading.NotWatched, is LogsReading.Unavailable -> return null
         }
-        logs.firstNotNullOfOrNull { indexed ->
+        val settlementLogs = logs.filter { it.log.address == order.settlement }
+        val undecodable = settlementLogs.any { indexed ->
+            val log = indexed.log
+            when (log.topics.firstOrNull()) {
+                GPv2Settlement.TRADE_TOPIC ->
+                    GPv2Settlement.tradeOf(order.settlement, log.address, log.topics, log.data) == null
+                GPv2Settlement.ORDER_INVALIDATED_TOPIC ->
+                    GPv2Settlement.invalidationOf(order.settlement, log.address, log.topics, log.data) == null
+                else -> false
+            }
+        }
+        if (undecodable) return null
+        settlementLogs.firstNotNullOfOrNull { indexed ->
             val log = indexed.log
             GPv2Settlement.tradeOf(order.settlement, log.address, log.topics, log.data)
                 ?.takeIf { it.uid == order.uid }
                 ?.let { CowOrderEnd.Filled(it, indexed.blockNumber, indexed.transactionHash) }
         }?.let { return it }
-        logs.firstOrNull { indexed ->
+        settlementLogs.firstOrNull { indexed ->
             val log = indexed.log
             GPv2Settlement.invalidationOf(order.settlement, log.address, log.topics, log.data) == order.uid
         }?.let { return CowOrderEnd.Unfilled(endBlock = it.blockNumber, cancelled = true) }

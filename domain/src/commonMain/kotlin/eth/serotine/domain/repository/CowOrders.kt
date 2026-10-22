@@ -123,8 +123,9 @@ sealed interface CowOrderEnd {
     data class Unfilled(val endBlock: Long, val cancelled: Boolean) : CowOrderEnd
 
     /**
-     * Its end cannot be proven, ever: the account's log-index entry no longer covers its range
-     * (unwatched, or the range reaches below the entry's start). The balance shows what happened.
+     * Its end cannot be proven, ever: its range reaches below the start of the account's log-index
+     * entry. Recorded only once a finalized block is past its `validTo`, when it can fill no more.
+     * The balance shows what happened.
      */
     data object NotProvable : CowOrderEnd
 }

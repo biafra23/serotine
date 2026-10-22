@@ -218,6 +218,19 @@ class FileSentTransfersTest {
     }
 
     @Test
+    fun aCancellationAndAnotherKindAtOnceIsPassedOver() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val uid = "0x" + "ab".repeat(32) + alice.hex.removePrefix("0x") + "6ad9e7f4"
+        val cancellation = """"cancellation":{"settlement":"${bob.hex}","uid":"$uid"}"""
+        val swap = """"swap":{"router":"${bob.hex}","amountIn":"1","minimumOut":"1"}"""
+        val both = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff",$cancellation,""" +
+            """$swap,"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":6,"transfers":[$both]}""") }
+
+        assertEquals(emptyList(), stored())
+    }
+
+    @Test
     fun aRecordOfTheFifthFormatReadsAsItWasWritten() = runTest {
         SystemFileSystem.createDirectories(directory)
         val v5 = """{"version":5,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +

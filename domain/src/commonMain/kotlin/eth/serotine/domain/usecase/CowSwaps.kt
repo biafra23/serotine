@@ -49,6 +49,12 @@ import kotlinx.coroutines.flow.first
 const val COW_ORDER_VALIDITY_SECONDS: Long = 5 * 60
 
 /**
+ * How old a CoW quote may be, by the verified head's clock, at the tap that signs it: a minute, as
+ * for every quote (docs/swaps.md, *What both venues share*, freshness).
+ */
+const val QUOTE_MAX_AGE_SECONDS: Long = 60
+
+/**
  * A CoW swap from an account this wallet holds, quoted for review (docs/swaps.md, *CoW
  * Protocol*): [order], selling exactly [amountIn] of [sell] for at least [minimumOut] of [buy],
  * paid to [from], on [deployment]; [digest] is what [from] signs and [uid] the order's UID.
@@ -133,6 +139,8 @@ class QuoteCowSwap(
     private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
 ) {
+    private val quoter = CallQuoter(inputs, sentTransfers, network, clock)
+
     /** Exactly [amountIn] of [sell] for [buy] from [from], at [tolerance]. */
     suspend operator fun invoke(
         from: Address,
@@ -146,6 +154,9 @@ class QuoteCowSwap(
             ?: return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.SELLS_ETHER)
         val buyToken = (buy as? TransferAsset.Erc20Token)?.token?.address ?: CowOrder.NATIVE_BUY_TOKEN
         if (buyToken == soldToken.address) return@cancellingReads CowSwapQuoting.NotASwap
+        // An earlier transaction maybe still on its way: refused before any other read, as a Uniswap
+        // swap is. One that sells the same token could be mined beside this order.
+        quoter.heldBack(from)?.let { return@cancellingReads it.asCowSwapQuoting() }
 
         val balance = async { tokenBalances.observeBalance(from, soldToken.address).first() }
         val head = async { lightClient.observeStatus().first() }
@@ -167,9 +178,14 @@ class QuoteCowSwap(
         if (headTimestamp == null || finalized == null) {
             return@cancellingReads CowSwapQuoting.Unavailable(ReadUnavailable.UNPROVEN)
         }
-        if (!followedBy(starts.await(), from, finalized)) {
-            return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.NOT_FOLLOWED_YET)
+        when (val read = starts.await()) {
+            is HistoryStartList.Loaded -> if (!followedBy(read, from, finalized)) {
+                return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.NOT_FOLLOWED_YET)
+            }
+            HistoryStartList.Unreadable -> return@cancellingReads CowSwapQuoting.HistoryUnreadable
         }
+        val validTo = headTimestamp + COW_ORDER_VALIDITY_SECONDS
+        if (validTo > CowOrder.UINT32_MAX) return@cancellingReads CowSwapQuoting.Unavailable(ReadUnavailable.UNPROVEN)
         when (val read = orders.await()) {
             is CowOrderList.Loaded -> read.orders
                 .filter { it.account == from && it.order.sellToken == soldToken.address }
@@ -203,8 +219,10 @@ class QuoteCowSwap(
         val found = when (finding) {
             is RouteFinding.Found -> finding
             RouteFinding.NotASwap -> return@cancellingReads CowSwapQuoting.NotASwap
-            RouteFinding.NoRoute, RouteFinding.NotPinned, is RouteFinding.CodeMismatch ->
-                return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.NO_ROUTE)
+            RouteFinding.NoRoute -> return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.NO_ROUTE)
+            // The venue that sets the floor is not verified: said as such, not as a missing route.
+            RouteFinding.NotPinned -> return@cancellingReads CowSwapQuoting.NoFloorVenue(contract = null)
+            is RouteFinding.CodeMismatch -> return@cancellingReads CowSwapQuoting.NoFloorVenue(finding.contract)
             is RouteFinding.Unavailable ->
                 return@cancellingReads CowSwapQuoting.Unavailable(finding.reason, QuoteFigure.ROUTE)
         }
@@ -237,8 +255,6 @@ class QuoteCowSwap(
         }
         val buyAmount = CowMinimum.buyAmount(estimate, floor, tolerance)
         if (buyAmount.isZero) return@cancellingReads CowSwapQuoting.TooSmall
-        val validTo = headTimestamp + COW_ORDER_VALIDITY_SECONDS
-        if (validTo > CowOrder.UINT32_MAX) return@cancellingReads CowSwapQuoting.Unavailable(ReadUnavailable.UNPROVEN)
         val order = CowOrder(
             sellToken = soldToken.address,
             buyToken = buyToken,
@@ -301,11 +317,22 @@ class QuoteCowSwap(
 /**
  * Whether the log index follows [account] from [finalized] or earlier ([starts], its history's
  * start): its order's range, which starts there, must not reach below the account's entry
- * (docs/swaps.md, *Proving an order's end*). Not yet when the start is only noted, or unreadable.
+ * (docs/swaps.md, *Proving an order's end*). Not yet when the start is only noted.
  */
-private fun followedBy(starts: HistoryStartList, account: Address, finalized: FinalizedBlock): Boolean {
-    val start = ((starts as? HistoryStartList.Loaded)?.starts?.get(account) as? HistoryStart.Fixed)?.block
+private fun followedBy(starts: HistoryStartList.Loaded, account: Address, finalized: FinalizedBlock): Boolean {
+    val start = (starts.starts[account] as? HistoryStart.Fixed)?.block
     return start != null && start <= finalized.number
+}
+
+/** This refusal, before any read, as the CoW swap's. */
+private fun CallRefusal.asCowSwapQuoting(): CowSwapQuoting = when (this) {
+    is CallRefusal.EarlierMaybeSent -> CowSwapQuoting.EarlierMaybeSent(hash)
+    is CallRefusal.Unavailable -> CowSwapQuoting.Unavailable(reason, figure)
+    CallRefusal.Syncing -> CowSwapQuoting.Syncing
+    CallRefusal.Refused -> CowSwapQuoting.Refused
+    // heldBack answers none of these; mapped all the same.
+    CallRefusal.InsufficientFunds, is CallRefusal.Infeasible, is CallRefusal.Reverts ->
+        CowSwapQuoting.Unavailable(ReadUnavailable.UNPROVEN)
 }
 
 /** Why CoW is not offered for a swap (docs/swaps.md, *The user's choice of venue*). */
@@ -340,6 +367,19 @@ sealed interface CowSwapQuoting {
 
     /** CoW is not offered for this swap, for [why]; Uniswap may be. */
     data class NotOffered(val why: CowNotOffered) : CowSwapQuoting
+
+    /**
+     * The Uniswap venue whose verified quote sets the floor is not verified: none is pinned
+     * ([contract] null), or the code at [contract] is not its pin. No floor stands, so CoW is not
+     * offered either.
+     */
+    data class NoFloorVenue(val contract: Address?) : CowSwapQuoting
+
+    /** Where the account's history starts cannot be read: whether its order could be proven is not known. */
+    data object HistoryUnreadable : CowSwapQuoting
+
+    /** An earlier transaction from the sender, [hash], may still be on its way: retried, not replaced. */
+    data class EarlierMaybeSent(val hash: String) : CowSwapQuoting
 
     /**
      * CoW is no venue here: no deployment is pinned for the network ([contract] null), or the
@@ -402,9 +442,24 @@ class PlaceCowOrder(
     private val signer: Signer,
     private val cowOrders: CowOrders,
     private val cowApi: CowApi,
+    private val lightClient: LightClient,
 ) {
     /** [quote] signed with [unlock] and placed. */
     suspend operator fun invoke(quote: CowSwapQuote, unlock: Unlock): CowOrderPlacing {
+        // Never signed stale: at most a minute old by the verified head's own clock, so that the
+        // order keeps at least four of its five minutes.
+        val synced = lightClient.observeStatus().first() as? LightClientStatus.Synced
+            ?: return CowOrderPlacing.QuoteStale
+        val now = synced.headTimestamp ?: return CowOrderPlacing.QuoteStale
+        if (now > quote.headTimestamp + QUOTE_MAX_AGE_SECONDS) return CowOrderPlacing.QuoteStale
+        // One order per sold token, read again: another review may have placed one meanwhile.
+        when (val read = cowOrders.observe().first()) {
+            is CowOrderList.Loaded -> read.orders
+                .filter { it.account == quote.from && it.order.sellToken == quote.order.sellToken }
+                .lastOrNull { it.canStillTake(synced.finalized) }
+                ?.let { return CowOrderPlacing.EarlierOrderLive(it.uid) }
+            CowOrderList.Unreadable -> return CowOrderPlacing.OrdersUnreadable
+        }
         val again = with(quote) { findRoute(network, sell, buy, amountIn, RouteRanking.NET_OF_FEES, withFee = true) }
         val floor = when (again) {
             is RouteFinding.Found -> CowMinimum.uniswapNet(again.quote.amountOut, again.feeOut ?: UInt256.ZERO)
@@ -452,6 +507,15 @@ sealed interface CowOrderPlacing {
 
     /** The Uniswap floor, quoted again, is above the minimum shown, or no longer stands: quote again. */
     data object FloorRose : CowOrderPlacing
+
+    /** The quote is over a minute old by the verified head's clock, or the head's time is not known: quote again. */
+    data object QuoteStale : CowOrderPlacing
+
+    /** An order of the account selling the same token, [uid], may still fill: one at a time. */
+    data class EarlierOrderLive(val uid: CowOrderUid) : CowOrderPlacing
+
+    /** The record of signed orders cannot be read: no order is known not to be live. */
+    data object OrdersUnreadable : CowOrderPlacing
 
     /** The Uniswap floor could not be quoted again right now ([reason]): nothing was signed. */
     data class FloorUnavailable(val reason: ReadUnavailable) : CowOrderPlacing

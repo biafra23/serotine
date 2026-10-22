@@ -10,6 +10,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.toHex
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.CowOrderEnd
@@ -19,6 +20,7 @@ import eth.serotine.domain.repository.FinalizedBlock
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
+import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -48,11 +50,26 @@ class CowCancellationsTest {
     private val native = FakeNativeBalances()
     private val sent = MemorySentTransfers()
     private val light = FakeLightClient()
-    private val quote = QuoteCowCancellation(inputs, native, sent, light, Network.SEPOLIA, clock = { validTo - 200 })
+    private val cowChain = FakeCowChain()
+    private val quote = QuoteCowCancellation(
+        inputs,
+        native,
+        sent,
+        cowChain,
+        light,
+        Network.SEPOLIA,
+        clock = { validTo - 200 },
+    )
+    private val filledAmountCall = COW_SEPOLIA.settlement to GPv2Settlement.filledAmount(record.uid).toHex()
 
     init {
         native.of(account).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 120)
         light.status.value = LightClientStatus.Synced(120, validTo - 200, FinalizedBlock(100, validTo - 400))
+        filled(UInt256.ZERO)
+    }
+
+    private fun filled(amount: UInt256) {
+        cowChain.answers[filledAmountCall] = Simulation.Succeeded(amount.toBytes32().toHex(), 120)
     }
 
     @Test
@@ -72,6 +89,18 @@ class CowCancellationsTest {
         )
         light.status.value = LightClientStatus.Synced(150, validTo + 40, FinalizedBlock(140, validTo + 1))
         assertEquals(CowCancellationQuoting.ValidityOver, quote(record, FeeLevel.NORMAL))
+        // Past validTo at the head, before any finalized block is: no later block can fill it.
+        light.status.value = LightClientStatus.Synced(150, validTo + 1, FinalizedBlock(140, validTo - 100))
+        assertEquals(CowCancellationQuoting.ValidityOver, quote(record, FeeLevel.NORMAL))
+    }
+
+    @Test
+    fun anOrderTheSettlementHoldsFilledOrCancelledAtTheHeadIsNotCancelledAgain() = runTest {
+        filled(record.order.sellAmount)
+        assertEquals(CowCancellationQuoting.AlreadyEnded, quote(record, FeeLevel.NORMAL))
+        // A cancellation mined and not finalized yet: the maximum uint256.
+        filled(UInt256.parse("115792089237316195423570985008687907853269984665640564039457584007913129639935")!!)
+        assertEquals(CowCancellationQuoting.AlreadyEnded, quote(record, FeeLevel.NORMAL))
     }
 
     @Test
