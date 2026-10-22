@@ -85,6 +85,9 @@ data class LightClientItem(
             )
             LightClientStatus.Unavailable ->
                 LightClientItem("No light client on this device", null, false, NOT_VERIFIED)
+            LightClientStatus.Off -> LightClientItem("Turned off in this wallet", null, false, NOT_VERIFIED)
+            LightClientStatus.Idle ->
+                LightClientItem("Light client idle · it starts once an account needs it", null, false, NOT_VERIFIED)
         }
 
         /** " · 8 s ago" for a block produced at [timestamp], or nothing when its time is unknown. */

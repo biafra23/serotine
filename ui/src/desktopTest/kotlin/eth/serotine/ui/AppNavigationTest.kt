@@ -94,6 +94,7 @@ import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_ASSET_TAG
@@ -322,6 +323,7 @@ class AppNavigationTest {
         debugLog = debugLog,
         debugScreen = debugScreen,
         screenCaptureDebugSwitch = null,
+        networkDemand = NetworkDemand(),
     )
 
     private val daily = Account(

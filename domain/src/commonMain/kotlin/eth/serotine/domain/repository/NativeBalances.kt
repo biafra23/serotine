@@ -71,4 +71,10 @@ enum class ReadUnavailable {
      * (the Myotis engine's REFUSED, say past a fork it cannot execute).
      */
     REFUSED,
+
+    /**
+     * No light client runs for the network asked about right now: it is turned off in this
+     * wallet, or on with nothing needing it yet (docs/networks.md, *Networks on and off*).
+     */
+    NETWORK_OFF,
 }

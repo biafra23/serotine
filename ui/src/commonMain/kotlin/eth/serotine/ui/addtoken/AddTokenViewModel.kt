@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.AddToken
+import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.KnownTokenList
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveTokenMetadata
@@ -41,8 +42,17 @@ class AddTokenViewModel(
     private val addToken: AddToken,
     /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
     private val network: Network,
+    /** Keeps [network]'s light client running while this screen is open, with no account on it yet. */
+    holdNetwork: HoldNetwork,
     address: String = "",
 ) : ViewModel() {
+
+    /** Released when the screen is gone ([onCleared]). */
+    private val hold = holdNetwork(network)
+
+    override fun onCleared() {
+        hold.release()
+    }
 
     private class Outcome(val adding: Boolean = false, val error: String? = null, val done: Boolean = false)
 
@@ -131,6 +141,8 @@ class AddTokenViewModel(
                 when (reading.reason) {
                     ReadUnavailable.NO_ENGINE ->
                         "There is no light client on this device, so the contract cannot be read."
+                    ReadUnavailable.NETWORK_OFF ->
+                        "The network's light client is not running, so the contract cannot be read."
                     ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the contract cannot be read."
                     ReadUnavailable.UNPROVEN -> "The contract's answers could not be verified this time. Serotine keeps trying."
                     ReadUnavailable.REFUSED -> "The light client on this device cannot read this contract."

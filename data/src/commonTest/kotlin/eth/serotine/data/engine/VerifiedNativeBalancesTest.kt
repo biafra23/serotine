@@ -253,4 +253,23 @@ class VerifiedNativeBalancesTest {
 
         assertEquals(listOf(addresses.first()), chain.proofRequests, "the oldest was let go, the newest kept")
     }
+
+    @Test
+    fun aStoppedNetworkOffersTheLastProofOrSaysItIsOff() = runTest {
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        assertEquals(
+            BalanceReading.Unavailable(ReadUnavailable.NETWORK_OFF),
+            balances().observeBalance(Network.SEPOLIA, address).first(),
+            "nothing proven yet",
+        )
+
+        val balances = balances()
+        val seen = mutableListOf<BalanceReading>()
+        val collecting = launch { balances.observeBalance(Network.SEPOLIA, address).collect { seen += it } }
+        chain.proofs[address] = ProvenBalance("5", 100)
+        step(running(head = 100, headTimestamp = 1_792_100_000))
+        step(EngineSnapshot.Stopped(off = false))
+        collecting.cancel()
+        assertEquals(BalanceReading.LastKnown(Wei.of("5"), 100, asOf = 1_792_100_000), seen.last())
+    }
 }

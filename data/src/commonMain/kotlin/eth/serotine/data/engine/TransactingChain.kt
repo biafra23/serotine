@@ -84,6 +84,7 @@ internal data class NameAnswer(
 /** Why reads cannot be verified now, from [snapshot], or null when they can (at its readable head). */
 internal fun whyUnreadable(snapshot: EngineSnapshot): ReadUnavailable? = when (snapshot) {
     EngineSnapshot.Down -> ReadUnavailable.NO_ENGINE
+    is EngineSnapshot.Stopped -> ReadUnavailable.NETWORK_OFF
     EngineSnapshot.Booting -> ReadUnavailable.UNPROVEN
     is EngineSnapshot.Running -> when {
         snapshot.phase == EngineSnapshot.Phase.STALE_ANCHOR -> ReadUnavailable.STALE_ANCHOR

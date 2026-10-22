@@ -135,4 +135,21 @@ class EngineLightClientTest {
     private companion object {
         val POLL = 1.seconds
     }
+
+    @Test
+    fun aStoppedLightClientIsOffOrIdleAndStartsAgain() = runTest {
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        assertEquals(LightClientStatus.Off, client().observeStatus(Network.SEPOLIA).first())
+        chain.snapshot = EngineSnapshot.Stopped(off = false)
+        assertEquals(LightClientStatus.Idle, client().observeStatus(Network.SEPOLIA).first())
+
+        val seen = mutableListOf<LightClientStatus>()
+        val collecting = launch { client().observeStatus(Network.SEPOLIA).collect { seen += it } }
+        runCurrent()
+        chain.snapshot = running(phase = Phase.STARTING)
+        advanceTimeBy(POLL)
+        runCurrent()
+        collecting.cancel()
+        assertEquals(listOf(LightClientStatus.Idle, LightClientStatus.Starting), seen, "a stop is not final")
+    }
 }

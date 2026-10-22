@@ -149,6 +149,12 @@ internal sealed interface EngineSnapshot {
     data object Down : EngineSnapshot
 
     /**
+     * The network's light client is stopped: the network is turned off in this wallet ([off]),
+     * or on with nothing needing it. It starts again when asked: not final.
+     */
+    data class Stopped(val off: Boolean) : EngineSnapshot
+
+    /**
      * The engine's report; see `io.myotis.api.StatusSnapshot` for each field. [upgrade] is
      * its upgrade advisory: an upgrade peers report that this build does not support, null
      * when none is (peer data, never verified).

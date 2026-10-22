@@ -277,6 +277,7 @@ internal fun amountHint(amount: UInt256?, option: AssetOption?, currency: Displa
 /** Why a name could not be resolved with verified calls, display-ready. */
 internal fun nameUnavailable(reason: ReadUnavailable): String = when (reason) {
     ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so the name cannot be resolved."
+    ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so the name cannot be resolved."
     ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the name cannot be resolved."
     ReadUnavailable.UNPROVEN -> "The name could not be resolved with verified calls this time."
     ReadUnavailable.REFUSED -> "The light client on this device cannot resolve names."

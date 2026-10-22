@@ -90,8 +90,8 @@ private val LightClientStatus.verifies: Boolean
 
 /**
  * Whether the light client's own state agrees that it is not verifying the chain: not synced
- * yet, or synced with a head that has gone stale. Asleep (networking off on purpose) and no
- * light client at all say nothing either way.
+ * yet, or synced with a head that has gone stale. Asleep (networking off on purpose), a network
+ * turned off or idle, and no light client at all say nothing either way.
  */
 private val LightClientStatus.agreesItIsNotVerifying: Boolean
     get() = when (this) {
@@ -105,6 +105,8 @@ private val LightClientStatus.agreesItIsNotVerifying: Boolean
         is LightClientStatus.WaitingForProofPeers,
         LightClientStatus.Sleeping,
         LightClientStatus.Unavailable,
+        LightClientStatus.Off,
+        LightClientStatus.Idle,
         -> false
     }
 

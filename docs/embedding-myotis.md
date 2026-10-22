@@ -85,7 +85,7 @@ consumer developed against an unreleased engine, Myotis's
   The log index (*History*) is twinned too, from Myotis 0.1.18 (its #687).
 - **The engine's own log** is not printed by the engine: its tracing lines go
   into a ring in the library (4096 lines, the oldest dropped when full), which
-  a host drains with `Myotis.drainLogs`. A debug build's `MyotisNode` drains
+  a host drains with `Myotis.drainLogs`. A debug build's `MyotisHost` (the iOS `MyotisNode` on iOS) drains
   it every second while the engine runs (`EngineLogPump`) into the same
   `debugLog` the adapters write to, each line marked `Myotis:` (logcat in the
   debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build, so a
@@ -96,14 +96,27 @@ consumer developed against an unreleased engine, Myotis's
 
 ## What exists today
 
-- **`MyotisNode`** (`eth.serotine.data.engine`, in `:data`'s `jvmSharedMain`)
-  is the process's one engine on Sepolia. Each composition root creates it with
-  `MyotisNode.start(network, dataDir, dnsServers)`. Loading the native library,
-  creating the engine and starting it all run on a background thread, so
-  nothing blocks a main thread. The desktop stops it after its window closes.
-  Android pauses its networking 30 s after nothing holds it any more (a
-  visible activity, the daily network-upgrade check) and resumes it with the
-  next hold; `AndroidDnsServers` supplies the active network's resolvers.
+- **`MyotisHost`** (`eth.serotine.data.engine`, in `:data`'s `jvmSharedMain`)
+  is the process's one engine, hosting one light client per network
+  (docs/networks.md, *The engine host*): a `ChainNode` per `Network`, created
+  in the engine (`MyotisEngine.create`) when it is to run and unregistered
+  (`MyotisEngine.stop`) when it is not. Each composition root creates it with
+  `MyotisHost.start(dataDir, dnsServers)` and runs `FollowNetworks` beside it,
+  which starts a network's light client while the network is on and an
+  account or a screen needs it, and stops it 30 s after nothing does, or at
+  once when it is turned off (`LightClientControl`). Its ports route each call
+  to the light client of the network it names (`NetworkRoutedPorts`), and a
+  stopped network's reads say so (`ReadUnavailable.NETWORK_OFF`, its last
+  verified balance offered as `LastKnown`). Loading the native library,
+  creating the engine and starting a chain all run on one control thread, in
+  the order asked, so nothing blocks a main thread. The desktop stops it after
+  its window closes. Android pauses every running light client's networking
+  30 s after nothing holds the engine any more (a visible activity, the daily
+  network-upgrade check) and resumes them with the next hold;
+  `AndroidDnsServers` supplies the active network's resolvers. The iOS
+  `MyotisNode` still hosts its one network and keeps it running: it follows
+  networks on and off from part 4 of docs/networks.md, when there is a second
+  one to host.
 - **Readiness, as Myotis reads it.** The adapters read `ChainHandle.status()`,
   a snapshot that never blocks, the way Myotis's own readiness ladder does:
   `SYNCING` is the checkpoint bootstrap; `CATCHING_UP` walks sync-committee
@@ -124,7 +137,7 @@ consumer developed against an unreleased engine, Myotis's
   every adapter but the two balance ones reads it as syncing. The balance
   adapters also keep it across restarts in `LastBalancesFile`
   (`last-balances.json` beside the account list, a path the host passes to
-  `MyotisNode.start`): at most 256 entries, rewritten when an amount changes
+  `MyotisHost.start`): at most 256 entries, rewritten when an amount changes
   or its stored proof is 50 blocks old, so the time a row shows after a
   restart can be up to ten minutes earlier than the last proof of that same
   amount. Why a node is
@@ -223,7 +236,7 @@ consumer developed against an unreleased engine, Myotis's
   under them; the root fix is the engine's, several slots in one proof at one
   block (biafra23/myotis#662), and once it lands a Safe is proven in one
   request. Until then the debug builds log which proof failed or straddled
-  and how many reads a Safe took (`MyotisNode.start`'s `debugLog`: logcat in
+  and how many reads a Safe took (`MyotisHost.start`'s `debugLog`: logcat in
   the debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build;
   public chain data only). A
   one-shot check of a Safe (an import, the checks before Sign, Approve,
@@ -283,7 +296,7 @@ consumer developed against an unreleased engine, Myotis's
   `./gradlew :desktop-app:run -PmyotisLibraryDir=<dir>` runs a locally built
   `libmyotis_engine.{dylib,so}` instead (Myotis: `./gradlew cargoBuildHost`,
   then `rust/target/release`). The same property runs
-  `MyotisNodeSepoliaTest`, a real-network test that is skipped otherwise.
+  `MyotisHostSepoliaTest`, a real-network test that is skipped otherwise.
 - **Android 10 and INTERNET.** An install that gains INTERNET on an update,
   rather than having it from the first install, can keep getting `EPERM` from
   netd's eBPF socket filter until it is reinstalled or the device reboots. The
