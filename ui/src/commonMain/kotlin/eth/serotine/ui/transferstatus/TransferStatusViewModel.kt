@@ -67,7 +67,7 @@ class TransferStatusViewModel(
     private var latest: SentTransferStatus? = null
 
     val uiState: StateFlow<TransferStatusUiState> =
-        combine(observeSentTransfer(hash).onEach { latest = it }, observeAccounts(), retrying, ::render).stateIn(
+        combine(observeSentTransfer(network, hash).onEach { latest = it }, observeAccounts(), retrying, ::render).stateIn(
             viewModelScope,
             // Back after the timeout, no old step stands as current.
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),

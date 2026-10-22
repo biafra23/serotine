@@ -34,7 +34,7 @@ class LightClientViewModelTest {
     @Test
     fun followsTheLightClientFromStartToAVerifiedHead() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val viewModel = LightClientViewModel(ObserveLightClient(lightClient), clock = { 1_000 })
+        val viewModel = LightClientViewModel(ObserveLightClient(lightClient), Network.SEPOLIA, clock = { 1_000 })
         backgroundScope.launch { viewModel.item.collect {} }
 
         assertEquals("Starting the light client…", viewModel.item.value.text)
@@ -58,7 +58,7 @@ class LightClientViewModelTest {
     @Test
     fun stopsFollowingWithNoScreenAndAScreenOpenedLaterNeverStartsFromStarting() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val viewModel = LightClientViewModel(ObserveLightClient(lightClient), clock = { 1_000 })
+        val viewModel = LightClientViewModel(ObserveLightClient(lightClient), Network.SEPOLIA, clock = { 1_000 })
         val screen = backgroundScope.launch { viewModel.item.collect {} }
         status.value = LightClientStatus.CatchingUp(done = 1, total = 4)
         runCurrent()

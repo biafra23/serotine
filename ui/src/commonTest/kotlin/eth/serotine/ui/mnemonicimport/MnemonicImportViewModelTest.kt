@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
@@ -74,7 +75,7 @@ class MnemonicImportViewModelTest {
             factory = viewModelFactory {
                 initializer {
                     val import = ImportMnemonicAccount(keys, repository, WalletChanges())
-                    MnemonicImportViewModel(import, DescribeKeyStore(keys))
+                    MnemonicImportViewModel(import, DescribeKeyStore(keys), Network.SEPOLIA)
                 }
             },
         )[MnemonicImportViewModel::class]
@@ -498,12 +499,12 @@ class MnemonicImportViewModelTest {
             return if (added) AccountAdd.Added else AccountAdd.AlreadyPresent
         }
 
-        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+        override suspend fun rename(id: AccountId, label: String): AccountChange = error("not used by this test")
 
-        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
+        override suspend fun remove(id: AccountId): AccountChange = error("not used by this test")
 
-        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
-            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+        override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange {
+            accounts.update { list -> list.map { if (it.id == id) it.copy(custody = custody) else it } }
             return AccountChange.Changed
         }
     }

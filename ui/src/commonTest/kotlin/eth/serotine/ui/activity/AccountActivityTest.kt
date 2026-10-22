@@ -2,6 +2,7 @@ package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -34,12 +35,15 @@ import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryHistoryStarts
-import eth.serotine.ui.MemoryUserTokens
-import eth.serotine.ui.topicOf
 import eth.serotine.ui.MemoryTransactionHistory
+import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
 import eth.serotine.ui.components.GUARD_SET_WARNING
 import eth.serotine.ui.components.MODULE_DISABLED_WARNING
+import eth.serotine.ui.topicOf
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,9 +53,6 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountActivityTest {
@@ -113,9 +114,8 @@ class AccountActivityTest {
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
             ObserveSentToAddresses(history),
-            Network.SEPOLIA,
         ) { "at $it" }
-            .of(address)
+            .of(AccountId(Network.SEPOLIA, address))
             // Unconfined, so that what a test changes is listed before it reads the value.
             .stateIn(
                 backgroundScope + UnconfinedTestDispatcher(testScheduler),

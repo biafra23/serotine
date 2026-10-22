@@ -29,7 +29,7 @@ internal class FakeFeeds(val quotesTable: Map<PriceId, PriceId> = TEST_QUOTES) :
     }
 
     override fun observe(network: Network, priceId: PriceId): Flow<FeedReading> =
-        if (priceId in quotes) of(priceId.id) else flowOf(FeedReading.NoPrice(NoPriceReason.NO_FEED))
+        if (priceId in quotesTable) of(priceId.id) else flowOf(FeedReading.NoPrice(NoPriceReason.NO_FEED))
 }
 
 /** A [DisplayCurrencySetting] in memory; [failSaves] makes a choice fail. */

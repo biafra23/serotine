@@ -33,14 +33,8 @@ import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import eth.serotine.domain.model.Account
-import eth.serotine.domain.repository.ReceiptLog
-import eth.serotine.domain.repository.LogWatchKey
-import eth.serotine.domain.repository.LogCoverageReading
-import eth.serotine.domain.repository.LogCoverage
-import eth.serotine.domain.repository.IndexedLog
-import eth.serotine.domain.repository.HistoryStart
-import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
@@ -51,6 +45,7 @@ import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
@@ -64,6 +59,8 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.HistoryEntry
+import eth.serotine.domain.repository.HistoryStart
+import eth.serotine.domain.repository.IndexedLog
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -74,11 +71,15 @@ import eth.serotine.domain.repository.KnownUpgrade
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.LogCoverage
+import eth.serotine.domain.repository.LogCoverageReading
+import eth.serotine.domain.repository.LogWatchKey
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
@@ -143,6 +144,7 @@ import eth.serotine.ui.transferstatus.TRANSFER_SAFE_TAG
 import eth.serotine.ui.update.UPDATE_REQUIRED_TAG
 import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
 import eth.serotine.ui.watch.WATCH_NAME_TAG
+import kotlin.test.assertEquals
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -158,7 +160,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
-import kotlin.test.assertEquals
 
 /**
  * The shared [App] end to end, over fake ports: the tabs, the account screens and their dialogs,
@@ -217,20 +218,20 @@ class AppNavigationTest {
             return AccountAdd.Added
         }
 
-        override suspend fun rename(address: Address, label: String): AccountChange {
+        override suspend fun rename(id: AccountId, label: String): AccountChange {
             accounts.update { list ->
-                list.map { if (it.address == address) it.copy(label = label, ensName = null) else it }
+                list.map { if (it.id == id) it.copy(label = label, ensName = null) else it }
             }
             return AccountChange.Changed
         }
 
-        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
-            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+        override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange {
+            accounts.update { list -> list.map { if (it.id == id) it.copy(custody = custody) else it } }
             return AccountChange.Changed
         }
 
-        override suspend fun remove(address: Address): AccountChange {
-            accounts.update { list -> list.filterNot { it.address == address } }
+        override suspend fun remove(id: AccountId): AccountChange {
+            accounts.update { list -> list.filterNot { it.id == id } }
             return AccountChange.Changed
         }
     }
@@ -315,7 +316,6 @@ class AppNavigationTest {
             override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
         },
-        network = Network.SEPOLIA,
         debugLog = debugLog,
         debugScreen = debugScreen,
         screenCaptureDebugSwitch = null,
@@ -678,7 +678,7 @@ class AppNavigationTest {
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(1, broadcaster.sent.size)
         // The signed review is gone from the back stack: Done returns to the account.
-        assertEquals(listOf("accounts", "account/{address}", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "transfer/{chain}/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -694,7 +694,7 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        assertEquals(listOf("accounts", "account/{address}", "swap/{address}?asset={asset}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "swap/{chain}/{address}?asset={asset}"), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
@@ -709,7 +709,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Daily").performClick()
         rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG)[0].performClick()
         rule.onNodeWithText("Settings").assertDoesNotExist()
-        assertEquals(listOf("accounts", "account/{address}", "send/{address}?asset={asset}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "send/{chain}/{address}?asset={asset}"), screens())
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithContentDescription("Back").performClick()
 
@@ -717,7 +717,7 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithText("Co-signer").fetchSemanticsNodes().isNotEmpty() }
         rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG)[0].performClick()
         rule.onNodeWithText("Send from a Safe").assertIsDisplayed()
-        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/propose?asset={asset}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "safe/{chain}/{address}/propose?asset={asset}"), screens())
     }
 
     @Test
@@ -749,7 +749,7 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(sent.hash)
         assertEquals(
-            listOf("accounts", "account/{address}", DETAIL_ROUTE, "transfer/{hash}"),
+            listOf("accounts", "account/{chain}/{address}", DETAIL_ROUTE, "transfer/{chain}/{hash}"),
             screens(),
         )
         rule.onNodeWithText("Done").performScrollTo().performClick()
@@ -792,7 +792,7 @@ class AppNavigationTest {
         // Add token by address, under the bar, with the contract filled in and read.
         rule.waitUntil { rule.onAllNodesWithText("Spam Coin · SPAM").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(
-            listOf("accounts", "account/{address}", DETAIL_ROUTE, "activity-add-token/{address}"),
+            listOf("accounts", "account/{chain}/{address}", DETAIL_ROUTE, "activity-add-token/{address}"),
             screens(),
         )
         rule.onNodeWithText("Settings").assertIsDisplayed()
@@ -800,7 +800,7 @@ class AppNavigationTest {
 
         // Back on the detail, which says what moved now that the wallet lists the token.
         rule.waitUntil { rule.onAllNodesWithText("Received 1 SPAM").fetchSemanticsNodes().isNotEmpty() }
-        assertEquals(listOf("accounts", "account/{address}", DETAIL_ROUTE), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", DETAIL_ROUTE), screens())
     }
 
     @Test
@@ -841,7 +841,7 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(SAFE_TX_QR_TAG).performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag(SAFE_TX_REQUEST_TAG).performScrollTo().assertTextEquals(codec.encode(queued))
-        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "safe/{chain}/{address}/tx/{hash}"), screens())
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -873,7 +873,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(SAFE_TX_HASH_TAG).performScrollTo().assertTextEquals("0x" + proposed.hash.hex)
         assertEquals(listOf("correct horse"), signer.passwords)
         // The proposal is gone from the back stack: back from the transaction returns to the Safe.
-        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "safe/{chain}/{address}/tx/{hash}"), screens())
     }
 
     @Test
@@ -895,7 +895,7 @@ class AppNavigationTest {
         // The import's flag reached the new entry through its savedStateHandle: it says where it went.
         rule.onNodeWithText("Added to Treasury's queue on this device.").performScrollTo().assertIsDisplayed()
         assertEquals(listOf(carol), safeTxQueue.requests.value.single().signers)
-        assertEquals(listOf("accounts", "account/{address}", "safe/{address}/tx/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "safe/{chain}/{address}/tx/{hash}"), screens())
     }
 
     @Test
@@ -921,7 +921,7 @@ class AppNavigationTest {
         assertEquals(SentAction.SafeApproval(queued), approval.action)
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(approval.hash)
         // The signed review is gone from the back stack: Done returns to the Safe.
-        assertEquals(listOf("accounts", "account/{address}", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "transfer/{chain}/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
     }
@@ -935,7 +935,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Receive").assertIsDisplayed()
         rule.onNodeWithText("Send").performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
-        assertEquals(listOf("accounts", "account/{address}"), screens(), "nothing opened")
+        assertEquals(listOf("accounts", "account/{chain}/{address}"), screens(), "nothing opened")
     }
 
     @Test
@@ -986,7 +986,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(TRANSFER_SAFE_TAG).assertTextEquals(Eip55.format(action.safe))
         assertEquals(listOf("correct horse"), signer.passwords)
         // The signed review is gone from the back stack: Done returns to Accounts, right away.
-        assertEquals(listOf("accounts", "transfer/{hash}"), screens())
+        assertEquals(listOf("accounts", "transfer/{chain}/{hash}"), screens())
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
 
@@ -1024,4 +1024,4 @@ class AppNavigationTest {
 }
 
 /** The route of an Activity detail, as the back stack names it. */
-private const val DETAIL_ROUTE = "activity/{address}/tx/{hash}?log={log}"
+private const val DETAIL_ROUTE = "activity/{chain}/{address}/tx/{hash}?log={log}"

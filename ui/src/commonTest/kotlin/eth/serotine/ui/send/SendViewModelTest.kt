@@ -2,6 +2,7 @@ package eth.serotine.ui.send
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
@@ -70,6 +71,16 @@ import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -81,16 +92,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 
 /** [SendViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -152,7 +153,7 @@ class SendViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val currency = MemoryCurrencySetting()
         val viewModel = SendViewModel(
-            from,
+            AccountId(Network.SEPOLIA, from),
             asset,
             ObserveAccounts(accounts),
             ObserveAccountValue(
@@ -163,7 +164,6 @@ class SendViewModelTest {
                 ),
                 ObserveUsdPrice(feeds),
                 ObserveDisplayCurrencies(feeds, currency),
-                Network.SEPOLIA,
             ),
             DescribeKeyStore(keys),
             ResolveRecipient(names),
@@ -171,7 +171,6 @@ class SendViewModelTest {
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
-            Network.SEPOLIA,
             clock,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }

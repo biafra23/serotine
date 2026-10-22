@@ -62,6 +62,7 @@ class WatchViewModelTest {
             ObserveAccounts(accounts),
             WatchAddress(accounts, kinds),
             ResolveRecipient(names),
+            Network.SEPOLIA,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -147,6 +148,7 @@ class WatchViewModelTest {
             ObserveAccounts(accounts),
             WatchAddress(accounts, syncing),
             ResolveRecipient(names),
+            Network.SEPOLIA,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -214,6 +216,7 @@ class WatchViewModelTest {
                 ObserveAccounts(accounts),
                 WatchAddress(accounts, gatedKinds),
                 ResolveRecipient(names),
+                Network.SEPOLIA,
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)

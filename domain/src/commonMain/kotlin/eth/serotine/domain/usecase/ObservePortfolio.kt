@@ -18,15 +18,13 @@ class ObservePortfolio(
     private val observeAccountValue: ObserveAccountValue,
     private val observeDisplayCurrencies: ObserveDisplayCurrencies,
 ) {
-    operator fun invoke(): Flow<Portfolio> {
+    /** Totalled in the display currency as [network] offers it: the network whose header shows the total. */
+    operator fun invoke(network: Network): Flow<Portfolio> {
         val values = observeAccounts().readEach(
             keys = { list -> (list as? AccountList.Loaded)?.accounts?.mapTo(LinkedHashSet()) { it.id }.orEmpty() },
             read = { id -> observeAccountValue(id) },
         )
-        // The display currency is a wallet-wide setting; its offered set differs per network, so
-        // the chosen currency is read against the primary network for the portfolio header.
-        val currencyNetwork = Network.entries.first()
-        return combine(values, observeDisplayCurrencies(currencyNetwork).map { it.chosen }) { (accounts, read), currency ->
+        return combine(values, observeDisplayCurrencies(network).map { it.chosen }) { (accounts, read), currency ->
             Portfolio(accounts, read, currency)
         }
     }

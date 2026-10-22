@@ -1,12 +1,11 @@
 # Networks: Ethereum and Gnosis Chain beside Sepolia
 
-A plan, not yet a ruling (drawn 2026-10-22). Today the app works on Sepolia
-alone (owner ruling, 2026-10-15; CLAUDE.md, *Data sources*), and adding a
-network is the owner's decision, recorded in CLAUDE.md before its code lands.
-This page proposes how Ethereum mainnet (chain id 1) and Gnosis Chain (chain id
-100) come in, and what has to be decided first (*Open questions*, at the end).
-When the owner accepts it, the rulings it needs go into CLAUDE.md in the first
-part's PR, and docs/wallet-ux.md takes over the screens as each part lands.
+Drawn 2026-10-22 and accepted by the owner the same day, with the answer this
+page proposes to each open question (*Open questions*, at the end): the ruling
+is in CLAUDE.md (*Data sources*), recorded by the first part's PR. This page
+says how Ethereum mainnet (chain id 1) and Gnosis Chain (chain id 100) come in
+beside Sepolia, and docs/wallet-ux.md takes over the screens as each part
+lands.
 
 The mockups (source: `networks-screens.html`, which opens in a browser) are
 numbered N1 to N20 below. They follow the style of `wallet-ux-screens.html`:
@@ -513,13 +512,16 @@ releasable. The parts, in order:
 Parts 4 and 5 are independent once 3 is in and can be reviewed in either
 order.
 
-**Still the owner's to answer before part 1 is coded** (CLAUDE.md, step 3
-of the multi-PR rule): may the part PRs be merged into `feature/networks`
-without waiting for the owner, or does the owner merge each one? The answer
-lives in the conversation where it is given. Until a session has it in its
-own conversation, the owner merges each part.
+**The part PRs** (CLAUDE.md, step 3 of the multi-PR rule): the owner answered
+yes, the session executing the plan merges each part into `feature/networks`
+once it is done under the workflow (2026-10-22). The answer lives in that
+session's conversation; a later session resuming the plan without it in its own
+conversation asks again, and until then the owner merges each part.
 
-## Open questions, the owner's to decide
+## Open questions, decided
+
+The owner decided each as this page proposes (2026-10-22; CLAUDE.md, *Data
+sources*): the default named in each item below is the ruling.
 
 1. **Real funds.** Mainnet and Gnosis hold real value. Should the first
    account added on either show a one-time notice (what Serotine is, what

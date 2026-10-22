@@ -272,11 +272,11 @@ private fun AccountList(
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier.fillMaxSize().testTag(ACCOUNTS_LIST_TAG)) {
-        items(accounts, key = { it.address }) { account ->
+        items(accounts, key = { "${it.chainId}/${it.address}" }) { account ->
             WithActionMenu(
                 actions = accountMenu(account, onAccountAction, onUnavailable),
                 menuLabel = "Actions for ${account.label}",
-                onClick = { onAccountAction(AccountAction.Open(account.address)) },
+                onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
                 clickLabel = "Open ${account.label}",
             ) {
                 AccountRow(account)
@@ -296,20 +296,21 @@ private fun accountMenu(
     act: (AccountAction) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ): List<MenuAction> {
+    val chainId = account.chainId
     val address = account.address
     val sendReason = account.sendReason
     return listOf(
         MenuAction("Send", Icons.AutoMirrored.Filled.Send, unavailable = sendReason != null) {
             when {
                 sendReason != null -> onUnavailable(UnavailableNotice("Send", sendReason))
-                account.kind == AccountKind.SAFE -> act(AccountAction.Propose(address))
-                else -> act(AccountAction.Send(address))
+                account.kind == AccountKind.SAFE -> act(AccountAction.Propose(chainId, address))
+                else -> act(AccountAction.Send(chainId, address))
             }
         },
-        MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(address)) },
-        MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(address)) },
-        MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(address)) },
-        MenuAction("Remove", Icons.Filled.Delete, destructive = true) { act(AccountAction.Remove(address)) },
+        MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(chainId, address)) },
+        MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(chainId, address)) },
+        MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(chainId, address)) },
+        MenuAction("Remove", Icons.Filled.Delete, destructive = true) { act(AccountAction.Remove(chainId, address)) },
     )
 }
 

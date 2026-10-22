@@ -2,6 +2,7 @@ package eth.serotine.ui.swap
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
@@ -72,6 +73,14 @@ import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.RouteStep
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -83,14 +92,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.TestTimeSource
 
 /** [SwapViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -165,7 +166,7 @@ class SwapViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { headTime }
         val viewModel = SwapViewModel(
-            from,
+            AccountId(Network.SEPOLIA, from),
             sell,
             ObserveAccounts(accounts),
             ObserveAccountValue(
@@ -176,7 +177,6 @@ class SwapViewModelTest {
                 ),
                 ObserveUsdPrice(FakeFeeds()),
                 ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting()),
-                Network.SEPOLIA,
             ),
             DescribeKeyStore(keys),
             QuoteSwap(
@@ -194,7 +194,6 @@ class SwapViewModelTest {
             SendTokenApproval(signer, broadcaster, sent, now),
             RebroadcastTransfer(broadcaster, sent, FakeReceipts()),
             WarmFeeHistory(inputs),
-            Network.SEPOLIA,
             clock,
             formatTime = { "at $it" },
         )

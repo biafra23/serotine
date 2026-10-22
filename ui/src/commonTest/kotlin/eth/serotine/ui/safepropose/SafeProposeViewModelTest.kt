@@ -1,5 +1,6 @@
 package eth.serotine.ui.safepropose
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
@@ -20,9 +21,9 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.Signing
-import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ObserveAccountValue
@@ -43,6 +44,14 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.SafeBalanceChange
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.ShareItem
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -54,14 +63,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 
 /** [SafeProposeViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -93,7 +94,7 @@ class SafeProposeViewModelTest {
     private fun TestScope.viewModel(from: Address = world.safe, asset: Address? = null): SafeProposeViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = SafeProposeViewModel(
-            from,
+            AccountId(Network.SEPOLIA, from),
             asset,
             ObserveAccounts(world.accounts),
             ObserveAccountValue(
@@ -101,7 +102,6 @@ class SafeProposeViewModelTest {
                 ObserveTokenHoldings(world.knownTokens, world.tokenBalances),
                 ObserveUsdPrice(feeds),
                 ObserveDisplayCurrencies(feeds, MemoryCurrencySetting()),
-                Network.SEPOLIA,
             ),
             world.observeSafe,
             DescribeKeyStore(keys),
@@ -116,7 +116,6 @@ class SafeProposeViewModelTest {
             ),
             SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
             EncodeSigningRequest(world.codec),
-            Network.SEPOLIA,
             clock,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -597,7 +596,7 @@ class SafeProposeViewModelTest {
     @Test
     fun anAddedTokenThatTakesABuiltInSymbolIsSaidToBeAnotherContract() = runTest {
         val impostor = Token(Address.of("0x" + "cd".repeat(20)), "USDC", "Not USD Coin", 6, icon = null)
-        world.userTokens.add(impostor)
+        world.userTokens.add(Network.SEPOLIA, impostor)
         holding()
         world.tokenBalances.of(world.safe, impostor.address).value =
             TokenBalanceReading.Verified(TokenUnits.of("50000000"), 99)

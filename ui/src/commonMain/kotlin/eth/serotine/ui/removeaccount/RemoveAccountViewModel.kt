@@ -3,6 +3,7 @@ package eth.serotine.ui.removeaccount
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountRemoval
@@ -17,17 +18,20 @@ import kotlinx.coroutines.launch
 
 /** The remove dialog's ViewModel: asks about the account under [address], then removes it. */
 class RemoveAccountViewModel(
-    private val address: Address,
+    private val account: AccountId,
     observeAccount: ObserveAccount,
     private val removeAccount: RemoveAccount,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val address: Address = account.address
+
 
     private val state = MutableStateFlow<RemoveAccountUiState>(RemoveAccountUiState.Loading)
     val uiState: StateFlow<RemoveAccountUiState> = state.asStateFlow()
 
     init {
         viewModelScope.launch {
-            state.value = when (val lookup = observeAccount(address).first()) {
+            state.value = when (val lookup = observeAccount(account).first()) {
                 is AccountLookup.Found -> RemoveAccountUiState.Confirm(
                     label = lookup.account.label,
                     address = Eip55.format(lookup.account.address),
@@ -46,8 +50,8 @@ class RemoveAccountViewModel(
         if (confirm.removing) return
         state.value = confirm.copy(removing = true)
         viewModelScope.launch {
-            state.value = when (removeAccount(address)) {
-                AccountRemoval.Removed -> RemoveAccountUiState.Done
+            state.value = when (removeAccount(account)) {
+                AccountRemoval.Removed, AccountRemoval.RemovedKeyStays -> RemoveAccountUiState.Done
                 AccountRemoval.NotFound -> RemoveAccountUiState.Gone
                 AccountRemoval.RemovedKeyKept -> RemoveAccountUiState.Notice(
                     "${confirm.label} is removed, but its key could not be deleted from this device, so " +

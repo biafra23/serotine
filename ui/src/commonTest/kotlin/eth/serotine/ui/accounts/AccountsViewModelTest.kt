@@ -2,6 +2,7 @@ package eth.serotine.ui.accounts
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
@@ -52,6 +53,12 @@ import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.update.UpgradeBannerItem
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -67,12 +74,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountsViewModelTest {
@@ -101,14 +102,13 @@ class AccountsViewModelTest {
             ),
             ObserveUsdPrice(feeds),
             currencies,
-            Network.SEPOLIA,
         )
         return AccountsViewModel(
             ObservePortfolio(ObserveAccounts(repository), value, currencies),
             ObserveSafes(repository, ObserveSafe(kinds, repository)),
             ObserveEnsNames(repository, names),
             ObserveLightClient(lightClient),
-            ObserveUpgradeWarning(upgrades, NoRecord, lightClient) { now },
+            ObserveUpgradeWarning(Network.SEPOLIA, upgrades, NoRecord, lightClient) { now },
             Network.SEPOLIA,
             clock = { now },
             formatTime = { "<$it>" },
@@ -123,6 +123,7 @@ class AccountsViewModelTest {
         AccountItem(
             "Treasury",
             Eip55.format(treasury.address),
+            Network.SEPOLIA.chainId,
             AccountKind.SAFE,
             Control.WATCH_ONLY,
             balance,
@@ -481,9 +482,9 @@ class AccountsViewModelTest {
             }
         override fun observeAccounts(): Flow<AccountList> = list
         override suspend fun add(account: Account): AccountAdd = error("not used by this test")
-        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
-        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
-        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
+        override suspend fun rename(id: AccountId, label: String): AccountChange = error("not used by this test")
+        override suspend fun remove(id: AccountId): AccountChange = error("not used by this test")
+        override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
             error("not used by this test")
     }
 

@@ -3,6 +3,7 @@ package eth.serotine.ui.tokens
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.BuiltInCheck
@@ -27,11 +28,13 @@ class TokensViewModel(
     observeKnownTokens: ObserveKnownTokens,
     private val setTokenHidden: SetTokenHidden,
     private val removeToken: RemoveToken,
+    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
+    private val network: Network,
 ) : ViewModel() {
 
     private val lastChange = MutableStateFlow<String?>(null)
 
-    val uiState: StateFlow<TokensUiState> = combine(observeKnownTokens(), lastChange) { known, change ->
+    val uiState: StateFlow<TokensUiState> = combine(observeKnownTokens(network), lastChange) { known, change ->
         TokensUiState(
             items = known.tokens.map(::item),
             notice = when {
@@ -45,10 +48,10 @@ class TokensViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TokensUiState())
 
     /** Hides the token at [address] from every account, or shows it again. */
-    fun setHidden(address: String, hidden: Boolean) = change(address) { setTokenHidden(it, hidden) }
+    fun setHidden(address: String, hidden: Boolean) = change(address) { setTokenHidden(network, it, hidden) }
 
     /** Removes the added token at [address]. */
-    fun remove(address: String) = change(address) { removeToken(it) }
+    fun remove(address: String) = change(address) { removeToken(network, it) }
 
     private fun change(address: String, action: suspend (Address) -> TokenChange) {
         val token = Address.parse(address) ?: return

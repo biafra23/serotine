@@ -122,6 +122,8 @@ sealed interface AccountsUiState {
 data class AccountItem(
     val label: String,
     val address: String,
+    /** The chain id of the account's network: with [address], what names the account to the screens it opens. */
+    val chainId: Long,
     val kind: AccountKind,
     val control: Control,
     val balance: String,
@@ -170,6 +172,7 @@ data class AccountItem(
         ): AccountItem = AccountItem(
             label = accountName(account, address, ensName),
             address = address,
+            chainId = account.network.chainId,
             kind = account.kind,
             // A Safe's control is its verified owners'; until they are read, no more than watch-only.
             control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
@@ -192,28 +195,32 @@ data class AccountItem(
 
 /** What the user asks of an account row, by its [AccountItem.address]. */
 sealed interface AccountAction {
+    /** The chain id of the account's network. */
+    val chainId: Long
+
+    /** The account's address. */
     val address: String
 
     /** Open its detail screen (a tap). */
-    data class Open(override val address: String) : AccountAction
+    data class Open(override val chainId: Long, override val address: String) : AccountAction
 
     /** Send from it; offered only when [AccountItem.canSend], for an account that is no Safe. */
-    data class Send(override val address: String) : AccountAction
+    data class Send(override val chainId: Long, override val address: String) : AccountAction
 
     /** Send from a Safe: propose a Safe transaction; offered only when [AccountItem.canSend]. */
-    data class Propose(override val address: String) : AccountAction
+    data class Propose(override val chainId: Long, override val address: String) : AccountAction
 
     /** Show its address to receive to. */
-    data class Receive(override val address: String) : AccountAction
+    data class Receive(override val chainId: Long, override val address: String) : AccountAction
 
     /** Put its address on the clipboard. */
-    data class Copy(override val address: String) : AccountAction
+    data class Copy(override val chainId: Long, override val address: String) : AccountAction
 
     /** Give it another name. */
-    data class Rename(override val address: String) : AccountAction
+    data class Rename(override val chainId: Long, override val address: String) : AccountAction
 
     /** Take it out of the wallet. */
-    data class Remove(override val address: String) : AccountAction
+    data class Remove(override val chainId: Long, override val address: String) : AccountAction
 }
 
 /** What Create Safe says while the account list is still being read. */

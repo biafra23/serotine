@@ -3,6 +3,7 @@ package eth.serotine.ui.safeswap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
@@ -77,6 +78,8 @@ import eth.serotine.ui.components.toleranceError
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -93,8 +96,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
 /**
  * The ViewModel of Swap for a Safe (docs/swaps.md, *A Safe's swap*): a Uniswap swap from the Safe
@@ -123,7 +124,7 @@ import kotlin.time.TimeSource
  * time zone.
  */
 class SafeSwapViewModel(
-    private val safe: Address,
+    private val account: AccountId,
     asset: Address?,
     private val replacing: Digest?,
     observeAccounts: ObserveAccounts,
@@ -133,10 +134,15 @@ class SafeSwapViewModel(
     private val describeKeyStore: DescribeKeyStore,
     private val proposeSafeSwap: ProposeSafeSwap,
     private val signSafeTx: SignSafeTx,
-    private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val safe: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
 
     /**
      * What the form has: the asset sold, the asset bought (null until chosen), the amount and the
@@ -256,8 +262,8 @@ class SafeSwapViewModel(
 
     private val model: StateFlow<Model?> = combine(
         observeAccounts(),
-        observeSafe(safe),
-        observeAccountValue(safe),
+        observeSafe(account),
+        observeAccountValue(account),
         inputs,
         replaced,
     ) { list, reading, value, inputs, replaced ->

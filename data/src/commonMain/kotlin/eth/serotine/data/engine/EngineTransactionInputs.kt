@@ -61,7 +61,6 @@ class EngineTransactionInputs internal constructor(
      * again: one that cannot verify reads, or none at all, is said at once.
      */
     override suspend fun fees(network: Network): FeeReading {
-        if (network != served) return FeeReading.Unavailable(ReadUnavailable.NO_ENGINE)
         val started = timeSource.markNow()
         while (true) {
             val reading = ask(network, FeeReading::Unavailable) { chain ->

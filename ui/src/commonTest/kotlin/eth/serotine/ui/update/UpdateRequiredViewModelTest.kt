@@ -33,7 +33,7 @@ class UpdateRequiredViewModelTest {
 
     private fun viewModel() = UpdateRequiredViewModel(
         ObserveUpgradeWarning(
-            object : NetworkUpgrades {
+            Network.SEPOLIA, object : NetworkUpgrades {
                 override fun observeUpgrade(network: Network): Flow<NetworkUpgrade?> = report
             },
             object : KnownUpgradeStore {

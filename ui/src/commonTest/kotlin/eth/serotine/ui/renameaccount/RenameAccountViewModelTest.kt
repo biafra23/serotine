@@ -2,6 +2,7 @@ package eth.serotine.ui.renameaccount
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -25,7 +26,7 @@ class RenameAccountViewModelTest {
     private val accounts = FakeAccounts(daily)
 
     private fun viewModel(address: Address = daily.address) =
-        RenameAccountViewModel(address, ObserveAccount(accounts), RenameAccount(accounts))
+        RenameAccountViewModel(AccountId(Network.SEPOLIA, address), ObserveAccount(accounts), RenameAccount(accounts))
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()

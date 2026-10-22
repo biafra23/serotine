@@ -323,4 +323,26 @@ class FileAccountRepositoryTest {
         val stored = (repository().observeAccounts().first() as AccountList.Loaded).accounts
         assertEquals(listOf("Account 1", "Treasury", "Account 3"), stored.map { it.label })
     }
+
+    @Test
+    fun anAccountOfAFileFromBeforeNetworksIsSepoliasAndOneOnAnUnknownChainIsANewerVersions() = runTest {
+        put(
+            file,
+            """{"version":3,"accounts":[{"address":"0xdddddddddddddddddddddddddddddddddddddddd",""" +
+                """"kind":"EOA","label":"Savings","custody":"watched"}]}""",
+        )
+        assertEquals(AccountList.Loaded(listOf(watched)), repository().observeAccounts().first())
+        assertEquals(Network.SEPOLIA, watched.network)
+
+        put(
+            file,
+            """{"version":4,"accounts":[{"address":"0xdddddddddddddddddddddddddddddddddddddddd",""" +
+                """"kind":"EOA","label":"Savings","custody":"watched","chain":11155111},""" +
+                """{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
+                """"kind":"EOA","label":"Elsewhere","custody":"watched","chain":424242}]}""",
+        )
+        val newer = text(file)
+        assertEquals(AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT), repository().observeAccounts().first())
+        assertEquals(newer, text(file), "left untouched")
+    }
 }

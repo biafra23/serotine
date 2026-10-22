@@ -221,7 +221,7 @@ class PricesTest {
         val accounts = ListAccountRepository(Account(Network.SEPOLIA, holder, AccountKind.EOA, "Daily", AccountCustody.Watched))
         val portfolio = ObservePortfolio(ObserveAccounts(accounts), accountValue, currencies)
 
-        val read = portfolio().first { it.total.complete && it.values[holder.onSepolia]?.tokens?.size == 2 }
+        val read = portfolio(Network.SEPOLIA).first { it.total.complete && it.values[holder.onSepolia]?.tokens?.size == 2 }
 
         assertEquals(Total(3_250.0, valued = 2, leftOut = 1), read.total)
     }

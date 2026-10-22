@@ -2,6 +2,7 @@ package eth.serotine.ui.accounts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
@@ -51,7 +52,7 @@ class AccountsViewModel(
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
-    private val strip = observeLightClient().asItems(clock)
+    private val strip = observeLightClient(network).asItems(clock)
 
     /** The upgrade banner, none until the first warning: Accounts never waits for it. */
     private val upgrade = observeUpgradeWarning()
@@ -65,7 +66,7 @@ class AccountsViewModel(
     private val ensNames = observeEnsNames().onStart { emit(emptyMap()) }
 
     val uiState: StateFlow<AccountsUiState> = combine(
-        observePortfolio(),
+        observePortfolio(network),
         combine(observeSafes(), ensNames, ::Pair),
         strip,
         upgrade,
@@ -86,8 +87,8 @@ class AccountsViewModel(
 
     private fun stateOf(
         portfolio: Portfolio,
-        safes: Map<Address, SafeReading>,
-        ensNames: Map<Address, EnsNameCheck>,
+        safes: Map<AccountId, SafeReading>,
+        ensNames: Map<AccountId, EnsNameCheck>,
         lightClient: LightClientItem,
         upgrade: UpgradeBannerItem?,
     ): AccountsUiState =
@@ -105,18 +106,18 @@ class AccountsViewModel(
                 // A row from the start, "Checking…" until its first reading: an account just
                 // added, or a screen just back, never waits for every proof.
                 val items = list.accounts.map { account ->
-                    val value = portfolio.values[account.address]
+                    val value = portfolio.values[account.id]
                     // In the currency the value was computed in: just after a change of
                     // currency, an account not revalued yet is still in the one before.
                     AccountItem.from(
                         account,
                         value?.native,
-                        network,
+                        account.network,
                         checksums.getOrPut(account.address) { Eip55.format(account.address) },
                         value?.let { it.nativeValue to it.currency },
-                        safes[account.address],
+                        safes[account.id],
                         formatTime,
-                        ensNames[account.address],
+                        ensNames[account.id],
                     )
                 }
                 val total = portfolio.total.takeIf { list.accounts.isNotEmpty() }

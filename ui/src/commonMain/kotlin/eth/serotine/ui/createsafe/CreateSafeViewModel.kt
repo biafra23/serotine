@@ -857,7 +857,7 @@ class CreateSafeViewModel(
     }
 
     private suspend fun lookUp(text: String): RecipientLookup = try {
-        resolveRecipient(recipientText(text))
+        resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -871,7 +871,7 @@ class CreateSafeViewModel(
     private fun warmFees() {
         viewModelScope.launch {
             try {
-                warmFeeHistory()
+                warmFeeHistory(network)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

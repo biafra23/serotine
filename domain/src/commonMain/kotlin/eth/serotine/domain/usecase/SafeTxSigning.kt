@@ -55,7 +55,10 @@ sealed interface SafeTxRefusal {
     /** A signing request of [version], which this build does not read. */
     data class UnknownVersion(val version: Int) : SafeTxRefusal
 
-    /** A request for the chain [chainId], not the network the app works on. */
+    /**
+     * A request for the chain [chainId]: a network this wallet does not support, or not the
+     * network of the Safe it was brought to (the same address on another chain is another Safe).
+     */
     data class WrongChain(val chainId: Long) : SafeTxRefusal
 
     /** The address holds no Safe this app recognises, as its verified code and storage say. */
@@ -335,7 +338,7 @@ internal fun SignatureRecovery.validOnly(request: SigningRequest, owners: List<A
 /**
  * Imports a signing request that came from another device as text (CLAUDE.md, *Data sources*:
  * no off-chain service), and checks it against the chain before anything of it is believed:
- * the text decodes strictly ([SigningRequestCodec]) for the network the app works on; the Safe
+ * the text decodes strictly ([SigningRequestCodec]) for a network the app knows; the Safe
  * is one this app recognises, as its verified code and storage say ([ObserveSafe]); the
  * request's nonce is not below the Safe's verified nonce (equal: it is next; above: it is
  * queued behind the ones before it); its hash is computed here from the raw fields; and every
@@ -358,10 +361,11 @@ class ImportSigningRequest(
     private val decoding: CoroutineDispatcher = Dispatchers.Default,
 ) {
     /**
-     * Imports the request [text] carries. With [safe] set, only a request for that Safe is imported:
-     * one for any other is [SafeTxRefusal.OtherSafe] before the chain is asked or anything is kept.
+     * Imports the request [text] carries. With [safe] set, only a request for that Safe, on its
+     * network, is imported: one for another chain is [SafeTxRefusal.WrongChain] and one for any
+     * other Safe is [SafeTxRefusal.OtherSafe], before the chain is asked or anything is kept.
      */
-    suspend operator fun invoke(text: String, safe: Address? = null): SigningRequestImport {
+    suspend operator fun invoke(text: String, safe: AccountId? = null): SigningRequestImport {
         val request = when (val decoded = withContext(decoding) { codec.decode(text) }) {
             is SigningRequestDecoding.Decoded -> decoded.request
             SigningRequestDecoding.Malformed -> return SigningRequestImport.Refused(SafeTxRefusal.Malformed)
@@ -370,7 +374,10 @@ class ImportSigningRequest(
             is SigningRequestDecoding.UnknownChain ->
                 return SigningRequestImport.Refused(SafeTxRefusal.WrongChain(decoded.chainId))
         }
-        if (safe != null && request.safe != safe) {
+        if (safe != null && request.network != safe.network) {
+            return SigningRequestImport.Refused(SafeTxRefusal.WrongChain(request.network.chainId))
+        }
+        if (safe != null && request.safe != safe.address) {
             return SigningRequestImport.Refused(SafeTxRefusal.OtherSafe(request.safe))
         }
         val reading = when (val check = observeSafe.check(AccountId(request.network, request.safe))) {

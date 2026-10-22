@@ -46,9 +46,9 @@ class SettingsViewModel(
 
     val uiState: StateFlow<SettingsUiState> =
         combine(
-            observeLightClient().asItems(clock),
-            observeKnownTokens(),
-            observeDisplayCurrencies(),
+            observeLightClient(network).asItems(clock),
+            observeKnownTokens(network),
+            observeDisplayCurrencies(network),
             screenCapture?.allowed ?: flowOf(null),
             combine(observeDebugScreen(), debugScreenNotSaved, ::Pair),
         ) { item, known, currencies, captureAllowed, (debugScreen, notSaved) ->

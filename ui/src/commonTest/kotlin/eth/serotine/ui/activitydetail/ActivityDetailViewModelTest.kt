@@ -2,6 +2,7 @@ package eth.serotine.ui.activitydetail
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -39,6 +40,13 @@ import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityState
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.topicOf
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -48,13 +56,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ActivityDetailViewModelTest {
@@ -98,7 +99,7 @@ class ActivityDetailViewModelTest {
     private fun TestScope.viewModel(key: ActivityKey, address: Address = alice.address): ActivityDetailViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = ActivityDetailViewModel(
-            address,
+            AccountId(Network.SEPOLIA, address),
             key,
             ObserveAccountHistory(history),
             ObserveAccounts(accounts),
@@ -106,7 +107,6 @@ class ActivityDetailViewModelTest {
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
             ObserveSentToAddresses(history),
-            Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

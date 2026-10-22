@@ -2,6 +2,7 @@ package eth.serotine.ui.accountdetail
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
@@ -60,6 +61,12 @@ import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.shortAddress
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -73,12 +80,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountDetailViewModelTest {
@@ -115,20 +116,18 @@ class AccountDetailViewModelTest {
     }
 
     private fun viewModel(address: Address = daily.address) = AccountDetailViewModel(
-        address,
+        AccountId(Network.SEPOLIA, address),
         ObserveAccount(accounts),
         ObserveAccountValue(
             ObserveNativeBalance(balances),
             ObserveTokenHoldings(ObserveKnownTokens(catalog, userTokens, metadata), tokenBalances),
             ObserveUsdPrice(feeds),
             ObserveDisplayCurrencies(feeds, currency),
-            Network.SEPOLIA,
         ),
         ObserveSafe(kinds, accounts),
         ObserveSafeTxQueue(queue, ObserveSafe(kinds, accounts), recovery, Network.SEPOLIA),
         ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
-        Network.SEPOLIA,
         ObserveEnsNames(accounts, names),
         activity(),
         formatTime = { "<$it>" },
@@ -141,7 +140,6 @@ class AccountDetailViewModelTest {
         ObserveTokenTransfers(logIndex, historyStarts),
         ObserveKnownTokens(catalog, userTokens, metadata),
         ObserveSentToAddresses(history),
-        Network.SEPOLIA,
     ) { "at $it" }
 
     @AfterTest
@@ -663,20 +661,18 @@ class AccountDetailViewModelTest {
             override fun observeKind(network: Network, address: Address): Flow<KindReading> = flow { awaitCancellation() }
         }
         val viewModel = AccountDetailViewModel(
-            treasury.address,
+            treasury.id,
             ObserveAccount(accounts),
             ObserveAccountValue(
                 ObserveNativeBalance(balances),
                 ObserveTokenHoldings(ObserveKnownTokens(catalog, userTokens, metadata), tokenBalances),
                 ObserveUsdPrice(feeds),
                 ObserveDisplayCurrencies(feeds, currency),
-                Network.SEPOLIA,
             ),
             ObserveSafe(slow, accounts),
             ObserveSafeTxQueue(queue, ObserveSafe(slow, accounts), recovery, Network.SEPOLIA),
             ObserveKnownTokens(catalog, userTokens, metadata),
             SetTokenHidden(userTokens),
-            Network.SEPOLIA,
             ObserveEnsNames(accounts, names),
             activity(),
         )

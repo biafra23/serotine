@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.rightClick
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.Network
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
@@ -27,9 +28,9 @@ import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.update.UPGRADE_BANNER_TAG
 import eth.serotine.ui.update.UpgradeBannerItem
+import kotlin.test.assertEquals
 import org.junit.Rule
 import org.junit.Test
-import kotlin.test.assertEquals
 
 /** Renders the stateless [AccountsScreen] headless (skiko software rendering) for each state. */
 class AccountsScreenTest {
@@ -41,6 +42,7 @@ class AccountsScreenTest {
     private val daily = AccountItem(
         "Daily",
         "0x8F3a2c71E5b9D04A6f1e3C2bA7d90E5f4C6b91c2",
+        Network.SEPOLIA.chainId,
         AccountKind.EOA,
         Control.FULL_CONTROL,
         "0.5 ETH",
@@ -49,6 +51,7 @@ class AccountsScreenTest {
     private val savings = AccountItem(
         "Savings",
         "0x3C9e1a7b5d2f8e4c6b0a9d3e7f1c5a2b8e4d6F09",
+        Network.SEPOLIA.chainId,
         AccountKind.EOA,
         Control.WATCH_ONLY,
         "Syncing…",
@@ -122,7 +125,7 @@ class AccountsScreenTest {
 
         rule.onNodeWithText("Daily").performClick()
 
-        assertEquals(listOf<AccountAction>(AccountAction.Open(daily.address)), actions)
+        assertEquals(listOf<AccountAction>(AccountAction.Open(Network.SEPOLIA.chainId, daily.address)), actions)
     }
 
     @Test
@@ -135,7 +138,7 @@ class AccountsScreenTest {
         rule.onNodeWithText("Rename").assertIsDisplayed()
         rule.onNodeWithText("Remove").performClick()
 
-        assertEquals(listOf<AccountAction>(AccountAction.Remove(daily.address)), actions)
+        assertEquals(listOf<AccountAction>(AccountAction.Remove(Network.SEPOLIA.chainId, daily.address)), actions)
         rule.onNodeWithText("Rename").assertDoesNotExist()
     }
 
@@ -159,7 +162,7 @@ class AccountsScreenTest {
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Send").performClick()
 
-        assertEquals(listOf(AccountAction.Receive(savings.address), AccountAction.Send(daily.address)), actions)
+        assertEquals(listOf(AccountAction.Receive(Network.SEPOLIA.chainId, savings.address), AccountAction.Send(Network.SEPOLIA.chainId, daily.address)), actions)
     }
 
     @Test
@@ -227,7 +230,7 @@ class AccountsScreenTest {
         rule.onNodeWithText("Treasury").performTouchInput { longClick() }
         rule.onNodeWithText("Send").performClick()
 
-        assertEquals(listOf(AccountAction.Receive(watched.address), AccountAction.Propose(treasury.address)), actions)
+        assertEquals(listOf(AccountAction.Receive(Network.SEPOLIA.chainId, watched.address), AccountAction.Propose(Network.SEPOLIA.chainId, treasury.address)), actions)
     }
 
     @OptIn(ExperimentalTestApi::class)
@@ -238,7 +241,7 @@ class AccountsScreenTest {
         rule.onNodeWithText("Daily").performMouseInput { rightClick() }
         rule.onNodeWithText("Receive").performClick()
 
-        assertEquals(listOf<AccountAction>(AccountAction.Receive(daily.address)), actions)
+        assertEquals(listOf<AccountAction>(AccountAction.Receive(Network.SEPOLIA.chainId, daily.address)), actions)
     }
 
     @Test
@@ -248,7 +251,7 @@ class AccountsScreenTest {
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Copy address").performClick()
 
-        assertEquals(listOf<AccountAction>(AccountAction.Copy(daily.address)), actions)
+        assertEquals(listOf<AccountAction>(AccountAction.Copy(Network.SEPOLIA.chainId, daily.address)), actions)
         rule.onNodeWithText("Address copied").assertIsDisplayed()
     }
 

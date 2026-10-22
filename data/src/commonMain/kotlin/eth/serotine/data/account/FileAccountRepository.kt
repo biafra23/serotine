@@ -1,5 +1,6 @@
 package eth.serotine.data.account
 
+import eth.serotine.data.files.NewerContent
 import eth.serotine.data.files.VersionedJsonFile
 import eth.serotine.data.files.VersionedJsonFile.Decision
 import eth.serotine.domain.model.Account
@@ -38,9 +39,9 @@ import kotlinx.serialization.json.Json
  * entry of an older file, follows none. Format 4 records each account's network by its chain
  * id ([Account.network]); every entry of an older file was written when Serotine worked on
  * Sepolia alone, so it reads as a Sepolia account (docs/networks.md, *Files*). The next change
- * writes the file as the current format. An entry whose chain id this version does not know
- * (written by a later one that works on more networks) is passed over and the file kept aside
- * as it was ([VersionedJsonFile]'s `incomplete`), so it is never lost.
+ * writes the file as the current format. An entry whose chain id this version does not know was
+ * written by a later version that works on more networks: the list is then
+ * [AccountList.Reason.NEWER_FORMAT], left untouched, and the user is asked to update.
  */
 class FileAccountRepository(
     path: String,
@@ -55,14 +56,11 @@ class FileAccountRepository(
         empty = emptyList(),
         decode = { _, text ->
             val stored = STRICT.decodeFromString(StoredAccounts.serializer(), text)
-            stored.accounts.mapNotNull { it.toAccount(stored.version) }.distinctBy { it.id }
+            stored.accounts.map { it.toAccount(stored.version) }.distinctBy { it.id }
         },
         encode = { accounts ->
             val stored = StoredAccounts(FORMAT_VERSION, accounts.map(::StoredAccount))
             STRICT.encodeToString(StoredAccounts.serializer(), stored)
-        },
-        incomplete = { text, accounts ->
-            STRICT.decodeFromString(StoredAccounts.serializer(), text).accounts.size > accounts.size
         },
     )
 
@@ -138,19 +136,14 @@ class FileAccountRepository(
 
         /**
          * Throws on anything [Account] would not accept, in a file of [version]: the whole file is
-         * then damaged. Null for an entry on a network this version does not know.
+         * then damaged; and [NewerContent] for an entry on a network this version does not know.
          */
-        fun toAccount(version: Int): Account? {
-            val network = when {
+        fun toAccount(version: Int): Account = Account(
+            when {
                 version < 4 && chain == null -> Network.SEPOLIA
                 chain == null -> error("an account without a network")
-                else -> Network.ofChainId(chain) ?: return null
-            }
-            return toAccount(version, network)
-        }
-
-        private fun toAccount(version: Int, network: Network): Account = Account(
-            network,
+                else -> Network.ofChainId(chain) ?: throw NewerContent("an account on chain $chain")
+            },
             Address.of(address),
             AccountKind.valueOf(kind),
             label,

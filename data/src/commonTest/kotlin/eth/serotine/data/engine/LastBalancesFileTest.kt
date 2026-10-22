@@ -134,4 +134,16 @@ class LastBalancesFileTest {
     private companion object {
         val POLL = 4.seconds
     }
+
+    @Test
+    fun aBalanceKeptBeforeNetworksIsSepolias() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        SystemFileSystem.sink(file).buffered().use {
+            it.writeString("""{"version":1,"balances":[{"id":"native:${address.hex}","units":"5","block":9,"asOf":7}]}""")
+        }
+        chain.snapshot = running(phase = EngineSnapshot.Phase.CATCHING_UP)
+        val balances = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
+
+        assertEquals(BalanceReading.LastKnown(Wei.of("5"), 9, asOf = 7), balances.observeBalance(Network.SEPOLIA, address).first())
+    }
 }

@@ -2,6 +2,7 @@ package eth.serotine.ui.lightclient
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.ui.components.LightClientItem
@@ -19,12 +20,14 @@ import kotlinx.coroutines.flow.stateIn
  */
 class LightClientViewModel(
     observeLightClient: ObserveLightClient,
+    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
+    network: Network,
     /** Now, in unix seconds: what the strip dates the head block against. */
     clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
     /** The strip as it is now; followed while a screen that draws it is shown. */
-    val item: StateFlow<LightClientItem> = observeLightClient().asItems(clock)
+    val item: StateFlow<LightClientItem> = observeLightClient(network).asItems(clock)
         .stateIn(
             scope = viewModelScope,
             // Each subscription polls the engine's status (every second, on the desktop and

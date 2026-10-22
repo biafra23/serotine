@@ -2,6 +2,7 @@ package eth.serotine.ui
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
@@ -45,20 +46,20 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
         }
     }
 
-    override suspend fun rename(address: Address, label: String): AccountChange =
-        change(address) { list ->
-            list.map { if (it.address == address) it.copy(label = label, ensName = null) else it }
+    override suspend fun rename(id: AccountId, label: String): AccountChange =
+        change(id) { list ->
+            list.map { if (it.id == id) it.copy(label = label, ensName = null) else it }
         }
 
-    override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
-        change(address) { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+    override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
+        change(id) { list -> list.map { if (it.id == id) it.copy(custody = custody) else it } }
 
-    override suspend fun remove(address: Address): AccountChange =
-        change(address) { list -> list.filterNot { it.address == address } }
+    override suspend fun remove(id: AccountId): AccountChange =
+        change(id) { list -> list.filterNot { it.id == id } }
 
-    private fun change(address: Address, edit: (List<Account>) -> List<Account>): AccountChange = when {
+    private fun change(id: AccountId, edit: (List<Account>) -> List<Account>): AccountChange = when {
         failSaves -> AccountChange.NotSaved
-        accounts.value.none { it.address == address } -> AccountChange.NotFound
+        accounts.value.none { it.id == id } -> AccountChange.NotFound
         else -> {
             accounts.value = edit(accounts.value)
             AccountChange.Changed

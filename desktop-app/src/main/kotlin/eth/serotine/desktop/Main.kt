@@ -16,6 +16,7 @@ import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
 import eth.serotine.data.logs.MemoryDebugLog
+import eth.serotine.data.networks.FileNetworkSettings
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
@@ -44,11 +45,12 @@ import java.awt.GraphicsEnvironment
 import java.io.File
 import java.io.IOException
 import java.lang.ref.Reference
-import kotlin.coroutines.cancellation.CancellationException
 import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import kotlin.concurrent.thread
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.system.exitProcess
+import kotlinx.coroutines.flow.first
 
 /**
  * The desktop composition root: starts the process's one Myotis engine
@@ -146,7 +148,7 @@ private fun openWallet(dataDir: File) {
     )
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
-    val upgradeNotices = UpgradeNotices(knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
+    val upgradeNotices = UpgradeNotices(Network.SEPOLIA, knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
     // One instance each, which the graph and the followers share. Each account added is noted
     // where its history starts (issue #85): addresses with a block or a time, public data only.
     val historyStarts = FileHistoryStarts(dataDir.resolve("history-starts.json").path)
@@ -157,12 +159,19 @@ private fun openWallet(dataDir: File) {
     val sentRecord = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
     val transactionHistory = FileTransactionHistory(dataDir.resolve("transaction-history.json").path)
     val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
+    // Which networks are on (docs/networks.md, *Networks on and off*): Sepolia, the only one, in
+    // every run until Ethereum and Gnosis Chain come with their own build defaults.
+    val networkSettings = FileNetworkSettings(dataDir.resolve("networks.json").path, defaultOn = { true })
     application(exitProcessOnExit = false) {
+        LaunchedEffect(Unit) {
+            // Records each network's default the first time it is found unrecorded.
+            networkSettings.observe().first()
+        }
         LaunchedEffect(Unit) {
             // A failure in the notices ends them, never the wallet (as on Android): the window
             // still shows every warning, and the next start follows the reports again.
             try {
-                FollowUpgradeReports(node.networkUpgrades, upgradeNotices)()
+                FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -235,7 +244,7 @@ private fun openWallet(dataDir: File) {
                 accounts = accounts,
                 keys = keyStore,
                 nativeBalances = node.nativeBalances,
-                tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
+                tokenCatalog = BuiltInTokenCatalog(),
                 tokenBalances = node.tokenBalances,
                 tokenMetadata = node.tokenMetadata,
                 userTokens = FileUserTokens(dataDir.resolve("tokens.json").path),
@@ -256,14 +265,13 @@ private fun openWallet(dataDir: File) {
                 logIndex = node.logIndex,
                 // The Safe transactions waiting for their owners, with the signatures collected (public).
                 safeTxQueue = FileSafeTxQueue(dataDir.resolve("safe-tx-queue.json").path),
-                signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
+                signingRequests = JsonSigningRequestCodec(),
                 signatureRecovery = Secp256k1Recovery(),
                 safeApprovals = node.safeApprovals,
                 // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
                 safeReleases = PinnedSafeReleases(),
                 // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
                 uniswap = node.uniswap,
-                network = Network.SEPOLIA,
                 debugLog = apiLog,
                 debugScreen = debugScreen,
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.

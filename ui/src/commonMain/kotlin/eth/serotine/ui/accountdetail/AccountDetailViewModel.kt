@@ -3,6 +3,7 @@ package eth.serotine.ui.accountdetail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -75,14 +76,13 @@ import kotlinx.coroutines.launch
  * clipboard, which the route handles.
  */
 class AccountDetailViewModel(
-    address: Address,
+    private val account: AccountId,
     observeAccount: ObserveAccount,
     observeAccountValue: ObserveAccountValue,
     observeSafe: ObserveSafe,
     observeSafeTxQueue: ObserveSafeTxQueue,
     observeKnownTokens: ObserveKnownTokens,
     private val setTokenHidden: SetTokenHidden,
-    private val network: Network,
     /** Whether the ENS name the account's name follows still points to it. */
     observeEnsNames: ObserveEnsNames,
     /** What its Activity tab lists. */
@@ -90,6 +90,12 @@ class AccountDetailViewModel(
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val address: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
@@ -104,7 +110,7 @@ class AccountDetailViewModel(
     private val view = MutableStateFlow(View())
 
     // Collected once, by both the Safe's reading and the state.
-    private val lookup = observeAccount(address)
+    private val lookup = observeAccount(account)
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), replay = 1)
 
     private val isSafe = lookup.map { (it as? AccountLookup.Found)?.account?.kind == AccountKind.SAFE }
@@ -115,7 +121,7 @@ class AccountDetailViewModel(
     private val safe = isSafe.flatMapLatest { isSafe ->
         // Never holding the screen back: a Safe's read takes a dozen proofs.
         if (isSafe) {
-            observeSafe(address).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
+            observeSafe(account).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
         } else {
             flowOf(null)
         }
@@ -129,7 +135,7 @@ class AccountDetailViewModel(
             if (name == null) {
                 flowOf(null)
             } else {
-                observeEnsNames.check(address, name).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
+                observeEnsNames.check(network, address, name).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
             }
         }
 
@@ -137,7 +143,7 @@ class AccountDetailViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val queue = isSafe.flatMapLatest { isSafe ->
         if (isSafe) {
-            combine(observeSafeTxQueue(address), observeKnownTokens()) { reading, tokens ->
+            combine(observeSafeTxQueue(address), observeKnownTokens(network)) { reading, tokens ->
                 QueueView.Read(reading, tokens.forDecoding())
             }.onStart<QueueView> { emit(QueueView.Checking) }
         } else {
@@ -149,7 +155,7 @@ class AccountDetailViewModel(
      * The account's Activity, read while its tab is shown and for 5 s after, as the screen's own
      * state is: back on the tab within that, it is there at once, and not read again.
      */
-    private val sharedActivity = activity.of(address).stateIn(
+    private val sharedActivity = activity.of(account).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         ActivityUiState.Loading,
@@ -174,7 +180,7 @@ class AccountDetailViewModel(
     val uiState: StateFlow<AccountDetailUiState> =
         combine(
             lookup,
-            observeAccountValue(address),
+            observeAccountValue(account),
             safe,
             queue,
             combine(view, ensName, activityState, ::Triple),
@@ -235,7 +241,7 @@ class AccountDetailViewModel(
     fun hideToken(contract: String, symbol: String) {
         val token = Address.parse(contract) ?: return
         viewModelScope.launch {
-            val said = when (setTokenHidden(token, hidden = true)) {
+            val said = when (setTokenHidden(network, token, hidden = true)) {
                 TokenChange.Changed, TokenChange.AlreadyPresent -> "$symbol hidden. Settings → Tokens shows it again."
                 TokenChange.NotFound, TokenChange.NotSaved ->
                     "$symbol could not be hidden: the token settings cannot be saved right now."

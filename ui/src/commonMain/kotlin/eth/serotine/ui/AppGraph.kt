@@ -1,5 +1,6 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
@@ -143,9 +144,9 @@ class AppGraph(
     private val accounts: AccountRepository,
     /** Where imported seeds are kept: the key adapter's store, behind its port. */
     private val keys: KeyStore,
-    /** Balances verified by the embedded light client of [network]. */
+    /** Balances verified by each network's embedded light client. */
     private val nativeBalances: NativeBalances,
-    /** The tokens the wallet knows on [network]. */
+    /** The built-in tokens of each network. */
     private val tokenCatalog: TokenCatalog,
     /** Token balances verified by that light client. */
     private val tokenBalances: TokenBalances,
@@ -194,18 +195,16 @@ class AppGraph(
     private val logIndex: LogIndex,
     /** The Safe transactions waiting for their owners, kept on this device across restarts. */
     private val safeTxQueue: SafeTxQueue,
-    /** The text a Safe's signing request travels in between devices, for [network]. */
+    /** The text a Safe's signing request travels in between devices, for every network the app knows. */
     private val signingRequests: SigningRequestCodec,
     /** Who made a secp256k1 signature: what a co-signer's signature is checked with. */
     private val signatureRecovery: SignatureRecovery,
     /** Owners' approvals of Safe transactions on chain, verified by that light client. */
     private val safeApprovals: SafeApprovals,
-    /** The Safe release a new Safe on [network] is created from: pinned singleton, factory and proxy code. */
+    /** The Safe release a new Safe on a network is created from: pinned singleton, factory and proxy code. */
     private val safeReleases: SafeReleases,
-    /** Uniswap v3 on [network]: its pinned contracts, proven by their code, and verified calls of them. */
+    /** Uniswap v3 on each network: its pinned contracts, proven by their code, and verified calls of them. */
     private val uniswap: UniswapV3Chain,
-    /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
-    private val network: Network,
     /**
      * The app's debug log, which the Debug tab shows: the host's one instance, which the engine's
      * node writes each request into.
@@ -225,7 +224,17 @@ class AppGraph(
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
 
-    private fun observeUpgradeWarning() = ObserveUpgradeWarning(networkUpgrades, knownUpgrades, lightClient)
+    /**
+     * The network of the screens no account names (Accounts' header and strip, Settings, Watch,
+     * Create and Import account, Create Safe, Tokens, Currency): the only one there is. A screen
+     * about an account takes its network from that account. The network steps
+     * (docs/networks.md, part 3) replace this before a second network is added, which
+     * [single] makes sure of.
+     */
+    internal val soleNetwork: Network = Network.entries.single()
+
+    private fun observeUpgradeWarning() =
+        ObserveUpgradeWarning(soleNetwork, networkUpgrades, knownUpgrades, lightClient)
 
     fun accountsViewModel(): AccountsViewModel =
         AccountsViewModel(
@@ -234,22 +243,22 @@ class AppGraph(
             ObserveEnsNames(accounts, names),
             ObserveLightClient(lightClient),
             observeUpgradeWarning(),
-            network,
+            soleNetwork,
         )
 
     /** The light client's status strip of the screens that depend on it: one for the app, in the host's scope. */
-    fun lightClientViewModel(): LightClientViewModel = LightClientViewModel(ObserveLightClient(lightClient))
+    fun lightClientViewModel(): LightClientViewModel =
+        LightClientViewModel(ObserveLightClient(lightClient), soleNetwork)
 
-    fun accountDetailViewModel(address: Address): AccountDetailViewModel =
+    fun accountDetailViewModel(account: AccountId): AccountDetailViewModel =
         AccountDetailViewModel(
-            address,
+            account,
             ObserveAccount(accounts),
             accountValue(),
             observeSafe(),
-            observeSafeTxQueue(),
+            observeSafeTxQueue(account.network),
             knownTokens(),
             SetTokenHidden(userTokens),
-            network,
             ObserveEnsNames(accounts, names),
             accountActivity(),
         )
@@ -258,17 +267,17 @@ class AppGraph(
      * The Safe transaction [hash] of the Safe at [safe] (docs/wallet-ux.md, screen 17); [imported]
      * when an import has just queued it, which its overview says first.
      */
-    fun safeTxViewModel(safe: Address, hash: Digest, imported: Boolean = false): SafeTxViewModel = SafeTxViewModel(
+    fun safeTxViewModel(safe: AccountId, hash: Digest, imported: Boolean = false): SafeTxViewModel = SafeTxViewModel(
         safe,
         hash,
         ObserveAccounts(accounts),
-        observeSafeTxQueue(),
+        observeSafeTxQueue(safe.network),
         knownTokens(),
-        ReadSafeTxOwners(observeSafe(), signatureRecovery, safeApprovals, network),
+        ReadSafeTxOwners(observeSafe(), signatureRecovery, safeApprovals, safe.network),
         EncodeSigningRequest(signingRequests),
         DescribeKeyStore(keys),
-        signSafeTx(),
-        QuoteSafeApproval(observeSafe(), safeApprovals, nativeBalances, transactionInputs, sentTransfers, network),
+        signSafeTx(safe.network),
+        QuoteSafeApproval(observeSafe(), safeApprovals, nativeBalances, transactionInputs, sentTransfers, safe.network),
         ApproveSafeTxOnChain(signer, broadcaster, sentTransfers),
         QuoteSafeExecution(
             observeSafe(),
@@ -277,19 +286,18 @@ class AppGraph(
             nativeBalances,
             transactionInputs,
             sentTransfers,
-            network,
+            safe.network,
         ),
         ExecuteSafeTx(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         RemoveQueuedSafeTx(safeTxQueue),
         WarmFeeHistory(transactionInputs),
-        CheckSafeSwap(uniswap, lightClient, network),
-        network,
+        CheckSafeSwap(uniswap, lightClient, safe.network),
         imported = imported,
     )
 
     /** Send from the Safe at [safe], with the token at [asset] chosen (null: the network's currency). */
-    fun safeProposeViewModel(safe: Address, asset: Address?): SafeProposeViewModel = SafeProposeViewModel(
+    fun safeProposeViewModel(safe: AccountId, asset: Address?): SafeProposeViewModel = SafeProposeViewModel(
         safe,
         asset,
         ObserveAccounts(accounts),
@@ -297,24 +305,23 @@ class AppGraph(
         observeSafe(),
         DescribeKeyStore(keys),
         ResolveRecipient(names),
-        ProposeSafeTx(observeSafe(), nativeBalances, tokenBalances, transactionInputs, safeTxQueue, network),
-        signSafeTx(),
+        ProposeSafeTx(observeSafe(), nativeBalances, tokenBalances, transactionInputs, safeTxQueue, safe.network),
+        signSafeTx(safe.network),
         EncodeSigningRequest(signingRequests),
-        network,
     )
 
     /**
      * Swap from the Safe at [safe], with the token at [asset] sold (null: the network's currency); or,
      * with [replacing], the swap queued under that hash proposed again in its place.
      */
-    fun safeSwapViewModel(safe: Address, asset: Address?, replacing: Digest?): SafeSwapViewModel = SafeSwapViewModel(
+    fun safeSwapViewModel(safe: AccountId, asset: Address?, replacing: Digest?): SafeSwapViewModel = SafeSwapViewModel(
         safe,
         asset,
         replacing,
         ObserveAccounts(accounts),
         accountValue(),
         observeSafe(),
-        observeSafeTxQueue(),
+        observeSafeTxQueue(safe.network),
         DescribeKeyStore(keys),
         ProposeSafeSwap(
             observeSafe(),
@@ -325,43 +332,41 @@ class AppGraph(
             transactionInputs,
             safeTxQueue,
             lightClient,
-            network,
+            safe.network,
         ),
-        signSafeTx(),
-        network,
+        signSafeTx(safe.network),
     )
 
     /** Import a signing request for the Safe at [safe]. */
-    fun safeImportViewModel(safe: Address): SafeImportViewModel = SafeImportViewModel(
+    fun safeImportViewModel(safe: AccountId): SafeImportViewModel = SafeImportViewModel(
         safe,
         ObserveAccount(accounts),
         ImportSigningRequest(signingRequests, observeSafe(), signatureRecovery, safeTxQueue),
-        network,
     )
 
     private fun observeSafe() = ObserveSafe(addressKinds, accounts)
 
-    private fun observeSafeTxQueue() = ObserveSafeTxQueue(safeTxQueue, observeSafe(), signatureRecovery, network)
+    private fun observeSafeTxQueue(network: Network) =
+        ObserveSafeTxQueue(safeTxQueue, observeSafe(), signatureRecovery, network)
 
-    private fun signSafeTx() = SignSafeTx(signer, observeSafe(), signatureRecovery, safeTxQueue, network)
+    private fun signSafeTx(network: Network) = SignSafeTx(signer, observeSafe(), signatureRecovery, safeTxQueue, network)
 
     /** Send from the account at [from], with the token at [asset] chosen (null: the network's currency). */
-    fun sendViewModel(from: Address, asset: Address?): SendViewModel = SendViewModel(
+    fun sendViewModel(from: AccountId, asset: Address?): SendViewModel = SendViewModel(
         from,
         asset,
         ObserveAccounts(accounts),
         accountValue(),
         DescribeKeyStore(keys),
         ResolveRecipient(names),
-        QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
+        QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, from.network),
         SendTransfer(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
-        network,
     )
 
     /** Swap from the account at [from], selling the token at [sell] (null: the network's currency). */
-    fun swapViewModel(from: Address, sell: Address?): SwapViewModel = SwapViewModel(
+    fun swapViewModel(from: AccountId, sell: Address?): SwapViewModel = SwapViewModel(
         from,
         sell,
         ObserveAccounts(accounts),
@@ -374,18 +379,17 @@ class AppGraph(
             tokenBalances,
             sentTransfers,
             lightClient,
-            network,
+            from.network,
         ),
         SendSwap(transactionInputs, signer, broadcaster, sentTransfers),
-        QuoteTokenApproval(transactionInputs, nativeBalances, sentTransfers, network),
+        QuoteTokenApproval(transactionInputs, nativeBalances, sentTransfers, from.network),
         SendTokenApproval(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
-        network,
     )
 
-    /** Where the transfer [hash] stands, and for a Safe it deployed, where its listing does. */
-    fun transferStatusViewModel(hash: String): TransferStatusViewModel = TransferStatusViewModel(
+    /** Where the transfer [hash] on [network] stands, and for a Safe it deployed, where its listing does. */
+    fun transferStatusViewModel(network: Network, hash: String): TransferStatusViewModel = TransferStatusViewModel(
         hash,
         ObserveSentTransfer(sentTransfers, receipts, transactionHistory),
         ObserveAccounts(accounts),
@@ -404,15 +408,14 @@ class AppGraph(
         ObserveTokenTransfers(logIndex, historyStarts),
         knownTokens(),
         ObserveSentToAddresses(transactionHistory),
-        network,
     )
 
     /**
-     * The detail of the row [key] of the Activity of the account at [address] (docs/wallet-ux.md,
-     * screen 26), read from what its Activity is read from.
+     * The detail of the row [key] of the Activity of the [account] (docs/wallet-ux.md, screen 26),
+     * read from what its Activity is read from.
      */
-    fun activityDetailViewModel(address: Address, key: ActivityKey): ActivityDetailViewModel = ActivityDetailViewModel(
-        address,
+    fun activityDetailViewModel(account: AccountId, key: ActivityKey): ActivityDetailViewModel = ActivityDetailViewModel(
+        account,
         key,
         ObserveAccountHistory(transactionHistory),
         ObserveAccounts(accounts),
@@ -420,7 +423,6 @@ class AppGraph(
         ObserveTokenTransfers(logIndex, historyStarts),
         knownTokens(),
         ObserveSentToAddresses(transactionHistory),
-        network,
     )
 
     /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
@@ -428,28 +430,28 @@ class AppGraph(
         ObserveAccounts(accounts),
         DescribeKeyStore(keys),
         ResolveRecipient(names),
-        PlanSafe(safeReleases, network),
-        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, network),
+        PlanSafe(safeReleases, soleNetwork),
+        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, soleNetwork),
         DeploySafe(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
-        network,
+        soleNetwork,
     )
 
-    fun receiveViewModel(address: Address): ReceiveViewModel =
-        ReceiveViewModel(address, ObserveAccount(accounts), network)
+    fun receiveViewModel(account: AccountId): ReceiveViewModel = ReceiveViewModel(account, ObserveAccount(accounts))
 
-    fun renameAccountViewModel(address: Address): RenameAccountViewModel =
-        RenameAccountViewModel(address, ObserveAccount(accounts), RenameAccount(accounts))
+    fun renameAccountViewModel(account: AccountId): RenameAccountViewModel =
+        RenameAccountViewModel(account, ObserveAccount(accounts), RenameAccount(accounts))
 
-    fun removeAccountViewModel(address: Address): RemoveAccountViewModel =
-        RemoveAccountViewModel(address, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
+    fun removeAccountViewModel(account: AccountId): RemoveAccountViewModel =
+        RemoveAccountViewModel(account, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(
         ObserveAddressKind(addressKinds),
         ObserveAccounts(accounts),
         WatchAddress(accounts, addressKinds),
         ResolveRecipient(names),
+        soleNetwork,
     )
 
     fun settingsViewModel(): SettingsViewModel =
@@ -457,7 +459,7 @@ class AppGraph(
             ObserveLightClient(lightClient),
             knownTokens(),
             displayCurrencies(),
-            network,
+            soleNetwork,
             screenCaptureDebugSwitch,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
@@ -471,10 +473,10 @@ class AppGraph(
         DebugViewModel(ObserveDebugLog(debugLog), SetDebugLogLevel(debugLog), ClearDebugLog(debugLog))
 
     fun currencyViewModel(): CurrencyViewModel =
-        CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency))
+        CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency), soleNetwork)
 
     fun tokensViewModel(): TokensViewModel =
-        TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens))
+        TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens), soleNetwork)
 
     /** Add token by address (docs/wallet-ux.md, screen 20), its field starting with [address]. */
     fun addTokenViewModel(address: String = ""): AddTokenViewModel =
@@ -482,6 +484,7 @@ class AppGraph(
             knownTokens(),
             ObserveTokenMetadata(tokenMetadata),
             AddToken(userTokens, tokenMetadata, knownTokens()),
+            soleNetwork,
             address,
         )
 
@@ -494,20 +497,21 @@ class AppGraph(
         ObserveTokenHoldings(knownTokens(), tokenBalances),
         ObserveUsdPrice(priceFeeds),
         displayCurrencies(),
-        network,
     )
 
     fun createAccountViewModel(): CreateAccountViewModel = CreateAccountViewModel(
         NewRecoveryPhrase(keys),
         ImportMnemonicAccount(keys, accounts, walletChanges),
         DescribeKeyStore(keys),
+        soleNetwork,
     )
 
-    fun updateRequiredViewModel(): UpdateRequiredViewModel = UpdateRequiredViewModel(observeUpgradeWarning(), network)
+    fun updateRequiredViewModel(): UpdateRequiredViewModel =
+        UpdateRequiredViewModel(observeUpgradeWarning(), soleNetwork)
 
     fun securityViewModel(): SecurityViewModel =
         SecurityViewModel(DescribeKeyStore(keys), EnableBiometricUnlock(keys), DisableBiometricUnlock(keys))
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
-        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys))
+        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys), soleNetwork)
 }

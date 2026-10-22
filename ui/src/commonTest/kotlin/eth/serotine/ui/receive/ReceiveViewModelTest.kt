@@ -2,11 +2,15 @@ package eth.serotine.ui.receive
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.ui.FakeAccounts
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -15,9 +19,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceiveViewModelTest {
@@ -35,7 +36,7 @@ class ReceiveViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun viewModel(address: Address) = ReceiveViewModel(address, ObserveAccount(accounts), Network.SEPOLIA)
+    private fun viewModel(address: Address) = ReceiveViewModel(AccountId(Network.SEPOLIA, address), ObserveAccount(accounts))
 
     @Test
     fun theAddressIsChecksummedAndTheWarningNamesTheNetwork() = runTest {

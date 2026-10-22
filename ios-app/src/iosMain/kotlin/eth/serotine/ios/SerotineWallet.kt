@@ -9,6 +9,7 @@ import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.iosHardwareSecret
 import eth.serotine.data.logs.MemoryDebugLog
+import eth.serotine.data.networks.FileNetworkSettings
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
@@ -32,6 +33,12 @@ import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.Platform
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -57,12 +65,6 @@ import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIApplicationWillTerminateNotification
 import platform.UIKit.UIBackgroundTaskInvalid
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.experimental.ExperimentalNativeApi
-import kotlin.native.Platform
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 
 /**
  * The iOS composition root: the process's one wallet, which the Swift app creates once, before
@@ -129,8 +131,14 @@ class SerotineWallet {
 
     // One record per process, read by the screens and written by the notices; this version's only.
     private val knownUpgrades = FileKnownUpgradeStore("$dataDir/upgrade.json", APP_VERSION)
+
+    /**
+     * Which networks are on (docs/networks.md, *Networks on and off*): Sepolia, the only one, in
+     * every build until Ethereum and Gnosis Chain come with their own build defaults.
+     */
+    private val networkSettings = FileNetworkSettings("$dataDir/networks.json", defaultOn = { true })
     private val notifier = IosUpgradeNotifier(Network.SEPOLIA)
-    private val upgradeNotices = UpgradeNotices(knownUpgrades, notifier)
+    private val upgradeNotices = UpgradeNotices(Network.SEPOLIA, knownUpgrades, notifier)
 
     // One instance each, which the graph and the background work share. Each account added is
     // noted where its history starts (issue #85): addresses with a block or a time, public data only.
@@ -161,7 +169,7 @@ class SerotineWallet {
             accounts = accounts,
             keys = keyStore,
             nativeBalances = node.nativeBalances,
-            tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
+            tokenCatalog = BuiltInTokenCatalog(),
             tokenBalances = node.tokenBalances,
             tokenMetadata = node.tokenMetadata,
             userTokens = FileUserTokens("$dataDir/tokens.json"),
@@ -182,14 +190,13 @@ class SerotineWallet {
             logIndex = node.logIndex,
             // The Safe transactions waiting for their owners, with the signatures collected (public).
             safeTxQueue = FileSafeTxQueue("$dataDir/safe-tx-queue.json"),
-            signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
+            signingRequests = JsonSigningRequestCodec(),
             signatureRecovery = Secp256k1Recovery(),
             safeApprovals = node.safeApprovals,
             // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
             safeReleases = PinnedSafeReleases(),
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
-            network = Network.SEPOLIA,
             debugLog = debugLog,
             debugScreen = debugScreen,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
@@ -215,6 +222,8 @@ class SerotineWallet {
         startForegroundWork()
         // The debug log records while the Debug tab is on, for the life of the process.
         scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
+        // Records each network's default the first time it is found unrecorded.
+        scope.launch { networkSettings.observe().first() }
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
             keepAwakeUntil("pause the engine", node.pause())
@@ -266,7 +275,7 @@ class SerotineWallet {
         if (foregroundWork.isNotEmpty()) return
         foregroundWork = listOf(
             scope.launch {
-                reportingFailure("upgrade notices") { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
+                reportingFailure("upgrade notices") { FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)() }
             },
             scope.launch {
                 // The Safes this wallet deployed are listed whatever screen is open, and again after a
