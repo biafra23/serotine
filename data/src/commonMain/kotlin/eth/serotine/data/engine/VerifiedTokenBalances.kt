@@ -53,20 +53,20 @@ class VerifiedTokenBalances internal constructor(
             parse = TokenUnits::parse,
         ) ?: KeptProofs.none(),
         // A call whose block the engine did not name (UNKNOWN_BLOCK, negative) is never vouched for.
-        unchangedSince = { key, provenAt, head ->
+        unchangedSince = { key, provenAt, provenHash, head ->
             key.token in gated &&
-                activity?.unchangedSince(key.holder, AddressActivity.Kind.LOG, provenAt, head) == true
+                activity?.unchangedSince(key.holder, AddressActivity.Kind.LOG, provenAt, provenHash, head) == true
         },
         // A kept "not a token" is asked again: only an amount stands between heads.
         atHead = { _, value, _ -> value },
-        onProven = { _, block -> activity?.pin(block) },
     ) { verified, key ->
         when (val outcome = verified.call(key.token, Abi.balanceOf(key.holder))) {
             is CallOutcome.Returned -> EngineReading.Proven(
                 Abi.uint256(outcome.hex)?.let(TokenUnits::parse),
                 outcome.blockNumber ?: UNKNOWN_BLOCK,
+                outcome.blockHash,
             )
-            is CallOutcome.Reverted -> EngineReading.Proven(null, outcome.blockNumber ?: UNKNOWN_BLOCK)
+            is CallOutcome.Reverted -> EngineReading.Proven(null, outcome.blockNumber ?: UNKNOWN_BLOCK, outcome.blockHash)
             CallOutcome.Refused -> EngineReading.Unavailable(ReadUnavailable.REFUSED)
             null -> null
         }

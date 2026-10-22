@@ -31,8 +31,11 @@ internal sealed interface EngineReading<out T> {
      */
     data class LastKnown<T>(val value: T, val blockNumber: Long, val asOf: Long?) : EngineReading<T>
 
-    /** [value], proven at [blockNumber]. */
-    data class Proven<T>(val value: T, val blockNumber: Long) : EngineReading<T>
+    /**
+     * [value], proven at [blockNumber], whose hash is [blockHash] when the engine proved it: what
+     * a proof kept across heads is checked against ([AddressActivity.unchangedSince]).
+     */
+    data class Proven<T>(val value: T, val blockNumber: Long, val blockHash: String? = null) : EngineReading<T>
 
     /** No verified answer, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : EngineReading<Nothing>
@@ -81,12 +84,14 @@ internal class ProvenReads<K, T>(
      */
     private val sharedForHeads: Long = 1,
     /**
-     * Whether the proof of a key's fact made at block `provenAt` still stands at the verified
-     * head `head` without being made again ([AddressActivity.unchangedSince]): true only when
-     * nothing could have changed it in between. Never blocks on I/O. False by default: a proof
-     * stands as long as [keptForHeads] says. Either way the reading keeps the block of its proof.
+     * Whether the proof of a key's fact made at block `provenAt`, of hash `provenHash` (null when
+     * the engine did not prove it), still stands at the verified head `head` without being made
+     * again ([AddressActivity.unchangedSince]): true only when nothing could have changed it in
+     * between. Never blocks on I/O. False by default: a proof stands as long as [keptForHeads]
+     * says. Either way the reading keeps the block of its proof.
      */
-    private val unchangedSince: (key: K, provenAt: Long, head: Long) -> Boolean = { _, _, _ -> false },
+    private val unchangedSince: (key: K, provenAt: Long, provenHash: String?, head: Long) -> Boolean =
+        { _, _, _, _ -> false },
     /**
      * A kept proof's value as of a later verified head produced at `headTimestamp` (unix
      * seconds; null when unknown), for a fact whose reading also depends on the head's time
@@ -94,11 +99,6 @@ internal class ProvenReads<K, T>(
      * fact again. The value as it is by default.
      */
     private val atHead: (key: K, value: T, headTimestamp: Long?) -> T? = { _, value, _ -> value },
-    /**
-     * Told the block of each proof as it is kept ([AddressActivity.pin]: what [unchangedSince]
-     * later checks the block against). Nothing by default.
-     */
-    private val onProven: (key: K, block: Long) -> Unit = { _, _ -> },
     /**
      * Where the last proof of each key is kept beyond the process ([KeptProofs]), so that a
      * restart can say what was last verified before a head can be read; none by default.
@@ -159,9 +159,9 @@ internal class ProvenReads<K, T>(
         val head = snapshot.readableHead ?: return syncing(key)
         // Asked outside the lock: it reads the engine (in memory, but across JNA).
         proofsLock.withLock { proofs[key] }?.let { kept ->
-            if (head >= kept.head && unchangedSince(key, kept.reading.blockNumber, head)) {
+            if (head >= kept.head && unchangedSince(key, kept.reading.blockNumber, kept.reading.blockHash, head)) {
                 atHead(key, kept.reading.value, snapshot.headTimestamp)?.let {
-                    return EngineReading.Proven(it, kept.reading.blockNumber)
+                    return kept.reading.copy(value = it)
                 }
             }
         }
@@ -221,7 +221,6 @@ internal class ProvenReads<K, T>(
             if (proofs.size > MAX_CACHED) proofs.remove(proofs.keys.first())
         }
         kept.save(key, EngineReading.LastKnown(proven.value, proven.blockNumber, headTimestamp))
-        onProven(key, proven.blockNumber)
         return proven
     }
 

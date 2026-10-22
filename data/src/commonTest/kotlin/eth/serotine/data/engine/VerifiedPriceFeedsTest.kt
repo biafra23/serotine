@@ -86,11 +86,17 @@ class VerifiedPriceFeedsTest {
                 """{"address":"${a.hex}","block":$b,"blockHash":"0x${"11".repeat(32)}","via":["log"]}"""
             }}],"watching":["${aggregator.hex}","${eth.address.hex}"]}"""
 
+    /** The hash the fake follower holds for [block]: what a call at the canonical block names. */
+    private fun hash(block: Long) = AddressActivityTest.FakeActivity().hashOf(block)
+
     /** The feed answers [price] (8 decimals) updated at [updatedAt], with every call at [block]. */
     private fun feedAt(block: Long, price: Long, updatedAt: Long) {
-        answer(CallOutcome.Returned(word(8), block), CallOutcome.Returned(round(word(price), updatedAt), block))
+        answer(
+            CallOutcome.Returned(word(8), block, hash(block)),
+            CallOutcome.Returned(round(word(price), updatedAt), block, hash(block)),
+        )
         chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
-            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), block)
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), block, hash(block))
     }
 
     @Test
@@ -146,9 +152,12 @@ class VerifiedPriceFeedsTest {
 
         // A new round at block 12, proven with decimals() answered at block 11, not the round's:
         // that proof is not kept, so the next head proves the feed again.
-        answer(CallOutcome.Returned(word(8), 11), CallOutcome.Returned(round(word(400_000_000), 10_030), 12))
+        answer(
+            CallOutcome.Returned(word(8), 11, hash(11)),
+            CallOutcome.Returned(round(word(400_000_000), 10_030), 12, hash(12)),
+        )
         chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
-            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 12)
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 12, hash(12))
         chain.snapshot = running(head = 12, headTimestamp = 10_036)
         activity.report = report(to = 12, touched = listOf(aggregator to 12))
         assertEquals(4.0, reading().price)
@@ -156,6 +165,45 @@ class VerifiedPriceFeedsTest {
         chain.snapshot = running(head = 13, headTimestamp = 10_048)
         activity.report = report(to = 13)
         assertEquals(5.0, reading().price)
+
+        // decimals() at a block 14 the chain left, the round at the canonical block 14: the same
+        // number, another block, so that proof is not kept either.
+        val sibling = "0x" + "ee".repeat(32)
+        answer(
+            CallOutcome.Returned(word(8), 14, sibling),
+            CallOutcome.Returned(round(word(600_000_000), 10_050), 14, hash(14)),
+        )
+        chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 14, hash(14))
+        chain.snapshot = running(head = 14, headTimestamp = 10_060)
+        activity.report = report(to = 14, touched = listOf(aggregator to 14))
+        assertEquals(6.0, reading().price)
+        feedAt(15, 700_000_000, 10_070)
+        chain.snapshot = running(head = 15, headTimestamp = 10_072)
+        activity.report = report(to = 15)
+        assertEquals(7.0, reading().price)
+    }
+
+    @Test
+    fun aPriceWhoseRoundNamesNoBlockHashIsProvenAgain() = runTest {
+        val activity = AddressActivityTest.FakeActivity().apply { report = report(to = 9) }
+        val feeds = VerifiedPriceFeeds(
+            chain,
+            StandardTestDispatcher(testScheduler),
+            4.seconds,
+            listOf(eth),
+            AddressActivity(activity),
+        )
+        suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        // An engine before ABI 52 names no hash: nothing can tell its block from a sibling.
+        answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 9_400), 9))
+        chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 9)
+        reading()
+        answer(CallOutcome.Returned(word(8), 10), CallOutcome.Returned(round(word(200_000_000), 10_010), 10))
+        chain.snapshot = running(head = 10, headTimestamp = 10_012)
+        activity.report = report(to = 10)
+        assertEquals(2.0, reading().price)
     }
 
     @Test
@@ -180,12 +228,18 @@ class VerifiedPriceFeedsTest {
         // With the aggregator known, an account gap on the proxy (no block access list: a
         // switch to another aggregator would not show) is no vouching either.
         chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
-            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 11)
-        answer(CallOutcome.Returned(word(8), 11), CallOutcome.Returned(round(word(300_000_000), 10_020), 11))
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 11, hash(11))
+        answer(
+            CallOutcome.Returned(word(8), 11, hash(11)),
+            CallOutcome.Returned(round(word(300_000_000), 10_020), 11, hash(11)),
+        )
         chain.snapshot = running(head = 11, headTimestamp = 10_024)
         activity.report = report(to = 11)
         assertEquals(3.0, reading().price)
-        answer(CallOutcome.Returned(word(8), 12), CallOutcome.Returned(round(word(400_000_000), 10_030), 12))
+        answer(
+            CallOutcome.Returned(word(8), 12, hash(12)),
+            CallOutcome.Returned(round(word(400_000_000), 10_030), 12, hash(12)),
+        )
         chain.snapshot = running(head = 12, headTimestamp = 10_036)
         activity.report = report(to = 12, accountGaps = "[[12,12]]")
         assertEquals(4.0, reading().price)

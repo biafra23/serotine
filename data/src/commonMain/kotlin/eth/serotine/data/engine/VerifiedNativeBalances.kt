@@ -35,13 +35,12 @@ class VerifiedNativeBalances internal constructor(
         pollInterval,
         kept = lastBalances?.kept<Address, Wei>(id = { "native:${it.hex}" }, units = { it.decimal }, parse = Wei::parse)
             ?: KeptProofs.none(),
-        unchangedSince = { address, provenAt, head ->
-            activity?.unchangedSince(address, AddressActivity.Kind.ACCOUNT, provenAt, head) == true
+        unchangedSince = { address, provenAt, provenHash, head ->
+            activity?.unchangedSince(address, AddressActivity.Kind.ACCOUNT, provenAt, provenHash, head) == true
         },
-        onProven = { _, block -> activity?.pin(block) },
     ) { verified, address ->
         verified.proveBalance(address)?.let { proven ->
-            Wei.parse(proven.wei)?.let { EngineReading.Proven(it, proven.blockNumber) }
+            Wei.parse(proven.wei)?.let { EngineReading.Proven(it, proven.blockNumber, proven.blockHash) }
         }
     }
 

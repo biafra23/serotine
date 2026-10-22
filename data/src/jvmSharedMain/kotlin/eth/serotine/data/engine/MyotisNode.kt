@@ -350,7 +350,11 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             val result = handle.requestAccount(address.hex)
             if (result.failReason() != null || result.verifyMethod() == null) return null
             // A proven absence is a proven zero.
-            return ProvenBalance(if (result.exists()) result.balanceWei() ?: return null else "0", result.blockNumber())
+            return ProvenBalance(
+                if (result.exists()) result.balanceWei() ?: return null else "0",
+                result.blockNumber(),
+                result.blockHashHex()?.lowercase(),
+            )
         }
 
         // The code hash comes with the account proof, labelled with its block; the code itself

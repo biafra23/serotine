@@ -33,18 +33,18 @@ internal interface ActivityChain {
 
 /**
  * Whether a proof of an address's state still stands at a later verified head, from the
- * engine's address-activity report: true only when the proof's block is still the canonical
- * one it was made at, and every block from it through the head was checked for that address
- * and none touched it. Anything the engine did not check — a block before it followed, a gap,
- * a report it could not give — is "not known unchanged", and the proof is made again, as
- * without this.
+ * engine's address-activity report: true only when the proof's block is the canonical one, and
+ * every block from it through the head was checked for that address and none touched it.
+ * Anything the engine did not check — a block before it followed, a gap, a report it could not
+ * give — is "not known unchanged", and the proof is made again, as without this.
  *
- * **Reorgs.** A proof carries no block hash, so [pin] records the engine's hash of the proof's
- * block right after the proof is made. A proof stands only while the engine still holds that
- * hash for its block: a reorg that replaced it (or any block below it) changes that hash, and
- * the proof is made again. A proof whose block could not be pinned — the follower did not
- * hold it yet — never stands. (A replaced block that touched the address no longer shows in
- * the report, which is why a touch check alone could not catch this.)
+ * **Reorgs.** A proof names the hash of the block it was verified at (Myotis ABI 52: the beacon
+ * anchor vouched for a block of that number with the proof's state root). It stands only while
+ * the engine's follower holds that same hash for that block, its report's `base`: a proof from
+ * a sibling the chain left, or one whose block a later reorg replaced (or any block below it),
+ * is made again. A proof that names no hash, or whose block the follower does not hold, never
+ * stands. (A replaced block that touched the address no longer shows in the report, which is
+ * why a touch check alone could not catch this.)
  *
  * **The watch list** follows what readings ask about: an address is watched the first time it
  * is asked about, so the answer for it is false until the engine's next report lists it; one
@@ -75,10 +75,6 @@ internal class AddressActivity(
 
     private class Fetched(val report: Report, val at: TimeMark, val reread: Boolean)
 
-    /** Block number to the hash the engine held for it when a proof there was pinned. */
-    @Volatile
-    private var pins: Map<Long, String> = emptyMap()
-
     /** Block number to the hash the engine holds for it now, read at the head of the value. */
     @Volatile
     private var canonical: Map<Long, Pair<Long, String?>> = emptyMap()
@@ -96,21 +92,11 @@ internal class AddressActivity(
     private var prunedAt: Long = -1
 
     /**
-     * Record the hash the engine holds for [block], the block a proof was just made at: the
-     * proof stands later only while that block keeps this hash. Nothing when the engine does
-     * not hold the block yet — that proof then never stands.
+     * Whether the [kind] of fact about [address] proven at block [provenAt], of hash [provenHash]
+     * (null: the engine did not prove it), is known not to have changed by the verified head
+     * [head]. Never blocks on I/O.
      */
-    fun pin(block: Long) {
-        if (chain == null || block < 0) return
-        val hash = baseHash(block) ?: return
-        pins = (pins + (block to hash)).let { if (it.size > MAX_PINS) it - it.keys.min() else it }
-    }
-
-    /**
-     * Whether the [kind] of fact about [address] proven at block [provenAt] is known not to have
-     * changed by the verified head [head]. Never blocks on I/O.
-     */
-    fun unchangedSince(address: Address, kind: Kind, provenAt: Long, head: Long): Boolean {
+    fun unchangedSince(address: Address, kind: Kind, provenAt: Long, provenHash: String?, head: Long): Boolean {
         if (chain == null || provenAt < 0 || head < provenAt) return false
         askedAt = askedAt + (address.hex to head)
         val report = reportAt(head) ?: return false
@@ -120,9 +106,9 @@ internal class AddressActivity(
             return false
         }
         if (report.from > provenAt || report.to < head) return false
-        // Still the block the proof was made at: a reorg below the head changes its hash.
-        val pinned = pins[provenAt] ?: return false
-        if (canonicalHash(provenAt, head) != pinned) return false
+        // The proof's own block is the canonical one: not a sibling the chain left, and not
+        // replaced since by a reorg below the head.
+        if (provenHash == null || canonicalHash(provenAt, head) != provenHash.lowercase()) return false
         val gaps = report.gaps[kind.json] ?: return false
         if (gaps.any { (low, high) -> low <= head && high >= provenAt }) return false
         // From the block after the proof's: what the proof's own block did is in the proof.
@@ -162,7 +148,7 @@ internal class AddressActivity(
     private fun canonicalHash(block: Long, head: Long): String? {
         canonical[block]?.takeIf { it.first == head }?.let { return it.second }
         val hash = baseHash(block)
-        canonical = (canonical + (block to (head to hash))).let { if (it.size > MAX_PINS) it - it.keys.min() else it }
+        canonical = (canonical + (block to (head to hash))).let { if (it.size > MAX_HASHES) it - it.keys.min() else it }
         return hash
     }
 
@@ -267,8 +253,8 @@ internal class AddressActivity(
         /** Heads a refused watch push waits before it is pushed again. */
         const val REFUSED_BACKOFF_HEADS = 50L
 
-        /** Pinned and read block hashes kept: more than the engine's window. */
-        const val MAX_PINS = 512
+        /** Canonical block hashes kept: more than the engine's window. */
+        const val MAX_HASHES = 512
 
         /** How long a report whose newest block was a gap serves before it is read once more. */
         val TOP_GAP_RETRY = 2.seconds

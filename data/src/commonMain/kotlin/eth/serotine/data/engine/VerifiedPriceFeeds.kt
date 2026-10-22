@@ -25,7 +25,8 @@ import kotlin.time.Duration
  * every new round emits one — and no change to the proxy's own state, which a switch to
  * another aggregator is (block access lists: until a chain has them, every price is proven
  * at every head, as without [activity], and `aggregator()` is not called). A proof stands only
- * when its `decimals()`, its round and its aggregator were all read at the same block, and only
+ * when its `decimals()`, its round and its aggregator were all read at the same block — the
+ * same proven hash, not only the same number — and only
  * for a price ([FeedReading.Verified]); every proof reads `decimals()`, since the proxy's
  * aggregator can be replaced; one that differs from the pin, a non-positive answer, or what
  * is no round, is no price. A round is stale once it is older than the feed's heartbeat and [STALE_GRACE_SECONDS]
@@ -46,12 +47,14 @@ class VerifiedPriceFeeds internal constructor(
     private val pinned = feeds.associateBy { it.priceId }
 
     /**
-     * Per feed, the aggregator its proxy pointed to and the block of the proof that read it:
-     * the one [unchangedSince] watches. Replaced whole on each write, so a reader never sees
-     * half of one; a write lost to a race only costs that feed one more proof.
+     * Per feed, the aggregator its proxy pointed to and the block (number and hash) of the proof
+     * that read it: the one [unchangedSince] watches. Replaced whole on each write, so a reader
+     * never sees half of one; a write lost to a race only costs that feed one more proof.
      */
     @Volatile
-    private var aggregators: Map<PriceId, Pair<Address, Long>> = emptyMap()
+    private var aggregators: Map<PriceId, Noted> = emptyMap()
+
+    private class Noted(val aggregator: Address, val block: Long, val hash: String)
 
     override val quotes: Map<PriceId, PriceId> = feeds.associate { it.priceId to it.quote }
 
@@ -59,9 +62,8 @@ class VerifiedPriceFeeds internal constructor(
         chain,
         dispatcher,
         pollInterval,
-        unchangedSince = { id, provenAt, head -> unchangedSince(id, provenAt, head) },
+        unchangedSince = { id, provenAt, provenHash, head -> unchangedSince(id, provenAt, provenHash, head) },
         atHead = { id, value, headTime -> atHead(id, value, headTime) },
-        onProven = { _, block -> activity?.pin(block) },
     ) { verified, id ->
         val feed = pinned.getValue(id)
         // The head's time before the calls: the calls block, and the head may move meanwhile.
@@ -73,25 +75,28 @@ class VerifiedPriceFeeds internal constructor(
         // A refusal is said whatever the head's time; an answer cannot be dated without it.
         if (headTime == null) return@ProvenReads null
         val block = (round as? CallOutcome.Returned)?.blockNumber
-        // Only where a kept price could stand: a chain whose blocks show account activity.
-        val pairedDecimals = (decimals as? CallOutcome.Returned)?.blockNumber == block
-        if (block != null && pairedDecimals && activity?.hasAccountCoverage(block) == true) {
-            noteAggregator(id, verified, block)
+        val hash = (round as? CallOutcome.Returned)?.blockHash
+        // Only where a kept price could stand: a chain whose blocks show account activity, and
+        // a round whose block is proven, read at the same one as its decimals.
+        val pairedDecimals = (decimals as? CallOutcome.Returned)?.let { it.blockNumber == block && it.blockHash == hash }
+        if (block != null && hash != null && pairedDecimals == true && activity?.hasAccountCoverage(block) == true) {
+            noteAggregator(id, verified, block, hash)
         } else {
             aggregators = aggregators - id
         }
-        EngineReading.Proven(reading(feed, decimals, round, headTime), block ?: UNKNOWN_BLOCK)
+        EngineReading.Proven(reading(feed, decimals, round, headTime), block ?: UNKNOWN_BLOCK, hash)
     }
 
     /**
-     * Read the proxy's aggregator for the proof at [block]. Kept only when the call ran at that
-     * same block: an aggregator read at another one could be the proxy's next, not this
-     * proof's. Anything else forgets the feed's, and its proof is not vouched for.
+     * Read the proxy's aggregator for the proof at [block] of hash [hash]. Kept only when the
+     * call ran at that same block: an aggregator read at another one — a later block, or a
+     * sibling of the same number — could be the proxy's next, not this proof's. Anything else
+     * forgets the feed's, and its proof is not vouched for.
      */
-    private fun noteAggregator(id: PriceId, verified: VerifiedChain, block: Long) {
+    private fun noteAggregator(id: PriceId, verified: VerifiedChain, block: Long, hash: String) {
         val outcome = verified.call(pinned.getValue(id).address, Abi.AGGREGATOR) as? CallOutcome.Returned
-        val aggregator = outcome?.takeIf { it.blockNumber == block }?.let { Abi.address(it.hex) }
-        aggregators = if (aggregator != null) aggregators + (id to (aggregator to block)) else aggregators - id
+        val aggregator = outcome?.takeIf { it.blockNumber == block && it.blockHash == hash }?.let { Abi.address(it.hex) }
+        aggregators = if (aggregator != null) aggregators + (id to Noted(aggregator, block, hash)) else aggregators - id
     }
 
     /**
@@ -99,13 +104,13 @@ class VerifiedPriceFeeds internal constructor(
      * aggregator emitted no log since, and its proxy's own state did not change — both checked,
      * from the proof's block through the head, by [activity].
      */
-    private fun unchangedSince(id: PriceId, provenAt: Long, head: Long): Boolean {
+    private fun unchangedSince(id: PriceId, provenAt: Long, provenHash: String?, head: Long): Boolean {
         val activity = activity ?: return false
-        val (aggregator, block) = aggregators[id] ?: return false
-        if (block != provenAt) return false
+        val noted = aggregators[id] ?: return false
+        if (noted.block != provenAt || noted.hash != provenHash) return false
         val proxy = pinned.getValue(id).address
-        return activity.unchangedSince(aggregator, AddressActivity.Kind.LOG, provenAt, head) &&
-            activity.unchangedSince(proxy, AddressActivity.Kind.ACCOUNT, provenAt, head)
+        return activity.unchangedSince(noted.aggregator, AddressActivity.Kind.LOG, provenAt, provenHash, head) &&
+            activity.unchangedSince(proxy, AddressActivity.Kind.ACCOUNT, provenAt, provenHash, head)
     }
 
     /**
