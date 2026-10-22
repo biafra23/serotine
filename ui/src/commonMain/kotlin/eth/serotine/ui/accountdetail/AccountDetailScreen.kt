@@ -69,6 +69,10 @@ import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
+import eth.serotine.ui.components.GhostCircle
+import eth.serotine.ui.components.GhostLine
+import eth.serotine.ui.components.GhostRows
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
@@ -481,8 +485,8 @@ private fun ActionButton(
 
 /**
  * The asset rows (docs/wallet-ux.md, screen 4), each with the block its amount was verified
- * at, and what is not known yet about the other tokens. A tap on a row opens Send with its
- * asset chosen, a long press its menu.
+ * at, a ghost row per token not read yet, and what is not known yet about the other tokens. A
+ * tap on a row opens Send with its asset chosen, a long press its menu.
  */
 @Composable
 private fun Assets(
@@ -517,6 +521,13 @@ private fun Assets(
                 clickLabel = if (state.canSend) "Send ${asset.symbol}" else "Why Send ${asset.symbol} is unavailable",
             ) {
                 AssetItem(asset)
+            }
+        }
+        // A row's place for each token not read yet: one that holds some takes a place, one that holds
+        // none gives one up at the bottom, so the list grows no longer as the tokens are read.
+        if (state.pendingAssets > 0) {
+            GhostRows(state.pendingAssets, "Tokens not read yet", spacing = 4.dp) {
+                AssetGhost()
             }
         }
         state.tokensNote?.let { note ->
@@ -583,7 +594,8 @@ private fun SafeQueueList(queue: SafeQueue, onOpenSafeTx: (String) -> Unit, onIm
             Text("Import a request")
         }
         when (queue) {
-            SafeQueue.Checking -> Text("Reading this device's queue…")
+            SafeQueue.Checking ->
+                GhostRows(GHOST_ROWS_UNKNOWN, "Reading this device's queue", spacing = 8.dp) { QueueGhost() }
             is SafeQueue.Unavailable -> Text(queue.message, color = MaterialTheme.colorScheme.error)
             is SafeQueue.Shown -> {
                 if (queue.rows.isEmpty()) {
@@ -604,6 +616,16 @@ private fun SafeQueueList(queue: SafeQueue, onOpenSafeTx: (String) -> Unit, onIm
             }
         }
     }
+}
+
+/** A [QueueItem] not read yet, of its height. */
+@Composable
+private fun QueueGhost() {
+    ListItem(
+        leadingContent = { GhostCircle(32.dp) },
+        headlineContent = { GhostLine(160.dp) },
+        supportingContent = { GhostLine(220.dp) },
+    )
 }
 
 @Composable
@@ -631,7 +653,12 @@ private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
 private fun SafeOwners(safe: SafeDetails) {
     Column(Modifier.testTag(ACCOUNT_OWNERS_TAG), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (safe) {
-            SafeDetails.Checking -> Text("Reading the Safe's storage…")
+            SafeDetails.Checking -> {
+                // The title and the threshold, then owners: as many as a Safe's are, until they are read.
+                GhostLine(160.dp, style = MaterialTheme.typography.titleSmall)
+                GhostLine(200.dp)
+                GhostRows(GHOST_ROWS_UNKNOWN, "Reading the Safe's storage", spacing = 8.dp) { OwnerGhost() }
+            }
             is SafeDetails.Unavailable -> Text(safe.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
             is SafeDetails.Shown -> {
                 Text(safe.title, style = MaterialTheme.typography.titleSmall)
@@ -669,6 +696,32 @@ private fun SafeOwners(safe: SafeDetails) {
             }
         }
     }
+}
+
+/** An owner's row of [SafeOwners] not read yet, of its height. */
+@Composable
+private fun OwnerGhost() {
+    ListItem(
+        leadingContent = { GhostCircle(32.dp) },
+        headlineContent = { GhostLine(96.dp) },
+        supportingContent = { GhostLine(120.dp) },
+    )
+}
+
+/** An [AssetItem] whose balance is still being checked, of its height. */
+@Composable
+private fun AssetGhost() {
+    ListItem(
+        leadingContent = { GhostCircle(32.dp) },
+        headlineContent = { GhostLine(56.dp) },
+        supportingContent = { GhostLine(180.dp) },
+        trailingContent = {
+            Column(horizontalAlignment = Alignment.End) {
+                GhostLine(72.dp, style = MaterialTheme.typography.bodyLarge)
+                GhostLine(48.dp, style = MaterialTheme.typography.labelMedium)
+            }
+        },
+    )
 }
 
 @Composable

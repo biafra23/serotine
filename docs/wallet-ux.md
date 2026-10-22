@@ -109,6 +109,16 @@ the text wins.
   (the unlock, Security, Create account, Import mnemonic), whose Done
   predates this rule, submit without reading the button's state or
   closing the keyboard, their ViewModels refusing what is not ready.
+- **Rows on their way hold their room** (owner's request, 2026-10-22). A
+  list whose rows arrive after the screen is drawn does not push what is
+  below it down as they come: grey ghost rows in the shape and height of its
+  rows (`components/Ghost.kt`) stand in until they are read. Where the
+  number of rows is known first, there is a ghost per row: the Assets tab's
+  one per token whose balance is not read at all yet (4), which its row
+  takes over, or gives up at the bottom when the token is not held. Where
+  it is not (Activity, 25; a Safe's Owners and Queue, 16; a Safe
+  transaction's owners, 17), three ghosts stand in for the rows, and screen
+  readers hear what is being read ("Reading the Safe's storage").
 - **Long press is never the only way.** A long press (a right click on
   desktop) opens an item's menu; every action in it is also reachable from a
   visible control (the detail screen's buttons), and the menu has an
@@ -195,7 +205,9 @@ upgrades*).
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
      tap opens Send (7) with the asset chosen; where Send cannot be done
      (as in 3) the row is drawn as ever and the tap says why, as the
-     greyed-out Send button does. A long press opens 5.
+     greyed-out Send button does. A long press opens 5. A token whose
+     balance is not read at all yet holds a ghost row's place after the
+     rows (*Rows on their way hold their room*).
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
@@ -576,7 +588,9 @@ upgrades*).
       signatures change and when the screen is shown again. That reading
       checks the Safe as a one-shot check does: a reading that could not be
       verified this time is waited out for the next one, for up to 45 s, the
-      rows saying "Reading the owners and their approvals…" meanwhile.
+      ghost rows standing in for them meanwhile (*Rows on their way hold
+      their room*), said to screen readers as "Reading the owners and their
+      approvals".
     - Share request opens the request's text (`EncodeSigningRequest`) as one
       QR code when it fits one (else it says to share the text), with Copy
       text and, where the platform has a share sheet, Share. It is offered
