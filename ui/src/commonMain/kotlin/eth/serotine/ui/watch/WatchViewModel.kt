@@ -74,16 +74,17 @@ class WatchViewModel(
     private val holdNetwork: HoldNetwork,
 ) : ViewModel() {
 
-    /** The networks on in this wallet, in `Network` order; none until read. */
-    private val on: StateFlow<List<Network>> =
-        observeEnabledNetworks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** The networks on in this wallet, in `Network` order; null until read, so none is said to be off before. */
+    private val on: StateFlow<List<Network>?> =
+        observeEnabledNetworks().stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** A hold on each network that is on, released when it goes off or the screen is gone ([onCleared]). */
     private val holds = mutableMapOf<Network, NetworkHold>()
 
     init {
         viewModelScope.launch {
-            on.collect { networks ->
+            on.collect { read ->
+                val networks = read ?: return@collect
                 (holds.keys - networks.toSet()).forEach { holds.remove(it)?.release() }
                 networks.filter { it !in holds }.forEach { holds[it] = holdNetwork(it) }
             }
@@ -134,9 +135,10 @@ class WatchViewModel(
             ::Pair,
         )
             .distinctUntilChanged()
-            .flatMapLatest { (address, networks) ->
+            .flatMapLatest { (address, read) ->
+                val networks = read.orEmpty()
                 when {
-                    address == null -> flowOf(null)
+                    address == null || read == null -> flowOf(null)
                     networks.isEmpty() -> flowOf(address to emptyList())
                     // The one list says whether the address is in the wallet already, and, for a Safe,
                     // which of its owners' keys are held here.
@@ -182,8 +184,8 @@ class WatchViewModel(
             nameError = outcome.nameError,
             error = outcome.error,
             done = outcome.done,
-            noNetwork = NO_NETWORK.takeIf { on.isEmpty() },
-            offNetworks = Network.entries.filter { it !in on }.map(NetworkLabel::of),
+            noNetwork = NO_NETWORK.takeIf { on?.isEmpty() == true },
+            offNetworks = on?.let { read -> Network.entries.filter { it !in read }.map(NetworkLabel::of) }.orEmpty(),
         ).withCards(
             // Only the cards of what is typed now: none while a new text is still being resolved,
             // nor those of the address before for a moment after the text changed.
@@ -296,7 +298,7 @@ class WatchViewModel(
         if (outcome.value.adding || outcome.value.done || !state.canAdd) return
         // The networks to add it on: the one on; or all offered, as the question asks; or those ticked.
         val networks = when {
-            state.networks.isEmpty() -> on.value.take(1)
+            state.networks.isEmpty() -> on.value.orEmpty().take(1)
             state.question != null && !state.choosing -> state.networks.filter { it.offered }
                 .mapNotNull { Network.ofChainId(it.network.chainId) }
             else -> state.networks.filter { it.offered && it.chosen }
@@ -447,7 +449,7 @@ class WatchViewModel(
 
     private suspend fun lookUp(text: String): RecipientLookup = try {
         // A name on the first network that is on; with none on, nothing can be resolved.
-        val network = on.value.firstOrNull() ?: return RecipientLookup.Unavailable(ReadUnavailable.NETWORK_OFF)
+        val network = on.value?.firstOrNull() ?: return RecipientLookup.Unavailable(ReadUnavailable.NETWORK_OFF)
         resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e

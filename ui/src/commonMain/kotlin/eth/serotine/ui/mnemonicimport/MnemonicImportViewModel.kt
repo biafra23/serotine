@@ -42,8 +42,8 @@ class MnemonicImportViewModel(
     private val setNetworkEnabled: SetNetworkEnabled,
 ) : ViewModel() {
 
-    /** The networks on in this wallet, as last read. */
-    private var on: Set<Network> = emptySet()
+    /** The networks on in this wallet, as last read; null before, when no network is listed yet. */
+    private var on: Set<Network>? = null
 
     /** The networks ticked: none until the user ticks one (N9). */
     private var chosen: Set<Network> = emptySet()
@@ -84,9 +84,12 @@ class MnemonicImportViewModel(
         }
     }
 
+    /** The check boxes, once the networks on are read: none before, rather than every one shown off. */
+    private fun choices() = on?.let { networkChoices(it, chosen) }.orEmpty()
+
     private fun refreshNetworks() {
         state.update { current ->
-            if (current is Entering) current.copy(networks = networkChoices(on, chosen)) else current
+            if (current is Entering) current.copy(networks = choices()) else current
         }
     }
 
@@ -153,7 +156,7 @@ class MnemonicImportViewModel(
 
     override fun onCleared() {
         // The screen is gone, and the words and the password go with it.
-        state.value = Entering(Mnemonic.EMPTY, step = step, networks = networkChoices(on, chosen))
+        state.value = Entering(Mnemonic.EMPTY, step = step, networks = choices())
     }
 
     private fun describe() {

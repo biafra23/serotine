@@ -51,8 +51,8 @@ class CreateAccountViewModel(
 
     private val state = MutableStateFlow<CreateAccountUiState>(CreateAccountUiState.Preparing)
 
-    /** The networks on in this wallet, as last read. */
-    private var on: Set<Network> = emptySet()
+    /** The networks on in this wallet, as last read; null before, when no network is listed yet. */
+    private var on: Set<Network>? = null
 
     /** The networks ticked: none until the user ticks one (N8). */
     private var chosen: Set<Network> = emptySet()
@@ -93,9 +93,12 @@ class CreateAccountViewModel(
         }
     }
 
+    /** The check boxes, once the networks on are read: none before, rather than every one shown off. */
+    private fun choices() = on?.let { networkChoices(it, chosen) }.orEmpty()
+
     private fun refreshNetworks() {
         state.update { current ->
-            if (current is Securing) current.copy(networks = networkChoices(on, chosen)) else current
+            if (current is Securing) current.copy(networks = choices()) else current
         }
     }
 
@@ -158,7 +161,7 @@ class CreateAccountViewModel(
             state.value = checking.copy(wrong = true)
             return
         }
-        state.value = Securing(checking.phrase, PasswordStep.Checking, networks = networkChoices(on, chosen))
+        state.value = Securing(checking.phrase, PasswordStep.Checking, networks = choices())
         describe()
     }
 
