@@ -1,9 +1,11 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.GPv2Settlement
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
@@ -13,13 +15,17 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.FeeReading
+import eth.serotine.domain.repository.FinalizedBlock
 import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
@@ -72,7 +78,11 @@ class TransfersTest {
     }
     private val sent = FakeSentTransfers()
     private var now = 1_800_000_100L
-    private val quoteTransfer = QuoteTransfer(inputs, balances, tokens, sent, Network.SEPOLIA) { now }
+    private val orders = MemoryCowOrders()
+    private val light = FakeLightClient()
+    private val cowChain = FakeCowChain()
+    private val quoteTransfer =
+        QuoteTransfer(inputs, balances, tokens, sent, orders, cowChain, light, Network.SEPOLIA) { now }
 
     @Test
     fun anAddressIsTakenAsIsAndANameIsResolved() = runTest {
@@ -149,6 +159,65 @@ class TransfersTest {
         assertEquals(UInt256.of(5_000_000), quote.tokenBefore)
         assertEquals(UInt256.of(3_500_000), quote.tokenAfter)
         assertEquals(100, quote.tokenBalanceBlock)
+    }
+
+    /** A CoW order of [account]'s selling [amount] of USDC, valid until [validTo]. */
+    private fun cowOrder(account: Address, amount: Long, validTo: Long): CowOrderRecord {
+        val order = CowOrder(usdc.address, CowOrder.NATIVE_BUY_TOKEN, account, UInt256.of(amount), UInt256.ONE, validTo)
+        return CowOrderRecord(
+            account = account,
+            network = Network.SEPOLIA,
+            settlement = COW_SEPOLIA.settlement,
+            order = order,
+            uid = order.uid(Network.SEPOLIA.chainId, COW_SEPOLIA.settlement, account),
+            signature = Signature("0".repeat(63) + "1", "0".repeat(63) + "1", 0),
+            sell = TransferAsset.Erc20Token(usdc),
+            buy = TransferAsset.Native,
+            signedAt = validTo - 300,
+            rangeStart = 90,
+        )
+    }
+
+    @Test
+    fun whatALiveCowOrderMayStillTakeIsNotTheTransfersToMove() = runTest {
+        orders.orders.value = listOf(cowOrder(alice, 4_000_000, validTo = now + 200))
+        assertEquals(
+            TransferQuoting.InsufficientToken,
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(1_500_000), FeeLevel.FAST),
+        )
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(1_000_000), FeeLevel.FAST),
+        ).quote
+        assertEquals(UInt256.of(4_000_000), quote.heldByOrders)
+        assertEquals(UInt256.ZERO, quote.tokenAfter)
+
+        // Once a finalized block is past its validTo, it takes nothing more.
+        light.status.value = LightClientStatus.Synced(130, now + 400, FinalizedBlock(120, now + 201))
+        assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(1_500_000), FeeLevel.FAST),
+        )
+    }
+
+    @Test
+    fun anOrderFilledAtTheHeadIsNotCountedTwice() = runTest {
+        val order = cowOrder(alice, 4_000_000, validTo = now + 200)
+        orders.orders.value = listOf(order)
+        // The settlement counts it filled at the head: the balance already shows the fill.
+        cowChain.answers[COW_SEPOLIA.settlement to GPv2Settlement.filledAmount(order.uid).toHex()] =
+            Simulation.Succeeded(UInt256.of(4_000_000).toBytes32().toHex(), 121)
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(1_500_000), FeeLevel.FAST),
+        ).quote
+        assertEquals(UInt256.ZERO, quote.heldByOrders)
+    }
+
+    @Test
+    fun anUnreadableRecordOfOrdersHoldsNothingBackFromATransfer() = runTest {
+        orders.orders.value = listOf(cowOrder(alice, 4_000_000, validTo = now + 200))
+        orders.unreadable = true
+        assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(1_500_000), FeeLevel.FAST),
+        )
     }
 
     @Test

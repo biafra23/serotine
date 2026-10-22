@@ -42,7 +42,11 @@ internal class MemoryCowOrders(vararg initial: CowOrderRecord) : CowOrders {
 
     override suspend fun record(order: CowOrderRecord): Boolean {
         if (failSaves) return false
-        orders.value = orders.value.filterNot { it.uid == order.uid } + order
+        orders.value = if (orders.value.any { it.uid == order.uid }) {
+            orders.value.map { if (it.uid == order.uid) order else it }
+        } else {
+            orders.value + order
+        }
         return true
     }
 

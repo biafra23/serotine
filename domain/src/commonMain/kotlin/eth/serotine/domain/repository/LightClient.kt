@@ -46,12 +46,13 @@ sealed interface LightClientStatus {
      * Serving verified reads at the fresh verified head [headBlock], produced at
      * [headTimestamp] (unix seconds; null when unknown). [finalized] is the newest block the
      * beacon chain has finalized, with its own header's timestamp; null while there is none or
-     * its header could not be read.
+     * its header could not be read. It has no default, so every producer says what it knows: a
+     * null keeps every CoW order's hold-back up until its end is proven.
      */
     data class Synced(
         val headBlock: Long,
         val headTimestamp: Long?,
-        val finalized: FinalizedBlock? = null,
+        val finalized: FinalizedBlock?,
     ) : LightClientStatus
 
     /** Networking is off while the app is in the background; it resumes when the app returns. */

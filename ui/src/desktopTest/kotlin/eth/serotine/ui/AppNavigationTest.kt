@@ -33,6 +33,17 @@ import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.CowOrder
+import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapVenue
+import eth.serotine.domain.repository.CowApi
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowOrderLife
+import eth.serotine.domain.repository.CowPlacement
+import eth.serotine.domain.repository.CowQuoteReading
+import eth.serotine.domain.repository.CowUnavailable
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.LogWatchKey
 import eth.serotine.domain.repository.LogCoverageReading
@@ -84,11 +95,13 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.UniswapV3Chain
+import eth.serotine.domain.repository.VenueChoice
 import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
@@ -315,6 +328,38 @@ class AppNavigationTest {
             override suspend fun call(to: Address, data: ByteArray): Simulation =
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
         },
+        cowChain = object : CowChain {
+            override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned
+
+            override suspend fun call(to: Address, data: ByteArray): Simulation =
+                Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
+        },
+        cowApi = object : CowApi {
+            override suspend fun quote(
+                network: Network,
+                sellToken: Address,
+                buyToken: Address,
+                sellAmount: UInt256,
+                from: Address,
+            ): CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NOT_PINNED)
+
+            override suspend fun place(
+                network: Network,
+                order: CowOrder,
+                owner: Address,
+                signature: Signature,
+                uid: CowOrderUid,
+            ): CowPlacement = CowPlacement.Unclear(CowUnavailable.NOT_PINNED)
+
+            override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife =
+                CowOrderLife.Unavailable(CowUnavailable.NOT_PINNED)
+        },
+        cowOrders = MemoryCowOrders(),
+        swapVenue = object : SwapVenueSetting {
+            override fun observe(): Flow<VenueChoice> = flowOf(VenueChoice.Chosen(null))
+
+            override suspend fun choose(venue: SwapVenue): Boolean = true
+        },
         network = Network.SEPOLIA,
         debugLog = debugLog,
         debugScreen = debugScreen,
@@ -412,7 +457,7 @@ class AppNavigationTest {
         // No tab bar either: the update screen is the only one.
         rule.onNodeWithText("Settings").assertDoesNotExist()
 
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(UPDATE_REQUIRED_TAG).assertDoesNotExist()
         rule.onNodeWithText("Network upgrade reported: update Serotine").assertIsDisplayed()
@@ -432,7 +477,7 @@ class AppNavigationTest {
         // The account and Settings are gone, and both tabs' stacks with them: back leaves the app.
         assertEquals(listOf("update-required"), screens())
 
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.waitUntil { rule.onAllNodesWithTag(ACCOUNTS_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(
             listOf("accounts"),
@@ -530,7 +575,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertIsDisplayed()
         rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.onNodeWithText("Verified at block 100").assertIsDisplayed()
 
         // An address and its QR code need nothing verified.

@@ -18,6 +18,8 @@ import eth.serotine.android.upgrade.UpgradeCheckJob
 import eth.serotine.android.widget.RateRefreshJob
 import eth.serotine.android.widget.RateWidget
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.cow.FileCowOrders
+import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.history.FileHistoryStarts
@@ -33,6 +35,7 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -50,6 +53,7 @@ import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.ReadExchangeRate
 import eth.serotine.domain.usecase.RefreshExchangeRate
 import eth.serotine.domain.usecase.UpgradeNotices
@@ -169,6 +173,12 @@ class SerotineApplication : Application() {
      */
     private val displayCurrency by lazy { FileDisplayCurrency(filesDir.resolve("display-currency.json").path) }
 
+    /** The CoW orders signed here, each live until its end is proven (docs/swaps.md): public data only. */
+    private val cowOrders by lazy { FileCowOrders(filesDir.resolve("cow-orders.json").path) }
+
+    /** The venue last chosen on Swap, compose, which the next swap starts at. */
+    private val swapVenue by lazy { FileSwapVenue(filesDir.resolve("swap-venue.json").path) }
+
     /**
      * The exchange rate last verified, for the widget, beside the other files: a price and its
      * times, public data only. Read without the engine, so drawing a widget never starts it.
@@ -231,6 +241,12 @@ class SerotineApplication : Application() {
             safeReleases = PinnedSafeReleases(),
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
+            // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
+            // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
+            cowChain = node.cow,
+            cowApi = HttpCowApi.create(),
+            cowOrders = cowOrders,
+            swapVenue = swapVenue,
             network = Network.SEPOLIA,
             debugLog = debugLog,
             debugScreen = debugScreen,
@@ -268,6 +284,7 @@ class SerotineApplication : Application() {
     private var deployments: Job? = null
     private var sentTransactions: Job? = null
     private var accountLogs: Job? = null
+    private var cowOrderEnds: Job? = null
     private var rateFollowing: Job? = null
     private val sleep = Runnable { node.pause() }
     private val stopAppWork = Runnable {
@@ -279,6 +296,8 @@ class SerotineApplication : Application() {
         sentTransactions = null
         accountLogs?.cancel()
         accountLogs = null
+        cowOrderEnds?.cancel()
+        cowOrderEnds = null
     }
 
     /** The activity in front, for the biometric prompt. */
@@ -332,6 +351,7 @@ class SerotineApplication : Application() {
         if (deployments?.isActive != true) deployments = scope.launch { followSafeDeployments() }
         if (sentTransactions?.isActive != true) sentTransactions = scope.launch { followSentTransactions() }
         if (accountLogs?.isActive != true) accountLogs = scope.launch { followAccountLogs() }
+        if (cowOrderEnds?.isActive != true) cowOrderEnds = scope.launch { proveCowOrderEnds() }
     }
 
     /** Turns the engine's networking on for one more hold. Main thread. */
@@ -556,6 +576,21 @@ class SerotineApplication : Application() {
         rateFollowing?.cancel()
         rateFollowing = null
         scope.launch(jobScheduling) { RateRefreshJob.cancel(this@SerotineApplication) }
+    }
+
+    /**
+     * Proves the end of each CoW order signed here from the accounts' log-index entries (docs/swaps.md,
+     * *Proving an order's end*), after dropping the ended ones signed over a week ago; runs until
+     * cancelled. A failure ends it, never the wallet: the next hold proves them again.
+     */
+    private suspend fun proveCowOrderEnds() {
+        try {
+            ProveCowOrderEnds(cowOrders, node.logIndex, node.lightClient, accounts)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: proving the CoW orders' ends stopped: ${e::class.simpleName}")
+        }
     }
 
     /**

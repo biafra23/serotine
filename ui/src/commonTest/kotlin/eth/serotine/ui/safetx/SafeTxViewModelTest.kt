@@ -271,7 +271,8 @@ class SafeTxViewModelTest {
         )
         assertEquals(true, viewModel.overview.swap?.proposeAgain, "with the offer to propose it again")
 
-        world.head.value = LightClientStatus.Synced(headBlock = 200, headTimestamp = HEAD_TIME + DAY + 1)
+        world.head.value =
+            LightClientStatus.Synced(headBlock = 200, headTimestamp = HEAD_TIME + DAY + 1, finalized = null)
         viewModel.checkAgain()
         runCurrent()
         assertEquals(

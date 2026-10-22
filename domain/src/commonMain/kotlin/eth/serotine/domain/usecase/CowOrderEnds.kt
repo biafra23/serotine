@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
+/** How long an ended CoW order stays in the record, for its status: a week. */
+const val COW_ORDERS_KEPT_SECONDS: Long = 7 * 24 * 60 * 60
+
 /**
  * Proves the end of each CoW order this wallet signed that is still live (docs/swaps.md, *Proving
  * an order's end*), from the account's own entry in the engine's log index, never from CoW's API,
@@ -54,12 +57,16 @@ class ProveCowOrderEnds(
     private val logIndex: LogIndex,
     private val lightClient: LightClient,
     private val accounts: AccountRepository,
+    private val clock: () -> Long = ::epochSecondsNow,
 ) {
     /**
-     * Runs until cancelled: each time the record of orders, the finalized block, the wallet's
-     * accounts or the index's coverage changes, proves what it can of every live order.
+     * Runs until cancelled: first drops the orders whose end is known and that were signed over
+     * [COW_ORDERS_KEPT_SECONDS] ago (kept until then for their status), then, each time the record
+     * of orders, the finalized block, the wallet's accounts or the index's coverage changes, proves
+     * what it can of every live order.
      */
     suspend operator fun invoke() {
+        cowOrders.prune(signedBefore = clock() - COW_ORDERS_KEPT_SECONDS)
         val finalized = lightClient.observeStatus()
             .map { (it as? LightClientStatus.Synced)?.finalized }
             .distinctUntilChanged()

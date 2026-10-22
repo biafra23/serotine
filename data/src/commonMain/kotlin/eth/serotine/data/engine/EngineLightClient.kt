@@ -55,7 +55,11 @@ class EngineLightClient internal constructor(
             )
             snapshot.proofPeers == 0 ->
                 LightClientStatus.WaitingForProofPeers(snapshot.headBlock, snapshot.headTimestamp)
-            else -> LightClientStatus.Synced(snapshot.headBlock, snapshot.headTimestamp)
+            else -> LightClientStatus.Synced(
+                headBlock = snapshot.headBlock,
+                headTimestamp = snapshot.headTimestamp,
+                finalized = snapshot.finalizedHeader,
+            )
         }
     }
 }

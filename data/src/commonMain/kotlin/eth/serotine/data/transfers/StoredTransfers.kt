@@ -221,13 +221,13 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
 private fun safeCall(kind: String, request: SigningRequest) = StoredSafeCall(kind, WireRequest.of(request))
 
 /** [token] as stored. */
-private fun stored(token: Token) = StoredToken(token.address.hex, token.symbol, token.name, token.decimals, token.icon)
+internal fun stored(token: Token) = StoredToken(token.address.hex, token.symbol, token.name, token.decimals, token.icon)
 
 /** The token this asset is, as stored; null for the native currency. */
-private fun TransferAsset.storedToken(): StoredToken? = (this as? TransferAsset.Erc20Token)?.token?.let(::stored)
+internal fun TransferAsset.storedToken(): StoredToken? = (this as? TransferAsset.Erc20Token)?.token?.let(::stored)
 
 /** The asset this stored token is: the native currency for none. */
-private fun StoredToken?.asset(): TransferAsset = this?.let { TransferAsset.Erc20Token(it.toToken()) }
+internal fun StoredToken?.asset(): TransferAsset = this?.let { TransferAsset.Erc20Token(it.toToken()) }
     ?: TransferAsset.Native
 
 private fun String.hexBytes(): ByteArray {

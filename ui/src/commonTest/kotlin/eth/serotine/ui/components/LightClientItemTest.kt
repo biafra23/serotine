@@ -43,13 +43,14 @@ class LightClientItemTest {
         )
         assertEquals(
             LightClientItem("Verified at block 11,922,744 · 8 s ago", null, false, VERIFIED),
-            item(LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = NOW - 8)),
+            item(LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = NOW - 8, finalized = null)),
         )
     }
 
     @Test
     fun theHeadIsDatedRelativeToNowWhenItsTimeIsKnown() {
-        fun synced(timestamp: Long?) = LightClientItem.from(LightClientStatus.Synced(42, timestamp), NOW).text
+        fun synced(timestamp: Long?) =
+            LightClientItem.from(LightClientStatus.Synced(42, timestamp, finalized = null), NOW).text
         assertEquals("Verified at block 42", synced(null))
         assertEquals("Verified at block 42 · just now", synced(NOW))
         assertEquals("Verified at block 42 · 59 s ago", synced(NOW - 59))

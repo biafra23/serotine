@@ -48,7 +48,7 @@ class LightClientViewModelTest {
         runCurrent()
         assertEquals(LightClientHealth.STALE, viewModel.item.value.health)
 
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         runCurrent()
         assertEquals("Verified at block 9,412,118 · 8 s ago", viewModel.item.value.text)
         assertEquals(LightClientHealth.VERIFIED, viewModel.item.value.health)
@@ -68,7 +68,7 @@ class LightClientViewModelTest {
         // The last item stays until the next screen's first answer replaces it.
         assertEquals("Verifying sync committees · 1 of 4 periods", viewModel.item.value.text)
 
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         backgroundScope.launch { viewModel.item.collect {} }
         runCurrent()
         assertEquals(1, status.subscriptionCount.value)

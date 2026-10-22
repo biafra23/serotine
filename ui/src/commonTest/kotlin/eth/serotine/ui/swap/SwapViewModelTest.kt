@@ -59,6 +59,7 @@ import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
+import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeReceipts
@@ -67,6 +68,7 @@ import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.RouteStep
@@ -137,6 +139,7 @@ class SwapViewModelTest {
     private val signer = FakeSigner()
     private val broadcaster = FakeBroadcaster()
     private val sent = MemorySentTransfers()
+    private val cowOrders = MemoryCowOrders()
     private val clock = TestTimeSource()
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
@@ -182,6 +185,8 @@ class SwapViewModelTest {
                 balances,
                 tokenBalances,
                 sent,
+                cowOrders,
+                FakeCowChain(),
                 light,
                 Network.SEPOLIA,
                 now,
@@ -208,7 +213,7 @@ class SwapViewModelTest {
             TokenBalanceReading.Verified(TokenUnits.of("250000000"), 9_412_117)
         tokenBalances.of(daily.address, link.address).value =
             TokenBalanceReading.Verified(TokenUnits.of("0"), 9_412_117)
-        light.status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = headTime, finalized = null)
         // One USDC–WETH pool at 0.3 %, quoting 0.016 ETH for 40 USDC.
         val key = PoolKey.of(usdc.address, deployment.weth9, FeeTier.MEDIUM)
         uniswap.answers[deployment.factory to UniswapV3Factory.getPool(key).hex()] = word(pool)
@@ -371,7 +376,7 @@ class SwapViewModelTest {
         runCurrent()
         assertEquals("The light client is not synced yet: try again in a moment.", viewModel.compose.error)
         assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
-        light.status.value = LightClientStatus.Synced(headBlock = 9_412_119, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 9_412_119, headTimestamp = headTime, finalized = null)
 
         // In a block, and allowed: the swap itself is quoted.
         inputs.mined = 8

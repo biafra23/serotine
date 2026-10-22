@@ -528,13 +528,36 @@ sealed interface CowOrderPlacing {
 }
 
 /**
- * What the account's CoW orders may still take of the token at [token] ([CowOrderRecord.canStillTake]
- * at [finalized]): the sum of their sell amounts; null when it does not fit a uint256.
+ * What the account's CoW orders on [network] may still take of the token at [token]: the sum of the
+ * sell amounts of those that [CowOrderRecord.canStillTake] at [finalized], but for those the
+ * settlement already counts as done at the head (docs/swaps.md, *A signed order is live until it is
+ * proven dead*). Null when the sum does not fit a uint256.
+ *
+ * Done at the head: [cowChain]'s verified `filledAmount(uid)` reads the sell amount or more. The
+ * order filled, and the balance already shows it, so holding it back would count it twice; or it
+ * was cancelled on chain. Before `validTo` that read is sound, as nothing frees an order's storage
+ * until then. After it, freed storage reads zero and keeps the order held, as does a read that
+ * gives no answer.
  */
-internal fun List<CowOrderRecord>.holding(account: Address, token: Address, finalized: FinalizedBlock?): UInt256? =
-    filter { it.account == account && it.order.sellToken == token && it.canStillTake(finalized) }
+internal suspend fun List<CowOrderRecord>.holding(
+    network: Network,
+    account: Address,
+    token: Address,
+    finalized: FinalizedBlock?,
+    cowChain: CowChain,
+): UInt256? {
+    val selling = filter { it.network == network && it.account == account && it.order.sellToken == token }
+    return selling.filter { it.canStillTake(finalized) && !cowChain.doneAtHead(it) }
         .map { it.order.sellAmount }
         .sumOrNull()
+}
+
+/** Whether the settlement's `filledAmount` of [order] at the head reads its sell amount or more. */
+private suspend fun CowChain.doneAtHead(order: CowOrderRecord): Boolean {
+    val run = call(order.settlement, GPv2Settlement.filledAmount(order.uid)) as? Simulation.Succeeded ?: return false
+    val filled = GPv2Settlement.filledAmountOf(run.returnHex) ?: return false
+    return filled >= order.order.sellAmount
+}
 
 /** Whether this transaction is an approval of [spender] for [token]. */
 private fun SentTransfer.approves(token: Token, spender: Address): Boolean =

@@ -58,7 +58,7 @@ class CowOrderEndsTest {
     private val orders = MemoryCowOrders(record)
     private val light = FakeLightClient()
     private val wallet = ListAccountRepository(Account(account, AccountKind.EOA, "Daily", AccountCustody.InKeyStore))
-    private val prove = ProveCowOrderEnds(orders, index, light, wallet)
+    private val prove = ProveCowOrderEnds(orders, index, light, wallet) { validTo }
 
     private val ownerTopic = "0x" + "00".repeat(12) + account.hex.removePrefix("0x")
     private fun uidData(offset: String) = "0".repeat(62) + offset + "0".repeat(62) + "38" +

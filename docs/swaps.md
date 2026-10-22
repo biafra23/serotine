@@ -503,6 +503,11 @@ can still fill could swap them twice.
   - how its POST stands: attempted from before the request on, then CoW's
     answer;
   - and, once proven, its end.
+
+  The file is written whole and replaced at once, and every kind and reason
+  in it is a code of its own, so a newer build's record still reads. Only
+  damage to the storage loses an order from it, and the damaged file is
+  kept aside; an order lost that way holds nothing back.
 - **Send and a new swap hold back the sold amount of a live order**, as they
   do for a transfer not mined yet (docs/embedding-myotis.md, *Sending*).
   - The hold-back ends as soon as the order is known to have filled: its
@@ -623,8 +628,19 @@ So the proof is the account's own verified logs.
     its header disagreed by one slot, twice: the expiry rule above takes the
     header's timestamp.
 
-  A network test of the CoW plan's part 3, `@Ignore`d by default (CLAUDE.md,
-  *Conventions*), runs the same check again.
+  `CowOrderEndSepoliaTest` (`:data`, part 3 of the CoW plan) runs the same
+  check again on the real engine, through the adapters: the pins against the
+  chain's code, the finalized block's header time, the trade decoded to its
+  order's UID, and the refusal below the entry's start. It needs the network
+  and the engine's library, so it is skipped unless run with
+  `-PmyotisLibraryDir` (CLAUDE.md, *Conventions*).
+- **iOS has no finalized block's time yet.** Myotis 0.1.18's iOS module reads
+  no block by number (its block reads are internal), so the iOS node reports
+  the finalized block without its timestamp, and CoW's quote answers as for
+  a read not verified (`CowSwapQuoting.Unavailable`): no order is signed
+  that could not be dated. CoW is offered on iOS once the module exposes the
+  read; until then iOS signs nothing anyway, its key envelope waiting for
+  the iOS app (CLAUDE.md, *Trust*).
 
   No read pinned to a past block is relied on. If one is ever used, a proof
   not anchored at the block asked for is no answer (CLAUDE.md, *Trust*:
@@ -654,9 +670,15 @@ So the proof is the account's own verified logs.
     user can compare the venues (*The user's choice of venue*; #144, point
     3).
 - **No API key.** The base URL is pinned per `Network`.
-- **Ktor** is the HTTP client (CLAUDE.md, *Platform & language direction*).
-  It is the app's first, so its engine on each platform is the CoW plan's
-  dependency question.
+- **Ktor** is the HTTP client (CLAUDE.md, *Platform & language direction*),
+  the app's first: 3.3.3, on the same Kotlin and coroutines as the rest of
+  the stack.
+  - Its engines: CIO on Android and the desktop (pure Kotlin, no OkHttp, no
+    `java.net.http`), Darwin (`NSURLSession`) on iOS, a mock in the tests.
+  - One connection attempt, no redirect followed, no retry, 10 seconds a
+    call. A POST that failed is never sent again by the client: a second
+    one would be a second order only if CoW had not taken the first, which
+    the app cannot know (*An order, step by step*).
 - **The calls:**
   - `POST /api/v1/quote`;
   - `POST /api/v1/orders`, with the full app-data document, so no separate
@@ -717,10 +739,12 @@ route being unavailable, never to a wrong swap:
      understand", not as silence. The next app update brings CoW back.
    - A change that breaks the POST after signing costs a wait for the order
      to be proven dead, never a second swap.
-4. **A network test, `@Ignore`d by default** (CLAUDE.md, *Conventions*),
-   quotes against `api.cow.fi/sepolia` and decodes the answer. Whether a
-   scheduled workflow runs it and watches `openapi.yml` for changes to the
-   calls above is the owner's call.
+4. **A network test, skipped by default** (CLAUDE.md, *Conventions*):
+   `CowApiSepoliaTest` (`:data`, run with `-PcowApiNetwork`) quotes against
+   `api.cow.fi/sepolia` through the desktop's own engine and decodes the
+   answer, and asks for an order CoW does not know. Whether a scheduled
+   workflow runs it and watches `openapi.yml` for changes to the calls above
+   is the owner's call.
 
 ### Later on CoW
 
@@ -834,8 +858,12 @@ the plan asks again (CLAUDE.md, *Multi-PR plans*, step 3).
      (it needs the record's file, so it moved here from part 2).
    - The ports wired into `AppGraph` and the hosts, which run the proof of
      an order's end beside `FollowAccountLogs`.
-   - Network tests, `@Ignore`d: a quote from `api.cow.fi/sepolia`, and part
-     0's spike again (*Proving an order's end*).
+   - Network tests, skipped by default: a quote from `api.cow.fi/sepolia`,
+     and part 0's spike again (*Proving an order's end*).
+   - As built: no CoW on iOS until Myotis's iOS module reads a block by
+     number (*Proving an order's end*); the records of orders and the venue
+     are `cow-orders.json` and `swap-venue.json`; an ended order's record is
+     dropped a week after it was signed.
 4. **Screens.**
    - The venue choice on Swap, compose (22), and CoW's review on 23.
    - The status (9) of a live order: "Cancel on chain", and once its end is

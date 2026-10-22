@@ -27,6 +27,8 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
@@ -52,6 +54,7 @@ import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
+import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeNames
@@ -61,6 +64,7 @@ import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.AccountChoice
@@ -73,6 +77,8 @@ import eth.serotine.ui.components.TransferForm
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -123,6 +129,10 @@ class SendViewModelTest {
     private val signer = FakeSigner()
     private val broadcaster = FakeBroadcaster()
     private val sent = MemorySentTransfers()
+    private val cowOrders = MemoryCowOrders()
+    private val light = object : LightClient {
+        override fun observeStatus(): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
+    }
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
         override suspend fun describe() = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, biometrics)
@@ -165,7 +175,7 @@ class SendViewModelTest {
             ),
             DescribeKeyStore(keys),
             ResolveRecipient(names),
-            QuoteTransfer(inputs, balances, tokenBalances, sent, Network.SEPOLIA),
+            QuoteTransfer(inputs, balances, tokenBalances, sent, cowOrders, FakeCowChain(), light, Network.SEPOLIA),
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
