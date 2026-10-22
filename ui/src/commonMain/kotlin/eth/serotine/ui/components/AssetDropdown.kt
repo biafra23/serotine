@@ -123,13 +123,6 @@ internal fun AssetDropdown(
 private fun AssetLines(asset: AssetChoice, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(asset.symbol, style = MaterialTheme.typography.bodyLarge)
-        Text(
-            asset.verifiedAt?.let { "${asset.balance} · verified at $it" } ?: asset.balance,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        asset.warning?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-        }
+        AssetBalanceLines(asset)
     }
 }
