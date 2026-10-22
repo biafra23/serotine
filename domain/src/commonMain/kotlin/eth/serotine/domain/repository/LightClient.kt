@@ -44,9 +44,15 @@ sealed interface LightClientStatus {
 
     /**
      * Serving verified reads at the fresh verified head [headBlock], produced at
-     * [headTimestamp] (unix seconds; null when unknown).
+     * [headTimestamp] (unix seconds; null when unknown). [finalized] is the newest block the
+     * beacon chain has finalized, with its own header's timestamp; null while there is none or
+     * its header could not be read.
      */
-    data class Synced(val headBlock: Long, val headTimestamp: Long?) : LightClientStatus
+    data class Synced(
+        val headBlock: Long,
+        val headTimestamp: Long?,
+        val finalized: FinalizedBlock? = null,
+    ) : LightClientStatus
 
     /** Networking is off while the app is in the background; it resumes when the app returns. */
     data object Sleeping : LightClientStatus
@@ -59,4 +65,17 @@ sealed interface LightClientStatus {
 
     /** There is no light client on this device, or it failed to start. */
     data object Unavailable : LightClientStatus
+}
+
+/**
+ * A finalized block: block [number], whose verified header says it was produced at [timestamp]
+ * (unix seconds). Its own timestamp, never its slot's time: the finalized checkpoint's slot may be
+ * an empty one after the block's (docs/swaps.md, *Proving an order's end*). No reorganization can
+ * replace it.
+ */
+data class FinalizedBlock(val number: Long, val timestamp: Long) {
+    init {
+        require(number >= 0) { "a block number is never negative" }
+        require(timestamp >= 0) { "a block's time is never before 1970" }
+    }
 }
