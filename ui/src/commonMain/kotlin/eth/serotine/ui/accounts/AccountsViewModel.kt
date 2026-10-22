@@ -22,10 +22,13 @@ import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
+import eth.serotine.ui.components.notTurnedOn
+import eth.serotine.ui.components.spokenList
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.platform.formatDateTime
 import eth.serotine.ui.update.UpgradeBannerItem
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -74,13 +77,19 @@ class AccountsViewModel(
     // Accounts never waits for a name's check: until it comes, a name stands as it was verified at Watch.
     private val ensNames = observeEnsNames().onStart { emit(emptyMap()) }
 
+    /** What the screen says once, until it has: a network that could not be turned on. */
+    private val message = MutableStateFlow<String?>(null)
+
     val uiState: StateFlow<AccountsUiState> = combine(
         observePortfolio(network),
         combine(observeSafes(), ensNames, ::Pair),
         combine(statuses, observeEnabledNetworks(), ::Pair),
         upgrade,
-    ) { portfolio, (safes, ensNames), (lightClients, on), upgrade ->
-        stateOf(portfolio, safes, ensNames, lightClients, on.toSet(), upgrade)
+        message,
+    ) { portfolio, (safes, ensNames), (lightClients, on), upgrade, message ->
+        stateOf(portfolio, safes, ensNames, lightClients, on.toSet(), upgrade).let { state ->
+            if (state is AccountsUiState.Ready) state.copy(message = message) else state
+        }
     }
         .stateIn(
             scope = viewModelScope,
@@ -94,7 +103,15 @@ class AccountsViewModel(
     /** Turns the network of [chainId] on again: the way out of a greyed-out action on one that is off (N19). */
     fun turnOnNetwork(chainId: Long) {
         val network = Network.ofChainId(chainId) ?: return
-        viewModelScope.launch { setNetworkEnabled(network, on = true) }
+        viewModelScope.launch {
+            // A setting that cannot be saved leaves the network off, and says so.
+            if (!setNetworkEnabled(network, on = true)) message.value = notTurnedOn(network)
+        }
+    }
+
+    /** The screen has said [AccountsUiState.Ready.message]. */
+    fun messageShown() {
+        message.value = null
     }
 
     private fun stateOf(
@@ -154,13 +171,14 @@ class AccountsViewModel(
                 val held = Network.entries.filter { network -> list.accounts.any { it.network == network } }
                 val counted = held.filterNot { it.testnet }.ifEmpty { held }.filter { it in on }
                 val total = counted.fold(Total.NONE) { sum, network -> sum + portfolio.totalOn(network) }
-                val leftOut = sections.filter { it.testnet && counted.none { n -> n.testnet } }.map { it.name }
+                // A testnet left out of the total, said so; one that is off says it in its own section.
+                val leftOut = sections.filter { it.testnet && it.on && counted.none { n -> n.testnet } }.map { it.name }
                 AccountsUiState.Ready(
                     sections,
                     notice = if (list.damagedListSetAside) DAMAGED_SET_ASIDE else null,
                     total = counted.firstOrNull()?.let { totalText(total, currency) },
                     totalLabel = counted.takeIf { it.isNotEmpty() }
-                        ?.let { "Total · ${currency.code} · ${names(it.map { n -> n.displayName })}" },
+                        ?.let { "Total · ${currency.code} · ${spokenList(it.map { n -> n.displayName })}" },
                     totalNote = counted.firstOrNull()?.let { first ->
                         (listOf(totalNote(total, first, currency)) + leftOut.map { "$it not included" })
                             .filter { it.isNotEmpty() }
@@ -184,9 +202,5 @@ class AccountsViewModel(
         const val READ_FAILED =
             "Your saved account list cannot be read right now. Nothing has been changed, and no " +
                 "account can be added until it can be read. Serotine keeps trying."
-
-        /** "Ethereum", "Ethereum and Gnosis Chain", "Ethereum, Gnosis Chain and Sepolia". */
-        fun names(names: List<String>): String =
-            if (names.size <= 1) names.joinToString() else names.dropLast(1).joinToString() + " and " + names.last()
     }
 }

@@ -12,6 +12,7 @@ import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.spokenList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,11 +65,7 @@ class RemoveAccountViewModel(
             .distinct()
             .sorted()
             .map { it.displayName }
-        return when (others.size) {
-            0 -> null
-            1 -> others.single()
-            else -> others.dropLast(1).joinToString() + " and " + others.last()
-        }
+        return others.takeIf { it.isNotEmpty() }?.let(::spokenList)
     }
 
     /** Removes the account, once. */

@@ -336,6 +336,20 @@ class AccountsViewModelTest {
         assertEquals(false, row.canSend)
         assertEquals("Sepolia", row.networkOff)
 
+        // A setting that cannot be saved leaves it off, and says so once.
+        networks.failSaves = true
+        viewModel.turnOnNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(
+            "Sepolia could not be turned on: the setting cannot be saved right now. Try again, or in " +
+                "Settings → Networks.",
+            (viewModel.uiState.value as AccountsUiState.Ready).message,
+        )
+        viewModel.messageShown()
+        runCurrent()
+        assertEquals(null, (viewModel.uiState.value as AccountsUiState.Ready).message)
+
+        networks.failSaves = false
         viewModel.turnOnNetwork(Network.SEPOLIA.chainId)
         runCurrent()
         assertEquals(setOf(Network.SEPOLIA), networks.on.value)
