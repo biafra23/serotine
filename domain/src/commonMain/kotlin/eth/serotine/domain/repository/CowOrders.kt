@@ -28,6 +28,13 @@ interface CowOrders {
     suspend fun record(order: CowOrderRecord): Boolean
 
     /**
+     * Sets the end of the order recorded under [uid] to [end], keeping the rest of its record as it
+     * is by then (its placement may have changed since it was read). False when no order is
+     * recorded under [uid], or the record could not be saved.
+     */
+    suspend fun end(uid: CowOrderUid, end: CowOrderEnd): Boolean
+
+    /**
      * Drops the orders whose end is known ([CowOrderRecord.end] set) and that were signed before
      * [signedBefore] (unix seconds); a live order is never dropped. False when the record could
      * not be saved.
@@ -116,8 +123,10 @@ sealed interface CowOrderEnd {
     data class Unfilled(val endBlock: Long, val cancelled: Boolean) : CowOrderEnd
 
     /**
-     * Its end cannot be proven, ever: the account's log-index entry no longer covers its range
-     * (unwatched, or the range reaches below the entry's start). The balance shows what happened.
+     * Its end cannot be proven, ever: its range reaches below the start of the account's log-index
+     * entry, or the account is no longer in the wallet, its entry no longer followed. Recorded only
+     * once a finalized block is past its `validTo`, when it can fill no more. The balance shows what
+     * happened.
      */
     data object NotProvable : CowOrderEnd
 }

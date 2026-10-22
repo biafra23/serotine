@@ -197,7 +197,10 @@ class TransferStatusViewModel(
     private fun mined(progress: TransactionProgress): Boolean =
         progress is TransactionProgress.Included || progress is TransactionProgress.Finalized
 
-    /** What [transfer] is called in a sentence: "transfer", "approval", "execution" or "deployment". */
+    /**
+     * What [transfer] is called in a sentence: "transfer", "approval", "execution", "deployment",
+     * "swap" or "cancellation".
+     */
     private fun whatOf(transfer: SentTransfer): String = when (transfer.action) {
         is SentAction.Transfer -> "transfer"
         is SentAction.SafeApproval -> "approval"
@@ -205,6 +208,7 @@ class TransferStatusViewModel(
         is SentAction.SafeDeployment -> "deployment"
         is SentAction.TokenApproval -> "approval"
         is SentAction.Swap -> "swap"
+        is SentAction.CowCancellation -> "cancellation"
     }
 
     private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
@@ -333,7 +337,7 @@ class TransferStatusViewModel(
             is SentAction.SafeApproval -> "Approval of a Safe transaction" to action.request
             is SentAction.SafeExecution -> "Execution of a Safe transaction" to action.request
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
-            is SentAction.Swap,
+            is SentAction.Swap, is SentAction.CowCancellation,
             -> return null
         }
         return SafeTxSummary(

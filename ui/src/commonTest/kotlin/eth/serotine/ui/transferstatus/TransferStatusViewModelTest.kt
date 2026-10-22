@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
@@ -357,6 +358,23 @@ class TransferStatusViewModelTest {
         viewModel.retry()
         runCurrent()
         assertEquals(emptyList(), broadcaster.sent)
+    }
+
+    @Test
+    fun aCowOrdersCancellationMaybeSentIsCalledOne() = runTest {
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val uid = CowOrderUid.of("0x" + "ab".repeat(32) + record.account.hex.removePrefix("0x") + "6ad9e7f4")
+        val cancellation = record.copy(
+            signed = SignedTransfer(byteArrayOf(2, 1, 9)),
+            action = SentAction.CowCancellation(settlement, uid),
+            maybeSent = true,
+        )
+        sent.transfers.value = listOf(cancellation)
+        val viewModel = viewModel(cancellation.hash)
+        runCurrent()
+
+        val notSent = assertNotNull(viewModel.shown.notSent)
+        assertTrue("No peer answered when this cancellation was broadcast" in notSent.message, notSent.message)
     }
 
     @Test
