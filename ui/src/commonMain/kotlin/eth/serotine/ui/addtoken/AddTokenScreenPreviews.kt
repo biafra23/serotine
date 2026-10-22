@@ -17,9 +17,9 @@ private val claimed = AddTokenUiState(
     address = CONTRACT,
     card = TokenCard.Claim(
         CONTRACT,
-        "EURC",
-        "Euro Coin",
-        6,
+        "EURS",
+        "STASIS EURS Token",
+        2,
         "Read from the contract at block 8,412,307",
         warning = null,
     ),

@@ -57,8 +57,9 @@ signed.
   everywhere).
   - A swap never offers a token by an address the wallet has not listed, so
     what it buys always shows among the account's assets and can be sent.
-  - WETH is offered only once the user has added it by address: it is not
-    built in (docs/wallet-ux.md, *Tokens*).
+  - WETH is offered as the token it is: the pinned WETH9 is built in
+    (docs/wallet-ux.md, *Tokens*), and ETH against WETH is a wrap, not a
+    swap, so no route has it.
   - Otherwise the pinned WETH is only a route's middle token and ETH's
     wrapper, which the router wraps and unwraps within the swap.
 - **The proceeds go to the account itself.** No other recipient is offered:

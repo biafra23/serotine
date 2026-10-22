@@ -23,7 +23,7 @@ private val synced = SettingsUiState(
     network,
     LightClientItem("Verified at block 8,412,307 · 8 s ago", null, false, VERIFIED),
     VERSION,
-    tokens = "3 built in · 1 added",
+    tokens = "11 built in · 1 added",
     currency = "EUR",
 )
 
@@ -69,7 +69,7 @@ private fun SettingsHeadTooOldDarkPreview() = SettingsPreview(headTooOld, darkTh
 @Composable
 private fun SettingsUnreadablePreview() = SettingsPreview(
     synced.copy(
-        tokens = "3 built in · added ones cannot be read",
+        tokens = "11 built in · added ones cannot be read",
         currency = "USD (your choice cannot be read)",
     ),
 )

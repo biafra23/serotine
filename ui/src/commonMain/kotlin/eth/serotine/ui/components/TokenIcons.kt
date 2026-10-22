@@ -16,9 +16,27 @@ import androidx.compose.ui.unit.dp
  *   glyph on the pink of the common WETH logo (#EC1C79), so it is not taken for ether.
  * - `eurc`, `pyusd` and `gho`, which that set lacks: 0xa3k5/web3icons,
  *   `raw-svgs/tokens/background/<KEY>.svg` at commit
- *   3cce0f390cf902f204a1b3d52f485bcc95d2fe9e (MIT License, Copyright (c) 2024 0xa3k5,
- *   https://github.com/0xa3k5/web3icons), its square background drawn as a circle like the
- *   others'. The marks are the trademarks of their issuers (Circle, Paxos, Aave).
+ *   3cce0f390cf902f204a1b3d52f485bcc95d2fe9e (https://github.com/0xa3k5/web3icons), its
+ *   square background drawn as a circle like the others'. The marks are the trademarks of
+ *   their issuers (Circle, Paxos, Aave). Its licence, which these three icons carry:
+ *
+ *   MIT License. Copyright (c) 2024 0xa3k5.
+ *
+ *   Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ *   software and associated documentation files (the "Software"), to deal in the Software
+ *   without restriction, including without limitation the rights to use, copy, modify, merge,
+ *   publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+ *   to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ *   The above copyright notice and this permission notice shall be included in all copies or
+ *   substantial portions of the Software.
+ *
+ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ *   INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *   PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+ *   FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ *   DEALINGS IN THE SOFTWARE.
  *
  * Each circle and path is kept with its colour, opacity and fill rule, and every number of
  * the path data spelled out (SVG lets an arc's flags run into the next number, which
