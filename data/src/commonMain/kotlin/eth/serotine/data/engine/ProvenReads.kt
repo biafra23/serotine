@@ -95,6 +95,11 @@ internal class ProvenReads<K, T>(
      */
     private val atHead: (key: K, value: T, headTimestamp: Long?) -> T? = { _, value, _ -> value },
     /**
+     * Told the block of each proof as it is kept ([AddressActivity.pin]: what [unchangedSince]
+     * later checks the block against). Nothing by default.
+     */
+    private val onProven: (key: K, block: Long) -> Unit = { _, _ -> },
+    /**
      * Where the last proof of each key is kept beyond the process ([KeptProofs]), so that a
      * restart can say what was last verified before a head can be read; none by default.
      */
@@ -216,6 +221,7 @@ internal class ProvenReads<K, T>(
             if (proofs.size > MAX_CACHED) proofs.remove(proofs.keys.first())
         }
         kept.save(key, EngineReading.LastKnown(proven.value, proven.blockNumber, headTimestamp))
+        onProven(key, proven.blockNumber)
         return proven
     }
 

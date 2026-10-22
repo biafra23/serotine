@@ -3,6 +3,7 @@ package eth.serotine.data.engine
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -111,7 +112,14 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network), activity)
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
-    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances, activity)
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(
+        chain,
+        Dispatchers.IO,
+        POLL_INTERVAL,
+        lastBalances,
+        activity,
+        gated = BuiltInTokens.of(network).mapTo(HashSet()) { it.address },
+    )
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)

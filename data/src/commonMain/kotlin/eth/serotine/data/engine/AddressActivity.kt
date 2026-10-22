@@ -3,12 +3,16 @@ package eth.serotine.data.engine
 import eth.serotine.domain.model.Address
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlin.concurrent.Volatile
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * What [AddressActivity] needs of the engine: its address-activity follower
@@ -29,16 +33,32 @@ internal interface ActivityChain {
 
 /**
  * Whether a proof of an address's state still stands at a later verified head, from the
- * engine's address-activity report: true only when every block from the proof's own through
- * the head was checked for that address and none touched it. Anything the engine did not check
- * — a block before it followed, a gap, a report it could not give — is "not known unchanged",
- * and the proof is made again, as without this.
+ * engine's address-activity report: true only when the proof's block is still the canonical
+ * one it was made at, and every block from it through the head was checked for that address
+ * and none touched it. Anything the engine did not check — a block before it followed, a gap,
+ * a report it could not give — is "not known unchanged", and the proof is made again, as
+ * without this.
  *
- * An address is watched the first time it is asked about, so the answer for it is false until
- * the engine's next report lists it. A report is asked for once per verified head, however many
- * readings ask; one that no longer lists an address (the engine restarted) watches it again.
+ * **Reorgs.** A proof carries no block hash, so [pin] records the engine's hash of the proof's
+ * block right after the proof is made. A proof stands only while the engine still holds that
+ * hash for its block: a reorg that replaced it (or any block below it) changes that hash, and
+ * the proof is made again. A proof whose block could not be pinned — the follower did not
+ * hold it yet — never stands. (A replaced block that touched the address no longer shows in
+ * the report, which is why a touch check alone could not catch this.)
+ *
+ * **The watch list** follows what readings ask about: an address is watched the first time it
+ * is asked about, so the answer for it is false until the engine's next report lists it; one
+ * not asked about for [IDLE_HEADS] heads is unwatched, so the list does not only grow. A report
+ * is asked for once per verified head, however many readings ask, and once more while its
+ * newest block is still a gap (the follower lags the head by a moment). One that no longer
+ * lists an address (the engine restarted) watches it again; a push the engine refused is not
+ * repeated for [REFUSED_BACKOFF_HEADS] heads.
  */
-internal class AddressActivity(private val chain: ActivityChain?) {
+internal class AddressActivity(
+    private val chain: ActivityChain?,
+    /** What a report's age is measured with ([TOP_GAP_RETRY]). */
+    private val clock: TimeSource = TimeSource.Monotonic,
+) {
 
     /** What a fact about an address changes with. */
     enum class Kind(val json: String) {
@@ -49,9 +69,42 @@ internal class AddressActivity(private val chain: ActivityChain?) {
         LOG("log"),
     }
 
-    /** The last report read, or null before the first. */
+    /** The last report read, when, and whether its newest block was a gap. */
     @Volatile
-    private var last: Report? = null
+    private var last: Fetched? = null
+
+    private class Fetched(val report: Report, val at: TimeMark, val reread: Boolean)
+
+    /** Block number to the hash the engine held for it when a proof there was pinned. */
+    @Volatile
+    private var pins: Map<Long, String> = emptyMap()
+
+    /** Block number to the hash the engine holds for it now, read at the head of the value. */
+    @Volatile
+    private var canonical: Map<Long, Pair<Long, String?>> = emptyMap()
+
+    /** The head each watched address was last asked about at. */
+    @Volatile
+    private var askedAt: Map<String, Long> = emptyMap()
+
+    /** The head a watch push was last refused at, per address. */
+    @Volatile
+    private var refusedAt: Map<String, Long> = emptyMap()
+
+    /** The head idle addresses were last unwatched at. */
+    @Volatile
+    private var prunedAt: Long = -1
+
+    /**
+     * Record the hash the engine holds for [block], the block a proof was just made at: the
+     * proof stands later only while that block keeps this hash. Nothing when the engine does
+     * not hold the block yet — that proof then never stands.
+     */
+    fun pin(block: Long) {
+        if (chain == null || block < 0) return
+        val hash = baseHash(block) ?: return
+        pins = (pins + (block to hash)).let { if (it.size > MAX_PINS) it - it.keys.min() else it }
+    }
 
     /**
      * Whether the [kind] of fact about [address] proven at block [provenAt] is known not to have
@@ -59,38 +112,94 @@ internal class AddressActivity(private val chain: ActivityChain?) {
      */
     fun unchangedSince(address: Address, kind: Kind, provenAt: Long, head: Long): Boolean {
         if (chain == null || provenAt < 0 || head < provenAt) return false
+        askedAt = askedAt + (address.hex to head)
         val report = reportAt(head) ?: return false
+        pruneIdle(report, head)
         if (address.hex !in report.watching) {
-            watch(address)
+            watch(address, head)
             return false
         }
-        // The proof's own block is checked too: if a reorg replaced it, a touch there says so.
         if (report.from > provenAt || report.to < head) return false
+        // Still the block the proof was made at: a reorg below the head changes its hash.
+        val pinned = pins[provenAt] ?: return false
+        if (canonicalHash(provenAt, head) != pinned) return false
         val gaps = report.gaps[kind.json] ?: return false
         if (gaps.any { (low, high) -> low <= head && high >= provenAt }) return false
-        return report.touched.none { it.address == address.hex && it.block in provenAt..head }
+        // From the block after the proof's: what the proof's own block did is in the proof.
+        return report.touched.none { it.address == address.hex && it.block in (provenAt + 1)..head }
     }
 
-    /** The report reaching [head], read again when the last one stops below it. */
+    /**
+     * Whether the chain's blocks up to [head] show account activity at all: false on one without
+     * block access lists (before Amsterdam), where nothing gated on [Kind.ACCOUNT] can stand.
+     * Reads the report for [head] when the last one stops below it.
+     */
+    fun hasAccountCoverage(head: Long): Boolean {
+        if (chain == null || head < 0) return false
+        val report = reportAt(head) ?: return false
+        val gaps = report.gaps[Kind.ACCOUNT.json] ?: return false
+        return !(gaps.size == 1 && gaps[0].first <= report.from && gaps[0].second >= report.to)
+    }
+
+    /** The report reaching [head], read again when the last one stops below it, or once more
+     *  when its newest block was still a gap. */
     private fun reportAt(head: Long): Report? {
-        last?.takeIf { it.to >= head }?.let { return it }
-        val json = try {
-            chain?.addressActivity((head - LOOKBACK).coerceAtLeast(0))
-        } catch (e: Throwable) {
-            // Throwable: the call crosses JNA, where a broken native library throws an Error.
-            null
-        } ?: return null
-        return Report.parse(json)?.also { last = it }
+        last?.let { fetched ->
+            val fresh = fetched.report.to >= head
+            val topGap = fetched.report.to == head && fetched.report.gapAtTop()
+            if (fresh && !(topGap && !fetched.reread && fetched.at.elapsedNow() >= TOP_GAP_RETRY)) {
+                return fetched.report
+            }
+        }
+        val json = read { chain?.addressActivity((head - LOOKBACK).coerceAtLeast(0)) } ?: return null
+        val report = Report.parse(json) ?: return null
+        val reread = last?.report?.to == report.to
+        last = Fetched(report, clock.markNow(), reread)
+        return report
     }
 
-    private fun watch(address: Address) {
-        try {
-            // Read the report again next time, so it lists the address rather than this one
-            // being pushed again at every reading until the head moves.
-            if (chain?.setActivityWatch("""{"watch":["${address.hex}"]}""") == true) last = null
-        } catch (e: Throwable) {
-            // As for the report: no answer this time, the next reading asks again.
+    /** The hash the engine holds for [block], read once per head. */
+    private fun canonicalHash(block: Long, head: Long): String? {
+        canonical[block]?.takeIf { it.first == head }?.let { return it.second }
+        val hash = baseHash(block)
+        canonical = (canonical + (block to (head to hash))).let { if (it.size > MAX_PINS) it - it.keys.min() else it }
+        return hash
+    }
+
+    /** The engine's hash for [block]: the `base` of a report after it. */
+    private fun baseHash(block: Long): String? {
+        val json = read { chain?.addressActivity(block) } ?: return null
+        return Report.base(json)?.takeIf { it.first == block }?.second
+    }
+
+    private fun watch(address: Address, head: Long) {
+        if (refusedAt[address.hex]?.let { head - it < REFUSED_BACKOFF_HEADS } == true) return
+        val taken = read { chain?.setActivityWatch("""{"watch":["${address.hex}"]}""") } == true
+        // Taken: read the report again next time, so it lists the address rather than this one
+        // being pushed again at every reading until the head moves.
+        if (taken) last = null else refusedAt = refusedAt + (address.hex to head)
+    }
+
+    /** Unwatch the addresses no reading asked about for [IDLE_HEADS] heads, once per head. */
+    private fun pruneIdle(report: Report, head: Long) {
+        if (prunedAt == head) return
+        prunedAt = head
+        val idle = report.watching.filter { (askedAt[it] ?: -1) < head - IDLE_HEADS }
+        // Never asked in this process: watched by an earlier one's pushes, or just restored.
+        val known = idle.filter { it in askedAt }
+        if (known.isEmpty()) return
+        val list = known.joinToString(",") { "\"$it\"" }
+        if (read { chain?.setActivityWatch("""{"unwatch":[$list]}""") } == true) {
+            askedAt = askedAt - known.toSet()
+            last = null
         }
+    }
+
+    /** [call], or null when it throws: engine calls cross JNA, where a broken library throws an Error. */
+    private inline fun <T> read(call: () -> T?): T? = try {
+        call()
+    } catch (e: Throwable) {
+        null
     }
 
     /** One report, as far as this reads it. */
@@ -102,6 +211,9 @@ internal class AddressActivity(private val chain: ActivityChain?) {
         val watching: Set<String>,
     ) {
         class Touch(val address: String, val block: Long)
+
+        /** Whether the newest block is in a gap of either kind. */
+        fun gapAtTop(): Boolean = gaps.values.any { ranges -> ranges.any { (_, high) -> high >= to } }
 
         companion object {
             /** Null for an `{"error":…}` object or anything else that is not a whole report. */
@@ -131,6 +243,15 @@ internal class AddressActivity(private val chain: ActivityChain?) {
                 null
             }
 
+            /** A report's `base`: the block it starts after and the hash the engine holds for it. */
+            fun base(json: String): Pair<Long, String>? = try {
+                val base = Json.parseToJsonElement(json).jsonObject.getValue("base").jsonObject
+                val hash = base.getValue("hash").takeIf { it !is JsonNull }?.jsonPrimitive?.content?.lowercase()
+                hash?.let { base.getValue("block").jsonPrimitive.long to it }
+            } catch (e: Exception) {
+                null
+            }
+
             private fun touchOf(o: JsonObject) =
                 Touch(o.getValue("address").jsonPrimitive.content.lowercase(), o.getValue("block").jsonPrimitive.long)
         }
@@ -139,5 +260,17 @@ internal class AddressActivity(private val chain: ActivityChain?) {
     private companion object {
         /** How far back each report asks: past the engine's 256-block window, so its lower gap shows. */
         const val LOOKBACK = 300L
+
+        /** Heads an address may go unasked before it is unwatched: about an hour on Sepolia. */
+        const val IDLE_HEADS = 300L
+
+        /** Heads a refused watch push waits before it is pushed again. */
+        const val REFUSED_BACKOFF_HEADS = 50L
+
+        /** Pinned and read block hashes kept: more than the engine's window. */
+        const val MAX_PINS = 512
+
+        /** How long a report whose newest block was a gap serves before it is read once more. */
+        val TOP_GAP_RETRY = 2.seconds
     }
 }

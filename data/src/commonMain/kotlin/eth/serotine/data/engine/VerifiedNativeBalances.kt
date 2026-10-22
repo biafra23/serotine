@@ -38,6 +38,7 @@ class VerifiedNativeBalances internal constructor(
         unchangedSince = { address, provenAt, head ->
             activity?.unchangedSince(address, AddressActivity.Kind.ACCOUNT, provenAt, head) == true
         },
+        onProven = { _, block -> activity?.pin(block) },
     ) { verified, address ->
         verified.proveBalance(address)?.let { proven ->
             Wei.parse(proven.wei)?.let { EngineReading.Proven(it, proven.blockNumber) }
