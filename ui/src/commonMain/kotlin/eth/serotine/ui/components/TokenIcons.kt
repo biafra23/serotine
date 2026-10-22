@@ -8,12 +8,21 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
 /**
- * The bundled icons of the built-in tokens (docs/wallet-ux.md, *Tokens*), by icon key:
- * converted from spothq/cryptocurrency-icons, `svg/color/<key>.svg` at commit
- * 1a63530be6e374711a8554f31b17e4cb92c25fa5 (CC0 1.0 Universal,
- * https://github.com/spothq/cryptocurrency-icons), each circle and path kept with its
- * colour, opacity and fill rule, and every number of the path data spelled out (SVG lets an
- * arc's flags run into the next number, which Compose's path parser does not split).
+ * The bundled icons of the built-in tokens (docs/wallet-ux.md, *Tokens*), by icon key, from
+ * two sources:
+ * - `eth`, `usdc`, `link`, `uni`, `dai`, `usdt`, `wbtc` and `aave`: spothq/cryptocurrency-icons,
+ *   `svg/color/<key>.svg` at commit 1a63530be6e374711a8554f31b17e4cb92c25fa5 (CC0 1.0
+ *   Universal, https://github.com/spothq/cryptocurrency-icons). `weth` is that set's `eth`
+ *   glyph on the pink of the common WETH logo (#EC1C79), so it is not taken for ether.
+ * - `eurc`, `pyusd` and `gho`, which that set lacks: 0xa3k5/web3icons,
+ *   `raw-svgs/tokens/background/<KEY>.svg` at commit
+ *   3cce0f390cf902f204a1b3d52f485bcc95d2fe9e (MIT License, Copyright (c) 2024 0xa3k5,
+ *   https://github.com/0xa3k5/web3icons), its square background drawn as a circle like the
+ *   others'. The marks are the trademarks of their issuers (Circle, Paxos, Aave).
+ *
+ * Each circle and path is kept with its colour, opacity and fill rule, and every number of
+ * the path data spelled out (SVG lets an arc's flags run into the next number, which
+ * Compose's path parser does not split).
  * Nothing is fetched to draw a token: a CDN would learn which tokens the user holds
  * (CLAUDE.md, *Data sources*). A token without an icon here is drawn as a monogram.
  */
@@ -25,6 +34,14 @@ object TokenIcons {
         "usdc" -> usdc
         "link" -> link
         "uni" -> uni
+        "weth" -> weth
+        "eurc" -> eurc
+        "pyusd" -> pyusd
+        "gho" -> gho
+        "dai" -> dai
+        "usdt" -> usdt
+        "wbtc" -> wbtc
+        "aave" -> aave
         else -> null
     }
 
@@ -236,8 +253,277 @@ object TokenIcons {
             )
             .build()
     }
+
+    /** `weth`. */
+    private val weth: ImageVector by lazy {
+        icon("weth")
+            .addPath(
+                addPathNodes(
+                    "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
+                ),
+                fill = SolidColor(Color(0xFFEC1C79)),
+                pathFillType = PathFillType.EvenOdd,
+            )
+            .addPath(
+                addPathNodes(
+                    "M16.498 4v8.87l7.497 3.35z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+                fillAlpha = 0.602f,
+            )
+            .addPath(
+                addPathNodes(
+                    "M16.498 4L9 16.22l7.498 -3.35z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M16.498 21.968v6.027L24 17.616z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+                fillAlpha = 0.602f,
+            )
+            .addPath(
+                addPathNodes(
+                    "M16.498 27.995v-6.028L9 17.616z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M16.498 20.573l7.497 -4.353 -7.497 -3.348z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+                fillAlpha = 0.2f,
+            )
+            .addPath(
+                addPathNodes(
+                    "M9 16.22l7.498 4.353v-7.701z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+                fillAlpha = 0.602f,
+            )
+            .build()
+    }
+
+    /** `dai`. */
+    private val dai: ImageVector by lazy {
+        icon("dai")
+            .addPath(
+                addPathNodes(
+                    "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
+                ),
+                fill = SolidColor(Color(0xFFF4B731)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M9.277 8h6.552c3.985 0 7.006 2.116 8.13 5.194H26v1.861h-1.611c.031 .294 .047 .594 .0" +
+                    "47 .898v.046c0 .342 -.02 .68 -.06 1.01H26v1.86h-2.08C22.767 21.905 19.77 24 15.83 24" +
+                    "H9.277v-5.131H7v-1.86h2.277v-1.954H7v-1.86h2.277V8zm1.831 10.869v3.462h4.72c2.914 0 " +
+                    "5.078 -1.387 6.085 -3.462H11.108zm11.366 -1.86H11.108v-1.954h11.37c.041 .307 .063 .6" +
+                    "22 .063 .944v.045c0 .329 -.023 .65 -.067 .964zM15.83 9.665c2.926 0 5.097 1.424 6.098" +
+                    " 3.528h-10.82V9.666h4.72z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+                pathFillType = PathFillType.EvenOdd,
+            )
+            .build()
+    }
+
+    /** `usdt`. */
+    private val usdt: ImageVector by lazy {
+        icon("usdt")
+            .addPath(
+                addPathNodes(
+                    "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
+                ),
+                fill = SolidColor(Color(0xFF26A17B)),
+                pathFillType = PathFillType.EvenOdd,
+            )
+            .addPath(
+                addPathNodes(
+                    "M17.922 17.383v-.002c-.11 .008 -.677 .042 -1.942 .042 -1.01 0 -1.721 -.03 -1.971 -.0" +
+                    "42v.003c-3.888 -.171 -6.79 -.848 -6.79 -1.658 0 -.809 2.902 -1.486 6.79 -1.66v2.644c" +
+                    ".254 .018 .982 .061 1.988 .061 1.207 0 1.812 -.05 1.925 -.06v-2.643c3.88 .173 6.775 " +
+                    ".85 6.775 1.658 0 .81 -2.895 1.485 -6.775 1.657m0 -3.59v-2.366h5.414V7.819H8.595v3.6" +
+                    "08h5.414v2.365c-4.4 .202 -7.709 1.074 -7.709 2.118 0 1.044 3.309 1.915 7.709 2.118v7" +
+                    ".582h3.913v-7.584c4.393 -.202 7.694 -1.073 7.694 -2.116 0 -1.043 -3.301 -1.914 -7.69" +
+                    "4 -2.117",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+                pathFillType = PathFillType.EvenOdd,
+            )
+            .build()
+    }
+
+    /** `wbtc`. */
+    private val wbtc: ImageVector by lazy {
+        icon("wbtc")
+            .addPath(
+                addPathNodes(
+                    "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
+                ),
+                fill = SolidColor(Color(0xFF201A2D)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M22.818 9.586l-.6 .6a8.494 8.494 0 0 1 0 11.464l.6 .6a9.352 9.352 0 0 0 0 -12.678v.0" +
+                    "14zM10.2 9.638a8.494 8.494 0 0 1 11.464 0l.6 -.6a9.352 9.352 0 0 0 -12.678 0l.614 .6" +
+                    "zm-.562 12.018a8.494 8.494 0 0 1 0 -11.458l-.6 -.6a9.352 9.352 0 0 0 0 12.678l.6 -.6" +
+                    "2zm12.018 .554a8.494 8.494 0 0 1 -11.464 0l-.6 .6a9.352 9.352 0 0 0 12.678 0l-.614 -" +
+                    ".6zm-1.942 -8.286c-.12 -1.252 -1.2 -1.672 -2.566 -1.8V10.4h-1.056v1.692h-.844V10.4H1" +
+                    "4.2v1.736h-2.142v1.13s.78 -.014 .768 0a.546 .546 0 0 1 .6 .464v4.752a.37 .37 0 0 1 -" +
+                    ".128 .258 .366 .366 0 0 1 -.272 .092c.014 .012 -.768 0 -.768 0l-.2 1.262h2.122v1.764" +
+                    "h1.056V20.12h.844v1.73h1.058v-1.744c1.784 -.108 3.028 -.548 3.184 -2.218 .126 -1.344" +
+                    " -.506 -1.944 -1.516 -2.186 .614 -.302 .994 -.862 .908 -1.778zm-1.48 3.756c0 1.312 -" +
+                    "2.248 1.162 -2.964 1.162v-2.328c.716 .002 2.964 -.204 2.964 1.166zm-.49 -3.28c0 1.2 " +
+                    "-1.876 1.054 -2.472 1.054v-2.116c.596 0 2.472 -.188 2.472 1.062z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M15.924 26.852C9.89 26.851 5 21.959 5 15.925 5 9.892 9.892 5 15.925 5c6.034 0 10.926" +
+                    " 4.89 10.927 10.924a10.926 10.926 0 0 1 -10.928 10.928zm0 -21c-5.559 .004 -10.062 4." +
+                    "513 -10.06 10.072 .002 5.559 4.51 10.064 10.068 10.064 5.559 0 10.066 -4.505 10.068 " +
+                    "-10.064A10.068 10.068 0 0 0 15.924 5.852z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .build()
+    }
+
+    /** `aave`. */
+    private val aave: ImageVector by lazy {
+        icon("aave")
+            .addPath(
+                addPathNodes(
+                    "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
+                ),
+                fill = SolidColor(Color(0xFF2EBAC6)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M22.934 21.574l-5.35 -13.532C17.28 7.342 16.834 7 16.243 7h-.473c-.592 0 -1.039 .343" +
+                    " -1.341 1.042l-2.327 5.896h-1.761c-.528 .002 -.956 .448 -.96 1v.014c.004 .553 .432 ." +
+                    "999 .96 1.001h.946l-2.221 5.621a1.235 1.235 0 0 0 -.066 .384c0 .315 .092 .562 .263 ." +
+                    "754 .17 .192 .407 .288 .71 .288a.933 .933 0 0 0 .552 -.192c.17 -.123 .289 -.302 .38 " +
+                    "-.507l2.446 -6.348h1.696c.527 -.002 .955 -.449 .96 -1.001v-.027c-.005 -.553 -.433 -1" +
+                    " -.96 -1.001h-.907l1.866 -4.867L21.093 22.3c.092 .205 .21 .384 .381 .507 .161 .122 ." +
+                    "354 .19 .553 .192 .302 0 .539 -.096 .71 -.288 .17 -.192 .262 -.439 .262 -.754a.944 ." +
+                    "944 0 0 0 -.065 -.384z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .build()
+    }
+
+    /** `eurc`. */
+    private val eurc: ImageVector by lazy {
+        icon("eurc", 24f)
+            .addPath(
+                addPathNodes(
+                    "M0,12a12,12 0 1,0 24,0a12,12 0 1,0 -24,0z",
+                ),
+                fill = SolidColor(Color(0xFF0B53BF)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 " +
+                    "12C4 7.58172 7.58172 4 12 4ZM10.5596 6.1748C7.93976 6.81493 6.00002 9.18015 6 12C6 1" +
+                    "4.8199 7.93976 17.1851 10.5596 17.8252V16.7949C8.50479 16.1798 7 14.2648 7 12C7.0000" +
+                    "2 9.73517 8.50479 7.8252 10.5596 7.20508V6.1748ZM13.4404 7.20508C15.4952 7.8252 17 9" +
+                    ".73517 17 12C17 14.2648 15.4952 16.1748 13.4404 16.7949V17.8252C16.0602 17.1851 18 1" +
+                    "4.8199 18 12C18 9.18015 16.0602 6.81493 13.4404 6.1748V7.20508ZM12.6201 9C11.4496 9 " +
+                    "10.2663 9.65445 9.83789 10.9248H9.07031V11.6748H9.68359C9.67445 11.7801 9.66992 11.8" +
+                    "887 9.66992 12C9.66992 12.1114 9.67439 12.2199 9.68359 12.3252H9.07031V13.0752H9.837" +
+                    "89C10.2663 14.3456 11.4496 15 12.6201 15C13.1049 15 13.5897 14.8899 14.0195 14.665L1" +
+                    "3.7002 13.9053C13.3503 14.0452 12.9703 14.1249 12.6055 14.125C11.8827 14.125 11.2007" +
+                    " 13.8173 10.875 13.0752H12.4648L12.7754 12.3252H10.6895C10.6796 12.2219 10.6748 12.1" +
+                    "135 10.6748 12C10.6748 11.8866 10.6796 11.7781 10.6895 11.6748H13.04L13.3496 10.9248" +
+                    "H10.875C11.2007 10.1828 11.8827 9.875 12.6055 9.875C12.9703 9.87507 13.3503 9.95479 " +
+                    "13.7002 10.0947L14.0195 9.33496C13.5897 9.11012 13.1049 9.00002 12.6201 9Z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .build()
+    }
+
+    /** `pyusd`. */
+    private val pyusd: ImageVector by lazy {
+        icon("pyusd", 24f)
+            .addPath(
+                addPathNodes(
+                    "M0,12a12,12 0 1,0 24,0a12,12 0 1,0 -24,0z",
+                ),
+                fill = SolidColor(Color(0xFF3B6FEF)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M7.70495 4.57601C7.74761 4.24533 8.02495 4 8.35561 4H14.3503C15.0074 4.04323 15.6491" +
+                    " 4.21831 16.2373 4.51482C16.8253 4.81132 17.3477 5.22317 17.7731 5.72584C18.1987 6.2" +
+                    "285 18.5187 6.81166 18.7139 7.44061C18.9094 8.06955 18.9762 8.73139 18.9102 9.38668C" +
+                    "18.6169 13.2641 15.5609 14.6666 13.9663 14.6666H11.8756L10.985 19.4561C10.9315 19.77" +
+                    "6 10.6543 20 10.3342 20H6.37693C6.19027 20 6.00361 19.9147 5.88093 19.7706C5.81843 1" +
+                    "9.699 5.77184 19.6149 5.74426 19.5238C5.71667 19.4329 5.70873 19.3371 5.72094 19.242" +
+                    "7L6.70761 12.0001H5.72628C5.35827 12.0001 5.06494 11.7014 5.06494 11.3333C5.06494 10" +
+                    ".9653 5.35827 10.6666 5.72628 10.6666H6.88894L7.24629 8H5.72628C5.35827 8 5.06494 7." +
+                    "70134 5.06494 7.33334C5.06494 6.96534 5.35294 6.66668 5.72094 6.66668H7.42228L7.7049" +
+                    "5 4.57601ZM8.57429 8L8.21161 10.6666H12.9742C13.1505 10.6727 13.326 10.6422 13.49 10" +
+                    ".5773C13.6539 10.5122 13.8027 10.414 13.9268 10.2888C14.051 10.1636 14.1479 10.0142 " +
+                    "14.2117 9.84978C14.2754 9.6854 14.3044 9.50952 14.2969 9.33334C14.3044 9.15717 14.27" +
+                    "54 8.98135 14.2117 8.81692C14.1479 8.6525 14.051 8.503 13.9268 8.37781C13.8027 8.252" +
+                    "62 13.6539 8.15444 13.49 8.08943C13.326 8.02442 13.1505 7.99397 12.9742 8H8.57961H8." +
+                    "57429ZM8.03561 12.0001H12.9742C13.3243 12.0037 13.6713 11.937 13.995 11.8039C14.3187" +
+                    " 11.6709 14.6124 11.4742 14.8587 11.2254C15.1048 10.9767 15.2986 10.681 15.4283 10.3" +
+                    "56C15.5582 10.031 15.6214 9.68328 15.6143 9.33334C15.6143 7.84001 14.4729 6.66668 12" +
+                    ".9742 6.66668H8.75561L8.93162 5.33334H14.2649C14.7463 5.36371 15.2167 5.49125 15.647" +
+                    "4 5.70826C16.0783 5.92529 16.4607 6.22727 16.7716 6.59606C17.0826 6.96482 17.3157 7." +
+                    "39275 17.4568 7.85402C17.5979 8.3153 17.6443 8.80037 17.593 9.28002C17.3636 12.3361 " +
+                    "15.0063 13.3334 13.9663 13.3334H11.3263C11.0063 13.3334 10.7395 13.5627 10.6755 13.8" +
+                    "773L9.79032 18.6667H7.13427L8.03561 12.0001Z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
+                pathFillType = PathFillType.EvenOdd,
+            )
+            .build()
+    }
+
+    /** `gho`. */
+    private val gho: ImageVector by lazy {
+        icon("gho", 24f)
+            .addPath(
+                addPathNodes(
+                    "M0,12a12,12 0 1,0 24,0a12,12 0 1,0 -24,0z",
+                ),
+                fill = SolidColor(Color(0xFFC9B4F9)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M14.4214 11.9998H17.5201L20 16.2665V18.9332H10.5441C6.92801 18.9332 4 15.9411 4 12.2" +
+                    "451V11.7545C4 8.05309 6.93334 5.06641 10.5441 5.06641H14.5174L16.0534 7.73309H10.864" +
+                    "C9.74837 7.74715 8.68393 8.20313 7.90406 9.00099C7.12418 9.79891 6.69262 10.8735 6.7" +
+                    "0401 11.9892C6.70401 14.3359 8.56534 16.2665 10.864 16.2665H16.9014L14.4214 11.9998Z" +
+                    "M11.4667 10.1331C11.4667 10.4867 11.3262 10.8259 11.0762 11.076C10.8261 11.326 10.48" +
+                    "7 11.4665 10.1334 11.4665C9.77973 11.4665 9.44059 11.326 9.19054 11.076C8.94048 10.8" +
+                    "259 8.80001 10.4867 8.80001 10.1331C8.80001 9.7795 8.94048 9.44034 9.19054 9.19029C9" +
+                    ".44059 8.94023 9.77973 8.79975 10.1334 8.79975C10.487 8.79975 10.8261 8.94023 11.076" +
+                    "2 9.19029C11.3262 9.44034 11.4667 9.7795 11.4667 10.1331ZM11.4667 13.8664C11.4667 14" +
+                    ".2201 11.3262 14.5592 11.0762 14.8094C10.8261 15.0594 10.487 15.1999 10.1334 15.1999" +
+                    "C9.77973 15.1999 9.44059 15.0594 9.19054 14.8094C8.94048 14.5592 8.80001 14.2201 8.8" +
+                    "0001 13.8664C8.80001 13.5129 8.94048 13.1738 9.19054 12.9236C9.44059 12.6736 9.77973" +
+                    " 12.5331 10.1334 12.5331C10.487 12.5331 10.8261 12.6736 11.0762 12.9236C11.3262 13.1" +
+                    "738 11.4667 13.5129 11.4667 13.8664Z",
+                ),
+                fill = SolidColor(Color(0xFF000000)),
+            )
+            .build()
+    }
 }
 
-/** A 32-unit square, the icon set's own viewport. */
-private fun icon(name: String): ImageVector.Builder =
-    ImageVector.Builder(name, 32.dp, 32.dp, viewportWidth = 32f, viewportHeight = 32f)
+/**
+ * A square of [units] drawn at 32 dp: 32 is the CC0 set's own viewport, 24 web3icons'.
+ */
+private fun icon(name: String, units: Float = 32f): ImageVector.Builder =
+    ImageVector.Builder(name, 32.dp, 32.dp, viewportWidth = units, viewportHeight = units)

@@ -246,9 +246,12 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
     16 slots of 6. A review reads up to twelve pools (`getPool`, then
     `liquidity()` of each listed one) and quotes up to five candidates, all
     in parallel, plus one quote that converts the fee.
-  - Every built-in token (USDC, LINK, UNI) has a pool with WETH at all four
-    tiers on Sepolia, and USDC/LINK, USDC/UNI and LINK/UNI have pools of
-    their own.
+  - USDC, LINK and UNI have a pool with WETH at all four tiers on Sepolia,
+    and USDC/LINK, USDC/UNI and LINK/UNI have pools of their own. Every
+    built-in token added on 2026-10-22 has at least one WETH pool with
+    liquidity (verified `getPool` and `liquidity()` at block 11,966,567):
+    EURC at 0.01 % and 0.3 %, PYUSD and GHO at 0.3 %, DAI and USDT at all
+    four tiers, WBTC at 0.05 %, AAVE at 0.3 % and 1 %.
   - How long a review's quote takes through the engine is what
     `MyotisNodeSepoliaTest` prints when run with the engine's library; the
     number of candidates is bounded only if that asks for it.

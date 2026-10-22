@@ -14,6 +14,9 @@ class BuiltInTokensTest {
         assertEquals(tokens.size, tokens.distinctBy { it.address }.size)
         assertEquals(tokens.size, tokens.distinctBy { it.symbol }.size)
         assertTrue(tokens.all { it.icon != null }, "a built-in token has a bundled icon (CLAUDE.md, Data sources)")
-        assertEquals(listOf("USDC", "LINK", "UNI"), tokens.map { it.symbol })
+        assertEquals(
+            listOf("USDC", "EURC", "PYUSD", "LINK", "UNI", "WETH", "GHO", "DAI", "USDT", "WBTC", "AAVE"),
+            tokens.map { it.symbol },
+        )
     }
 }
