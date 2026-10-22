@@ -86,6 +86,13 @@ internal class ProvenReads<K, T>(
      */
     private val kept: KeptProofs<K, T> = KeptProofs.none(),
     /**
+     * Whether a stopped network's reading offers the last proof ([EngineReading.LastKnown]), as a
+     * balance does; otherwise, and with no proof, it says the network is off
+     * ([ReadUnavailable.NETWORK_OFF]): an adapter that reads a last proof as syncing would say
+     * "checking" for as long as the network stays off.
+     */
+    private val offersLastKnownWhenStopped: Boolean = false,
+    /**
      * The fact about a key and the block its proof anchors to; a refusal ([EngineReading.Unavailable]);
      * or null when unproven. Blocks, and may suspend between its blocking calls (to check its
      * cancellation, or to pause before a retry).
@@ -135,6 +142,13 @@ internal class ProvenReads<K, T>(
     }
 
     private suspend fun readingAt(chain: VerifiedChain, key: K, snapshot: EngineSnapshot): EngineReading<T> {
+        // A stopped network: what was last verified, dated, or that it is off; never "syncing".
+        if (snapshot is EngineSnapshot.Stopped) {
+            val last = if (offersLastKnownWhenStopped) lastKnown(key) else null
+            return last ?: EngineReading.Unavailable(ReadUnavailable.NETWORK_OFF)
+        }
+        // A start that failed: no light client now, but the stream polls on for its next start.
+        if (snapshot == EngineSnapshot.Failed) return EngineReading.Unavailable(ReadUnavailable.NO_ENGINE)
         if (snapshot !is EngineSnapshot.Running) return syncing(key)
         if (snapshot.phase == Phase.STALE_ANCHOR) return EngineReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
         val head = snapshot.readableHead ?: return syncing(key)
@@ -173,9 +187,12 @@ internal class ProvenReads<K, T>(
      * No head to read at: the last proof of [key], dated, when there is one — made in this
      * process, or else [kept] from an earlier one; [EngineReading.Syncing] otherwise.
      */
-    private suspend fun syncing(key: K): EngineReading<T> = proofsLock.withLock {
+    private suspend fun syncing(key: K): EngineReading<T> = lastKnown(key) ?: EngineReading.Syncing
+
+    /** The last proof of [key], dated: made in this process, or else [kept] from an earlier one; null for none. */
+    private suspend fun lastKnown(key: K): EngineReading<T>? = proofsLock.withLock {
         proofs[key]?.let { EngineReading.LastKnown(it.reading.value, it.reading.blockNumber, it.headTimestamp) }
-    } ?: kept.load(key) ?: EngineReading.Syncing
+    } ?: kept.load(key)
 
     /** One read of [key] at [head], produced at [headTimestamp], kept when it is a proof. */
     private suspend fun prove(chain: VerifiedChain, key: K, head: Long, headTimestamp: Long?): EngineReading<T> {

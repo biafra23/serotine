@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.LightClientRun
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -22,20 +23,21 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The real engine on the real Sepolia: boots a [MyotisNode] and waits for a verified
+ * The real engine on the real Sepolia: boots a [MyotisHost] and waits for a verified
  * balance, and finds a Uniswap route, timed (docs/swaps.md: how long a quote takes). Needs
  * the network and the engine's host library, so it is skipped unless run with
  * `-PmyotisLibraryDir=<dir with libmyotis_engine>` (data/build.gradle.kts passes it on as
  * java.library.path), e.g.
- * `./gradlew :data:desktopTest --tests '*MyotisNodeSepoliaTest*' -PmyotisLibraryDir=…`.
+ * `./gradlew :data:desktopTest --tests '*MyotisHostSepoliaTest*' -PmyotisLibraryDir=…`.
  */
-class MyotisNodeSepoliaTest {
+class MyotisHostSepoliaTest {
 
     @Test
     fun aSyncedNodeReadsAVerifiedSepoliaBalance(): Unit = runBlocking {
         assumeTrue("needs -PmyotisLibraryDir", System.getProperty("serotine.myotisLibraryDir") != null)
         // A fresh directory: a cold start from the embedded checkpoint, every phase shown.
-        val node = MyotisNode.start(Network.SEPOLIA, Files.createTempDirectory("myotis-sepolia").toFile())
+        val node = MyotisHost.start(Files.createTempDirectory("myotis-sepolia").toFile())
+        node.set(Network.SEPOLIA, LightClientRun.RUN)
         val started = System.nanoTime()
         val progress = launch {
             node.lightClient.observeStatus(Network.SEPOLIA).collect {
@@ -63,7 +65,8 @@ class MyotisNodeSepoliaTest {
     @Test
     fun aSyncedNodeFindsAUniswapRouteForOneUsdc(): Unit = runBlocking {
         assumeTrue("needs -PmyotisLibraryDir", System.getProperty("serotine.myotisLibraryDir") != null)
-        val node = MyotisNode.start(Network.SEPOLIA, Files.createTempDirectory("myotis-sepolia").toFile())
+        val node = MyotisHost.start(Files.createTempDirectory("myotis-sepolia").toFile())
+        node.set(Network.SEPOLIA, LightClientRun.RUN)
         try {
             val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, icon = null)
             val link = Token(Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789"), "LINK", "ChainLink", 18, null)

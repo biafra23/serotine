@@ -254,7 +254,7 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
     EURC at 0.01 % and 0.3 %, PYUSD and GHO at 0.3 %, DAI and USDT at all
     four tiers, WBTC at 0.05 %, AAVE at 0.3 % and 1 %.
   - How long a review's quote takes through the engine is what
-    `MyotisNodeSepoliaTest` prints when run with the engine's library; the
+    `MyotisHostSepoliaTest` prints when run with the engine's library; the
     number of candidates is bounded only if that asks for it.
 - **The fee a route costs**, when routes are ranked net: its QuoterV2 gas ×
   (the next base fee + the Normal tip), in wei for WETH or ETH bought, and
@@ -481,7 +481,7 @@ could swap the same tokens twice.
 ### Proving an order's end
 
 The proof reads no past state. The engine answers its reads from the head
-(`MyotisNode` asks for `"latest"`), and a block number passed to
+(`MyotisHost` asks for `"latest"`), and a block number passed to
 `VerifiedReads.getBalance` is answered from the head anyway
 (docs/embedding-myotis.md). A read at the head after `validTo` proves
 nothing either: `freeFilledAmountStorage` lets a settlement reset an expired
@@ -502,7 +502,7 @@ the order's UID.
 - **The end block is one of two.**
   - *Expiry.* The first finalized head whose time is past `validTo`. Its time
     is the finalized slot's (`StatusSnapshot.finalizedSlot`; genesis + slot ×
-    seconds per slot), the same consensus rule `MyotisNode` applies to the
+    seconds per slot), the same consensus rule `MyotisHost` applies to the
     head. No settlement can fill the order in a block past `validTo`.
   - *Cancellation on chain.* The block of the account's
     `invalidateOrder(uid)`, once it is finalized. Nothing can settle the

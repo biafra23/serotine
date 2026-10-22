@@ -7,6 +7,8 @@ import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TokenSettings
 import eth.serotine.domain.usecase.AddToken
+import eth.serotine.domain.usecase.HoldNetwork
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.ui.FakeMetadata
@@ -54,6 +56,7 @@ class AddTokenViewModelTest {
                 ObserveTokenMetadata(metadata),
                 AddToken(userTokens, metadata, known),
                 Network.SEPOLIA,
+                HoldNetwork(NetworkDemand()),
                 address,
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -140,6 +143,7 @@ class AddTokenViewModelTest {
             ObserveTokenMetadata(slow),
             AddToken(userTokens, slow, known),
             Network.SEPOLIA,
+            HoldNetwork(NetworkDemand()),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(eurc)

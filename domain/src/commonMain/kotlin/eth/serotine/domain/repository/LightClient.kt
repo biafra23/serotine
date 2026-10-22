@@ -63,4 +63,13 @@ sealed interface LightClientStatus {
 
     /** There is no light client for the network on this device, or it failed to start. */
     data object Unavailable : LightClientStatus
+
+    /** The network is turned off in this wallet: its light client does not run (docs/networks.md). */
+    data object Off : LightClientStatus
+
+    /**
+     * The network is on, but nothing needs it now (no account on it, no screen asking about
+     * it): its light client starts once something does.
+     */
+    data object Idle : LightClientStatus
 }

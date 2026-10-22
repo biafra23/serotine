@@ -353,6 +353,7 @@ class TransferStatusViewModel(
     private fun unavailable(reason: ReadUnavailable): String = "Where it stands cannot be verified right now: " +
         when (reason) {
             ReadUnavailable.NO_ENGINE -> "there is no light client on this device."
+            ReadUnavailable.NETWORK_OFF -> "the network's light client is not running."
             ReadUnavailable.STALE_ANCHOR -> "the light client refuses to sync."
             ReadUnavailable.UNPROVEN -> "its receipt could not be verified this time. Serotine keeps checking."
             ReadUnavailable.REFUSED -> "the light client on this device cannot read receipts."

@@ -29,6 +29,7 @@ import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -201,6 +202,9 @@ class SerotineWallet {
             debugScreen = debugScreen,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
             screenCaptureDebugSwitch = null,
+            // The iOS host keeps its one light client running (docs/networks.md: the iOS host
+            // follows networks on and off from part 4, when there is a second one): holds change nothing.
+            networkDemand = NetworkDemand(),
         )
     }
 

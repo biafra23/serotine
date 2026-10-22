@@ -4,7 +4,7 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 
-// What both engine adapters (the JVM targets' MyotisNode and iOS's) say to the engine the same
+// What both engine adapters (the JVM targets' MyotisHost and iOS's MyotisNode) say to the engine the same
 // way, whichever API they speak it through.
 
 /** The engine's name for this network, as `MyotisEngine.availableNetworks()` lists it. */

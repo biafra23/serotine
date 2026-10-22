@@ -12,6 +12,8 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
+import eth.serotine.domain.usecase.HoldNetwork
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ResolveRecipient
@@ -69,6 +71,7 @@ class WatchViewModelTest {
             WatchAddress(accounts, kinds),
             ResolveRecipient(names),
             Network.SEPOLIA,
+            HoldNetwork(NetworkDemand()),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -158,6 +161,7 @@ class WatchViewModelTest {
             WatchAddress(accounts, syncing),
             ResolveRecipient(names),
             Network.SEPOLIA,
+            HoldNetwork(NetworkDemand()),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -226,6 +230,7 @@ class WatchViewModelTest {
                 WatchAddress(accounts, gatedKinds),
                 ResolveRecipient(names),
                 Network.SEPOLIA,
+                HoldNetwork(NetworkDemand()),
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)

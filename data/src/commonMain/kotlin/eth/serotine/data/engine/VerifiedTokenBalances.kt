@@ -43,6 +43,7 @@ class VerifiedTokenBalances internal constructor(
             units = { it?.decimal },
             parse = TokenUnits::parse,
         ) ?: KeptProofs.none(),
+        offersLastKnownWhenStopped = true,
     ) { verified, key ->
         when (val outcome = verified.call(key.token, Abi.balanceOf(key.holder))) {
             is CallOutcome.Returned -> EngineReading.Proven(

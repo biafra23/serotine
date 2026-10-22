@@ -19,7 +19,7 @@ import eth.serotine.android.widget.RateRefreshJob
 import eth.serotine.android.widget.RateWidget
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.engine.AndroidDnsServers
-import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.AndroidBiometricKey
 import eth.serotine.data.keys.AndroidKeystoreSecret
@@ -44,12 +44,14 @@ import eth.serotine.domain.model.RateSnapshot
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowExchangeRate
+import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ReadExchangeRate
 import eth.serotine.domain.usecase.RefreshExchangeRate
@@ -71,6 +73,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -101,16 +104,34 @@ class SerotineApplication : Application() {
     // restart until a head can be read. The adapters' diagnostics and the engine's own log go to
     // logcat in the debug app only (debuggable below); each request asked of the engine goes to
     // the Debug tab's log, in memory, in either app.
-    private val node: MyotisNode by lazy {
-        MyotisNode.start(
-            Network.SEPOLIA,
+    // One engine, one light client per network that is on and needed: FollowNetworks starts with
+    // the host and runs for the life of the process (docs/networks.md, *The engine host*).
+    private val node: MyotisHost by lazy {
+        MyotisHost.start(
             filesDir.resolve("myotis"),
             AndroidDnsServers(this),
             lastBalances = filesDir.resolve("last-balances.json").path,
             debugLog = if (debuggable) { line -> Log.d(LOG_TAG, line) } else null,
             apiLog = debugLog,
-        )
+        ).also { host -> scope.launch { followNetworks(host) } }
     }
+
+    /**
+     * Keeps each network's light client running while it is on and needed, for the life of the
+     * process. A failure ends it and is reported: the light clients keep their last state.
+     */
+    private suspend fun followNetworks(host: MyotisHost) {
+        try {
+            FollowNetworks(networkSettings, accounts, networkDemand, host)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following the networks stopped: ${e::class.simpleName}")
+        }
+    }
+
+    /** The screens' holds on a network with no account on it yet (Watch, Add token), and the widget's read's. */
+    private val networkDemand = NetworkDemand()
 
     /** The Debug tab's log: in memory for the life of the process, never in a file. */
     private val debugLog by lazy { MemoryDebugLog() }
@@ -247,6 +268,7 @@ class SerotineApplication : Application() {
             // The debug app only: Settings may lift FLAG_SECURE for a screen recording, until the
             // process ends. The release app has no switch (docs/keys-and-signing.md, rule 8).
             screenCaptureDebugSwitch = if (debuggable) ScreenCaptureDebugSwitch() else null,
+            networkDemand = networkDemand,
         )
     }
 
@@ -313,7 +335,7 @@ class SerotineApplication : Application() {
         // The debug log records while the Debug tab is on, for the life of the process: it needs
         // no engine, and a request made while the app is in the background is one too.
         scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
-        // Records each network's default the first time it is found unrecorded.
+        // Records each network's default the first time it is found unrecorded, before any engine starts.
         scope.launch { networkSettings.observe().first() }
         // Kept scheduled while a widget is placed, whatever cancelled it (a widget restored by a
         // launcher, say): the job's own period is kept.
@@ -479,7 +501,17 @@ class SerotineApplication : Application() {
     private suspend fun joinRead(timeout: Duration): RateSnapshot? {
         val shared = readLock.withLock {
             val current = sharedRead?.takeIf { it.read.isActive }
-                ?: SharedRead(scope.async { withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() } })
+                ?: SharedRead(
+                    scope.async {
+                        // The widget's network runs for as long as this read does, with no account on it too.
+                        val hold = networkDemand.hold(Network.SEPOLIA)
+                        try {
+                            withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() }
+                        } finally {
+                            hold.release()
+                        }
+                    },
+                )
             sharedRead = current
             current.waiting++
             current
@@ -575,20 +607,28 @@ class SerotineApplication : Application() {
      * #85); runs until cancelled. A failure ends it, never the wallet: the next hold follows them
      * again.
      */
-    private suspend fun followAccountLogs() {
-        try {
-            FollowAccountLogs(
-                accounts,
-                historyStarts,
-                transactionHistory,
-                node.lightClient,
-                node.logIndex,
-                Network.SEPOLIA,
-            )()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            System.err.println("Serotine: following the accounts' logs stopped: ${e::class.simpleName}")
+    private suspend fun followAccountLogs() = coroutineScope {
+        // Each network's log index follows that network's accounts; a failure ends that one only.
+        Network.entries.forEach { network ->
+            launch {
+                try {
+                    FollowAccountLogs(
+                        accounts,
+                        historyStarts,
+                        transactionHistory,
+                        node.lightClient,
+                        node.logIndex,
+                        network,
+                    )()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    System.err.println(
+                        "Serotine: following the accounts\' logs on ${network.displayName} stopped: " +
+                            "${e::class.simpleName}",
+                    )
+                }
+            }
         }
     }
 

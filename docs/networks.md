@@ -500,7 +500,7 @@ releasable. The parts, in order:
 4. **Ethereum.** `Network.ETHEREUM`; its Chainlink feeds, built-in tokens
    and icons, Safe deployments and fallback handler, Uniswap v3 and
    Multicall3 pins, each proven on mainnet by the PR, with the values read
-   stated; the ENS root. A real-network test like `MyotisNodeSepoliaTest`.
+   stated; the ENS root. A real-network test like `MyotisHostSepoliaTest`.
    From here a release build starts with Ethereum on and Sepolia off.
 5. **Gnosis Chain.** `Network.GNOSIS`; the xDAI icon and price, its feeds,
    tokens, Safe deployments (L2), fallback handler, and what open questions 2

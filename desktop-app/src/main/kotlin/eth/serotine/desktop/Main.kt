@@ -9,7 +9,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
-import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
@@ -30,12 +30,14 @@ import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
+import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -50,7 +52,6 @@ import javax.swing.SwingUtilities
 import kotlin.concurrent.thread
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.system.exitProcess
-import kotlinx.coroutines.flow.first
 
 /**
  * The desktop composition root: starts the process's one Myotis engine
@@ -139,8 +140,8 @@ private fun openWallet(dataDir: File) {
     // user has that tab turned on (debugScreen, followed below).
     val apiLog = MemoryDebugLog()
     val debugScreen = FileDebugScreen(dataDir.resolve("debug-screen.json").path)
-    val node = MyotisNode.start(
-        Network.SEPOLIA,
+    // One engine, one light client per network that is on and needed (FollowNetworks, below).
+    val node = MyotisHost.start(
         dataDir.resolve("myotis"),
         lastBalances = dataDir.resolve("last-balances.json").path,
         debugLog = debugLog,
@@ -148,7 +149,8 @@ private fun openWallet(dataDir: File) {
     )
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
-    val upgradeNotices = UpgradeNotices(Network.SEPOLIA, knownUpgrades, TrayUpgradeNotifier(Network.SEPOLIA))
+    // Each network's upgrades are told apart: its own notices and record.
+    val upgradeNotices = Network.entries.associateWith { UpgradeNotices(it, knownUpgrades, TrayUpgradeNotifier(it)) }
     // One instance each, which the graph and the followers share. Each account added is noted
     // where its history starts (issue #85): addresses with a block or a time, public data only.
     val historyStarts = FileHistoryStarts(dataDir.resolve("history-starts.json").path)
@@ -162,20 +164,34 @@ private fun openWallet(dataDir: File) {
     // Which networks are on (docs/networks.md, *Networks on and off*): Sepolia, the only one, in
     // every run until Ethereum and Gnosis Chain come with their own build defaults.
     val networkSettings = FileNetworkSettings(dataDir.resolve("networks.json").path, defaultOn = { true })
+    // The screens' holds on a network with no account on it yet (Watch, Add token).
+    val networkDemand = NetworkDemand()
     application(exitProcessOnExit = false) {
         LaunchedEffect(Unit) {
-            // Records each network's default the first time it is found unrecorded.
-            networkSettings.observe().first()
-        }
-        LaunchedEffect(Unit) {
-            // A failure in the notices ends them, never the wallet (as on Android): the window
-            // still shows every warning, and the next start follows the reports again.
+            // Each network's light client runs while it is on and needed (docs/networks.md, *The
+            // engine host*); following the setting also records each network's default. A failure
+            // ends it, never the wallet: the light clients keep their last state.
             try {
-                FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)()
+                FollowNetworks(networkSettings, accounts, networkDemand, node)()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                System.err.println("Serotine: upgrade notices stopped: $e")
+                System.err.println("Serotine: following the networks stopped: ${e::class.simpleName}")
+            }
+        }
+        // Each network's upgrade reports, while its light client runs (a network that is off or
+        // idle reports none).
+        Network.entries.forEach { network ->
+            LaunchedEffect(network) {
+                // A failure in the notices ends them, never the wallet (as on Android): the window
+                // still shows every warning, and the next start follows the reports again.
+                try {
+                    FollowUpgradeReports(network, node.networkUpgrades, upgradeNotices.getValue(network))()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    System.err.println("Serotine: upgrade notices of ${network.displayName} stopped: $e")
+                }
             }
         }
         LaunchedEffect(Unit) {
@@ -216,22 +232,27 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following sent transactions stopped: ${e::class.simpleName}")
             }
         }
-        LaunchedEffect(Unit) {
-            // The engine's log index follows every account from where its history starts, while
-            // the app runs (issue #85). A failure ends it, never the wallet.
-            try {
-                FollowAccountLogs(
-                    accounts,
-                    historyStarts,
-                    transactionHistory,
-                    node.lightClient,
-                    node.logIndex,
-                    Network.SEPOLIA,
-                )()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                System.err.println("Serotine: following the accounts' logs stopped: ${e::class.simpleName}")
+        // Each network's log index follows that network's accounts from where each history starts,
+        // while the app runs (issue #85). A failure ends it, never the wallet.
+        Network.entries.forEach { network ->
+            LaunchedEffect(network) {
+                try {
+                    FollowAccountLogs(
+                        accounts,
+                        historyStarts,
+                        transactionHistory,
+                        node.lightClient,
+                        node.logIndex,
+                        network,
+                    )()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    System.err.println(
+                        "Serotine: following the accounts\' logs on ${network.displayName} stopped: " +
+                            "${e::class.simpleName}",
+                    )
+                }
             }
         }
         val graph = remember {
@@ -276,6 +297,7 @@ private fun openWallet(dataDir: File) {
                 debugScreen = debugScreen,
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.
                 screenCaptureDebugSwitch = null,
+                networkDemand = networkDemand,
             )
         }
         Window(
@@ -302,7 +324,7 @@ private fun openWallet(dataDir: File) {
 
 /**
  * How long a closing app waits for the engine to stop before it exits anyway: past the 15 s
- * MyotisNode.shutdown() itself gives a boot in progress, so that boot is not cut off mid-start.
+ * MyotisHost.shutdown() itself gives a start in progress, so that boot is not cut off mid-start.
  */
 private const val ENGINE_SHUTDOWN_WAIT_MS = 20_000L
 

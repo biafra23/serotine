@@ -218,6 +218,20 @@ class VerifiedNativeBalancesTest {
     }
 
     @Test
+    fun aFailedStartIsNoLightClientUntilTheNextStart() = runTest {
+        val seen = mutableListOf<BalanceReading>()
+        chain.snapshot = EngineSnapshot.Failed
+        chain.proofs[address] = ProvenBalance("3", blockNumber = 6)
+        val collecting = launch { balances().observeBalance(Network.SEPOLIA, address).collect { seen += it } }
+        runCurrent()
+        assertEquals(listOf<BalanceReading>(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)), seen)
+
+        step(running(head = 6))
+        assertEquals(BalanceReading.Verified(Wei.of("3"), 6), seen.last(), "the stream polled on")
+        collecting.cancel()
+    }
+
+    @Test
     fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
         chain.snapshot = EngineSnapshot.Down
         assertEquals(
@@ -252,5 +266,24 @@ class VerifiedNativeBalancesTest {
         balances.observeBalance(Network.SEPOLIA, addresses.first()).first()
 
         assertEquals(listOf(addresses.first()), chain.proofRequests, "the oldest was let go, the newest kept")
+    }
+
+    @Test
+    fun aStoppedNetworkOffersTheLastProofOrSaysItIsOff() = runTest {
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        assertEquals(
+            BalanceReading.Unavailable(ReadUnavailable.NETWORK_OFF),
+            balances().observeBalance(Network.SEPOLIA, address).first(),
+            "nothing proven yet",
+        )
+
+        val balances = balances()
+        val seen = mutableListOf<BalanceReading>()
+        val collecting = launch { balances.observeBalance(Network.SEPOLIA, address).collect { seen += it } }
+        chain.proofs[address] = ProvenBalance("5", 100)
+        step(running(head = 100, headTimestamp = 1_792_100_000))
+        step(EngineSnapshot.Stopped(off = false))
+        collecting.cancel()
+        assertEquals(BalanceReading.LastKnown(Wei.of("5"), 100, asOf = 1_792_100_000), seen.last())
     }
 }

@@ -73,7 +73,8 @@ Modules (Gradle):
   seeds in envelopes, docs/keys-and-signing.md; and `Secp256k1Recovery`, which
   finds the address a signature recovers to and holds no key), and the Myotis
   engine adapter
-  (`eth.serotine.data.engine`: `MyotisNode`, verified native and token balances,
+  (`eth.serotine.data.engine`: `MyotisHost`, one engine hosting a light client
+  per network that is on and needed, verified native and token balances,
   token metadata, prices and address kinds, the peer-reported network-upgrade
   advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
   names, a Safe's owners' approvals on chain, Uniswap v3's pinned

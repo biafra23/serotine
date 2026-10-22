@@ -36,7 +36,8 @@ class EngineLightClient internal constructor(
 
     private fun statusOf(snapshot: EngineSnapshot): LightClientStatus = when (snapshot) {
         EngineSnapshot.Booting -> LightClientStatus.Starting
-        EngineSnapshot.Down -> LightClientStatus.Unavailable
+        EngineSnapshot.Down, EngineSnapshot.Failed -> LightClientStatus.Unavailable
+        is EngineSnapshot.Stopped -> if (snapshot.off) LightClientStatus.Off else LightClientStatus.Idle
         is EngineSnapshot.Running -> when {
             snapshot.paused -> LightClientStatus.Sleeping
             snapshot.phase == Phase.STALE_ANCHOR -> LightClientStatus.StaleAnchor(

@@ -39,6 +39,7 @@ class VerifiedNativeBalances internal constructor(
             parse = Wei::parse,
         )
             ?: KeptProofs.none(),
+        offersLastKnownWhenStopped = true,
     ) { verified, address ->
         verified.proveBalance(address)?.let { proven ->
             Wei.parse(proven.wei)?.let { EngineReading.Proven(it, proven.blockNumber) }

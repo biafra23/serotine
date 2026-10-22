@@ -12,6 +12,7 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.AddressWatch
+import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.RecipientLookup
@@ -60,7 +61,16 @@ class WatchViewModel(
     private val resolveRecipient: ResolveRecipient,
     /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
     private val network: Network,
+    /** Keeps [network]'s light client running while this screen is open, with no account on it yet. */
+    holdNetwork: HoldNetwork,
 ) : ViewModel() {
+
+    /** Released when the screen is gone ([onCleared]). */
+    private val hold = holdNetwork(network)
+
+    override fun onCleared() {
+        hold.release()
+    }
 
     /** What is typed, and how often the user asked to resolve the name again ([lookupAttempt]). */
     private data class Typed(val address: String = "", val name: String = "", val lookupAttempt: Int = 0)
@@ -217,6 +227,8 @@ class WatchViewModel(
             when (reading.reason) {
                 ReadUnavailable.NO_ENGINE ->
                     "There is no light client on this device, so the address cannot be checked."
+                ReadUnavailable.NETWORK_OFF ->
+                    "The network's light client is not running, so the address cannot be checked."
                 ReadUnavailable.STALE_ANCHOR ->
                     "The light client refuses to sync, so the address cannot be checked."
                 // Not the code's fault alone: for a Safe, its code may be proven and its storage

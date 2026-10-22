@@ -45,12 +45,14 @@ import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.FindUniswapRoute
+import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
-import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccountHistory
+import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveDebugLog
@@ -220,6 +222,11 @@ class AppGraph(
      * release build, and on a host whose screens block nothing (docs/keys-and-signing.md, rule 8).
      */
     internal val screenCaptureDebugSwitch: ScreenCaptureDebugSwitch?,
+    /**
+     * The screens' holds on a network's light client, with no account on it yet (Watch, Add
+     * token): the host's one instance, which its `FollowNetworks` follows.
+     */
+    private val networkDemand: NetworkDemand,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -461,6 +468,7 @@ class AppGraph(
         WatchAddress(accounts, addressKinds),
         ResolveRecipient(names),
         soleNetwork,
+        HoldNetwork(networkDemand),
     )
 
     fun settingsViewModel(): SettingsViewModel =
@@ -494,6 +502,7 @@ class AppGraph(
             ObserveTokenMetadata(tokenMetadata),
             AddToken(userTokens, tokenMetadata, knownTokens()),
             soleNetwork,
+            HoldNetwork(networkDemand),
             address,
         )
 
