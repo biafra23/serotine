@@ -299,6 +299,7 @@ class AppNavigationTest {
         displayCurrency = MemoryCurrencySetting(),
         addressKinds = addressKinds,
         lightClient = object : LightClient {
+            override val datesFinalizedBlocks = true
             override fun observeStatus(): Flow<LightClientStatus> = status
         },
         networkUpgrades = object : NetworkUpgrades {

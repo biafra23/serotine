@@ -60,6 +60,7 @@ class SwapVenuesTest {
     @Test
     fun cowIsOfferedOnlyWhereTheLightClientDatesFinalizedBlocks() {
         val dating = object : LightClient {
+            override val datesFinalizedBlocks = true
             override fun observeStatus(): Flow<LightClientStatus> = MutableStateFlow(LightClientStatus.Starting)
         }
         val notDating = object : LightClient by dating {

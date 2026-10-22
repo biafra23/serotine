@@ -133,6 +133,7 @@ class SendViewModelTest {
     private val sent = MemorySentTransfers()
     private val cowOrders = MemoryCowOrders()
     private val light = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
     }
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice

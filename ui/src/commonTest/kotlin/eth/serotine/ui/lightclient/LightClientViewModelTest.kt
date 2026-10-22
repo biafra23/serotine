@@ -24,6 +24,7 @@ class LightClientViewModelTest {
 
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
     private val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(): Flow<LightClientStatus> = status
     }
 

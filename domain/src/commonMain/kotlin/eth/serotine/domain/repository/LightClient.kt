@@ -15,10 +15,10 @@ interface LightClient {
      * Whether [LightClientStatus.Synced.finalized] can be had on this device at all: false where
      * the engine reads no block by number, so it stays null for good (Myotis 0.1.18's iOS module).
      * A CoW order's end is proven at a finalized block's own time, so none is offered where it is
-     * false (docs/swaps.md, *Proving an order's end*).
+     * false (docs/swaps.md, *Proving an order's end*). It has no default, so every adapter says
+     * what it can.
      */
     val datesFinalizedBlocks: Boolean
-        get() = true
 }
 
 /** One state of the light client, in the order a cold start passes through them. */

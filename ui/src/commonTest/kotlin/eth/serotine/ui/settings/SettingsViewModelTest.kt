@@ -43,6 +43,7 @@ class SettingsViewModelTest {
     private val usdc = Token(Address.of("0x" + "1c".repeat(20)), "USDC", "USDC", 6, "usdc")
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
     private val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(): Flow<LightClientStatus> = status
     }
 
