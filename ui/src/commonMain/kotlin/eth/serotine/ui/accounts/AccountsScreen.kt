@@ -1,5 +1,6 @@
 package eth.serotine.ui.accounts
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -25,7 +26,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -36,15 +36,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.components.AccountAvatar
-import eth.serotine.ui.components.LightClientStrip
+import eth.serotine.ui.components.LightClientHealthDot
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.NameWithControlBadge
+import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.SpeedDialAction
 import eth.serotine.ui.components.SpeedDialFab
@@ -62,8 +66,8 @@ const val ACCOUNTS_LIST_TAG = "accounts-list"
 /** Test tag of the notice when the stored list is not what is shown: set aside, or unavailable. */
 const val ACCOUNTS_NOTICE_TAG = "accounts-notice"
 
-/** Test tag of the label naming the network the app works on, for UI tests. */
-const val ACCOUNTS_NETWORK_TAG = "accounts-network"
+/** Test tag of a network's section header, followed by its chain id, for UI tests. */
+const val ACCOUNTS_SECTION_TAG = "accounts-section-"
 
 /** Test tag of the portfolio's total, for UI tests. */
 const val ACCOUNTS_TOTAL_TAG = "accounts-total"
@@ -95,6 +99,7 @@ fun AccountsRoute(
             if (action is AccountAction.Copy) copy(action.address) else onAccountAction(action)
         },
         modifier = modifier,
+        onTurnOnNetwork = viewModel::turnOnNetwork,
     )
 }
 
@@ -105,8 +110,10 @@ fun AccountsRoute(
  * ([onCreateSafe]), greyed out until an account's key is known to be held here to pay for its
  * deployment (while the list is read, too), a tap then saying why, with the ways to get one; a
  * row's tap and its long-press menu (a right click on desktop) ask [onAccountAction], its Send
- * greyed out with its reason where it cannot be done (owner ruling, 2026-10-18, #55).
- * [fabExpandedAtStart] opens the button's fan from the start (a preview).
+ * greyed out with its reason where it cannot be done (owner ruling, 2026-10-18, #55). The accounts
+ * are in a section per network (docs/networks.md, N1), each headed by its network, its light client
+ * and its total; on a network that is off, Send's reason offers to turn it on ([onTurnOnNetwork],
+ * N18). [fabExpandedAtStart] opens the button's fan from the start (a preview).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,6 +126,7 @@ fun AccountsScreen(
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
     fabExpandedAtStart: Boolean = false,
+    onTurnOnNetwork: (chainId: Long) -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
@@ -164,19 +172,14 @@ fun AccountsScreen(
                 )
             }
         },
-        topBar = {
-            TopAppBar(
-                title = { Text("Accounts") },
-                // The one network the app works on, always in sight, so a testnet wallet
-                // is never mistaken for a mainnet one.
-                actions = { NetworkLabel(state.network, Modifier.padding(end = 12.dp)) },
-            )
-        },
+        // No network in the top bar: each section names its own (docs/networks.md, N1).
+        topBar = { TopAppBar(title = { Text("Accounts") }) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            LightClientStrip(state.lightClient)
             state.upgrade?.let { UpgradeBanner(it) }
-            (state as? AccountsUiState.Ready)?.let { ready -> ready.total?.let { PortfolioTotal(it, ready.totalNote) } }
+            (state as? AccountsUiState.Ready)?.let { ready ->
+                ready.total?.let { PortfolioTotal(it, ready.totalLabel, ready.totalNote) }
+            }
             (state as? AccountsUiState.Ready)?.notice?.let { notice ->
                 Text(
                     notice,
@@ -186,16 +189,22 @@ fun AccountsScreen(
                 )
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                Rows(state, act) { unavailable = it }
+                Rows(state, act, onTurnOnNetwork) { unavailable = it }
             }
         }
     }
 }
 
-/** The portfolio's total in the display currency, and what it leaves out (docs/wallet-ux.md, screen 1). */
+/**
+ * The portfolio's total in the display currency, over the networks [label] names, and what it
+ * leaves out (docs/wallet-ux.md, screen 1; docs/networks.md, N1).
+ */
 @Composable
-private fun PortfolioTotal(total: String, note: String?) {
+private fun PortfolioTotal(total: String, label: String?, note: String?) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        label?.let {
+            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Text(total, Modifier.testTag(ACCOUNTS_TOTAL_TAG), style = MaterialTheme.typography.headlineMedium)
         note?.let {
             Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -207,6 +216,7 @@ private fun PortfolioTotal(total: String, note: String?) {
 private fun BoxScope.Rows(
     state: AccountsUiState,
     onAccountAction: (AccountAction) -> Unit,
+    onTurnOnNetwork: (Long) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ) {
     when (state) {
@@ -222,24 +232,8 @@ private fun BoxScope.Rows(
             if (state.accounts.isEmpty()) {
                 NoAccounts(Modifier.align(Alignment.Center))
             } else {
-                AccountList(state.accounts, onAccountAction, onUnavailable)
+                AccountList(state.sections, onAccountAction, onTurnOnNetwork, onUnavailable)
             }
-    }
-}
-
-/** The network's name as a plain label, not a picker: there is one network (docs/wallet-ux.md). */
-@Composable
-private fun NetworkLabel(network: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-    ) {
-        Text(
-            network,
-            Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag(ACCOUNTS_NETWORK_TAG),
-            style = MaterialTheme.typography.labelMedium,
-        )
     }
 }
 
@@ -266,22 +260,66 @@ private fun NoAccounts(modifier: Modifier = Modifier) {
 
 @Composable
 private fun AccountList(
-    accounts: List<AccountItem>,
+    sections: List<NetworkSection>,
     onAccountAction: (AccountAction) -> Unit,
+    onTurnOnNetwork: (Long) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier.fillMaxSize().testTag(ACCOUNTS_LIST_TAG)) {
-        items(accounts, key = { "${it.chainId}/${it.address}" }) { account ->
-            WithActionMenu(
-                actions = accountMenu(account, onAccountAction, onUnavailable),
-                menuLabel = "Actions for ${account.label}",
-                onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
-                clickLabel = "Open ${account.label}",
-            ) {
-                AccountRow(account)
+        sections.forEach { section ->
+            item(key = "section/${section.chainId}") { SectionHeader(section) }
+            items(section.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
+                WithActionMenu(
+                    actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
+                    menuLabel = "Actions for ${account.label}",
+                    onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
+                    clickLabel = "Open ${account.label}",
+                ) {
+                    // An account on a network that is off stays listed, dimmed (N18).
+                    AccountRow(account, Modifier.alpha(if (section.on) 1f else DIMMED))
+                }
+                HorizontalDivider()
             }
-            HorizontalDivider()
+        }
+    }
+}
+
+/** How opaque a row on a network that is off is drawn. */
+private const val DIMMED = 0.6f
+
+/**
+ * A network's section header (docs/networks.md, N1): its mark and total, and below them its light
+ * client's line, which is the section's status strip, with what the total leaves out.
+ */
+@Composable
+private fun SectionHeader(section: NetworkSection) {
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .semantics(mergeDescendants = true) { heading() }
+            .testTag(ACCOUNTS_SECTION_TAG + section.chainId),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NetworkMark(section.chainId, section.name, section.testnet, Modifier.weight(1f))
+            section.total?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
+        }
+        Row(
+            Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LightClientHealthDot(section.status.health)
+            Text(
+                section.status.text,
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        section.totalNote?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -294,15 +332,26 @@ private fun AccountList(
 private fun accountMenu(
     account: AccountItem,
     act: (AccountAction) -> Unit,
+    onTurnOnNetwork: (Long) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ): List<MenuAction> {
     val chainId = account.chainId
     val address = account.address
     val sendReason = account.sendReason
+    // On a network that is off, the way to Send is to turn it on (docs/networks.md, N19).
+    val sendNotice = sendReason?.let { reason ->
+        account.networkOff?.let { network ->
+            UnavailableNotice(
+                "Send needs $network",
+                reason,
+                listOf(UnavailableFix("Turn on $network") { onTurnOnNetwork(chainId) }),
+            )
+        } ?: UnavailableNotice("Send", reason)
+    }
     return listOf(
-        MenuAction("Send", Icons.AutoMirrored.Filled.Send, unavailable = sendReason != null) {
+        MenuAction("Send", Icons.AutoMirrored.Filled.Send, unavailable = sendNotice != null) {
             when {
-                sendReason != null -> onUnavailable(UnavailableNotice("Send", sendReason))
+                sendNotice != null -> onUnavailable(sendNotice)
                 account.kind == AccountKind.SAFE -> act(AccountAction.Propose(chainId, address))
                 else -> act(AccountAction.Send(chainId, address))
             }
@@ -315,8 +364,9 @@ private fun accountMenu(
 }
 
 @Composable
-private fun AccountRow(account: AccountItem) {
+private fun AccountRow(account: AccountItem, modifier: Modifier = Modifier) {
     ListItem(
+        modifier = modifier,
         leadingContent = { AccountAvatar(account.address, threshold = account.signers) },
         headlineContent = { NameWithControlBadge(account.label, account.control) },
         supportingContent = {

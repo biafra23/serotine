@@ -59,6 +59,7 @@ import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveDebugLog
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
@@ -254,6 +255,8 @@ class AppGraph(
             ObserveSafes(accounts, observeSafe()),
             ObserveEnsNames(accounts, names),
             ObserveLightClient(lightClient),
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
             observeUpgradeWarning(),
             soleNetwork,
         )

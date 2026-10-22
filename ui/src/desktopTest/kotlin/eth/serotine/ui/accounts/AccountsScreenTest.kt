@@ -1,6 +1,5 @@
 package eth.serotine.ui.accounts
 
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -8,7 +7,6 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -61,6 +59,27 @@ class AccountsScreenTest {
 
     private val adds = mutableListOf<String>()
 
+    private val turnedOn = mutableListOf<Long>()
+
+    /** [accounts] in Sepolia's section, under [syncing]: the only network until parts 4 and 5. */
+    private fun ready(
+        accounts: List<AccountItem>,
+        notice: String? = null,
+        total: String? = null,
+        totalNote: String? = null,
+        upgrade: UpgradeBannerItem? = null,
+        on: Boolean = true,
+    ) = AccountsUiState.Ready(
+        listOfNotNull(
+            accounts.takeIf { it.isNotEmpty() }
+                ?.let { NetworkSection(Network.SEPOLIA.chainId, "Sepolia", testnet = true, on, syncing, it) },
+        ),
+        notice,
+        total,
+        totalNote = totalNote,
+        upgrade = upgrade,
+    )
+
     private fun show(state: AccountsUiState) =
         rule.setContent {
             SerotineTheme {
@@ -71,13 +90,14 @@ class AccountsScreenTest {
                     onCreateAccount = { adds += "create" },
                     onCreateSafe = { adds += "safe" },
                     onAccountAction = { actions += it },
+                    onTurnOnNetwork = { turnedOn += it },
                 )
             }
         }
 
     @Test
     fun emptyStateInvitesTheFirstAccount() {
-        show(AccountsUiState.Ready("Sepolia", syncing, emptyList()))
+        show(ready(emptyList()))
 
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
@@ -85,7 +105,7 @@ class AccountsScreenTest {
 
     @Test
     fun readyStateListsEveryAccountWithItsControlAndBalance() {
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
+        show(ready(listOf(daily, savings)))
 
         rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithText("Daily").assertIsDisplayed()
@@ -100,11 +120,7 @@ class AccountsScreenTest {
     fun aBalanceLastVerifiedSaysSinceWhenItMayHaveChanged() {
         val note = "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
         show(
-            AccountsUiState.Ready(
-                "Sepolia",
-                syncing,
-                listOf(daily.copy(balanceVerified = false, balanceNote = note), savings),
-            ),
+            ready(listOf(daily.copy(balanceVerified = false, balanceNote = note), savings)),
         )
 
         rule.onNodeWithText("0.5 ETH").assertIsDisplayed()
@@ -114,14 +130,14 @@ class AccountsScreenTest {
     @Test
     fun anEnsNameThatNoLongerPointsToTheAccountIsSaidUnderItsRow() {
         val note = "ENS name “savings.eth” no longer points to this address"
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily, savings.copy(nameNote = note))))
+        show(ready(listOf(daily, savings.copy(nameNote = note))))
 
         rule.onNodeWithText(note).assertIsDisplayed()
     }
 
     @Test
     fun aTapOpensTheAccount() {
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(ready(listOf(daily)))
 
         rule.onNodeWithText("Daily").performClick()
 
@@ -130,7 +146,7 @@ class AccountsScreenTest {
 
     @Test
     fun aLongPressOpensTheAccountMenu() {
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(ready(listOf(daily)))
 
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Receive").assertIsDisplayed()
@@ -144,7 +160,7 @@ class AccountsScreenTest {
 
     @Test
     fun sendWorksInTheMenuOfAnAccountWhoseKeyIsHeldHereAndElseSaysWhy() {
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily, savings)))
+        show(ready(listOf(daily, savings)))
 
         rule.onNodeWithText("Savings").performTouchInput { longClick() }
         rule.onNodeWithText("Receive").assertIsDisplayed()
@@ -177,7 +193,7 @@ class AccountsScreenTest {
         rule.setContent {
             SerotineTheme {
                 AccountsScreen(
-                    state = AccountsUiState.Ready("Sepolia", syncing, listOf(savings)),
+                    state = ready(listOf(savings)),
                     onWatchAddress = {},
                     onImportPhrase = { calls += "import" },
                     onCreateAccount = { calls += "create account" },
@@ -203,7 +219,7 @@ class AccountsScreenTest {
         rule.setContent {
             SerotineTheme {
                 AccountsScreen(
-                    state = AccountsUiState.Loading("Sepolia", syncing),
+                    state = AccountsUiState.Loading(),
                     onWatchAddress = {},
                     onImportPhrase = { calls += "import" },
                     onCreateAccount = { calls += "create account" },
@@ -227,7 +243,7 @@ class AccountsScreenTest {
     fun sendFromASafeWithAnOwnerHeldHereProposesASafeTransaction() {
         val treasury = savings.copy(label = "Treasury", kind = AccountKind.SAFE, control = Control.CO_SIGNER)
         val watched = daily.copy(label = "Watched Safe", kind = AccountKind.SAFE, control = Control.WATCH_ONLY)
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(watched, treasury)))
+        show(ready(listOf(watched, treasury)))
 
         rule.onNodeWithText("Watched Safe").performTouchInput { longClick() }
         rule.onNodeWithText("Send")
@@ -248,7 +264,7 @@ class AccountsScreenTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun aRightClickOpensTheSameMenu() {
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(ready(listOf(daily)))
 
         rule.onNodeWithText("Daily").performMouseInput { rightClick() }
         rule.onNodeWithText("Receive").performClick()
@@ -258,7 +274,7 @@ class AccountsScreenTest {
 
     @Test
     fun copyingSaysSo() {
-        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
+        show(ready(listOf(daily)))
 
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Copy address").performClick()
@@ -268,10 +284,27 @@ class AccountsScreenTest {
     }
 
     @Test
-    fun theTopBarNamesTheNetworkFromItsState() {
-        show(AccountsUiState.Loading("Sepolia", syncing))
+    fun eachNetworkIsASectionHeadedByItsNameAndLightClient() {
+        show(ready(listOf(daily)))
 
-        rule.onNodeWithTag(ACCOUNTS_NETWORK_TAG).assertTextEquals("Sepolia")
+        rule.onNodeWithTag(ACCOUNTS_SECTION_TAG + Network.SEPOLIA.chainId).assertIsDisplayed()
+        rule.onNodeWithText("Sepolia · Testnet", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText(syncing.text, useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun onANetworkThatIsOffSendSaysWhyAndTurnsItOn() {
+        val off = daily.copy(networkOff = "Sepolia", balanceVerified = false, balanceNote = "Sepolia is off")
+        show(ready(listOf(off), on = false))
+
+        rule.onNodeWithText("Sepolia is off").assertIsDisplayed()
+        rule.onNodeWithText("Daily").performTouchInput { longClick() }
+        rule.onNodeWithText("Send").performClick()
+        rule.onNodeWithText("Send needs Sepolia").assertIsDisplayed()
+        rule.onNodeWithText("Turn on Sepolia").performClick()
+
+        assertEquals(listOf(Network.SEPOLIA.chainId), turnedOn)
+        assertEquals(emptyList(), actions, "nothing is sent")
     }
 
     @Test
@@ -282,7 +315,7 @@ class AccountsScreenTest {
             "Reported by peers in 5 networks, not verified · fork id 0x6c1d9423",
             urgent = false,
         )
-        show(AccountsUiState.Ready("Sepolia", syncing, emptyList(), upgrade = banner))
+        show(ready(emptyList(), upgrade = banner))
 
         rule.onNodeWithTag(UPGRADE_BANNER_TAG).assertIsDisplayed()
         rule.onNodeWithText(banner.text).assertIsDisplayed()
@@ -293,7 +326,7 @@ class AccountsScreenTest {
 
     @Test
     fun noUpgradeNoBanner() {
-        show(AccountsUiState.Ready("Sepolia", syncing, emptyList()))
+        show(ready(emptyList()))
 
         rule.onNodeWithTag(UPGRADE_BANNER_TAG).assertDoesNotExist()
     }
@@ -301,7 +334,7 @@ class AccountsScreenTest {
     @Test
     fun aSetAsideNoticeIsShownAboveTheList() {
         val notice = "Your saved account list was damaged and has been set aside. Add your accounts again."
-        show(AccountsUiState.Ready("Sepolia", syncing, emptyList(), notice))
+        show(ready(emptyList(), notice))
 
         rule.onNodeWithTag(ACCOUNTS_NOTICE_TAG).assertTextEquals(notice)
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
@@ -311,7 +344,7 @@ class AccountsScreenTest {
     @Test
     fun anUnavailableListIsExplainedWithoutInvitingAnAdd() {
         val message = "Your saved account list cannot be read right now."
-        show(AccountsUiState.ListUnavailable("Sepolia", syncing, message))
+        show(AccountsUiState.ListUnavailable(message))
 
         rule.onNodeWithTag(ACCOUNTS_NOTICE_TAG).assertTextEquals(message)
         rule.onNodeWithText("No accounts yet").assertDoesNotExist()
@@ -319,16 +352,15 @@ class AccountsScreenTest {
     }
 
     @Test
-    fun theStatusStripShowsWhatTheLightClientIsDoing() {
-        show(AccountsUiState.Loading("Sepolia", syncing))
+    fun aSectionSaysWhatItsLightClientIsDoing() {
+        show(ready(listOf(daily)))
 
-        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
-        rule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.25f, 0f..1f))).assertExists()
+        rule.onNodeWithText("Verifying sync committees · 1 of 4 periods", useUnmergedTree = true).assertExists()
     }
 
     @Test
     fun theFloatingActionButtonFansOutIntoWatchAndImport() {
-        show(AccountsUiState.Ready("Sepolia", syncing, emptyList()))
+        show(ready(emptyList()))
 
         rule.onNodeWithContentDescription("Add account").performClick()
         rule.onNodeWithText("Watch address").performClick()
@@ -342,13 +374,7 @@ class AccountsScreenTest {
     @Test
     fun theHeaderTotalsThePortfolioAndEachRowHasItsValue() {
         show(
-            AccountsUiState.Ready(
-                "Sepolia",
-                syncing,
-                listOf(daily.copy(value = "$1,000.00")),
-                total = "$1,000.00",
-                totalNote = "Testnet prices",
-            ),
+            ready(listOf(daily.copy(value = "$1,000.00")), total = "$1,000.00", totalNote = "Testnet prices"),
         )
 
         rule.onNodeWithTag(ACCOUNTS_TOTAL_TAG).assertTextEquals("$1,000.00")
@@ -360,11 +386,7 @@ class AccountsScreenTest {
     @Test
     fun aSafesBlockieCarriesItsThresholdAndItsRowItsKind() {
         show(
-            AccountsUiState.Ready(
-                "Sepolia",
-                syncing,
-                listOf(daily.copy(kind = AccountKind.SAFE, signers = "2/3", kindNote = "Safe")),
-            ),
+            ready(listOf(daily.copy(kind = AccountKind.SAFE, signers = "2/3", kindNote = "Safe"))),
         )
 
         rule.onNodeWithText("2/3", useUnmergedTree = true).assertExists()

@@ -358,7 +358,7 @@ class AccountDetailViewModel(
                 verifiedAt = (native as? BalanceReading.Verified)?.let { block(it.blockNumber) },
                 value = valuationText(value.nativeValue, value.currency, network),
                 lastKnown = (native as? BalanceReading.LastKnown)
-                    ?.let { lastKnownNote(it.blockNumber, it.asOf, formatTime) },
+                    ?.let { lastKnownNote(it.blockNumber, it.asOf, formatTime = formatTime) },
             ),
             value.nativeValue,
         )
@@ -396,7 +396,7 @@ class AccountDetailViewModel(
         is TokenBalanceReading.LastKnown -> ShownBalance(
             reading.units,
             reading.blockNumber,
-            lastKnownNote(reading.blockNumber, reading.asOf, formatTime),
+            lastKnownNote(reading.blockNumber, reading.asOf, formatTime = formatTime),
         )
         else -> null
     }
