@@ -61,6 +61,12 @@ myotis = "0.1.18"
 # addresses, SHA-256 for the BIP-39 checksum, HMAC-SHA512 for BIP-39/BIP-32).
 # 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
 kotlincrypto = "0.8.0"
+# Ktor, the app's one HTTP client (CLAUDE.md, *Platform & language direction*), used only
+# for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). 3.3.3 is the last
+# release built with Kotlin 2.2.21, our pin, and coroutines 1.10.2; 3.4.0 moves its stdlib
+# to 2.3. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
+# Darwin (NSURLSession) on iOS; neither retries a request behind the caller's back.
+ktor = "3.3.3"
 
 [plugins]
 android-application    = { id = "com.android.application",                 version.ref = "agp" }
@@ -101,3 +107,7 @@ myotis-ios                 = { module = "eth.myotis:myotis-engine-ios",         
 kotlincrypto-sha2          = { module = "org.kotlincrypto.hash:sha2",                   version.ref = "kotlincrypto" }
 kotlincrypto-sha3          = { module = "org.kotlincrypto.hash:sha3",                   version.ref = "kotlincrypto" }
 kotlincrypto-hmac-sha2     = { module = "org.kotlincrypto.macs:hmac-sha2",              version.ref = "kotlincrypto" }
+ktor-client-core           = { module = "io.ktor:ktor-client-core",                     version.ref = "ktor" }
+ktor-client-cio            = { module = "io.ktor:ktor-client-cio",                      version.ref = "ktor" }
+ktor-client-darwin         = { module = "io.ktor:ktor-client-darwin",                   version.ref = "ktor" }
+ktor-client-mock           = { module = "io.ktor:ktor-client-mock",                     version.ref = "ktor" }

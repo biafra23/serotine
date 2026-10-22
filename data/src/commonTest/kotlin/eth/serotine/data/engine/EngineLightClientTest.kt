@@ -1,6 +1,7 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
+import eth.serotine.domain.repository.FinalizedBlock
 import eth.serotine.domain.repository.LightClientStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,6 +50,27 @@ class EngineLightClientTest {
                 LightClientStatus.WaitingForHead(headAgeSeconds = null),
                 LightClientStatus.WaitingForProofPeers(headBlock = 11_922_744, headTimestamp = null),
                 LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = 1_792_100_000),
+            ),
+            seen,
+        )
+        collecting.cancel()
+    }
+
+    @Test
+    fun aSyncedStatusCarriesTheFinalizedBlockWithItsOwnTimestamp() = runTest {
+        val seen = mutableListOf<LightClientStatus>()
+        chain.snapshot =
+            running(head = 120, headTimestamp = 1_792_100_000, finalized = 40, finalizedTimestamp = 1_792_099_032)
+        val collecting = launch { client().observeStatus().collect { seen += it } }
+        runCurrent()
+        // A finalized block whose header could not be read gives no finalized block at all.
+        chain.snapshot = running(head = 121, headTimestamp = 1_792_100_012, finalized = 41)
+        advanceTimeBy(POLL)
+        runCurrent()
+        assertEquals(
+            listOf<LightClientStatus>(
+                LightClientStatus.Synced(120, 1_792_100_000, FinalizedBlock(40, 1_792_099_032)),
+                LightClientStatus.Synced(121, 1_792_100_012, finalized = null),
             ),
             seen,
         )

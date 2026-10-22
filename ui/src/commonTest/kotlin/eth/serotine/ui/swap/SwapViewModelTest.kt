@@ -67,6 +67,7 @@ import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.RouteStep
@@ -137,6 +138,7 @@ class SwapViewModelTest {
     private val signer = FakeSigner()
     private val broadcaster = FakeBroadcaster()
     private val sent = MemorySentTransfers()
+    private val cowOrders = MemoryCowOrders()
     private val clock = TestTimeSource()
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
@@ -182,6 +184,7 @@ class SwapViewModelTest {
                 balances,
                 tokenBalances,
                 sent,
+                cowOrders,
                 light,
                 Network.SEPOLIA,
                 now,

@@ -77,8 +77,9 @@ Modules (Gradle):
   token metadata, prices and address kinds, the peer-reported network-upgrade
   advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
   names, a Safe's owners' approvals on chain, Uniswap v3's pinned
-  contracts, proven by their code, and its verified calls, and the verified
-  log index that follows the accounts' histories, and a feed's round of a
+  contracts, proven by their code, and its verified calls, CoW Protocol's
+  the same way, the verified log index that follows the accounts' histories,
+  the finalized block with its header's timestamp, and a feed's round of a
   day ago from its round history), whose glue over
   `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
@@ -86,14 +87,16 @@ Modules (Gradle):
   settings (`eth.serotine.data.tokens`); the Chainlink feed table
   (`eth.serotine.data.prices`); the pinned Safe deployments, the queue of
   Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
-  the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
+  the pinned Uniswap v3 and CoW Protocol deployments
+  (`eth.serotine.data.swaps`); CoW's order API, over Ktor, and the record
+  of the CoW orders signed here (`eth.serotine.data.cow`);
   the record of sent transactions and the history of them, kept for good
   (`eth.serotine.data.transfers`); where each account's history starts
   (`eth.serotine.data.history`); the exchange rate last verified, for the
   home-screen widget (`eth.serotine.data.rates`); the Debug tab's log, in
   memory only, which the engine adapter writes each request into
   (`eth.serotine.data.logs`); and the
-  display currency
+  display currency and the swap venue last chosen
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
   engine's AAR.

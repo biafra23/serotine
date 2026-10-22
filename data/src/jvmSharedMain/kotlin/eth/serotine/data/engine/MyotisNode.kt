@@ -21,6 +21,7 @@ import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.UniswapV3Chain
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
@@ -149,6 +150,9 @@ class MyotisNode private constructor(
 
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
+
+    /** CoW Protocol's settlement contracts on this node's network, proven by their code (docs/swaps.md, *CoW Protocol*). */
+    val cow: CowChain = VerifiedCow(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
     val receipts: ReceiptTracker = EngineReceipts(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -306,6 +310,8 @@ class MyotisNode private constructor(
 
     private inner class HandleChain : EngineChain {
 
+        private val finalizedTimes = FinalizedTimes()
+
         // Each call a status read; SharedSnapshots shares one among the pollers.
         override fun snapshot(): EngineSnapshot {
             val running = when (val current = state) {
@@ -324,15 +330,17 @@ class MyotisNode private constructor(
             } else {
                 null
             }
+            val beaconState = status.beaconState()
+            val paused = status.lifecycle() == LifecycleState.PAUSED
             return EngineSnapshot.Running(
-                phase = when (status.beaconState()) {
+                phase = when (beaconState) {
                     BeaconState.SYNCING -> EngineSnapshot.Phase.SYNCING
                     BeaconState.CATCHING_UP -> EngineSnapshot.Phase.CATCHING_UP
                     BeaconState.SYNCED -> EngineSnapshot.Phase.SYNCED
                     BeaconState.STALE_ANCHOR -> EngineSnapshot.Phase.STALE_ANCHOR
                     BeaconState.STARTING, null -> EngineSnapshot.Phase.STARTING
                 },
-                paused = status.lifecycle() == LifecycleState.PAUSED,
+                paused = paused,
                 syncStartPeriod = status.syncStartPeriod(),
                 syncCurrentPeriod = status.syncCurrentPeriod(),
                 syncTargetPeriod = status.syncTargetPeriod(),
@@ -344,6 +352,11 @@ class MyotisNode private constructor(
                 wsBoundPeriods = status.wsBoundPeriods(),
                 upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
                 finalizedBlock = status.finalizedBlockNumber(),
+                // Its header read only while reads can be verified; one known stays known.
+                finalizedTimestamp = finalizedTimes.of(
+                    status.finalizedBlockNumber(),
+                    mayRead = beaconState == BeaconState.SYNCED && !paused,
+                ) { handle.reads().getBlockByNumber(it, false) },
             )
         }
 

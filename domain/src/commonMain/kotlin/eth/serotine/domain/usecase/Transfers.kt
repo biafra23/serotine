@@ -10,8 +10,12 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.hasValidChecksum
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowOrderList
+import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.HistoryList
+import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
@@ -106,11 +110,11 @@ sealed interface RecipientLookup {
  * ([maxFee], gas limit × fee cap), and the balances it leaves — [nativeBefore], what this
  * wallet's own transactions not mined yet may still take of it ([pendingCost]), the least the
  * native balance can be after ([nativeAfterAtLeast]), and for a token its balance before, what
- * this wallet's transfers and swaps of it not mined yet still move ([pendingTokenAmount]) and its balance
- * after, both of them counted. Every figure comes from verified state, each at its own block:
- * the native balance at [balanceBlock], the token's at [tokenBalanceBlock], the fees from the
- * history up to [feeBlock], and the transfer run as a verified call from the sender at
- * [simulationBlock].
+ * this wallet's transfers and swaps of it not mined yet still move ([pendingTokenAmount]), what
+ * its CoW orders may still take of it ([heldByOrders]) and its balance after, all of them counted.
+ * Every figure comes from verified state, each at its own block: the native balance at
+ * [balanceBlock], the token's at [tokenBalanceBlock], the fees from the history up to [feeBlock],
+ * and the transfer run as a verified call from the sender at [simulationBlock].
  *
  * Only [QuoteTransfer] makes one, and nothing copies it: what [SendTransfer] signs is its
  * [transaction], so a display field changed beside it would show one transfer and sign another.
@@ -131,6 +135,7 @@ data class TransferQuote internal constructor(
     val pendingCost: UInt256,
     val tokenBefore: UInt256?,
     val pendingTokenAmount: UInt256?,
+    val heldByOrders: UInt256?,
     val tokenAfter: UInt256?,
     val balanceBlock: Long?,
     val tokenBalanceBlock: Long?,
@@ -163,13 +168,19 @@ data class TransferQuote internal constructor(
  * the transaction.
  *
  * What the sender's transfers and swaps of the same token not mined yet still move
- * ([SentTransfers]) is not this one's to move either. [clock] is in unix seconds.
+ * ([SentTransfers]) is not this one's to move either, nor what its CoW orders may still take of it
+ * ([CowOrders], until a finalized block is past an order's `validTo`). A record of orders that
+ * cannot be read holds nothing back here, as an unreadable record of transfers holds none: a
+ * transfer swaps nothing, and an order whose tokens are gone cannot fill. [clock] is in unix
+ * seconds.
  */
 class QuoteTransfer(
     private val inputs: TransactionInputs,
     private val nativeBalances: NativeBalances,
     private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
+    private val cowOrders: CowOrders,
+    private val lightClient: LightClient,
     private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
 ) {
@@ -229,10 +240,17 @@ class QuoteTransfer(
             unmined.mapNotNull { it.tokenAmount(sending.address) }.sumOrNull()
                 ?: return@cancellingReads TransferQuoting.InsufficientToken
         }
+        val held = token?.let { sending ->
+            val orders = (cowOrders.observe().first() as? CowOrderList.Loaded)?.orders.orEmpty()
+            val finalized = (lightClient.observeStatus().first() as? LightClientStatus.Synced)?.finalized
+            orders.holding(from, sending.address, finalized) ?: return@cancellingReads TransferQuoting.InsufficientToken
+        }
         // What the token's earlier transfers move is not this one's to move: kept, the later one
         // would pass the run at the head and revert once they are mined, its fee paid all the same.
         val tokenAvailable = tokenBefore?.let { before ->
-            before.minusOrNull(pendingToken ?: UInt256.ZERO)?.takeIf { it >= amount }
+            before.minusOrNull(pendingToken ?: UInt256.ZERO)
+                ?.minusOrNull(held ?: UInt256.ZERO)
+                ?.takeIf { it >= amount }
                 ?: return@cancellingReads TransferQuoting.InsufficientToken
         }
         TransferQuoting.Quoted(
@@ -249,6 +267,7 @@ class QuoteTransfer(
                 pendingCost = call.pendingCost,
                 tokenBefore = tokenBefore,
                 pendingTokenAmount = pendingToken,
+                heldByOrders = held,
                 tokenAfter = tokenAvailable?.let { it - amount },
                 balanceBlock = call.balanceBlock,
                 tokenBalanceBlock = tokenBlock,

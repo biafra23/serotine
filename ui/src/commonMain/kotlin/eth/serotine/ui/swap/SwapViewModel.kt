@@ -847,7 +847,9 @@ class SwapViewModel(
             "Not enough ${network.nativeSymbol} for the most the fee can be. Transactions not mined yet count too."
         }
         SwapQuoting.InsufficientToken -> "This account holds less ${request.sell.symbol} than that, with what its " +
-            "transactions not mined yet still move."
+            "transactions not mined yet, and its CoW orders that may still fill, still move."
+        SwapQuoting.CowOrdersUnreadable -> "The record of this device's CoW orders cannot be read: one may still " +
+            "fill, so no token is swapped until it can be read."
         is SwapQuoting.Infeasible -> "This swap cannot succeed: ${quoting.detail}"
         is SwapQuoting.Reverts -> {
             val at = quoting.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()

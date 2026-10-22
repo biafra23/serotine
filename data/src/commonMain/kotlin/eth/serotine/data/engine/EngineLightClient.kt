@@ -1,6 +1,7 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
+import eth.serotine.domain.repository.FinalizedBlock
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import kotlinx.coroutines.CoroutineDispatcher
@@ -55,7 +56,13 @@ class EngineLightClient internal constructor(
             )
             snapshot.proofPeers == 0 ->
                 LightClientStatus.WaitingForProofPeers(snapshot.headBlock, snapshot.headTimestamp)
-            else -> LightClientStatus.Synced(snapshot.headBlock, snapshot.headTimestamp)
+            else -> LightClientStatus.Synced(
+                headBlock = snapshot.headBlock,
+                headTimestamp = snapshot.headTimestamp,
+                finalized = snapshot.finalizedTimestamp
+                    ?.takeIf { snapshot.finalizedBlock > 0 }
+                    ?.let { FinalizedBlock(snapshot.finalizedBlock, it) },
+            )
         }
     }
 }

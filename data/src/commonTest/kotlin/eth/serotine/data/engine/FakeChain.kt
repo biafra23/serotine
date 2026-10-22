@@ -143,6 +143,9 @@ internal fun running(
     headAgeMs: Long = 2_000,
     bound: Long = 13,
     upgrade: NetworkUpgrade? = null,
+    finalized: Long = 0,
+    finalizedTimestamp: Long? = null,
 ) = EngineSnapshot.Running(
     phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound, upgrade,
+    finalized, finalizedTimestamp,
 )

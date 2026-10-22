@@ -6,6 +6,9 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowApi
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DisplayCurrencySetting
@@ -26,6 +29,7 @@ import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SigningRequestCodec
+import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
@@ -204,6 +208,17 @@ class AppGraph(
     private val safeReleases: SafeReleases,
     /** Uniswap v3 on [network]: its pinned contracts, proven by their code, and verified calls of them. */
     private val uniswap: UniswapV3Chain,
+    /** CoW Protocol's settlement contracts on [network], proven by their code, and verified calls of them. */
+    private val cowChain: CowChain,
+    /**
+     * CoW Protocol's order API, an off-chain service, used only for a swap the user sends to CoW
+     * (CLAUDE.md, *Data sources*).
+     */
+    private val cowApi: CowApi,
+    /** The CoW orders signed here, live until their end is proven: what Send and a swap hold back. */
+    private val cowOrders: CowOrders,
+    /** The venue the user last chose on Swap, compose, which the next swap starts at. */
+    private val swapVenue: SwapVenueSetting,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
     /**
@@ -353,7 +368,7 @@ class AppGraph(
         accountValue(),
         DescribeKeyStore(keys),
         ResolveRecipient(names),
-        QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
+        QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, cowOrders, lightClient, network),
         SendTransfer(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
@@ -373,6 +388,7 @@ class AppGraph(
             nativeBalances,
             tokenBalances,
             sentTransfers,
+            cowOrders,
             lightClient,
             network,
         ),

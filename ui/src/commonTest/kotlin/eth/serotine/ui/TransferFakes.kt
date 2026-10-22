@@ -1,11 +1,16 @@
 package eth.serotine.ui
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowOrderEnd
+import eth.serotine.domain.repository.CowOrderList
+import eth.serotine.domain.repository.CowOrderRecord
+import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.FeeReading
@@ -250,3 +255,26 @@ internal class FakeLogIndex : LogIndex {
 
 /** [address] as a 32-byte log topic: left-padded with zeros. */
 internal fun topicOf(address: Address): String = "0x" + "00".repeat(12) + address.hex.removePrefix("0x")
+
+/** The record of CoW orders in memory, as the port's contract says one behaves; empty until a test adds one. */
+internal class MemoryCowOrders : CowOrders {
+    val orders = MutableStateFlow<List<CowOrderRecord>>(emptyList())
+
+    override fun observe(): Flow<CowOrderList> = orders.map { CowOrderList.Loaded(it) }
+
+    override suspend fun record(order: CowOrderRecord): Boolean {
+        orders.value = orders.value.filterNot { it.uid == order.uid } + order
+        return true
+    }
+
+    override suspend fun end(uid: CowOrderUid, end: CowOrderEnd): Boolean {
+        if (orders.value.none { it.uid == uid }) return false
+        orders.value = orders.value.map { if (it.uid == uid) it.copy(end = end) else it }
+        return true
+    }
+
+    override suspend fun prune(signedBefore: Long): Boolean {
+        orders.value = orders.value.filterNot { !it.live && it.signedAt < signedBefore }
+        return true
+    }
+}
