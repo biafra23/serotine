@@ -80,6 +80,9 @@ data class CowOrderRecord(
         require(soldToken == order.sellToken) { "the token sold is the order's" }
         val boughtToken = (buy as? TransferAsset.Erc20Token)?.token?.address ?: CowOrder.NATIVE_BUY_TOKEN
         require(boughtToken == order.buyToken) { "the asset bought is the order's" }
+        require((buy as? TransferAsset.Erc20Token)?.token?.address != CowOrder.NATIVE_BUY_TOKEN) {
+            "native ether bought is recorded as TransferAsset.Native, never as a token at CoW's marker"
+        }
         require(rangeStart >= 0) { "a block number is never negative" }
     }
 

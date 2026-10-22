@@ -71,6 +71,13 @@ class CowProtocolTest {
         val digest = GPv2Signing.digest(GPv2Signing.domainSeparator(Network.SEPOLIA.chainId, settlement), struct)
         assertEquals(realUid.digest, digest)
         assertEquals(realUid, CowOrderUid.of(digest, owner, 1_792_665_588))
+        for (appData in listOf("0x" + "1c".repeat(16), "0x" + "1c".repeat(64))) {
+            assertFailsWith<IllegalArgumentException>("app data of ${appData.length / 2 - 1} bytes") {
+                GPv2Signing.structHash(
+                    weth, cow, owner, UInt256.ONE, UInt256.ONE, 1, appData, UInt256.ZERO, partiallyFillable = false,
+                )
+            }
+        }
     }
 
     @Test
@@ -106,6 +113,7 @@ class CowProtocolTest {
         assertEquals(realUid, CowOrderUid.parse(realUid.hex.uppercase().replace("0X", "0x")))
         assertNull(CowOrderUid.parse("0x1234"))
         assertNull(CowOrderUid.parse(realUid.hex + "00"))
+        assertNull(CowOrderUid.parse("0x0X" + realUid.hex.removePrefix("0x")), "a doubled prefix")
         assertFailsWith<IllegalArgumentException> {
             CowOrderUid.of(realUid.digest, owner, CowOrder.UINT32_MAX + 1)
         }

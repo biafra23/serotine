@@ -89,5 +89,9 @@ class CowOrderRecordTest {
         val forEther = order.copy(buyToken = CowOrder.NATIVE_BUY_TOKEN)
         val forEtherUid = forEther.uid(Network.SEPOLIA.chainId, settlement, account)
         record(order = forEther, buy = TransferAsset.Native, uid = forEtherUid)
+        assertFailsWith<IllegalArgumentException>("native ether as a token at CoW's marker") {
+            val marker = Token(CowOrder.NATIVE_BUY_TOKEN, "ETH", "Ether", 18, null)
+            record(order = forEther, buy = TransferAsset.Erc20Token(marker), uid = forEtherUid)
+        }
     }
 }

@@ -131,7 +131,8 @@ value class CowOrderUid private constructor(val hex: String) {
 
         /** The UID [text] spells (`0x` optional, any case), or null when it is not 56 bytes. */
         fun parse(text: String): CowOrderUid? {
-            val hex = "0x" + text.trim().removePrefix("0x").removePrefix("0X").lowercase()
+            // Lower-cased first, so one prefix is stripped and a doubled one fails the shape.
+            val hex = "0x" + text.trim().lowercase().removePrefix("0x")
             return hex.takeIf(SHAPE::matches)?.let(::CowOrderUid)
         }
 
@@ -174,7 +175,11 @@ internal object GPv2Signing {
     fun domainSeparator(chainId: Long, settlement: Address): ByteArray =
         keccak256(DOMAIN_TYPEHASH + NAME_HASH + VERSION_HASH + word(chainId) + word(settlement))
 
-    /** The struct hash of a sell order with ERC-20 balances, whatever its other fields. */
+    /**
+     * The struct hash of a sell order with ERC-20 balances, whatever its other fields; [appData] is
+     * one 32-byte word (`0x` optional), and anything else is refused rather than shifting the
+     * fields after it.
+     */
     fun structHash(
         sellToken: Address,
         buyToken: Address,
@@ -185,21 +190,25 @@ internal object GPv2Signing {
         appData: String,
         feeAmount: UInt256,
         partiallyFillable: Boolean,
-    ): ByteArray = keccak256(
-        ORDER_TYPEHASH +
-            word(sellToken) +
-            word(buyToken) +
-            word(receiver) +
-            sellAmount.toBytes32() +
-            buyAmount.toBytes32() +
-            word(validTo) +
-            appData.removePrefix("0x").hexToBytes() +
-            feeAmount.toBytes32() +
-            KIND_SELL +
-            word(if (partiallyFillable) 1L else 0L) +
-            BALANCE_ERC20 +
-            BALANCE_ERC20,
-    )
+    ): ByteArray {
+        val appDataWord = appData.removePrefix("0x").hexToBytes()
+        require(appDataWord.size == 32) { "appData is one 32-byte word" }
+        return keccak256(
+            ORDER_TYPEHASH +
+                word(sellToken) +
+                word(buyToken) +
+                word(receiver) +
+                sellAmount.toBytes32() +
+                buyAmount.toBytes32() +
+                word(validTo) +
+                appDataWord +
+                feeAmount.toBytes32() +
+                KIND_SELL +
+                word(if (partiallyFillable) 1L else 0L) +
+                BALANCE_ERC20 +
+                BALANCE_ERC20,
+        )
+    }
 
     /** EIP-712's `keccak256(0x19 ‖ 0x01 ‖ domain ‖ struct)`. */
     fun digest(domainSeparator: ByteArray, structHash: ByteArray): Digest =
