@@ -1,5 +1,8 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowTrade
@@ -54,7 +57,8 @@ class CowOrderEndsTest {
     private val index = RecordingLogIndex()
     private val orders = MemoryCowOrders(record)
     private val light = FakeLightClient()
-    private val prove = ProveCowOrderEnds(orders, index, light)
+    private val wallet = ListAccountRepository(Account(account, AccountKind.EOA, "Daily", AccountCustody.InKeyStore))
+    private val prove = ProveCowOrderEnds(orders, index, light, wallet)
 
     private val ownerTopic = "0x" + "00".repeat(12) + account.hex.removePrefix("0x")
     private fun uidData(offset: String) = "0".repeat(62) + offset + "0".repeat(62) + "38" +
@@ -181,9 +185,41 @@ class CowOrderEndsTest {
         index.answer = { LogsReading.NotCovered(100L..130L) }
         assertNull(prove.endOf(record, FinalizedBlock(140, validTo + 12)))
         index.answer = { LogsReading.NotWatched }
-        assertNull(prove.endOf(record, FinalizedBlock(140, validTo + 12)))
+        assertNull(prove.endOf(record, FinalizedBlock(140, validTo + 12)), "not followed yet, as at every start")
         index.answer = { LogsReading.Unavailable(ReadUnavailable.UNPROVEN) }
         assertNull(prove.endOf(record, FinalizedBlock(140, validTo + 12)))
+    }
+
+    @Test
+    fun anOrderOfAnAccountNoLongerInTheWalletCanNeverBeProven() = runTest {
+        index.answer = { LogsReading.NotWatched }
+        assertNull(prove.endOf(record, FinalizedBlock(140, validTo), removed = true), "it may still fill")
+        assertEquals(CowOrderEnd.NotProvable, prove.endOf(record, FinalizedBlock(141, validTo + 12), removed = true))
+        // Its entry still answering: proven as any.
+        answer(trade(at = 120))
+        val end = prove.endOf(record, FinalizedBlock(141, validTo + 12), removed = true)
+        assertEquals(120, (end as CowOrderEnd.Filled).block)
+    }
+
+    @Test
+    fun theWalletsAccountsSayWhichEntryIsGoneForGood() = runTest {
+        index.answer = { LogsReading.NotWatched }
+        val running = launch { prove() }
+        light.status.value = LightClientStatus.Synced(150, validTo + 30, FinalizedBlock(141, validTo + 12))
+        runCurrent()
+        assertEquals(null, orders.orders.value.single().end, "the account is held: tried again")
+
+        wallet.unreadable = true
+        val other = Account(Address.of("0x" + "bb".repeat(20)), AccountKind.EOA, "Other", AccountCustody.Watched)
+        wallet.accounts.value = listOf(other)
+        runCurrent()
+        assertEquals(null, orders.orders.value.single().end, "an account list that cannot be read removes nothing")
+
+        wallet.unreadable = false
+        wallet.accounts.value = emptyList()
+        runCurrent()
+        assertEquals(CowOrderEnd.NotProvable, orders.orders.value.single().end, "removed: not provable")
+        running.cancel()
     }
 
     @Test

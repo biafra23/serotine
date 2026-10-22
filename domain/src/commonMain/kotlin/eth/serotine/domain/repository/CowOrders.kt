@@ -124,8 +124,9 @@ sealed interface CowOrderEnd {
 
     /**
      * Its end cannot be proven, ever: its range reaches below the start of the account's log-index
-     * entry. Recorded only once a finalized block is past its `validTo`, when it can fill no more.
-     * The balance shows what happened.
+     * entry, or the account is no longer in the wallet, its entry no longer followed. Recorded only
+     * once a finalized block is past its `validTo`, when it can fill no more. The balance shows what
+     * happened.
      */
     data object NotProvable : CowOrderEnd
 }

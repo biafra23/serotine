@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
@@ -239,6 +240,19 @@ class AccountActivityTest {
         )
         assertEquals("On Uniswap · 0x3bFA…e48E", rows.first().detail)
         assertEquals("Router 0x3bFA…e48E", rows.last().detail)
+    }
+
+    @Test
+    fun aCowOrdersCancellationOnChainSaysSoAndNamesTheSettlement() = runTest {
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val uid = CowOrderUid.of("0x" + "ab".repeat(32) + alice.address.hex.removePrefix("0x") + "6ad9e7f4")
+        history.entries.value = listOf(HistoryEntry(sent(13, SentAction.CowCancellation(settlement, uid), 900)))
+
+        val row = assertIs<ActivityUiState.Shown>(activity().value).rows.single()
+
+        assertEquals("Cancelled a CoW order on chain", row.title)
+        assertEquals("On CoW · 0x9008…ab41", row.detail)
+        assertEquals("0x9008D19f58AAbD9eD0D60971565AA8510560ab41", row.about)
     }
 
     /** The treasury followed from block 9,400,000: its events indexed over [covered], its transfers [transfers]. */

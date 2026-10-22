@@ -1,6 +1,8 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.GPv2Settlement
+import eth.serotine.domain.repository.AccountList
+import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.CowOrderEnd
 import eth.serotine.domain.repository.CowOrderList
 import eth.serotine.domain.repository.CowOrderRecord
@@ -37,35 +39,54 @@ import kotlinx.coroutines.flow.map
  * - Else, once the finalized block's own timestamp is past the order's `validTo`: never filled.
  * - A settlement log of either event that does not decode proves nothing, and is tried again:
  *   skipped, it could hide this order's fill.
- * - A range below the entry's start can never be proven ([CowOrderEnd.NotProvable]), but is said
- *   so only once a finalized block is past `validTo`: until then the order may still fill, and its
- *   tokens stay held back. A range not covered yet, an entry not followed yet, or no answer right
- *   now is tried again.
+ * - Two cases can never be proven ([CowOrderEnd.NotProvable]), and are said so only once a finalized
+ *   block is past `validTo`: until then the order may still fill, and its tokens stay held back.
+ *   - A range below the entry's start.
+ *   - An entry no longer followed because its account is no longer in the wallet ([accounts]). Its
+ *     entry and logs were dropped with it, and an account added again starts its history after the
+ *     order.
+ * - A range not covered yet, no answer right now, or an entry not followed yet for an account the
+ *   wallet holds (as at every start, until the index is configured) is tried again. So is every
+ *   entry not followed while the account list cannot be read.
  */
 class ProveCowOrderEnds(
     private val cowOrders: CowOrders,
     private val logIndex: LogIndex,
     private val lightClient: LightClient,
+    private val accounts: AccountRepository,
 ) {
     /**
-     * Runs until cancelled: each time the record of orders, the finalized block or the index's
-     * coverage changes, proves what it can of every live order.
+     * Runs until cancelled: each time the record of orders, the finalized block, the wallet's
+     * accounts or the index's coverage changes, proves what it can of every live order.
      */
     suspend operator fun invoke() {
         val finalized = lightClient.observeStatus()
             .map { (it as? LightClientStatus.Synced)?.finalized }
             .distinctUntilChanged()
-        combine(cowOrders.observe(), finalized, logIndex.observeCoverage()) { orders, final, _ -> orders to final }
-            .collectLatest { (orders, final) ->
-                val live = (orders as? CowOrderList.Loaded)?.orders.orEmpty().filter { it.live }
-                for (order in live) {
-                    endOf(order, final)?.let { cowOrders.end(order.uid, it) }
-                }
+        // The wallet's addresses; null while the list cannot be read, when no account counts as removed.
+        val held = accounts.observeAccounts()
+            .map { list -> (list as? AccountList.Loaded)?.accounts?.map { it.address }?.toSet() }
+            .distinctUntilChanged()
+        combine(cowOrders.observe(), finalized, held, logIndex.observeCoverage()) { orders, final, addresses, _ ->
+            Triple(orders, final, addresses)
+        }.collectLatest { (orders, final, addresses) ->
+            val live = (orders as? CowOrderList.Loaded)?.orders.orEmpty().filter { it.live }
+            for (order in live) {
+                val removed = addresses != null && order.account !in addresses
+                endOf(order, final, removed)?.let { cowOrders.end(order.uid, it) }
             }
+        }
     }
 
-    /** What the chain proves of [order] with [finalized] the newest finalized block; null: nothing yet. */
-    internal suspend fun endOf(order: CowOrderRecord, finalized: FinalizedBlock?): CowOrderEnd? {
+    /**
+     * What the chain proves of [order] with [finalized] the newest finalized block, its account
+     * [removed] from the wallet or not; null: nothing yet.
+     */
+    internal suspend fun endOf(
+        order: CowOrderRecord,
+        finalized: FinalizedBlock?,
+        removed: Boolean = false,
+    ): CowOrderEnd? {
         if (finalized == null || finalized.number < order.rangeStart) return null
         val query = LogQuery(
             key = LogWatchKey.Mention(order.account),
@@ -78,7 +99,10 @@ class ProveCowOrderEnds(
             is LogsReading.Logs -> reading.logs
             is LogsReading.BeforeStart ->
                 return CowOrderEnd.NotProvable.takeIf { finalized.timestamp > order.order.validTo }
-            is LogsReading.NotCovered, LogsReading.NotWatched, is LogsReading.Unavailable -> return null
+            // Not followed: for good once its account is gone, not yet while the wallet holds it.
+            LogsReading.NotWatched ->
+                return CowOrderEnd.NotProvable.takeIf { removed && finalized.timestamp > order.order.validTo }
+            is LogsReading.NotCovered, is LogsReading.Unavailable -> return null
         }
         val settlementLogs = logs.filter { it.log.address == order.settlement }
         val undecodable = settlementLogs.any { indexed ->

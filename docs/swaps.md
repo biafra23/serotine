@@ -595,9 +595,14 @@ So the proof is the account's own verified logs.
     again as the index grows. The status offers no Uniswap swap until then.
     - The hold-back still ends as *A signed order is live until it is proven
       dead* says, once the order can take nothing more, whatever the proof.
-    - A range refused for good (an entry no longer followed, a range below
-      its start) is said as not provable. The balance shows what happened,
-      and a new swap is the user's own decision.
+    - A range refused for good is said as not provable, once a finalized
+      block is past `validTo`. The balance shows what happened, and a new
+      swap is the user's own decision. That is a range below its entry's
+      start, or an entry no longer followed because the account was removed
+      from the wallet: its entry went with it, and an account added again
+      starts its history after the order.
+    - An entry not followed yet, as at every start until the index is
+      configured, is no refusal: the proof is tried again.
 - **An off-chain cancellation through the API proves nothing**: a solver may
   already hold the order. It is not built.
 - **The wait.** On Sepolia a block is final two to three epochs after it is
