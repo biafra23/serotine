@@ -305,7 +305,17 @@ network where docs/wallet-ux.md has it say "Sepolia" today.
   ether only"). Create is greyed out until one is ticked; a tap on it says
   so. The key is sealed once; one account per network ticked is added under
   the name given.
-- **N9 Import recovery phrase**: the same question at the end of the import.
+- **N9 Import recovery phrase**: the same question, the last thing asked
+  before Import.
+- **The key is sealed only together with its accounts.** The network
+  question is answered before the seal, never after it. Then the seal and
+  the accounts are added in one step that a cancelled caller cannot cut in
+  half, as `ImportMnemonicAccount` already does for its one account: key
+  first, then the accounts. So no envelope is ever left without an account
+  pointing at it, and `RemoveAccount`'s last-account rule always has one to
+  find. An address already watched on some networks becomes held there,
+  whether or not those networks were ticked, and the ticked ones add the
+  rest.
 - **N10 Watch address, an EOA**: the address (or a name, on Ethereum or
   Sepolia), then the detection per network, each row with what the network
   says (EOA, and the native balance once verified). When the address is an
@@ -340,6 +350,8 @@ network where docs/wallet-ux.md has it say "Sepolia" today.
   per network shows its accounts and its light client ("2 accounts · Verified
   at block N", "No accounts · not running"). A row opens that network's light
   client. There are no switches: a network runs because it has accounts.
+  (The mockup has no Sepolia account, unlike N1, so that it can draw a
+  network that is not running.)
 - **N17 Add token**: the network first, then the address, read on that
   network.
 
@@ -394,6 +406,12 @@ releasable. The parts, in order:
 
 Parts 4 and 5 are independent once 3 is in and can be reviewed in either
 order.
+
+**Still the owner's to answer before part 1 is coded** (CLAUDE.md, step 3
+of the multi-PR rule): may the part PRs be merged into `feature/networks`
+without waiting for the owner, or does the owner merge each one? The answer
+lives in the conversation where it is given. Until a session has it in its
+own conversation, the owner merges each part.
 
 ## Open questions, the owner's to decide
 
