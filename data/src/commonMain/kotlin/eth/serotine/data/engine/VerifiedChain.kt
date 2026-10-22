@@ -4,6 +4,7 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.repository.FinalizedBlock
 import org.kotlincrypto.hash.sha3.Keccak256
 
 /**
@@ -50,6 +51,13 @@ internal interface VerifiedChain {
      * Blocks, bounded by the engine.
      */
     fun storageAt(address: Address, slot: ByteArray): String?
+
+    /**
+     * Block [number]'s header as the engine's verified `getBlockByNumber` answers it (its JSON block
+     * object, without the transactions); null when it could not be read verified, and from an
+     * engine that offers no such read. Blocks, bounded by the engine.
+     */
+    fun blockByNumber(number: Long): String? = null
 }
 
 /** A verified call's answer. */
@@ -168,6 +176,11 @@ internal sealed interface EngineSnapshot {
         val upgrade: NetworkUpgrade? = null,
         /** The beacon-finalized block's number (0: none yet). */
         val finalizedBlock: Long = 0,
+        /**
+         * The newest finalized block whose own header was read, with its timestamp ([FinalizedTimes]):
+         * [finalizedBlock], or an older one until its header is had; null while none was.
+         */
+        val finalizedHeader: FinalizedBlock?,
     ) : EngineSnapshot {
 
         /**

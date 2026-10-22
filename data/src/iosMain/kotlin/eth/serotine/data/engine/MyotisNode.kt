@@ -21,6 +21,7 @@ import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.UniswapV3Chain
 import io.myotis.engine.ios.BeaconState
 import io.myotis.engine.ios.ChainHandle
@@ -129,8 +130,14 @@ class MyotisNode private constructor(
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
     val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
 
-    /** This node's light client, for the user to watch. */
-    val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
+    /**
+     * This node's light client, for the user to watch. It gives no finalized block's own time here:
+     * the iOS module reads no block by number yet, so no CoW order is offered on iOS.
+     */
+    val lightClient: LightClient =
+        object : LightClient by EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL) {
+            override val datesFinalizedBlocks: Boolean = false
+        }
 
     /** Network upgrades this build does not support, as peers report them to this node. */
     val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -146,6 +153,12 @@ class MyotisNode private constructor(
 
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
+
+    /**
+     * CoW Protocol's settlement contracts on this node's network, proven by their code
+     * (docs/swaps.md, *CoW Protocol*).
+     */
+    val cow: CowChain = VerifiedCow(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
     val receipts: ReceiptTracker = EngineReceipts(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -335,6 +348,11 @@ class MyotisNode private constructor(
                 wsBoundPeriods = status.wsBoundPeriods,
                 upgrade = status.upgradeAdvisory?.toNetworkUpgrade(),
                 finalizedBlock = status.finalizedBlockNumber,
+                // No finalized timestamp on iOS: Myotis 0.1.18's iOS module reads no block by
+                // number (its block reads are internal), and the slot's time is no stand-in for the
+                // header's (docs/swaps.md, *Proving an order's end*). A CoW order is then not
+                // offered here, as it waits for a finalized block's own time.
+                finalizedHeader = null,
             )
         }
 

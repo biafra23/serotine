@@ -9,6 +9,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.cow.FileCowOrders
+import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
@@ -21,6 +23,7 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -35,6 +38,7 @@ import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -156,6 +160,8 @@ private fun openWallet(dataDir: File) {
     // of them kept for good with how it ended (issue #85): each record goes into both.
     val sentRecord = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
     val transactionHistory = FileTransactionHistory(dataDir.resolve("transaction-history.json").path)
+    // The CoW orders signed here, each live until its end is proven (docs/swaps.md): public data only.
+    val cowOrders = FileCowOrders(dataDir.resolve("cow-orders.json").path)
     val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
     application(exitProcessOnExit = false) {
         LaunchedEffect(Unit) {
@@ -225,6 +231,18 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following the accounts' logs stopped: ${e::class.simpleName}")
             }
         }
+        LaunchedEffect(Unit) {
+            // Each CoW order's end is proven from the accounts' log-index entries, while the app runs
+            // (docs/swaps.md, *Proving an order's end*), after the ended ones signed over a week ago are
+            // dropped. A failure ends it, never the wallet.
+            try {
+                ProveCowOrderEnds(cowOrders, node.logIndex, node.lightClient, accounts)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: proving the CoW orders' ends stopped: ${e::class.simpleName}")
+            }
+        }
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
@@ -263,6 +281,12 @@ private fun openWallet(dataDir: File) {
                 safeReleases = PinnedSafeReleases(),
                 // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
                 uniswap = node.uniswap,
+                // CoW Protocol: its pinned contracts proven by their code, and its order API, an
+                // off-chain service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
+                cowChain = node.cow,
+                cowApi = HttpCowApi.create(),
+                cowOrders = cowOrders,
+                swapVenue = FileSwapVenue(dataDir.resolve("swap-venue.json").path),
                 network = Network.SEPOLIA,
                 debugLog = apiLog,
                 debugScreen = debugScreen,

@@ -28,7 +28,7 @@ import kotlin.test.assertEquals
 class UpdateRequiredViewModelTest {
 
     private val report = MutableStateFlow<NetworkUpgrade?>(null)
-    private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Synced(100, null))
+    private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Synced(100, null, finalized = null))
     private val activated = NetworkUpgrade(NetworkUpgrade.Phase.ACTIVE, 1_791_294_816, "0x6c1d9423", 5)
 
     private fun viewModel() = UpdateRequiredViewModel(
@@ -41,6 +41,7 @@ class UpdateRequiredViewModelTest {
                 override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
             },
             object : LightClient {
+                override val datesFinalizedBlocks = true
                 override fun observeStatus(): Flow<LightClientStatus> = status
             },
             clock = { 1_791_400_000 },
@@ -79,7 +80,7 @@ class UpdateRequiredViewModelTest {
         )
 
         // A light client that verifies again: the app comes back.
-        status.value = LightClientStatus.Synced(200, null)
+        status.value = LightClientStatus.Synced(200, null, finalized = null)
         runCurrent()
         assertEquals(UpdateRequiredUiState.NotRequired, viewModel.uiState.value)
     }

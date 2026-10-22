@@ -21,6 +21,7 @@ import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.UniswapV3Chain
 import io.myotis.api.BeaconState
 import io.myotis.api.ChainHandle
@@ -105,9 +106,13 @@ class MyotisNode private constructor(
     /** Where the engine's own log is drained into [debugLog] while the engine runs. */
     private val logScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Where the finalized block's header is read, off the status poll ([FinalizedTimes]). */
+    private val headerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
     private val chain: EngineChain = HandleChain().let { handle ->
-        SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
+        val logged = apiLog?.let { LoggedChain(handle, it) } ?: handle
+        SharedSnapshots(FinalizedHeaders(logged, FinalizedTimes(headerScope)), SNAPSHOT_REUSE)
     }
 
     /** The balances last verified, kept for after a restart; none kept without a path. */
@@ -149,6 +154,12 @@ class MyotisNode private constructor(
 
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
+
+    /**
+     * CoW Protocol's settlement contracts on this node's network, proven by their code
+     * (docs/swaps.md, *CoW Protocol*).
+     */
+    val cow: CowChain = VerifiedCow(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
     val receipts: ReceiptTracker = EngineReceipts(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -204,6 +215,7 @@ class MyotisNode private constructor(
             current as? State.Running
         }
         logScope.cancel()
+        headerScope.cancel()
         running?.stop()
         // In a debug build, what the engine said while stopping, which the pump no longer drains.
         if (running != null) debugLog?.let { EngineLogPump(Myotis::drainLogs, it).drainNow() }
@@ -344,6 +356,8 @@ class MyotisNode private constructor(
                 wsBoundPeriods = status.wsBoundPeriods(),
                 upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
                 finalizedBlock = status.finalizedBlockNumber(),
+                // Filled by FinalizedHeaders, which reads the header through this chain.
+                finalizedHeader = null,
             )
         }
 
@@ -403,6 +417,11 @@ class MyotisNode private constructor(
             val contract = address.hex.removePrefix("0x").fromHex()
             val word = handle.reads().getStorageAt(contract, slot, "latest") ?: return null
             return word.toHex().padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
+        }
+
+        override fun blockByNumber(number: Long): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getBlockByNumber("0x" + number.toString(16), false)
         }
 
         // "pending": the verified count plus the sends this node made that are not mined yet,

@@ -123,6 +123,17 @@ private const val ACTIVITY_COVERAGE = "Transactions sent from this device. Trans
     "from this account elsewhere, are not listed yet."
 
 private val activityRows = listOf(
+    // A CoW order signed here, live: it opens the order's status.
+    ActivityRow(
+        key = "0x" + "c0".repeat(56),
+        title = "CoW order: 40 USDC for at least 0.015851 ETH",
+        detail = "On CoW · 0x9008…ab41",
+        about = "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+        time = "Oct 19, 2026, 4:22 PM",
+        status = "May fill until Oct 19, 2026, 4:27 PM",
+        state = ActivityState.WAITING,
+        opens = ActivityKey("0x" + "c0".repeat(56), cowOrder = true),
+    ),
     ActivityRow(
         key = "0x" + "6".repeat(64),
         title = "Swapped 100 USDC for at least 4.28845 LINK",

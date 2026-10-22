@@ -48,6 +48,11 @@ internal class LoggedChain(
             inner.storageAt(address, slot)
         }
 
+    override fun blockByNumber(number: Long): String? =
+        request("getBlockByNumber", { "block=0x${number.toString(16)}, full=false" }, ::answered) {
+            inner.blockByNumber(number)
+        }
+
     override fun pendingNonce(address: Address): Long? =
         request("getTransactionCount", { "address=${address.hex}, block=pending" }, ::answered) {
             inner.pendingNonce(address)

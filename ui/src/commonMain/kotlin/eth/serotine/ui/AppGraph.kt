@@ -1,11 +1,15 @@
 package eth.serotine.ui
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowApi
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DisplayCurrencySetting
@@ -26,6 +30,7 @@ import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SigningRequestCodec
+import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
@@ -36,7 +41,9 @@ import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
+import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
+import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
@@ -48,10 +55,13 @@ import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveCowOrder
+import eth.serotine.domain.usecase.ObserveCowOrderLife
 import eth.serotine.domain.usecase.ObserveDebugLog
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -66,14 +76,18 @@ import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveSentTransfer
+import eth.serotine.domain.usecase.ObserveSwapVenue
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.PlaceCowOrder
 import eth.serotine.domain.usecase.PlanSafe
 import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.ProposeSafeTx
+import eth.serotine.domain.usecase.QuoteCowCancellation
+import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteSafeApproval
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.QuoteSafeExecution
@@ -87,6 +101,7 @@ import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendSwap
 import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
@@ -104,6 +119,7 @@ import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activitydetail.ActivityDetailViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
+import eth.serotine.ui.coworder.CowOrderViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
@@ -122,6 +138,7 @@ import eth.serotine.ui.safetx.SafeTxViewModel
 import eth.serotine.ui.security.SecurityViewModel
 import eth.serotine.ui.send.SendViewModel
 import eth.serotine.ui.settings.SettingsViewModel
+import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapViewModel
 import eth.serotine.ui.tokens.TokensViewModel
 import eth.serotine.ui.transferstatus.TransferStatusViewModel
@@ -204,6 +221,17 @@ class AppGraph(
     private val safeReleases: SafeReleases,
     /** Uniswap v3 on [network]: its pinned contracts, proven by their code, and verified calls of them. */
     private val uniswap: UniswapV3Chain,
+    /** CoW Protocol's settlement contracts on [network], proven by their code, and verified calls of them. */
+    private val cowChain: CowChain,
+    /**
+     * CoW Protocol's order API, an off-chain service, used only for a swap the user sends to CoW
+     * (CLAUDE.md, *Data sources*).
+     */
+    private val cowApi: CowApi,
+    /** The CoW orders signed here, live until their end is proven: what Send and a swap hold back. */
+    private val cowOrders: CowOrders,
+    /** The venue the user last chose on Swap, compose, which the next swap starts at. */
+    private val swapVenue: SwapVenueSetting,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
     /**
@@ -353,15 +381,27 @@ class AppGraph(
         accountValue(),
         DescribeKeyStore(keys),
         ResolveRecipient(names),
-        QuoteTransfer(transactionInputs, nativeBalances, tokenBalances, sentTransfers, network),
+        QuoteTransfer(
+            transactionInputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            cowOrders,
+            cowChain,
+            lightClient,
+            network,
+        ),
         SendTransfer(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
         network,
     )
 
-    /** Swap from the account at [from], selling the token at [sell] (null: the network's currency). */
-    fun swapViewModel(from: Address, sell: Address?): SwapViewModel = SwapViewModel(
+    /**
+     * Swap from the account at [from], selling the token at [sell] (null: the network's currency),
+     * opened with [fill] filled in when given: the same swap again.
+     */
+    fun swapViewModel(from: Address, sell: Address?, fill: SwapFill? = null): SwapViewModel = SwapViewModel(
         from,
         sell,
         ObserveAccounts(accounts),
@@ -373,6 +413,8 @@ class AppGraph(
             nativeBalances,
             tokenBalances,
             sentTransfers,
+            cowOrders,
+            cowChain,
             lightClient,
             network,
         ),
@@ -381,6 +423,39 @@ class AppGraph(
         SendTokenApproval(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
+        ObserveSwapVenue(swapVenue),
+        ChooseSwapVenue(swapVenue),
+        CowOfferedOnThisDevice(lightClient),
+        QuoteCowSwap(
+            cowChain,
+            cowApi,
+            FindUniswapRoute(uniswap, transactionInputs),
+            transactionInputs,
+            tokenBalances,
+            sentTransfers,
+            cowOrders,
+            historyStarts,
+            lightClient,
+            network,
+        ),
+        PlaceCowOrder(FindUniswapRoute(uniswap, transactionInputs), signer, cowOrders, cowApi, lightClient),
+        network,
+        fill = fill,
+    )
+
+    /**
+     * Where the CoW order [uid] signed here stands: its end as the chain proves it, CoW's word on it
+     * while it may fill, and its cancellation on chain.
+     */
+    fun cowOrderViewModel(uid: CowOrderUid): CowOrderViewModel = CowOrderViewModel(
+        uid,
+        ObserveCowOrder(cowOrders),
+        ObserveCowOrderLife(cowApi, network),
+        ObserveAccounts(accounts),
+        DescribeKeyStore(keys),
+        QuoteCowCancellation(transactionInputs, nativeBalances, sentTransfers, cowChain, lightClient, network),
+        SendCowCancellation(signer, broadcaster, sentTransfers),
+        RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         network,
     )
 
@@ -404,6 +479,7 @@ class AppGraph(
         ObserveTokenTransfers(logIndex, historyStarts),
         knownTokens(),
         ObserveSentToAddresses(transactionHistory),
+        ObserveAccountCowOrders(cowOrders, network),
         network,
     )
 

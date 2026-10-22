@@ -77,8 +77,9 @@ Modules (Gradle):
   token metadata, prices and address kinds, the peer-reported network-upgrade
   advisory, for sending the nonce, fees, gas, broadcast, receipts and ENS
   names, a Safe's owners' approvals on chain, Uniswap v3's pinned
-  contracts, proven by their code, and its verified calls, and the verified
-  log index that follows the accounts' histories, and a feed's round of a
+  contracts, proven by their code, and its verified calls, CoW Protocol's
+  the same way, the verified log index that follows the accounts' histories,
+  the finalized block with its header's timestamp, and a feed's round of a
   day ago from its round history), whose glue over
   `io.myotis.api` lives in a `jvmSharedMain` source
   set the Android and desktop targets share; the record of a known upgrade
@@ -86,14 +87,16 @@ Modules (Gradle):
   settings (`eth.serotine.data.tokens`); the Chainlink feed table
   (`eth.serotine.data.prices`); the pinned Safe deployments, the queue of
   Safe transactions and the signing-request codec (`eth.serotine.data.safe`);
-  the pinned Uniswap v3 deployments (`eth.serotine.data.swaps`);
+  the pinned Uniswap v3 and CoW Protocol deployments
+  (`eth.serotine.data.swaps`); CoW's order API, over Ktor, and the record
+  of the CoW orders signed here (`eth.serotine.data.cow`);
   the record of sent transactions and the history of them, kept for good
   (`eth.serotine.data.transfers`); where each account's history starts
   (`eth.serotine.data.history`); the exchange rate last verified, for the
   home-screen widget (`eth.serotine.data.rates`); the Debug tab's log, in
   memory only, which the engine adapter writes each request into
   (`eth.serotine.data.logs`); and the
-  display currency
+  display currency and the swap venue last chosen
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the
   engine's AAR.
@@ -824,17 +827,27 @@ discussion that produced this note.
   device: accepted as is, as the log index makes that trade-off for any
   watch-list.
 - docs/wallet-ux.md applies these rulings to the screens.
-- **Swaps: Uniswap first, then CoW Protocol, preferred while its servers
-  work, with Uniswap as the fallback** (owner's direction, 2026-10-18;
-  docs/swaps.md, issue #69). Uniswap's contracts are chain data like any
+- **Swaps: Uniswap first, then CoW Protocol; the user chooses the venue**
+  (owner's directions, 2026-10-18 and 2026-10-22; docs/swaps.md, issues #69
+  and #144). The user decides which venue each swap uses, and Uniswap stays
+  available when CoW is not. Uniswap's contracts are chain data like any
   other: pinned, read with verified calls, and sent to like any transaction.
-  CoW's order API is an off-chain service whose ruling is still open (next
-  item).
-- **Open decisions, each recorded here before its code lands**:
-  - the dApp connection protocol (WalletConnect's relay is an off-chain
-    service, and a request that arrives through it is untrusted input,
-    decoded and shown as such);
-  - CoW Protocol's order API: what it learns, and what of its answers is
-    shown (docs/swaps.md, *Open questions*).
-
-  Until decided, neither is wired in.
+- **CoW Protocol's order API is an off-chain service, used only for a swap
+  the user sends to CoW** (owner ruling, 2026-10-22):
+  - CoW learns the swaps the user sends to it and no others: the account's
+    address, the pair, the amounts, the device's IP address and, for a
+    signed order, the order. With Uniswap chosen, CoW is never contacted.
+  - The app data carries nothing beyond the required fields, and the IP
+    address is not hidden for now.
+  - Of CoW's answers about an order, only its off-chain life is shown. A
+    fill, and every amount it moved, comes from the account's verified logs
+    alone. The swap's review also shows CoW's estimate, marked as not
+    verified, to compare the venues: this follows from #144's design point
+    3, not from the ruling's words.
+  - The order is built, hashed and checked here. Its signed minimum is never
+    below the verified Uniswap quote less the gas and the tolerance, and a
+    pair with no Uniswap route is not offered on CoW.
+- **Open decisions, each recorded here before its code lands**: the dApp
+  connection protocol (WalletConnect's relay is an off-chain service, and a
+  request that arrives through it is untrusted input, decoded and shown as
+  such). Until decided, it is not wired in.
