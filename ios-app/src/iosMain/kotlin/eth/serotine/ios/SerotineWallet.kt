@@ -205,6 +205,7 @@ class SerotineWallet {
             // The iOS host keeps its one light client running (docs/networks.md: the iOS host
             // follows networks on and off from part 4, when there is a second one): holds change nothing.
             networkDemand = NetworkDemand(),
+            networkSettings = networkSettings,
         )
     }
 

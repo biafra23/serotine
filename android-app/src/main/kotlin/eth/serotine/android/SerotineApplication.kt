@@ -269,6 +269,7 @@ class SerotineApplication : Application() {
             // process ends. The release app has no switch (docs/keys-and-signing.md, rule 8).
             screenCaptureDebugSwitch = if (debuggable) ScreenCaptureDebugSwitch() else null,
             networkDemand = networkDemand,
+            networkSettings = networkSettings,
         )
     }
 

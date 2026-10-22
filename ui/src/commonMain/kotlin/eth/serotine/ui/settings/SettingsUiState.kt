@@ -1,26 +1,55 @@
 package eth.serotine.ui.settings
 
-import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.LightClientHealth
 
 /**
- * Everything the Settings screen renders (docs/wallet-ux.md, screen 18), as far as the
- * wallet has settings yet: the display [currency] ("EUR"), the [tokens] it knows ("3 built
- * in · 1 added"), the [network] it works on, the [lightClient]'s state, whether the Debug tab
- * is on ([debugScreen]; [debugScreenNotSaved] when the last switch of it could not be saved),
- * and the app's [version]. The security settings join it with the
- * features they belong to.
+ * Everything the Settings screen renders (docs/wallet-ux.md, screen 18; docs/networks.md, N16),
+ * as far as the wallet has settings yet: the display [currency] ("EUR"), the [tokens] it knows
+ * ("3 built in · 1 added"), the [networks] with their switches and light clients, whether the
+ * Debug tab is on ([debugScreen]; [debugScreenNotSaved] when the last switch of it could not be
+ * saved), and the app's [version]. The security settings join it with the features they belong to.
+ * [turningOff] is the confirmation asked before a network with accounts is turned off (N20), null
+ * while none is asked.
  *
  * [screenCaptureAllowed] is the debug build's switch for screen recordings of the protected
  * screens (`ScreenCaptureDebugSwitch`): whether it allows capture, or null where there is no
  * such switch, a release build or a host whose screens block nothing, and Settings shows no row.
  */
 data class SettingsUiState(
-    val network: String,
-    val lightClient: LightClientItem,
+    val networks: List<NetworkRow>,
     val version: String,
     val tokens: String = "",
     val currency: String = "",
     val screenCaptureAllowed: Boolean? = null,
     val debugScreen: Boolean = false,
     val debugScreenNotSaved: Boolean = false,
+    val turningOff: TurnOffConfirmation? = null,
+)
+
+/**
+ * One network's row in Settings → Networks (N16): its [name], whether it is [on], what it holds
+ * and how its light client stands ([line]: "2 accounts · Verified at block 8,412,307 · 8 s ago",
+ * "1 account · Off"), the light client's [health] for the dot, and [notSaved] when the last switch
+ * of it could not be saved. [chainId] names the network to the switch; [testnet] marks Sepolia.
+ */
+data class NetworkRow(
+    val chainId: Long,
+    val name: String,
+    val on: Boolean,
+    val line: String,
+    val health: LightClientHealth,
+    val testnet: Boolean = false,
+    val notSaved: Boolean = false,
+)
+
+/**
+ * The question asked before a network with accounts is turned off (N20): its [title] ("Turn off
+ * Gnosis Chain?"), what stays and what stops ([text]), and what waits until it is on again
+ * ([waiting], null when nothing does). [chainId] names the network the answer turns off.
+ */
+data class TurnOffConfirmation(
+    val chainId: Long,
+    val title: String,
+    val text: String,
+    val waiting: String? = null,
 )

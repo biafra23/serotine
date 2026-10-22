@@ -298,6 +298,7 @@ private fun openWallet(dataDir: File) {
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.
                 screenCaptureDebugSwitch = null,
                 networkDemand = networkDemand,
+                networkSettings = networkSettings,
             )
         }
         Window(

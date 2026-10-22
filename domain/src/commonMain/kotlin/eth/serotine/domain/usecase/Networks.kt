@@ -1,11 +1,20 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.HistoryList
+import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientControl
 import eth.serotine.domain.repository.LightClientRun
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NetworkSettings
+import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentOutcome
+import eth.serotine.domain.repository.TransactionHistory
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -17,8 +26,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The networks that are on in this wallet, in [Network] order (the order of every list on
@@ -121,3 +128,55 @@ class FollowNetworks(
         }
     }
 }
+
+/**
+ * Each network as Settings → Networks shows it (docs/networks.md, N16 and N20), in [Network]
+ * order: whether it is on, the wallet's accounts on it, its light client, and what waits for it
+ * if it is turned off. Re-emitted when any of them changes. [clock] is in unix seconds.
+ */
+class ObserveNetworkOverview(
+    private val settings: NetworkSettings,
+    private val accounts: AccountRepository,
+    private val lightClient: LightClient,
+    private val history: TransactionHistory,
+    private val clock: () -> Long = ::epochSecondsNow,
+) {
+    operator fun invoke(): Flow<List<NetworkOverview>> {
+        val statuses = combine(Network.entries.map { lightClient.observeStatus(it) }) { it.toList() }
+        return combine(settings.observe(), accounts.observeAccounts(), statuses, history.observe()) {
+                on, list, status, sent ->
+            val listed = (list as? AccountList.Loaded)?.accounts
+            val entries = (sent as? HistoryList.Loaded)?.entries.orEmpty()
+            val since = clock() - FOLLOW_SECONDS
+            Network.entries.mapIndexed { i, network ->
+                val onNetwork = entries.filter { it.transfer.network == network }
+                NetworkOverview(
+                    network = network,
+                    on = network in on,
+                    accounts = listed?.filter { it.network == network },
+                    status = status[i],
+                    unconfirmed = onNetwork.count { it.outcome == SentOutcome.NotSeen && it.transfer.sentAt >= since },
+                    unlistedSafes = onNetwork.count { entry ->
+                        (entry.transfer.action as? SentAction.SafeDeployment)?.let { it.listed == null } == true
+                    },
+                )
+            }
+        }.distinctUntilChanged()
+    }
+}
+
+/**
+ * One network as Settings → Networks shows it: whether it is [on]; the wallet's [accounts] on it
+ * (null while the list cannot be read); its light client's [status]; and what waits for it if it
+ * is turned off: transactions sent from it that no block was seen to take yet ([unconfirmed]), and
+ * Safes deployed on it that are not listed yet ([unlistedSafes]). Following them waits until it
+ * is on again; the records keep them.
+ */
+data class NetworkOverview(
+    val network: Network,
+    val on: Boolean,
+    val accounts: List<Account>?,
+    val status: LightClientStatus,
+    val unconfirmed: Int,
+    val unlistedSafes: Int,
+)

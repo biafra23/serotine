@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkSettings
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReceiptTracker
@@ -62,6 +63,7 @@ import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
@@ -96,6 +98,7 @@ import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.SetDebugLogLevel
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetDisplayCurrency
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.WalletChanges
@@ -227,6 +230,8 @@ class AppGraph(
      * token): the host's one instance, which its `FollowNetworks` follows.
      */
     private val networkDemand: NetworkDemand,
+    /** Which networks are on: the host's one instance, which its `FollowNetworks` follows. */
+    private val networkSettings: NetworkSettings,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -473,7 +478,8 @@ class AppGraph(
 
     fun settingsViewModel(): SettingsViewModel =
         SettingsViewModel(
-            ObserveLightClient(lightClient),
+            ObserveNetworkOverview(networkSettings, accounts, lightClient, transactionHistory),
+            SetNetworkEnabled(networkSettings),
             knownTokens(),
             displayCurrencies(),
             soleNetwork,
