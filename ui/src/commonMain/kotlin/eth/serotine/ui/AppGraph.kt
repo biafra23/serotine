@@ -458,12 +458,13 @@ class AppGraph(
         ObserveAccounts(accounts),
         DescribeKeyStore(keys),
         ResolveRecipient(names),
-        PlanSafe(safeReleases, soleNetwork),
-        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, soleNetwork),
+        PlanSafe(safeReleases),
+        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers),
         DeploySafe(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
-        soleNetwork,
+        ObserveEnabledNetworks(networkSettings),
+        SetNetworkEnabled(networkSettings),
     )
 
     /** Add on another network (docs/networks.md, N6), for the EOA [account]. */

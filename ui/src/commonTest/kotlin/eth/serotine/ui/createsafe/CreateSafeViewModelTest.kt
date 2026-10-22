@@ -33,10 +33,12 @@ import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.PlanSafe
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FactoryInputs
 import eth.serotine.ui.FakeAccounts
@@ -47,11 +49,24 @@ import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.FakeReleases
 import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.FakeTransactionInputs
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.TEST_RELEASE
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkLabel
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -64,17 +79,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 
 /** [CreateSafeViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -149,18 +153,21 @@ class CreateSafeViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
+    private val networks = MemoryNetworkSettings()
+
     private fun TestScope.viewModel(): CreateSafeViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = CreateSafeViewModel(
             ObserveAccounts(accounts),
             DescribeKeyStore(keys),
             ResolveRecipient(names),
-            PlanSafe(releases, Network.SEPOLIA) { UInt256.of(++salts) },
-            QuoteSafeDeployment(kinds, balances, inputs, sent, Network.SEPOLIA) { 1_800_000_000 },
+            PlanSafe(releases) { UInt256.of(++salts) },
+            QuoteSafeDeployment(kinds, balances, inputs, sent) { 1_800_000_000 },
             DeploySafe(signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
-            Network.SEPOLIA,
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
             clock,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -228,6 +235,33 @@ class CreateSafeViewModelTest {
 
         val state = assertIs<CreateSafeUiState.CannotCreate>(viewModel.uiState.value)
         assertTrue("pay for its deployment" in state.message)
+    }
+
+    @Test
+    fun theNetworkComesFirstAndOneThatIsOffIsTurnedOnFromThere() = runTest {
+        networks.on.value = emptySet()
+        val viewModel = viewModel()
+
+        val off = assertIs<CreateSafeUiState.CannotCreate>(viewModel.uiState.value)
+        assertEquals("Sepolia is off in this wallet. Turn it on to create a Safe there.", off.message)
+        assertEquals(
+            listOf(
+                NetworkChip(
+                    NetworkLabel.of(Network.SEPOLIA),
+                    selected = true,
+                    reason = "Sepolia is off in this wallet. Turn it on to create a Safe there.",
+                    off = true,
+                ),
+            ),
+            off.networks,
+        )
+
+        viewModel.onTurnOnNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(
+            listOf(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true)),
+            viewModel.owners.networks,
+        )
     }
 
     @Test

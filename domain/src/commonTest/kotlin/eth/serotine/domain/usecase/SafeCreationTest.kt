@@ -60,22 +60,22 @@ class SafeCreationTest {
         override fun forCreation(network: Network): SafeRelease? = pinned
     }
     private var salts = 0L
-    private val planSafe = PlanSafe(releases, Network.SEPOLIA) { UInt256.of(++salts) }
+    private val planSafe = PlanSafe(releases) { UInt256.of(++salts) }
 
     /** What each address holds: codeless unless a test says otherwise. */
     private val kind = MutableStateFlow<KindReading>(KindReading.Verified(AddressKind.Eoa, 100))
     private val kinds = object : AddressKinds {
         override fun observeKind(network: Network, address: Address): Flow<KindReading> = kind
     }
-    private val quote = QuoteSafeDeployment(kinds, world.nativeBalances, world.inputs, world.sent, Network.SEPOLIA) {
+    private val quote = QuoteSafeDeployment(kinds, world.nativeBalances, world.inputs, world.sent) {
         1_800_000_000
     }
 
     private fun plan(vararg owners: PlannedOwner, threshold: Int = 1, label: String = "Treasury"): SafePlan =
-        assertIs<SafePlanning.Planned>(planSafe(owners.toList(), threshold, label)).plan
+        assertIs<SafePlanning.Planned>(planSafe(Network.SEPOLIA, owners.toList(), threshold, label)).plan
 
     private fun refusal(vararg owners: PlannedOwner, threshold: Int = 1): SafePlanRefusal =
-        assertIs<SafePlanning.Refused>(planSafe(owners.toList(), threshold, "")).refusal
+        assertIs<SafePlanning.Refused>(planSafe(Network.SEPOLIA, owners.toList(), threshold, "")).refusal
 
     /** The factory's run returning [address], as `createProxyWithNonce` returns its proxy. */
     private fun returns(address: Address) {
@@ -110,9 +110,9 @@ class SafeCreationTest {
 
     @Test
     fun theDefaultSaltNoncesDiffer() {
-        val random = PlanSafe(releases, Network.SEPOLIA)
-        val first = assertIs<SafePlanning.Planned>(random(listOf(alice), 1, "")).plan
-        val second = assertIs<SafePlanning.Planned>(random(listOf(alice), 1, "")).plan
+        val random = PlanSafe(releases)
+        val first = assertIs<SafePlanning.Planned>(random(Network.SEPOLIA, listOf(alice), 1, "")).plan
+        val second = assertIs<SafePlanning.Planned>(random(Network.SEPOLIA, listOf(alice), 1, "")).plan
 
         assertNotEquals(first.saltNonce, second.saltNonce)
     }
@@ -163,20 +163,20 @@ class SafeCreationTest {
         val many = (1..21).map { PlannedOwner.Account(Address.of("0x" + it.toString(16).padStart(40, 'a'))) }
         assertEquals(
             SafePlanRefusal.TooManyOwners(PlanSafe.MAX_OWNERS),
-            assertIs<SafePlanning.Refused>(planSafe(many, 2, "")).refusal,
+            assertIs<SafePlanning.Refused>(planSafe(Network.SEPOLIA, many, 2, "")).refusal,
         )
-        assertIs<SafePlanning.Planned>(planSafe(many.take(20), 2, ""))
+        assertIs<SafePlanning.Planned>(planSafe(Network.SEPOLIA, many.take(20), 2, ""))
     }
 
     @Test
     fun aNameTooLongOrNoReleaseIsRefused() {
         assertEquals(
             SafePlanRefusal.NameTooLong,
-            assertIs<SafePlanning.Refused>(planSafe(listOf(alice), 1, "x".repeat(65))).refusal,
+            assertIs<SafePlanning.Refused>(planSafe(Network.SEPOLIA, listOf(alice), 1, "x".repeat(65))).refusal,
         )
         releases.pinned = null
         assertEquals(SafePlanRefusal.NoRelease, refusal(alice))
-        assertEquals(SafePlanRefusal.NoRelease, planSafe.ownersRefusal(listOf(alice)))
+        assertEquals(SafePlanRefusal.NoRelease, planSafe.ownersRefusal(Network.SEPOLIA, listOf(alice)))
     }
 
     @Test
@@ -423,9 +423,9 @@ class SafeCreationTest {
 
     @Test
     fun whetherAReleaseIsPinnedIsAskedOnItsOwn() {
-        assertTrue(planSafe.hasRelease())
+        assertTrue(planSafe.hasRelease(Network.SEPOLIA))
         releases.pinned = null
-        assertFalse(planSafe.hasRelease())
+        assertFalse(planSafe.hasRelease(Network.SEPOLIA))
     }
 
     @Test

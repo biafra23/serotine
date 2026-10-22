@@ -129,17 +129,17 @@ data class SafePlan internal constructor(
  * will have. A device's hardware key is never the only owner; a threshold equal to the number of
  * owners above one (2 of 2, 3 of 3, …) needs a recovery module beside it, and this wallet pins
  * none, so it is refused: the reasoning the keys doc gives for 2 of 2 holds for every such
- * threshold. The Safe is of the release pinned for [network] ([SafeReleases]), with no module, no
- * payment and the release's fallback handler, and a fresh salt nonce from [saltNonces] each time,
- * so two plans of the same owners get two addresses. Refusals are typed; nothing throws.
+ * threshold. The Safe is of the release pinned for the network it is planned on ([SafeReleases]),
+ * with no module, no payment and the release's fallback handler, and a fresh salt nonce from
+ * [saltNonces] each time, so two plans of the same owners get two addresses. Refusals are typed;
+ * nothing throws.
  */
 class PlanSafe(
     private val releases: SafeReleases,
-    private val network: Network,
     private val saltNonces: () -> UInt256 = ::randomSaltNonce,
 ) {
-    /** [owners] (in their order) at [threshold], to be listed as [label] once deployed. */
-    operator fun invoke(owners: List<PlannedOwner>, threshold: Int, label: String): SafePlanning {
+    /** [owners] (in their order) at [threshold] on [network], to be listed as [label] once deployed. */
+    operator fun invoke(network: Network, owners: List<PlannedOwner>, threshold: Int, label: String): SafePlanning {
         val name = label.trim()
         if (name.length > RenameAccount.MAX_LABEL_LENGTH) return SafePlanning.Refused(SafePlanRefusal.NameTooLong)
         val release = releases.forCreation(network) ?: return SafePlanning.Refused(SafePlanRefusal.NoRelease)
@@ -148,12 +148,12 @@ class PlanSafe(
         return SafePlanning.Planned(plan)
     }
 
-    /** Whether a Safe release to create one from is pinned for the network at all. */
-    fun hasRelease(): Boolean = releases.forCreation(network) != null
+    /** Whether a Safe release to create one from is pinned for [network] at all. */
+    fun hasRelease(network: Network): Boolean = releases.forCreation(network) != null
 
-    /** Why [owners] cannot own a Safe at any threshold (the owner step), or null when they can. */
-    fun ownersRefusal(owners: List<PlannedOwner>): SafePlanRefusal? =
-        if (hasRelease()) ownerListRefusal(owners) else SafePlanRefusal.NoRelease
+    /** Why [owners] cannot own a Safe on [network] at any threshold (the owner step), or null when they can. */
+    fun ownersRefusal(network: Network, owners: List<PlannedOwner>): SafePlanRefusal? =
+        if (hasRelease(network)) ownerListRefusal(owners) else SafePlanRefusal.NoRelease
 
     /** Why [owners] cannot own a Safe at any threshold, the release aside. */
     private fun ownerListRefusal(owners: List<PlannedOwner>): SafePlanRefusal? {
@@ -222,8 +222,6 @@ data class SafeDeploymentQuote internal constructor(
 /** Why a Safe's deployment was not quoted; nothing is signed. */
 sealed interface SafeDeploymentRefusal {
 
-    /** The plan is for another network than this wallet's. */
-    data class WrongNetwork(val network: Network) : SafeDeploymentRefusal
 
     /**
      * The address the Safe would get holds code already ([kind]: a Safe deployed there before, or
@@ -272,21 +270,20 @@ sealed interface SafeDeploymentRefusal {
  * execution: the run at the head passes while the first is on its way, and the second reverts once
  * it is mined), and one of a Safe with the same owners, in their order, and the same threshold that
  * no block has yet either: planned again, it has another salt and so another address, and would
- * make a second Safe. On [network] only; [clock] is in unix seconds.
+ * make a second Safe. On the network the Safe is planned on, the payer's there; [clock] is in unix
+ * seconds.
  */
 class QuoteSafeDeployment(
     private val kinds: AddressKinds,
     private val nativeBalances: NativeBalances,
     private val inputs: TransactionInputs,
     private val sentTransfers: SentTransfers,
-    private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
 ) {
-    private val quoter = CallQuoter(inputs, sentTransfers, network, clock)
-
     suspend operator fun invoke(plan: SafePlan, payer: Address, level: FeeLevel): SafeDeploymentQuoting {
         fun refused(refusal: SafeDeploymentRefusal) = SafeDeploymentQuoting.Refused(refusal)
-        if (plan.network != network) return refused(SafeDeploymentRefusal.WrongNetwork(plan.network))
+        val network = plan.network
+        val quoter = CallQuoter(inputs, sentTransfers, network, clock)
         // A deployment of this Safe, or of one like it, sent and not mined is said as such first, even
         // the payer's own maybe sent: both read the record, and the engine only when a record matches.
         sentAndUnmined(plan)?.let { return refused(it) }
