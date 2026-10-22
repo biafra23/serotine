@@ -410,29 +410,37 @@ private fun Actions(
         val density = LocalDensity.current
         // The widest label as the buttons draw it (Material's buttons set their labels in labelLarge).
         val widest = remember(measurer, style, density) {
-            with(density) { listOf("Send", "Swap", "Receive").maxOf { measurer.measure(it, style).size.width }.toDp() }
+            with(density) { ActionLabels.maxOf { measurer.measure(it, style).size.width }.toDp() }
         }
         val third = (maxWidth - ActionGap * 2) / 3 - ActionPadding * 2
-        val icons = third >= ActionIcon + ActionIconGap + widest
+        // A dp of slack: the layout rounds each part to whole pixels, and a label a pixel short ends
+        // in an ellipsis, while icons left out a little early are not missed.
+        val icons = third >= ActionIcon + ActionIconGap + widest + 1.dp
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ActionGap)) {
             ActionButton(
-                "Send",
+                SEND_LABEL,
                 Icons.AutoMirrored.Filled.Send.takeIf { icons },
                 onClick = { onSend(null) },
                 Modifier.weight(1f).unavailable(!state.canSend),
                 available = state.canSend,
             )
             ActionButton(
-                "Swap",
+                SWAP_LABEL,
                 SerotineIcons.Swap.takeIf { icons },
                 onClick = { onSwap(null) },
                 Modifier.weight(1f).testTag(ACCOUNT_SWAP_TAG).unavailable(!state.canSwap),
                 available = state.canSwap,
             )
-            ActionButton("Receive", SerotineIcons.QrCode.takeIf { icons }, onClick = onReceive, Modifier.weight(1f))
+            ActionButton(RECEIVE_LABEL, SerotineIcons.QrCode.takeIf { icons }, onClick = onReceive, Modifier.weight(1f))
         }
     }
 }
+
+/** [Actions]' labels: what its buttons draw, and what is measured for whether their icons fit. */
+private const val SEND_LABEL = "Send"
+private const val SWAP_LABEL = "Swap"
+private const val RECEIVE_LABEL = "Receive"
+private val ActionLabels = listOf(SEND_LABEL, SWAP_LABEL, RECEIVE_LABEL)
 
 /** The space between [Actions]' buttons. */
 private val ActionGap = 8.dp
