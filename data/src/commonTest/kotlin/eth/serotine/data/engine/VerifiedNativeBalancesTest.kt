@@ -218,6 +218,20 @@ class VerifiedNativeBalancesTest {
     }
 
     @Test
+    fun aFailedStartIsNoLightClientUntilTheNextStart() = runTest {
+        val seen = mutableListOf<BalanceReading>()
+        chain.snapshot = EngineSnapshot.Failed
+        chain.proofs[address] = ProvenBalance("3", blockNumber = 6)
+        val collecting = launch { balances().observeBalance(Network.SEPOLIA, address).collect { seen += it } }
+        runCurrent()
+        assertEquals(listOf<BalanceReading>(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)), seen)
+
+        step(running(head = 6))
+        assertEquals(BalanceReading.Verified(Wei.of("3"), 6), seen.last(), "the stream polled on")
+        collecting.cancel()
+    }
+
+    @Test
     fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
         chain.snapshot = EngineSnapshot.Down
         assertEquals(

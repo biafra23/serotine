@@ -68,6 +68,10 @@ import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.GAS_TERMS_WARNING
+import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
+import eth.serotine.ui.components.GhostCircle
+import eth.serotine.ui.components.GhostLine
+import eth.serotine.ui.components.GhostRows
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
@@ -448,7 +452,14 @@ private fun Owners(owners: OwnersItem, onCheckAgain: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Heading("Owners")
         when (owners) {
-            OwnersItem.Checking -> Text("Reading the owners and their approvals…")
+            OwnersItem.Checking -> {
+                // The threshold, the confirmations and a few owners, in their shapes, until they are read.
+                GhostLine(200.dp)
+                GhostLine(160.dp, style = MaterialTheme.typography.titleSmall)
+                GhostRows(GHOST_ROWS_UNKNOWN, "Reading the owners and their approvals", spacing = 4.dp) {
+                    OwnerGhost()
+                }
+            }
             is OwnersItem.Unavailable -> Text(owners.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
             is OwnersItem.Shown -> {
                 Text(owners.threshold)
@@ -463,6 +474,21 @@ private fun Owners(owners: OwnersItem, onCheckAgain: () -> Unit) {
             Text("Check again")
         }
     }
+}
+
+/** An [OwnerItem] not read yet, of its height. */
+@Composable
+private fun OwnerGhost() {
+    ListItem(
+        leadingContent = { GhostCircle(32.dp) },
+        headlineContent = { GhostLine(96.dp) },
+        supportingContent = {
+            Column {
+                GhostLine(120.dp)
+                GhostLine(160.dp)
+            }
+        },
+    )
 }
 
 @Composable

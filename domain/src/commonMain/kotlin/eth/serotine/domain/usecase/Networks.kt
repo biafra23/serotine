@@ -147,7 +147,11 @@ class ObserveNetworkOverview(
                 on, list, status, sent ->
             val listed = (list as? AccountList.Loaded)?.accounts
             val entries = (sent as? HistoryList.Loaded)?.entries.orEmpty()
-            val since = clock() - FOLLOW_SECONDS
+            val now = clock()
+            // What is still followed, and would wait: a receipt for FOLLOW_SECONDS, a deployment's
+            // listing for DEPLOYMENT_LIFETIME_SECONDS (FollowSafeDeployments gives up after that).
+            val followed = now - FOLLOW_SECONDS
+            val listing = now - DEPLOYMENT_LIFETIME_SECONDS
             Network.entries.mapIndexed { i, network ->
                 val onNetwork = entries.filter { it.transfer.network == network }
                 NetworkOverview(
@@ -155,9 +159,12 @@ class ObserveNetworkOverview(
                     on = network in on,
                     accounts = listed?.filter { it.network == network },
                     status = status[i],
-                    unconfirmed = onNetwork.count { it.outcome == SentOutcome.NotSeen && it.transfer.sentAt >= since },
+                    unconfirmed = onNetwork.count { entry ->
+                        entry.outcome == SentOutcome.NotSeen && entry.transfer.sentAt >= followed
+                    },
                     unlistedSafes = onNetwork.count { entry ->
-                        (entry.transfer.action as? SentAction.SafeDeployment)?.let { it.listed == null } == true
+                        entry.transfer.sentAt >= listing &&
+                            (entry.transfer.action as? SentAction.SafeDeployment)?.let { it.listed == null } == true
                     },
                 )
             }
@@ -169,8 +176,8 @@ class ObserveNetworkOverview(
  * One network as Settings → Networks shows it: whether it is [on]; the wallet's [accounts] on it
  * (null while the list cannot be read); its light client's [status]; and what waits for it if it
  * is turned off: transactions sent from it that no block was seen to take yet ([unconfirmed]), and
- * Safes deployed on it that are not listed yet ([unlistedSafes]). Following them waits until it
- * is on again; the records keep them.
+ * Safes deployed on it that are not listed yet ([unlistedSafes]), each only while it is still
+ * followed. Following them waits until it is on again; the records keep them.
  */
 data class NetworkOverview(
     val network: Network,

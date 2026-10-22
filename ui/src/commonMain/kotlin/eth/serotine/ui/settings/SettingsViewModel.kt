@@ -14,7 +14,9 @@ import eth.serotine.domain.usecase.TokenOrigin
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.dated
 import eth.serotine.ui.components.epochSecondsNow
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -58,7 +60,13 @@ class SettingsViewModel(
 
     val uiState: StateFlow<SettingsUiState> =
         combine(
-            combine(observeNetworkOverview(), networkNotSaved, turningOff, ::Triple),
+            combine(
+                // Each row dates its head block, re-dated every second as the strip's line is.
+                observeNetworkOverview().redatedWhile { networks -> networks.any { it.on && it.status.dated } },
+                networkNotSaved,
+                turningOff,
+                ::Triple,
+            ),
             observeKnownTokens(network),
             observeDisplayCurrencies(network),
             screenCapture?.allowed ?: flowOf(null),
@@ -123,7 +131,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             if (!on) {
                 val overview = observeNetworkOverview().first().first { it.network == network }
-                if (!overview.accounts.isNullOrEmpty()) {
+                // An account list that cannot be read asks too: it may have accounts on the network.
+                if (overview.accounts?.isEmpty() != true) {
                     turningOff.value = confirmationOf(overview)
                     return@launch
                 }
@@ -168,9 +177,12 @@ class SettingsViewModel(
         fun confirmationOf(overview: NetworkOverview): TurnOffConfirmation {
             val name = overview.network.displayName
             val accounts = overview.accounts.orEmpty()
-            val stay = when (accounts.size) {
-                1 -> "Its account, ${accounts[0].label}, stays in your list."
-                2, 3 -> "Its ${accounts.size} accounts, ${names(accounts.map { it.label })}, stay in your list."
+            val stay = when {
+                overview.accounts == null ->
+                    "Its accounts, if it has any, stay in your list: the list cannot be read right now."
+                accounts.size == 1 -> "Its account, ${accounts[0].label}, stays in your list."
+                accounts.size <= 3 ->
+                    "Its ${accounts.size} accounts, ${names(accounts.map { it.label })}, stay in your list."
                 else -> "Its ${accounts.size} accounts stay in your list."
             }
             val waiting = listOfNotNull(
