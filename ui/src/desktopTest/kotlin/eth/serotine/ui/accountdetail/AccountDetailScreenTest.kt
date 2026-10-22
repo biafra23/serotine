@@ -585,7 +585,7 @@ class AccountDetailScreenTest {
             rule.onNodeWithTag(ACCOUNT_ASSET_TAG).getBoundsInRoot().height,
             ghosts[0].getBoundsInRoot().height,
         )
-        rule.onNodeWithContentDescription("Tokens still being checked").assertExists()
+        rule.onNodeWithContentDescription("Tokens not read yet").assertExists()
     }
 
     @Test
@@ -598,7 +598,9 @@ class AccountDetailScreenTest {
     @Test
     fun anActivityBeingReadShowsGhostRowsOfItsRowsHeight() {
         var activity by mutableStateOf<ActivityUiState>(ActivityUiState.Loading)
-        rule.setContent { Screen(ready.copy(segment = DetailSegment.ACTIVITY, activity = activity), verifiedStripSample) }
+        rule.setContent {
+            Screen(ready.copy(segment = DetailSegment.ACTIVITY, activity = activity), verifiedStripSample)
+        }
 
         val ghosts = rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true)
         ghosts.assertCountEquals(GHOST_ROWS_UNKNOWN)

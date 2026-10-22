@@ -431,8 +431,8 @@ private fun Actions(
 
 /**
  * The asset rows (docs/wallet-ux.md, screen 4), each with the block its amount was verified
- * at, a ghost row per token still being checked, and what is not known yet about the other tokens. A tap on a row opens Send with its
- * asset chosen, a long press its menu.
+ * at, a ghost row per token not read yet, and what is not known yet about the other tokens. A
+ * tap on a row opens Send with its asset chosen, a long press its menu.
  */
 @Composable
 private fun Assets(
@@ -469,10 +469,10 @@ private fun Assets(
                 AssetItem(asset)
             }
         }
-        // A row's place for each token still being checked: one that holds some takes it over, one
-        // that holds none gives it up at the bottom, so the rows above never move down.
+        // A row's place for each token not read yet: one that holds some takes a place, one that holds
+        // none gives one up at the bottom, so the list grows no longer as the tokens are read.
         if (state.pendingAssets > 0) {
-            GhostRows(state.pendingAssets, "Tokens still being checked", spacing = 4.dp) {
+            GhostRows(state.pendingAssets, "Tokens not read yet", spacing = 4.dp) {
                 AssetGhost()
             }
         }

@@ -369,8 +369,8 @@ class AccountDetailViewModelTest {
         )
         assertEquals("Checking…", ready.total)
         assertEquals("Checking 1 token · 1 token did not answer as a token", ready.tokensNote)
-        // The token last known to hold none is still checked: its place is held by a ghost row.
-        assertEquals(1, ready.pendingAssets)
+        // The token last known to hold none is still checked, but holds no row's place meanwhile.
+        assertEquals(0, ready.pendingAssets)
     }
 
     @Test

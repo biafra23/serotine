@@ -190,7 +190,7 @@ class AccountDetailViewModel(
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
                     assets = sorted(rows(value), view.sort),
-                    pendingAssets = value.tokens.count { checking(it.holding.reading) },
+                    pendingAssets = value.tokens.count { awaitingFirst(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
                     pricesNote = PRICES + if (network.testnet) ", testnet prices" else "",
@@ -433,6 +433,14 @@ class AccountDetailViewModel(
     private fun checking(reading: TokenBalanceReading?): Boolean =
         reading == null || reading == TokenBalanceReading.Syncing ||
             (reading as? TokenBalanceReading.LastKnown)?.units?.isZero == true
+
+    /**
+     * Whether a token's balance has not been read at all yet: a ghost row holds its place. One last
+     * known to hold none is still checked, but holds no place: it most likely has no row to come,
+     * and it may wait for a readable head for long.
+     */
+    private fun awaitingFirst(reading: TokenBalanceReading?): Boolean =
+        reading == null || reading == TokenBalanceReading.Syncing
 
     private fun tokens(count: Int) = if (count == 1) "1 token" else "$count tokens"
 

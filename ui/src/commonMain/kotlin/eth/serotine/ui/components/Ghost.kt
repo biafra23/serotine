@@ -59,10 +59,9 @@ fun GhostCircle(size: Dp, modifier: Modifier = Modifier) {
 
 /**
  * [count] ghost rows, [spacing] apart as the rows they stand in for are, each drawn by [row] in
- * the shape of such a row, and said to
- * accessibility services as [description] ("Reading the Safe's storage"): a list whose rows are
- * on their way takes its place before they come, rather than pushing what is below it down when
- * they do.
+ * the shape of such a row, and said to accessibility services as [description] ("Reading the
+ * Safe's storage"): a list whose rows are on their way takes its room before they come, rather
+ * than pushing what is below it down when they do.
  */
 @Composable
 fun GhostRows(

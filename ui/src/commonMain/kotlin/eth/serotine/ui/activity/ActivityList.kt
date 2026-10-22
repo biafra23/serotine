@@ -27,7 +27,7 @@ const val ACTIVITY_ROW_TAG = "activity-row"
  * detail's Activity tab: what the list covers, then each transaction this device sent for it and
  * each event on chain, newest first, with how it ended as this device saw it; a tap on a row opens
  * its detail ([onOpen], by its key). One item per row, so that a long history is composed as it
- * scrolls into view.
+ * scrolls into view. While it is read, ghost rows in the rows' shape hold their room.
  */
 fun LazyListScope.activityItems(state: ActivityUiState, onOpen: (ActivityKey) -> Unit) {
     when (state) {
