@@ -86,6 +86,13 @@ internal class ProvenReads<K, T>(
      */
     private val kept: KeptProofs<K, T> = KeptProofs.none(),
     /**
+     * Whether a stopped network's reading offers the last proof ([EngineReading.LastKnown]), as a
+     * balance does; otherwise, and with no proof, it says the network is off
+     * ([ReadUnavailable.NETWORK_OFF]): an adapter that reads a last proof as syncing would say
+     * "checking" for as long as the network stays off.
+     */
+    private val offersLastKnownWhenStopped: Boolean = false,
+    /**
      * The fact about a key and the block its proof anchors to; a refusal ([EngineReading.Unavailable]);
      * or null when unproven. Blocks, and may suspend between its blocking calls (to check its
      * cancellation, or to pause before a retry).
@@ -137,7 +144,8 @@ internal class ProvenReads<K, T>(
     private suspend fun readingAt(chain: VerifiedChain, key: K, snapshot: EngineSnapshot): EngineReading<T> {
         // A stopped network: what was last verified, dated, or that it is off; never "syncing".
         if (snapshot is EngineSnapshot.Stopped) {
-            return lastKnown(key) ?: EngineReading.Unavailable(ReadUnavailable.NETWORK_OFF)
+            val last = if (offersLastKnownWhenStopped) lastKnown(key) else null
+            return last ?: EngineReading.Unavailable(ReadUnavailable.NETWORK_OFF)
         }
         if (snapshot !is EngineSnapshot.Running) return syncing(key)
         if (snapshot.phase == Phase.STALE_ANCHOR) return EngineReading.Unavailable(ReadUnavailable.STALE_ANCHOR)

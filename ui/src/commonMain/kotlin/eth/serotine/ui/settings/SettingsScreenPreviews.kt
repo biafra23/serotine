@@ -2,6 +2,7 @@ package eth.serotine.ui.settings
 
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.STALE
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
@@ -101,6 +102,18 @@ private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(debugScre
 @Composable
 private fun SettingsDebugScreenNotSavedPreview() = SettingsPreview(synced.copy(debugScreenNotSaved = true))
 
+/** On, with nothing needing it: no account on the network yet, so its light client waits (docs/networks.md). */
+@Preview
+@Composable
+private fun SettingsIdlePreview() =
+    SettingsPreview(SettingsUiState(network, LightClientItem.from(LightClientStatus.Idle, now = 0), VERSION))
+
+/** Turned off in this wallet: its light client does not run. */
+@Preview
+@Composable
+private fun SettingsOffPreview() =
+    SettingsPreview(SettingsUiState(network, LightClientItem.from(LightClientStatus.Off, now = 0), VERSION))
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsSyncedPreview() },
@@ -113,4 +126,6 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsDebugBuildCaptureAllowedPreview() },
     { SettingsDebugScreenPreview() },
     { SettingsDebugScreenNotSavedPreview() },
+    { SettingsIdlePreview() },
+    { SettingsOffPreview() },
 )

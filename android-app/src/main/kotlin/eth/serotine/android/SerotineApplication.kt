@@ -113,7 +113,21 @@ class SerotineApplication : Application() {
             lastBalances = filesDir.resolve("last-balances.json").path,
             debugLog = if (debuggable) { line -> Log.d(LOG_TAG, line) } else null,
             apiLog = debugLog,
-        ).also { host -> scope.launch { FollowNetworks(networkSettings, accounts, networkDemand, host)() } }
+        ).also { host -> scope.launch { followNetworks(host) } }
+    }
+
+    /**
+     * Keeps each network's light client running while it is on and needed, for the life of the
+     * process. A failure ends it and is reported: the light clients keep their last state.
+     */
+    private suspend fun followNetworks(host: MyotisHost) {
+        try {
+            FollowNetworks(networkSettings, accounts, networkDemand, host)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following the networks stopped: ${e::class.simpleName}")
+        }
     }
 
     /** The screens' holds on a network with no account on it yet (Watch, Add token), and the widget's read's. */
@@ -447,13 +461,7 @@ class SerotineApplication : Application() {
                 manualRefresh.set(ManualRefresh.RUNNING)
                 RateWidget.draw(app, lastRate.load(Network.SEPOLIA))
             }
-            // The widget's network runs for this read even with no account on it.
-            val hold = networkDemand.hold(Network.SEPOLIA)
-            read = try {
-                joinRead(if (manual) MANUAL_READ_TIMEOUT else RATE_READ_TIMEOUT)
-            } finally {
-                hold.release()
-            }
+            read = joinRead(if (manual) MANUAL_READ_TIMEOUT else RATE_READ_TIMEOUT)
             if (!manual) read?.let { RateWidget.draw(app, it) }
         }.also { job ->
             // On completion, not in a finally: a job cancelled before it started never runs its
@@ -493,7 +501,17 @@ class SerotineApplication : Application() {
     private suspend fun joinRead(timeout: Duration): RateSnapshot? {
         val shared = readLock.withLock {
             val current = sharedRead?.takeIf { it.read.isActive }
-                ?: SharedRead(scope.async { withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() } })
+                ?: SharedRead(
+                    scope.async {
+                        // The widget's network runs for as long as this read does, with no account on it too.
+                        val hold = networkDemand.hold(Network.SEPOLIA)
+                        try {
+                            withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate() }
+                        } finally {
+                            hold.release()
+                        }
+                    },
+                )
             sharedRead = current
             current.waiting++
             current

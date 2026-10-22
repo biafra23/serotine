@@ -1,6 +1,7 @@
 package eth.serotine.ui.components
 
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.ui.components.LightClientHealth.NOT_RUNNING
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.STALE
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
@@ -85,9 +86,9 @@ data class LightClientItem(
             )
             LightClientStatus.Unavailable ->
                 LightClientItem("No light client on this device", null, false, NOT_VERIFIED)
-            LightClientStatus.Off -> LightClientItem("Turned off in this wallet", null, false, NOT_VERIFIED)
+            LightClientStatus.Off -> LightClientItem("Turned off in this wallet", null, false, NOT_RUNNING)
             LightClientStatus.Idle ->
-                LightClientItem("Light client idle · it starts once an account needs it", null, false, NOT_VERIFIED)
+                LightClientItem("Light client idle · it starts once an account needs it", null, false, NOT_RUNNING)
         }
 
         /** " · 8 s ago" for a block produced at [timestamp], or nothing when its time is unknown. */
@@ -122,6 +123,12 @@ enum class LightClientHealth {
 
     /** Red: no verified head yet (starting, bootstrapping, catching up), sync refused, or no light client. */
     NOT_VERIFIED,
+
+    /**
+     * Grey: the light client does not run, on purpose: its network is turned off in this wallet,
+     * or on with nothing needing it yet (docs/networks.md). Nothing is wrong.
+     */
+    NOT_RUNNING,
 }
 
 /**
