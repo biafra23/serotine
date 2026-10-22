@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/serotine_logo_dark.svg">
+    <img src="assets/serotine_logo.svg" alt="Serotine logo" width="200">
+  </picture>
+</p>
+
 # Serotine
 
 A Compose Multiplatform wallet for Ethereum accounts (EOAs) and

@@ -39,6 +39,32 @@ kotlin {
     }
 }
 
+// The app icon: the ANDROID launcher icon (its foreground vector and background colour, both
+// generated from assets/serotine_logo.svg by scripts/gen_android_icons.py), rendered by
+// scripts/gen_app_icons.java as the 1024 px opaque square iOS masks itself, into the app's
+// asset catalog. The Xcode build's Gradle phase runs it before the catalog is compiled
+// (xcode/project.yml); the PNG is git-ignored, so nothing binary is committed.
+val appIcon = layout.projectDirectory.file("xcode/Serotine/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
+tasks.register<Exec>("generateAppIcon") {
+    group = "build"
+    description = "Render the iOS app icon from the Android launcher icon resources"
+    val script = rootProject.file("scripts/gen_app_icons.java")
+    val res = rootProject.file("android-app/src/main/res")
+    val foreground = res.resolve("drawable/ic_launcher_foreground.xml")
+    val background = res.resolve("values/ic_launcher_background.xml")
+    inputs.files(script, foreground, background)
+        .withPropertyName("iconSources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.file(appIcon).withPropertyName("appIcon")
+    executable = javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }.get().executablePath.asFile.absolutePath
+    args(
+        "-Djava.awt.headless=true", script.absolutePath, foreground.absolutePath, background.absolutePath,
+        "--ios", appIcon.asFile.absolutePath,
+    )
+}
+
 // Off a Mac the iOS targets are disabled, and :data's along with them (its cinterop runs on a Mac
 // only), so its iOS code is not there for this module's shared iOS source set to compile
 // against: everything here is skipped instead, as the targets are. `clean` and the help tasks

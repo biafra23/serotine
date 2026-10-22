@@ -65,14 +65,18 @@ targets:
         SWIFT_VERSION: "5.0"
         # SerotineKit has the Apple-silicon simulator only (the targets Myotis's iOS module has).
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+        # Serotine/Assets.xcassets: its AppIcon.png is rendered by the Gradle phase below.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     preBuildScripts:
-      # One Gradle run: the framework, and the release version the last phase stamps.
+      # One Gradle run: the framework, the app icon (into Serotine/Assets.xcassets, before the
+      # catalog is compiled; :ios-app's generateAppIcon), and the release version the last
+      # phase stamps.
       - name: Build SerotineKit (Gradle)
         script: |
           set -euo pipefail
           cd "$SRCROOT/../.."
           mkdir -p "$DERIVED_FILE_DIR"
-          ./gradlew :ios-app:embedAndSignAppleFrameworkForXcode :printReleaseVersion | tee "$DERIVED_FILE_DIR/gradle.out"
+          ./gradlew :ios-app:embedAndSignAppleFrameworkForXcode :ios-app:generateAppIcon :printReleaseVersion | tee "$DERIVED_FILE_DIR/gradle.out"
         basedOnDependencyAnalysis: false
     postBuildScripts:
       - name: Stamp the version
