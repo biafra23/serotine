@@ -270,7 +270,8 @@ class CreateSafeViewModel(
 
     /** The network whose light client the strip shows: the one the Safe is created on. */
     val stripNetwork: StateFlow<Network> = model.map { it?.network ?: network }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, network)
+        // As the model is: followed while the screen is, never keeping the account list read past it.
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), network)
 
     val uiState: StateFlow<CreateSafeUiState> = combine(model, step, ::render).stateIn(
         viewModelScope,
