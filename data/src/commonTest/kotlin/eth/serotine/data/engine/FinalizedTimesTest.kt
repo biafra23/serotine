@@ -30,7 +30,7 @@ class FinalizedTimesTest {
         times: FinalizedTimes,
         block: Long,
         mayRead: Boolean = true,
-        read: (String) -> String?,
+        read: (Long) -> String?,
     ): FinalizedBlock? {
         times.of(block, mayRead, read)
         runCurrent()
@@ -40,11 +40,11 @@ class FinalizedTimesTest {
     @Test
     fun theTimestampIsTheBlocksOwnReadOnceAMoveOffThePoll() = runTest {
         val times = times()
-        val asked = mutableListOf<String>()
+        val asked = mutableListOf<Long>()
         assertNull(times.of(11_968_920) { asked += it; header(11_968_920) }, "returns at once: the read runs apart")
         runCurrent()
         assertEquals(FinalizedBlock(11_968_920, 1_792_664_532), times.of(11_968_920) { asked += it; null })
-        assertEquals(listOf("0xb6a198"), asked, "read once for the block")
+        assertEquals(listOf(11_968_920L), asked, "read once for the block")
 
         val next = header(11_968_952, timestamp = 1_792_664_916)
         assertEquals(FinalizedBlock(11_968_952, 1_792_664_916), after(times, 11_968_952) { asked += it; next })
@@ -104,5 +104,29 @@ class FinalizedTimesTest {
         times.of(11_968_920) { reads++; header(11_968_920) }
         runCurrent()
         assertEquals(1, reads, "a poll while a read runs takes what is had")
+    }
+
+    @Test
+    fun aRunningSnapshotCarriesItsFinalizedHeaderReadThroughTheChain() = runTest {
+        val engine = FakeEngineChain()
+        engine.base.blocks[11_968_920] = header(11_968_920)
+        val chain = FinalizedHeaders(engine, times())
+        fun header() = (chain.snapshot() as EngineSnapshot.Running).finalizedHeader
+
+        engine.base.snapshot = running(phase = EngineSnapshot.Phase.CATCHING_UP, finalized = 11_968_920)
+        assertNull(header())
+        runCurrent()
+        assertNull(header(), "not read while the light client does not verify")
+
+        engine.base.snapshot = running(finalized = 11_968_920)
+        assertNull(header(), "the read runs apart from the poll")
+        runCurrent()
+        assertEquals(FinalizedBlock(11_968_920, 1_792_664_532), header())
+
+        engine.base.snapshot = running(finalized = 11_968_952, paused = true)
+        runCurrent()
+        assertEquals(FinalizedBlock(11_968_920, 1_792_664_532), header(), "asleep: the one had stands")
+        engine.base.snapshot = EngineSnapshot.Down
+        assertEquals(EngineSnapshot.Down, chain.snapshot())
     }
 }

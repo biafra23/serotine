@@ -40,10 +40,14 @@ import kotlinx.serialization.json.JsonElement
  * starts empty; one that cannot be read is [CowOrderList.Unreadable], and nothing may then be sold
  * that a live order could hold. The file is written whole and replaced at once, so only damage to
  * the storage leaves an entry or a file that does not decode, and the orders in it then hold
- * nothing back: the set-aside copy keeps them. So that a newer build's record never reads that way,
- * every kind and reason is stored by a code of its own, never an enum's name; a reason this build
- * does not know reads as the nearest it knows (it is shown, never acted on); and a new kind of
- * placement or end is a new [FORMAT_VERSION], which an older build reads as unreadable.
+ * nothing back: the set-aside copy keeps them. So that a newer build's record never reads that way:
+ * - a field this build does not know, in the file or in an entry, is passed over (read leniently,
+ *   checked strictly, as CoW's answers are);
+ * - every kind and reason is stored by a code of its own, never an enum's name, and a reason this
+ *   build does not know reads as the nearest it knows (it is shown, never acted on);
+ * - a change of what an entry means (a new kind of placement or end, a field an entry cannot be
+ *   read without) is a new [FORMAT_VERSION], which an older build reads as unreadable, selling
+ *   nothing.
  */
 class FileCowOrders(
     path: String,
@@ -99,7 +103,7 @@ class FileCowOrders(
     private companion object {
         /** The file's format; a new kind of placement or end makes a new one. */
         const val FORMAT_VERSION = 1
-        val JSON = Json
+        val JSON = Json { ignoreUnknownKeys = true }
     }
 }
 
@@ -167,9 +171,12 @@ internal class StoredTrade(
     val uid: String,
 )
 
+/** How an entry is read: a field a newer build added is passed over, not the entry. */
+private val LENIENT = Json { ignoreUnknownKeys = true }
+
 /** The order [entry] stores, or null when it does not decode: passed over, the rest read. */
 private fun decoded(entry: JsonElement): CowOrderRecord? = try {
-    val stored = Json.decodeFromJsonElement(StoredCowOrder.serializer(), entry)
+    val stored = LENIENT.decodeFromJsonElement(StoredCowOrder.serializer(), entry)
     val network = requireNotNull(Network.entries.firstOrNull { it.chainId == stored.chainId }) { "a network" }
     CowOrderRecord(
         account = Address.of(stored.account),

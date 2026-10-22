@@ -51,6 +51,13 @@ internal interface VerifiedChain {
      * Blocks, bounded by the engine.
      */
     fun storageAt(address: Address, slot: ByteArray): String?
+
+    /**
+     * Block [number]'s header as the engine's verified `getBlockByNumber` answers it (its JSON block
+     * object, without the transactions); null when it could not be read verified, and from an
+     * engine that offers no such read. Blocks, bounded by the engine.
+     */
+    fun blockByNumber(number: Long): String? = null
 }
 
 /** A verified call's answer. */

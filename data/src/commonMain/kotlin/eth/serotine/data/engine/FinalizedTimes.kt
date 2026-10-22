@@ -49,10 +49,10 @@ internal class FinalizedTimes(
      * 0: none yet), with its timestamp (unix seconds); null while none was. Returns at once. When
      * [block]'s own header is not had, [mayRead] (the light client verifies reads now), no read is
      * running and none of it failed in the last [retryAfter], it is read in [scope] with
-     * [readBlock] (the engine's verified `getBlockByNumber` for a `0x` block number, without its
+     * [readBlock] (the engine's verified `getBlockByNumber` of the block, without its
      * transactions, which may block).
      */
-    fun of(block: Long, mayRead: Boolean = true, readBlock: (String) -> String?): FinalizedBlock? {
+    fun of(block: Long, mayRead: Boolean = true, readBlock: (Long) -> String?): FinalizedBlock? {
         val known = had
         if (block <= (known?.number ?: 0) || !mayRead || !reading.tryLock()) return known
         val due = failed?.let { (number, at) -> number != block || at.elapsedNow() >= retryAfter } ?: true
@@ -63,7 +63,7 @@ internal class FinalizedTimes(
         scope.launch {
             try {
                 val time = try {
-                    blockTimestampOf(readBlock("0x" + block.toString(16)), block)
+                    blockTimestampOf(readBlock(block), block)
                 } catch (e: Exception) {
                     // An engine that fails, or a CancellationException its own code throws, is no answer.
                     null
@@ -79,6 +79,25 @@ internal class FinalizedTimes(
             }
         }
         return known
+    }
+}
+
+/**
+ * [inner] with each running snapshot's [EngineSnapshot.Running.finalizedHeader] filled from [times]:
+ * the finalized block with its own header's timestamp, read through [inner]
+ * ([VerifiedChain.blockByNumber], so a [LoggedChain] inside logs it as any request) while the
+ * light client is synced and awake. Everything else is [inner]'s as it is.
+ */
+internal class FinalizedHeaders(
+    private val inner: EngineChain,
+    private val times: FinalizedTimes,
+) : EngineChain by inner {
+
+    override fun snapshot(): EngineSnapshot {
+        val snapshot = inner.snapshot()
+        if (snapshot !is EngineSnapshot.Running) return snapshot
+        val mayRead = snapshot.phase == EngineSnapshot.Phase.SYNCED && !snapshot.paused
+        return snapshot.copy(finalizedHeader = times.of(snapshot.finalizedBlock, mayRead, inner::blockByNumber))
     }
 }
 

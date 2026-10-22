@@ -176,6 +176,21 @@ class FileCowOrdersTest {
     }
 
     @Test
+    fun fieldsANewerBuildAddedArePassedOverNotTheOrders() = runTest {
+        val kept = record()
+        orders().record(kept)
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        // A field in the file and one in the entry, as a newer build of the same format might write them.
+        val newer = text.replace("{\"version\":1,", "{\"version\":1,\"written\":\"later\",")
+            .replace("\"rangeStart\":", "\"tip\":{\"bps\":5},\"rangeStart\":")
+        assertTrue(newer != text && "\"tip\"" in newer && "\"written\"" in newer, newer)
+        SystemFileSystem.sink(file).buffered().use { it.writeString(newer) }
+
+        assertEquals(listOf(kept), stored(), "still held back: the order is read")
+        assertFalse(SystemFileSystem.list(directory).any { it.name.contains("damaged") }, "nothing set aside")
+    }
+
+    @Test
     fun aNewerFormatIsUnreadable() = runTest {
         SystemFileSystem.createDirectories(directory)
         SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":2,"orders":[]}""") }

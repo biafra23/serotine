@@ -111,7 +111,8 @@ class MyotisNode private constructor(
 
     /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
     private val chain: EngineChain = HandleChain().let { handle ->
-        SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
+        val logged = apiLog?.let { LoggedChain(handle, it) } ?: handle
+        SharedSnapshots(FinalizedHeaders(logged, FinalizedTimes(headerScope)), SNAPSHOT_REUSE)
     }
 
     /** The balances last verified, kept for after a restart; none kept without a path. */
@@ -317,8 +318,6 @@ class MyotisNode private constructor(
 
     private inner class HandleChain : EngineChain {
 
-        private val finalizedTimes = FinalizedTimes(headerScope)
-
         // Each call a status read; SharedSnapshots shares one among the pollers.
         override fun snapshot(): EngineSnapshot {
             val running = when (val current = state) {
@@ -337,17 +336,15 @@ class MyotisNode private constructor(
             } else {
                 null
             }
-            val beaconState = status.beaconState()
-            val paused = status.lifecycle() == LifecycleState.PAUSED
             return EngineSnapshot.Running(
-                phase = when (beaconState) {
+                phase = when (status.beaconState()) {
                     BeaconState.SYNCING -> EngineSnapshot.Phase.SYNCING
                     BeaconState.CATCHING_UP -> EngineSnapshot.Phase.CATCHING_UP
                     BeaconState.SYNCED -> EngineSnapshot.Phase.SYNCED
                     BeaconState.STALE_ANCHOR -> EngineSnapshot.Phase.STALE_ANCHOR
                     BeaconState.STARTING, null -> EngineSnapshot.Phase.STARTING
                 },
-                paused = paused,
+                paused = status.lifecycle() == LifecycleState.PAUSED,
                 syncStartPeriod = status.syncStartPeriod(),
                 syncCurrentPeriod = status.syncCurrentPeriod(),
                 syncTargetPeriod = status.syncTargetPeriod(),
@@ -359,11 +356,8 @@ class MyotisNode private constructor(
                 wsBoundPeriods = status.wsBoundPeriods(),
                 upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
                 finalizedBlock = status.finalizedBlockNumber(),
-                // Its header read only while reads can be verified; one had stands until a newer is.
-                finalizedHeader = finalizedTimes.of(
-                    status.finalizedBlockNumber(),
-                    mayRead = beaconState == BeaconState.SYNCED && !paused,
-                ) { handle.reads().getBlockByNumber(it, false) },
+                // Filled by FinalizedHeaders, which reads the header through this chain.
+                finalizedHeader = null,
             )
         }
 
@@ -423,6 +417,11 @@ class MyotisNode private constructor(
             val contract = address.hex.removePrefix("0x").fromHex()
             val word = handle.reads().getStorageAt(contract, slot, "latest") ?: return null
             return word.toHex().padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
+        }
+
+        override fun blockByNumber(number: Long): String? {
+            val handle = (state as? State.Running)?.handle ?: return null
+            return handle.reads().getBlockByNumber("0x" + number.toString(16), false)
         }
 
         // "pending": the verified count plus the sends this node made that are not mined yet,

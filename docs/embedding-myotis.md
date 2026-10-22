@@ -508,6 +508,9 @@ answered with an empty list.
   - It is read in a scope of its own, never in the status poll, which must
     not block; until the newest finalized block's header is had, the newest
     one had stands, finalized too, only older.
+  - `FinalizedHeaders` reads it through the engine chain
+    (`VerifiedChain.blockByNumber`), so the Debug tab's log has it as
+    `getBlockByNumber`, as every other request.
   - A header counts only when its `number` is the block asked for: the
     engine has answered a read for a past block from its head before.
 

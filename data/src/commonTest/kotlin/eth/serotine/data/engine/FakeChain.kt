@@ -32,6 +32,7 @@ internal class FakeChain : VerifiedChain {
         }
     val proofs = mutableMapOf<Address, ProvenBalance>()
     val codes = mutableMapOf<Address, ProvenCode>()
+    val blocks = mutableMapOf<Long, String>()
     val proofRequests = mutableListOf<Address>()
     var failure: Throwable? = null
     var snapshots = 0
@@ -127,6 +128,11 @@ internal class FakeChain : VerifiedChain {
         failure?.let { throw it }
         spent += proofTakes
         return storage[address to slot.toHex()] ?: "0".repeat(64)
+    }
+
+    override fun blockByNumber(number: Long): String? {
+        failure?.let { throw it }
+        return blocks[number]
     }
 }
 
