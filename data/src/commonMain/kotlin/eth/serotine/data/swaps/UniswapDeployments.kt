@@ -30,10 +30,11 @@ internal class PinnedUniswapV3(val deployment: UniswapV3Deployment, val codeHash
  * `unwrapWETH9`; WETH9 `deposit` and `withdraw`), and QuoterV2's hash was the same from a second
  * node. None of the four is a proxy, so none can change its code.
  *
- * On Sepolia every built-in token (USDC, LINK, UNI) has a pool with WETH at each of the four
- * tiers, the 0.01 % tier included (`feeAmountTickSpacing(100)` is 1), and USDC/LINK, USDC/UNI and
- * LINK/UNI pools of their own; a quote touches 9 to 16 storage slots of 3 to 6 contracts
- * (`eth_createAccessList` of QuoterV2's calls), each a proof the engine fetches, read the same day.
+ * On Sepolia USDC, LINK and UNI have a pool with WETH at each of the four tiers, the 0.01 % tier
+ * included (`feeAmountTickSpacing(100)` is 1), and USDC/LINK, USDC/UNI and LINK/UNI pools of their
+ * own, and a quote touches 9 to 16 storage slots of 3 to 6 contracts (`eth_createAccessList` of
+ * QuoterV2's calls), each a proof the engine fetches, read the same day. Every built-in token
+ * added since has at least one WETH pool with liquidity (docs/swaps.md, *The cost*).
  */
 internal object UniswapDeployments {
 

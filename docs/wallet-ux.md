@@ -872,11 +872,15 @@ The ruling (CLAUDE.md, *Data sources*, 2026-10-16): a built-in list, more by
 address. Applied:
 
 - **A built-in entry** is its address, symbol, name, decimals, icon key and
-  price id, keyed by network. On Sepolia the list is USDC, LINK and UNI: the
-  issuers' own test deployments of tokens with an icon in the CC0 set (the
-  owner's choice, 2026-10-17). EURC, WETH and PYUSD have no CC0 icon, and
-  Aave's faucet tokens (DAI, USDT, WBTC, AAVE) are not their issuers', so all
-  of them are added by address. It is checked twice against the contract's
+  price id, keyed by network. On Sepolia the list is the issuers' own test
+  deployments, USDC and EURC (Circle), PYUSD (Paxos), LINK and UNI, with WETH9
+  (the WETH of Uniswap's list and of the swaps), and the tokens of Aave v3's
+  Sepolia market: Aave's own GHO and its faucet tokens DAI, USDT, WBTC and
+  AAVE, which anyone can mint and so have no price (the owner's choices,
+  2026-10-17 and 2026-10-22). WETH has ether's price, one ether being locked
+  in WETH9 for each. Uniswap's own list names only UNI and WETH on Sepolia,
+  and its pools there hold look-alikes of most other symbols, so the list is
+  not taken from them. It is checked twice against the contract's
   `symbol()` and `decimals()`: by the PR that adds it, which shows the values
   read, and by the app with verified calls each time it runs. (That reading
   of the ruling's "when it is listed" as two checks is the owner's to
@@ -884,11 +888,13 @@ address. Applied:
   contract contradicts, or whose contract does not answer as a token, is not
   shown, and Settings → Tokens says why. While the check has no verified
   answer yet the entry is shown: its balance is a verified call of its own.
-- **Icons are bundled** as Compose `ImageVector`s, converted from the SVGs of
-  the CC0 `cryptocurrency-icons` set at a pinned commit, with their provenance
-  and licence stated (`TokenIcons`); the built-in list keeps to tokens that set
-  has an icon for. A token the user adds gets a monogram of its symbol. Nothing is
-  fetched to draw a token.
+- **Icons are bundled** as Compose `ImageVector`s, converted from SVGs at a
+  pinned commit, with their provenance and licence stated (`TokenIcons`): the
+  CC0 `cryptocurrency-icons` set, and for EURC, PYUSD and GHO, which it lacks,
+  the MIT-licensed `web3icons` drawings of their issuers' logos (the owner's
+  choice, 2026-10-22). WETH is the CC0 ether glyph on a colour of its own.
+  Every built-in token has one. A token the user adds gets a monogram of its
+  symbol. Nothing is fetched to draw a token.
 - **A token the user adds** is read from its contract (`symbol()`, `name()`,
   `decimals()`, verified) and labelled as the contract's claim, with the block
   it was read at, cut on screen beyond 24 characters of symbol or 48 of name.
@@ -909,8 +915,9 @@ address. Applied:
   hidden; an added one can also be removed.
 - **Balances are verified `balanceOf` calls**, one per token and account,
   each labelled with the block it ran against. A call that reverts, or returns
-  anything but one word, is a verified "not a token", not a zero. With a short
-  list that is enough. Once the list grows, the calls are batched through
+  anything but one word, is a verified "not a token", not a zero. The list has
+  eleven entries on Sepolia and is still read a call at a time; batching the
+  calls is the next step, through
   Multicall3's `aggregate3`. Its code hash on Sepolia is
   `0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891`,
   proven 2026-10-17, and is pinned before any batch trusts it.
