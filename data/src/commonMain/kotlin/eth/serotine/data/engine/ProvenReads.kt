@@ -147,6 +147,8 @@ internal class ProvenReads<K, T>(
             val last = if (offersLastKnownWhenStopped) lastKnown(key) else null
             return last ?: EngineReading.Unavailable(ReadUnavailable.NETWORK_OFF)
         }
+        // A start that failed: no light client now, but the stream polls on for its next start.
+        if (snapshot == EngineSnapshot.Failed) return EngineReading.Unavailable(ReadUnavailable.NO_ENGINE)
         if (snapshot !is EngineSnapshot.Running) return syncing(key)
         if (snapshot.phase == Phase.STALE_ANCHOR) return EngineReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
         val head = snapshot.readableHead ?: return syncing(key)

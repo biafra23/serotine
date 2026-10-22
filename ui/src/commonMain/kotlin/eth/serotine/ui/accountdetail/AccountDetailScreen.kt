@@ -2,8 +2,8 @@ package eth.serotine.ui.accountdetail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -48,8 +48,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -66,6 +69,10 @@ import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
+import eth.serotine.ui.components.GhostCircle
+import eth.serotine.ui.components.GhostLine
+import eth.serotine.ui.components.GhostRows
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
@@ -385,7 +392,14 @@ private fun Details(
     }
 }
 
-/** Send, Swap and Receive: on a narrow phone the last one goes to a second line rather than squeezed. */
+/**
+ * Send, Swap and Receive in one line, sharing its width: three equal buttons fit a phone as
+ * narrow as an iPhone mini's 375 points, where wrapping would push Receive onto a line of its own.
+ * Where a label and its icon no longer fit a third of the line, measured in the device's own font
+ * and text size (iOS's system font is wider than Android's; the phone's text size setting, iOS's
+ * Dynamic Type, makes it wider still), they leave out their icons, so that each still says what
+ * it does in full; only past that does a label end in an ellipsis.
+ */
 @Composable
 private fun Actions(
     state: AccountDetailUiState.Ready,
@@ -394,41 +408,85 @@ private fun Actions(
     onReceive: () -> Unit,
     modifier: Modifier,
 ) {
-    FlowRow(
-        modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val measurer = rememberTextMeasurer()
+        val style = MaterialTheme.typography.labelLarge
+        val density = LocalDensity.current
+        // The widest label as the buttons draw it (Material's buttons set their labels in labelLarge).
+        val widest = remember(measurer, style, density) {
+            with(density) { ActionLabels.maxOf { measurer.measure(it, style).size.width }.toDp() }
+        }
+        val third = (maxWidth - ActionGap * 2) / 3 - ActionPadding * 2
+        // A dp of slack: the layout rounds each part to whole pixels, and a label a pixel short ends
+        // in an ellipsis, while icons left out a little early are not missed.
+        val icons = third >= ActionIcon + ActionIconGap + widest + 1.dp
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ActionGap)) {
+            ActionButton(
+                SEND_LABEL,
+                Icons.AutoMirrored.Filled.Send.takeIf { icons },
+                onClick = { onSend(null) },
+                Modifier.weight(1f).unavailable(!state.canSend),
+                available = state.canSend,
+            )
+            ActionButton(
+                SWAP_LABEL,
+                SerotineIcons.Swap.takeIf { icons },
+                onClick = { onSwap(null) },
+                Modifier.weight(1f).testTag(ACCOUNT_SWAP_TAG).unavailable(!state.canSwap),
+                available = state.canSwap,
+            )
+            ActionButton(RECEIVE_LABEL, SerotineIcons.QrCode.takeIf { icons }, onClick = onReceive, Modifier.weight(1f))
+        }
+    }
+}
+
+/** [Actions]' labels: what its buttons draw, and what is measured for whether their icons fit. */
+private const val SEND_LABEL = "Send"
+private const val SWAP_LABEL = "Swap"
+private const val RECEIVE_LABEL = "Receive"
+private val ActionLabels = listOf(SEND_LABEL, SWAP_LABEL, RECEIVE_LABEL)
+
+/** The space between [Actions]' buttons. */
+private val ActionGap = 8.dp
+
+/** Each [ActionButton]'s padding on either side, less than a button's own. */
+private val ActionPadding = 8.dp
+
+/** The size of an [ActionButton]'s icon, and the space between it and its label. */
+private val ActionIcon = 18.dp
+private val ActionIconGap = 6.dp
+
+/**
+ * One of [Actions]' buttons: its [icon] (none: left out) and [label] on one line, with less side
+ * padding than a button's own so that three share a phone's width; greyed out unless
+ * [available], a tap then saying why (owner ruling, 2026-10-18, #55).
+ */
+@Composable
+private fun ActionButton(
+    label: String,
+    icon: ImageVector?,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    available: Boolean = true,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier,
+        colors = if (available) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
+        contentPadding = PaddingValues(horizontal = ActionPadding, vertical = 8.dp),
     ) {
-        FilledTonalButton(
-            onClick = { onSend(null) },
-            modifier = Modifier.unavailable(!state.canSend),
-            colors = if (state.canSend) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
-        ) {
-            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, Modifier.size(18.dp))
-            Spacer(Modifier.size(8.dp))
-            Text("Send")
+        if (icon != null) {
+            Icon(icon, contentDescription = null, Modifier.size(ActionIcon))
+            Spacer(Modifier.size(ActionIconGap))
         }
-        FilledTonalButton(
-            onClick = { onSwap(null) },
-            modifier = Modifier.testTag(ACCOUNT_SWAP_TAG).unavailable(!state.canSwap),
-            colors = if (state.canSwap) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
-        ) {
-            Icon(SerotineIcons.Swap, contentDescription = null, Modifier.size(18.dp))
-            Spacer(Modifier.size(8.dp))
-            Text("Swap")
-        }
-        FilledTonalButton(onClick = onReceive) {
-            Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
-            Spacer(Modifier.size(8.dp))
-            Text("Receive")
-        }
+        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 /**
  * The asset rows (docs/wallet-ux.md, screen 4), each with the block its amount was verified
- * at, and what is not known yet about the other tokens. A tap on a row opens Send with its
- * asset chosen, a long press its menu.
+ * at, a ghost row per token not read yet, and what is not known yet about the other tokens. A
+ * tap on a row opens Send with its asset chosen, a long press its menu.
  */
 @Composable
 private fun Assets(
@@ -463,6 +521,13 @@ private fun Assets(
                 clickLabel = if (state.canSend) "Send ${asset.symbol}" else "Why Send ${asset.symbol} is unavailable",
             ) {
                 AssetItem(asset)
+            }
+        }
+        // A row's place for each token not read yet: one that holds some takes a place, one that holds
+        // none gives one up at the bottom, so the list grows no longer as the tokens are read.
+        if (state.pendingAssets > 0) {
+            GhostRows(state.pendingAssets, "Tokens not read yet", spacing = 4.dp) {
+                AssetGhost()
             }
         }
         state.tokensNote?.let { note ->
@@ -529,7 +594,8 @@ private fun SafeQueueList(queue: SafeQueue, onOpenSafeTx: (String) -> Unit, onIm
             Text("Import a request")
         }
         when (queue) {
-            SafeQueue.Checking -> Text("Reading this device's queue…")
+            SafeQueue.Checking ->
+                GhostRows(GHOST_ROWS_UNKNOWN, "Reading this device's queue", spacing = 8.dp) { QueueGhost() }
             is SafeQueue.Unavailable -> Text(queue.message, color = MaterialTheme.colorScheme.error)
             is SafeQueue.Shown -> {
                 if (queue.rows.isEmpty()) {
@@ -550,6 +616,16 @@ private fun SafeQueueList(queue: SafeQueue, onOpenSafeTx: (String) -> Unit, onIm
             }
         }
     }
+}
+
+/** A [QueueItem] not read yet, of its height. */
+@Composable
+private fun QueueGhost() {
+    ListItem(
+        leadingContent = { GhostCircle(32.dp) },
+        headlineContent = { GhostLine(160.dp) },
+        supportingContent = { GhostLine(220.dp) },
+    )
 }
 
 @Composable
@@ -577,7 +653,12 @@ private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
 private fun SafeOwners(safe: SafeDetails) {
     Column(Modifier.testTag(ACCOUNT_OWNERS_TAG), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (safe) {
-            SafeDetails.Checking -> Text("Reading the Safe's storage…")
+            SafeDetails.Checking -> {
+                // The title and the threshold, then owners: as many as a Safe's are, until they are read.
+                GhostLine(160.dp, style = MaterialTheme.typography.titleSmall)
+                GhostLine(200.dp)
+                GhostRows(GHOST_ROWS_UNKNOWN, "Reading the Safe's storage", spacing = 8.dp) { OwnerGhost() }
+            }
             is SafeDetails.Unavailable -> Text(safe.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
             is SafeDetails.Shown -> {
                 Text(safe.title, style = MaterialTheme.typography.titleSmall)
@@ -615,6 +696,32 @@ private fun SafeOwners(safe: SafeDetails) {
             }
         }
     }
+}
+
+/** An owner's row of [SafeOwners] not read yet, of its height. */
+@Composable
+private fun OwnerGhost() {
+    ListItem(
+        leadingContent = { GhostCircle(32.dp) },
+        headlineContent = { GhostLine(96.dp) },
+        supportingContent = { GhostLine(120.dp) },
+    )
+}
+
+/** An [AssetItem] whose balance is still being checked, of its height. */
+@Composable
+private fun AssetGhost() {
+    ListItem(
+        leadingContent = { GhostCircle(32.dp) },
+        headlineContent = { GhostLine(56.dp) },
+        supportingContent = { GhostLine(180.dp) },
+        trailingContent = {
+            Column(horizontalAlignment = Alignment.End) {
+                GhostLine(72.dp, style = MaterialTheme.typography.bodyLarge)
+                GhostLine(48.dp, style = MaterialTheme.typography.labelMedium)
+            }
+        },
+    )
 }
 
 @Composable

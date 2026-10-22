@@ -63,7 +63,8 @@ import kotlin.time.Duration.Companion.seconds
  * Every start, stop, pause and resume runs on one control thread, in the order asked: the last
  * one asked for a network is what it ends in. The engine itself is created by the first start,
  * and without its library (or with one that fails) every network reads as without a light
- * client ([EngineSnapshot.Down]).
+ * client ([EngineSnapshot.Down], final). A network whose start fails reads the same way
+ * ([EngineSnapshot.Failed]), and is tried again the next time it is asked to run.
  */
 class MyotisHost private constructor(
     private val dataDir: File,
@@ -267,7 +268,11 @@ class MyotisHost private constructor(
             val genesisTime: Long,
             val secondsPerSlot: Int,
         ) : ChainState
+        /** No engine on this device, or the host shut down: final. */
         data object Down : ChainState
+
+        /** The engine failed to start this network's light client: tried again at the next run. */
+        data object Failed : ChainState
     }
 
     /**
@@ -319,12 +324,17 @@ class MyotisHost private constructor(
                 state = ChainState.Down
                 return
             }
-            state = boot(engine) ?: ChainState.Down
+            state = boot(engine) ?: ChainState.Failed
             if (pauseWanted) pause()
         }
 
-        /** Stops the light client, keeping its files, and says why: [off], or idle. Control thread. */
+        /**
+         * Stops the light client, keeping its files, and says why: [off], or idle. Control thread. A
+         * device with no engine keeps saying so when the network goes idle, rather than promising a
+         * start it cannot make; turned off, it reads as off, as the user asked.
+         */
         fun stop(off: Boolean) {
+            if (state == ChainState.Down && !off) return
             val running = state as? ChainState.Running
             // Said before the handle goes: a read in flight answers "off" rather than an engine error.
             state = ChainState.Stopped(off)
@@ -428,6 +438,7 @@ class MyotisHost private constructor(
                 val running = when (val current = state) {
                     ChainState.Booting -> return EngineSnapshot.Booting
                     ChainState.Down -> return EngineSnapshot.Down
+                    ChainState.Failed -> return EngineSnapshot.Failed
                     is ChainState.Stopped -> return EngineSnapshot.Stopped(current.off)
                     is ChainState.Running -> current
                 }

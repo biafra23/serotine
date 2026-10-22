@@ -101,6 +101,22 @@ class EngineLightClientTest {
     }
 
     @Test
+    fun aFailedStartIsUnavailableButPolledOnForTheNextStart() = runTest {
+        val seen = mutableListOf<LightClientStatus>()
+        chain.snapshot = EngineSnapshot.Failed
+        val collecting = launch { client().observeStatus(Network.SEPOLIA).collect { seen += it } }
+        runCurrent()
+
+        // Turned off and on again, the network starts this time.
+        chain.snapshot = running(head = 5)
+        advanceTimeBy(POLL)
+        runCurrent()
+
+        assertEquals(listOf(LightClientStatus.Unavailable, LightClientStatus.Synced(5, null)), seen)
+        collecting.cancel()
+    }
+
+    @Test
     fun aFailedPollIsSkippedNotReported() = runTest {
         val seen = mutableListOf<LightClientStatus>()
         chain.failure = IllegalStateException("engine busy")
