@@ -47,7 +47,7 @@ class LoggedChainTest {
         val (detail, line) = records()
         assertEquals(LogLevel.DEBUG, detail.level)
         assertEquals(
-            "requestAccount(address=${account.hex}) → ProvenBalance(wei=1000, blockNumber=9412118)",
+            "requestAccount(address=${account.hex}) → ProvenBalance(wei=1000, blockNumber=9412118, blockHash=null)",
             detail.message,
         )
         assertEquals("requestAccount: ok, 0 ms", line.message)

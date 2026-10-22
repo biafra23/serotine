@@ -4,6 +4,7 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -103,16 +104,22 @@ class MyotisNode private constructor(
     /** Runs pause and resume one at a time, in the order asked: each blocks while it lasts. */
     private val control = Dispatchers.IO.limitedParallelism(1)
 
+    /** The engine's handle, unwrapped: what [activity] reads (in memory, so neither logged nor shared). */
+    private val handleChain = HandleChain()
+
     /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
-    private val chain: EngineChain = HandleChain().let { handle ->
+    private val chain: EngineChain = handleChain.let { handle ->
         SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
     }
+
+    /** Which accounts the verified blocks touched, so a proof stands until one did (Myotis #691). */
+    private val activity = AddressActivity(handleChain)
 
     /** The balances last verified, kept for after a restart; none kept without a path. */
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
 
     /** Native-currency balances, verified by this node's light client. */
-    val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances, activity)
 
     /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
     val addressKinds: AddressKinds =
@@ -122,13 +129,20 @@ class MyotisNode private constructor(
     val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
-    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
+    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network), activity)
 
     /** What the same feeds answered some time ago, from their round histories, as verified calls. */
     val priceHistory: PriceHistory = VerifiedPriceHistory(chain, Dispatchers.IO, ChainlinkFeeds.of(network))
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
-    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(
+        chain,
+        Dispatchers.IO,
+        POLL_INTERVAL,
+        lastBalances,
+        activity,
+        gated = BuiltInTokens.of(network).mapTo(HashSet()) { it.address },
+    )
 
     /**
      * This node's light client, for the user to watch. It gives no finalized block's own time here:
@@ -300,7 +314,7 @@ class MyotisNode private constructor(
         }
     }
 
-    private inner class HandleChain : EngineChain {
+    private inner class HandleChain : EngineChain, ActivityChain {
 
         // Each call a status read; SharedSnapshots shares one among the pollers.
         override fun snapshot(): EngineSnapshot = read()
@@ -364,7 +378,11 @@ class MyotisNode private constructor(
             val result = handle()?.requestAccount(address.hex) ?: return null
             if (result.failReason != null || result.verifyMethod == null) return null
             // A proven absence is a proven zero.
-            return ProvenBalance(if (result.exists) result.balanceWei ?: return null else "0", result.blockNumber)
+            return ProvenBalance(
+                if (result.exists) result.balanceWei ?: return null else "0",
+                result.blockNumber,
+                result.blockHashHex?.lowercase(),
+            )
         }
 
         // The code hash comes with the account proof, labelled with its block; the code itself
@@ -442,6 +460,10 @@ class MyotisNode private constructor(
         override fun logIndexStatus(): String? = handle()?.logIndexStatusJson()
 
         override fun logs(filterJson: String): String? = handle()?.reads()?.getLogs(filterJson)
+
+        override fun setActivityWatch(configJson: String): Boolean = handle()?.setActivityWatch(configJson) ?: false
+
+        override fun addressActivity(afterBlock: Long): String? = handle()?.addressActivityJson(afterBlock)
 
         // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.
         override fun resolveName(name: String): NameAnswer {

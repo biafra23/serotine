@@ -63,18 +63,24 @@ internal interface VerifiedChain {
 /** A verified call's answer. */
 internal sealed interface CallOutcome {
 
-    /** It ran and returned [hex] (lower-case, no `0x`), against the state of [blockNumber] (null: not said). */
-    data class Returned(val hex: String, val blockNumber: Long?) : CallOutcome
+    /**
+     * It ran and returned [hex] (lower-case, no `0x`), against the state of [blockNumber] (null:
+     * not said), whose hash is [blockHash] when the engine proved it (lower-case `0x` hex).
+     */
+    data class Returned(val hex: String, val blockNumber: Long?, val blockHash: String? = null) : CallOutcome
 
     /** It ran and reverted: a verified answer too. */
-    data class Reverted(val blockNumber: Long?) : CallOutcome
+    data class Reverted(val blockNumber: Long?, val blockHash: String? = null) : CallOutcome
 
     /** The engine will not answer it on this build, and asking again changes nothing. */
     data object Refused : CallOutcome
 }
 
-/** A balance in decimal wei, proven at [blockNumber], the block the proof anchors to. */
-internal data class ProvenBalance(val wei: String, val blockNumber: Long)
+/**
+ * A balance in decimal wei, proven at [blockNumber], the block the proof anchors to, whose hash
+ * is [blockHash] when the engine proved it (lower-case `0x` hex).
+ */
+internal data class ProvenBalance(val wei: String, val blockNumber: Long, val blockHash: String? = null)
 
 /**
  * A storage word as 64 lower-case hex digits ([valueHex]; all zero for an empty slot), shown as

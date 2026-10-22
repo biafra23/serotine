@@ -1,6 +1,7 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.prices.PinnedFeed
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.NoPriceReason
@@ -11,15 +12,24 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlin.concurrent.Volatile
 import kotlin.math.pow
 import kotlin.time.Duration
 
 /**
  * [PriceFeeds] over a verified light client: each [PinnedFeed]'s `decimals()` and
  * `latestRoundData()` as verified calls ([VerifiedChain.call]), through [ProvenReads], at
- * every verified head. `decimals()` is read every time, since the proxy's aggregator can be
- * replaced; one that differs from the pin, a non-positive answer, or what is no round, is no
- * price. A round is stale once it is older than the feed's heartbeat and [STALE_GRACE_SECONDS]
+ * every verified head that [activity] cannot vouch for. A proof records the aggregator the
+ * proxy pointed to (`aggregator()`, called with it), and stands, re-dated at each later head,
+ * while no block since it was proven may have changed the answer: no log of that aggregator —
+ * every new round emits one — and no change to the proxy's own state, which a switch to
+ * another aggregator is (block access lists: until a chain has them, every price is proven
+ * at every head, as without [activity], and `aggregator()` is not called). A proof stands only
+ * when its `decimals()`, its round and its aggregator were all read at the same block — the
+ * same proven hash, not only the same number — and only
+ * for a price ([FeedReading.Verified]); every proof reads `decimals()`, since the proxy's
+ * aggregator can be replaced; one that differs from the pin, a non-positive answer, or what
+ * is no round, is no price. A round is stale once it is older than the feed's heartbeat and [STALE_GRACE_SECONDS]
  * (a heartbeat update lands a little after the heartbeat, not at it), measured against the
  * time of the verified head the read was made at, never the device's clock; a head whose time
  * is not known yet gives no reading (unproven) rather than a guess. A round dated more than
@@ -30,13 +40,31 @@ class VerifiedPriceFeeds internal constructor(
     dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
     feeds: List<PinnedFeed>,
+    /** What vouches for an unchanged feed between heads; none: its calls at every head. */
+    private val activity: AddressActivity? = null,
 ) : PriceFeeds {
 
     private val pinned = feeds.associateBy { it.priceId }
 
+    /**
+     * Per feed, the aggregator its proxy pointed to and the block (number and hash) of the proof
+     * that read it: the one [unchangedSince] watches. Replaced whole on each write, so a reader
+     * never sees half of one; a write lost to a race only costs that feed one more proof.
+     */
+    @Volatile
+    private var aggregators: Map<PriceId, Noted> = emptyMap()
+
+    private class Noted(val aggregator: Address, val block: Long, val hash: String)
+
     override val quotes: Map<PriceId, PriceId> = feeds.associate { it.priceId to it.quote }
 
-    private val reads = ProvenReads<PriceId, FeedReading>(chain, dispatcher, pollInterval) { verified, id ->
+    private val reads = ProvenReads<PriceId, FeedReading>(
+        chain,
+        dispatcher,
+        pollInterval,
+        unchangedSince = { id, provenAt, provenHash, head -> unchangedSince(id, provenAt, provenHash, head) },
+        atHead = { id, value, headTime -> atHead(id, value, headTime) },
+    ) { verified, id ->
         val feed = pinned.getValue(id)
         // The head's time before the calls: the calls block, and the head may move meanwhile.
         val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp
@@ -47,7 +75,60 @@ class VerifiedPriceFeeds internal constructor(
         // A refusal is said whatever the head's time; an answer cannot be dated without it.
         if (headTime == null) return@ProvenReads null
         val block = (round as? CallOutcome.Returned)?.blockNumber
-        EngineReading.Proven(reading(feed, decimals, round, headTime), block ?: UNKNOWN_BLOCK)
+        val hash = (round as? CallOutcome.Returned)?.blockHash
+        // Only where a kept price could stand: a chain whose blocks show account activity, and
+        // a round whose block is proven, read at the same one as its decimals.
+        val pairedDecimals = (decimals as? CallOutcome.Returned)?.let { it.blockNumber == block && it.blockHash == hash }
+        if (block != null && hash != null && pairedDecimals == true && activity?.hasAccountCoverage(block) == true) {
+            noteAggregator(id, verified, block, hash)
+        } else {
+            aggregators = aggregators - id
+        }
+        EngineReading.Proven(reading(feed, decimals, round, headTime), block ?: UNKNOWN_BLOCK, hash)
+    }
+
+    /**
+     * Read the proxy's aggregator for the proof at [block] of hash [hash]. Kept only when the
+     * call ran at that same block: an aggregator read at another one — a later block, or a
+     * sibling of the same number — could be the proxy's next, not this proof's. Anything else
+     * forgets the feed's, and its proof is not vouched for.
+     */
+    private fun noteAggregator(id: PriceId, verified: VerifiedChain, block: Long, hash: String) {
+        val outcome = verified.call(pinned.getValue(id).address, Abi.AGGREGATOR) as? CallOutcome.Returned
+        val aggregator = outcome?.takeIf { it.blockNumber == block && it.blockHash == hash }?.let { Abi.address(it.hex) }
+        aggregators = if (aggregator != null) aggregators + (id to Noted(aggregator, block, hash)) else aggregators - id
+    }
+
+    /**
+     * Whether the feed's answer proven at block [provenAt] still stands at [head]: its proof's
+     * aggregator emitted no log since, and its proxy's own state did not change — both checked,
+     * from the proof's block through the head, by [activity].
+     */
+    private fun unchangedSince(id: PriceId, provenAt: Long, provenHash: String?, head: Long): Boolean {
+        val activity = activity ?: return false
+        val noted = aggregators[id] ?: return false
+        if (noted.block != provenAt || noted.hash != provenHash) return false
+        val proxy = pinned.getValue(id).address
+        // Both from one report: a reorg between two reads could hide the aggregator's new round.
+        return activity.unchangedSince(
+            listOf(noted.aggregator to AddressActivity.Kind.LOG, proxy to AddressActivity.Kind.ACCOUNT),
+            provenAt,
+            provenHash,
+            head,
+        )
+    }
+
+    /**
+     * A kept reading as of a head produced at [headTime]: a price's age and staleness move with
+     * the head even while its round stands. Null — prove again — when the head's time is not
+     * known yet, since an answer cannot be dated without it, and for anything but a price: a
+     * "no price" may itself depend on the head's time (a round dated after it).
+     */
+    private fun atHead(id: PriceId, value: FeedReading, headTime: Long?): FeedReading? {
+        if (value !is FeedReading.Verified) return null
+        headTime ?: return null
+        val age = (headTime - value.updatedAt).coerceAtLeast(0)
+        return value.copy(ageSeconds = age, stale = age > pinned.getValue(id).heartbeatSeconds + STALE_GRACE_SECONDS)
     }
 
     override fun observe(priceId: PriceId): Flow<FeedReading> {
