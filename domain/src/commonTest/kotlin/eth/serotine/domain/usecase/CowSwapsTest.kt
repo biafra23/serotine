@@ -382,13 +382,33 @@ class CowSwapsTest {
     fun whatLiveOrdersHoldBackIsTheirSellAmountsUntilTheyCanTakeNoMore() = runTest {
         val live = liveOrder()
         val list = listOf(live)
-        assertEquals(hundredUsdc, list.holding(account, usdcToken.address, finalized))
-        assertEquals(UInt256.ZERO, list.holding(account, weth, finalized), "another token")
-        assertEquals(UInt256.ZERO, list.holding(Address.of("0x" + "bb".repeat(20)), usdcToken.address, finalized))
+        val chain = FakeCowChain()
+        assertEquals(hundredUsdc, list.holding(account, usdcToken.address, finalized, chain))
+        assertEquals(UInt256.ZERO, list.holding(account, weth, finalized, chain), "another token")
+        val stranger = Address.of("0x" + "bb".repeat(20))
+        assertEquals(UInt256.ZERO, list.holding(stranger, usdcToken.address, finalized, chain), "another account")
         val past = FinalizedBlock(130, live.order.validTo + 1)
-        assertEquals(UInt256.ZERO, list.holding(account, usdcToken.address, past), "a finalized block past validTo")
+        assertEquals(UInt256.ZERO, list.holding(account, usdcToken.address, past, chain), "finalized past validTo")
         val ended = listOf(live.copy(end = CowOrderEnd.Unfilled(120, cancelled = true)))
-        assertEquals(UInt256.ZERO, ended.holding(account, usdcToken.address, finalized), "its end proven")
+        assertEquals(UInt256.ZERO, ended.holding(account, usdcToken.address, finalized, chain), "its end proven")
+    }
+
+    @Test
+    fun anOrderTheSettlementReadsDoneAtTheHeadHoldsNothingBack() = runTest {
+        val live = liveOrder()
+        val chain = FakeCowChain()
+        val filledAmount = COW_SEPOLIA.settlement to GPv2Settlement.filledAmount(live.uid).toHex()
+        for ((answer, expected) in listOf(
+            Simulation.Succeeded(word(live.order.sellAmount), 121) to UInt256.ZERO,
+            Simulation.Succeeded("ff".repeat(32), 121) to UInt256.ZERO,
+            Simulation.Succeeded(word(UInt256.ZERO), 121) to hundredUsdc,
+            Simulation.Succeeded("ab", 121) to hundredUsdc,
+            Simulation.Unavailable(ReadUnavailable.UNPROVEN) to hundredUsdc,
+            Simulation.Refused to hundredUsdc,
+        )) {
+            chain.answers[filledAmount] = answer
+            assertEquals(expected, listOf(live).holding(account, usdcToken.address, finalized, chain), "$answer")
+        }
     }
 
     private val recovery = FakeRecovery()

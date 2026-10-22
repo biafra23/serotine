@@ -1,65 +1,102 @@
 package eth.serotine.data.engine
 
+import eth.serotine.domain.repository.FinalizedBlock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 /**
- * The finalized block's own timestamp, from its verified header (docs/swaps.md, *Proving an order's
- * end*: never its slot's time, which may be an empty slot's after it), remembered for the one block
- * it was read for: the finalized block moves once an epoch, the status is polled every second, so
- * its header is read once a move, and after a read that failed not again for [retryAfter], so a
- * header the engine cannot serve does not cost every poll a read. Not thread-safe: one per node,
- * used from its status poll alone.
+ * The finalized block with its own timestamp, from its verified header (docs/swaps.md, *Proving an
+ * order's end*: never its slot's time, which may be an empty slot's after it).
+ *
+ * - Each finalized block's header is read once: the finalized block moves once an epoch, and the
+ *   status is polled every second.
+ * - A header counts only when it is the block asked for (its `number`): the engine has answered a
+ *   read for a past block from its head before (docs/swaps.md).
+ * - After a read that failed, not again for [retryAfter], so a header the engine cannot serve does
+ *   not cost every poll a read.
+ * - Until the newest finalized block's header is had, the newest one that was had stands. It is
+ *   finalized too, only older, so it can delay a proof or keep a hold-back longer, never shorten
+ *   either.
+ * - The header is read in [scope], never in the status poll that asks for it, which must not block
+ *   (`VerifiedChain.snapshot`): a poll takes what is had, and a later one what the read brought.
+ * - Safe from several threads, as every adapter's status poll asks: one read at a time.
  */
 internal class FinalizedTimes(
+    private val scope: CoroutineScope,
     private val retryAfter: Duration = 12.seconds,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
-    private var known: Pair<Long, Long>? = null
+    @Volatile
+    private var had: FinalizedBlock? = null
+
+    // Written only while holding [reading].
     private var failed: Pair<Long, TimeMark>? = null
+    private val reading = Mutex()
 
     /**
-     * Block [block]'s timestamp (unix seconds): the one known for it, or else, when [mayRead] (the
-     * light client verifies reads now) and no read of it failed in the last [retryAfter], read with
+     * The newest finalized block whose header was had, up to [block] (the engine's finalized block;
+     * 0: none yet), with its timestamp (unix seconds); null while none was. Returns at once. When
+     * [block]'s own header is not had, [mayRead] (the light client verifies reads now), no read is
+     * running and none of it failed in the last [retryAfter], it is read in [scope] with
      * [readBlock] (the engine's verified `getBlockByNumber` for a `0x` block number, without its
-     * transactions). Null when there is no finalized block yet (0) or its header is not had.
+     * transactions, which may block).
      */
-    fun of(block: Long, mayRead: Boolean = true, readBlock: (String) -> String?): Long? {
-        if (block <= 0) return null
-        known?.let { (number, time) -> if (number == block) return time }
-        if (!mayRead) return null
-        failed?.let { (number, at) -> if (number == block && at.elapsedNow() < retryAfter) return null }
-        val time = try {
-            blockTimestampOf(readBlock("0x" + block.toString(16)))
-        } catch (e: Exception) {
-            // An engine that fails, or a CancellationException its own code throws, is no answer.
-            null
+    fun of(block: Long, mayRead: Boolean = true, readBlock: (String) -> String?): FinalizedBlock? {
+        val known = had
+        if (block <= (known?.number ?: 0) || !mayRead || !reading.tryLock()) return known
+        val due = failed?.let { (number, at) -> number != block || at.elapsedNow() >= retryAfter } ?: true
+        if (!due) {
+            reading.unlock()
+            return known
         }
-        if (time == null) {
-            failed = block to timeSource.markNow()
-            return null
+        scope.launch {
+            try {
+                val time = try {
+                    blockTimestampOf(readBlock("0x" + block.toString(16)), block)
+                } catch (e: Exception) {
+                    // An engine that fails, or a CancellationException its own code throws, is no answer.
+                    null
+                }
+                if (time == null) {
+                    failed = block to timeSource.markNow()
+                } else {
+                    failed = null
+                    had = FinalizedBlock(block, time)
+                }
+            } finally {
+                reading.unlock()
+            }
         }
-        known = block to time
-        failed = null
-        return time
+        return known
     }
 }
 
-/** The `timestamp` of the block object in [json] (`0x` hex), or null for anything else. */
-internal fun blockTimestampOf(json: String?): Long? {
+/**
+ * The `timestamp` of the block object in [json] (`0x` hex), when its `number` is [block]; null for
+ * anything else, another block's header included.
+ */
+internal fun blockTimestampOf(json: String?, block: Long): Long? {
     if (json == null) return null
-    val block = try {
+    val header = try {
         Json.parseToJsonElement(json) as? JsonObject
     } catch (e: SerializationException) {
         null
     } ?: return null
-    val hex = (block["timestamp"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull ?: return null
-    return hex.removePrefix("0x").takeIf { it.isNotEmpty() && it.length <= 15 }?.toLongOrNull(16)
+    fun quantity(key: String): Long? {
+        val hex = (header[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull ?: return null
+        return hex.removePrefix("0x").takeIf { it.isNotEmpty() && it.length <= 15 }?.toLongOrNull(16)
+    }
+    if (quantity("number") != block) return null
+    return quantity("timestamp")
 }

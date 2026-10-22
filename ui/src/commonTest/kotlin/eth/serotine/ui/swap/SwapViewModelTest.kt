@@ -59,6 +59,7 @@ import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
+import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeReceipts
@@ -185,6 +186,7 @@ class SwapViewModelTest {
                 tokenBalances,
                 sent,
                 cowOrders,
+                FakeCowChain(),
                 light,
                 Network.SEPOLIA,
                 now,

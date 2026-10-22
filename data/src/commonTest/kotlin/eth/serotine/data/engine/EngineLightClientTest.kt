@@ -59,18 +59,23 @@ class EngineLightClientTest {
     @Test
     fun aSyncedStatusCarriesTheFinalizedBlockWithItsOwnTimestamp() = runTest {
         val seen = mutableListOf<LightClientStatus>()
-        chain.snapshot =
-            running(head = 120, headTimestamp = 1_792_100_000, finalized = 40, finalizedTimestamp = 1_792_099_032)
+        val header = FinalizedBlock(40, 1_792_099_032)
+        chain.snapshot = running(head = 120, headTimestamp = 1_792_100_000, finalized = 40, finalizedHeader = header)
         val collecting = launch { client().observeStatus().collect { seen += it } }
         runCurrent()
-        // A finalized block whose header could not be read gives no finalized block at all.
-        chain.snapshot = running(head = 121, headTimestamp = 1_792_100_012, finalized = 41)
+        // A newer finalized block whose header is not had yet: the one had stands.
+        chain.snapshot = running(head = 121, headTimestamp = 1_792_100_012, finalized = 41, finalizedHeader = header)
+        advanceTimeBy(POLL)
+        runCurrent()
+        // None had at all: none.
+        chain.snapshot = running(head = 122, headTimestamp = 1_792_100_024, finalized = 41)
         advanceTimeBy(POLL)
         runCurrent()
         assertEquals(
             listOf<LightClientStatus>(
-                LightClientStatus.Synced(120, 1_792_100_000, FinalizedBlock(40, 1_792_099_032)),
-                LightClientStatus.Synced(121, 1_792_100_012, finalized = null),
+                LightClientStatus.Synced(120, 1_792_100_000, header),
+                LightClientStatus.Synced(121, 1_792_100_012, header),
+                LightClientStatus.Synced(122, 1_792_100_024, finalized = null),
             ),
             seen,
         )

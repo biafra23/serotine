@@ -4,6 +4,7 @@ import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.repository.FinalizedBlock
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlin.time.AbstractLongTimeSource
 import kotlin.time.Duration
@@ -144,8 +145,8 @@ internal fun running(
     bound: Long = 13,
     upgrade: NetworkUpgrade? = null,
     finalized: Long = 0,
-    finalizedTimestamp: Long? = null,
+    finalizedHeader: FinalizedBlock? = null,
 ) = EngineSnapshot.Running(
     phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound, upgrade,
-    finalized, finalizedTimestamp,
+    finalized, finalizedHeader,
 )

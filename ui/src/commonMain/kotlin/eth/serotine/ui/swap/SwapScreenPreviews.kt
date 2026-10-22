@@ -222,6 +222,17 @@ private fun SwapComposeNoRoutePreview() = SwapPreview(
 
 @Preview
 @Composable
+private fun SwapComposeCowOrdersUnreadablePreview() = SwapPreview(
+    composed.with {
+        it.copy(
+            error = "The record of this device's CoW orders cannot be read: one may still fill, so no token is " +
+                "swapped until it can be read.",
+        )
+    },
+)
+
+@Preview
+@Composable
 private fun SwapComposeApprovalSentPreview() = SwapPreview(
     composed.with {
         it.copy(info = "Your approval is on its way: once a block has it, Review quotes the swap.")
@@ -335,6 +346,7 @@ internal val swapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SwapComposeQuotingPreview() },
     { SwapComposeInputErrorsPreview() },
     { SwapComposeNoRoutePreview() },
+    { SwapComposeCowOrdersUnreadablePreview() },
     { SwapComposeApprovalSentPreview() },
     { SwapComposeEarlierMaybeSentPreview() },
     { SwapComposeTokenNotFoundPreview() },

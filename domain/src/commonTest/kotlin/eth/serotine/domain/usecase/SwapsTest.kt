@@ -69,6 +69,7 @@ class SwapsTest {
     private val sent = MemorySentTransfers()
     private val light = FakeLightClient()
     private val cowOrders = MemoryCowOrders()
+    private val cowChain = FakeCowChain()
     private val quote = QuoteSwap(
         FindUniswapRoute(chain, inputs),
         inputs,
@@ -76,6 +77,7 @@ class SwapsTest {
         tokens,
         sent,
         cowOrders,
+        cowChain,
         light,
         Network.SEPOLIA,
         clock = { headTime },

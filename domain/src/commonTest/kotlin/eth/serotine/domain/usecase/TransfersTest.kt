@@ -5,6 +5,7 @@ import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.GPv2Settlement
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
@@ -14,6 +15,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
@@ -78,7 +80,9 @@ class TransfersTest {
     private var now = 1_800_000_100L
     private val orders = MemoryCowOrders()
     private val light = FakeLightClient()
-    private val quoteTransfer = QuoteTransfer(inputs, balances, tokens, sent, orders, light, Network.SEPOLIA) { now }
+    private val cowChain = FakeCowChain()
+    private val quoteTransfer =
+        QuoteTransfer(inputs, balances, tokens, sent, orders, cowChain, light, Network.SEPOLIA) { now }
 
     @Test
     fun anAddressIsTakenAsIsAndANameIsResolved() = runTest {
@@ -192,6 +196,19 @@ class TransfersTest {
         assertIs<TransferQuoting.Quoted>(
             quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(1_500_000), FeeLevel.FAST),
         )
+    }
+
+    @Test
+    fun anOrderFilledAtTheHeadIsNotCountedTwice() = runTest {
+        val order = cowOrder(alice, 4_000_000, validTo = now + 200)
+        orders.orders.value = listOf(order)
+        // The settlement counts it filled at the head: the balance already shows the fill.
+        cowChain.answers[COW_SEPOLIA.settlement to GPv2Settlement.filledAmount(order.uid).toHex()] =
+            Simulation.Succeeded(UInt256.of(4_000_000).toBytes32().toHex(), 121)
+        val quote = assertIs<TransferQuoting.Quoted>(
+            quoteTransfer(alice, bob, TransferAsset.Erc20Token(usdc), UInt256.of(1_500_000), FeeLevel.FAST),
+        ).quote
+        assertEquals(UInt256.ZERO, quote.heldByOrders)
     }
 
     @Test

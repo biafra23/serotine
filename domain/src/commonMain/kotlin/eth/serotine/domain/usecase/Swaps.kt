@@ -13,6 +13,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.swapsWith
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowOrderList
 import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.FeeLevel
@@ -144,7 +145,10 @@ const val SWAP_DEADLINE_SECONDS: Long = 10 * 60
  * whose approval is sent but not mined is [SwapQuoting.ApprovalPending]: the swap is quoted only
  * once the approval's receipt is in. One swap of a token is in flight at a time
  * ([SwapQuoting.EarlierSwapPending]): the allowance it counts on is its own. What this wallet's
- * own transactions not mined yet move of the token sold is not this swap's to sell. Every refusal
+ * own transactions not mined yet move of the token sold is not this swap's to sell, nor what its
+ * CoW orders may still take of it ([CowOrders], until a finalized block is past an order's
+ * `validTo`, or the settlement reads the order done at the head, [CowChain]); a record of orders
+ * that cannot be read sells nothing ([SwapQuoting.CowOrdersUnreadable]). Every refusal
  * that holds whatever the route is said before the route is quoted, and every one that holds
  * whatever the allowance before an approval is asked for. On [network] only. [clock] is in unix
  * seconds.
@@ -156,6 +160,7 @@ class QuoteSwap(
     private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
     private val cowOrders: CowOrders,
+    private val cowChain: CowChain,
     private val lightClient: LightClient,
     private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
@@ -221,7 +226,7 @@ class QuoteSwap(
             null -> UInt256.ZERO
             is CowOrderList.Loaded -> soldToken?.let {
                 val finalized = (head.await() as? LightClientStatus.Synced)?.finalized
-                read.orders.holding(from, it.address, finalized)
+                read.orders.holding(from, it.address, finalized, cowChain)
             } ?: return@cancellingReads SwapQuoting.InsufficientToken
             CowOrderList.Unreadable -> return@cancellingReads SwapQuoting.CowOrdersUnreadable
         }

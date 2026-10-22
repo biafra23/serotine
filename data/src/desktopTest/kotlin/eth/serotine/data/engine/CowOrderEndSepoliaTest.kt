@@ -58,9 +58,13 @@ class CowOrderEndSepoliaTest {
             val synced = withTimeout(10.minutes) {
                 node.lightClient.observeStatus().first { (it as? LightClientStatus.Synced)?.finalized != null }
             }
-            val finalized = assertNotNull((synced as LightClientStatus.Synced).finalized)
-            println("[${at()}] finalized block ${finalized.number} at ${finalized.timestamp}")
+            synced as LightClientStatus.Synced
+            val finalized = assertNotNull(synced.finalized)
+            println("[${at()}] finalized block ${finalized.number} at ${finalized.timestamp}, head ${synced.headBlock}")
             assertTrue(finalized.timestamp > uid.validTo, "Sepolia's finalized block is past the order's validTo")
+            // Its own header's time, not the head's: finality trails the head by two epochs or so.
+            assertTrue(finalized.number < synced.headBlock, "a finalized block below the head")
+            assertTrue(finalized.timestamp < assertNotNull(synced.headTimestamp), "the finalized block's own time")
 
             val venue = withTimeout(5.minutes) {
                 var reading: CowVenueReading

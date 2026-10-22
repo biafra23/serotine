@@ -346,7 +346,7 @@ class MyotisNode private constructor(
                 // number (its block reads are internal), and the slot's time is no stand-in for the
                 // header's (docs/swaps.md, *Proving an order's end*). A CoW order is then not
                 // offered here, as it waits for a finalized block's own time.
-                finalizedTimestamp = null,
+                finalizedHeader = null,
             )
         }
 

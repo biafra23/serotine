@@ -1,60 +1,108 @@
 package eth.serotine.data.engine
 
+import eth.serotine.domain.repository.FinalizedBlock
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FinalizedTimesTest {
 
     // A block object as the engine's getBlockByNumber answers it, trimmed: Sepolia's finalized
     // block 11,968,920 of part 0's spike, timestamp 1792664532.
-    private val block = """{"number":"0xb6a198","hash":"0x${"ab".repeat(32)}","timestamp":"0x6ad9e3d4"}"""
+    private fun header(number: Long, timestamp: Long = 1_792_664_532) =
+        """{"number":"0x${number.toString(16)}","hash":"0x${"ab".repeat(32)}",""" +
+            """"timestamp":"0x${timestamp.toString(16)}"}"""
+
+    private val clock = TestTimeSource()
+
+    private fun TestScope.times(retryAfter: Duration = 12.seconds) = FinalizedTimes(this, retryAfter, clock)
+
+    /** [block]'s time as [times] has it once a read it starts has run. */
+    private fun TestScope.after(
+        times: FinalizedTimes,
+        block: Long,
+        mayRead: Boolean = true,
+        read: (String) -> String?,
+    ): FinalizedBlock? {
+        times.of(block, mayRead, read)
+        runCurrent()
+        return times.of(block, mayRead = false, read)
+    }
 
     @Test
-    fun theTimestampIsTheBlocksOwnReadOnceAMove() {
-        val times = FinalizedTimes()
+    fun theTimestampIsTheBlocksOwnReadOnceAMoveOffThePoll() = runTest {
+        val times = times()
         val asked = mutableListOf<String>()
-        assertEquals(1_792_664_532L, times.of(11_968_920) { asked += it; block })
-        assertEquals(1_792_664_532L, times.of(11_968_920) { asked += it; block })
+        assertNull(times.of(11_968_920) { asked += it; header(11_968_920) }, "returns at once: the read runs apart")
+        runCurrent()
+        assertEquals(FinalizedBlock(11_968_920, 1_792_664_532), times.of(11_968_920) { asked += it; null })
         assertEquals(listOf("0xb6a198"), asked, "read once for the block")
-        times.of(11_968_952) { asked += it; block }
+
+        val next = header(11_968_952, timestamp = 1_792_664_916)
+        assertEquals(FinalizedBlock(11_968_952, 1_792_664_916), after(times, 11_968_952) { asked += it; next })
         assertEquals(2, asked.size, "read again once the finalized block moved")
     }
 
     @Test
-    fun noBlockOrNoAnswerIsNoTime() {
+    fun anotherBlocksHeaderOrNoAnswerIsNoTime() = runTest {
         // No retry gap here: each answer below is read.
-        val times = FinalizedTimes(retryAfter = 0.seconds)
-        assertNull(times.of(0) { block }, "no finalized block yet")
-        assertNull(times.of(11_968_920) { null })
-        assertNull(times.of(11_968_920) { "null" }, "a verified not found")
-        assertNull(times.of(11_968_920) { throw IllegalStateException("the engine failed") })
-        assertNull(times.of(11_968_920) { """{"timestamp":17}""" }, "not hex text")
-        assertNull(times.of(11_968_920) { """{"error":"no verified answer"}""" })
-        assertEquals(1_792_664_532L, times.of(11_968_920) { block }, "an answer missing a moment ago may be had now")
+        val times = times(retryAfter = Duration.ZERO)
+        assertNull(after(times, 0) { header(0) }, "no finalized block yet")
+        val block = 11_968_920L
+        assertNull(after(times, block) { header(block + 64) }, "the head's header, not the block asked for")
+        assertNull(after(times, block) { header(block).replace("\"number\":\"0xb6a198\",", "") }, "no number")
+        assertNull(after(times, block) { null })
+        assertNull(after(times, block) { "null" }, "a verified not found")
+        assertNull(after(times, block) { throw IllegalStateException("the engine failed") })
+        assertNull(after(times, block) { """{"number":"0xb6a198","timestamp":17}""" }, "not hex text")
+        assertNull(after(times, block) { """{"error":"no verified answer"}""" })
+        assertEquals(FinalizedBlock(block, 1_792_664_532), after(times, block) { header(block) }, "had now")
     }
 
     @Test
-    fun aReadThatFailedWaitsItsGapAndNoneIsMadeWhileReadsAreNotVerified() {
-        val clock = TestTimeSource()
-        val times = FinalizedTimes(retryAfter = 12.seconds, timeSource = clock)
+    fun theNewestHeaderHadStandsUntilANewerIsHad() = runTest {
+        val times = times()
+        after(times, 11_968_920) { header(11_968_920) }
+        val had = FinalizedBlock(11_968_920, 1_792_664_532)
+        assertEquals(had, after(times, 11_968_952) { null }, "the newer header not had: the older stands")
+        assertEquals(had, times.of(11_968_900) { header(11_968_900) }, "never back to an older block")
+    }
+
+    @Test
+    fun aReadThatFailedWaitsItsGapAndNoneIsMadeWhileReadsAreNotVerified() = runTest {
+        val times = times()
         var reads = 0
-        assertNull(times.of(11_968_920, mayRead = false) { reads++; block }, "the light client does not verify now")
+        assertNull(after(times, 11_968_920, mayRead = false) { reads++; header(11_968_920) }, "not verifying now")
         assertEquals(0, reads)
 
-        assertNull(times.of(11_968_920) { reads++; null })
+        assertNull(after(times, 11_968_920) { reads++; null })
         clock += 11.seconds
-        assertNull(times.of(11_968_920) { reads++; block }, "not again within the gap")
+        assertNull(after(times, 11_968_920) { reads++; header(11_968_920) }, "not again within the gap")
         assertEquals(1, reads)
-        assertEquals(1_792_664_532L, times.of(11_968_952) { reads++; block }, "a new finalized block is read at once")
+        clock += 1.seconds
+        val had = after(times, 11_968_920) { reads++; header(11_968_920) }
+        assertEquals(FinalizedBlock(11_968_920, 1_792_664_532), had)
         assertEquals(2, reads)
 
-        assertNull(times.of(11_968_984) { reads++; null })
-        clock += 12.seconds
-        assertEquals(1_792_664_532L, times.of(11_968_984) { reads++; block }, "again after the gap")
-        assertEquals(1_792_664_532L, times.of(11_968_984, mayRead = false) { reads++; block }, "known: no read")
-        assertEquals(4, reads)
+        assertEquals(1_792_664_916, after(times, 11_968_952) { reads++; header(11_968_952, 1_792_664_916) }?.timestamp)
+        assertEquals(3, reads, "a new finalized block is read at once")
+    }
+
+    @Test
+    fun oneReadRunsAtATime() = runTest {
+        val times = times()
+        var reads = 0
+        times.of(11_968_920) { reads++; header(11_968_920) }
+        times.of(11_968_920) { reads++; header(11_968_920) }
+        runCurrent()
+        assertEquals(1, reads, "a poll while a read runs takes what is had")
     }
 }

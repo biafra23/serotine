@@ -3,14 +3,17 @@ package eth.serotine.ui
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowOrderEnd
 import eth.serotine.domain.repository.CowOrderList
 import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.CowOrders
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.FeeReading
@@ -30,6 +33,7 @@ import eth.serotine.domain.repository.LogsReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NonceReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
@@ -263,7 +267,11 @@ internal class MemoryCowOrders : CowOrders {
     override fun observe(): Flow<CowOrderList> = orders.map { CowOrderList.Loaded(it) }
 
     override suspend fun record(order: CowOrderRecord): Boolean {
-        orders.value = orders.value.filterNot { it.uid == order.uid } + order
+        orders.value = if (orders.value.any { it.uid == order.uid }) {
+            orders.value.map { if (it.uid == order.uid) order else it }
+        } else {
+            orders.value + order
+        }
         return true
     }
 
@@ -277,4 +285,15 @@ internal class MemoryCowOrders : CowOrders {
         orders.value = orders.value.filterNot { !it.live && it.signedAt < signedBefore }
         return true
     }
+}
+
+/** CoW's contracts as a chain without them: no venue, and no answer to a call unless [answers] has one. */
+internal class FakeCowChain : CowChain {
+    val answers = mutableMapOf<Pair<Address, String>, Simulation>()
+
+    override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned
+
+    override suspend fun call(to: Address, data: ByteArray): Simulation =
+        answers[to to data.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }]
+            ?: Simulation.Unavailable(ReadUnavailable.UNPROVEN)
 }

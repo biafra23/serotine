@@ -106,6 +106,9 @@ class MyotisNode private constructor(
     /** Where the engine's own log is drained into [debugLog] while the engine runs. */
     private val logScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Where the finalized block's header is read, off the status poll ([FinalizedTimes]). */
+    private val headerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
     private val chain: EngineChain = HandleChain().let { handle ->
         SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
@@ -151,7 +154,10 @@ class MyotisNode private constructor(
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
 
-    /** CoW Protocol's settlement contracts on this node's network, proven by their code (docs/swaps.md, *CoW Protocol*). */
+    /**
+     * CoW Protocol's settlement contracts on this node's network, proven by their code
+     * (docs/swaps.md, *CoW Protocol*).
+     */
     val cow: CowChain = VerifiedCow(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
@@ -208,6 +214,7 @@ class MyotisNode private constructor(
             current as? State.Running
         }
         logScope.cancel()
+        headerScope.cancel()
         running?.stop()
         // In a debug build, what the engine said while stopping, which the pump no longer drains.
         if (running != null) debugLog?.let { EngineLogPump(Myotis::drainLogs, it).drainNow() }
@@ -310,7 +317,7 @@ class MyotisNode private constructor(
 
     private inner class HandleChain : EngineChain {
 
-        private val finalizedTimes = FinalizedTimes()
+        private val finalizedTimes = FinalizedTimes(headerScope)
 
         // Each call a status read; SharedSnapshots shares one among the pollers.
         override fun snapshot(): EngineSnapshot {
@@ -352,8 +359,8 @@ class MyotisNode private constructor(
                 wsBoundPeriods = status.wsBoundPeriods(),
                 upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
                 finalizedBlock = status.finalizedBlockNumber(),
-                // Its header read only while reads can be verified; one known stays known.
-                finalizedTimestamp = finalizedTimes.of(
+                // Its header read only while reads can be verified; one had stands until a newer is.
+                finalizedHeader = finalizedTimes.of(
                     status.finalizedBlockNumber(),
                     mayRead = beaconState == BeaconState.SYNCED && !paused,
                 ) { handle.reads().getBlockByNumber(it, false) },

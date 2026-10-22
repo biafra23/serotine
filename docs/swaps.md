@@ -503,6 +503,11 @@ can still fill could swap them twice.
   - how its POST stands: attempted from before the request on, then CoW's
     answer;
   - and, once proven, its end.
+
+  The file is written whole and replaced at once, and every kind and reason
+  in it is a code of its own, so a newer build's record still reads. Only
+  damage to the storage loses an order from it, and the damaged file is
+  kept aside; an order lost that way holds nothing back.
 - **Send and a new swap hold back the sold amount of a live order**, as they
   do for a transfer not mined yet (docs/embedding-myotis.md, *Sending*).
   - The hold-back ends as soon as the order is known to have filled: its

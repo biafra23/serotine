@@ -54,6 +54,7 @@ import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
+import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeNames
@@ -174,7 +175,7 @@ class SendViewModelTest {
             ),
             DescribeKeyStore(keys),
             ResolveRecipient(names),
-            QuoteTransfer(inputs, balances, tokenBalances, sent, cowOrders, light, Network.SEPOLIA),
+            QuoteTransfer(inputs, balances, tokenBalances, sent, cowOrders, FakeCowChain(), light, Network.SEPOLIA),
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),

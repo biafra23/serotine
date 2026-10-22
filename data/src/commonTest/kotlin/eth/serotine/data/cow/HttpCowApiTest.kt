@@ -114,14 +114,15 @@ class HttpCowApiTest {
 
     @Test
     fun noUsableAnswerIsSaidWithWhy() = runTest {
-        assertEquals(
-            CowQuoteReading.Unavailable(CowUnavailable.SERVER_ERROR),
-            api { json("{}", HttpStatusCode.BadGateway) }.quote(Network.SEPOLIA, weth, cow, amount, owner),
-        )
-        assertEquals(
-            CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE),
-            api { json("<html>", HttpStatusCode.BadRequest) }.quote(Network.SEPOLIA, weth, cow, amount, owner),
-        )
+        suspend fun quoting(text: String, status: HttpStatusCode) =
+            api { json(text, status) }.quote(Network.SEPOLIA, weth, cow, amount, owner)
+        val noAnswer = CowQuoteReading.Unavailable(CowUnavailable.SERVER_ERROR)
+        assertEquals(noAnswer, quoting("{}", HttpStatusCode.BadGateway))
+        assertEquals(noAnswer, quoting("<html>", HttpStatusCode.BadRequest), "a gateway's page, not CoW's")
+        assertEquals(noAnswer, quoting(refusal("TooManyRequests"), HttpStatusCode.TooManyRequests), "a rate limit")
+        val changed = CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE)
+        assertEquals(changed, quoting("""{"error":"x"}""", HttpStatusCode.BadRequest), "CoW's body, no errorType")
+        assertEquals(changed, quoting("{}", HttpStatusCode.MovedPermanently), "moved: no redirect is followed")
         assertEquals(
             CowQuoteReading.Unavailable(CowUnavailable.NO_CONNECTION),
             api { throw IOException("no route to host") }.quote(Network.SEPOLIA, weth, cow, amount, owner),
@@ -190,6 +191,11 @@ class HttpCowApiTest {
             CowPlacement.Unclear(CowUnavailable.SERVER_ERROR),
             down.place(Network.SEPOLIA, order, owner, signature, uid),
         )
+        val gateway = api { json("<html>", HttpStatusCode.Forbidden) }
+        assertEquals(
+            CowPlacement.Unclear(CowUnavailable.SERVER_ERROR),
+            gateway.place(Network.SEPOLIA, order, owner, signature, uid),
+        )
     }
 
     @Test
@@ -207,5 +213,10 @@ class HttpCowApiTest {
         val notFound = """{"errorType":"NotFound","description":"Order was not found"}"""
         assertEquals(CowOrderLife.Unknown, api { json(notFound, HttpStatusCode.NotFound) }.life(Network.SEPOLIA, uid))
         assertEquals("https://api.cow.fi/sepolia/api/v1/orders/${uid.hex}", requests.last().url.toString())
+        assertEquals(
+            CowOrderLife.Unavailable(CowUnavailable.SERVER_ERROR),
+            api { json("<html>", HttpStatusCode.NotFound) }.life(Network.SEPOLIA, uid),
+            "a gateway's 404 says nothing of the order",
+        )
     }
 }

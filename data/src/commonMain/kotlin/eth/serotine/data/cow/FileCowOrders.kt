@@ -34,11 +34,16 @@ import kotlinx.serialization.json.JsonElement
  * dead*), with its signature, which is public once posted, and how its POST and its end stand.
  * Public data only: no key, no password.
  *
- * An entry that does not decode (a damaged one, or one a newer build wrote) is passed over and the
- * rest are read; the file it was in is then set aside once, whole, and what was read written in its
- * place, so that the entry is kept there rather than lost at the next write. A file that is not
- * one at all is set aside and the record starts empty; one that cannot be read is
- * [CowOrderList.Unreadable], and nothing may then be sold that a live order could hold.
+ * An entry that does not decode is passed over and the rest are read; the file it was in is then
+ * set aside once, whole, and what was read written in its place, so that the entry is kept there
+ * rather than lost at the next write. A file that is not one at all is set aside and the record
+ * starts empty; one that cannot be read is [CowOrderList.Unreadable], and nothing may then be sold
+ * that a live order could hold. The file is written whole and replaced at once, so only damage to
+ * the storage leaves an entry or a file that does not decode, and the orders in it then hold
+ * nothing back: the set-aside copy keeps them. So that a newer build's record never reads that way,
+ * every kind and reason is stored by a code of its own, never an enum's name; a reason this build
+ * does not know reads as the nearest it knows (it is shown, never acted on); and a new kind of
+ * placement or end is a new [FORMAT_VERSION], which an older build reads as unreadable.
  */
 class FileCowOrders(
     path: String,
@@ -69,7 +74,13 @@ class FileCowOrders(
     }
 
     override suspend fun record(order: CowOrderRecord): Boolean = file.change(notSaved = false) { orders ->
-        Decision(true, next = orders.filterNot { it.uid == order.uid } + order)
+        // An order recorded again keeps its place: the list stays oldest first.
+        val next = if (orders.any { it.uid == order.uid }) {
+            orders.map { if (it.uid == order.uid) order else it }
+        } else {
+            orders + order
+        }
+        Decision(true, next = next)
     }
 
     override suspend fun end(uid: CowOrderUid, end: CowOrderEnd): Boolean = file.change(notSaved = false) { orders ->
@@ -86,6 +97,7 @@ class FileCowOrders(
     private class StoredFile(val version: Int, val orders: List<JsonElement>)
 
     private companion object {
+        /** The file's format; a new kind of placement or end makes a new one. */
         const val FORMAT_VERSION = 1
         val JSON = Json
     }
@@ -121,7 +133,11 @@ internal class StoredCowOrder(
 @Serializable
 internal class StoredSignature(val r: String, val s: String, val recoveryId: Int)
 
-/** How a POST stands: [kind] (`attempted`, `accepted`, `refused`, `unclear`), and why ([why], [errorType]). */
+/**
+ * How a POST stands: [kind] (`attempted`, `accepted`, `refused`, `unclear`), and why: the UID
+ * accepted, or a refusal's or an unclear answer's reason by its code ([why]), and CoW's own
+ * [errorType] of a refusal.
+ */
 @Serializable
 internal class StoredPlacement(val kind: String, val why: String? = null, val errorType: String? = null)
 
@@ -186,12 +202,37 @@ private fun placementOf(stored: StoredPlacement): CowPlacement = when (stored.ki
     "attempted" -> CowPlacement.Attempted
     "accepted" -> CowPlacement.Accepted(CowOrderUid.of(requireNotNull(stored.why) { "an accepted UID" }))
     "refused" -> CowPlacement.Refused(
-        CowRefusal.valueOf(requireNotNull(stored.why) { "a refusal's kind" }),
+        // A refusal this build does not know is "another": CoW's error type, kept, says which.
+        CowRefusal.entries.firstOrNull { it.code == stored.why } ?: CowRefusal.OTHER,
         requireNotNull(stored.errorType) { "a refusal's error type" },
     )
-    "unclear" -> CowPlacement.Unclear(CowUnavailable.valueOf(requireNotNull(stored.why) { "why it is unclear" }))
+    // No answer for a reason this build does not know: as for a server's error.
+    "unclear" -> CowPlacement.Unclear(
+        CowUnavailable.entries.firstOrNull { it.code == stored.why } ?: CowUnavailable.SERVER_ERROR,
+    )
     else -> throw IllegalArgumentException("a placement of no kind")
 }
+
+/** How a refusal's kind is written: a code of its own, not the enum's name, so a rename changes no file. */
+private val CowRefusal.code: String
+    get() = when (this) {
+        CowRefusal.NO_LIQUIDITY -> "no-liquidity"
+        CowRefusal.UNSUPPORTED_TOKEN -> "unsupported-token"
+        CowRefusal.TOO_SMALL -> "too-small"
+        CowRefusal.FORBIDDEN -> "forbidden"
+        CowRefusal.FUNDS -> "funds"
+        CowRefusal.OTHER -> "other"
+    }
+
+/** How the reason for no usable answer is written, likewise. */
+private val CowUnavailable.code: String
+    get() = when (this) {
+        CowUnavailable.TIMEOUT -> "timeout"
+        CowUnavailable.NO_CONNECTION -> "no-connection"
+        CowUnavailable.SERVER_ERROR -> "server-error"
+        CowUnavailable.UNDECODABLE -> "undecodable"
+        CowUnavailable.NOT_PINNED -> "not-pinned"
+    }
 
 private fun endOf(stored: StoredEnd): CowOrderEnd = when (stored.kind) {
     "filled" -> {
@@ -238,8 +279,8 @@ private fun stored(order: CowOrderRecord) = StoredCowOrder(
     placement = when (val placement = order.placement) {
         CowPlacement.Attempted -> StoredPlacement("attempted")
         is CowPlacement.Accepted -> StoredPlacement("accepted", why = placement.uid.hex)
-        is CowPlacement.Refused -> StoredPlacement("refused", why = placement.why.name, errorType = placement.errorType)
-        is CowPlacement.Unclear -> StoredPlacement("unclear", why = placement.why.name)
+        is CowPlacement.Refused -> StoredPlacement("refused", why = placement.why.code, errorType = placement.errorType)
+        is CowPlacement.Unclear -> StoredPlacement("unclear", why = placement.why.code)
     },
     end = when (val end = order.end) {
         null -> null

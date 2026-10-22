@@ -10,6 +10,7 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.hasValidChecksum
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowOrderList
 import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.FeeLevel
@@ -169,7 +170,8 @@ data class TransferQuote internal constructor(
  *
  * What the sender's transfers and swaps of the same token not mined yet still move
  * ([SentTransfers]) is not this one's to move either, nor what its CoW orders may still take of it
- * ([CowOrders], until a finalized block is past an order's `validTo`). A record of orders that
+ * ([CowOrders], until a finalized block is past an order's `validTo`, or the settlement reads the
+ * order done at the head, [CowChain]). A record of orders that
  * cannot be read holds nothing back here, as an unreadable record of transfers holds none: a
  * transfer swaps nothing, and an order whose tokens are gone cannot fill. [clock] is in unix
  * seconds.
@@ -180,6 +182,7 @@ class QuoteTransfer(
     private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
     private val cowOrders: CowOrders,
+    private val cowChain: CowChain,
     private val lightClient: LightClient,
     private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
@@ -243,7 +246,8 @@ class QuoteTransfer(
         val held = token?.let { sending ->
             val orders = (cowOrders.observe().first() as? CowOrderList.Loaded)?.orders.orEmpty()
             val finalized = (lightClient.observeStatus().first() as? LightClientStatus.Synced)?.finalized
-            orders.holding(from, sending.address, finalized) ?: return@cancellingReads TransferQuoting.InsufficientToken
+            orders.holding(from, sending.address, finalized, cowChain)
+                ?: return@cancellingReads TransferQuoting.InsufficientToken
         }
         // What the token's earlier transfers move is not this one's to move: kept, the later one
         // would pass the run at the head and revert once they are mined, its fee paid all the same.

@@ -4,6 +4,7 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.repository.FinalizedBlock
 import org.kotlincrypto.hash.sha3.Keccak256
 
 /**
@@ -168,8 +169,11 @@ internal sealed interface EngineSnapshot {
         val upgrade: NetworkUpgrade? = null,
         /** The beacon-finalized block's number (0: none yet). */
         val finalizedBlock: Long = 0,
-        /** The finalized block's own timestamp, from its verified header; null when not had ([FinalizedTimes]). */
-        val finalizedTimestamp: Long?,
+        /**
+         * The newest finalized block whose own header was read, with its timestamp ([FinalizedTimes]):
+         * [finalizedBlock], or an older one until its header is had; null while none was.
+         */
+        val finalizedHeader: FinalizedBlock?,
     ) : EngineSnapshot {
 
         /**

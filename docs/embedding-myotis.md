@@ -501,9 +501,17 @@ answered with an empty list.
 - **The finalized block and its time.** The light client's status carries
   the finalized block (`StatusSnapshot.finalizedBlockNumber`) with its own
   header's timestamp (`FinalizedTimes`): `VerifiedReads.getBlockByNumber` of
-  that block, read once per finalized block, only while the light client is
-  synced and not paused, and after a read that failed not again for 12 s, as
-  the status is polled every second. Not the finalized slot's time: the slot the engine pairs with
+  that block.
+  - It is read once per finalized block, only while the light client is
+    synced and not paused, and after a read that failed not again for 12 s,
+    as the status is polled every second.
+  - It is read in a scope of its own, never in the status poll, which must
+    not block; until the newest finalized block's header is had, the newest
+    one had stands, finalized too, only older.
+  - A header counts only when its `number` is the block asked for: the
+    engine has answered a read for a past block from its head before.
+
+  Not the finalized slot's time: the slot the engine pairs with
   the block can be a later, empty one (docs/swaps.md, *Proving an order's
   end*). A CoW order's end is proven at this block.
 - **`ProveCowOrderEnds`** (`:domain`, run by the hosts beside

@@ -95,9 +95,8 @@ class HttpCowApi internal constructor(
                     ?: CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE)
                 answer.code in REFUSALS -> refusalOf(answer.json)
                     ?.let { (why, errorType) -> CowQuoteReading.Refused(why, errorType) }
-                    ?: CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE)
-                answer.code >= SERVER_ERRORS -> CowQuoteReading.Unavailable(CowUnavailable.SERVER_ERROR)
-                else -> CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE)
+                    ?: CowQuoteReading.Unavailable(unusable(answer))
+                else -> CowQuoteReading.Unavailable(unusable(answer))
             }
         }
     }
@@ -137,7 +136,7 @@ class HttpCowApi internal constructor(
                     ?.let { CowPlacement.Accepted(it) }
                     ?: CowPlacement.Unclear(CowUnavailable.UNDECODABLE)
                 answer.code in REFUSALS -> when (val refusal = refusalOf(answer.json)) {
-                    null -> CowPlacement.Unclear(CowUnavailable.UNDECODABLE)
+                    null -> CowPlacement.Unclear(unusable(answer))
                     // CoW holds this very order already: as good as taken.
                     else -> if (refusal.second == DUPLICATED) {
                         CowPlacement.Accepted(uid)
@@ -145,8 +144,7 @@ class HttpCowApi internal constructor(
                         CowPlacement.Refused(refusal.first, refusal.second)
                     }
                 }
-                answer.code >= SERVER_ERRORS -> CowPlacement.Unclear(CowUnavailable.SERVER_ERROR)
-                else -> CowPlacement.Unclear(CowUnavailable.UNDECODABLE)
+                else -> CowPlacement.Unclear(unusable(answer))
             }
         }
     }
@@ -157,11 +155,25 @@ class HttpCowApi internal constructor(
             is Answer.Failed -> CowOrderLife.Unavailable(answer.why)
             is Answer.Status -> when {
                 answer.code == OK -> lifeOf(answer.json, uid) ?: CowOrderLife.Unavailable(CowUnavailable.UNDECODABLE)
-                answer.code == NOT_FOUND -> CowOrderLife.Unknown
-                answer.code >= SERVER_ERRORS -> CowOrderLife.Unavailable(CowUnavailable.SERVER_ERROR)
-                else -> CowOrderLife.Unavailable(CowUnavailable.UNDECODABLE)
+                // CoW's own "not found", not a gateway's page.
+                answer.code == NOT_FOUND && refusalOf(answer.json) != null -> CowOrderLife.Unknown
+                else -> CowOrderLife.Unavailable(unusable(answer))
             }
         }
+    }
+
+    /**
+     * Why [answer], neither the call's success nor a refusal of CoW's, is no usable answer. A server
+     * error, or a client error without CoW's own error body (a gateway's page, a rate limit), is
+     * [CowUnavailable.SERVER_ERROR], as the port defines it. Anything else, a success of another
+     * shape, a redirect (none is followed) or CoW's error body without its `errorType`, is
+     * [CowUnavailable.UNDECODABLE]: CoW's API may have changed.
+     */
+    private fun unusable(answer: Answer.Status): CowUnavailable = when {
+        answer.code >= SERVER_ERRORS -> CowUnavailable.SERVER_ERROR
+        answer.code >= CLIENT_ERRORS && (answer.code !in REFUSALS || answer.json !is JsonObject) ->
+            CowUnavailable.SERVER_ERROR
+        else -> CowUnavailable.UNDECODABLE
     }
 
     /** One request, made once: its status and its body as JSON (null when it is none), or why there is none. */
@@ -201,6 +213,7 @@ class HttpCowApi internal constructor(
         private const val OK = 200
         private const val CREATED = 201
         private const val NOT_FOUND = 404
+        private const val CLIENT_ERRORS = 400
         private const val SERVER_ERRORS = 500
         private val REFUSALS = setOf(400, 403, 404)
         private const val DUPLICATED = "DuplicatedOrder"

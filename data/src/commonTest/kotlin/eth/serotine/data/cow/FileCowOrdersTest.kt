@@ -93,6 +93,34 @@ class FileCowOrdersTest {
         orders().record(other)
         orders().record(unclear)
         assertEquals(listOf(accepted, other, unclear), stored())
+
+        val answered = other.copy(placement = CowPlacement.Accepted(other.uid))
+        orders().record(answered)
+        assertEquals(listOf(accepted, answered, unclear), stored(), "recorded again in its place: oldest first")
+    }
+
+    @Test
+    fun reasonsAreStoredByCodesOfTheirOwnAndOneNotKnownIsReadAsTheNearest() = runTest {
+        val refused = record(validTo = 1_792_671_000)
+            .copy(placement = CowPlacement.Refused(CowRefusal.FUNDS, "InsufficientBalance"))
+        val unclear = record(validTo = 1_792_672_000).copy(placement = CowPlacement.Unclear(CowUnavailable.TIMEOUT))
+        orders().record(refused)
+        orders().record(unclear)
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue("\"why\":\"funds\"" in text && "\"why\":\"timeout\"" in text, text)
+
+        // As a newer build might write them: reasons this one does not know.
+        val newer = text.replace("\"why\":\"funds\"", "\"why\":\"rate-limited\"")
+            .replace("\"why\":\"timeout\"", "\"why\":\"captive-portal\"")
+        SystemFileSystem.sink(file).buffered().use { it.writeString(newer) }
+        assertEquals(
+            listOf(
+                refused.copy(placement = CowPlacement.Refused(CowRefusal.OTHER, "InsufficientBalance")),
+                unclear.copy(placement = CowPlacement.Unclear(CowUnavailable.SERVER_ERROR)),
+            ),
+            stored(),
+            "read, not passed over: the orders stay held",
+        )
     }
 
     @Test
