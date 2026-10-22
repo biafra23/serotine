@@ -268,9 +268,25 @@ fun AccountDetailScreen(
                                 sort,
                                 MenuAction("Copy address", SerotineIcons.ContentCopy) { copy(state.address) },
                                 MenuAction("Rename", Icons.Filled.Edit, onClick = onRename),
-                                // An EOA's address is the same account on every chain (N5).
-                                MenuAction("Add on another network…", Icons.Filled.Add, onClick = onAddOnNetwork)
-                                    .takeIf { state.kind == AccountKind.EOA },
+                                // An EOA's address is the same account on every chain (N5); from a
+                                // network that is off, greyed out with Turn on (N18).
+                                MenuAction(
+                                    "Add on another network…",
+                                    Icons.Filled.Add,
+                                    unavailable = !state.networkOn,
+                                ) {
+                                    if (state.networkOn) {
+                                        onAddOnNetwork()
+                                    } else {
+                                        val network = state.network.name
+                                        unavailable = UnavailableNotice(
+                                            "Add on another network",
+                                            "$network is off in this wallet. Turned on, ${state.label} can be " +
+                                                "added on another network from here.",
+                                            listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
+                                        )
+                                    }
+                                }.takeIf { state.kind == AccountKind.EOA },
                                 MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove),
                             ),
                             expanded = menu,

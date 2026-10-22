@@ -149,9 +149,10 @@ class AccountsViewModel(
                         totalNote = if (isOn) totalNote(total, network, currency).ifEmpty { null } else null,
                     )
                 }
-                // The top total adds the real networks that are on; a testnet only when it is all there is.
-                val counted = Network.entries.filter { it in on && list.accounts.any { a -> a.network == it } }
-                    .let { networks -> networks.filterNot { it.testnet }.ifEmpty { networks } }
+                // The top total adds the real networks that are on; a testnet only when the wallet has
+                // no account on a real network at all, on or off (docs/networks.md, N1).
+                val held = Network.entries.filter { network -> list.accounts.any { it.network == network } }
+                val counted = held.filterNot { it.testnet }.ifEmpty { held }.filter { it in on }
                 val total = counted.fold(Total.NONE) { sum, network -> sum + portfolio.totalOn(network) }
                 val leftOut = sections.filter { it.testnet && counted.none { n -> n.testnet } }.map { it.name }
                 AccountsUiState.Ready(

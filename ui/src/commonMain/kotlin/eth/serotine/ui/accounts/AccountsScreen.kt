@@ -359,9 +359,23 @@ private fun accountMenu(
         MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(chainId, address)) },
         MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(chainId, address)) },
         MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(chainId, address)) },
-        // An EOA's address is the same account on every chain (N5); a Safe exists where it was deployed.
-        MenuAction("Add on another network…", Icons.Filled.Add) { act(AccountAction.AddOnNetwork(chainId, address)) }
-            .takeIf { account.kind == AccountKind.EOA },
+        // An EOA's address is the same account on every chain (N5); a Safe exists where it was
+        // deployed. From a network that is off, greyed out with Turn on (docs/networks.md, N18).
+        MenuAction("Add on another network…", Icons.Filled.Add, unavailable = account.networkOff != null) {
+            val off = account.networkOff
+            if (off == null) {
+                act(AccountAction.AddOnNetwork(chainId, address))
+            } else {
+                onUnavailable(
+                    UnavailableNotice(
+                        "Add on another network",
+                        "$off is off in this wallet. Turned on, ${account.label} can be added on another network " +
+                            "from here.",
+                        listOf(UnavailableFix("Turn on $off") { onTurnOnNetwork(chainId) }),
+                    ),
+                )
+            }
+        }.takeIf { account.kind == AccountKind.EOA },
         MenuAction("Remove", Icons.Filled.Delete, destructive = true) { act(AccountAction.Remove(chainId, address)) },
     )
 }

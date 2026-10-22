@@ -308,6 +308,18 @@ class AccountsScreenTest {
     }
 
     @Test
+    fun onANetworkThatIsOffAddOnAnotherNetworkWaitsForItToo() {
+        show(ready(listOf(daily.copy(networkOff = "Sepolia")), on = false))
+
+        rule.onNodeWithText("Daily").performTouchInput { longClick() }
+        rule.onNodeWithText("Add on another network…").performClick()
+        rule.onNodeWithText("Turn on Sepolia").performClick()
+
+        assertEquals(listOf(Network.SEPOLIA.chainId), turnedOn)
+        assertEquals(emptyList(), actions)
+    }
+
+    @Test
     fun anUpgradeBannerIsShownUnderTheStripWithTheWayToTheUpdate() {
         val banner = UpgradeBannerItem(
             "Network upgrade ahead: update Serotine",
