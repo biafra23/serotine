@@ -457,7 +457,7 @@ class AppNavigationTest {
         // No tab bar either: the update screen is the only one.
         rule.onNodeWithText("Settings").assertDoesNotExist()
 
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(UPDATE_REQUIRED_TAG).assertDoesNotExist()
         rule.onNodeWithText("Network upgrade reported: update Serotine").assertIsDisplayed()
@@ -477,7 +477,7 @@ class AppNavigationTest {
         // The account and Settings are gone, and both tabs' stacks with them: back leaves the app.
         assertEquals(listOf("update-required"), screens())
 
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.waitUntil { rule.onAllNodesWithTag(ACCOUNTS_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(
             listOf("accounts"),
@@ -575,7 +575,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertIsDisplayed()
         rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.onNodeWithText("Verified at block 100").assertIsDisplayed()
 
         // An address and its QR code need nothing verified.

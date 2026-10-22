@@ -211,7 +211,7 @@ class SwapViewModelTest {
             TokenBalanceReading.Verified(TokenUnits.of("250000000"), 9_412_117)
         tokenBalances.of(daily.address, link.address).value =
             TokenBalanceReading.Verified(TokenUnits.of("0"), 9_412_117)
-        light.status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = headTime, finalized = null)
         // One USDC–WETH pool at 0.3 %, quoting 0.016 ETH for 40 USDC.
         val key = PoolKey.of(usdc.address, deployment.weth9, FeeTier.MEDIUM)
         uniswap.answers[deployment.factory to UniswapV3Factory.getPool(key).hex()] = word(pool)
@@ -374,7 +374,7 @@ class SwapViewModelTest {
         runCurrent()
         assertEquals("The light client is not synced yet: try again in a moment.", viewModel.compose.error)
         assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
-        light.status.value = LightClientStatus.Synced(headBlock = 9_412_119, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 9_412_119, headTimestamp = headTime, finalized = null)
 
         // In a block, and allowed: the swap itself is quoted.
         inputs.mined = 8

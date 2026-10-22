@@ -255,7 +255,7 @@ class CowSwapsTest {
 
     @Test
     fun noFinalizedBlockGivesNoOrder() = runTest {
-        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime, finalized = null)
         assertIs<CowSwapQuoting.Unavailable>(quoteUsdcForWeth())
         light.status.value = LightClientStatus.Starting
         assertEquals(CowSwapQuoting.Syncing, quoteUsdcForWeth())

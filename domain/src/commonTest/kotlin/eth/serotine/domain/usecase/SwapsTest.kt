@@ -85,7 +85,7 @@ class SwapsTest {
         native.of(account).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 120)
         tokens.of(account, usdcToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("500000000"), 120)
         tokens.of(account, linkToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 120)
-        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime, finalized = null)
     }
 
     private fun word(value: UInt256) = value.toBytes32().toHex()
@@ -290,7 +290,7 @@ class SwapsTest {
         assertEquals(SwapQuoting.Syncing, quoteUsdcForLink())
 
         // A verified head whose time is not known names no figure: the swap was never run.
-        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = null)
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = null, finalized = null)
         assertEquals(SwapQuoting.Unavailable(ReadUnavailable.UNPROVEN, figure = null), quoteUsdcForLink())
     }
 

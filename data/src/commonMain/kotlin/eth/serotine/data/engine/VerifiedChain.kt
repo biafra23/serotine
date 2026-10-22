@@ -169,7 +169,7 @@ internal sealed interface EngineSnapshot {
         /** The beacon-finalized block's number (0: none yet). */
         val finalizedBlock: Long = 0,
         /** The finalized block's own timestamp, from its verified header; null when not had ([FinalizedTimes]). */
-        val finalizedTimestamp: Long? = null,
+        val finalizedTimestamp: Long?,
     ) : EngineSnapshot {
 
         /**

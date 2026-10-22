@@ -49,7 +49,7 @@ class EngineLightClientTest {
                 LightClientStatus.CatchingUp(done = 1, total = 4),
                 LightClientStatus.WaitingForHead(headAgeSeconds = null),
                 LightClientStatus.WaitingForProofPeers(headBlock = 11_922_744, headTimestamp = null),
-                LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = 1_792_100_000),
+                LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = 1_792_100_000, finalized = null),
             ),
             seen,
         )
@@ -117,7 +117,7 @@ class EngineLightClientTest {
         advanceTimeBy(POLL)
         runCurrent()
 
-        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null)), seen)
+        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null, finalized = null)), seen)
         collecting.cancel()
     }
 
@@ -133,7 +133,11 @@ class EngineLightClientTest {
         advanceTimeBy(POLL)
         runCurrent()
 
-        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null)), seen, "the strip did not freeze")
+        assertEquals(
+            listOf<LightClientStatus>(LightClientStatus.Synced(5, null, finalized = null)),
+            seen,
+            "the strip did not freeze",
+        )
         collecting.cancel()
     }
 

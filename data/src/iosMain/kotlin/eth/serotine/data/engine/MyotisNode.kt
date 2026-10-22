@@ -148,7 +148,10 @@ class MyotisNode private constructor(
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
 
-    /** CoW Protocol's settlement contracts on this node's network, proven by their code (docs/swaps.md, *CoW Protocol*). */
+    /**
+     * CoW Protocol's settlement contracts on this node's network, proven by their code
+     * (docs/swaps.md, *CoW Protocol*).
+     */
     val cow: CowChain = VerifiedCow(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
@@ -343,6 +346,7 @@ class MyotisNode private constructor(
                 // number (its block reads are internal), and the slot's time is no stand-in for the
                 // header's (docs/swaps.md, *Proving an order's end*). A CoW order is then not
                 // offered here, as it waits for a finalized block's own time.
+                finalizedTimestamp = null,
             )
         }
 

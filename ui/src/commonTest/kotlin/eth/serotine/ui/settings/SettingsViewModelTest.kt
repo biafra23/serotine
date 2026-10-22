@@ -70,7 +70,7 @@ class SettingsViewModelTest {
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
 
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         runCurrent()
 
         val state = viewModel.uiState.value
