@@ -177,6 +177,7 @@ class TransferStatusViewModel(
             deployment = transfer?.let { deploymentSummary(it, progress, failed, list) },
             approval = transfer?.let(::approvalSummary),
             swap = transfer?.let { swapSummary(it, status.received) },
+            cancellation = transfer?.let(::cancellationSummary),
             // A retry turned away keeps the record: what it came to stays on screen with Try again.
             notSent = if (maybeSent) {
                 retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
@@ -285,11 +286,22 @@ class TransferStatusViewModel(
             symbol = symbol,
             icon = icon,
             spenderLabel = if (reset) {
-                "The swap's router may take none, until the whole amount is approved"
+                "The swap's spender may take none, until the whole amount is approved"
             } else {
-                "May be taken by the swap's router"
+                "May be taken by the swap's spender"
             },
             spender = Eip55.format(approval.spender),
+            from = Eip55.format(transfer.account),
+        )
+    }
+
+    /** Which CoW order [transfer] invalidates, when it is that order's cancellation on chain. */
+    private fun cancellationSummary(transfer: SentTransfer): CancellationSummary? {
+        val cancellation = transfer.action as? SentAction.CowCancellation ?: return null
+        return CancellationSummary(
+            title = "Cancellation of a CoW order on chain",
+            order = cancellation.uid.hex,
+            settlement = Eip55.format(cancellation.settlement),
             from = Eip55.format(transfer.account),
         )
     }

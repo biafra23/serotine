@@ -227,12 +227,13 @@ internal class ActivityRows(
         // the account that sent it.
         val (title, other, detail) = when (val action = transfer.action) {
             is SentAction.Transfer -> Triple("Sent ${amount(action.amount, action.asset)}", action.to, "To")
-            // A zero approval takes the allowance back, before the whole amount is approved.
+            // A zero approval takes the allowance back, before the whole amount is approved. The spender
+            // is Uniswap's router or CoW's vault relayer, which the record does not tell apart.
             is SentAction.TokenApproval -> if (action.amount.isZero) {
-                Triple("Allowance reset for a swap", action.spender, "Router")
+                Triple("Allowance reset for a swap", action.spender, "Spender")
             } else {
                 val approved = amount(action.amount, TransferAsset.Erc20Token(action.token))
-                Triple("Approved $approved", action.spender, "Router")
+                Triple("Approved $approved", action.spender, "Spender")
             }
             is SentAction.Swap -> {
                 val (symbol, decimals) = shown(action.buy)

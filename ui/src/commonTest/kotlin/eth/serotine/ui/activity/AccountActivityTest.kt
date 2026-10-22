@@ -248,7 +248,7 @@ class AccountActivityTest {
             rows.map { it.title },
         )
         assertEquals("On Uniswap · 0x3bFA…e48E", rows.first().detail)
-        assertEquals("Router 0x3bFA…e48E", rows.last().detail)
+        assertEquals("Spender 0x3bFA…e48E", rows.last().detail)
     }
 
     private val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")

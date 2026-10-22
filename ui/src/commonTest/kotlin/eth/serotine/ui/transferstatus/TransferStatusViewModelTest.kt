@@ -29,6 +29,7 @@ import eth.serotine.ui.FakeBroadcaster
 import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemorySentTransfers
+import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -375,6 +376,16 @@ class TransferStatusViewModelTest {
 
         val notSent = assertNotNull(viewModel.shown.notSent)
         assertTrue("No peer answered when this cancellation was broadcast" in notSent.message, notSent.message)
+        assertEquals(
+            CancellationSummary(
+                title = "Cancellation of a CoW order on chain",
+                order = uid.hex,
+                settlement = "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+                from = Eip55.format(record.account),
+            ),
+            viewModel.shown.cancellation,
+        )
+        assertNull(viewModel.shown.sent)
     }
 
     @Test
@@ -461,7 +472,7 @@ class TransferStatusViewModelTest {
                 amount = "100 USDC",
                 symbol = "USDC",
                 icon = "usdc",
-                spenderLabel = "May be taken by the swap's router",
+                spenderLabel = "May be taken by the swap's spender",
                 spender = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
                 from = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
             ),
