@@ -1,5 +1,6 @@
 package eth.serotine.data.transfers
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
@@ -14,6 +15,11 @@ import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
+import kotlin.random.Random
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -25,11 +31,6 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
 import kotlinx.io.readString
 import kotlinx.io.writeString
-import kotlin.random.Random
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FileSentTransfersTest {
@@ -44,6 +45,7 @@ class FileSentTransfersTest {
 
     private fun transfer(nonce: Long, asset: TransferAsset = TransferAsset.Native, account: Address = alice) =
         SentTransfer(
+            network = Network.SEPOLIA,
             account = account,
             nonce = nonce,
             signed = SignedTransfer(byteArrayOf(2, nonce.toByte(), -1)),
@@ -91,7 +93,7 @@ class FileSentTransfersTest {
 
         // However old one not mined is, it stays: past its lifetime it holds nothing, and its
         // status is still found.
-        assertTrue(store.prune(alice, minedCount = 8, unlistedBefore = 0))
+        assertTrue(store.prune(AccountId(Network.SEPOLIA, alice), minedCount = 8, unlistedBefore = 0))
 
         assertEquals(listOf(transfer(8), transfer(9), transfer(3, account = bob)), stored())
     }
@@ -122,11 +124,11 @@ class FileSentTransfersTest {
         store.record(listed)
 
         // Both mined and old: the listed one goes; the unlisted one stays, its owners and name with it.
-        assertTrue(store.prune(alice, minedCount = 8, unlistedBefore = 1_800_000_006))
+        assertTrue(store.prune(AccountId(Network.SEPOLIA, alice), minedCount = 8, unlistedBefore = 1_800_000_006))
         assertEquals(listOf(unlisted), stored())
 
         // Past its own bound, it goes too.
-        assertTrue(store.prune(alice, minedCount = 8, unlistedBefore = 1_800_000_007))
+        assertTrue(store.prune(AccountId(Network.SEPOLIA, alice), minedCount = 8, unlistedBefore = 1_800_000_007))
         assertEquals(emptyList(), stored())
     }
 

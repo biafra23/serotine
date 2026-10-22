@@ -3,6 +3,7 @@ package eth.serotine.ui.currency
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.DisplayCurrency
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.SetDisplayCurrency
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,13 +17,18 @@ import kotlinx.coroutines.launch
 class CurrencyViewModel(
     observeDisplayCurrencies: ObserveDisplayCurrencies,
     private val setDisplayCurrency: SetDisplayCurrency,
+    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
+    private val network: Network,
 ) : ViewModel() {
 
     private class Outcome(val error: String? = null, val done: Boolean = false)
 
     private val outcome = MutableStateFlow(Outcome())
 
-    val uiState: StateFlow<CurrencyUiState> = combine(observeDisplayCurrencies(), outcome) { currencies, outcome ->
+    val uiState: StateFlow<CurrencyUiState> = combine(
+        observeDisplayCurrencies(network),
+        outcome,
+    ) { currencies, outcome ->
         CurrencyUiState(
             options = currencies.offered.map { CurrencyOption(it.code, nameOf(it), chosen = it == currencies.chosen) },
             notice = when {
@@ -41,7 +47,10 @@ class CurrencyViewModel(
         val currency = DisplayCurrency.entries.firstOrNull { it.code == code } ?: return
         if (outcome.value.done) return
         viewModelScope.launch {
-            outcome.value = if (setDisplayCurrency(currency)) Outcome(done = true) else Outcome(error = NOT_SAVED)
+            outcome.value = if (setDisplayCurrency(
+                    network,
+                    currency,
+                )) Outcome(done = true) else Outcome(error = NOT_SAVED)
         }
     }
 

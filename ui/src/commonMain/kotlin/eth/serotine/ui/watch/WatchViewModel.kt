@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading
@@ -57,6 +58,8 @@ class WatchViewModel(
     observeAccounts: ObserveAccounts,
     private val watchAddress: WatchAddress,
     private val resolveRecipient: ResolveRecipient,
+    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
+    private val network: Network,
 ) : ViewModel() {
 
     /** What is typed, and how often the user asked to resolve the name again ([lookupAttempt]). */
@@ -92,7 +95,10 @@ class WatchViewModel(
                     // which of its owners' keys are held here.
                     else -> combine(
                         observeAccounts(),
-                        observeAddressKind(address).map<KindReading, KindReading?> { it }.onStart { emit(null) },
+                        observeAddressKind(
+                            network,
+                            address,
+                        ).map<KindReading, KindReading?> { it }.onStart { emit(null) },
                     ) { list, reading -> address to detectionOf(address, list, reading) }
                 }
             }
@@ -169,7 +175,12 @@ class WatchViewModel(
                     return@launch
                 }
             }
-            outcome.value = when (val result = watchAddress(resolved.address, typed.value.name, resolved.name)) {
+            outcome.value = when (val result = watchAddress(
+                network,
+                resolved.address,
+                typed.value.name,
+                resolved.name,
+            )) {
                 is AddressWatch.Added -> Outcome(done = true)
                 is AddressWatch.AlreadyInWallet ->
                     Outcome(error = "Already in your wallet as “${result.account.label}”.")
@@ -184,7 +195,8 @@ class WatchViewModel(
     }
 
     private fun detectionOf(address: Address, list: AccountList, reading: KindReading?): Detection {
-        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        // In the wallet on this network: the same address on another network is another account.
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
         return detectionOf(address, list, accounts.firstOrNull { it.address == address }, reading, accounts)
     }
 
@@ -270,7 +282,7 @@ class WatchViewModel(
     }
 
     private suspend fun lookUp(text: String): RecipientLookup = try {
-        resolveRecipient(recipientText(text))
+        resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {

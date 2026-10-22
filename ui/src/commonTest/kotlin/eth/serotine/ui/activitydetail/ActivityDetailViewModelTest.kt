@@ -2,6 +2,7 @@ package eth.serotine.ui.activitydetail
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -39,6 +40,13 @@ import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityState
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.topicOf
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -48,24 +56,19 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ActivityDetailViewModelTest {
 
     private val alice = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Alice",
         AccountCustody.InKeyStore,
     )
     private val treasury = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.SAFE,
         "Treasury",
@@ -81,6 +84,7 @@ class ActivityDetailViewModelTest {
     private val userTokens = MemoryUserTokens()
 
     private val sent = SentTransfer(
+        network = Network.SEPOLIA,
         account = alice.address,
         nonce = 7,
         signed = SignedTransfer(byteArrayOf(2, 7)),
@@ -95,7 +99,7 @@ class ActivityDetailViewModelTest {
     private fun TestScope.viewModel(key: ActivityKey, address: Address = alice.address): ActivityDetailViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = ActivityDetailViewModel(
-            address,
+            AccountId(Network.SEPOLIA, address),
             key,
             ObserveAccountHistory(history),
             ObserveAccounts(accounts),
@@ -103,7 +107,6 @@ class ActivityDetailViewModelTest {
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
             ObserveSentToAddresses(history),
-            Network.SEPOLIA,
         ) { "at $it" }
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

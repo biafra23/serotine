@@ -1,15 +1,19 @@
 package eth.serotine.domain.repository
 
+import eth.serotine.domain.model.Network
 import kotlinx.coroutines.flow.Flow
 
 /**
  * The port for the embedded light client's own state: how far it is from serving verified
  * reads, for the user to see. :data implements it over the Myotis engine
- * (`eth.serotine.data.engine`), on the one network the app works on.
+ * (`eth.serotine.data.engine`), one light client per network.
  */
 interface LightClient {
-    /** The light client's state, re-emitted when it changes. Never fails. */
-    fun observeStatus(): Flow<LightClientStatus>
+    /**
+     * The state of [network]'s light client, re-emitted when it changes; [LightClientStatus.Unavailable]
+     * for a network none runs for here. Never fails.
+     */
+    fun observeStatus(network: Network): Flow<LightClientStatus>
 }
 
 /** One state of the light client, in the order a cold start passes through them. */
@@ -57,6 +61,6 @@ sealed interface LightClientStatus {
      */
     data class StaleAnchor(val anchorAgePeriods: Long, val boundPeriods: Long) : LightClientStatus
 
-    /** There is no light client on this device, or it failed to start. */
+    /** There is no light client for the network on this device, or it failed to start. */
     data object Unavailable : LightClientStatus
 }

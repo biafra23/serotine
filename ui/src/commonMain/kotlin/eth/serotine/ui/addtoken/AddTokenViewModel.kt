@@ -3,6 +3,7 @@ package eth.serotine.ui.addtoken
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.AddToken
@@ -38,6 +39,8 @@ class AddTokenViewModel(
     observeKnownTokens: ObserveKnownTokens,
     observeTokenMetadata: ObserveTokenMetadata,
     private val addToken: AddToken,
+    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
+    private val network: Network,
     address: String = "",
 ) : ViewModel() {
 
@@ -60,8 +63,8 @@ class AddTokenViewModel(
             if (parsed is AddressInput.Valid) {
                 current = launch {
                     combine(
-                        observeKnownTokens(),
-                        observeTokenMetadata(parsed.address)
+                        observeKnownTokens(network),
+                        observeTokenMetadata(network, parsed.address)
                             .map<MetadataReading, MetadataReading?> { it }
                             .onStart { emit(null) },
                     ) { known, reading -> parsed.address to cardOf(parsed.address, known, reading) }
@@ -106,7 +109,7 @@ class AddTokenViewModel(
         if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
         outcome.value = Outcome(adding = true)
         viewModelScope.launch {
-            outcome.value = when (val result = addToken(address)) {
+            outcome.value = when (val result = addToken(network, address)) {
                 is TokenAdd.Added -> Outcome(done = true)
                 is TokenAdd.AlreadyKnown ->
                     Outcome(error = "The wallet knows this token already, as ${displaySymbol(result.token.symbol)}.")

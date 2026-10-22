@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -32,6 +33,8 @@ import kotlinx.coroutines.launch
 class MnemonicImportViewModel(
     private val importMnemonicAccount: ImportMnemonicAccount,
     private val describeKeyStore: DescribeKeyStore,
+    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
+    private val network: Network,
 ) : ViewModel() {
 
     /** The key store's last answer, kept for the blank state [onHidden] and [onCleared] leave. */
@@ -76,7 +79,7 @@ class MnemonicImportViewModel(
         state.value = current.copy(importing = true, error = null, passwordError = null)
         viewModelScope.launch {
             val result = try {
-                importMnemonicAccount(current.phrase, current.password)
+                importMnemonicAccount(current.phrase, current.password, network)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

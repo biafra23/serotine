@@ -3,6 +3,7 @@ package eth.serotine.ui.createaccount
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
@@ -17,6 +18,7 @@ import eth.serotine.ui.components.protectionText
 import eth.serotine.ui.createaccount.CreateAccountUiState.Checking
 import eth.serotine.ui.createaccount.CreateAccountUiState.Securing
 import eth.serotine.ui.createaccount.CreateAccountUiState.Showing
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +26,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 /**
  * Create account's ViewModel (docs/wallet-ux.md, screen 12): a new phrase from the key adapter
@@ -38,6 +39,8 @@ class CreateAccountViewModel(
     private val newRecoveryPhrase: NewRecoveryPhrase,
     private val importMnemonicAccount: ImportMnemonicAccount,
     private val describeKeyStore: DescribeKeyStore,
+    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
+    private val network: Network,
     private val random: Random = Random.Default,
 ) : ViewModel() {
 
@@ -142,7 +145,7 @@ class CreateAccountViewModel(
         state.value = securing.copy(creating = true, error = null, passwordError = null)
         viewModelScope.launch {
             val result = try {
-                importMnemonicAccount(securing.phrase, securing.password)
+                importMnemonicAccount(securing.phrase, securing.password, network)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

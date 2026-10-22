@@ -1,18 +1,19 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.prices.PinnedFeed
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.NoPriceReason
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReadUnavailable
+import kotlin.math.pow
+import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlin.math.pow
-import kotlin.time.Duration
 
 /**
  * [PriceFeeds] over a verified light client: each [PinnedFeed]'s `decimals()` and
@@ -26,6 +27,7 @@ import kotlin.time.Duration
  * [FUTURE_SKEW_SECONDS] after that head is what no feed answers.
  */
 class VerifiedPriceFeeds internal constructor(
+    private val served: Network,
     chain: VerifiedChain?,
     dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
@@ -34,7 +36,10 @@ class VerifiedPriceFeeds internal constructor(
 
     private val pinned = feeds.associateBy { it.priceId }
 
-    override val quotes: Map<PriceId, PriceId> = feeds.associate { it.priceId to it.quote }
+    private val servedQuotes: Map<PriceId, PriceId> = feeds.associate { it.priceId to it.quote }
+
+    /** [served]'s feeds' quotes; none for a network this adapter does not serve: no price crosses networks. */
+    override fun quotes(network: Network): Map<PriceId, PriceId> = if (network == served) servedQuotes else emptyMap()
 
     private val reads = ProvenReads<PriceId, FeedReading>(chain, dispatcher, pollInterval) { verified, id ->
         val feed = pinned.getValue(id)
@@ -50,7 +55,8 @@ class VerifiedPriceFeeds internal constructor(
         EngineReading.Proven(reading(feed, decimals, round, headTime), block ?: UNKNOWN_BLOCK)
     }
 
-    override fun observe(priceId: PriceId): Flow<FeedReading> {
+    override fun observe(network: Network, priceId: PriceId): Flow<FeedReading> {
+        if (network != served) return flowOf(FeedReading.Unavailable(ReadUnavailable.NO_ENGINE))
         if (priceId !in pinned) return flowOf(FeedReading.NoPrice(NoPriceReason.NO_FEED))
         return reads.observe(priceId).map { reading ->
             when (reading) {

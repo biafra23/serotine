@@ -40,47 +40,50 @@ class PricesTest {
         feeds.answer(LINK_ID, 0.005, updatedAt = 900, ageSeconds = 300)
         feeds.answer(ETH, 2_400.0, updatedAt = 1_100, ageSeconds = 100)
 
-        assertEquals(Price.Priced(12.0, updatedAt = 900, ageSeconds = 300, stale = false), usd(LINK_ID).first())
+        assertEquals(
+            Price.Priced(12.0, updatedAt = 900, ageSeconds = 300, stale = false),
+            usd(Network.SEPOLIA, LINK_ID).first(),
+        )
     }
 
     @Test
     fun oneFeedWithoutAPriceOrStaleMakesThePathSo() = runTest {
         feeds.answer(LINK_ID, 0.005)
         feeds.answer(ETH, 2_400.0, stale = true)
-        assertTrue((usd(LINK_ID).first() as Price.Priced).stale)
+        assertTrue((usd(Network.SEPOLIA, LINK_ID).first() as Price.Priced).stale)
 
         feeds.of(ETH).value = FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED)
-        assertEquals(Price.NoPrice(NoPriceReason.DECIMALS_CHANGED), usd(LINK_ID).first())
+        assertEquals(Price.NoPrice(NoPriceReason.DECIMALS_CHANGED), usd(Network.SEPOLIA, LINK_ID).first())
 
         feeds.of(ETH).value = FeedReading.Unavailable(ReadUnavailable.UNPROVEN)
-        assertEquals(Price.Unavailable(ReadUnavailable.UNPROVEN), usd(LINK_ID).first())
-        assertEquals(Price.NoPrice(NoPriceReason.NO_FEED), usd(PriceId("UNI")).first())
+        assertEquals(Price.Unavailable(ReadUnavailable.UNPROVEN), usd(Network.SEPOLIA, LINK_ID).first())
+        assertEquals(Price.NoPrice(NoPriceReason.NO_FEED), usd(Network.SEPOLIA, PriceId("UNI")).first())
     }
 
     @Test
     fun aLoopInTheTableIsNoPriceNotNoEnd() = runTest {
         val loop = ObserveUsdPrice(FakeFeeds(mapOf(ETH to LINK_ID, LINK_ID to ETH)))
 
-        assertEquals(Price.NoPrice(NoPriceReason.NO_FEED), loop(ETH).first())
+        assertEquals(Price.NoPrice(NoPriceReason.NO_FEED), loop(Network.SEPOLIA, ETH).first())
     }
 
     @Test
     fun onlyCurrenciesWithAFeedAreOfferedAndAnotherCannotBeChosen() = runTest {
-        val offered = currencies().first()
+        val offered = currencies(Network.SEPOLIA).first()
         assertEquals(listOf(DisplayCurrency.USD, DisplayCurrency.EUR, DisplayCurrency.ETH), offered.offered)
         assertEquals(DisplayCurrency.USD, offered.chosen)
 
         val set = SetDisplayCurrency(feeds, setting)
-        assertFalse(set(DisplayCurrency.JPY), "JPY has no feed here")
-        assertTrue(set(DisplayCurrency.EUR))
-        assertEquals(DisplayCurrency.EUR, currencies().first().chosen)
+        assertFalse(set(Network.SEPOLIA, DisplayCurrency.JPY), "JPY has no feed here")
+        assertTrue(set(Network.SEPOLIA, DisplayCurrency.EUR))
+        assertEquals(DisplayCurrency.EUR, currencies(Network.SEPOLIA).first().chosen)
     }
 
     @Test
     fun aStoredChoiceTheNetworkNoLongerOffersIsUsd() = runTest {
         setting.choice.value = CurrencyChoice.Chosen(DisplayCurrency.GBP)
 
-        assertEquals(DisplayCurrency.USD, currencies().first().chosen)
+        assertEquals(DisplayCurrency.USD, currencies(Network.SEPOLIA).first().chosen)
     }
 
     // --- An account's value and the portfolio.
@@ -100,7 +103,6 @@ class PricesTest {
         holdings,
         usd,
         currencies,
-        Network.SEPOLIA,
     )
 
     private fun pricesAndBalances() {
@@ -116,7 +118,7 @@ class PricesTest {
     fun theTotalAddsThePricedHoldingsAndCountsTheOthers() = runTest {
         pricesAndBalances()
 
-        val value = accountValue(holder).first { it.total.complete && it.tokens.size == 2 }
+        val value = accountValue(holder.onSepolia).first { it.total.complete && it.tokens.size == 2 }
 
         assertEquals(Total(3_250.0, valued = 2, leftOut = 1), value.total) // UNI has no feed
         assertEquals(Valuation.NoPrice(NoPriceReason.NO_FEED), value.tokens[1].value)
@@ -128,7 +130,7 @@ class PricesTest {
         setting.choose(DisplayCurrency.EUR)
         feeds.answer(PriceId("USDC"), 1.0, stale = true)
 
-        val value = accountValue(holder).first { it.total.complete && it.tokens.size == 2 }
+        val value = accountValue(holder.onSepolia).first { it.total.complete && it.tokens.size == 2 }
 
         assertEquals(DisplayCurrency.EUR, value.currency)
         assertEquals(Total(2_400.0, valued = 1, leftOut = 2), value.total) // 3000 USD / 1.25
@@ -138,7 +140,7 @@ class PricesTest {
     fun aBalanceOrPriceStillBeingReadMakesTheTotalIncomplete() = runTest {
         native.of(holder).value = BalanceReading.Verified(Wei.of("1"), 9)
 
-        val first = accountValue(holder).first()
+        val first = accountValue(holder.onSepolia).first()
         assertFalse(first.tokensRead, "the token holdings are not read yet")
         assertFalse(first.total.complete)
     }
@@ -149,7 +151,7 @@ class PricesTest {
         native.of(holder).value = BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)
         feeds.of(PriceId("USDC")).value = FeedReading.Unavailable(ReadUnavailable.UNPROVEN)
 
-        val value = accountValue(holder).first { it.tokensRead && it.tokens.all { t -> t.value != null } }
+        val value = accountValue(holder.onSepolia).first { it.tokensRead && it.tokens.all { t -> t.value != null } }
 
         assertEquals(Total(0.0, leftOut = 1, unverified = 2), value.total) // ETH and USDC; UNI has no feed
     }
@@ -160,7 +162,7 @@ class PricesTest {
         setting.choose(DisplayCurrency.EUR)
         feeds.of(EUR).value = FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED)
 
-        val value = accountValue(holder).first { it.total.complete && it.tokens.size == 2 }
+        val value = accountValue(holder.onSepolia).first { it.total.complete && it.tokens.size == 2 }
 
         assertEquals(Valuation.NoRate, value.nativeValue)
         assertEquals(Valuation.NoPrice(NoPriceReason.NO_FEED), value.tokens[1].value, "UNI has no feed either way")
@@ -173,7 +175,7 @@ class PricesTest {
         setting.choose(DisplayCurrency.ETH)
         feeds.answer(ETH, 2_000.0, ageSeconds = 7_200, stale = true)
 
-        val value = accountValue(holder).first { it.nativeValue is Valuation.Valued }
+        val value = accountValue(holder.onSepolia).first { it.nativeValue is Valuation.Valued }
 
         assertEquals(Valuation.Valued(1.5, ageSeconds = 0, stale = false), value.nativeValue)
     }
@@ -185,7 +187,7 @@ class PricesTest {
         feeds.of(EUR).value = FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED)
         feeds.of(PriceId("USDC")).value = FeedReading.Syncing
 
-        val value = accountValue(holder).first { it.tokens.size == 2 && it.tokens[0].value != null }
+        val value = accountValue(holder.onSepolia).first { it.tokens.size == 2 && it.tokens[0].value != null }
 
         assertEquals(Valuation.NoRate, value.tokens[0].value)
         assertEquals(1, value.total.leftOut, "only UNI, which has no feed at all")
@@ -196,7 +198,7 @@ class PricesTest {
         pricesAndBalances()
         feeds.of(PriceId("USDC")).value = FeedReading.Syncing
 
-        val value = accountValue(holder).first { it.tokens.size == 2 && it.tokens[0].value != null }
+        val value = accountValue(holder.onSepolia).first { it.tokens.size == 2 && it.tokens[0].value != null }
 
         assertEquals(Valuation.Checking, value.tokens[0].value)
         assertFalse(value.total.complete)
@@ -205,10 +207,14 @@ class PricesTest {
     @Test
     fun aPortfolioStillValuedInThePreviousCurrencyIsIncomplete() = runTest {
         pricesAndBalances()
-        val accounts = ListAccountRepository(Account(holder, AccountKind.EOA, "Daily", AccountCustody.Watched))
+        val accounts = ListAccountRepository(
+            Account(Network.SEPOLIA, holder, AccountKind.EOA, "Daily", AccountCustody.Watched),
+        )
         val portfolio = Portfolio(
             AccountList.Loaded(accounts.accounts.value),
-            mapOf(holder to accountValue(holder).first { it.total.complete && it.tokens.size == 2 }),
+            mapOf(
+                holder.onSepolia to accountValue(holder.onSepolia).first { it.total.complete && it.tokens.size == 2 },
+            ),
             DisplayCurrency.EUR,
         )
 
@@ -219,10 +225,14 @@ class PricesTest {
     fun thePortfolioSumsItsAccountsInOneCurrency() = runTest {
         pricesAndBalances()
         metadata.of(usdc.address).value = MetadataReading.Verified("USDC", "USDC", 6, 9)
-        val accounts = ListAccountRepository(Account(holder, AccountKind.EOA, "Daily", AccountCustody.Watched))
+        val accounts = ListAccountRepository(
+            Account(Network.SEPOLIA, holder, AccountKind.EOA, "Daily", AccountCustody.Watched),
+        )
         val portfolio = ObservePortfolio(ObserveAccounts(accounts), accountValue, currencies)
 
-        val read = portfolio().first { it.total.complete && it.values[holder]?.tokens?.size == 2 }
+        val read = portfolio(
+            Network.SEPOLIA,
+        ).first { it.total.complete && it.values[holder.onSepolia]?.tokens?.size == 2 }
 
         assertEquals(Total(3_250.0, valued = 2, leftOut = 1), read.total)
     }

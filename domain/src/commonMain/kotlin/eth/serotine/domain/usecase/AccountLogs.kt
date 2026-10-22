@@ -1,6 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -39,7 +40,7 @@ class HistoryNotingAccounts(
 
     override suspend fun add(account: Account): AccountAdd {
         val added = accounts.add(account)
-        if (added == AccountAdd.Added) starts.note(account.address, clock())
+        if (added == AccountAdd.Added) starts.note(account.id, clock())
         return added
     }
 }
@@ -80,27 +81,31 @@ class FollowAccountLogs(
             accounts.observeAccounts(),
             starts.observe(),
             history.observe(),
-            lightClient.observeStatus(),
+            lightClient.observeStatus(network),
             ::Round,
         ).conflate().collect { round -> taken = follow(round, taken) }
     }
 
     /** One look at the wallet: fixes what starts it can, then asks the engine for what it has not [taken] yet. */
     private suspend fun follow(round: Round, taken: Set<LogWatch>): Set<LogWatch> {
-        val listed = (round.accounts as? AccountList.Loaded)?.accounts ?: return taken
-        val held = (round.starts as? HistoryStartList.Loaded)?.starts ?: return taken
+        // Only this network's accounts: its index, its starts, its light client (docs/networks.md).
+        val listed = (round.accounts as? AccountList.Loaded)?.accounts?.filter { it.network == network } ?: return taken
+        val allStarts = (round.starts as? HistoryStartList.Loaded)?.starts ?: return taken
+        val held = allStarts.filterKeys { it.network == network }.mapKeys { (id, _) -> id.address }
         val synced = round.status as? LightClientStatus.Synced ?: return taken
         val listedAddresses = listed.map { it.address }.toSet()
         val fixed = held.mapNotNull { (address, start) -> (start as? HistoryStart.Fixed)?.let { address to it.block } }
             .toMap(mutableMapOf())
         // An unreadable history only leaves out what it could add: a start no earlier than the note.
-        val entries = (round.history as? HistoryList.Loaded)?.entries.orEmpty()
+        val entries = (round.history as? HistoryList.Loaded)?.entries
+            .orEmpty()
+            .filter { it.transfer.network == network }
         val headTime = synced.headTimestamp
         if (headTime != null) {
             listed.filter { it.address !in fixed }.forEach { account ->
                 val noted = held[account.address] as? HistoryStart.Noted
                 val block = startOf(account.address, noted, entries, synced.headBlock, headTime)
-                if (starts.fix(account.address, block)) fixed[account.address] = block
+                if (starts.fix(AccountId(network, account.address), block)) fixed[account.address] = block
             }
         }
         val watch = listed.flatMap { account ->
@@ -116,8 +121,8 @@ class FollowAccountLogs(
         val asked = watch - taken
         if (asked.isEmpty() && gone.isEmpty()) return taken
         val unwatch = gone.keys.flatMap { listOf(LogWatchKey.Mention(it), LogWatchKey.Emitter(it)) }
-        if (!index.configure(asked.toList(), unwatch)) return taken
-        gone.forEach { (address, start) -> starts.forget(address, start) }
+        if (!index.configure(network, asked.toList(), unwatch)) return taken
+        gone.forEach { (address, start) -> starts.forget(AccountId(network, address), start) }
         return (taken + asked).filterTo(HashSet()) { it.key.address !in gone }
     }
 
@@ -134,7 +139,7 @@ class FollowAccountLogs(
         headBlock: Long,
         headTime: Long,
     ): Long {
-        val concerning = entries.filter { it.concerns(address) }
+        val concerning = entries.filter { it.concerns(AccountId(network, address)) }
         val earliest = (concerning.map { it.transfer.sentAt } + listOfNotNull(noted?.atSeconds)).minOrNull()
         val counted = if (earliest == null) {
             headBlock

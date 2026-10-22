@@ -2,6 +2,7 @@ package eth.serotine.ui.createaccount
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
@@ -17,6 +18,14 @@ import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.components.PasswordStep
+import kotlin.random.Random
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,14 +35,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.random.Random
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CreateAccountViewModelTest {
@@ -52,6 +53,7 @@ class CreateAccountViewModelTest {
             NewRecoveryPhrase(keys),
             ImportMnemonicAccount(keys, accounts, WalletChanges()),
             DescribeKeyStore(keys),
+            Network.SEPOLIA,
             Random(7),
         )
     }

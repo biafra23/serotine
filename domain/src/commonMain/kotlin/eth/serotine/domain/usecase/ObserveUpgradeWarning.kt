@@ -1,17 +1,18 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NetworkUpgrades
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.transformLatest
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * What the app must tell the user about a network upgrade this version does not support:
@@ -31,6 +32,7 @@ import kotlin.time.Duration.Companion.seconds
  * client verifies after it: this version follows the network.
  */
 class ObserveUpgradeWarning(
+    private val network: Network,
     private val upgrades: NetworkUpgrades,
     private val known: KnownUpgradeStore,
     private val lightClient: LightClient,
@@ -38,7 +40,11 @@ class ObserveUpgradeWarning(
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     operator fun invoke(): Flow<UpgradeWarning> =
-        combine(upgrades.observeUpgrade(), known.observe(), lightClient.observeStatus()) { report, record, status ->
+        combine(
+            upgrades.observeUpgrade(network),
+            known.observe(network),
+            lightClient.observeStatus(network),
+        ) { report, record, status ->
             Inputs(report, record?.upgrade, status)
         }.transformLatest { inputs ->
             while (true) {

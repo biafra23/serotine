@@ -22,7 +22,9 @@ private const val APPROVAL = "approval"
 private const val EXECUTION = "execution"
 
 /**
- * One transaction: a transfer's [to], [token] (null: the native currency) and [amount], a
+ * One transaction, sent on the network of [chain] (absent in a record written before networks:
+ * Sepolia, the only one there was; one of a network this build does not know does not decode):
+ * a transfer's [to], [token] (null: the native currency) and [amount], a
  * Safe transaction's approval or execution ([safe]), a Safe's deployment ([deployment]), a
  * token approval ([approval]) or a swap ([swap]) — exactly one of the five, else the file is
  * damaged.
@@ -42,8 +44,10 @@ internal class StoredTransfer(
     val maxCost: String,
     val sentAt: Long,
     val maybeSent: Boolean = false,
+    val chain: Long? = null,
 ) {
     fun toTransfer() = SentTransfer(
+        network = if (chain == null) Network.SEPOLIA else requireNotNull(Network.ofChainId(chain)) { "a chain" },
         account = Address.of(account),
         nonce = nonce,
         signed = SignedTransfer(raw.hexBytes()),
@@ -116,7 +120,7 @@ internal class StoredSwap(
 internal class StoredSafeCall(val kind: String, val request: WireRequest) {
     fun toAction(): SentAction {
         require(request.v == WireRequest.VERSION) { "a request of another version" }
-        val network = requireNotNull(Network.entries.firstOrNull { it.chainId == request.chainId }) { "a chain" }
+        val network = requireNotNull(Network.ofChainId(request.chainId)) { "a chain" }
         val decoded = requireNotNull(request.toRequest(network)) { "a request out of range" }
         return when (kind) {
             APPROVAL -> SentAction.SafeApproval(decoded)
@@ -202,6 +206,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
         maxCost = transfer.maxCost.toDecimal(),
         sentAt = transfer.sentAt,
         maybeSent = transfer.maybeSent,
+        chain = transfer.network.chainId,
     )
 }
 

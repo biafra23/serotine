@@ -2,6 +2,7 @@ package eth.serotine.ui.send
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
@@ -70,6 +71,16 @@ import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -81,22 +92,13 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 
 /** [SendViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SendViewModelTest {
 
     private val daily = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
@@ -105,6 +107,7 @@ class SendViewModelTest {
 
     // EIP-55's own example: 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359.
     private val savings = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.EOA,
         "Savings",
@@ -150,7 +153,7 @@ class SendViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val currency = MemoryCurrencySetting()
         val viewModel = SendViewModel(
-            from,
+            AccountId(Network.SEPOLIA, from),
             asset,
             ObserveAccounts(accounts),
             ObserveAccountValue(
@@ -161,7 +164,6 @@ class SendViewModelTest {
                 ),
                 ObserveUsdPrice(feeds),
                 ObserveDisplayCurrencies(feeds, currency),
-                Network.SEPOLIA,
             ),
             DescribeKeyStore(keys),
             ResolveRecipient(names),
@@ -169,7 +171,6 @@ class SendViewModelTest {
             SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
-            Network.SEPOLIA,
             clock,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }

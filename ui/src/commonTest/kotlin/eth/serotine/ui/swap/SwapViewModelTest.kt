@@ -2,6 +2,7 @@ package eth.serotine.ui.swap
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
@@ -72,6 +73,14 @@ import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.RouteStep
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -83,32 +92,27 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.TestTimeSource
 
 /** [SwapViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SwapViewModelTest {
 
     private val daily = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
         AccountCustody.InKeyStore,
     )
     private val watched = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.EOA,
         "Savings",
         AccountCustody.Watched,
     )
     private val safe = Account(
+        Network.SEPOLIA,
         Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb"),
         AccountKind.SAFE,
         "Treasury",
@@ -162,7 +166,7 @@ class SwapViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { headTime }
         val viewModel = SwapViewModel(
-            from,
+            AccountId(Network.SEPOLIA, from),
             sell,
             ObserveAccounts(accounts),
             ObserveAccountValue(
@@ -173,7 +177,6 @@ class SwapViewModelTest {
                 ),
                 ObserveUsdPrice(FakeFeeds()),
                 ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting()),
-                Network.SEPOLIA,
             ),
             DescribeKeyStore(keys),
             QuoteSwap(
@@ -191,7 +194,6 @@ class SwapViewModelTest {
             SendTokenApproval(signer, broadcaster, sent, now),
             RebroadcastTransfer(broadcaster, sent, FakeReceipts()),
             WarmFeeHistory(inputs),
-            Network.SEPOLIA,
             clock,
             formatTime = { "at $it" },
         )
@@ -462,7 +464,7 @@ class SwapViewModelTest {
 
         override suspend fun venue(network: Network): VenueReading = VenueReading.Verified(deployment)
 
-        override suspend fun call(to: Address, data: ByteArray): Simulation {
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
             if (to == deployment.quoterV2) quotes++
             answers[to to data.hex()]?.let { return Simulation.Succeeded(it, 9_412_118) }
             if (to == deployment.factory) return Simulation.Succeeded("00".repeat(32), 9_412_118)
@@ -473,7 +475,7 @@ class SwapViewModelTest {
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
 
-        override fun observeStatus(): Flow<LightClientStatus> = status
+        override fun observeStatus(network: Network): Flow<LightClientStatus> = status
     }
 
     private companion object {

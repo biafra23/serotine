@@ -27,6 +27,7 @@ import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.logs.MemoryDebugLog
+import eth.serotine.data.networks.FileNetworkSettings
 import eth.serotine.data.rates.FileLastExchangeRate
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
@@ -57,6 +58,10 @@ import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -64,17 +69,14 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The Android composition root: the one place that knows which adapters implement the
@@ -125,9 +127,18 @@ class SerotineApplication : Application() {
      */
     private val knownUpgrades by lazy { FileKnownUpgradeStore(filesDir.resolve("upgrade.json").path, APP_VERSION) }
 
+    /**
+     * Which networks are on (docs/networks.md, *Networks on and off*), beside the other settings:
+     * Sepolia, the only one, in both apps until Ethereum and Gnosis Chain come with their own
+     * build defaults.
+     */
+    private val networkSettings by lazy {
+        FileNetworkSettings(filesDir.resolve("networks.json").path, defaultOn = { true })
+    }
+
     /** What the user hears about an upgrade outside the app. Needs no engine, so a reminder never starts one. */
     private val upgradeNotices by lazy {
-        UpgradeNotices(knownUpgrades, AndroidUpgradeNotifier(this, Network.SEPOLIA))
+        UpgradeNotices(Network.SEPOLIA, knownUpgrades, AndroidUpgradeNotifier(this, Network.SEPOLIA))
     }
 
     /**
@@ -202,7 +213,7 @@ class SerotineApplication : Application() {
             accounts = accounts,
             keys = keyStore,
             nativeBalances = node.nativeBalances,
-            tokenCatalog = BuiltInTokenCatalog(Network.SEPOLIA),
+            tokenCatalog = BuiltInTokenCatalog(),
             tokenBalances = node.tokenBalances,
             tokenMetadata = node.tokenMetadata,
             userTokens = FileUserTokens(filesDir.resolve("tokens.json").path),
@@ -224,14 +235,13 @@ class SerotineApplication : Application() {
             // The Safe transactions waiting for their owners, with the signatures collected (public
             // data, no key in them), beside the account list in the app's private files.
             safeTxQueue = FileSafeTxQueue(filesDir.resolve("safe-tx-queue.json").path),
-            signingRequests = JsonSigningRequestCodec(Network.SEPOLIA),
+            signingRequests = JsonSigningRequestCodec(),
             signatureRecovery = Secp256k1Recovery(),
             safeApprovals = node.safeApprovals,
             // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
             safeReleases = PinnedSafeReleases(),
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
-            network = Network.SEPOLIA,
             debugLog = debugLog,
             debugScreen = debugScreen,
             // The debug app only: Settings may lift FLAG_SECURE for a screen recording, until the
@@ -303,6 +313,8 @@ class SerotineApplication : Application() {
         // The debug log records while the Debug tab is on, for the life of the process: it needs
         // no engine, and a request made while the app is in the background is one too.
         scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
+        // Records each network's default the first time it is found unrecorded.
+        scope.launch { networkSettings.observe().first() }
         // Kept scheduled while a widget is placed, whatever cancelled it (a widget restored by a
         // launcher, say): the job's own period is kept.
         scope.launch(jobScheduling) {
@@ -310,7 +322,7 @@ class SerotineApplication : Application() {
             if (RateWidget.placed(app)) {
                 RateRefreshJob.schedule(app, now = false)
                 // From the file: a spinner a process that ended left on the widget stops.
-                RateWidget.draw(app, lastRate.load())
+                RateWidget.draw(app, lastRate.load(Network.SEPOLIA))
             }
         }
     }
@@ -327,7 +339,7 @@ class SerotineApplication : Application() {
         handler.removeCallbacks(stopAppWork)
         // Not active: never started, stopped by the last stopAppWork, or ended with an engine that is down.
         if (following?.isActive != true) {
-            following = scope.launch { FollowUpgradeReports(node.networkUpgrades, upgradeNotices)() }
+            following = scope.launch { FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)() }
         }
         if (deployments?.isActive != true) deployments = scope.launch { followSafeDeployments() }
         if (sentTransactions?.isActive != true) sentTransactions = scope.launch { followSentTransactions() }
@@ -425,7 +437,7 @@ class SerotineApplication : Application() {
             if (manual) {
                 // Also in a process started for the job alone, which knows of no tap.
                 manualRefresh.set(ManualRefresh.RUNNING)
-                RateWidget.draw(app, lastRate.load())
+                RateWidget.draw(app, lastRate.load(Network.SEPOLIA))
             }
             read = joinRead(if (manual) MANUAL_READ_TIMEOUT else RATE_READ_TIMEOUT)
             if (!manual) read?.let { RateWidget.draw(app, it) }
@@ -443,7 +455,7 @@ class SerotineApplication : Application() {
                 val failed = read == null && cause !is CancellationException
                 scope.launch(NonCancellable) {
                     try {
-                        RateWidget.draw(app, read ?: lastRate.load(), refreshing = false)
+                        RateWidget.draw(app, read ?: lastRate.load(Network.SEPOLIA), refreshing = false)
                     } finally {
                         handler.post {
                             if (failed) toast(R.string.rate_widget_not_refreshed)
@@ -501,7 +513,7 @@ class SerotineApplication : Application() {
         val app = this
         scope.launch(jobScheduling) {
             try {
-                RateWidget.draw(app, lastRate.load())
+                RateWidget.draw(app, lastRate.load(Network.SEPOLIA))
                 if (!RateRefreshJob.refreshNow(app)) giveUpManualRefresh(R.string.rate_widget_not_started)
             } finally {
                 done()
@@ -520,7 +532,7 @@ class SerotineApplication : Application() {
     /** Ends a refresh asked for that never started: the button again, and [text] said. */
     private suspend fun giveUpManualRefresh(text: Int) {
         if (!manualRefresh.compareAndSet(ManualRefresh.REQUESTED, ManualRefresh.NONE)) return
-        RateWidget.draw(this, lastRate.load())
+        RateWidget.draw(this, lastRate.load(Network.SEPOLIA))
         handler.post { toast(text) }
     }
 
@@ -538,7 +550,7 @@ class SerotineApplication : Application() {
     fun drawRateWidgets(done: () -> Unit) {
         scope.launch {
             try {
-                RateWidget.draw(this@SerotineApplication, lastRate.load())
+                RateWidget.draw(this@SerotineApplication, lastRate.load(Network.SEPOLIA))
             } finally {
                 done()
             }

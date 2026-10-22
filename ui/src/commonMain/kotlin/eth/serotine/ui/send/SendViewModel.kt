@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
@@ -64,6 +65,8 @@ import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -77,8 +80,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
 /**
  * The Send screen's ViewModel (docs/wallet-ux.md, screens 7 and 8): a transfer from [from] on
@@ -102,7 +103,7 @@ import kotlin.time.TimeSource
  * and when the screen is gone ([onCleared]).
  */
 class SendViewModel(
-    private val from: Address,
+    private val account: AccountId,
     asset: Address?,
     observeAccounts: ObserveAccounts,
     observeAccountValue: ObserveAccountValue,
@@ -112,9 +113,14 @@ class SendViewModel(
     private val sendTransfer: SendTransfer,
     private val rebroadcastTransfer: RebroadcastTransfer,
     private val warmFeeHistory: WarmFeeHistory,
-    private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val from: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
 
     init {
         // The compose step is open: the fee history is asked for now, ready by the review.
@@ -229,7 +235,7 @@ class SendViewModel(
         recipientStates(inputs.map { it.to.trim() to it.lookupAttempt }, ::lookUp)
 
     private val model: StateFlow<Model?> =
-        combine(observeAccounts(), observeAccountValue(from), inputs, lookup) { list, value, inputs, lookup ->
+        combine(observeAccounts(), observeAccountValue(account), inputs, lookup) { list, value, inputs, lookup ->
             modelOf(list, value, inputs, lookup)
         }.stateIn(
             viewModelScope,
@@ -533,7 +539,8 @@ class SendViewModel(
         }
 
     private fun modelOf(list: AccountList, value: AccountValue, inputs: Inputs, lookup: RecipientState): Model {
-        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        // The sender's network's accounts only: the same address on another network is another account.
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
         val sender = when (list) {
             is AccountList.Unreadable -> Sender.Cannot(LIST_UNAVAILABLE)
             is AccountList.Loaded -> {
@@ -730,7 +737,7 @@ class SendViewModel(
 
     /** What [text] names, resolved ([ResolveRecipient]); never throws. */
     private suspend fun lookUp(text: String): RecipientLookup = try {
-        resolveRecipient(recipientText(text))
+        resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -744,7 +751,7 @@ class SendViewModel(
     private fun warmFees() {
         viewModelScope.launch {
             try {
-                warmFeeHistory()
+                warmFeeHistory(network)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -134,14 +134,27 @@ class CreateSafeViewModel(
     )
 
     /** Everything the first two steps are derived from. */
-    private class Model(val list: AccountList, val inputs: Inputs, val lookup: RecipientState) {
+    private class Model(
+        val list: AccountList,
+        val inputs: Inputs,
+        val lookup: RecipientState,
+        network: Network,
+    ) {
         val accounts: List<Account> = (list as? AccountList.Loaded)?.accounts.orEmpty()
 
-        /** The wallet's externally owned accounts: what can be chosen as an owner. */
+        /**
+         * The wallet's externally owned accounts, on any network, one entry per address (the one
+         * held in the key store where there is one): what can be chosen as an owner, since an
+         * address is an owner on any chain (docs/networks.md, *Safes and swaps*).
+         */
         val eoas: List<Account> = accounts.filter { it.kind == AccountKind.EOA }
+            .groupBy { it.address }
+            .map { (_, entries) -> entries.firstOrNull { it.custody == AccountCustody.InKeyStore } ?: entries.first() }
 
-        /** Those whose key is held here: what can pay for the deployment. */
-        val held: List<Account> = eoas.filter { it.custody == AccountCustody.InKeyStore }
+        /** Those whose key is held here on [network]: what can pay for the deployment there. */
+        val held: List<Account> = accounts.filter {
+            it.network == network && it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore
+        }
 
         val selected: Set<Address> = inputs.selected ?: setOfNotNull(held.firstOrNull()?.address)
 
@@ -215,7 +228,9 @@ class CreateSafeViewModel(
     private val lookup: Flow<RecipientState> =
         recipientStates(inputs.map { it.input.trim() to it.lookupAttempt }, ::lookUp)
 
-    private val model: StateFlow<Model?> = combine(observeAccounts(), inputs, lookup, ::Model).stateIn(
+    private val model: StateFlow<Model?> = combine(observeAccounts(), inputs, lookup) { list, inputs, lookup ->
+        Model(list, inputs, lookup, network)
+    }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         null,
@@ -857,7 +872,7 @@ class CreateSafeViewModel(
     }
 
     private suspend fun lookUp(text: String): RecipientLookup = try {
-        resolveRecipient(recipientText(text))
+        resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -871,7 +886,7 @@ class CreateSafeViewModel(
     private fun warmFees() {
         viewModelScope.launch {
             try {
-                warmFeeHistory()
+                warmFeeHistory(network)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

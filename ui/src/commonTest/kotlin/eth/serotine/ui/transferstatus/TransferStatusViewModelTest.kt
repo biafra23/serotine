@@ -51,6 +51,7 @@ class TransferStatusViewModelTest {
 
     private val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc")
     private val record = SentTransfer(
+        network = Network.SEPOLIA,
         account = Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         nonce = 7,
         signed = SignedTransfer(byteArrayOf(2, 1, 9)),
@@ -243,7 +244,9 @@ class TransferStatusViewModelTest {
         assertEquals(emptyList(), accounts.accounts.value, "this screen lists nothing itself")
 
         // Listed by the app's follower: the record says so, the list has its name now.
-        accounts.accounts.value = listOf(Account(safe, AccountKind.SAFE, "Vault", AccountCustody.Watched))
+        accounts.accounts.value = listOf(
+        Account(Network.SEPOLIA, safe, AccountKind.SAFE, "Vault", AccountCustody.Watched),
+    )
         sent.transfers.value = listOf(ended(SafeListing.LISTED))
         runCurrent()
         assertEquals("In your wallet as Vault.", viewModel.shown.deployment?.listing)

@@ -7,10 +7,12 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
@@ -31,6 +33,15 @@ import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Imported
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,15 +54,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MnemonicImportViewModelTest {
@@ -73,7 +75,7 @@ class MnemonicImportViewModelTest {
             factory = viewModelFactory {
                 initializer {
                     val import = ImportMnemonicAccount(keys, repository, WalletChanges())
-                    MnemonicImportViewModel(import, DescribeKeyStore(keys))
+                    MnemonicImportViewModel(import, DescribeKeyStore(keys), Network.SEPOLIA)
                 }
             },
         )[MnemonicImportViewModel::class]
@@ -113,7 +115,9 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun theKeyOfAWatchedAccountIsAnImportThatSucceeded() = runTest {
-        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        repository.accounts.value = listOf(
+        Account(Network.SEPOLIA, address, AccountKind.EOA, "Savings", AccountCustody.Watched),
+    )
         keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
         typeWordsAndPassword()
 
@@ -143,7 +147,7 @@ class MnemonicImportViewModelTest {
         assertEquals(Imported("Account 1"), viewModel.uiState.value)
         assertEquals(twelveWords, keys.received.single().text)
         assertEquals(
-            listOf(Account(address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
+            listOf(Account(Network.SEPOLIA, address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
             repository.accounts.value,
         )
     }
@@ -167,7 +171,9 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun anAccountAlreadyInTheWalletIsAnError() = runTest {
-        repository.accounts.value = listOf(Account(address, AccountKind.EOA, "Daily", AccountCustody.InKeyStore))
+        repository.accounts.value = listOf(
+        Account(Network.SEPOLIA, address, AccountKind.EOA, "Daily", AccountCustody.InKeyStore),
+    )
         keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
         typeWordsAndPassword()
 
@@ -307,7 +313,7 @@ class MnemonicImportViewModelTest {
         // Half an import would leave a stored key without its account.
         assertEquals(Imported("Account 1"), viewModel.uiState.value)
         assertEquals(
-            listOf(Account(address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
+            listOf(Account(Network.SEPOLIA, address, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)),
             repository.accounts.value,
         )
     }
@@ -497,12 +503,12 @@ class MnemonicImportViewModelTest {
             return if (added) AccountAdd.Added else AccountAdd.AlreadyPresent
         }
 
-        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
+        override suspend fun rename(id: AccountId, label: String): AccountChange = error("not used by this test")
 
-        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
+        override suspend fun remove(id: AccountId): AccountChange = error("not used by this test")
 
-        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange {
-            accounts.update { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+        override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange {
+            accounts.update { list -> list.map { if (it.id == id) it.copy(custody = custody) else it } }
             return AccountChange.Changed
         }
     }

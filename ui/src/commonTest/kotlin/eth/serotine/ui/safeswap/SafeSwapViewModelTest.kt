@@ -1,5 +1,6 @@
 package eth.serotine.ui.safeswap
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Erc20
@@ -42,12 +43,18 @@ import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.ui.DAY
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.HEAD_TIME
 import eth.serotine.ui.MemoryCurrencySetting
-import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.SafeWorld
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.SendFrom
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -58,12 +65,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
-import kotlin.time.TestTimeSource
 
 /** [SafeSwapViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -100,7 +101,7 @@ class SafeSwapViewModelTest {
     private val uniswap = object : UniswapV3Chain {
         override suspend fun venue(network: Network): VenueReading = VenueReading.Verified(world.uniswapDeployment)
 
-        override suspend fun call(to: Address, data: ByteArray): Simulation {
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
             val hex = data.hex()
             val listed = PoolKey.of(world.usdc.address, weth, FeeTier.LOW)
             return when {
@@ -112,7 +113,7 @@ class SafeSwapViewModelTest {
                 }
                 to == pool && hex == UniswapV3Pool.liquidity().hex() ->
                     Simulation.Succeeded(UInt256.of(1_000).toBytes32().hex(), 100)
-                else -> world.uniswap.call(to, data)
+                else -> world.uniswap.call(Network.SEPOLIA, to, data)
             }
         }
     }
@@ -127,7 +128,7 @@ class SafeSwapViewModelTest {
     ): SafeSwapViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = SafeSwapViewModel(
-            world.safe,
+            AccountId(Network.SEPOLIA, world.safe),
             asset,
             replacing,
             ObserveAccounts(world.accounts),
@@ -136,7 +137,6 @@ class SafeSwapViewModelTest {
                 ObserveTokenHoldings(world.knownTokens, world.tokenBalances),
                 ObserveUsdPrice(feeds),
                 ObserveDisplayCurrencies(feeds, MemoryCurrencySetting()),
-                Network.SEPOLIA,
             ),
             world.observeSafe,
             ObserveSafeTxQueue(world.queue, world.observeSafe, world.recovery, Network.SEPOLIA),
@@ -153,7 +153,6 @@ class SafeSwapViewModelTest {
                 Network.SEPOLIA,
             ),
             SignSafeTx(signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
-            Network.SEPOLIA,
             clock,
             formatTime = { "at $it" },
         )

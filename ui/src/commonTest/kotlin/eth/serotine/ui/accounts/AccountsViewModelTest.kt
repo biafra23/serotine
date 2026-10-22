@@ -2,6 +2,7 @@ package eth.serotine.ui.accounts
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
@@ -52,6 +53,12 @@ import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.update.UpgradeBannerItem
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -67,12 +74,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountsViewModelTest {
@@ -86,7 +87,7 @@ class AccountsViewModelTest {
     private val feeds = FakeFeeds()
     private val kind = MutableStateFlow<KindReading>(KindReading.Syncing)
     private val kinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> = kind
+        override fun observeKind(network: Network, address: Address): Flow<KindReading> = kind
     }
     private val currency = MemoryCurrencySetting()
     private val names = FakeNames()
@@ -101,14 +102,13 @@ class AccountsViewModelTest {
             ),
             ObserveUsdPrice(feeds),
             currencies,
-            Network.SEPOLIA,
         )
         return AccountsViewModel(
             ObservePortfolio(ObserveAccounts(repository), value, currencies),
             ObserveSafes(repository, ObserveSafe(kinds, repository)),
             ObserveEnsNames(repository, names),
             ObserveLightClient(lightClient),
-            ObserveUpgradeWarning(upgrades, NoRecord, lightClient) { now },
+            ObserveUpgradeWarning(Network.SEPOLIA, upgrades, NoRecord, lightClient) { now },
             Network.SEPOLIA,
             clock = { now },
             formatTime = { "<$it>" },
@@ -116,13 +116,26 @@ class AccountsViewModelTest {
     }
 
     private val treasury =
-        Account(Address.of("0x" + "ab".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
-    private val daily = Account(Address.of("0x" + "cd".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+        Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "ab".repeat(20)),
+            AccountKind.SAFE,
+            "Treasury",
+            AccountCustody.InKeyStore,
+        )
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "cd".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
 
     private fun treasuryItem(balance: String, verified: Boolean) =
         AccountItem(
             "Treasury",
             Eip55.format(treasury.address),
+            Network.SEPOLIA.chainId,
             AccountKind.SAFE,
             Control.WATCH_ONLY,
             balance,
@@ -378,6 +391,7 @@ class AccountsViewModelTest {
     fun accountItemShowsTheChecksummedAddressShortenedForTheRow() {
         val item = AccountItem.from(
             Account(
+                Network.SEPOLIA,
                 Address.of("0xd8da6bf26964af9d7eed9e03e53415d37aa96045"),
                 AccountKind.EOA,
                 "Vitalik",
@@ -394,7 +408,13 @@ class AccountsViewModelTest {
     @Test
     fun aSafeIsNeverShownWithMoreControlThanIsKnown() {
         val item = AccountItem.from(
-            Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Family", AccountCustody.InKeyStore),
+            Account(
+                Network.SEPOLIA,
+                Address.of("0x" + "5a".repeat(20)),
+                AccountKind.SAFE,
+                "Family",
+                AccountCustody.InKeyStore,
+            ),
             null,
             Network.SEPOLIA,
         )
@@ -404,7 +424,13 @@ class AccountsViewModelTest {
     @Test
     fun aWatchedAccountIsWatchOnly() {
         val item = AccountItem.from(
-            Account(Address.of("0x" + "ee".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched),
+            Account(
+                Network.SEPOLIA,
+                Address.of("0x" + "ee".repeat(20)),
+                AccountKind.EOA,
+                "Savings",
+                AccountCustody.Watched,
+            ),
             null,
             Network.SEPOLIA,
         )
@@ -446,6 +472,7 @@ class AccountsViewModelTest {
     fun anAccountNamedByAnEnsNameShowsItUntilTheNameNoLongerPointsToIt() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val savings = Account(
+            Network.SEPOLIA,
             Address.of("0x" + "ef".repeat(20)),
             AccountKind.EOA,
             "savings.eth",
@@ -479,25 +506,25 @@ class AccountsViewModelTest {
             }
         override fun observeAccounts(): Flow<AccountList> = list
         override suspend fun add(account: Account): AccountAdd = error("not used by this test")
-        override suspend fun rename(address: Address, label: String): AccountChange = error("not used by this test")
-        override suspend fun remove(address: Address): AccountChange = error("not used by this test")
-        override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
+        override suspend fun rename(id: AccountId, label: String): AccountChange = error("not used by this test")
+        override suspend fun remove(id: AccountId): AccountChange = error("not used by this test")
+        override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
             error("not used by this test")
     }
 
     private class FakeNetworkUpgrades : NetworkUpgrades {
         val report = MutableStateFlow<NetworkUpgrade?>(null)
-        override fun observeUpgrade(): Flow<NetworkUpgrade?> = report
+        override fun observeUpgrade(network: Network): Flow<NetworkUpgrade?> = report
     }
 
     private object NoRecord : KnownUpgradeStore {
-        override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
-        override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
+        override fun observe(network: Network): Flow<KnownUpgrade?> = flowOf(null)
+        override suspend fun save(network: Network, record: KnownUpgrade): Boolean = error("not used by this test")
     }
 
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
-        override fun observeStatus(): Flow<LightClientStatus> = status
+        override fun observeStatus(network: Network): Flow<LightClientStatus> = status
     }
 
     private class FakeBalances : NativeBalances {
@@ -508,7 +535,7 @@ class AccountsViewModelTest {
 
         fun of(address: Address) = readings.getOrPut(address) { MutableStateFlow(BalanceReading.Syncing) }
 
-        override fun observeBalance(address: Address): Flow<BalanceReading> =
+        override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> =
             if (address in silent) emptyFlow<BalanceReading>().onStart { awaitCancellation() } else of(address)
     }
 }

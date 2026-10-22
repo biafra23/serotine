@@ -35,6 +35,7 @@ private val accounts = listOf(
     AccountItem(
         "Daily",
         "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        Network.SEPOLIA.chainId,
         AccountKind.EOA,
         Control.FULL_CONTROL,
         "1.25 ETH",
@@ -44,6 +45,7 @@ private val accounts = listOf(
     AccountItem(
         "Savings",
         "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        Network.SEPOLIA.chainId,
         AccountKind.EOA,
         Control.WATCH_ONLY,
         "< 0.0001 ETH",
@@ -53,6 +55,7 @@ private val accounts = listOf(
     AccountItem(
         "Treasury",
         "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+        Network.SEPOLIA.chainId,
         AccountKind.SAFE,
         Control.CO_SIGNER,
         "Not verified",
@@ -279,6 +282,7 @@ private fun AccountsEnsNamesPreview() = AccountsPreview(
             AccountItem(
                 "0xD122…9aDb",
                 "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+                Network.SEPOLIA.chainId,
                 AccountKind.EOA,
                 Control.WATCH_ONLY,
                 "0.42 ETH",

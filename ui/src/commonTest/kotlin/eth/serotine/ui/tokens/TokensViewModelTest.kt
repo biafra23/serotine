@@ -1,6 +1,7 @@
 package eth.serotine.ui.tokens
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.ReadUnavailable
@@ -11,6 +12,9 @@ import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryUserTokens
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -20,9 +24,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TokensViewModelTest {
@@ -41,6 +42,7 @@ class TokensViewModelTest {
             ObserveKnownTokens(ListCatalog(usdc), userTokens, metadata),
             SetTokenHidden(userTokens),
             RemoveToken(userTokens),
+            Network.SEPOLIA,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -48,7 +50,7 @@ class TokensViewModelTest {
 
     @Test
     fun eachTokenSaysWhatItsCheckSaysAndAnImpostorIsMarked() = runTest {
-        userTokens.add(fake)
+        userTokens.add(Network.SEPOLIA, fake)
         val viewModel = viewModel()
         metadata.of(usdc.address).value = MetadataReading.Verified("USDC", "USDC", 6, 11_932_144)
         runCurrent()
@@ -68,7 +70,7 @@ class TokensViewModelTest {
 
     @Test
     fun aTokenIsHiddenShownAndAnAddedOneRemoved() = runTest {
-        userTokens.add(fake)
+        userTokens.add(Network.SEPOLIA, fake)
         val viewModel = viewModel()
 
         viewModel.setHidden("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", true)

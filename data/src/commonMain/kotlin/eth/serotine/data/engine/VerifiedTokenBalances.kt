@@ -1,14 +1,16 @@
 package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
+import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlin.time.Duration
 
 /**
  * [TokenBalances] over a verified light client: the token contract's `balanceOf(holder)` run
@@ -20,6 +22,7 @@ import kotlin.time.Duration
  * is [TokenBalanceReading.LastKnown].
  */
 class VerifiedTokenBalances internal constructor(
+    private val served: Network,
     chain: VerifiedChain?,
     dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
@@ -36,7 +39,7 @@ class VerifiedTokenBalances internal constructor(
         dispatcher,
         pollInterval,
         kept = lastBalances?.kept<Key, TokenUnits?>(
-            id = { "token:${it.holder.hex}:${it.token.hex}" },
+            id = { "${served.chainId}:token:${it.holder.hex}:${it.token.hex}" },
             units = { it?.decimal },
             parse = TokenUnits::parse,
         ) ?: KeptProofs.none(),
@@ -52,8 +55,9 @@ class VerifiedTokenBalances internal constructor(
         }
     }
 
-    override fun observeBalance(holder: Address, token: Address): Flow<TokenBalanceReading> =
-        reads.observe(Key(holder, token)).map { reading ->
+    override fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading> {
+        if (network != served) return flowOf(TokenBalanceReading.Unavailable(ReadUnavailable.NO_ENGINE))
+        return reads.observe(Key(holder, token)).map { reading ->
             when (reading) {
                 EngineReading.Syncing -> TokenBalanceReading.Syncing
                 is EngineReading.Proven -> reading.value?.let {
@@ -66,6 +70,7 @@ class VerifiedTokenBalances internal constructor(
                 is EngineReading.Unavailable -> TokenBalanceReading.Unavailable(reading.reason)
             }
         }
+    }
 
     /** [block], or null for [UNKNOWN_BLOCK]. */
     private fun named(block: Long): Long? = block.takeIf { it != UNKNOWN_BLOCK }

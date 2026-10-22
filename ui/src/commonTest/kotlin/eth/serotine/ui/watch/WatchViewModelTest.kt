@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
@@ -19,6 +20,12 @@ import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeNames
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,22 +39,22 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WatchViewModelTest {
 
     private val vitalik = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-    private val daily = Account(Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
     private val accounts = FakeAccounts(daily)
     private val reading = MutableStateFlow<KindReading>(KindReading.Verified(AddressKind.Eoa, 9_412_118))
     private val kinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> = reading
+        override fun observeKind(network: Network, address: Address): Flow<KindReading> = reading
     }
     private val names = FakeNames()
 
@@ -61,6 +68,7 @@ class WatchViewModelTest {
             ObserveAccounts(accounts),
             WatchAddress(accounts, kinds),
             ResolveRecipient(names),
+            Network.SEPOLIA,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -83,7 +91,7 @@ class WatchViewModelTest {
         runCurrent()
         assertTrue(viewModel.uiState.value.done)
         assertEquals(
-            Account(Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
+            Account(Network.SEPOLIA, Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
             accounts.accounts.value.last(),
         )
     }
@@ -139,13 +147,17 @@ class WatchViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         // The card shows an account; at Add the use case proves again, and cannot.
         val syncing = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
+            override fun observeKind(
+                network: Network,
+                address: Address,
+            ): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
         }
         val viewModel = WatchViewModel(
             ObserveAddressKind(kinds),
             ObserveAccounts(accounts),
             WatchAddress(accounts, syncing),
             ResolveRecipient(names),
+            Network.SEPOLIA,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -204,7 +216,7 @@ class WatchViewModelTest {
     fun editsWhileAnAddRunsAreIgnored() = runTest {
         val slow = MutableStateFlow<KindReading?>(null)
         val gatedKinds = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> = slow.filterNotNull()
+            override fun observeKind(network: Network, address: Address): Flow<KindReading> = slow.filterNotNull()
         }
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel =
@@ -213,6 +225,7 @@ class WatchViewModelTest {
                 ObserveAccounts(accounts),
                 WatchAddress(accounts, gatedKinds),
                 ResolveRecipient(names),
+                Network.SEPOLIA,
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -332,6 +345,7 @@ class WatchViewModelTest {
         // Given no name, the account's name follows the ENS name it was added by.
         assertEquals(
             Account(
+                Network.SEPOLIA,
                 Address.of(vitalik),
                 AccountKind.EOA,
                 "vitalik.eth",
@@ -354,7 +368,7 @@ class WatchViewModelTest {
         viewModel.add()
         runCurrent()
         assertEquals(
-            Account(Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
+            Account(Network.SEPOLIA, Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
             accounts.accounts.value.last(),
         )
     }

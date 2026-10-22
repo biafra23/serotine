@@ -779,13 +779,40 @@ discussion that produced this note.
 - The only source of chain data is the embedded Myotis engine (devp2p/libp2p
   inside it). Calling a node over HTTP may be used for debugging only and is
   never a production path (the Myotis rule, carried over).
-- **Sepolia only, for now** (owner ruling, 2026-10-15). The app works on
-  Sepolia (chain id 11155111) and no other network, in every build type: the
-  composition roots start the Myotis engine for `sepolia` alone, every chain
-  read and every transaction targets that chain, and the UI names it on
-  screen. Code takes the network from `eth.serotine.domain.model.Network`,
-  whose only value is `SEPOLIA`; adding a network, mainnet included, is the
-  owner's decision and is recorded here first.
+- **Ethereum and Gnosis Chain beside Sepolia, one chain per account** (owner
+  ruling, 2026-10-22, accepting docs/networks.md; it replaces "Sepolia only",
+  of 2026-10-15). The networks are the values of
+  `eth.serotine.domain.model.Network`: Sepolia (chain id 11155111) today, and
+  Ethereum (1) and Gnosis Chain (100) as the parts of `feature/networks` bring
+  them (docs/networks.md, *Delivery*). There is **no current network**: each
+  account belongs to one chain and is named by its network and address
+  (`AccountId`); every chain port takes the network with each call, and a
+  network no adapter serves is refused, never answered from another one. A
+  screen takes its network from the account it shows. The same EOA on two
+  networks is two accounts that share one key, which is deleted only with the
+  last account at that address held here. **Each network can be turned off**
+  (Settings → Networks): a network that is off runs no light client, and its
+  accounts stay listed, their actions greyed out with "Turn on" as the way to
+  get them. A release build starts with Ethereum and Gnosis Chain on and
+  Sepolia off, a debug build with Sepolia alone; each network gets its
+  build's default the first time a start finds it unrecorded, and the user's
+  choice stands from then on. **Sepolia keeps every testnet warning** and is
+  never added to a total with real funds. The plan's open questions are
+  decided as it proposes (the same ruling): no names on Gnosis Chain, which
+  watches and sends to addresses only; xDAI priced by Chainlink's xDAI/USD feed
+  on Gnosis, or DAI/USD read on Gnosis where there is none; the update screen
+  only when every network with accounts is blocked, a network blocked alone
+  turning its own section red; the display currencies any network with
+  accounts can price, said per section where one cannot; SafeL2 1.4.1 created
+  on Gnosis Chain, the L1 singleton on Ethereum and Sepolia; Swap greyed out on
+  Gnosis Chain until a venue is pinned there; the network step with nothing
+  ticked; Sepolia off after an update from the Sepolia-only release; Receive
+  kept on a network that is off, saying arrivals show once it is on; no extra
+  real-funds notice beyond the network step's "Real funds" line; and the
+  built-in token lists of Ethereum and Gnosis Chain from the plan's
+  candidates, each entry proven on its chain by the PR that pins it. Adding a
+  network beyond these three is the owner's decision and is recorded here
+  first.
 - **Prices come from Chainlink aggregators, read through the light client**
   (owner ruling, 2026-10-16). A price is a verified `eth_call` of a pinned
   aggregator's `latestRoundData()` and `decimals()`, on-chain state like any

@@ -31,4 +31,10 @@ enum class Network(
         testnet = true,
         secondsPerSlot = 12,
     ),
+    ;
+
+    companion object {
+        /** The network whose EIP-155 chain id is [chainId], or null for one Serotine does not work on. */
+        fun ofChainId(chainId: Long): Network? = entries.firstOrNull { it.chainId == chainId }
+    }
 }

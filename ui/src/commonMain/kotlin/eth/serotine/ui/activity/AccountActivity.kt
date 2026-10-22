@@ -1,7 +1,7 @@
 package eth.serotine.ui.activity
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
-import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
@@ -9,10 +9,10 @@ import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
-import eth.serotine.domain.usecase.ObserveAccountHistory
-import eth.serotine.domain.usecase.KnownToken
 import eth.serotine.domain.usecase.IndexedEvent
 import eth.serotine.domain.usecase.IndexedHistory
+import eth.serotine.domain.usecase.KnownToken
+import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
@@ -46,20 +46,21 @@ class AccountActivity(
     private val observeTokenTransfers: ObserveTokenTransfers,
     private val observeKnownTokens: ObserveKnownTokens,
     private val observeSentTo: ObserveSentToAddresses,
-    private val network: Network,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) {
 
-    /** The Activity of the account at [address], as it changes; nothing is read until it is collected. */
-    fun of(address: Address): Flow<ActivityUiState> = Listing(address).state
+    /** The Activity of the [account], as it changes; nothing is read until it is collected. */
+    fun of(account: AccountId): Flow<ActivityUiState> = Listing(account).state
 
-    /** One account's Activity: the [address] its rows and sources are of. */
-    private inner class Listing(private val address: Address) {
+    /** One account's Activity: the [account] its rows and sources are of. */
+    private inner class Listing(private val account: AccountId) {
 
-        private val rows = ActivityRows(address, network, formatTime)
+        private val address: Address = account.address
+
+        private val rows = ActivityRows(address, account.network, formatTime)
 
         private val sources = ActivitySources(
-            address,
+            account,
             observeAccounts,
             observeSafeHistory,
             observeTokenTransfers,
@@ -68,7 +69,7 @@ class AccountActivity(
         )
 
         val state: Flow<ActivityUiState> = combine(
-            observeAccountHistory(address),
+            observeAccountHistory(account),
             sources.parties,
             sources.safeHistory,
             sources.transfers,
@@ -105,8 +106,10 @@ class AccountActivity(
                 .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
                 .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
             val events = (safeEvents + tokenEvents)
-                .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
-                    .thenByDescending { it.second.logIndex })
+                .sortedWith(
+                    compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
+                    .thenByDescending { it.second.logIndex },
+                )
                 .map { (row, event) -> row to event.blockNumber }
             val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
             val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"

@@ -1,6 +1,7 @@
 package eth.serotine.ui
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.TokenCatalog
@@ -22,9 +23,9 @@ internal class MemoryUserTokens : UserTokens {
 
     private val loaded get() = settings.value as? TokenSettings.Loaded
 
-    override fun observe(): Flow<TokenSettings> = settings
+    override fun observe(network: Network): Flow<TokenSettings> = settings
 
-    override suspend fun add(token: Token): TokenChange {
+    override suspend fun add(network: Network, token: Token): TokenChange {
         val current = loaded ?: return TokenChange.NotSaved
         if (failSaves) return TokenChange.NotSaved
         if (current.added.any { it.address == token.address }) return TokenChange.AlreadyPresent
@@ -32,7 +33,7 @@ internal class MemoryUserTokens : UserTokens {
         return TokenChange.Changed
     }
 
-    override suspend fun remove(address: Address): TokenChange {
+    override suspend fun remove(network: Network, address: Address): TokenChange {
         val current = loaded ?: return TokenChange.NotSaved
         if (failSaves) return TokenChange.NotSaved
         if (current.added.none { it.address == address }) return TokenChange.NotFound
@@ -41,7 +42,7 @@ internal class MemoryUserTokens : UserTokens {
         return TokenChange.Changed
     }
 
-    override suspend fun setHidden(address: Address, hidden: Boolean): TokenChange {
+    override suspend fun setHidden(network: Network, address: Address, hidden: Boolean): TokenChange {
         val current = loaded ?: return TokenChange.NotSaved
         if (failSaves) return TokenChange.NotSaved
         if ((address in current.hidden) == hidden) return TokenChange.AlreadyPresent
@@ -56,10 +57,10 @@ internal class FakeMetadata : TokenMetadata {
 
     fun of(token: Address) = readings.getOrPut(token) { MutableStateFlow(MetadataReading.Syncing) }
 
-    override fun observe(token: Address): Flow<MetadataReading> = of(token)
+    override fun observe(network: Network, token: Address): Flow<MetadataReading> = of(token)
 }
 
 /** A [TokenCatalog] of the built-in [tokens]. */
 internal class ListCatalog(private vararg val tokens: Token) : TokenCatalog {
-    override fun observeTokens(): Flow<List<Token>> = flowOf(tokens.toList())
+    override fun observeTokens(network: Network): Flow<List<Token>> = flowOf(tokens.toList())
 }
