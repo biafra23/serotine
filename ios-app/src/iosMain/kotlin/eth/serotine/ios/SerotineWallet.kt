@@ -8,9 +8,11 @@ import eth.serotine.data.keys.IosBiometricKey
 import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.iosHardwareSecret
+import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -19,6 +21,7 @@ import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
@@ -95,11 +98,18 @@ class SerotineWallet {
     private val keys = "$dataDir/keys"
     private val hardware = iosHardwareSecret(keys)
 
+    /** The Debug tab's log: in memory for the life of the process, never in a file. */
+    private val debugLog = MemoryDebugLog()
+
+    /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
+    private val debugScreen = FileDebugScreen("$dataDir/debug-screen.json")
+
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background;
     // its state can be fetched again, so it stays out of backups. The balances last verified are
     // kept beside it, to be shown as such after a restart. The adapters' diagnostics and the
     // engine's own log go to the device's log in a debug build only: NSLog, not println, whose
-    // stdout reaches no one on a device unless Xcode launched the app.
+    // stdout reaches no one on a device unless Xcode launched the app. Each request asked of the
+    // engine goes to the Debug tab's log ([debugLog]), in memory, in any build.
     @OptIn(ExperimentalNativeApi::class)
     private val node: MyotisNode = run {
         val engineDir = "$dataDir/myotis"
@@ -108,7 +118,13 @@ class SerotineWallet {
         // NSLog("%@", line) the debug app died at launch on the simulator (#129's CI).
         val debugLog: ((String) -> Unit)? =
             if (Platform.isDebugBinary) { line -> NSLog(line.replace("%", "%%")) } else null
-        MyotisNode.start(Network.SEPOLIA, engineDir, lastBalances = "$dataDir/last-balances.json", debugLog = debugLog)
+        MyotisNode.start(
+            Network.SEPOLIA,
+            engineDir,
+            lastBalances = "$dataDir/last-balances.json",
+            debugLog = debugLog,
+            apiLog = this.debugLog,
+        )
     }
 
     // One record per process, read by the screens and written by the notices; this version's only.
@@ -174,6 +190,8 @@ class SerotineWallet {
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
             network = Network.SEPOLIA,
+            debugLog = debugLog,
+            debugScreen = debugScreen,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
             screenCaptureDebugSwitch = null,
         )
@@ -195,6 +213,8 @@ class SerotineWallet {
     init {
         // At launch the app is in the foreground: the work starts with the wallet.
         startForegroundWork()
+        // The debug log records while the Debug tab is on, for the life of the process.
+        scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
             keepAwakeUntil("pause the engine", node.pause())

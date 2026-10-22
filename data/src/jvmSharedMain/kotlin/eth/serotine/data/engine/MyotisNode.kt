@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
+import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
@@ -40,6 +41,7 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -58,6 +60,7 @@ class MyotisNode private constructor(
     network: Network,
     lastBalancesPath: String?,
     private val debugLog: ((String) -> Unit)?,
+    apiLog: LogSink?,
 ) {
 
     private sealed interface State {
@@ -102,7 +105,10 @@ class MyotisNode private constructor(
     /** Where the engine's own log is drained into [debugLog] while the engine runs. */
     private val logScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val chain = HandleChain()
+    /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
+    private val chain: EngineChain = HandleChain().let { handle ->
+        SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
+    }
 
     /** The balances last verified, kept for after a restart; none kept without a path. */
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
@@ -298,23 +304,10 @@ class MyotisNode private constructor(
         }
     }
 
-    private inner class HandleChain : TransactingChain, LogIndexChain {
+    private inner class HandleChain : EngineChain {
 
-        /**
-         * The last snapshot read and when (System.nanoTime). Every adapter, and each of its
-         * subscribers, polls on its own: those that ask within [SNAPSHOT_REUSE_NS] of one read
-         * share it, so they cost the engine one status call, not one each.
-         */
-        @Volatile
-        private var lastRead: TimedSnapshot? = null
-
+        // Each call a status read; SharedSnapshots shares one among the pollers.
         override fun snapshot(): EngineSnapshot {
-            val now = System.nanoTime()
-            lastRead?.let { if (now - it.atNanos < SNAPSHOT_REUSE_NS) return it.snapshot }
-            return read().also { lastRead = TimedSnapshot(now, it) }
-        }
-
-        private fun read(): EngineSnapshot {
             val running = when (val current = state) {
                 State.Booting -> return EngineSnapshot.Booting
                 State.Down -> return EngineSnapshot.Down
@@ -474,8 +467,6 @@ class MyotisNode private constructor(
         }
     }
 
-    private class TimedSnapshot(val atNanos: Long, val snapshot: EngineSnapshot)
-
     companion object {
         /** How often the verified reads poll the engine; internal for `SafeBudgetsTest`. */
         internal val POLL_INTERVAL = 4.seconds
@@ -484,7 +475,7 @@ class MyotisNode private constructor(
         private const val WORD_HEX_DIGITS = 64
 
         /** How long one status read serves other pollers: well under the fastest poll (1 s). */
-        private const val SNAPSHOT_REUSE_NS = 500_000_000L
+        private val SNAPSHOT_REUSE = 500.milliseconds
 
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds
@@ -514,7 +505,8 @@ class MyotisNode private constructor(
          * writes to it.
          * [lastBalances] is the file the balances last verified are kept in, to be shown as such
          * after a restart until a head can be read ([LastBalancesFile]); null keeps them for the
-         * process only. Public chain data too.
+         * process only. Public chain data too. [apiLog] takes each request the adapters make of
+         * the engine ([LoggedChain]): the Debug tab's log, in memory only; null records none.
          *
          * A device without an engine — an Android ABI the library does not ship, a desktop
          * whose resources carry no host library (Windows, for now) — or one whose engine fails
@@ -526,8 +518,9 @@ class MyotisNode private constructor(
             dnsServers: (() -> List<String>)? = null,
             lastBalances: String? = null,
             debugLog: ((String) -> Unit)? = null,
+            apiLog: LogSink? = null,
         ): MyotisNode {
-            val node = MyotisNode(network, lastBalances, debugLog)
+            val node = MyotisNode(network, lastBalances, debugLog, apiLog)
             node.bootThread = thread(name = "myotis-boot", isDaemon = true) {
                 try {
                     node.boot(network, dataDir, dnsServers?.let { servers -> DnsServers { servers() } })

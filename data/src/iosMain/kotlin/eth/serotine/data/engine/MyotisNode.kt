@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
+import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
@@ -45,7 +46,6 @@ import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 
 /**
  * The embedded Myotis engine of this process on iOS (docs/embedding-myotis.md): one engine
@@ -63,6 +63,7 @@ class MyotisNode private constructor(
     network: Network,
     lastBalancesPath: String?,
     private val debugLog: ((String) -> Unit)?,
+    apiLog: LogSink?,
 ) {
 
     private sealed interface State {
@@ -101,7 +102,10 @@ class MyotisNode private constructor(
     /** Runs pause and resume one at a time, in the order asked: each blocks while it lasts. */
     private val control = Dispatchers.IO.limitedParallelism(1)
 
-    private val chain = HandleChain()
+    /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
+    private val chain: EngineChain = HandleChain().let { handle ->
+        SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
+    }
 
     /** The balances last verified, kept for after a restart; none kept without a path. */
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
@@ -283,20 +287,10 @@ class MyotisNode private constructor(
         }
     }
 
-    private inner class HandleChain : TransactingChain, LogIndexChain {
+    private inner class HandleChain : EngineChain {
 
-        /**
-         * The last snapshot read and when. Every adapter, and each of its subscribers, polls on
-         * its own: those that ask within [SNAPSHOT_REUSE] of one read share it, so they cost the
-         * engine one status call, not one each.
-         */
-        private val lastRead = AtomicReference<TimedSnapshot?>(null)
-
-        override fun snapshot(): EngineSnapshot {
-            lastRead.load()?.let { if (it.at.elapsedNow() < SNAPSHOT_REUSE) return it.snapshot }
-            val at = TimeSource.Monotonic.markNow()
-            return read().also { lastRead.store(TimedSnapshot(at, it)) }
-        }
+        // Each call a status read; SharedSnapshots shares one among the pollers.
+        override fun snapshot(): EngineSnapshot = read()
 
         private fun read(): EngineSnapshot {
             val running = when (val current = state.load()) {
@@ -441,8 +435,6 @@ class MyotisNode private constructor(
         }
     }
 
-    private class TimedSnapshot(val at: TimeSource.Monotonic.ValueTimeMark, val snapshot: EngineSnapshot)
-
     companion object {
         /** How often the verified reads poll the engine, as on the JVM targets. */
         internal val POLL_INTERVAL = 4.seconds
@@ -474,16 +466,18 @@ class MyotisNode private constructor(
          * public chain data only.
          * [lastBalances] is the file the balances last verified are kept in, to be shown as such
          * after a restart until a head can be read ([LastBalancesFile]); null keeps them for the
-         * process only. An engine that fails to start gets a node whose balances and light
-         * client say so.
+         * process only. [apiLog] takes each request the adapters make of the engine
+         * ([LoggedChain]): the Debug tab's log, in memory only; null records none. An engine that
+         * fails to start gets a node whose balances and light client say so.
          */
         fun start(
             network: Network,
             dataDir: String,
             lastBalances: String? = null,
             debugLog: ((String) -> Unit)? = null,
+            apiLog: LogSink? = null,
         ): MyotisNode {
-            val node = MyotisNode(network, lastBalances, debugLog)
+            val node = MyotisNode(network, lastBalances, debugLog, apiLog)
             node.bootJob = node.scope.launch {
                 try {
                     node.boot(network, dataDir)

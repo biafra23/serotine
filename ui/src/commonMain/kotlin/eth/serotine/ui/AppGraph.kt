@@ -6,6 +6,8 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.DebugLog
+import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.HistoryStarts
 import eth.serotine.domain.repository.KeyStore
@@ -34,6 +36,7 @@ import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
+import eth.serotine.domain.usecase.ClearDebugLog
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
@@ -49,6 +52,8 @@ import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveDebugLog
+import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
@@ -85,6 +90,8 @@ import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.SendSwap
 import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
+import eth.serotine.domain.usecase.SetDebugLogLevel
+import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetDisplayCurrency
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.SignSafeTx
@@ -100,6 +107,8 @@ import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
+import eth.serotine.ui.debug.DebugTabViewModel
+import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
@@ -197,6 +206,16 @@ class AppGraph(
     private val uniswap: UniswapV3Chain,
     /** The network the app works on: [Network.SEPOLIA], the only one (CLAUDE.md, *Data sources*). */
     private val network: Network,
+    /**
+     * The app's debug log, which the Debug tab shows: the host's one instance, which the engine's
+     * node writes each request into.
+     */
+    private val debugLog: DebugLog,
+    /**
+     * Whether the user turned the Debug tab on in Settings: the host's one instance, which its
+     * `FollowDebugScreen` keeps [debugLog] to.
+     */
+    private val debugScreen: DebugScreenSetting,
     /**
      * The debug build's switch that allows screen recordings of the protected screens; null in a
      * release build, and on a host whose screens block nothing (docs/keys-and-signing.md, rule 8).
@@ -440,7 +459,16 @@ class AppGraph(
             displayCurrencies(),
             network,
             screenCaptureDebugSwitch,
+            ObserveDebugScreen(debugScreen),
+            SetDebugScreen(debugScreen),
         )
+
+    /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
+    fun debugTabViewModel(): DebugTabViewModel = DebugTabViewModel(ObserveDebugScreen(debugScreen))
+
+    /** The Debug tab: the debug log. */
+    fun debugViewModel(): DebugViewModel =
+        DebugViewModel(ObserveDebugLog(debugLog), SetDebugLogLevel(debugLog), ClearDebugLog(debugLog))
 
     fun currencyViewModel(): CurrencyViewModel =
         CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency))

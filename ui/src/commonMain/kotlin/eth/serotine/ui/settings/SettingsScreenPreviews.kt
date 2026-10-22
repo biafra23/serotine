@@ -30,7 +30,14 @@ private val synced = SettingsUiState(
 @Composable
 private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        SettingsScreen(state = state, onCurrency = {}, onTokens = {}, onSecurity = {}, onScreenCaptureChange = {})
+        SettingsScreen(
+            state = state,
+            onCurrency = {},
+            onTokens = {},
+            onSecurity = {},
+            onScreenCaptureChange = {},
+            onDebugScreenChange = {},
+        )
     }
 }
 
@@ -84,6 +91,16 @@ private fun SettingsDebugBuildPreview() = SettingsPreview(synced.copy(screenCapt
 @Composable
 private fun SettingsDebugBuildCaptureAllowedPreview() = SettingsPreview(synced.copy(screenCaptureAllowed = true))
 
+/** The Debug tab turned on. */
+@Preview
+@Composable
+private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(debugScreen = true))
+
+/** A switch of the Debug tab that could not be saved. */
+@Preview
+@Composable
+private fun SettingsDebugScreenNotSavedPreview() = SettingsPreview(synced.copy(debugScreenNotSaved = true))
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsSyncedPreview() },
@@ -94,4 +111,6 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsHeadTooOldDarkPreview() },
     { SettingsDebugBuildPreview() },
     { SettingsDebugBuildCaptureAllowedPreview() },
+    { SettingsDebugScreenPreview() },
+    { SettingsDebugScreenNotSavedPreview() },
 )

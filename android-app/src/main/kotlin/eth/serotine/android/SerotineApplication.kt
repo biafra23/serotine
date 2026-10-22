@@ -26,10 +26,12 @@ import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
+import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.rates.FileLastExchangeRate
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -39,6 +41,7 @@ import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.RateSnapshot
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowExchangeRate
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
@@ -94,7 +97,8 @@ class SerotineApplication : Application() {
     // not ship (it has arm64-v8a and x86_64), balances say so. The balances last verified are
     // kept with the other files (none of which leave the device), to be shown as such after a
     // restart until a head can be read. The adapters' diagnostics and the engine's own log go to
-    // logcat in the debug app only (debuggable below).
+    // logcat in the debug app only (debuggable below); each request asked of the engine goes to
+    // the Debug tab's log, in memory, in either app.
     private val node: MyotisNode by lazy {
         MyotisNode.start(
             Network.SEPOLIA,
@@ -102,8 +106,15 @@ class SerotineApplication : Application() {
             AndroidDnsServers(this),
             lastBalances = filesDir.resolve("last-balances.json").path,
             debugLog = if (debuggable) { line -> Log.d(LOG_TAG, line) } else null,
+            apiLog = debugLog,
         )
     }
+
+    /** The Debug tab's log: in memory for the life of the process, never in a file. */
+    private val debugLog by lazy { MemoryDebugLog() }
+
+    /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
+    private val debugScreen by lazy { FileDebugScreen(filesDir.resolve("debug-screen.json").path) }
 
     /** eth.serotine.debug is debuggable, the release app is not: what the debug app's extras hang on. */
     private val debuggable by lazy { applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
@@ -221,6 +232,8 @@ class SerotineApplication : Application() {
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
             network = Network.SEPOLIA,
+            debugLog = debugLog,
+            debugScreen = debugScreen,
             // The debug app only: Settings may lift FLAG_SECURE for a screen recording, until the
             // process ends. The release app has no switch (docs/keys-and-signing.md, rule 8).
             screenCaptureDebugSwitch = if (debuggable) ScreenCaptureDebugSwitch() else null,
@@ -287,6 +300,9 @@ class SerotineApplication : Application() {
         registerActivityLifecycleCallbacks(foreground)
         registerActivityLifecycleCallbacks(HoldWhileVisible())
         scope.launch { UpgradeCheckJob.schedule(this@SerotineApplication) }
+        // The debug log records while the Debug tab is on, for the life of the process: it needs
+        // no engine, and a request made while the app is in the background is one too.
+        scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
         // Kept scheduled while a widget is placed, whatever cancelled it (a widget restored by a
         // launcher, say): the job's own period is kept.
         scope.launch(jobScheduling) {
