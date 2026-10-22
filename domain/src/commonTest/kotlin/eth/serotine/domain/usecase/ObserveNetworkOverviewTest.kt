@@ -94,11 +94,16 @@ class ObserveNetworkOverviewTest {
             HistoryEntry(sent(3), SentOutcome.Included(120, succeeded = true)),
             HistoryEntry(sent(4, action = deployment(listed = null)), SentOutcome.Included(121, succeeded = true)),
             HistoryEntry(sent(5, action = deployment(SafeListing.LISTED)), SentOutcome.Included(122, succeeded = true)),
+            // Past its lifetime FollowSafeDeployments no longer follows it: nothing waits for it.
+            HistoryEntry(
+                sent(6, sentAt = now - DEPLOYMENT_LIFETIME_SECONDS - 1, action = deployment(listed = null)),
+                SentOutcome.Included(90, succeeded = true),
+            ),
         )
 
         val sepolia = overview()().first().single()
 
         assertEquals(1, sepolia.unconfirmed, "one no longer followed, one included")
-        assertEquals(1, sepolia.unlistedSafes)
+        assertEquals(1, sepolia.unlistedSafes, "one listed, one no longer followed")
     }
 }

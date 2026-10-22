@@ -29,6 +29,12 @@ import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -36,16 +42,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
@@ -184,6 +185,47 @@ class SettingsViewModelTest {
         assertEquals(emptySet(), networks.on.value)
         assertEquals("1 account · Off", viewModel.sepolia.line)
         assertEquals(LightClientHealth.NOT_RUNNING, viewModel.sepolia.health)
+    }
+
+    @Test
+    fun anUnreadableAccountListStillAsksBeforeTheNetworkGoesOff() = runTest {
+        accounts.unreadable.value = true
+        val viewModel = viewModel()
+
+        viewModel.switchNetwork(Network.SEPOLIA.chainId, on = false)
+        runCurrent()
+
+        assertEquals(
+            "Its accounts, if it has any, stay in your list: the list cannot be read right now. Its balances are " +
+                "not checked and nothing can be sent from it until you turn Sepolia on again.",
+            viewModel.uiState.value.turningOff?.text,
+        )
+        assertEquals(setOf(Network.SEPOLIA), networks.on.value, "not before it is confirmed")
+    }
+
+    @Test
+    fun aRowsHeadBlockAgeIsReDatedEverySecond() = runTest {
+        var now = 1_000L
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = SettingsViewModel(
+            ObserveNetworkOverview(networks, accounts, lightClient, MemoryTransactionHistory(), clock = { now }),
+            SetNetworkEnabled(networks),
+            ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata()),
+            ObserveDisplayCurrencies(FakeFeeds(), currency),
+            Network.SEPOLIA,
+            null,
+            ObserveDebugScreen(debugScreen),
+            SetDebugScreen(debugScreen),
+            clock = { now },
+        )
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        runCurrent()
+        assertEquals("1 account · Verified at block 9,412,118 · 8 s ago", viewModel.sepolia.line)
+
+        now += 5
+        advanceTimeBy(1_001)
+        assertEquals("1 account · Verified at block 9,412,118 · 13 s ago", viewModel.sepolia.line)
     }
 
     @Test

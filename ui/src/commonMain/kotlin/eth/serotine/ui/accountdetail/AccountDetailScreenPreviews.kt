@@ -1,6 +1,10 @@
 package eth.serotine.ui.accountdetail
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityRow
@@ -348,8 +352,26 @@ private fun AccountDetailCheckingPreview() = AccountDetailPreview(
         total = "Checking…",
         totalNote = "Testnet prices · still checking",
         assets = listOf(ether.copy(amount = "Checking…", verified = false, verifiedAt = null, value = null)),
+        pendingAssets = 3,
         tokensNote = "Checking 3 tokens",
     ),
+    lightClient = catchingUpStripSample,
+)
+
+@Preview
+@Composable
+private fun AccountDetailCheckingDarkPreview() = AccountDetailPreview(
+    daily.copy(
+        label = "Savings",
+        address = SAVINGS,
+        control = Control.WATCH_ONLY,
+        total = "Checking…",
+        totalNote = "Testnet prices · still checking",
+        assets = listOf(ether.copy(amount = "Checking…", verified = false, verifiedAt = null, value = null)),
+        pendingAssets = 3,
+        tokensNote = "Checking 3 tokens",
+    ),
+    darkTheme = true,
     lightClient = catchingUpStripSample,
 )
 
@@ -439,6 +461,11 @@ private fun AccountDetailSafeQueueUnreadablePreview() = AccountDetailPreview(
 
 @Preview
 @Composable
+private fun AccountDetailSafeQueueReadingPreview() =
+    AccountDetailPreview(treasury.copy(segment = DetailSegment.QUEUE, queue = SafeQueue.Checking))
+
+@Preview
+@Composable
 private fun AccountDetailSafeReadingPreview() = AccountDetailPreview(
     treasury.copy(
         control = Control.WATCH_ONLY,
@@ -522,6 +549,11 @@ private fun AccountDetailSafeActivityDarkPreview() = AccountDetailPreview(
     ),
     darkTheme = true,
 )
+
+/** On a phone narrower than an iPhone mini: Send, Swap and Receive leave out their icons. */
+@Preview
+@Composable
+private fun AccountDetailNarrowPreview() = Box(Modifier.width(320.dp)) { AccountDetailPreview(daily) }
 
 @Preview
 @Composable
@@ -609,6 +641,9 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailActivityTokensPreview() },
     { AccountDetailSafeActivityPreview() },
     { AccountDetailSafeActivityDarkPreview() },
+    { AccountDetailNarrowPreview() },
+    { AccountDetailSafeQueueReadingPreview() },
+    { AccountDetailCheckingDarkPreview() },
     { AccountDetailEthereumPreview() },
     { AccountDetailNetworkOffPreview() },
 )

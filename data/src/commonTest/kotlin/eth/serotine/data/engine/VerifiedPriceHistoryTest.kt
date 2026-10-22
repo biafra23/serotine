@@ -224,6 +224,19 @@ class VerifiedPriceHistoryTest {
             history().before(Network.SEPOLIA, eth.priceId, 86_400),
         )
 
+        chain.snapshot = EngineSnapshot.Failed
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.NO_ENGINE),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
+
+        // A network that is off is not "checking": it says so, as every other read does.
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.NETWORK_OFF),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
+
         chain.failure = IllegalStateException("engine")
         assertEquals(
             PastReading.Unavailable(ReadUnavailable.UNPROVEN),

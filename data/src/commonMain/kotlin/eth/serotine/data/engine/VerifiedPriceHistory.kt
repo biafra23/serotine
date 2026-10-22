@@ -65,8 +65,15 @@ class VerifiedPriceHistory internal constructor(
 
     private suspend fun search(chain: VerifiedChain, feed: PinnedFeed, secondsBefore: Long): PastReading {
         val snapshot = chain.snapshot()
-        if (snapshot == EngineSnapshot.Down) return PastReading.Unavailable(ReadUnavailable.NO_ENGINE)
-        if (snapshot !is EngineSnapshot.Running) return PastReading.Syncing
+        // No engine, a failed start or a network that is off say so; one still starting is checking.
+        if (snapshot !is EngineSnapshot.Running) {
+            val why = whyUnreadable(snapshot)
+            return if (why == null || why == ReadUnavailable.UNPROVEN) {
+                PastReading.Syncing
+            } else {
+                PastReading.Unavailable(why)
+            }
+        }
         if (snapshot.phase == EngineSnapshot.Phase.STALE_ANCHOR) {
             return PastReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
         }
