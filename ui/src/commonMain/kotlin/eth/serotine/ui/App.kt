@@ -247,7 +247,6 @@ private fun Destinations(
                     onRemove = { navController.open(AccountAction.Remove(address.hex)) },
                     onOpenSafeTx = { hash -> navController.openSafeTx(address, hash) },
                     onImportRequest = { navController.importRequest(address) },
-                    activity = viewModel { graph.activityViewModel(address) },
                     onOpenActivity = { key -> navController.openActivityDetail(address, key) },
                 )
             }

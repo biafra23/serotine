@@ -82,7 +82,7 @@ review finding, whatever it saves.
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution, a Safe's deployment) |
 | `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `history` — where each account's history starts —, `rates` — the exchange rate last verified, for a home-screen widget —, `files`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `safepropose` is Send from a Safe, on the same transfer form; `transferstatus` follows a transaction once sent; `safetx` is one Safe transaction with its signing, approval and execution steps; `safeimport` imports a signing request; `createsafe` holds one screen with three steps, owners, threshold and review) |
-| `eth.serotine.ui.activity` | an account's Activity, a tab of its detail rather than a screen: `ActivityViewModel`, `ActivityUiState` and the list's items (`activityItems`), which `AccountDetailScreen` draws in its Activity tab; the account detail's route binds it beside its own ViewModel, both scoped to the detail's back-stack entry, and reads it only while the tab is shown |
+| `eth.serotine.ui.activity` | an account's Activity, a tab of its detail rather than a screen, so with no ViewModel of its own: `AccountActivity`, which `AccountDetailViewModel` reads while the tab is shown, `ActivityUiState` and the list's items (`activityItems`), which `AccountDetailScreen` draws in the tab |
 | `eth.serotine.ui.ratewidget` | what a host's home-screen widget shows of the exchange rate last verified, display-ready (`rateWidgetContent`); the host draws it in its own widget toolkit: no screen, no ViewModel |
 | `eth.serotine.ui.lightclient` | `LightClientViewModel`, the light client's status strip as the screens that depend on it draw it: no screen of its own |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu, the transfer form, the unlock that signs, a Safe transaction's decoded action, a signing request shared) and the display helpers and display-ready types they share (EIP-55, amounts, the light client's line, the seed screens' password step, the transfer form's inputs and texts, what a Safe transaction does and why one is refused); no ViewModel, no use case |
@@ -97,8 +97,7 @@ review finding, whatever it saves.
   (scroll position, an expanded row). A UiState is a sealed interface or an
   immutable data class; its leaves are display-ready values (strings, enums),
   never a `Flow`, a repository or a platform type.
-- **One `<Feature>Route` binds the screen to its ViewModel** (and to a tab's
-  that has its own, the account detail's Activity: `eth.serotine.ui.activity`) —
+- **One `<Feature>Route` binds the screen to its ViewModel** —
   `collectAsStateWithLifecycle()`, plus the glue between the screen's lifecycle
   and its ViewModel: a state that ends the screen (an import that succeeded)
   becomes its navigation callback, and a screen that stops being shown becomes

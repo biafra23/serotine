@@ -3,6 +3,7 @@ package eth.serotine.ui.accountdetail
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.accounts.sendBlockedReason
 import eth.serotine.ui.accounts.swapBlockedReason
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 
 /** Everything the account detail screen renders (docs/wallet-ux.md, screen 4). */
@@ -25,7 +26,8 @@ sealed interface AccountDetailUiState {
      * ("Safe", or "Not a recognised Safe" once its address no longer verifies as one) and
      * [threshold] its verified threshold of its owners ("2/3"), for its blockie. [label] is the
      * account's name, or its short address once the ENS name its name follows no longer points
-     * to it, which [nameNote] then says.
+     * to it, which [nameNote] then says. [activity] is what its Activity tab lists while that tab
+     * is shown, and Loading on any other.
      */
     data class Ready(
         val label: String,
@@ -45,6 +47,7 @@ sealed interface AccountDetailUiState {
         val threshold: String? = null,
         val queue: SafeQueue? = null,
         val nameNote: String? = null,
+        val activity: ActivityUiState = ActivityUiState.Loading,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */

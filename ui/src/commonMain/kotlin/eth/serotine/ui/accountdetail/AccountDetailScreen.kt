@@ -60,7 +60,6 @@ import androidx.lifecycle.compose.currentStateAsState
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityUiState
-import eth.serotine.ui.activity.ActivityViewModel
 import eth.serotine.ui.activity.activityItems
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
@@ -101,13 +100,12 @@ const val ACCOUNT_SWAP_TAG = "account-swap"
 const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
 
 /**
- * Binds [AccountDetailScreen] to its ViewModel, and its Activity tab to [activity]'s, which is
- * read only while that tab is shown; a row of it opens its detail ([onOpenActivity]). An account
- * that leaves the wallet while the screen is shown (removed from here or elsewhere) ends the
- * screen through [onGone] — once the screen is the one in front: under the remove dialog it
- * waits, so the dialog can say how the removal went before both close. Send is [onSend] from an account and [onPropose]
- * from a Safe, whose transfers are Safe transactions its owners sign; Swap likewise [onSwap] and
- * [onSafeSwap].
+ * Binds [AccountDetailScreen] to its ViewModel; a row of its Activity opens its detail
+ * ([onOpenActivity]). An account that leaves the wallet while the screen is shown (removed from
+ * here or elsewhere) ends the screen through [onGone] — once the screen is the one in front:
+ * under the remove dialog it waits, so the dialog can say how the removal went before both
+ * close. Send is [onSend] from an account and [onPropose] from a Safe, whose transfers are Safe
+ * transactions its owners sign; Swap likewise [onSwap] and [onSafeSwap].
  */
 @Composable
 fun AccountDetailRoute(
@@ -124,13 +122,10 @@ fun AccountDetailRoute(
     onRemove: () -> Unit,
     onOpenSafeTx: (hash: String) -> Unit,
     onImportRequest: () -> Unit,
-    activity: ActivityViewModel,
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val showsActivity = (state as? AccountDetailUiState.Ready)?.segment == DetailSegment.ACTIVITY
-    val history = if (showsActivity) activity.uiState.collectAsStateWithLifecycle().value else ActivityUiState.Loading
     val strip by lightClient.item.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     // A dialog destination over this one holds it at STARTED; it is RESUMED when in front.
@@ -157,7 +152,6 @@ fun AccountDetailRoute(
         onSegment = viewModel::show,
         onOpenSafeTx = onOpenSafeTx,
         onImportRequest = onImportRequest,
-        activity = history,
         onOpenActivity = onOpenActivity,
         modifier = modifier,
     )
@@ -170,9 +164,8 @@ fun AccountDetailRoute(
  * account list; while the asset rows are shown, the menu also sorts them the other way
  * ([onSort]). Under the buttons are its tabs, Assets | Activity and a Safe's Owners | Queue.
  * [onSend] opens Send with the token at a contract chosen, or the network's currency (null). The
- * Activity tab draws [activity], whose rows open their detail through [onOpenActivity]. A Safe's
- * Queue opens a transaction through [onOpenSafeTx] by its hash, and Import a request through
- * [onImportRequest].
+ * Activity tab's rows open their detail through [onOpenActivity]. A Safe's Queue opens a
+ * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -192,7 +185,6 @@ fun AccountDetailScreen(
     onSegment: (DetailSegment) -> Unit,
     onOpenSafeTx: (hash: String) -> Unit,
     onImportRequest: () -> Unit,
-    activity: ActivityUiState,
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -285,7 +277,6 @@ fun AccountDetailScreen(
                     onSegment = onSegment,
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
-                    activity = activity,
                     onOpenActivity = onOpenActivity,
                 )
             }
@@ -309,7 +300,6 @@ private fun Details(
     onSegment: (DetailSegment) -> Unit,
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
-    activity: ActivityUiState,
     onOpenActivity: (ActivityKey) -> Unit,
 ) {
     // Each item ends with the space before the next, but an Activity's rows, which follow one another.
@@ -318,7 +308,7 @@ private fun Details(
     // against the spinner of an Activity read again, it would be cut back to the top for good.
     val position = rememberLazyListState()
     val whileReading = remember { LazyListState() }
-    val reading = state.segment == DetailSegment.ACTIVITY && activity == ActivityUiState.Loading
+    val reading = state.segment == DetailSegment.ACTIVITY && state.activity == ActivityUiState.Loading
     LazyColumn(
         Modifier.fillMaxSize(),
         state = if (reading) whileReading else position,
@@ -388,7 +378,7 @@ private fun Details(
         // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
             state.showsAssets -> item { Assets(state, onSend, onSwap, onCopyContract, onHideToken) }
-            state.segment == DetailSegment.ACTIVITY -> activityItems(activity, onOpenActivity)
+            state.segment == DetailSegment.ACTIVITY -> activityItems(state.activity, onOpenActivity)
             state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe)) }
             else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }

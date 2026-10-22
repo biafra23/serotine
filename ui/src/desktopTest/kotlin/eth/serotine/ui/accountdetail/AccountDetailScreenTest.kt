@@ -62,11 +62,10 @@ class AccountDetailScreenTest {
     private fun show(
         state: AccountDetailUiState,
         lightClient: LightClientItem = verifiedStripSample,
-        activity: ActivityUiState = ActivityUiState.Loading,
-    ) = rule.setContent { Screen(state, lightClient, activity) }
+    ) = rule.setContent { Screen(state, lightClient) }
 
     @Composable
-    private fun Screen(state: AccountDetailUiState, lightClient: LightClientItem, activity: ActivityUiState) {
+    private fun Screen(state: AccountDetailUiState, lightClient: LightClientItem) {
         SerotineTheme {
             AccountDetailScreen(
                 state,
@@ -84,7 +83,6 @@ class AccountDetailScreenTest {
                 onSegment = { events += "segment $it" },
                 onOpenSafeTx = { events += "open $it" },
                 onImportRequest = { events += "import" },
-                activity = activity,
                 onOpenActivity = { events += "open activity $it" },
             )
         }
@@ -150,7 +148,6 @@ class AccountDetailScreenTest {
                     onSegment = {},
                     onOpenSafeTx = {},
                     onImportRequest = {},
-                    activity = ActivityUiState.Loading,
                     onOpenActivity = {},
                 )
             }
@@ -402,8 +399,10 @@ class AccountDetailScreenTest {
     @Test
     fun theActivityTabSaysWhatEachRowDidAndHowItEndedAndATapOpensItsDetail() {
         show(
-            ready.copy(segment = DetailSegment.ACTIVITY),
-            activity = ActivityUiState.Shown(listOf(sent), "Transactions sent from this device."),
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(sent), "Transactions sent from this device."),
+            ),
         )
 
         rule.onNodeWithText("Transactions sent from this device.").assertIsDisplayed()
@@ -420,8 +419,12 @@ class AccountDetailScreenTest {
         val opens = ActivityKey("0x" + "2".repeat(64), 0)
         val event = sent.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = opens)
         show(
-            ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.ACTIVITY),
-            activity = ActivityUiState.Shown(listOf(event), "Its events on chain."),
+            ready.copy(
+                kind = AccountKind.SAFE,
+                safe = SafeDetails.Checking,
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(event), "Its events on chain."),
+            ),
         )
 
         rule.onNodeWithText("Received 1 ETH").performClick()
@@ -443,7 +446,7 @@ class AccountDetailScreenTest {
             val entry = rememberSaveableStateHolder()
             if (shown) {
                 entry.SaveableStateProvider("account") {
-                    Screen(ready.copy(segment = DetailSegment.ACTIVITY), verifiedStripSample, activity)
+                    Screen(ready.copy(segment = DetailSegment.ACTIVITY, activity = activity), verifiedStripSample)
                 }
             }
         }
@@ -464,8 +467,10 @@ class AccountDetailScreenTest {
     @Test
     fun anEmptyActivitySaysSo() {
         show(
-            ready.copy(segment = DetailSegment.ACTIVITY),
-            activity = ActivityUiState.Shown(emptyList(), "Transactions sent from this device."),
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(emptyList(), "Transactions sent from this device."),
+            ),
         )
 
         rule.onNodeWithText("Nothing sent from this device yet.").assertIsDisplayed()
@@ -475,8 +480,10 @@ class AccountDetailScreenTest {
     @Test
     fun anUnreadableActivitySaysWhy() {
         show(
-            ready.copy(segment = DetailSegment.ACTIVITY),
-            activity = ActivityUiState.Unavailable("The history cannot be read right now."),
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Unavailable("The history cannot be read right now."),
+            ),
         )
 
         rule.onNodeWithText("The history cannot be read right now.").assertIsDisplayed()

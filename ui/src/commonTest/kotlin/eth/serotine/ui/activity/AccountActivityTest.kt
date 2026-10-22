@@ -40,22 +40,21 @@ import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
 import eth.serotine.ui.components.GUARD_SET_WARNING
 import eth.serotine.ui.components.MODULE_DISABLED_WARNING
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class ActivityViewModelTest {
+class AccountActivityTest {
 
     private val alice = Account(
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
@@ -102,13 +101,9 @@ class ActivityViewModelTest {
         500,
     )
 
-    @AfterTest
-    fun resetMainDispatcher() = Dispatchers.resetMain()
-
-    private fun TestScope.viewModel(address: Address = alice.address): ActivityViewModel {
-        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val viewModel = ActivityViewModel(
-            address,
+    /** The Activity of the account at [address], kept current as the tests change what it is read from. */
+    private fun TestScope.activity(address: Address = alice.address): StateFlow<ActivityUiState> =
+        AccountActivity(
             ObserveAccountHistory(history),
             ObserveAccounts(accounts),
             ObserveSafeHistory(index, starts),
@@ -117,10 +112,14 @@ class ActivityViewModelTest {
             ObserveSentToAddresses(history),
             Network.SEPOLIA,
         ) { "at $it" }
-        backgroundScope.launch { viewModel.uiState.collect {} }
-        runCurrent()
-        return viewModel
-    }
+            .of(address)
+            // Unconfined, so that what a test changes is listed before it reads the value.
+            .stateIn(
+                backgroundScope + UnconfinedTestDispatcher(testScheduler),
+                SharingStarted.Eagerly,
+                ActivityUiState.Loading,
+            )
+            .also { runCurrent() }
 
     @Test
     fun eachTransactionNewestFirstWithWhatItDidAndHowItEnded() = runTest {
@@ -130,7 +129,7 @@ class ActivityViewModelTest {
             HistoryEntry(execution),
         )
 
-        val shown = assertIs<ActivityUiState.Shown>(viewModel().uiState.value)
+        val shown = assertIs<ActivityUiState.Shown>(activity().value)
 
         assertEquals(
             listOf(
@@ -173,7 +172,7 @@ class ActivityViewModelTest {
     fun aSafeSeesWhichOfItsTransactionsWereExecutedAndByWhom() = runTest {
         history.entries.value = listOf(HistoryEntry(token), HistoryEntry(execution))
 
-        val shown = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
+        val shown = assertIs<ActivityUiState.Shown>(activity(treasury.address).value)
 
         assertEquals(listOf("Executed transaction 4"), shown.rows.map { it.title })
         assertEquals("By Alice · 0x8f3A…91c2", shown.rows.single().detail)
@@ -186,7 +185,7 @@ class ActivityViewModelTest {
             HistoryEntry(native, SentOutcome.NonceUsed),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
 
         assertEquals(listOf(ActivityState.UNKNOWN, ActivityState.UNCONFIRMED), rows.map { it.state })
     }
@@ -195,12 +194,12 @@ class ActivityViewModelTest {
     fun anUnreadableHistorySaysSo() = runTest {
         history.unreadable.value = true
 
-        assertIs<ActivityUiState.Unavailable>(viewModel().uiState.value)
+        assertIs<ActivityUiState.Unavailable>(activity().value)
     }
 
     @Test
     fun nothingSentIsAnEmptyListThatSaysWhatItCovers() = runTest {
-        val shown = assertIs<ActivityUiState.Shown>(viewModel().uiState.value)
+        val shown = assertIs<ActivityUiState.Shown>(activity().value)
 
         assertEquals(emptyList(), shown.rows)
         assertEquals(true, "sent from this device" in shown.coverage)
@@ -228,7 +227,7 @@ class ActivityViewModelTest {
             ),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
 
         assertEquals(
             listOf(
@@ -269,7 +268,7 @@ class ActivityViewModelTest {
             safeLog(9_415_000, listOf(received, bobsTopic), "0x" + "1".padStart(64, '0'), tx = "0x" + "dd".repeat(32)),
         )
 
-        val shown = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
+        val shown = assertIs<ActivityUiState.Shown>(activity(treasury.address).value)
 
         assertEquals(
             listOf("Received 0.000000000000000001 ETH", "Executed transaction 4", "Received 1 ETH"),
@@ -294,7 +293,7 @@ class ActivityViewModelTest {
         val topics = listOf(executionSuccess, "0x" + "ab".repeat(32))
         index.logs = listOf(safeLog(9_410_000, topics, "0x" + "0".repeat(64), tx = execution.hash))
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
 
         assertEquals(listOf("Executed transaction 4"), rows.map { it.title })
     }
@@ -307,7 +306,7 @@ class ActivityViewModelTest {
         val topics = listOf(executionSuccess, "0x" + "ab".repeat(32))
         index.logs = listOf(safeLog(9_410_000, topics, "0x" + "0".repeat(64), tx = execution.hash))
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
 
         assertEquals(listOf("Executed transaction 4", "Executed a Safe transaction"), rows.map { it.title })
         assertEquals("Block 9,410,000", rows.last().time)
@@ -317,7 +316,7 @@ class ActivityViewModelTest {
     fun theCoverageSaysWhatIsStillBeingCheckedAndWhenTheSafeIsNotFollowedYet() = runTest {
         treasuryIndexed(9_410_000L..9_420_000L, transfers = 9_400_000L..9_420_000L)
 
-        val partly = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
+        val partly = assertIs<ActivityUiState.Shown>(activity(treasury.address).value)
 
         assertEquals(
             "Transactions sent from this device. On chain from block 9,400,000 on, when it was added here: " +
@@ -327,7 +326,7 @@ class ActivityViewModelTest {
         assertEquals("Nothing listed yet.", partly.empty)
 
         starts.starts.value = emptyMap()
-        val waiting = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
+        val waiting = assertIs<ActivityUiState.Shown>(activity(treasury.address).value)
 
         assertEquals(true, "listed once the light client is synced" in waiting.coverage)
     }
@@ -345,7 +344,7 @@ class ActivityViewModelTest {
             safeLog(9_413_000, listOf(threshold), "0x" + "1".padStart(64, '0'), tx = "0x" + "ee".repeat(32)),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
 
         assertEquals(
             listOf("Threshold changed", "Module enabled", "Executed transaction 4", "A Safe transaction failed"),
@@ -368,7 +367,7 @@ class ActivityViewModelTest {
             safeLog(9_403_000, listOf(handlerSet, none), tx = "0x" + "a3".repeat(32)),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
 
         assertEquals(
             listOf("Fallback handler removed", "Fallback handler set", "Fallback handler set"),
@@ -389,7 +388,7 @@ class ActivityViewModelTest {
             safeLog(9_403_000, listOf(guardChanged, "0x" + "00".repeat(32)), tx = "0x" + "a3".repeat(32)),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
 
         assertEquals(listOf("Guard removed", "Guard set", "Module disabled"), rows.map { it.title })
         assertEquals(List(3) { ActivityState.WARNING }, rows.map { it.state })
@@ -418,7 +417,7 @@ class ActivityViewModelTest {
             safeLog(9_415_000, listOf(received, bobsTopic), "0x" + "1".padStart(64, '0'), tx = "0x" + "dd".repeat(32)),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
 
         assertEquals(
             listOf("Executed transaction 4", "Received 0.000000000000000001 ETH", "Executed transaction 3"),
@@ -463,7 +462,7 @@ class ActivityViewModelTest {
             tokenLog(nft, 9_403_000, alice.address, bob, "0x", "0x" + "e3".repeat(32), tokenId = seven),
         )
 
-        val shown = assertIs<ActivityUiState.Shown>(viewModel().uiState.value)
+        val shown = assertIs<ActivityUiState.Shown>(activity().value)
 
         assertEquals(
             listOf(
@@ -498,7 +497,7 @@ class ActivityViewModelTest {
         // Alice sent to Bob before; the treasury is an account of the wallet.
         history.entries.value = listOf(HistoryEntry(token))
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
             .filter { it.title == "Received 1 USDC" }
 
         assertEquals(listOf(ActivityState.DONE, ActivityState.DONE, ActivityState.CAUTION), rows.map { it.state })
@@ -520,7 +519,7 @@ class ActivityViewModelTest {
             tokenLog(usdc.address, 9_411_000, bob, alice.address, word("f4240"), "0x" + "e4".repeat(32)),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
 
         assertEquals(listOf("Received 1 USDC", "Sent 40.5 USDC"), rows.map { it.title })
         assertEquals(ActivityKey(token.hash), rows.last().opens)
@@ -541,7 +540,7 @@ class ActivityViewModelTest {
             tokenLog(fake.address, 9_402_000, bob, alice.address, word("f4240"), "0x" + "e6".repeat(32)),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
 
         assertEquals(listOf("Received 1 USDC"), rows.map { it.title })
         assertEquals("From 0x5aAe…eAed · token 0x27b1…1c26", rows.single().detail)
@@ -562,7 +561,7 @@ class ActivityViewModelTest {
             tokenLog(usdc.address, 9_410_000, alice.address, feeSink, word("f4240"), token.hash, index = 1),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
 
         assertEquals(listOf("Sent 40.5 USDC", "Sent 1 USDC"), rows.map { it.title })
         assertEquals("To 0x5290…9EE7", rows.last().detail)
@@ -582,7 +581,7 @@ class ActivityViewModelTest {
             tokenLog(stranger, 9_402_000, bob, alice.address, word("1"), "0x" + "e8".repeat(32)),
         )
 
-        val rows = assertIs<ActivityUiState.Shown>(viewModel().uiState.value).rows
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
 
         assertEquals(
             listOf(

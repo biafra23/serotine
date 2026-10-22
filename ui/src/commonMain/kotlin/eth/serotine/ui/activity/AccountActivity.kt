@@ -1,7 +1,5 @@
 package eth.serotine.ui.activity
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -24,106 +22,106 @@ import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.platform.formatDateTime
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 
 /**
- * The ViewModel of an account's Activity, its detail's Activity tab (docs/wallet-ux.md, screen 25;
- * issue #85): the transactions this device sent for the account at [address]
- * ([ObserveAccountHistory]) and, for an account of the wallet, what the engine's verified log
- * index holds of it: every token transfer to or from it ([ObserveTokenTransfers]) and, for a
- * Safe, its own events ([ObserveSafeHistory]). The names the wallet gives the addresses they
- * concern come from [ObserveAccounts], the tokens' symbols and decimals from the tokens it knows
- * ([ObserveKnownTokens]); a transfer received from an address the wallet never sent to
- * ([ObserveSentToAddresses]) and that is none of its accounts is cautioned. A log of a
- * transaction listed as sent, in a block, is left out when its row says the same. [formatTime]
- * dates each in the user's own time zone. No intents: a row opens its detail, which is navigation.
+ * What an account's Activity shows, its detail's Activity tab (docs/wallet-ux.md, screen 25;
+ * issue #85), for the account detail's ViewModel to read while the tab is shown: the transactions
+ * this device sent for the account ([ObserveAccountHistory]) and, for an account of the wallet,
+ * what the engine's verified log index holds of it: every token transfer to or from it
+ * ([ObserveTokenTransfers]) and, for a Safe, its own events ([ObserveSafeHistory]). The names
+ * the wallet gives the addresses they concern come from [ObserveAccounts], the tokens' symbols
+ * and decimals from the tokens it knows ([ObserveKnownTokens]); a transfer received from an
+ * address the wallet never sent to ([ObserveSentToAddresses]) and that is none of its accounts
+ * is cautioned. A log of a transaction listed as sent, in a block, is left out when its row says
+ * the same. [formatTime] dates each in the user's own time zone. A row opens its detail, which
+ * is navigation.
  */
-class ActivityViewModel(
-    private val address: Address,
-    observeAccountHistory: ObserveAccountHistory,
-    observeAccounts: ObserveAccounts,
-    observeSafeHistory: ObserveSafeHistory,
-    observeTokenTransfers: ObserveTokenTransfers,
-    observeKnownTokens: ObserveKnownTokens,
-    observeSentTo: ObserveSentToAddresses,
-    network: Network,
-    formatTime: (Long) -> String = ::formatDateTime,
-) : ViewModel() {
+class AccountActivity(
+    private val observeAccountHistory: ObserveAccountHistory,
+    private val observeAccounts: ObserveAccounts,
+    private val observeSafeHistory: ObserveSafeHistory,
+    private val observeTokenTransfers: ObserveTokenTransfers,
+    private val observeKnownTokens: ObserveKnownTokens,
+    private val observeSentTo: ObserveSentToAddresses,
+    private val network: Network,
+    private val formatTime: (Long) -> String = ::formatDateTime,
+) {
 
-    private val rows = ActivityRows(address, network, formatTime)
+    /** The Activity of the account at [address], as it changes; nothing is read until it is collected. */
+    fun of(address: Address): Flow<ActivityUiState> = Listing(address).state
 
-    private val sources = ActivitySources(
-        address,
-        observeAccounts,
-        observeSafeHistory,
-        observeTokenTransfers,
-        observeKnownTokens,
-        observeSentTo,
-    )
+    /** One account's Activity: the [address] its rows and sources are of. */
+    private inner class Listing(private val address: Address) {
 
-    val uiState: StateFlow<ActivityUiState> =
-        combine(
+        private val rows = ActivityRows(address, network, formatTime)
+
+        private val sources = ActivitySources(
+            address,
+            observeAccounts,
+            observeSafeHistory,
+            observeTokenTransfers,
+            observeKnownTokens,
+            observeSentTo,
+        )
+
+        val state: Flow<ActivityUiState> = combine(
             observeAccountHistory(address),
             sources.parties,
             sources.safeHistory,
             sources.transfers,
             sources.tokens,
             ::render,
-        ).stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-            ActivityUiState.Loading,
         )
 
-    private fun render(
-        history: HistoryList,
-        parties: Parties,
-        safe: IndexedHistory<SafeChainEvent>?,
-        transfers: IndexedHistory<TokenTransferEvent>?,
-        tokens: Map<Address, KnownToken>?,
-    ): ActivityUiState {
-        val names = parties.names
-        val entries = when (history) {
-            HistoryList.Unreadable -> return ActivityUiState.Unavailable(UNREADABLE)
-            is HistoryList.Loaded -> history.entries
+        private fun render(
+            history: HistoryList,
+            parties: Parties,
+            safe: IndexedHistory<SafeChainEvent>?,
+            transfers: IndexedHistory<TokenTransferEvent>?,
+            tokens: Map<Address, KnownToken>?,
+        ): ActivityUiState {
+            val names = parties.names
+            val entries = when (history) {
+                HistoryList.Unreadable -> return ActivityUiState.Unavailable(UNREADABLE)
+                is HistoryList.Loaded -> history.entries
+            }
+            val sent = entries.map {
+                Listed(rows.row(it, names), it.outcome.blockNumberOrNull, pending = it.outcome == SentOutcome.NotSeen)
+            }
+            if (transfers == null) return ActivityUiState.Shown(sent.map { it.row }, COVERAGE)
+            // Only a row that names its block says what its logs say: one no block was seen for (a
+            // transaction mined while the app was closed) gets the verified log beside it.
+            val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
+            val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
+                .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
+                .map { rows.eventRow(it, parties) to it }
+            // Until the tokens are known, a transfer's amount cannot be said: none is listed yet.
+            val tokenEvents = (transfers as? IndexedHistory.Read)?.events.orEmpty()
+                .takeIf { tokens != null }.orEmpty()
+                .filterNot { it.transfer.movesNothing() }
+                .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
+                .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
+            val events = (safeEvents + tokenEvents)
+                .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
+                    .thenByDescending { it.second.logIndex })
+                .map { (row, event) -> row to event.blockNumber }
+            val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
+            val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
+            val parts = listOfNotNull(safe?.let { "its events" to it }, "its token transfers" to transfers)
+            val covered = listOfNotNull(
+                "Transactions sent from this device.",
+                onChainCoverage(parts, since),
+                if (safe == null) NOT_LISTED_YET else null,
+            )
+            return ActivityUiState.Shown(
+                rows = merged(sent, events),
+                coverage = covered.joinToString(" "),
+                empty = "Nothing listed yet.",
+            )
         }
-        val sent = entries.map {
-            Listed(rows.row(it, names), it.outcome.blockNumberOrNull, pending = it.outcome == SentOutcome.NotSeen)
-        }
-        if (transfers == null) return ActivityUiState.Shown(sent.map { it.row }, COVERAGE)
-        // Only a row that names its block says what its logs say: one no block was seen for (a
-        // transaction mined while the app was closed) gets the verified log beside it.
-        val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
-        val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
-            .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
-            .map { rows.eventRow(it, parties) to it }
-        // Until the tokens are known, a transfer's amount cannot be said: none is listed yet.
-        val tokenEvents = (transfers as? IndexedHistory.Read)?.events.orEmpty()
-            .takeIf { tokens != null }.orEmpty()
-            .filterNot { it.transfer.movesNothing() }
-            .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
-            .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
-        val events = (safeEvents + tokenEvents)
-            .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
-                .thenByDescending { it.second.logIndex })
-            .map { (row, event) -> row to event.blockNumber }
-        val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
-        val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
-        val parts = listOfNotNull(safe?.let { "its events" to it }, "its token transfers" to transfers)
-        val covered = listOfNotNull(
-            "Transactions sent from this device.",
-            onChainCoverage(parts, since),
-            if (safe == null) "ETH it received, and transactions sent from it elsewhere, are not listed yet." else null,
-        )
-        return ActivityUiState.Shown(
-            rows = merged(sent, events),
-            coverage = covered.joinToString(" "),
-            empty = "Nothing listed yet.",
-        )
     }
 
     /**
@@ -210,6 +208,7 @@ class ActivityViewModel(
     private class Listed(val row: ActivityRow, val block: Long?, val pending: Boolean)
 
     private companion object {
+        const val NOT_LISTED_YET = "ETH it received, and transactions sent from it elsewhere, are not listed yet."
         const val COVERAGE = "Transactions sent from this device. Transactions received, and those sent " +
             "from this account elsewhere, are not listed yet."
         const val UNREADABLE = "The history of your transactions cannot be read right now. Serotine keeps trying."

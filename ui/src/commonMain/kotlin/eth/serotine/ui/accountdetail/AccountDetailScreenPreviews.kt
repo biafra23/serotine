@@ -301,7 +301,6 @@ private fun AccountDetailPreview(
     state: AccountDetailUiState,
     darkTheme: Boolean = false,
     lightClient: LightClientItem = verifiedStripSample,
-    activity: ActivityUiState = ActivityUiState.Loading,
 ) {
     SerotineTheme(darkTheme = darkTheme) {
         AccountDetailScreen(
@@ -320,7 +319,6 @@ private fun AccountDetailPreview(
             onSegment = {},
             onOpenSafeTx = {},
             onImportRequest = {},
-            activity = activity,
             onOpenActivity = {},
         )
     }
@@ -459,59 +457,64 @@ private fun AccountDetailNotASafePreview() = AccountDetailPreview(
 @Preview
 @Composable
 private fun AccountDetailActivityPreview() = AccountDetailPreview(
-    daily.copy(segment = DetailSegment.ACTIVITY),
-    activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE),
+    daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
 )
 
 @Preview
 @Composable
 private fun AccountDetailActivityDarkPreview() = AccountDetailPreview(
-    daily.copy(segment = DetailSegment.ACTIVITY),
+    daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
     darkTheme = true,
-    activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE),
 )
 
 @Preview
 @Composable
 private fun AccountDetailActivityEmptyPreview() = AccountDetailPreview(
-    daily.copy(segment = DetailSegment.ACTIVITY),
-    activity = ActivityUiState.Shown(emptyList(), ACTIVITY_COVERAGE),
+    daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(emptyList(), ACTIVITY_COVERAGE)),
 )
 
 @Preview
 @Composable
 private fun AccountDetailActivityLoadingPreview() =
-    AccountDetailPreview(daily.copy(segment = DetailSegment.ACTIVITY), activity = ActivityUiState.Loading)
+    AccountDetailPreview(daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Loading))
 
 @Preview
 @Composable
 private fun AccountDetailActivityUnavailablePreview() = AccountDetailPreview(
-    daily.copy(segment = DetailSegment.ACTIVITY),
-    activity = ActivityUiState.Unavailable(
-        "The history of your transactions cannot be read right now. Serotine keeps trying.",
+    daily.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Unavailable(
+            "The history of your transactions cannot be read right now. Serotine keeps trying.",
+        ),
     ),
 )
 
 @Preview
 @Composable
 private fun AccountDetailActivityTokensPreview() = AccountDetailPreview(
-    daily.copy(segment = DetailSegment.ACTIVITY),
-    activity = ActivityUiState.Shown(tokenActivityRows, TOKENS_ACTIVITY_COVERAGE),
+    daily.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Shown(tokenActivityRows, TOKENS_ACTIVITY_COVERAGE),
+    ),
 )
 
 @Preview
 @Composable
 private fun AccountDetailSafeActivityPreview() = AccountDetailPreview(
-    treasury.copy(segment = DetailSegment.ACTIVITY),
-    activity = ActivityUiState.Shown(safeActivityRows, SAFE_ACTIVITY_COVERAGE),
+    treasury.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Shown(safeActivityRows, SAFE_ACTIVITY_COVERAGE),
+    ),
 )
 
 @Preview
 @Composable
 private fun AccountDetailSafeActivityDarkPreview() = AccountDetailPreview(
-    treasury.copy(segment = DetailSegment.ACTIVITY),
+    treasury.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Shown(safeActivityRows, SAFE_ACTIVITY_COVERAGE),
+    ),
     darkTheme = true,
-    activity = ActivityUiState.Shown(safeActivityRows, SAFE_ACTIVITY_COVERAGE),
 )
 
 @Preview

@@ -27,6 +27,8 @@ import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
+import eth.serotine.ui.activity.AccountActivity
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
@@ -65,8 +67,8 @@ import kotlinx.coroutines.launch
  * [AccountDetailUiState], named as [ObserveEnsNames] finds; for a Safe also its verified
  * owners ([ObserveSafe]) and the transactions queued for them on this device
  * ([ObserveSafeTxQueue], decoded here, a token transfer's amount in the units of a token the
- * wallet knows: [ObserveKnownTokens]). Its intents
- * are the order of the rows ([sortBy]), the segment shown ([show]) and hiding a token
+ * wallet knows: [ObserveKnownTokens]); and its Activity ([AccountActivity]), read only while its
+ * tab is shown. Its intents are the order of the rows ([sortBy]), the segment shown ([show]) and hiding a token
  * ([hideToken], said through [messageShown]); what else the user does from the screen is
  * navigation (Send, Receive, Rename, Remove, a row of its Activity, a queued transaction, Import a
  * request) or the
@@ -83,6 +85,8 @@ class AccountDetailViewModel(
     private val network: Network,
     /** Whether the ENS name the account's name follows still points to it. */
     observeEnsNames: ObserveEnsNames,
+    /** What its Activity tab lists. */
+    activity: AccountActivity,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -141,6 +145,25 @@ class AccountDetailViewModel(
         }
     }
 
+    /**
+     * The account's Activity, read while its tab is shown and for 5 s after, as the screen's own
+     * state is: back on the tab within that, it is there at once, and not read again.
+     */
+    private val sharedActivity = activity.of(address).stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+        ActivityUiState.Loading,
+    )
+
+    /** The Activity while its tab is shown for an account of the wallet; Loading, and nothing read, otherwise. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val activityState = combine(
+        view.map { it.segment == DetailSegment.ACTIVITY },
+        lookup.map { it is AccountLookup.Found },
+    ) { onTab, found -> onTab && found }
+        .distinctUntilChanged()
+        .flatMapLatest { shown -> if (shown) sharedActivity else flowOf(ActivityUiState.Loading) }
+
     /** What the queue segment is drawn from. */
     private sealed interface QueueView {
         data object None : QueueView
@@ -154,8 +177,8 @@ class AccountDetailViewModel(
             observeAccountValue(address),
             safe,
             queue,
-            combine(view, ensName, ::Pair),
-        ) { lookup, value, safe, queue, (view, ensName) ->
+            combine(view, ensName, activityState, ::Triple),
+        ) { lookup, value, safe, queue, (view, ensName, activity) ->
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = accountName(lookup.account, display, ensName),
@@ -182,6 +205,8 @@ class AccountDetailViewModel(
                         ?.let { "${it.state.threshold}/${it.state.owners.size}" },
                     queue = queueOf(queue, safe),
                     nameNote = ensNameNote(lookup.account, ensName),
+                    // Not the last one read while another tab is shown: that tab's state says Loading.
+                    activity = if (view.segment == DetailSegment.ACTIVITY) activity else ActivityUiState.Loading,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
