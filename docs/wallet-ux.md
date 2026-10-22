@@ -191,7 +191,8 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send, Swap and Receive buttons (Send greyed out as in 3;
+   - Send, Swap and Receive buttons, in one line whose width they share,
+     on a phone as narrow as an iPhone mini's too (Send greyed out as in 3;
      Swap, 22, greyed out, a tap saying why, when watch-only; on a Safe,
      Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
      swap*).
