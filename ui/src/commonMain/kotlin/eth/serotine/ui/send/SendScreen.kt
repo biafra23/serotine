@@ -62,6 +62,9 @@ const val SEND_AMOUNT_REVIEWED_TAG = "send-amount-reviewed"
 /** Test tag of the wallet password field, for UI tests. */
 const val SEND_PASSWORD_TAG = "send-password"
 
+/** Test tag of the review's line naming the network it sends on, for UI tests. */
+const val SEND_NETWORK_TAG = "send-network"
+
 /** Test tag of the Sign and send button, for UI tests. */
 const val SEND_SIGN_TAG = "send-sign"
 
@@ -273,6 +276,8 @@ private fun ReviewContent(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // The network first: what is signed is a transaction on it alone (docs/networks.md, N14).
+        Text("On ${state.network}", Modifier.testTag(SEND_NETWORK_TAG), style = MaterialTheme.typography.titleMedium)
         Heading("You send")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             TokenIcon(state.asset.icon, state.asset.symbol, size = 40.dp)
@@ -334,7 +339,7 @@ private fun UnlockContent(
         signing = state.signing,
         canSign = state.canSign,
         canSignWithBiometrics = state.canSignWithBiometrics,
-        signLabel = "Sign and send",
+        signLabel = "Sign and send on ${state.network}",
         signingLabel = "Signing and sending…",
         onPasswordChange = onPasswordChange,
         onSign = onSign,
