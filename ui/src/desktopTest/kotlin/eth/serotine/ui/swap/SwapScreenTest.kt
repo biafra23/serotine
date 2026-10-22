@@ -104,6 +104,7 @@ class SwapScreenTest {
                 onSignWithBiometrics = { events += "biometrics" },
                 onRetry = { events += "retry" },
                 onOpenTransfer = { events += "open $it" },
+                onOpenOrder = { events += "order $it" },
                 onBack = { events += "back" },
             )
         }
@@ -234,13 +235,31 @@ class SwapScreenTest {
     }
 
     @Test
-    fun aPlacedOrderSaysHowCowAnsweredAndIsLeftWithDone() {
-        show(SwapUiState.OrderPlaced("Sepolia", "Sent to CoW", "CoW took the order.", "0x" + "c0".repeat(56)))
+    fun aPlacedOrderSaysHowCowAnsweredOpensItsStatusAndIsLeftWithDone() {
+        val uid = "0x" + "c0".repeat(56)
+        show(SwapUiState.OrderPlaced("Sepolia", "Sent to CoW", "CoW took the order.", uid))
 
         rule.onNodeWithText("CoW took the order.").assertExists()
+        rule.onNodeWithTag(SWAP_OPEN_ORDER_TAG).performClick()
         rule.onNodeWithTag(SWAP_DONE_TAG).performClick()
 
-        assertEquals(listOf("back"), events)
+        assertEquals(listOf("order $uid", "back"), events)
+    }
+
+    @Test
+    fun anEarlierLiveOrderOfTheTokenOpensItsStatus() {
+        val uid = "0x" + "c1".repeat(56)
+        show(
+            compose.copy(
+                form = compose.form.copy(error = "An earlier CoW order selling USDC may still fill."),
+                venue = VenueItem(SwapVenue.COW),
+                liveOrder = uid,
+            ),
+        )
+
+        rule.onNodeWithTag(SWAP_OPEN_ORDER_TAG).performScrollTo().performClick()
+
+        assertEquals(listOf("order $uid"), events)
     }
 
     @Test

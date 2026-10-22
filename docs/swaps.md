@@ -893,13 +893,24 @@ the plan asks again (CLAUDE.md, *Multi-PR plans*, step 3).
      what a live order may still take.
    - Previews and tests.
 5. **The order's status.**
-   - The status (9) of a live order, opened after placing it, from Swap's
-     refusal while it is live, and from Activity: CoW's word on its
-     off-chain life, labelled as CoW's, and its end as the chain proves it.
-   - "Cancel on chain" (`QuoteCowCancellation`, `SendCowCancellation`), and
-     the status of the cancellation.
-   - Once its end is proven unfilled, the same swap on Uniswap.
-   - The orders in the account's Activity (25, 26).
+   - The status (9) of an order, a screen of its own (`cow-order/{uid}`),
+     opened after placing it, from Swap's refusal while it is live, and
+     from Activity. It shows its end as the chain proves it (live, filled
+     with what it bought, not filled, cancelled, not provable). While it is
+     live it also shows CoW's word on its off-chain life, asked every 30
+     seconds and labelled as CoW's (`ObserveCowOrderLife`).
+   - "Cancel on chain" while it may fill (`QuoteCowCancellation`,
+     `SendCowCancellation`), reviewed and signed as any transaction, and
+     the cancellation's own status (9).
+   - Once it is proven not to have swapped (not filled, or cancelled),
+     "Swap on Uniswap" opens Swap with the same swap filled in, on Uniswap,
+     still the user's to review.
+   - The orders in the account's Activity (25), among its transactions: a
+     live one on top, as a transaction waiting for its block; a filled or
+     cancelled one at the block of its fill or cancellation; one never
+     filled where it was signed (the block that proved it can come days
+     later). A tap opens the order's status. A fill's own transfer of what
+     it sold is not listed again.
    - Previews and tests.
 
 Not part of either plan, and plans of their own when the owner wants them: a

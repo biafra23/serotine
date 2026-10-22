@@ -100,13 +100,17 @@ const val SWAP_VENUE_COW_TAG = "swap-venue-cow"
 /** Test tag of the button that takes the same swap to Uniswap after CoW could not quote it, for UI tests. */
 const val SWAP_UNISWAP_INSTEAD_TAG = "swap-uniswap-instead"
 
+/** Test tag of the button that opens a CoW order's status, for UI tests. */
+const val SWAP_OPEN_ORDER_TAG = "swap-open-order"
+
 /** Test tag of the button that leaves a placed CoW order's screen, for UI tests. */
 const val SWAP_DONE_TAG = "swap-done"
 
 /**
  * Binds [SwapScreen] to its ViewModel. A swap broadcast ends the screen through [onSent] with its
  * hash, and [onOpenTransfer] opens the status of a transaction that holds the swap back (its
- * approval, an earlier swap, one that may still be on its way); the screen stopping being shown
+ * approval, an earlier swap, one that may still be on its way); [onOpenOrder] opens a CoW order's
+ * status, the one placed or an earlier one that holds the swap back; the screen stopping being shown
  * becomes [SwapViewModel.onHidden] (the password goes) and being shown again
  * [SwapViewModel.onShown] (the review is quoted anew).
  */
@@ -117,6 +121,7 @@ fun SwapRoute(
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
+    onOpenOrder: (uid: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
@@ -148,6 +153,7 @@ fun SwapRoute(
         onSignWithBiometrics = viewModel::signWithBiometrics,
         onRetry = viewModel::retry,
         onOpenTransfer = onOpenTransfer,
+        onOpenOrder = onOpenOrder,
         onBack = onBack,
         modifier = modifier,
     )
@@ -180,6 +186,7 @@ fun SwapScreen(
     onSignWithBiometrics: () -> Unit,
     onRetry: () -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
+    onOpenOrder: (uid: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -253,6 +260,7 @@ fun SwapScreen(
                     onSwapOnUniswap,
                     onReview,
                     onOpenTransfer,
+                    onOpenOrder,
                 )
                 is SwapUiState.ApprovalReview -> ReviewColumn {
                     ApprovalContent(state)
@@ -306,6 +314,9 @@ fun SwapScreen(
                     SelectionContainer {
                         Text(state.uid, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                     }
+                    OutlinedButton(onClick = { onOpenOrder(state.uid) }, Modifier.testTag(SWAP_OPEN_ORDER_TAG)) {
+                        Text("Open the order")
+                    }
                     Button(onClick = onBack, Modifier.align(Alignment.End).testTag(SWAP_DONE_TAG)) { Text("Done") }
                 }
             }
@@ -326,6 +337,7 @@ private fun ComposeContent(
     onSwapOnUniswap: () -> Unit,
     onReview: () -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
+    onOpenOrder: (uid: String) -> Unit,
 ) {
     val form = state.form
     val cow = state.venue.chosen == SwapVenue.COW
@@ -360,6 +372,11 @@ private fun ComposeContent(
         if (state.uniswapInstead) {
             OutlinedButton(onClick = onSwapOnUniswap, Modifier.testTag(SWAP_UNISWAP_INSTEAD_TAG)) {
                 Text("Swap on Uniswap instead")
+            }
+        }
+        state.liveOrder?.let { uid ->
+            OutlinedButton(onClick = { onOpenOrder(uid) }, Modifier.testTag(SWAP_OPEN_ORDER_TAG)) {
+                Text("Open the order")
             }
         }
         state.earlier?.let { earlier ->

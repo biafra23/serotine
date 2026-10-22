@@ -39,7 +39,8 @@ sealed interface SwapUiState {
      * transaction of the account's that holds the swap back, with its status offered: one that may
      * still be on its way, an approval or an earlier swap of the token not mined yet.
      * [uniswapInstead]: CoW could not quote the swap ([SwapForm.error] says why), and the same
-     * swap on Uniswap is offered, one tap away.
+     * swap on Uniswap is offered, one tap away. [liveOrder]: the UID of an earlier CoW order of the
+     * token that may still fill, whose status is offered.
      */
     data class Compose(
         val form: SwapForm,
@@ -47,6 +48,7 @@ sealed interface SwapUiState {
         val earlier: EarlierItem? = null,
         val venue: VenueItem = VenueItem(SwapVenue.UNISWAP),
         val uniswapInstead: Boolean = false,
+        val liveOrder: String? = null,
     ) : SwapUiState {
         override val network: String
             get() = form.network

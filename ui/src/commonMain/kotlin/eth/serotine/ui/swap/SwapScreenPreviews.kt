@@ -212,6 +212,7 @@ private fun SwapPreview(
             onSignWithBiometrics = {},
             onRetry = {},
             onOpenTransfer = {},
+            onOpenOrder = {},
             onBack = {},
         )
     }
@@ -278,6 +279,17 @@ private fun SwapComposeOnCowPreview() = SwapPreview(onCow)
 @Composable
 private fun SwapComposeCowDidNotAnswerPreview() = SwapPreview(
     onCow.with { it.copy(error = "CoW did not answer.") }.copy(uniswapInstead = true),
+)
+
+@Preview
+@Composable
+private fun SwapComposeEarlierOrderLivePreview() = SwapPreview(
+    onCow.with {
+        it.copy(
+            error = "An earlier CoW order selling USDC may still fill: one order of a token at a time, since both " +
+                "would draw on one allowance. It is done once it fills or can no longer fill.",
+        )
+    }.copy(liveOrder = "0x" + "c1".repeat(32) + "5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" + "6ad9e7f4"),
 )
 
 @Preview
@@ -434,6 +446,7 @@ internal val swapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SwapComposeCowOrdersUnreadablePreview() },
     { SwapComposeOnCowPreview() },
     { SwapComposeCowDidNotAnswerPreview() },
+    { SwapComposeEarlierOrderLivePreview() },
     { SwapComposeApprovalSentPreview() },
     { SwapComposeEarlierMaybeSentPreview() },
     { SwapComposeTokenNotFoundPreview() },

@@ -137,7 +137,7 @@ import kotlin.time.TimeSource
  * the review's state while the field is shown, hands it to the signer in an [Unlock], and never
  * logs, saves or caches it; it is dropped once used, when the screen is not shown ([onHidden]) and
  * when the screen is gone ([onCleared]). [formatTime] dates the swap's deadline in the user's own
- * time zone.
+ * time zone. [fill], when given, is what the compose step opens with: the same swap again.
  */
 class SwapViewModel(
     private val from: Address,
@@ -159,6 +159,7 @@ class SwapViewModel(
     private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val formatTime: (Long) -> String = ::formatDateTime,
+    fill: SwapFill? = null,
 ) : ViewModel() {
 
     init {
@@ -241,6 +242,7 @@ class SwapViewModel(
          * Composing; [quoting] while a review is quoted, [error] why the last one was not, [info]
          * what to know (an approval sent), and [earlier] the transaction that holds the swap back.
          * [uniswapInstead]: CoW could not quote the swap, and the same swap may go to Uniswap.
+         * [liveOrder]: the UID of an earlier CoW order of the token that may still fill.
          */
         data class Composing(
             val quoting: Boolean = false,
@@ -248,6 +250,7 @@ class SwapViewModel(
             val info: String? = null,
             val earlier: EarlierItem? = null,
             val uniswapInstead: Boolean = false,
+            val liveOrder: String? = null,
         ) : Step, Next
 
         /**
@@ -281,7 +284,14 @@ class SwapViewModel(
     // Whether CoW can be offered here at all: a fact of the device, read once.
     private val cowHere = cowOfferedOnThisDevice()
 
-    private val inputs = MutableStateFlow(Inputs(sell?.let(SwapPick::Token) ?: SwapPick.Native))
+    private val inputs = MutableStateFlow(
+        Inputs(
+            sell = sell?.let(SwapPick::Token) ?: SwapPick.Native,
+            buy = fill?.let { it.buy?.let(SwapPick::Token) ?: SwapPick.Native },
+            amount = fill?.amount.orEmpty(),
+            venue = fill?.venue,
+        ),
+    )
     private val step = MutableStateFlow<Step>(Step.Composing())
 
     /** The quote, signature or broadcast in flight. */
@@ -788,7 +798,11 @@ class SwapViewModel(
             error = EARLIER_MAYBE_SENT,
             earlier = EarlierItem(quoting.hash, "Open the earlier transaction", waiting = false),
         )
-        else -> Step.Composing(error = cowRefusal(quoting, request), uniswapInstead = uniswapMayTake(quoting))
+        else -> Step.Composing(
+            error = cowRefusal(quoting, request),
+            uniswapInstead = uniswapMayTake(quoting),
+            liveOrder = (quoting as? CowSwapQuoting.EarlierOrderLive)?.uid?.hex,
+        )
     }
 
     /**
@@ -907,6 +921,7 @@ class SwapViewModel(
             earlier = composing.earlier,
             venue = VenueItem(model.venue, cowUnavailable = model.cowUnavailable),
             uniswapInstead = composing.uniswapInstead && !composing.quoting,
+            liveOrder = composing.liveOrder,
         )
     }
 
