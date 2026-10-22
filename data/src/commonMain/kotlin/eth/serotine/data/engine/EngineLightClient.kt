@@ -1,15 +1,16 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
+import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlin.time.Duration
 
 /**
  * [LightClient] over the engine's status snapshot, polled every [pollInterval] by each
@@ -21,12 +22,14 @@ import kotlin.time.Duration
  * skipped, not reported as a state.
  */
 class EngineLightClient internal constructor(
+    private val served: Network,
     private val chain: VerifiedChain?,
     private val dispatcher: CoroutineDispatcher,
     private val pollInterval: Duration,
 ) : LightClient {
 
-    override fun observeStatus(): Flow<LightClientStatus> {
+    override fun observeStatus(network: Network): Flow<LightClientStatus> {
+        if (network != served) return flowOf(LightClientStatus.Unavailable)
         val chain = chain ?: return flowOf(LightClientStatus.Unavailable)
         return chain.snapshots(pollInterval).map(::statusOf).distinctUntilChanged().flowOn(dispatcher)
     }

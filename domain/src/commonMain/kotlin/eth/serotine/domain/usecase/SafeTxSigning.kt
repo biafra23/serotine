@@ -1,5 +1,6 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Erc20
@@ -30,6 +31,8 @@ import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.Unlock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -39,8 +42,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Why a Safe transaction was not imported, signed, approved or executed (docs/wallet-ux.md,
@@ -289,7 +290,7 @@ val SAFE_CHECK_BUDGET: Duration = 45.seconds
  * unproven after [budget], it is [SafeTxRefusal.SafeUnavailable]. Only verified readings are ever
  * taken: the wait changes how often the chain is asked, never what is believed.
  */
-internal suspend fun ObserveSafe.check(safe: Address, budget: Duration = SAFE_CHECK_BUDGET): SafeCheck {
+internal suspend fun ObserveSafe.check(safe: AccountId, budget: Duration = SAFE_CHECK_BUDGET): SafeCheck {
     val reading = withTimeoutOrNull(budget) { this@check(safe).firstOrNull { !it.unproven } } ?: UNPROVEN_SAFE
     return when (reading) {
         is SafeReading.Verified -> SafeCheck.Verified(reading)
@@ -366,20 +367,20 @@ class ImportSigningRequest(
             SigningRequestDecoding.Malformed -> return SigningRequestImport.Refused(SafeTxRefusal.Malformed)
             is SigningRequestDecoding.UnknownVersion ->
                 return SigningRequestImport.Refused(SafeTxRefusal.UnknownVersion(decoded.version))
-            is SigningRequestDecoding.WrongChain ->
+            is SigningRequestDecoding.UnknownChain ->
                 return SigningRequestImport.Refused(SafeTxRefusal.WrongChain(decoded.chainId))
         }
         if (safe != null && request.safe != safe) {
             return SigningRequestImport.Refused(SafeTxRefusal.OtherSafe(request.safe))
         }
-        val reading = when (val check = observeSafe.check(request.safe)) {
+        val reading = when (val check = observeSafe.check(AccountId(request.network, request.safe))) {
             is SafeCheck.Verified -> check.reading
             is SafeCheck.Refused -> return SigningRequestImport.Refused(check.refusal)
         }
         val state = reading.state
         if (request.nonce < state.nonce) return SigningRequestImport.Refused(SafeTxRefusal.NonceUsed(state.nonce))
         recovery.check(request, state.owners)?.let { return SigningRequestImport.Refused(it) }
-        queue.prune(request.safe, state.nonce)
+        queue.prune(AccountId(request.network, request.safe), state.nonce)
         val saved = queue.save(request)
         // Shown and shared with what the Safe accepts now of what was queued here before.
         val queued = recovery.validOnly(saved ?: request, state.owners)
@@ -458,7 +459,9 @@ class SignSafeTx(
         fun refused(refusal: SafeTxRefusal) = SafeTxSignCheck.Refused(refusal)
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
-        val state = when (val check = observeSafe.check(request.safe, budget.coerceAtMost(SAFE_CHECK_BUDGET))) {
+        val state = when (
+            val check = observeSafe.check(AccountId(request.network, request.safe), budget.coerceAtMost(SAFE_CHECK_BUDGET))
+        ) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
@@ -491,7 +494,7 @@ class SignSafeTx(
         // What is queued is checked: the carried signatures that count, with this one.
         val signed = SigningRequest.of(request.network, request.safe, request.tx, checked.valid)
             .withSignatures(listOf(SafeSignature.Ecdsa(owner, signature)))
-        queue.prune(request.safe, checked.state.nonce)
+        queue.prune(AccountId(request.network, request.safe), checked.state.nonce)
         val saved = queue.save(signed)
         // Shown and shared with what the Safe accepts now of what was queued here before.
         return SafeTxSigning.Signed(recovery.validOnly(saved ?: signed, checked.state.owners), saved = saved != null)
@@ -584,13 +587,13 @@ class ProposeSafeTx(
             val data = if (token == null) ByteArray(0) else Erc20.transferData(to, amount)
             // The Safe first: its check may wait a while, and the balance and queue read after it are
             // as old as the proposal is said to be.
-            val reading = when (val check = observeSafe.check(safe)) {
+            val reading = when (val check = observeSafe.check(AccountId(network, safe))) {
                 is SafeCheck.Verified -> check.reading
                 is SafeCheck.Refused -> return@cancellingReads SafeTxProposing.Refused(check.refusal)
             }
             safeChecked()
-            val balance = async { safeBalanceOf(nativeBalances, tokenBalances, safe, token?.address) }
-            val queued = async { queue.observe(safe).first() }
+            val balance = async { safeBalanceOf(network, nativeBalances, tokenBalances, safe, token?.address) }
+            val queued = async { queue.observe(AccountId(network, safe)).first() }
 
             val (before, balanceBlock) = when (val read = balance.await()) {
                 is SafeBalanceRead.Read -> read.amount to read.blockNumber
@@ -605,7 +608,7 @@ class ProposeSafeTx(
             val queuedAmount = ahead.queuedMoves(token?.address) ?: return@cancellingReads insufficient(token != null)
             val available = before.minusOrNull(queuedAmount)?.takeIf { it >= amount }
                 ?: return@cancellingReads insufficient(token != null)
-            val simulation = when (val run = inputs.simulate(safe, txTo, value, data)) {
+            val simulation = when (val run = inputs.simulate(network, safe, txTo, value, data)) {
                 is Simulation.Succeeded -> {
                     val refusedByToken = token != null && Erc20.returnedFalse(run.returnHex)
                     if (refusedByToken) return@cancellingReads SafeTxProposing.Reverts(run.blockNumber)
@@ -616,7 +619,7 @@ class ProposeSafeTx(
                 is Simulation.Unavailable ->
                     return@cancellingReads SafeTxProposing.Refused(SafeTxRefusal.Unavailable(run.reason))
             }
-            queue.prune(safe, safeNonce)
+            queue.prune(AccountId(network, safe), safeNonce)
             val request = SigningRequest.of(network, safe, SafeTx.call(txTo, value, data, nonce))
             SafeTxProposing.Proposed(
                 SafeTxProposal(
@@ -681,6 +684,7 @@ internal sealed interface SafeBalanceRead {
  * last-known balance is no verified one: nothing is proposed on it.
  */
 internal suspend fun safeBalanceOf(
+    network: Network,
     nativeBalances: NativeBalances,
     tokenBalances: TokenBalances,
     safe: Address,
@@ -688,14 +692,14 @@ internal suspend fun safeBalanceOf(
 ): SafeBalanceRead {
     val unproven = SafeBalanceRead.Refused(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN))
     if (token == null) {
-        return when (val reading = nativeBalances.observeBalance(safe).first()) {
+        return when (val reading = nativeBalances.observeBalance(network, safe).first()) {
             is BalanceReading.Verified ->
                 reading.wei.toUInt256OrNull()?.let { SafeBalanceRead.Read(it, reading.blockNumber) } ?: unproven
             BalanceReading.Syncing, is BalanceReading.LastKnown -> SafeBalanceRead.Refused(SafeTxRefusal.Syncing)
             is BalanceReading.Unavailable -> SafeBalanceRead.Refused(SafeTxRefusal.Unavailable(reading.reason))
         }
     }
-    return when (val reading = tokenBalances.observeBalance(safe, token).first()) {
+    return when (val reading = tokenBalances.observeBalance(network, safe, token).first()) {
         is TokenBalanceReading.Verified ->
             UInt256.parse(reading.units.decimal)?.let { SafeBalanceRead.Read(it, reading.blockNumber) } ?: unproven
         TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown -> SafeBalanceRead.Refused(SafeTxRefusal.Syncing)
@@ -813,7 +817,7 @@ class ObserveSafeTxQueue(
     private val network: Network,
 ) {
     operator fun invoke(safe: Address): Flow<SafeTxQueueReading> =
-        combine(queue.observe(safe), observeSafe(safe)) { list, reading ->
+        combine(queue.observe(AccountId(network, safe)), observeSafe(AccountId(network, safe))) { list, reading ->
             when (list) {
                 SafeTxQueueList.Unreadable -> SafeTxQueueReading.Unreadable
                 is SafeTxQueueList.Loaded -> {

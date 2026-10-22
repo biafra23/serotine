@@ -2,6 +2,7 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceImpact
 import eth.serotine.domain.model.QuoterV2
@@ -79,8 +80,8 @@ class CheckSafeSwap(
             return@coroutineScope SafeSwapCheck.NotUniswap(swap.router)
         }
         // Read beside the quote, once the verdict needs it: a status not in yet holds back no other.
-        val head = async { lightClient.observeStatus().first() }
-        val now = when (val answer = uniswap.call(deployment.quoterV2, QuoterV2.quote(swap.route, swap.amountIn))) {
+        val head = async { lightClient.observeStatus(network).first() }
+        val now = when (val answer = uniswap.call(network, deployment.quoterV2, QuoterV2.quote(swap.route, swap.amountIn))) {
             is Simulation.Succeeded -> QuoterV2.quoteOf(swap.route, answer.returnHex)
                 ?.let { SwapNow.Quoted(it.amountOut, answer.blockNumber) }
                 ?: SwapNow.Unavailable(ReadUnavailable.UNPROVEN)
@@ -244,7 +245,7 @@ class ProposeSafeSwap(
         val router = deployment.swapRouter02
         // The Safe first: its check may wait a while, and what is read after it is as old as the
         // proposal is said to be.
-        val reading = when (val check = observeSafe.check(safe)) {
+        val reading = when (val check = observeSafe.check(AccountId(network, safe))) {
             is SafeCheck.Verified -> check.reading
             is SafeCheck.Refused -> return@cancellingReads SafeSwapProposing.Refused(check.refusal)
         }
@@ -253,7 +254,7 @@ class ProposeSafeSwap(
         // The queue and the light client are this device's own: what they refuse is said before
         // the engine is asked for anything.
         val safeNonce = reading.state.nonce
-        val pending = pendingOf(queue.observe(safe).first(), safeNonce, network)
+        val pending = pendingOf(queue.observe(AccountId(network, safe)).first(), safeNonce, network)
         // Each decoded once: a swap's decoding builds the call again to compare it.
         val actions = pending.associateWith { SafeTxAction.of(it.safe, it.tx) }
         val next = nextNonce(pending, safeNonce)
@@ -271,7 +272,7 @@ class ProposeSafeSwap(
             ahead.lastOrNull { actions.getValue(it).sells(soldToken.address, router) }
                 ?.let { return@cancellingReads SafeSwapProposing.EarlierSwapQueued(it.nonce) }
         }
-        val deadline = when (val status = lightClient.observeStatus().first()) {
+        val deadline = when (val status = lightClient.observeStatus(network).first()) {
             // A verified head whose time is not known yet gives no deadline.
             is LightClientStatus.Synced -> status.headTimestamp?.plus(SAFE_SWAP_DEADLINE_SECONDS)
                 ?: return@cancellingReads SafeSwapProposing.Unavailable(ReadUnavailable.UNPROVEN, figure = null)
@@ -279,7 +280,7 @@ class ProposeSafeSwap(
         }
 
         val (before, balanceBlock) = when (
-            val read = safeBalanceOf(nativeBalances, tokenBalances, safe, soldToken?.address)
+            val read = safeBalanceOf(network, nativeBalances, tokenBalances, safe, soldToken?.address)
         ) {
             is SafeBalanceRead.Read -> read.amount to read.blockNumber
             SafeBalanceRead.NotAToken -> return@cancellingReads SafeSwapProposing.NotAToken
@@ -305,7 +306,7 @@ class ProposeSafeSwap(
         // only those decoded exactly count, the verified run before execution being the backstop
         // (docs/swaps.md, *Only what is decoded counts*).
         val allowance = soldToken?.let { token ->
-            val onChain = when (val read = readAllowance(safe, token.address, router, uniswap::call)) {
+            val onChain = when (val read = readAllowance(safe, token.address, router) { to, data -> uniswap.call(network, to, data) }) {
                 is AllowanceRead.Read -> read.allowance
                 AllowanceRead.NotAToken -> return@cancellingReads SafeSwapProposing.NotAToken
                 AllowanceRead.Refused ->
@@ -328,7 +329,7 @@ class ProposeSafeSwap(
                 return@cancellingReads SafeSwapProposing.NextNonceTaken(nonce + 1)
             }
             val data = Erc20.approveData(router, amountIn)
-            approvalRun = when (val run = inputs.simulate(safe, soldToken.address, UInt256.ZERO, data)) {
+            approvalRun = when (val run = inputs.simulate(network, safe, soldToken.address, UInt256.ZERO, data)) {
                 // A token that returns false refused the approval as surely as one that reverts.
                 is Simulation.Succeeded -> if (Erc20.returnedFalse(run.returnHex)) {
                     return@cancellingReads SafeSwapProposing.ApprovalReverts(run.blockNumber)
@@ -349,7 +350,7 @@ class ProposeSafeSwap(
             // An approval, its own or one queued before it, has to run first.
             SafeSwapSimulation.AfterApproval
         } else {
-            when (val run = inputs.simulate(safe, call.to, call.value, call.data)) {
+            when (val run = inputs.simulate(network, safe, call.to, call.value, call.data)) {
                 // The run must return the swap's amount, and that at least the minimum.
                 is Simulation.Succeeded -> SwapRouter02.amountOutOf(run.returnHex, buy == TransferAsset.Native)
                     ?.takeIf { it >= minimum }
@@ -362,7 +363,7 @@ class ProposeSafeSwap(
             }
         }
         val swapNonce = if (approval != null) nonce + 1 else nonce
-        queue.prune(safe, safeNonce)
+        queue.prune(AccountId(network, safe), safeNonce)
         SafeSwapProposing.Proposed(
             SafeSwapProposal(
                 safe = reading,

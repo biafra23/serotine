@@ -27,7 +27,7 @@ class VerifiedPriceFeedsTest {
     private val chain = FakeChain().apply { snapshot = running(head = 9, headTimestamp = 10_000) }
 
     private fun TestScope.feeds() =
-        VerifiedPriceFeeds(chain, StandardTestDispatcher(testScheduler), 4.seconds, listOf(eth))
+        VerifiedPriceFeeds(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), 4.seconds, listOf(eth))
 
     private fun word(n: Long) = n.toString(16).padStart(64, '0')
 
@@ -45,7 +45,7 @@ class VerifiedPriceFeedsTest {
 
         assertEquals(
             FeedReading.Verified(2_429.30491033, updatedAt = 9_400, ageSeconds = 600, stale = false),
-            feeds().observe(eth.priceId).first { it !is FeedReading.Syncing },
+            feeds().observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing },
         )
     }
 
@@ -53,7 +53,7 @@ class VerifiedPriceFeedsTest {
     fun aRoundOlderThanTheHeartbeatAndItsGraceIsStale() = runTest {
         answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 5_000), 9))
 
-        val reading = feeds().observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        val reading = feeds().observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
         assertEquals(5_000, reading.ageSeconds)
         assertEquals(true, reading.stale)
     }
@@ -62,7 +62,7 @@ class VerifiedPriceFeedsTest {
     fun theSameRoundTurnsStaleAsTheVerifiedHeadMovesOn() = runTest {
         answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 9_400), 9))
         val feeds = feeds()
-        suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        suspend fun reading() = feeds.observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
         assertEquals(false, reading().stale)
 
         // Past the heartbeat, but within the grace a heartbeat update takes to land: not stale.
@@ -82,14 +82,14 @@ class VerifiedPriceFeedsTest {
 
         assertEquals(
             FeedReading.NoPrice(NoPriceReason.NOT_A_FEED),
-            feeds().observe(eth.priceId).first { it !is FeedReading.Syncing },
+            feeds().observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing },
         )
     }
 
     @Test
     fun whatIsNoPriceSaysWhy() = runTest {
         val feeds = feeds()
-        suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing }
+        suspend fun reading() = feeds.observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing }
 
         answer(CallOutcome.Returned(word(18), 9), CallOutcome.Returned(round(word(1), 9_400), 9))
         assertEquals(FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED), reading())
@@ -104,7 +104,7 @@ class VerifiedPriceFeedsTest {
 
         assertEquals(
             listOf<FeedReading>(FeedReading.NoPrice(NoPriceReason.NO_FEED)),
-            feeds.observe(PriceId("UNI")).toList(),
+            feeds.observe(Network.SEPOLIA, PriceId("UNI")).toList(),
         )
     }
 
@@ -114,13 +114,13 @@ class VerifiedPriceFeedsTest {
         answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(1), 9_400), 9))
         assertEquals(
             FeedReading.Unavailable(ReadUnavailable.UNPROVEN),
-            feeds().observe(eth.priceId).first { it !is FeedReading.Syncing },
+            feeds().observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing },
         )
 
         answer(CallOutcome.Refused, CallOutcome.Refused)
         assertEquals(
             listOf<FeedReading>(FeedReading.Unavailable(ReadUnavailable.REFUSED)),
-            feeds().observe(eth.priceId).toList(),
+            feeds().observe(Network.SEPOLIA, eth.priceId).toList(),
         )
     }
 

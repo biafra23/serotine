@@ -1,7 +1,8 @@
 package eth.serotine.domain.usecase
 
-import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.DisplayCurrency
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -19,10 +20,13 @@ class ObservePortfolio(
 ) {
     operator fun invoke(): Flow<Portfolio> {
         val values = observeAccounts().readEach(
-            keys = { list -> (list as? AccountList.Loaded)?.accounts?.mapTo(LinkedHashSet()) { it.address }.orEmpty() },
-            read = { address -> observeAccountValue(address) },
+            keys = { list -> (list as? AccountList.Loaded)?.accounts?.mapTo(LinkedHashSet()) { it.id }.orEmpty() },
+            read = { id -> observeAccountValue(id) },
         )
-        return combine(values, observeDisplayCurrencies().map { it.chosen }) { (accounts, read), currency ->
+        // The display currency is a wallet-wide setting; its offered set differs per network, so
+        // the chosen currency is read against the primary network for the portfolio header.
+        val currencyNetwork = Network.entries.first()
+        return combine(values, observeDisplayCurrencies(currencyNetwork).map { it.chosen }) { (accounts, read), currency ->
             Portfolio(accounts, read, currency)
         }
     }
@@ -34,7 +38,7 @@ class ObservePortfolio(
  */
 data class Portfolio(
     val accounts: AccountList,
-    val values: Map<Address, AccountValue>,
+    val values: Map<AccountId, AccountValue>,
     val currency: DisplayCurrency,
 ) {
     /**
@@ -45,7 +49,7 @@ data class Portfolio(
         get() {
             val loaded = (accounts as? AccountList.Loaded)?.accounts.orEmpty()
             return loaded.fold(Total.NONE) { sum, account ->
-                val value = values[account.address]
+                val value = values[account.id]
                 sum + if (value != null && value.currency == currency) value.total else Total.PENDING
             }
         }

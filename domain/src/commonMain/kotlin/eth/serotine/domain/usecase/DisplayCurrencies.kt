@@ -1,6 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.DisplayCurrency
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.repository.CurrencyChoice
 import eth.serotine.domain.repository.DisplayCurrencySetting
@@ -10,15 +11,16 @@ import kotlinx.coroutines.flow.map
 
 /**
  * The display currency (docs/wallet-ux.md, screen 19): the one chosen, and the ones offered,
- * those whose own USD rate has a feed on the network. A choice the network does not offer, or
- * none yet, is USD.
+ * those [network] can price (their own USD rate has a feed on it). A choice [network] does not
+ * offer, or none yet, is USD. Which currencies the wallet offers across several networks is the
+ * caller's to combine (docs/networks.md, *Values*).
  */
 class ObserveDisplayCurrencies(
     private val feeds: PriceFeeds,
     private val setting: DisplayCurrencySetting,
 ) {
-    operator fun invoke(): Flow<DisplayCurrencies> = setting.observe().map { choice ->
-        val offered = offered(feeds)
+    operator fun invoke(network: Network): Flow<DisplayCurrencies> = setting.observe().map { choice ->
+        val offered = offered(network, feeds)
         val chosen = (choice as? CurrencyChoice.Chosen)?.currency?.takeIf { it in offered }
         DisplayCurrencies(
             chosen ?: DisplayCurrency.USD,
@@ -34,8 +36,8 @@ class SetDisplayCurrency(
     private val feeds: PriceFeeds,
     private val setting: DisplayCurrencySetting,
 ) {
-    suspend operator fun invoke(currency: DisplayCurrency): Boolean =
-        currency in offered(feeds) && setting.choose(currency)
+    suspend operator fun invoke(network: Network, currency: DisplayCurrency): Boolean =
+        currency in offered(network, feeds) && setting.choose(currency)
 }
 
 /**
@@ -50,5 +52,5 @@ data class DisplayCurrencies(
     val setAside: Boolean = false,
 )
 
-private fun offered(feeds: PriceFeeds): List<DisplayCurrency> =
-    DisplayCurrency.entries.filter { it.priceId == PriceId.USD || it.priceId in feeds.quotes }
+private fun offered(network: Network, feeds: PriceFeeds): List<DisplayCurrency> =
+    DisplayCurrency.entries.filter { it.priceId == PriceId.USD || it.priceId in feeds.quotes(network) }

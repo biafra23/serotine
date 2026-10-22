@@ -84,6 +84,7 @@ import kotlin.test.assertTrue
 class AccountDetailViewModelTest {
 
     private val daily = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
@@ -110,7 +111,7 @@ class AccountDetailViewModelTest {
     private val recovery = FakeRecovery()
     private val kind = MutableStateFlow<KindReading>(KindReading.Syncing)
     private val kinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> = kind
+        override fun observeKind(network: Network, address: Address): Flow<KindReading> = kind
     }
 
     private fun viewModel(address: Address = daily.address) = AccountDetailViewModel(
@@ -439,7 +440,7 @@ class AccountDetailViewModelTest {
     @Test
     fun aSafeShowsItsVerifiedOwnersAndTheControlTheKeysHeldHereGive() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        val treasury = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
         accounts.accounts.value = listOf(daily, treasury)
         val carol = Address.of("0x" + "33".repeat(20))
         val viewModel = viewModel(treasury.address)
@@ -511,7 +512,7 @@ class AccountDetailViewModelTest {
     @Test
     fun aSafesQueueListsItsTransactionsInNonceOrderWithTheirSignaturesAndWhatIsNotSignedHere() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        val treasury = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
         accounts.accounts.value = listOf(daily, treasury)
         val carol = Address.of("0x" + "33".repeat(20))
         val friend = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
@@ -568,7 +569,7 @@ class AccountDetailViewModelTest {
     @Test
     fun aFallbackHandlerThatIsNotPinnedIsSaidOnItsQueueRowAsNotSignedHere() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        val treasury = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
         accounts.accounts.value = listOf(daily, treasury)
         val carol = Address.of("0x" + "33".repeat(20))
         val hostile = Address.of("0x" + "66".repeat(20))
@@ -601,7 +602,7 @@ class AccountDetailViewModelTest {
     @Test
     fun aModuleEnabledIsSaidOnItsQueueRowAsNotSignedHere() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        val treasury = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
         accounts.accounts.value = listOf(daily, treasury)
         val module = Address.of("0x" + "66".repeat(20))
         val state = SafeState("1.4.1", l2 = false, listOf(daily.address), 1, 12, emptyList(), guard = null)
@@ -625,7 +626,7 @@ class AccountDetailViewModelTest {
     @Test
     fun aQueueThatCannotBeReadSaysSoAndAWatchOnlySafeOffersNoSend() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        val treasury = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
         accounts.accounts.value = listOf(daily, treasury)
         val carol = Address.of("0x" + "33".repeat(20))
         val state = SafeState("1.4.1", l2 = false, listOf(carol), 1, 3, emptyList(), guard = null)
@@ -655,11 +656,11 @@ class AccountDetailViewModelTest {
     @Test
     fun aSafesScreenShowsBeforeItsStorageIsReadAndSaysWhatItIs() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        val treasury = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
         accounts.accounts.value = listOf(daily, treasury)
         // A read that has not answered yet: a Safe's takes a dozen proofs.
         val slow = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> = flow { awaitCancellation() }
+            override fun observeKind(network: Network, address: Address): Flow<KindReading> = flow { awaitCancellation() }
         }
         val viewModel = AccountDetailViewModel(
             treasury.address,
@@ -691,7 +692,7 @@ class AccountDetailViewModelTest {
     @Test
     fun aSafeThatNoLongerVerifiesAsOneSaysSo() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        val treasury = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
         accounts.accounts.value = listOf(daily, treasury)
         kind.value = KindReading.Verified(AddressKind.Contract, 9)
         val viewModel = viewModel(treasury.address)

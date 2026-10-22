@@ -57,12 +57,14 @@ import kotlin.test.assertIs
 class AccountActivityTest {
 
     private val alice = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Alice",
         AccountCustody.InKeyStore,
     )
     private val treasury = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.SAFE,
         "Treasury",
@@ -77,6 +79,7 @@ class AccountActivityTest {
     private val userTokens = MemoryUserTokens()
 
     private fun sent(nonce: Long, action: SentAction, sentAt: Long, maybeSent: Boolean = false) = SentTransfer(
+        network = Network.SEPOLIA,
         account = alice.address,
         nonce = nonce,
         signed = SignedTransfer(byteArrayOf(2, nonce.toByte())),

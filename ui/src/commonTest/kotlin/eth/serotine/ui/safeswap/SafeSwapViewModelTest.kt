@@ -100,7 +100,7 @@ class SafeSwapViewModelTest {
     private val uniswap = object : UniswapV3Chain {
         override suspend fun venue(network: Network): VenueReading = VenueReading.Verified(world.uniswapDeployment)
 
-        override suspend fun call(to: Address, data: ByteArray): Simulation {
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
             val hex = data.hex()
             val listed = PoolKey.of(world.usdc.address, weth, FeeTier.LOW)
             return when {

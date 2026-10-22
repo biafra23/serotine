@@ -34,14 +34,14 @@ class UpdateRequiredViewModelTest {
     private fun viewModel() = UpdateRequiredViewModel(
         ObserveUpgradeWarning(
             object : NetworkUpgrades {
-                override fun observeUpgrade(): Flow<NetworkUpgrade?> = report
+                override fun observeUpgrade(network: Network): Flow<NetworkUpgrade?> = report
             },
             object : KnownUpgradeStore {
-                override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
-                override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
+                override fun observe(network: Network): Flow<KnownUpgrade?> = flowOf(null)
+                override suspend fun save(network: Network, record: KnownUpgrade): Boolean = error("not used by this test")
             },
             object : LightClient {
-                override fun observeStatus(): Flow<LightClientStatus> = status
+                override fun observeStatus(network: Network): Flow<LightClientStatus> = status
             },
             clock = { 1_791_400_000 },
         ),

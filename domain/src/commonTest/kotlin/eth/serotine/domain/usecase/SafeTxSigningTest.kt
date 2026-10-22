@@ -161,7 +161,7 @@ class SafeTxSigningTest {
         // As the engine adapter answers a slow Safe: its code proven (2 s), then its own retries
         // for its whole 20 s budget, unproven; the next poll 4 s on, and a read of 12 s that is.
         val slow = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> = flow {
+            override fun observeKind(network: Network, address: Address): Flow<KindReading> = flow {
                 delay(22.seconds)
                 emit(KindReading.Unavailable(ReadUnavailable.UNPROVEN))
                 delay(16.seconds)
@@ -229,7 +229,7 @@ class SafeTxSigningTest {
     @Test
     fun aTextThatIsNoRequestForThisNetworkIsRefusedAsTheCodecSays() = runTest {
         world.codec.texts["v2"] = SigningRequestDecoding.UnknownVersion(2)
-        world.codec.texts["mainnet"] = SigningRequestDecoding.WrongChain(1)
+        world.codec.texts["mainnet"] = SigningRequestDecoding.UnknownChain(1)
 
         assertEquals(SigningRequestImport.Refused(SafeTxRefusal.Malformed), import("hello"))
         assertEquals(SigningRequestImport.Refused(SafeTxRefusal.UnknownVersion(2)), import("v2"))

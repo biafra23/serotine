@@ -97,18 +97,21 @@ import kotlin.time.TestTimeSource
 class SwapViewModelTest {
 
     private val daily = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
         AccountCustody.InKeyStore,
     )
     private val watched = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.EOA,
         "Savings",
         AccountCustody.Watched,
     )
     private val safe = Account(
+        Network.SEPOLIA,
         Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb"),
         AccountKind.SAFE,
         "Treasury",
@@ -462,7 +465,7 @@ class SwapViewModelTest {
 
         override suspend fun venue(network: Network): VenueReading = VenueReading.Verified(deployment)
 
-        override suspend fun call(to: Address, data: ByteArray): Simulation {
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
             if (to == deployment.quoterV2) quotes++
             answers[to to data.hex()]?.let { return Simulation.Succeeded(it, 9_412_118) }
             if (to == deployment.factory) return Simulation.Succeeded("00".repeat(32), 9_412_118)
@@ -473,7 +476,7 @@ class SwapViewModelTest {
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
 
-        override fun observeStatus(): Flow<LightClientStatus> = status
+        override fun observeStatus(network: Network): Flow<LightClientStatus> = status
     }
 
     private companion object {

@@ -71,7 +71,7 @@ object BuiltInTokens {
     )
 }
 
-/** [TokenCatalog] of the built-in list of [network]; the tokens a user adds are [UserTokens]'. */
-class BuiltInTokenCatalog(private val network: Network) : TokenCatalog {
-    override fun observeTokens(): Flow<List<Token>> = flowOf(BuiltInTokens.of(network))
+/** [TokenCatalog] of each network's built-in list ([BuiltInTokens]); the tokens a user adds are [UserTokens]'. */
+class BuiltInTokenCatalog : TokenCatalog {
+    override fun observeTokens(network: Network): Flow<List<Token>> = flowOf(BuiltInTokens.of(network))
 }

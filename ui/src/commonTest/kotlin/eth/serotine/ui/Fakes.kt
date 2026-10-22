@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
@@ -94,14 +95,14 @@ internal class FakeBalances : NativeBalances {
 
     fun of(address: Address) = readings.getOrPut(address) { MutableStateFlow(BalanceReading.Syncing) }
 
-    override fun observeBalance(address: Address): Flow<BalanceReading> = of(address)
+    override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> = of(address)
 }
 
 /** A [TokenCatalog] of [tokens], which a test may change. */
 internal class FakeTokenCatalog(vararg tokens: Token) : TokenCatalog {
     val tokens = MutableStateFlow(tokens.toList())
 
-    override fun observeTokens(): Flow<List<Token>> = this.tokens
+    override fun observeTokens(network: Network): Flow<List<Token>> = this.tokens
 }
 
 /** [TokenBalances] whose reading per holder and token a test sets; Syncing until then. */
@@ -111,5 +112,5 @@ internal class FakeTokenBalances : TokenBalances {
     fun of(holder: Address, token: Address) =
         readings.getOrPut(holder to token) { MutableStateFlow(TokenBalanceReading.Syncing) }
 
-    override fun observeBalance(holder: Address, token: Address): Flow<TokenBalanceReading> = of(holder, token)
+    override fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading> = of(holder, token)
 }

@@ -1,5 +1,6 @@
 package eth.serotine.domain.repository
 
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 import kotlinx.coroutines.flow.Flow
 
@@ -11,18 +12,19 @@ import kotlinx.coroutines.flow.Flow
  */
 interface PriceFeeds {
     /**
-     * Each price id with a feed pinned on the network the app works on, and the price id its
-     * feed quotes in ([PriceId.USD], or another one, as an X/ETH feed does). Fixed while the
-     * app runs.
+     * Each price id with a feed pinned on [network], and the price id its feed quotes in
+     * ([PriceId.USD], or another one, as an X/ETH feed does). Fixed while the app runs. No price
+     * crosses networks: a network's prices come from its own feeds only.
      */
-    val quotes: Map<PriceId, PriceId>
+    fun quotes(network: Network): Map<PriceId, PriceId>
 
     /**
-     * What the feed of [priceId] answers, re-emitted when the verified head moves; equal
-     * readings are not repeated. [FeedReading.NoPrice] with [NoPriceReason.NO_FEED], once, for
-     * a price id with no feed in [quotes]. Never fails.
+     * What the feed of [priceId] on [network] answers, read through that network's light
+     * client, re-emitted when the verified head moves; equal readings are not repeated.
+     * [FeedReading.NoPrice] with [NoPriceReason.NO_FEED], once, for a price id with no feed in
+     * [quotes] of [network]. A [network] no adapter serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
      */
-    fun observe(priceId: PriceId): Flow<FeedReading>
+    fun observe(network: Network, priceId: PriceId): Flow<FeedReading>
 }
 
 /** One answer of [PriceFeeds.observe]. */

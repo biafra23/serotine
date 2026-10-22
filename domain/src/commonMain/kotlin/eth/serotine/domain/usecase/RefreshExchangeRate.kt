@@ -21,8 +21,8 @@ class RefreshExchangeRate(
 ) {
     /** Reads the rate and keeps it; the rate kept, or null when none was read. */
     suspend operator fun invoke(): RateSnapshot? {
-        val read = readRate(network.nativePriceId, quote()) as? RateResult.Read ?: return null
-        last.save(read.snapshot)
+        val read = readRate(network, network.nativePriceId, quote()) as? RateResult.Read ?: return null
+        last.save(network, read.snapshot)
         return read.snapshot
     }
 
@@ -32,13 +32,13 @@ class RefreshExchangeRate(
      * shown now, or it was read more than [maxAgeSeconds] before.
      */
     suspend fun isDue(nowSeconds: Long, maxAgeSeconds: Long): Boolean {
-        val kept = last.load() ?: return true
+        val kept = last.load(network) ?: return true
         return kept.quote != quote() || nowSeconds - kept.readAt > maxAgeSeconds
     }
 
     /** The currency the rate is shown in. */
     private suspend fun quote(): DisplayCurrency {
-        val chosen = currencies().first().chosen
+        val chosen = currencies(network).first().chosen
         return chosen.takeIf { it.priceId != network.nativePriceId } ?: DisplayCurrency.USD
     }
 }

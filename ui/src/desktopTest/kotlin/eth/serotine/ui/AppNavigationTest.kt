@@ -237,7 +237,7 @@ class AppNavigationTest {
 
     /** Treasury is a Safe; any other address is an EOA until a Safe is [deployed] there. */
     private val addressKinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> = if (address == treasuryAddress) {
+        override fun observeKind(network: Network, address: Address): Flow<KindReading> = if (address == treasuryAddress) {
             val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 4, emptyList(), null)
             flowOf(KindReading.Verified(AddressKind.Safe(state), 9_412_118))
         } else {
@@ -271,13 +271,13 @@ class AppNavigationTest {
             }
         },
         nativeBalances = object : NativeBalances {
-            override fun observeBalance(address: Address): Flow<BalanceReading> = nativeBalance
+            override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> = nativeBalance
         },
         tokenCatalog = object : TokenCatalog {
-            override fun observeTokens(): Flow<List<Token>> = flowOf(emptyList())
+            override fun observeTokens(network: Network): Flow<List<Token>> = flowOf(emptyList())
         },
         tokenBalances = object : TokenBalances {
-            override fun observeBalance(holder: Address, token: Address): Flow<TokenBalanceReading> =
+            override fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading> =
                 flowOf(TokenBalanceReading.Syncing)
         },
         tokenMetadata = tokenMetadata,
@@ -286,14 +286,14 @@ class AppNavigationTest {
         displayCurrency = MemoryCurrencySetting(),
         addressKinds = addressKinds,
         lightClient = object : LightClient {
-            override fun observeStatus(): Flow<LightClientStatus> = status
+            override fun observeStatus(network: Network): Flow<LightClientStatus> = status
         },
         networkUpgrades = object : NetworkUpgrades {
-            override fun observeUpgrade(): Flow<NetworkUpgrade?> = report
+            override fun observeUpgrade(network: Network): Flow<NetworkUpgrade?> = report
         },
         knownUpgrades = object : KnownUpgradeStore {
-            override fun observe(): Flow<KnownUpgrade?> = flowOf(null)
-            override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
+            override fun observe(network: Network): Flow<KnownUpgrade?> = flowOf(null)
+            override suspend fun save(network: Network, record: KnownUpgrade): Boolean = error("not used by this test")
         },
         transactionInputs = FactoryInputs(),
         broadcaster = broadcaster,
@@ -312,7 +312,7 @@ class AppNavigationTest {
         uniswap = object : UniswapV3Chain {
             override suspend fun venue(network: Network): VenueReading = VenueReading.NotPinned
 
-            override suspend fun call(to: Address, data: ByteArray): Simulation =
+            override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
         },
         network = Network.SEPOLIA,
@@ -322,6 +322,7 @@ class AppNavigationTest {
     )
 
     private val daily = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
@@ -329,13 +330,14 @@ class AppNavigationTest {
     )
 
     private val savings = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.EOA,
         "Savings",
         AccountCustody.Watched,
     )
 
-    private val treasury = Account(treasuryAddress, AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+    private val treasury = Account(Network.SEPOLIA, treasuryAddress, AccountKind.SAFE, "Treasury", AccountCustody.Watched)
 
     /** 0.1 ETH from Treasury to Savings at its nonce, 4. */
     private val queued = SigningRequest.of(
@@ -722,6 +724,7 @@ class AppNavigationTest {
     fun anAccountsActivityListsWhatWasSentAndARowOpensItsDetailAndFromThereWhereItStands() {
         accounts.value = listOf(daily, savings)
         val sent = SentTransfer(
+            network = Network.SEPOLIA,
             account = daily.address,
             nonce = 7,
             signed = SignedTransfer(byteArrayOf(2, 7)),
@@ -994,7 +997,7 @@ class AppNavigationTest {
         )
         rule.waitUntil { accounts.value.any { it.address == action.safe } }
         assertEquals(
-            Account(action.safe, AccountKind.SAFE, "Family vault", AccountCustody.Watched),
+            Account(Network.SEPOLIA, action.safe, AccountKind.SAFE, "Family vault", AccountCustody.Watched),
             accounts.value.last(),
         )
         rule.onNodeWithText("Family vault").assertIsDisplayed()

@@ -81,6 +81,7 @@ import kotlin.time.TestTimeSource
 class CreateSafeViewModelTest {
 
     private val daily = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
@@ -89,19 +90,21 @@ class CreateSafeViewModelTest {
 
     // EIP-55's own examples: 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359 and 0xdbF03B40….
     private val savings = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.EOA,
         "Savings",
         AccountCustody.Watched,
     )
     private val spare = Account(
+        Network.SEPOLIA,
         Address.of("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"),
         AccountKind.EOA,
         "Spare",
         AccountCustody.InKeyStore,
     )
     private val treasury =
-        Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
     private val friend = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
 
     private val accounts = FakeAccounts(daily, savings, treasury)
@@ -117,7 +120,7 @@ class CreateSafeViewModelTest {
     private val clock = TestTimeSource()
     private val kind = MutableStateFlow<KindReading>(KindReading.Verified(AddressKind.Eoa, 9_412_118))
     private val kinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> = kind
+        override fun observeKind(network: Network, address: Address): Flow<KindReading> = kind
     }
     private var salts = 0L
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice

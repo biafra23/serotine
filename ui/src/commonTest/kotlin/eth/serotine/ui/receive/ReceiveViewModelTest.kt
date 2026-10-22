@@ -23,12 +23,13 @@ import kotlin.test.assertEquals
 class ReceiveViewModelTest {
 
     private val eoa = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
         AccountCustody.Watched,
     )
-    private val safe = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Family", AccountCustody.Watched)
+    private val safe = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Family", AccountCustody.Watched)
     private val accounts = FakeAccounts(eoa, safe)
 
     @AfterTest

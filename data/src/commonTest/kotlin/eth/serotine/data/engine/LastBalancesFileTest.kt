@@ -1,8 +1,17 @@
 package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
+import kotlin.random.Random
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -14,14 +23,6 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
 import kotlinx.io.readString
 import kotlinx.io.writeString
-import kotlin.random.Random
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LastBalancesFileTest {
@@ -51,20 +52,20 @@ class LastBalancesFileTest {
     fun aBalanceProvenBeforeARestartIsLastKnownAfterItUntilAHeadCanBeRead() = runTest {
         chain.snapshot = running(head = 9, headTimestamp = 1_792_100_000)
         chain.proofs[address] = ProvenBalance("5", 9)
-        val before = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
-        assertEquals(BalanceReading.Verified(Wei.of("5"), 9), before.observeBalance(address).first())
+        val before = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
+        assertEquals(BalanceReading.Verified(Wei.of("5"), 9), before.observeBalance(Network.SEPOLIA, address).first())
 
         // A new process: nothing proven in it yet, and the light client still catching up.
         chain.snapshot = running(phase = EngineSnapshot.Phase.CATCHING_UP)
-        val after = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
+        val after = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
         assertEquals(
             BalanceReading.LastKnown(Wei.of("5"), 9, asOf = 1_792_100_000),
-            after.observeBalance(address).first(),
+            after.observeBalance(Network.SEPOLIA, address).first(),
         )
 
         // Without a file, the same restart knows nothing.
-        val forgetful = VerifiedNativeBalances(chain, StandardTestDispatcher(testScheduler), POLL)
-        assertEquals(BalanceReading.Syncing, forgetful.observeBalance(address).first())
+        val forgetful = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL)
+        assertEquals(BalanceReading.Syncing, forgetful.observeBalance(Network.SEPOLIA, address).first())
     }
 
     @Test

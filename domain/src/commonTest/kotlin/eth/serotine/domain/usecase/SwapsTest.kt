@@ -179,6 +179,7 @@ class SwapsTest {
     fun anApprovalSentAndNotMinedHoldsTheSwapBack() = runTest {
         pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
         val approval = SentTransfer(
+            network = Network.SEPOLIA,
             account = account,
             nonce = 7,
             signed = SignedTransfer(byteArrayOf(2, 7)),
@@ -258,6 +259,7 @@ class SwapsTest {
         inputs.routerReturns = returns(amountOut)
         sent.transfers.value = listOf(
             SentTransfer(
+                network = Network.SEPOLIA,
                 account = account,
                 nonce = 7,
                 signed = SignedTransfer(byteArrayOf(2, 8)),
@@ -345,6 +347,7 @@ class SwapsTest {
     }
 
     private fun record(nonce: Long, action: SentAction) = SentTransfer(
+        network = Network.SEPOLIA,
         account = account,
         nonce = nonce,
         signed = SignedTransfer(byteArrayOf(2, nonce.toByte())),
@@ -417,7 +420,7 @@ class SwapsTest {
 
         override suspend fun venue(network: Network): VenueReading = venue
 
-        override suspend fun call(to: Address, data: ByteArray): Simulation {
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
             if (to == deployment.quoterV2) quotes++
             answers[to to data.toHex()]?.let { return Simulation.Succeeded(it, 120) }
             // A pair the test did not list: the factory has no pool for it.
@@ -441,13 +444,13 @@ class SwapsTest {
         val simulated = mutableListOf<Pair<Address, String>>()
         val reverting = mutableSetOf<String>()
 
-        override suspend fun nonce(account: Address): NonceReading = NonceReading.Read(maxOf(7, mined))
-        override suspend fun minedNonce(account: Address): NonceReading = if (minedUnreadable) {
+        override suspend fun nonce(network: Network, account: Address): NonceReading = NonceReading.Read(maxOf(7, mined))
+        override suspend fun minedNonce(network: Network, account: Address): NonceReading = if (minedUnreadable) {
             NonceReading.Unavailable(ReadUnavailable.UNPROVEN)
         } else {
             NonceReading.Read(mined)
         }
-        override suspend fun fees(): FeeReading = FeeReading.Quoted(
+        override suspend fun fees(network: Network): FeeReading = FeeReading.Quoted(
             FeeQuote(
                 nextBaseFee = UInt256.of(10_000_000_000L),
                 tips = FeeLevel.entries.associateWith { UInt256.of(1_000_000_000L) },
@@ -455,12 +458,12 @@ class SwapsTest {
             ),
         )
 
-        override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate {
+        override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate {
             estimates++
             return if (data.toHex() in reverting) GasEstimate.Reverted("") else GasEstimate.Estimated(150_000)
         }
 
-        override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+        override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
             simulated += to to data.toHex()
             if (data.toHex() in reverting) return Simulation.Reverted(120)
             if (to == router) return Simulation.Succeeded(routerReturns, 120)

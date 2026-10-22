@@ -38,7 +38,7 @@ class MyotisNodeSepoliaTest {
         val node = MyotisNode.start(Network.SEPOLIA, Files.createTempDirectory("myotis-sepolia").toFile())
         val started = System.nanoTime()
         val progress = launch {
-            node.lightClient.observeStatus().collect {
+            node.lightClient.observeStatus(Network.SEPOLIA).collect {
                 println("light client after ${(System.nanoTime() - started) / 1_000_000_000}s: $it")
             }
         }
@@ -47,7 +47,7 @@ class MyotisNodeSepoliaTest {
             val address = Address.of("0x7f02c3e3c98b133055b8b348b2ac625669ed295d")
             val reading = withTimeout(10.minutes) {
                 // Past "not verified" (a proof no peer has served yet); a refusal ends it at once.
-                node.nativeBalances.observeBalance(address).first {
+                node.nativeBalances.observeBalance(Network.SEPOLIA, address).first {
                     it is BalanceReading.Verified ||
                         (it is BalanceReading.Unavailable && it.reason != ReadUnavailable.UNPROVEN)
                 }

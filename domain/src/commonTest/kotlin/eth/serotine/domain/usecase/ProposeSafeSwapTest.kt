@@ -431,7 +431,7 @@ class ProposeSafeSwapTest {
         /** Calls answered with this instead, as their contract and their data in hex. */
         val answering = mutableMapOf<Pair<Address, String>, Simulation>()
 
-        override suspend fun call(to: Address, data: ByteArray): Simulation {
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
             answering[to to data.toHex()]?.let { return it }
             answers[to to data.toHex()]?.let { return Simulation.Succeeded(it, 120) }
             // A pair the test did not list: the factory has no pool for it.
@@ -451,19 +451,19 @@ class ProposeSafeSwapTest {
         /** Every call run, as who ran it and the contract it called. */
         val simulated = mutableListOf<Pair<Address, Address>>()
 
-        override suspend fun nonce(account: Address): NonceReading = error("a proposal sends nothing")
+        override suspend fun nonce(network: Network, account: Address): NonceReading = error("a proposal sends nothing")
 
-        override suspend fun minedNonce(account: Address): NonceReading = error("a proposal sends nothing")
+        override suspend fun minedNonce(network: Network, account: Address): NonceReading = error("a proposal sends nothing")
 
-        override suspend fun fees(): FeeReading = error("whoever executes it pays: the route is ranked gross")
+        override suspend fun fees(network: Network): FeeReading = error("whoever executes it pays: the route is ranked gross")
 
-        override suspend fun estimateGas(from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
+        override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
             error("a proposal sends nothing")
 
         /** An engine that runs no call from a contract's address. */
         var refusing = false
 
-        override suspend fun simulate(from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+        override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
             simulated += from to to
             if (refusing) return Simulation.Refused
             if (to == router) return routerRun

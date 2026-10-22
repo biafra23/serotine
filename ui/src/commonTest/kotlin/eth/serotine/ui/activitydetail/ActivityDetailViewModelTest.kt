@@ -60,12 +60,14 @@ import kotlin.test.assertTrue
 class ActivityDetailViewModelTest {
 
     private val alice = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Alice",
         AccountCustody.InKeyStore,
     )
     private val treasury = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.SAFE,
         "Treasury",
@@ -81,6 +83,7 @@ class ActivityDetailViewModelTest {
     private val userTokens = MemoryUserTokens()
 
     private val sent = SentTransfer(
+        network = Network.SEPOLIA,
         account = alice.address,
         nonce = 7,
         signed = SignedTransfer(byteArrayOf(2, 7)),

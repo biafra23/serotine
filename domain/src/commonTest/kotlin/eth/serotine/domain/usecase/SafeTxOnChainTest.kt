@@ -505,6 +505,7 @@ class SafeTxOnChainTest {
     fun anEarlierTransactionMaybeSentRefusesAnApprovalOrAnExecutionBeforeTheSafeIsRead() = runTest {
         world.inputs.simulation = Simulation.Succeeded(executed, 100)
         val maybe = SentTransfer(
+            Network.SEPOLIA,
             world.alice.address, 7, SignedTransfer(byteArrayOf(2, 7)), SentAction.SafeApproval(world.request(payment)),
             UInt256.ONE, sentAt = 1_800_000_000, maybeSent = true,
         )

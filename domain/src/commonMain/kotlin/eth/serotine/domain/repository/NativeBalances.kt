@@ -1,24 +1,26 @@
 package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import kotlinx.coroutines.flow.Flow
 
 /**
  * The port for native-currency balances, as the embedded light client proves them. :data
- * implements it over the Myotis engine (`eth.serotine.data.engine`), on the one network the
- * app works on (CLAUDE.md, *Data sources*); nothing else may answer it — no RPC provider, no
+ * implements it over the Myotis engine (`eth.serotine.data.engine`), each network's by its own
+ * light client (CLAUDE.md, *Data sources*); nothing else may answer it — no RPC provider, no
  * indexer, no cached guess (CLAUDE.md, *Trust*). The one older answer it gives is the light
  * client's own last proof, labelled as such ([BalanceReading.LastKnown]).
  */
 interface NativeBalances {
     /**
-     * The balance of [address], re-emitted when the verified head moves or the light
+     * The balance of [address] on [network], re-emitted when the verified head moves or the light
      * client's state changes; consecutive equal readings are not repeated. A
      * [BalanceReading.Verified] was proven against the sync committee at its block; when
-     * no proof is possible the reading says why. Never fails.
+     * no proof is possible the reading says why. A [network] no adapter serves here is refused, never answered from another network
+     * ([ReadUnavailable.NO_ENGINE]). Never fails.
      */
-    fun observeBalance(address: Address): Flow<BalanceReading>
+    fun observeBalance(network: Network, address: Address): Flow<BalanceReading>
 }
 
 /** One answer of [NativeBalances.observeBalance]. */
@@ -48,7 +50,7 @@ sealed interface BalanceReading {
 /** Why a verified read — a balance, an address's kind, a token balance — has no answer right now. */
 enum class ReadUnavailable {
     /**
-     * This device has no running light client: the engine does not ship for its ABI or
+     * This device has no running light client for the network asked about: the engine does not ship for its ABI or
      * platform, or it failed to start.
      */
     NO_ENGINE,

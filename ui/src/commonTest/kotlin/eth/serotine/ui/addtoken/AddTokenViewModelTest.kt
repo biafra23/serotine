@@ -1,6 +1,7 @@
 package eth.serotine.ui.addtoken
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.TokenMetadata
@@ -11,6 +12,12 @@ import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryUserTokens
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -26,12 +33,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.hours
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AddTokenViewModelTest {
@@ -118,7 +119,7 @@ class AddTokenViewModelTest {
     fun aCardLeftForAnotherAddressIsNeitherShownNorAdded() = runTest {
         // A's read does not end when it is cancelled, as a verified call in flight does not.
         val slow = object : TokenMetadata {
-            override fun observe(token: Address): Flow<MetadataReading> = flow {
+            override fun observe(network: Network, token: Address): Flow<MetadataReading> = flow {
                 if (token == Address.of(eurc)) {
                     emit(MetadataReading.Verified("EURC", "EURC", 6, 9))
                     withContext(NonCancellable) { delay(1.hours) }

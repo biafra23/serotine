@@ -97,6 +97,7 @@ import kotlin.time.TestTimeSource
 class SendViewModelTest {
 
     private val daily = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Daily",
@@ -105,6 +106,7 @@ class SendViewModelTest {
 
     // EIP-55's own example: 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359.
     private val savings = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.EOA,
         "Savings",

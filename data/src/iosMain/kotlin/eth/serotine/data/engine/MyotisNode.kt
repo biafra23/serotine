@@ -111,50 +111,50 @@ class MyotisNode private constructor(
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
 
     /** Native-currency balances, verified by this node's light client. */
-    val nativeBalances: NativeBalances = VerifiedNativeBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val nativeBalances: NativeBalances = VerifiedNativeBalances(network, chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
 
     /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
     val addressKinds: AddressKinds =
-        VerifiedAddressKinds(chain, Dispatchers.IO, POLL_INTERVAL, SafeDeployments.of(network), debugLog = debugLog)
+        VerifiedAddressKinds(network, chain, Dispatchers.IO, POLL_INTERVAL, SafeDeployments.of(network), debugLog = debugLog)
 
     /** What a token contract says about itself, as verified calls. */
-    val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
+    val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(network, chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
-    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
+    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(network, chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
 
     /** What the same feeds answered some time ago, from their round histories, as verified calls. */
-    val priceHistory: PriceHistory = VerifiedPriceHistory(chain, Dispatchers.IO, ChainlinkFeeds.of(network))
+    val priceHistory: PriceHistory = VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network))
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
-    val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(network, chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
 
     /** This node's light client, for the user to watch. */
-    val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
+    val lightClient: LightClient = EngineLightClient(network, chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
 
     /** Network upgrades this build does not support, as peers report them to this node. */
-    val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)
+    val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(network, chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** A transaction's nonce, fees, gas and verified simulation, from this node's verified reads. */
-    val transactionInputs: TransactionInputs = EngineTransactionInputs(chain, Dispatchers.IO)
+    val transactionInputs: TransactionInputs = EngineTransactionInputs(network, chain, Dispatchers.IO)
 
     /** Gossips a signed transaction to this node's peers (the engine never signs). */
-    val broadcaster: Broadcaster = EngineBroadcaster(chain, Dispatchers.IO)
+    val broadcaster: Broadcaster = EngineBroadcaster(network, chain, Dispatchers.IO)
 
     /** A Safe's owners' approvals on chain (`approvedHashes`), each a verified call. */
-    val safeApprovals: SafeApprovals = VerifiedSafeApprovals(chain, Dispatchers.IO)
+    val safeApprovals: SafeApprovals = VerifiedSafeApprovals(network, chain, Dispatchers.IO)
 
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
-    val receipts: ReceiptTracker = EngineReceipts(chain, Dispatchers.IO, POLL_INTERVAL)
+    val receipts: ReceiptTracker = EngineReceipts(network, chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** ENS names, resolved against beacon-finalized state. */
-    val names: NameResolver = EngineNames(chain, Dispatchers.IO)
+    val names: NameResolver = EngineNames(network, chain, Dispatchers.IO)
 
     /** The engine's verified log index, which follows the accounts' histories. */
-    val logIndex: LogIndex = EngineLogIndex(chain, Dispatchers.IO, POLL_INTERVAL)
+    val logIndex: LogIndex = EngineLogIndex(network, chain, Dispatchers.IO, POLL_INTERVAL)
 
     /**
      * Turns the engine's networking off, keeping its state, for while the app is in the
