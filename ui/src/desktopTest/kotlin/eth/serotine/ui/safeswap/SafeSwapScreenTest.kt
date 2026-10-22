@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.ui.components.ASSET_OPTION_TAG
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.RouteStep
@@ -107,7 +108,8 @@ class SafeSwapScreenTest {
     fun theComposeStepReviewsTheSwap() {
         show(SafeSwapUiState.Compose(form))
 
-        rule.onAllNodesWithTag(SWAP_SELL_TAG)[0].performClick()
+        rule.onNodeWithTag(SWAP_SELL_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG)[0].performClick()
         rule.onNodeWithTag(SAFE_SWAP_REVIEW_TAG).performScrollTo().assertIsEnabled().performClick()
 
         assertEquals(listOf("sell null", "review"), events)
@@ -119,7 +121,8 @@ class SafeSwapScreenTest {
 
         rule.onNodeWithText("Proposes the swap queued at nonce 5 again.").assertExists()
         rule.onNodeWithTag(SWAP_AMOUNT_TAG).assertIsNotEnabled()
-        rule.onAllNodesWithTag(SWAP_SELL_TAG)[0].performClick()
+        rule.onNodeWithTag(SWAP_SELL_TAG).assertIsNotEnabled().performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
         assertEquals(emptyList(), events, "the asset sold is fixed")
     }
 
