@@ -23,7 +23,8 @@ class SecurityCallFailedTest {
 
     @Test
     fun anyOtherErrorIsNotThePrompts() {
-        assertNull(SecurityCallFailed("x", listOf(SecurityCallFailed.Cause("NSOSStatusErrorDomain", -25300))).localAuthentication)
+        val notFound = listOf(SecurityCallFailed.Cause("NSOSStatusErrorDomain", -25300))
+        assertNull(SecurityCallFailed("x", notFound).localAuthentication)
         assertNull(SecurityCallFailed("x", emptyList()).localAuthentication)
     }
 

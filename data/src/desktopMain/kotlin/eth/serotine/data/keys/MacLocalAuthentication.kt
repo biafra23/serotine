@@ -47,14 +47,18 @@ internal class MacLocalAuthentication private constructor() {
     private fun selector(name: String): Pointer = checkNotNull(registerName.invokePointer(arrayOf(name))) { name }
 
     /** A new `LAContext`, which the caller [release]s. */
-    fun newContext(): Pointer = checkNotNull(send.invokePointer(arrayOf(contextClass, new))) { "[LAContext new] failed" }
+    fun newContext(): Pointer =
+        checkNotNull(send.invokePointer(arrayOf(contextClass, new))) { "[LAContext new] failed" }
 
     /** Null when [context] can evaluate the biometric policy now, else LAError's code ([LaError]). */
     fun canEvaluate(context: Pointer): Long? = autoreleasing {
         val error = PointerByReference()
         // BOOL is one byte: what the register holds above it is not the answer.
         val can = send.invokeInt(arrayOf(context, canEvaluatePolicy, BIOMETRICS_POLICY, error)) and 0xff
-        if (can != 0) null else error.value?.let { send.invokeLong(arrayOf(it, code)) } ?: LaError.BIOMETRY_NOT_AVAILABLE
+        when {
+            can != 0 -> null
+            else -> error.value?.let { send.invokeLong(arrayOf(it, code)) } ?: LaError.BIOMETRY_NOT_AVAILABLE
+        }
     }
 
     /** The fingerprint of the enrolled set (`evaluatedPolicyDomainState`), after [canEvaluate] on [context]. */

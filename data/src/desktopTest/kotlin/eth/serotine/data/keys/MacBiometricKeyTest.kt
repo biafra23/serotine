@@ -24,8 +24,9 @@ import kotlin.test.assertTrue
 /**
  * Runs on a Mac; the tests that make a key only where Touch ID can be offered now (a finger
  * enrolled, the sensor reachable) and the Secure Enclave can be used by this process, skipped
- * everywhere else (CI's Linux, a Mac without Touch ID or with its lid closed). Nothing here shows the Touch ID prompt, apart from the tests
- * that need a finger, which are ignored by default: run them by hand at the Mac.
+ * everywhere else (CI's Linux, a Mac without Touch ID or with its lid closed). Nothing here shows
+ * the Touch ID prompt, apart from the tests that need a finger, which are ignored by default: run
+ * them by hand at the Mac.
  */
 class MacBiometricKeyTest {
 
@@ -138,8 +139,9 @@ class MacBiometricKeyTest {
     fun aPromptTheUserDismissesIsACancel() = runBlocking {
         assumeTouchId()
         assertTrue(key.create())
+        val wrapped = key.wrap(ByteArray(32))
 
-        val outcome = withTimeout(60_000) { key.unwrap(key.wrap(ByteArray(32)), "test: press Cancel or Use the password") }
+        val outcome = withTimeout(60_000) { key.unwrap(wrapped, "test: press Cancel or Use the password") }
 
         assertEquals(BiometricUnwrap.Cancelled, outcome)
     }

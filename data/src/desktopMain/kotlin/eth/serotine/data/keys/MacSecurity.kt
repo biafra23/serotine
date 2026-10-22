@@ -46,6 +46,7 @@ internal class MacSecurity private constructor() {
         fun CFStringGetCString(string: Pointer, buffer: Memory, size: Long, encoding: Int): Byte
         fun CFGetTypeID(cf: Pointer): Long
         fun CFDataGetTypeID(): Long
+        fun CFErrorGetTypeID(): Long
         fun CFRelease(cf: Pointer)
     }
 
@@ -257,8 +258,10 @@ internal class MacSecurity private constructor() {
         var current: Pointer? = cfError
         var userInfo: Pointer? = null
         try {
-            while (current != null && chain.size < MAX_UNDERLYING) {
-                chain += SecurityCallFailed.Cause(cf.CFErrorGetDomain(current)?.let(::stringOf), cf.CFErrorGetCode(current))
+            // Only a CFError is read as one: anything else under the key would crash the process.
+            while (current != null && chain.size < MAX_UNDERLYING && isError(current)) {
+                val domain = cf.CFErrorGetDomain(current)?.let(::stringOf)
+                chain += SecurityCallFailed.Cause(domain, cf.CFErrorGetCode(current))
                 // The underlying error belongs to the user info, which is released only once it is read.
                 val info = cf.CFErrorCopyUserInfo(current)
                 userInfo?.let(cf::CFRelease)
@@ -270,6 +273,8 @@ internal class MacSecurity private constructor() {
         }
         return chain
     }
+
+    private fun isError(cfObject: Pointer): Boolean = cf.CFGetTypeID(cfObject) == cf.CFErrorGetTypeID()
 
     private fun stringOf(string: Pointer): String? {
         val buffer = Memory(STRING_BYTES)
@@ -351,8 +356,9 @@ internal class MacSecurity private constructor() {
  * A Security.framework [call] that failed, with its error's domain and code and those of the
  * errors underneath it ([causes], the top one first, empty when it gave none); never key material.
  */
-internal class SecurityCallFailed(val call: String, val causes: List<Cause>) :
-    IllegalStateException("$call failed (${causes.joinToString { "${it.code} in ${it.domain}" }.ifEmpty { "no error" }})") {
+internal class SecurityCallFailed(val call: String, val causes: List<Cause>) : IllegalStateException(
+    "$call failed (${causes.joinToString { "${it.code} in ${it.domain}" }.ifEmpty { "no error" }})",
+) {
 
     /** One error of the chain. */
     data class Cause(val domain: String?, val code: Long)
