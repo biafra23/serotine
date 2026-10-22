@@ -824,21 +824,22 @@ discussion that produced this note.
   device: accepted as is, as the log index makes that trade-off for any
   watch-list.
 - docs/wallet-ux.md applies these rulings to the screens.
-- **Swaps: Uniswap first, then CoW Protocol, the venue the user's choice**
+- **Swaps: Uniswap first, then CoW Protocol; the user chooses the venue**
   (owner's directions, 2026-10-18 and 2026-10-22; docs/swaps.md, issues #69
   and #144). The user decides which venue each swap uses, and Uniswap stays
   available when CoW is not. Uniswap's contracts are chain data like any
   other: pinned, read with verified calls, and sent to like any transaction.
 - **CoW Protocol's order API is an off-chain service, used only for a swap
   the user sends to CoW** (owner ruling, 2026-10-22):
-  - CoW learns the account's address, the pair, the amounts and the device's
-    IP address, for those swaps only. With Uniswap chosen, CoW is never
-    contacted.
+  - CoW learns the swaps the user sends to it and no others: the account's
+    address, the pair, the amounts, the device's IP address and, for a
+    signed order, the order. With Uniswap chosen, CoW is never contacted.
   - The app data carries nothing beyond the required fields, and the IP
     address is not hidden for now.
-  - Of CoW's answers, only its estimate (marked as not verified) and the
-    order's off-chain life are shown. A fill, and every amount it moved,
-    comes from the account's verified logs alone.
+  - Of CoW's answers about an order, only its off-chain life is shown. A
+    fill, and every amount it moved, comes from the account's verified logs
+    alone. The swap's review shows CoW's estimate, marked as not verified,
+    to compare the venues (issue #144).
   - The order is built, hashed and checked here. Its signed minimum is never
     below the verified Uniswap quote less the gas and the tolerance, and a
     pair with no Uniswap route is not offered on CoW.

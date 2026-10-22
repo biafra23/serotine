@@ -234,8 +234,9 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
     token) for one hop.
 - **The largest amount out, net of the swap's expected fee, wins**; on a tie,
   the route with fewer hops.
-  - The net is the one the venue choice uses (*The signed minimum*), so a
-    one-hop route that only grosses more does not beat a direct one.
+  - The net is the one CoW's floor and the review's comparison use (*The
+    signed minimum*), so a one-hop route that only grosses more does not beat
+    a direct one.
   - A Safe's swap is paid for by whoever executes it, so it compares routes
     gross.
 - **Uniswap's routing API is not used**: it is an off-chain service, and its
@@ -339,8 +340,7 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
      sells);
    - `receiver`: the account;
    - `buyAmount`: the signed minimum (*The signed minimum*, below);
-   - `validTo`: the verified head's timestamp plus a few minutes (*Open
-     questions*);
+   - `validTo`: the verified head's timestamp plus 5 minutes (decision 4);
    - `appData`: the hash of a pinned app-data document;
    - `feeAmount`: 0 (the API's spec, `OrderParameters`: "When creating an
      order, this should be set to zero");
@@ -365,7 +365,7 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
    - Whatever the POST returns, the order is now live (*A signed order is
      live until it is proven dead*).
 5. **The fill is read on chain, never from the API**: the settlement's
-   `Trade` log for the UID, found in verified block receipts (*Proving an
+   `Trade` log for the UID, found in the account's verified logs (*Proving an
    order's end*).
    - From the API, the status shows only the order's off-chain life:
      accepted, in the auction, expired in CoW's order book. These are labelled
@@ -409,11 +409,12 @@ pays the gas in ETH on top. So the two are compared net.
   - The conversion is a pool's answer for an exact amount, not a price.
   - When the bought token is ETH or WETH, nothing is converted.
   - When there is no route to convert through, the Uniswap net is the quote
-    itself. CoW is then held to the stricter comparison.
+    itself. CoW's floor is then higher.
   - When the fee is more than the swap returns, the net is zero or less, and
-    no floor stands. CoW is then not offered for the swap, as for a pair with
-    no route (below), and Uniswap's review says that the fee is more than the
-    swap buys.
+    no floor stands. CoW is then not offered for the swap: this follows from
+    the ruling on a pair with no route (below, decision 1), whose reason is
+    the same missing floor. Uniswap's review says that the fee is more than
+    the swap buys.
 - **The floor** is the Uniswap net × (1 − tolerance).
 - **The order's `buyAmount`** is max(CoW's estimate × (1 − tolerance), the
   floor).
@@ -424,8 +425,9 @@ pays the gas in ETH on top. So the two are compared net.
     give.
   - An estimate below the Uniswap net means that, by CoW's own account,
     Uniswap gives more. The review says so, and says that an order signed at
-    the floor may well not fill. Switching to Uniswap is one tap, and the
-    choice stays the user's (owner's direction, 2026-10-22).
+    the floor may well not fill: an order that does not fill holds its tokens
+    until `validTo` is final, about 18 to 24 minutes. Switching to Uniswap is
+    one tap, and the choice stays the user's (owner's direction, 2026-10-22).
 - **A pair with no Uniswap route** has no floor, only CoW's estimate. It is
   not offered on CoW (owner ruling, 2026-10-22, decision 1).
 
@@ -448,12 +450,18 @@ The user decides which venue each swap uses (owner's direction,
 - **CoW is not offered** for:
   - a pair with no Uniswap route, or a swap whose fee is more than it buys
     (*The signed minimum*);
+  - an account whose history the log index follows only from a block after
+    the finalized head, an account added minutes ago: its order's end could
+    not be proven (*Proving an order's end*). CoW is offered once the
+    finalized head has passed that block;
   - selling native ETH, until CoW's ETH-flow contract is pinned (*Later on
     CoW*);
   - a Safe, until its pre-signature is built (*Later on CoW*).
 
   The choice says why.
-- **CoW unavailable.** When CoW's quote:
+- **CoW unavailable.** This covers the quote only: an error on the order's
+  POST leaves the order live (*A signed order is live until it is proven
+  dead*). When CoW's quote:
   - does not come within 10 seconds;
   - comes back as an HTTP error;
   - cannot be decoded or checked;
@@ -487,8 +495,8 @@ can still fill could swap them twice.
 - **A live order is kept across restarts.** It sits in a record of its own
   beside `sent-transfers.json`. The record holds:
   - the order, its UID, its signature and the account;
-  - the finalized block when it was signed, where the proof's scan starts;
-  - how far that scan has come.
+  - the finalized block when it was signed, where the proof's range starts;
+  - how far its proof has come.
 - **Send and a new swap hold back the sold amount of a live order**, as they
   do for a transfer not mined yet (docs/embedding-myotis.md, *Sending*).
   - The hold-back ends as soon as the order is known to have filled: its
@@ -519,30 +527,47 @@ So the proof is the account's own verified logs.
     for each fill, and `OrderInvalidated(address indexed owner, bytes
     orderUid)` for a cancellation on chain. Both carry the owner as topic 1,
     so the account's entry catches both.
-- **The query** is a verified `getLogs` from the pinned `GPv2Settlement`,
-  topic 1 the account, over a range:
+- **The query** is a verified `getLogs` of the account's entry, topic 1 the
+  account, for `Trade` and `OrderInvalidated`, over a range. A topic entry
+  matches logs from any contract, so only those the pinned `GPv2Settlement`
+  emitted count. The range runs:
   - from the block that was finalized when the order was signed. A block
     made after the signature can replace the head of that moment, but never
     a finalized block;
   - to an end block, which has to be finalized.
 
-  The engine answers only a range inside the coverage it holds (Myotis
-  docs/eth-getlogs-design.md, *Serving*), and refuses any other. A refusal is
-  no answer, never an empty list. Below finality its entries never change.
-  A `Trade` carries its order's UID in its data: another order's `Trade` is
-  not this one's.
+  - The engine answers only a range it has covered (Myotis
+    docs/eth-getlogs-design.md, *Serving*), and refuses one it has not
+    reached yet. Below finality its entries never change.
+  - Below the block an entry is followed from, the engine answers as if
+    nothing came before it. So the adapter refuses a range that reaches below
+    that block (`LogsReading.BeforeStart`, docs/embedding-myotis.md,
+    *History*), and the proof goes through the adapter.
+  - It follows that CoW is offered only to an account followed from the
+    block finalized at signing or earlier (*The user's choice of venue*).
+    Otherwise the order's end could never be proven.
+  - A refusal is no answer, never an empty list.
+  - A `Trade` carries its order's UID in its data: another order's `Trade` is
+    not this one's.
 - **Why the log index, not the blocks.**
   - The engine reads blocks back only so far: 512 blocks, per a reading of
     Myotis on 2026-10-16.
-  - The log index reaches as far back as the account's history, and its
-    head-follow appender checks every block's receipts up to finality.
+  - The log index reaches as far back as the account's history. Its
+    head-follow appender checks each block up to finality: every block's
+    receipts on its per-block path, and across a longer gap (past its
+    128-block append window) a bloom filter, which never misses a log it
+    matches.
   - So a pause, the app closed, or Android pausing the engine's networking
     only delays the proof.
 - **The end block is one of two.**
-  - *Expiry.* The first finalized head whose time is past `validTo`. Its time
-    is the finalized slot's (`StatusSnapshot.finalizedSlot`; genesis + slot ×
-    seconds per slot), the same consensus rule `MyotisNode` applies to the
-    head. No settlement can fill the order in a block past `validTo`.
+  - *Expiry.* The first finalized block whose own timestamp, read from its
+    verified header, is past `validTo`. No settlement can fill the order in a
+    block past `validTo`.
+    - Not the finalized slot's time (genesis + slot × seconds per slot). The
+      spike below found the finalized slot naming an empty slot after the
+      finalized block's own, twice: 12 seconds later than its block.
+    - Timed by the slot, a finalized block still at `validTo` could end the
+      range while the block after it fills the order.
   - *Cancellation on chain.* The block of the account's
     `invalidateOrder(uid)`, once it is finalized. Nothing can settle the
     order after it, since a fill would overflow the maximum it writes. A
@@ -558,20 +583,34 @@ So the proof is the account's own verified logs.
     then offers the same swap on Uniswap (*The user's choice of venue*).
   - *Not provable yet*: the index does not cover the range yet, or the
     engine refuses the query. This is said as such, and the proof is tried
-    again as the index grows. No Uniswap swap of the same tokens is offered
-    until then, and the hold-back stays.
+    again as the index grows. The status offers no Uniswap swap until then.
+    - The hold-back still ends as *A signed order is live until it is proven
+      dead* says, once the order can take nothing more, whatever the proof.
+    - A range refused for good (an entry no longer followed, a range below
+      its start) is said as not provable. The balance shows what happened,
+      and a new swap is the user's own decision.
 - **An off-chain cancellation through the API proves nothing**: a solver may
   already hold the order. It is not built.
 - **The wait.** On Sepolia a block is final two to three epochs after it is
   made, 12.8 to 19.2 minutes. An order's end is proven only at a finalized
   block (owner ruling, 2026-10-22, decision 4), so the Uniswap offer after an
   unfilled order waits for `validTo` plus that range, and the status says so.
-- **What the engine has to show**, in a network test of the CoW plan's part
-  2, `@Ignore`d by default (CLAUDE.md, *Conventions*):
-  - the index's coverage reaches a finalized end block shortly after it is
-    final;
-  - the finalized slot in `StatusSnapshot` stays in step with the finalized
-    block number.
+- **What the engine showed** in part 0's spike, on Sepolia on 2026-10-22,
+  with the published engine library of Myotis 0.1.18. A cold start ran
+  against a real CoW trade: owner `0x9fa3…da58`, block 11,968,860.
+  - Synced in 33 s. The account's `Mention` entry, watched from block
+    11,968,850, covered 11,968,850 to the head 3½ minutes in.
+  - `getLogs` at topic 1 for `Trade` and `OrderInvalidated` answered with
+    the trade's log, from `GPv2Settlement`, its data carrying the order's
+    UID.
+  - A query reaching below the entry's start came back `BeforeStart`, not an
+    empty list.
+  - The finalized block trailed the head by about 80 blocks. Its slot and
+    its header disagreed by one slot, twice: the expiry rule above takes the
+    header's timestamp.
+
+  A network test of the CoW plan's part 3, `@Ignore`d by default (CLAUDE.md,
+  *Conventions*), runs the same check again.
 
   No read pinned to a past block is relied on. If one is ever used, a proof
   not anchored at the block asked for is no answer (CLAUDE.md, *Trust*:
@@ -580,19 +619,26 @@ So the proof is the account's own verified logs.
 ### What CoW learns, and how the app talks to it
 
 - **What CoW learns** is ruled in CLAUDE.md, *Data sources* (owner ruling,
-  2026-10-22, decision 7). Over HTTPS to `api.cow.fi`, it learns:
-  - the account's address, the pair, the amounts and the device's IP
-    address;
-  - and nothing else. That includes every swap the user sends to CoW (each
-    quote and refresh of its review, and the order), and no other: with
-    Uniswap chosen, CoW is never contacted.
+  2026-10-22, decision 7). It learns only the swaps the user sends to CoW.
+  With Uniswap chosen, CoW is never contacted.
+  - For each such swap, over HTTPS to `api.cow.fi`: the account's address,
+    the pair, the amounts, the device's IP address and the timing.
+  - Each quote of a review with CoW chosen reaches CoW. So does a review the
+    user then gives up, or switches to Uniswap.
+  - For a signed order, also the order itself, its signature, `validTo` and
+    UID. CoW's order book is public, and anyone can list an owner's orders
+    in it.
   - The app data carries nothing beyond the required fields.
   - The IP address is not hidden for now. Tor, for one, is a question of its
     own.
-- **What of CoW's answers is shown**: its estimate, marked as not verified,
-  and the order's off-chain life (accepted, in the auction, expired in its
-  order book). A fill, and every amount it moved, comes from the chain alone
-  (*Proving an order's end*).
+- **What of CoW's answers is shown.**
+  - Of an order, only its off-chain life is shown (the ruling): accepted, in
+    the auction, expired in CoW's order book.
+  - A fill, and every amount it moved, comes from the account's verified
+    logs alone (*Proving an order's end*).
+  - CoW's estimate is shown on the review, marked as not verified, so the
+    user can compare the venues (*The user's choice of venue*; #144, point
+    3).
 - **No API key.** The base URL is pinned per `Network`.
 - **Ktor** is the HTTP client (CLAUDE.md, *Platform & language direction*).
   It is the app's first, so its engine on each platform is the CoW plan's
@@ -746,14 +792,15 @@ it by their author (owner's answer, 2026-10-22)
 
 0. **The design.** This page and CLAUDE.md take the direction of 2026-10-22
    (the user's choice of venue), CoW's *Data sources* ruling (decision 7) and
-   the proof of an order's end from the log index.
+   the proof of an order's end from the log index, shown on Sepolia by a
+   spike (*Proving an order's end*).
 1. **The order, in the domain.**
    - The GPv2 order, its EIP-712 digest and UID, and the pinned app-data
      document.
    - The Uniswap net, the floor and the signed minimum, as pure arithmetic.
    - The ports: CoW's API, the record of live orders, and the chosen venue;
-     and the finalized head's time, which the light client's status does
-     not carry yet.
+     and the finalized block with its header's timestamp, which the light
+     client's status does not carry yet.
 2. **The use cases.**
    - CoW's quote and the order's placement.
    - The proof of an order's end, from the account's log-index entry.
@@ -765,10 +812,10 @@ it by their author (owner's answer, 2026-10-22)
    - Ktor, the app's first HTTP client, and the three calls, decoded
      leniently, with no transparent retry of the order POST.
    - The record of live orders and the chosen venue, each a file of its own.
-   - The finalized head's time from the engine, and an order's `Trade` and
-     `OrderInvalidated` from the log index.
-   - Network tests, `@Ignore`d: a quote from `api.cow.fi/sepolia`, and the
-     engine's half of the proof (*Proving an order's end*).
+   - The finalized block and its header's timestamp from the engine, and an
+     order's `Trade` and `OrderInvalidated` from the log index.
+   - Network tests, `@Ignore`d: a quote from `api.cow.fi/sepolia`, and part
+     0's spike again (*Proving an order's end*).
 4. **Screens.**
    - The venue choice on Swap, compose (22), and CoW's review on 23.
    - The status (9) of a live order: "Cancel on chain", and once its end is
@@ -781,7 +828,8 @@ Safe's pre-signed CoW order, CoW's ETH flow, and Uniswap v4.
 ## Open questions
 
 The owner's decisions, each with a recommendation first. They are recorded
-on issue #69 (and CoW's on #144) until answered.
+on issue #69 (and CoW's on #144) until answered. This page cites each as
+"decision N", by its number here; #144 numbers its four in its own order.
 
 1. **A pair with no verified Uniswap quote.** *Answered (owner ruling,
    2026-10-22):* not offered on CoW, since no verified floor stands.
@@ -804,8 +852,9 @@ on issue #69 (and CoW's on #144) until answered.
    - CoW learns only the swaps the user sends to CoW;
    - the app data carries nothing beyond the required fields;
    - the IP address is not hidden for now;
-   - from CoW's answers, only its estimate (as not verified) and the
-     order's off-chain life are shown. A fill comes from the chain alone.
+   - from CoW's answers, only the order's off-chain life is shown, and fills
+     come from the chain. The review also shows CoW's estimate, marked as
+     not verified, for the comparison #144's point 3 describes.
 8. **Mainnet**, once allowed: a Uniswap swap in the public mempool, bounded
    by its minimum, with no private relay.
 9. **One plan or two.** *Answered (owner ruling, 2026-10-19):* two. Uniswap
