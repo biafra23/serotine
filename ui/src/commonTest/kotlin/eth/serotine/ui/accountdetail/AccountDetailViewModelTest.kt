@@ -166,6 +166,7 @@ class AccountDetailViewModelTest {
                 total = "Checking…",
                 totalNote = "Testnet prices · still checking",
                 assets = listOf(AssetRow("ETH", "Ether", "Syncing…", "eth", verified = false)),
+                pendingAssets = 3,
                 tokensNote = "Checking 3 tokens",
                 pricesNote = "Prices: Chainlink feeds, read through the light client, testnet prices",
             ),
@@ -372,6 +373,30 @@ class AccountDetailViewModelTest {
         )
         assertEquals("Checking…", ready.total)
         assertEquals("Checking 1 token · 1 token did not answer as a token", ready.tokensNote)
+        // The token last known to hold none is still checked, but holds no row's place meanwhile.
+        assertEquals(0, ready.pendingAssets)
+    }
+
+    @Test
+    fun eachTokenStillCheckedHoldsAPlaceUntilItsBalanceIsRead() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals(3, (viewModel.uiState.value as AccountDetailUiState.Ready).pendingAssets)
+
+        // One held: its row takes a place; one not held: it gives its place up.
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 9)
+        tokenBalances.of(daily.address, link.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 9)
+        runCurrent()
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf("ETH", "USDC"), ready.assets.map { it.symbol })
+        assertEquals(1, ready.pendingAssets)
+
+        tokenBalances.of(daily.address, uni.address).value = TokenBalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
+        runCurrent()
+        assertEquals(0, (viewModel.uiState.value as AccountDetailUiState.Ready).pendingAssets)
     }
 
     @Test
