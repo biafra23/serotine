@@ -246,7 +246,7 @@ class QuoteTransfer(
         val held = token?.let { sending ->
             val orders = (cowOrders.observe().first() as? CowOrderList.Loaded)?.orders.orEmpty()
             val finalized = (lightClient.observeStatus().first() as? LightClientStatus.Synced)?.finalized
-            orders.holding(from, sending.address, finalized, cowChain)
+            orders.holding(network, from, sending.address, finalized, cowChain)
                 ?: return@cancellingReads TransferQuoting.InsufficientToken
         }
         // What the token's earlier transfers move is not this one's to move: kept, the later one

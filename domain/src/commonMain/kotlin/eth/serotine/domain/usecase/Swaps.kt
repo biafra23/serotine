@@ -226,7 +226,7 @@ class QuoteSwap(
             null -> UInt256.ZERO
             is CowOrderList.Loaded -> soldToken?.let {
                 val finalized = (head.await() as? LightClientStatus.Synced)?.finalized
-                read.orders.holding(from, it.address, finalized, cowChain)
+                read.orders.holding(network, from, it.address, finalized, cowChain)
             } ?: return@cancellingReads SwapQuoting.InsufficientToken
             CowOrderList.Unreadable -> return@cancellingReads SwapQuoting.CowOrdersUnreadable
         }

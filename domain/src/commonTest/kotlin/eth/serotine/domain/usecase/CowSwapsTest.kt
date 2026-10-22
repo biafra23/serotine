@@ -378,6 +378,14 @@ class CowSwapsTest {
         )
     }
 
+    /** [holding] on Sepolia, the one network there is. */
+    private suspend fun List<CowOrderRecord>.holding(
+        account: Address,
+        token: Address,
+        finalized: FinalizedBlock?,
+        chain: FakeCowChain,
+    ) = holding(Network.SEPOLIA, account, token, finalized, chain)
+
     @Test
     fun whatLiveOrdersHoldBackIsTheirSellAmountsUntilTheyCanTakeNoMore() = runTest {
         val live = liveOrder()
