@@ -85,11 +85,11 @@ import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** Test tag of the transaction's hash, for UI tests. */
@@ -117,7 +117,8 @@ const val SAFE_TX_SIGN_TAG = "safe-tx-sign"
 @Composable
 fun SafeTxRoute(
     viewModel: SafeTxViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     onProposeAgain: () -> Unit,
@@ -125,7 +126,7 @@ fun SafeTxRoute(
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? SafeTxUiState.Sent)?.hash

@@ -29,7 +29,8 @@ class TokensViewModel(
     private val setTokenHidden: SetTokenHidden,
     private val removeToken: RemoveToken,
     /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
-    private val network: Network,
+    /** The network whose tokens are listed: the light-client strip is its. */
+    val network: Network,
 ) : ViewModel() {
 
     private val lastChange = MutableStateFlow<String?>(null)

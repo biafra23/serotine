@@ -50,9 +50,9 @@ import eth.serotine.ui.components.Spender
 import eth.serotine.ui.components.SwapFormFields
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of the Review button, for UI tests. */
 const val SAFE_SWAP_REVIEW_TAG = "safe-swap-review"
@@ -78,14 +78,15 @@ const val SAFE_SWAP_SIGN_TAG = "safe-swap-sign"
 @Composable
 fun SafeSwapRoute(
     viewModel: SafeSwapViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onProposed: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val proposed = (state as? SafeSwapUiState.Proposed)?.hash

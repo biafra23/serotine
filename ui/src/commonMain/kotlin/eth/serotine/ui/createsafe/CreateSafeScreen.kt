@@ -121,7 +121,8 @@ fun CreateSafeRoute(
 ) {
     // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
+    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? CreateSafeUiState.Sent)?.hash

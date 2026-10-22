@@ -43,7 +43,7 @@ import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.shortAddress
-import eth.serotine.ui.lightclient.LightClientViewModel
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of each step, for UI tests. */
 const val TRANSFER_STEP_TAG = "transfer-step"
@@ -64,12 +64,13 @@ const val TRANSFER_SAFE_TAG = "transfer-safe"
 @Composable
 fun TransferStatusRoute(
     viewModel: TransferStatusViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     TransferStatusScreen(state, strip, onDone, onRetry = viewModel::retry, modifier = modifier)
 }
 

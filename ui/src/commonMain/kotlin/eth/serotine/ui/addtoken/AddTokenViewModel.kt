@@ -68,6 +68,10 @@ class AddTokenViewModel(
         picked ?: on?.firstOrNull()
     }.stateIn(viewModelScope, SharingStarted.Eagerly, network)
 
+    /** The network whose light client the strip shows: the one chosen. */
+    val stripNetwork: StateFlow<Network> = chosen.map { it ?: Network.entries.first() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, network ?: Network.entries.first())
+
     /** The hold on [chosen], moved with it, released when the screen is gone ([onCleared]). */
     private var hold: NetworkHold? = null
 

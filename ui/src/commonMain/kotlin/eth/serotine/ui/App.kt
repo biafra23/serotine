@@ -259,7 +259,7 @@ private fun Destinations(
                 val chainId = account.network.chainId
                 AccountDetailRoute(
                     viewModel = viewModel { graph.accountDetailViewModel(account) },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.leave(Destination.ACCOUNT) },
                     onGone = { navController.leave(Destination.ACCOUNT) },
                     onSend = { contract -> navController.send(account, contract) },
@@ -292,7 +292,7 @@ private fun Destinations(
                 if (account != null && hash != null && (log == null || logIndex != null)) {
                     ActivityDetailRoute(
                         viewModel = viewModel { graph.activityDetailViewModel(account, ActivityKey(hash, logIndex)) },
-                        lightClient = lightClient,
+                        lightClient = lightClient.item(account.network),
                         onBack = { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) },
                         onStatus = { sent -> navController.openTransfer(account.network, sent) },
                         onAddToken = { contract -> navController.addToken(account.network, contract) },
@@ -429,7 +429,7 @@ private fun Destinations(
             if (account != null && (asked == null || asset != null)) {
                 SendRoute(
                     viewModel = viewModel { graph.sendViewModel(account, asset) },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SEND_ROUTE, inclusive = true) },
                     // Back from the status goes where Send was opened from, not to a signed review.
                     onSent = { hash ->
@@ -463,7 +463,7 @@ private fun Destinations(
             if (account != null && (asked == null || asset != null)) {
                 SwapRoute(
                     viewModel = viewModel { graph.swapViewModel(account, asset) },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SWAP_ROUTE, inclusive = true) },
                     // Back from the status goes where Swap was opened from, not to a signed review.
                     onSent = { hash ->
@@ -498,7 +498,7 @@ private fun Destinations(
             if (account != null && (asked == null || asset != null)) {
                 SafeProposeRoute(
                     viewModel = viewModel { graph.safeProposeViewModel(account, asset) },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_PROPOSE_ROUTE, inclusive = true) },
                     // Signed and queued: the transaction's screen, and back from it to where Send was opened.
                     onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_PROPOSE_ROUTE) },
@@ -530,7 +530,7 @@ private fun Destinations(
             if (account != null && (asked == null || asset != null) && (replaced == null || replacing != null)) {
                 SafeSwapRoute(
                     viewModel = viewModel { graph.safeSwapViewModel(account, asset, replacing) },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) },
                     // Signed and queued: the swap's screen, and back from it to where Swap was opened.
                     onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_SWAP_ROUTE) },
@@ -544,7 +544,7 @@ private fun Destinations(
             if (account != null) {
                 SafeImportRoute(
                     viewModel = viewModel { graph.safeImportViewModel(account) },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_IMPORT_ROUTE, inclusive = true) },
                     // Checked and queued: the transaction's screen, which says where it went.
                     onImported = { hash ->
@@ -566,7 +566,7 @@ private fun Destinations(
                         val imported = entry.savedStateHandle.remove<Boolean>(IMPORTED) == true
                         graph.safeTxViewModel(account, hash, imported)
                     },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) },
                     // Back from the status goes where the transaction was opened from, not to a signed review.
                     onSent = { sent ->
@@ -587,7 +587,7 @@ private fun Destinations(
             if (network != null && hash != null) {
                 TransferStatusRoute(
                     viewModel = viewModel { graph.transferStatusViewModel(network, hash) },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(network),
                     onDone = { navController.popBackStack(TRANSFER_ROUTE, inclusive = true) },
                 )
             } else {

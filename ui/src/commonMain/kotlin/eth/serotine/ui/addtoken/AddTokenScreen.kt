@@ -56,7 +56,8 @@ fun AddTokenRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
+    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     val added by rememberUpdatedState(onAdded)
     LaunchedEffect(state.done) {
         if (state.done) added()

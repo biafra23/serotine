@@ -52,9 +52,9 @@ import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.TransferFormFields
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.protectFromScreenCapture
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of the reviewed amount, for UI tests. */
 const val SEND_AMOUNT_REVIEWED_TAG = "send-amount-reviewed"
@@ -80,7 +80,8 @@ const val SEND_EARLIER_TAG = "send-earlier"
 @Composable
 fun SendRoute(
     viewModel: SendViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
@@ -88,7 +89,7 @@ fun SendRoute(
 ) {
     // Main.immediate: as on the seed screens, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? SendUiState.Sent)?.hash

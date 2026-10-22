@@ -78,6 +78,10 @@ class WatchViewModel(
     private val on: StateFlow<List<Network>?> =
         observeEnabledNetworks().stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** The network whose light client the strip shows: the first that is on (the one a name is resolved on). */
+    val stripNetwork: StateFlow<Network> = on.map { it?.firstOrNull() ?: Network.entries.first() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, Network.entries.first())
+
     /** A hold on each network that is on, released when it goes off or the screen is gone ([onCleared]). */
     private val holds = mutableMapOf<Network, NetworkHold>()
 
