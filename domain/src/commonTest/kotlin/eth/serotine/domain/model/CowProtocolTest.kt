@@ -1,0 +1,201 @@
+package eth.serotine.domain.model
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+
+/**
+ * GPv2's encoding against independent vectors: the constants of `GPv2Order.sol`
+ * (cowprotocol/contracts), CoW's own documented hashes, and a real order settled on Sepolia, whose
+ * UID (from CoW's API) begins with its digest, recomputed with Foundry's `cast` as well.
+ */
+class CowProtocolTest {
+
+    private val settlement = Address.of("0x9008D19f58AAbD9eD0D60971565AA8510560ab41")
+    private val weth = Address.of("0xfff9976782d46cc05630d1f6ebab18b2324d6b14")
+    private val cow = Address.of("0xbe72e441bf55620febc26715db68d3494213d8cb")
+    private val owner = Address.of("0x9fa3c00a92ec5f96b1ad2527ab41b3932efeda58")
+
+    // The real order: 0.01 WETH for at least 6.16 COW, partially fillable, CoW Swap's app data.
+    private val realUid = CowOrderUid.of(
+        "0xacb9d41182bc7e7aba0f333a517d842ec8298235fdbcb9290d519a2c63457a4a" +
+            "9fa3c00a92ec5f96b1ad2527ab41b3932efeda58" + "6ad9e7f4",
+    )
+
+    @Test
+    fun theTypeHashesAreGPv2OrdersConstants() {
+        assertEquals(
+            "d5a25ba2e97094ad7d83dc28a6572da797d6b3e7fc6663bd93efb789fc17e489",
+            GPv2Signing.ORDER_TYPEHASH.toHex(),
+        )
+        assertEquals("f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775", GPv2Signing.KIND_SELL.toHex())
+        assertEquals(
+            "5a28e9363bb942b639270062aa6bb295f434bcdfc42c97267bf003f272060dc9",
+            GPv2Signing.BALANCE_ERC20.toHex(),
+        )
+    }
+
+    @Test
+    fun theDomainSeparatorIsTheSettlementsOwn() {
+        // Mainnet's, as CoW publishes it; Sepolia's, recomputed with cast.
+        assertEquals(
+            "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943",
+            GPv2Signing.domainSeparator(1, settlement).toHex(),
+        )
+        assertEquals(
+            "daee378bd0eb30ddf479272accf91761e697bc00e067a268f95f1d2732ed230b",
+            GPv2Signing.domainSeparator(Network.SEPOLIA.chainId, settlement).toHex(),
+        )
+    }
+
+    @Test
+    fun aRealSepoliaOrdersDigestIsTheStartOfItsUid() {
+        val struct = GPv2Signing.structHash(
+            sellToken = weth,
+            buyToken = cow,
+            receiver = owner,
+            sellAmount = UInt256.of("10000000000000000"),
+            buyAmount = UInt256.of("6160502866468600017"),
+            validTo = 1_792_665_588,
+            appData = "0x1cdb05cece6bda2b996c03c7dd6fefee626f2d19861181f0d38d57c35794a6e6",
+            feeAmount = UInt256.ZERO,
+            partiallyFillable = true,
+        )
+        val digest = GPv2Signing.digest(GPv2Signing.domainSeparator(Network.SEPOLIA.chainId, settlement), struct)
+        assertEquals(realUid.digest, digest)
+        assertEquals(realUid, CowOrderUid.of(digest, owner, 1_792_665_588))
+    }
+
+    @Test
+    fun anOrderSerotineSignsIsFillOrKillWithNoFeeAndTheEmptyAppData() {
+        val order = CowOrder(
+            sellToken = weth,
+            buyToken = cow,
+            receiver = owner,
+            sellAmount = UInt256.of("10000000000000000"),
+            buyAmount = UInt256.of("6160502866468600017"),
+            validTo = 1_792_665_588,
+            appData = CowAppData.HASH,
+        )
+        // The same order fill-or-kill, with the app data "{}": its digest, recomputed with cast.
+        val digest = Digest.of("a447c0a84fdc7fc7299b995ae00ecd3d644a00e2d0f3aca4440acef12c674266")
+        assertEquals(digest, order.digest(Network.SEPOLIA.chainId, settlement))
+        assertEquals(CowOrderUid.of(digest, owner, 1_792_665_588), order.uid(Network.SEPOLIA.chainId, settlement, owner))
+    }
+
+    @Test
+    fun theAppDataIsTheEmptyDocumentWithCowsDocumentedHash() {
+        assertEquals("{}", CowAppData.DOCUMENT)
+        assertEquals("0xb48d38f93eaa084033fc5970bf96e559c33c4cdc07d889ab00b4d63f9590739d", CowAppData.HASH)
+    }
+
+    @Test
+    fun aUidPacksTheDigestTheOwnerAndValidTo() {
+        assertEquals(owner, realUid.owner)
+        assertEquals(1_792_665_588L, realUid.validTo)
+        assertEquals(56, realUid.bytes().size)
+        assertEquals(realUid, CowOrderUid.parse(realUid.hex.uppercase().replace("0X", "0x")))
+        assertNull(CowOrderUid.parse("0x1234"))
+        assertNull(CowOrderUid.parse(realUid.hex + "00"))
+        assertFailsWith<IllegalArgumentException> { CowOrderUid.of(realUid.digest, owner, CowOrder.UINT32_MAX + 1) }
+    }
+
+    @Test
+    fun anOrderIsRefusedWhenItCannotBeSigned() {
+        fun order(sell: Address = weth, buy: Address = cow, amount: Long = 1, validTo: Long = 1, appData: String = CowAppData.HASH) =
+            CowOrder(sell, buy, owner, UInt256.of(amount), UInt256.ONE, validTo, appData)
+        order()
+        order(buy = CowOrder.NATIVE_BUY_TOKEN)
+        assertFailsWith<IllegalArgumentException>("native ether sold") { order(sell = CowOrder.NATIVE_BUY_TOKEN) }
+        assertFailsWith<IllegalArgumentException>("nothing sold") { order(amount = 0) }
+        assertFailsWith<IllegalArgumentException>("a token for itself") { order(buy = weth) }
+        assertFailsWith<IllegalArgumentException>("past a uint32") { order(validTo = CowOrder.UINT32_MAX + 1) }
+        assertFailsWith<IllegalArgumentException>("no hash") { order(appData = "{}") }
+    }
+
+    @Test
+    fun theSettlementsCallsAreAsCastEncodesThem() {
+        val tail = "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000000000000000000038" +
+            realUid.hex.removePrefix("0x") + "0000000000000000"
+        assertEquals("15337bc0$tail", GPv2Settlement.invalidateOrder(realUid).toHex())
+        assertEquals("2479fb6e$tail", GPv2Settlement.filledAmount(realUid).toHex())
+        assertEquals("f698da25", GPv2Settlement.domainSeparator().toHex())
+        assertEquals(UInt256.of(7), GPv2Settlement.filledAmountOf("0".repeat(63) + "7"))
+        assertNull(GPv2Settlement.filledAmountOf("07"))
+    }
+
+    // A real Trade log, served by the engine's log index on Sepolia (block 11,968,857, log 69).
+    private val tradeLog = Log(
+        address = settlement,
+        topics = listOf(GPv2Settlement.TRADE_TOPIC, "0x000000000000000000000000" + owner.hex.removePrefix("0x")),
+        data = "0x" +
+            "000000000000000000000000fff9976782d46cc05630d1f6ebab18b2324d6b14" +
+            "000000000000000000000000be72e441bf55620febc26715db68d3494213d8cb" +
+            "0000000000000000000000000000000000000000000000000de0b6b3a7640000" +
+            "000000000000000000000000000000000000000000000021f60dc5c8d7c61502" +
+            "0000000000000000000000000000000000000000000000000000000000000000" +
+            "00000000000000000000000000000000000000000000000000000000000000c0" +
+            "0000000000000000000000000000000000000000000000000000000000000038" +
+            "6fe3ce901da392fd0649b8167ad002f4ed0d6d7d509b1e84838d91dd9f3a6ab6" +
+            "9fa3c00a92ec5f96b1ad2527ab41b3932efeda586ad9e7d50000000000000000",
+    )
+
+    @Test
+    fun aRealTradeLogDecodes() {
+        val trade = tradeLog.trade(settlement)
+        assertEquals(
+            CowTrade(
+                owner = owner,
+                sellToken = weth,
+                buyToken = cow,
+                sellAmount = UInt256.of("1000000000000000000"),
+                buyAmount = UInt256.of("626472599206846928130"),
+                feeAmount = UInt256.ZERO,
+                uid = CowOrderUid.of(
+                    "0x6fe3ce901da392fd0649b8167ad002f4ed0d6d7d509b1e84838d91dd9f3a6ab6" +
+                        "9fa3c00a92ec5f96b1ad2527ab41b3932efeda58" + "6ad9e7d5",
+                ),
+            ),
+            trade,
+        )
+    }
+
+    @Test
+    fun aTradeLogOfAnotherShapeOrContractIsNone() {
+        val other = Address.of("0x0000000000000000000000000000000000000001")
+        assertNull(tradeLog.trade(other), "another contract's log")
+        assertNull(tradeLog.copy(address = other).trade(settlement), "emitted elsewhere")
+        assertNull(
+            tradeLog.copy(topics = listOf(GPv2Settlement.ORDER_INVALIDATED_TOPIC, tradeLog.topics[1])).trade(settlement),
+            "another event",
+        )
+        assertNull(tradeLog.copy(data = tradeLog.data.dropLast(2)).trade(settlement), "cut short")
+        assertNull(tradeLog.copy(data = tradeLog.data.dropLast(2) + "01").trade(settlement), "padding set")
+        assertNull(tradeLog.copy(data = tradeLog.data + "00").trade(settlement), "longer")
+        assertNull(tradeLog.copy(topics = listOf(GPv2Settlement.TRADE_TOPIC)).trade(settlement), "no owner")
+    }
+
+    @Test
+    fun anInvalidationLogDecodesToItsOrder() {
+        val log = Log(
+            address = settlement,
+            topics = listOf(GPv2Settlement.ORDER_INVALIDATED_TOPIC, "0x000000000000000000000000" + owner.hex.removePrefix("0x")),
+            data = "0x" +
+                "0000000000000000000000000000000000000000000000000000000000000020" +
+                "0000000000000000000000000000000000000000000000000000000000000038" +
+                realUid.hex.removePrefix("0x") + "0000000000000000",
+        )
+        assertEquals(realUid, log.invalidation(settlement))
+        assertNull(log.trade(settlement), "an invalidation is no trade")
+        val stranger = "0x000000000000000000000000" + "11".repeat(20)
+        assertNull(log.copy(topics = listOf(log.topics[0], stranger)).invalidation(settlement), "another owner's UID")
+    }
+
+    /** A log as a receipt carries it: who emitted it, its topics, its data. */
+    private data class Log(val address: Address, val topics: List<String>, val data: String) {
+        fun trade(settlement: Address) = GPv2Settlement.tradeOf(settlement, address, topics, data)
+        fun invalidation(settlement: Address) = GPv2Settlement.invalidationOf(settlement, address, topics, data)
+    }
+}
