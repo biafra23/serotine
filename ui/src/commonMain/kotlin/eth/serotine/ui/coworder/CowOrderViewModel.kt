@@ -52,18 +52,21 @@ import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -121,12 +124,13 @@ class CowOrderViewModel(
     private sealed interface Step {
         /**
          * The order; [quoting] while its cancellation is quoted, [error] why the last one was not,
-         * and [cancellation] the hash of one sent and not mined yet.
+         * and [earlier] the transaction that holds it back: its cancellation sent and not mined
+         * yet, or one that may still be on its way.
          */
         data class Viewing(
             val quoting: Boolean = false,
             val error: String? = null,
-            val cancellation: String? = null,
+            val earlier: EarlierTransaction? = null,
         ) : Step
 
         /** [quote] under review, made at [quotedAt]; [hidden] once the screen stopped being shown since. */
@@ -146,8 +150,16 @@ class CowOrderViewModel(
         data class Sent(val hash: String) : Step
     }
 
-    /** The order, the account's name for its account, and CoW's word while it is live. */
-    private data class Model(val reading: CowOrderReading, val label: String?, val life: CowOrderLife?)
+    /**
+     * The order, the account's name for its account, CoW's word while it is live, and whether its
+     * validity has passed by [clock] (which changes at that moment, not only with the record).
+     */
+    private data class Model(
+        val reading: CowOrderReading,
+        val label: String?,
+        val life: CowOrderLife?,
+        val validityPassed: Boolean,
+    )
 
     private val step = MutableStateFlow<Step>(Step.Viewing())
 
@@ -156,6 +168,9 @@ class CowOrderViewModel(
 
     /** Whether the screen is shown now ([onShown], [onHidden]). */
     private var shown = false
+
+    /** Whether the screen was hidden while the review's first quote was being made. */
+    private var hiddenWhileQuoting = false
 
     private val order = observeCowOrder(uid)
 
@@ -166,10 +181,13 @@ class CowOrderViewModel(
         order.map { (it as? CowOrderReading.Found)?.record?.live == true }
             .distinctUntilChanged()
             .flatMapLatest { live -> if (live) observeCowOrderLife(uid) else flowOf(null) },
-    ) { reading, accounts, life ->
+        order.map { (it as? CowOrderReading.Found)?.record?.order?.validTo }
+            .distinctUntilChanged()
+            .flatMapLatest { validTo -> validityPassed(validTo) },
+    ) { reading, accounts, life, passed ->
         val record = (reading as? CowOrderReading.Found)?.record
         val label = (accounts as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == record?.account }?.label
-        Model(reading, label, life)
+        Model(reading, label, life, passed)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -182,6 +200,17 @@ class CowOrderViewModel(
         CowOrderUiState.Loading(network.displayName),
     )
 
+    /** Whether [validTo] (unix seconds) has passed by [clock]: now, and again the moment it does. */
+    private fun validityPassed(validTo: Long?) = flow {
+        if (validTo == null) return@flow emit(false)
+        val left = validTo - clock()
+        emit(left < 0)
+        if (left >= 0) {
+            delay((left + 1).seconds)
+            emit(true)
+        }
+    }
+
     /** Quotes the order's cancellation on chain and shows it for review. */
     fun cancel() {
         val current = step.value as? Step.Viewing ?: return
@@ -189,9 +218,18 @@ class CowOrderViewModel(
         val record = (model.value?.reading as? CowOrderReading.Found)?.record ?: return
         if (!record.live) return
         step.value = current.copy(quoting = true, error = null)
+        hiddenWhileQuoting = false
         job = viewModelScope.launch {
             val next = quoted(record, unlock = null)
-            step.update { latest -> if (latest is Step.Viewing && latest.quoting) next else latest }
+            step.update { latest ->
+                when {
+                    latest !is Step.Viewing || !latest.quoting -> latest
+                    // Made while hidden: it is from before the screen came back, so it is made again.
+                    next is Step.Reviewing -> next.copy(hidden = hiddenWhileQuoting)
+                    else -> next
+                }
+            }
+            requoteIfHidden()
         }
     }
 
@@ -272,6 +310,7 @@ class CowOrderViewModel(
     /** The screen stopped being shown: the password goes, and the review is quoted again when it is shown. */
     fun onHidden() {
         shown = false
+        if ((step.value as? Step.Viewing)?.quoting == true) hiddenWhileQuoting = true
         step.update { current ->
             if (current is Step.Reviewing) {
                 current.copy(unlock = current.unlock.copy(password = WalletPassword.EMPTY), hidden = true)
@@ -354,7 +393,17 @@ class CowOrderViewModel(
         return when (quoting) {
             is CowCancellationQuoting.Quoted ->
                 Step.Reviewing(quoting.quote, readFrom, unlock ?: UnlockStep(biometrics = biometricsOffered()))
-            is CowCancellationQuoting.CancellationPending -> Step.Viewing(cancellation = quoting.hash)
+            is CowCancellationQuoting.CancellationPending -> Step.Viewing(
+                earlier = EarlierTransaction(
+                    quoting.hash,
+                    "Its cancellation is on its way and not in a block yet.",
+                    "Open the cancellation",
+                ),
+            )
+            is CowCancellationQuoting.EarlierMaybeSent -> Step.Viewing(
+                error = refusal(quoting),
+                earlier = EarlierTransaction(quoting.hash, note = null, label = "Open the earlier transaction"),
+            )
             else -> Step.Viewing(error = refusal(quoting))
         }
     }
@@ -387,29 +436,29 @@ class CowOrderViewModel(
 
     private fun render(model: Model?, step: Step): CowOrderUiState {
         val network = network.displayName
-        if (step is Step.Sent) return CowOrderUiState.CancelSent(network, step.hash)
+        val viewing = when (step) {
+            is Step.Sent -> return CowOrderUiState.CancelSent(network, step.hash)
+            // The review is its own quote's, whatever the record reads now: the password typed, or a
+            // signature not sent, stays where it can be used.
+            is Step.Reviewing -> return review(step, model?.label)
+            is Step.Viewing -> step
+        }
         model ?: return CowOrderUiState.Loading(network)
         val record = when (val reading = model.reading) {
             is CowOrderReading.Found -> reading.record
             CowOrderReading.NotHere -> return CowOrderUiState.Missing(network, NOT_HERE)
             CowOrderReading.Unreadable -> return CowOrderUiState.Missing(network, UNREADABLE)
         }
-        val from = SendFrom(model.label ?: "This account", Eip55.format(record.account))
-        val settlement = SpenderItem(SETTLEMENT_NAME, Eip55.format(record.settlement))
-        return when (step) {
-            is Step.Reviewing -> review(step, from, settlement)
-            is Step.Viewing -> shown(record, model.life, step, from, settlement)
-            is Step.Sent -> CowOrderUiState.CancelSent(network, step.hash)
-        }
+        return shown(record, model, viewing)
     }
 
-    private fun shown(
-        record: CowOrderRecord,
-        life: CowOrderLife?,
-        step: Step.Viewing,
-        from: SendFrom,
-        settlement: SpenderItem,
-    ): CowOrderUiState.Shown {
+    private fun fromOf(record: CowOrderRecord, label: String?) =
+        SendFrom(label ?: "This account", Eip55.format(record.account))
+
+    private fun settlementOf(record: CowOrderRecord) = SpenderItem(SETTLEMENT_NAME, Eip55.format(record.settlement))
+
+    private fun shown(record: CowOrderRecord, model: Model, step: Step.Viewing): CowOrderUiState.Shown {
+        val life = model.life
         val sold = (record.sell as TransferAsset.Erc20Token).token
         val bought = record.buy
         val boughtSymbol = (bought as? TransferAsset.Erc20Token)?.token?.symbol ?: network.nativeSymbol
@@ -418,7 +467,7 @@ class CowOrderViewModel(
         val buy = { units: UInt256 -> exactAmount(units, boughtDecimals, boughtSymbol) }
         val until = formatTime(record.order.validTo)
         val (state, end) = when (val proven = record.end) {
-            null -> OrderState.LIVE to if (clock() <= record.order.validTo) {
+            null -> OrderState.LIVE to if (!model.validityPassed) {
                 "Not proven yet: it may fill until $until. Its end is read from this account's verified logs, " +
                     "never from CoW."
             } else {
@@ -440,7 +489,7 @@ class CowOrderViewModel(
         val filled = record.end as? CowOrderEnd.Filled
         return CowOrderUiState.Shown(
             network = network.displayName,
-            from = from,
+            from = fromOf(record, model.label),
             sold = exactAmount(record.order.sellAmount, sold.decimals, sold.symbol),
             soldSymbol = sold.symbol,
             soldIcon = sold.icon,
@@ -458,10 +507,10 @@ class CowOrderViewModel(
             cow = life?.let(::lifeText),
             placement = placementText(record.placement),
             validUntil = "Valid until $until: the verified head's time when it was signed, and 5 minutes.",
-            settlement = settlement,
+            settlement = settlementOf(record),
             uid = record.uid.hex,
-            canCancel = record.live && clock() <= record.order.validTo,
-            cancellation = step.cancellation,
+            canCancel = record.live && !model.validityPassed,
+            earlier = step.earlier,
             uniswapAgain = if (state == OrderState.NOT_FILLED || state == OrderState.CANCELLED) {
                 SwapAgain(
                     from = record.account.hex,
@@ -477,15 +526,16 @@ class CowOrderViewModel(
         )
     }
 
-    private fun review(step: Step.Reviewing, from: SendFrom, settlement: SpenderItem): CowOrderUiState.CancelReview {
+    private fun review(step: Step.Reviewing, label: String?): CowOrderUiState.CancelReview {
         val call = step.quote.call
+        val record = step.quote.order
         val native = network.nativeSymbol
         val ran = call.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head"
         return CowOrderUiState.CancelReview(
             network = network.displayName,
-            from = from,
-            uid = step.quote.order.uid.hex,
-            settlement = settlement,
+            from = fromOf(record, label),
+            uid = record.uid.hex,
+            settlement = settlementOf(record),
             maxFee = exactAmount(call.maxFee, NATIVE_DECIMALS, native),
             feeDetail = feeDetail(call.level, call.transaction, call.feeBlock),
             balance = BalanceChange(
@@ -550,7 +600,7 @@ class CowOrderViewModel(
         const val NATIVE_ICON = "eth"
         const val SETTLEMENT_NAME = "CoW's settlement contract"
         const val NOT_HERE = "This order is not recorded on this device: it was signed elsewhere, or its record " +
-            "was dropped a week after its end was proven."
+            "was dropped once its end was proven and a week had passed since it was signed."
         const val UNREADABLE = "The record of this device's CoW orders cannot be read right now."
         const val CANCEL_FAILED = "Serotine could not finish this cancellation. Try again."
     }

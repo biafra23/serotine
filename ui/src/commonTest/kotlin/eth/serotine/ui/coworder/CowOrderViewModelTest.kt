@@ -13,6 +13,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.CowOrderEnd
 import eth.serotine.domain.repository.CowOrderLife
 import eth.serotine.domain.repository.CowOrderRecord
@@ -40,6 +41,8 @@ import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemorySentTransfers
+import kotlin.test.assertFalse
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -47,6 +50,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -214,6 +218,56 @@ class CowOrderViewModelTest {
         val viewModel = viewModel()
         assertTrue(!viewModel.shown.canCancel)
         assertTrue(viewModel.shown.end.startsWith("Its validity passed at at $validTo."), viewModel.shown.end)
+    }
+
+    @Test
+    fun theScreenSaysWhenTheOrdersValidityPassesWhileItIsShown() = runTest {
+        val viewModel = viewModel()
+        assertTrue(viewModel.shown.canCancel)
+
+        now = validTo + 1
+        advanceTimeBy(201.seconds)
+        runCurrent()
+
+        assertFalse(viewModel.shown.canCancel)
+        assertTrue(viewModel.shown.end.startsWith("Its validity passed"), viewModel.shown.end)
+    }
+
+    @Test
+    fun aCancellationMaybeSentIsOfferedFromTheOrderNeverSignedAgain() = runTest {
+        broadcaster.answers += Broadcast.Unavailable("no peer")
+        val first = viewModel()
+        first.cancel()
+        runCurrent()
+        first.onPasswordChange("made-up test password")
+        first.sign()
+        runCurrent()
+        val maybe = sent.transfers.value.single()
+        assertTrue(maybe.maybeSent)
+
+        // The screen left and opened again: the bytes are in the record, and none is signed anew.
+        val again = viewModel()
+        again.cancel()
+        runCurrent()
+
+        val earlier = EarlierTransaction(maybe.hash, note = null, label = "Open the earlier transaction")
+        assertEquals(earlier, again.shown.earlier)
+        assertTrue(again.shown.error!!.startsWith("An earlier transaction from this account may still be on its way"))
+        assertEquals(1, signer.asked.size)
+    }
+
+    @Test
+    fun aReviewStaysWithItsPasswordWhenTheRecordCannotSayTheOrderMeanwhile() = runTest {
+        val viewModel = viewModel()
+        viewModel.cancel()
+        runCurrent()
+        viewModel.onPasswordChange("made-up test password")
+
+        orders.orders.value = emptyList()
+        runCurrent()
+
+        val review = assertIs<CowOrderUiState.CancelReview>(viewModel.uiState.value)
+        assertEquals("made-up test password", review.unlock.password.text)
     }
 
     @Test

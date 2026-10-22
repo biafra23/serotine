@@ -34,7 +34,8 @@ sealed interface CowOrderUiState {
      * - [cow]: CoW's word on its off-chain life, labelled as CoW's and never a fill; null when not
      *   asked (an order whose end is proven); [placement] how CoW answered when it was sent.
      * - [validUntil], the [settlement] contract that settles it, and its [uid].
-     * - [canCancel]: "Cancel on chain" applies; [cancellation] a cancellation sent, with its status;
+     * - [canCancel]: "Cancel on chain" applies; [earlier] a transaction that holds it back (its
+     *   cancellation sent, or one that may still be on its way), with its status;
      *   [uniswapAgain]: proven not to have swapped, the same swap on Uniswap, which Swap opens with.
      * - [error]: why the last cancellation could not be quoted; [quoting] while one is.
      */
@@ -56,7 +57,7 @@ sealed interface CowOrderUiState {
         val settlement: SpenderItem,
         val uid: String,
         val canCancel: Boolean = false,
-        val cancellation: String? = null,
+        val earlier: EarlierTransaction? = null,
         val uniswapAgain: SwapAgain? = null,
         val error: String? = null,
         val quoting: Boolean = false,
@@ -96,6 +97,12 @@ sealed interface CowOrderUiState {
  * token's units. Addresses in lower case: route identifiers, never display text.
  */
 data class SwapAgain(val from: String, val sell: String, val buy: String?, val amount: String)
+
+/**
+ * A transaction of the account's whose status the order's screen offers: [hash], what to say of it
+ * ([note], when anything beyond the error above), and what to open it as ([label]).
+ */
+data class EarlierTransaction(val hash: String, val note: String?, val label: String)
 
 /** Where an order stands, as the chain proves it, as its status marks it. */
 enum class OrderState {

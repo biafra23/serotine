@@ -108,7 +108,19 @@ private fun CowOrderPastValidityPreview() = CowOrderPreview(
 
 @Preview
 @Composable
-private fun CowOrderCancellationOnItsWayPreview() = CowOrderPreview(live.copy(cancellation = "0x" + "5e".repeat(32)))
+private fun CowOrderCancellationOnItsWayPreview() = CowOrderPreview(
+    live.copy(
+        earlier = EarlierTransaction(
+            "0x" + "5e".repeat(32),
+            "Its cancellation is on its way and not in a block yet.",
+            "Open the cancellation",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun CowOrderQuotingCancellationPreview() = CowOrderPreview(live.copy(quoting = true))
 
 @Preview
 @Composable
@@ -137,6 +149,19 @@ private fun CowOrderNotFilledPreview() = CowOrderPreview(
         state = OrderState.NOT_FILLED,
         end = "Not filled: no trade for it in this account's verified logs up to block 8,412,401, a finalized " +
             "block past its validity.",
+        held = null,
+        cow = null,
+        canCancel = false,
+        uniswapAgain = SwapAgain(DAILY.lowercase(), "0x" + "1c".repeat(20), buy = null, amount = "40"),
+    ),
+)
+
+@Preview
+@Composable
+private fun CowOrderCancelledPreview() = CowOrderPreview(
+    live.copy(
+        state = OrderState.CANCELLED,
+        end = "Cancelled on chain in block 8,412,330: it never filled, as this account's verified logs prove.",
         held = null,
         cow = null,
         canCancel = false,
@@ -177,6 +202,10 @@ private fun CowOrderCancelNotSentPreview() = CowOrderPreview(
 
 @Preview
 @Composable
+private fun CowOrderCancelSentPreview() = CowOrderPreview(CowOrderUiState.CancelSent("Sepolia", "0x" + "5e".repeat(32)))
+
+@Preview
+@Composable
 private fun CowOrderMissingPreview() = CowOrderPreview(
     CowOrderUiState.Missing(
         "Sepolia",
@@ -195,12 +224,15 @@ internal val cowOrderScreenPreviews: List<@Composable () -> Unit> = listOf(
     { CowOrderLiveDarkPreview() },
     { CowOrderPastValidityPreview() },
     { CowOrderCancellationOnItsWayPreview() },
+    { CowOrderQuotingCancellationPreview() },
     { CowOrderCancelRefusedPreview() },
     { CowOrderFilledPreview() },
     { CowOrderNotFilledPreview() },
+    { CowOrderCancelledPreview() },
     { CowOrderNotProvablePreview() },
     { CowOrderCancelReviewPreview() },
     { CowOrderCancelNotSentPreview() },
+    { CowOrderCancelSentPreview() },
     { CowOrderMissingPreview() },
     { CowOrderLoadingPreview() },
 )

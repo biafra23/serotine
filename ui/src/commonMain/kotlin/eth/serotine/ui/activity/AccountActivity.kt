@@ -96,7 +96,9 @@ class AccountActivity(
                 is HistoryList.Loaded -> history.entries
             }
             // The CoW orders signed here among them, by when each was signed: a live one waits for
-            // its end as a transaction waits for its block.
+            // its end as a transaction waits for its block, a filled or cancelled one goes by the
+            // block of its fill or its cancellation, and one never filled by where it was signed
+            // (the block that proved it came later).
             val sent = (
                 entries.map {
                     val listed = Listed(
@@ -105,12 +107,16 @@ class AccountActivity(
                         pending = it.outcome == SentOutcome.NotSeen,
                     )
                     it.transfer.sentAt to listed
-                } + orders.map { it.signedAt to Listed(rows.orderRow(it), it.end?.block, pending = it.live) }
+                } + orders.map { it.signedAt to Listed(rows.orderRow(it), it.end?.placedAt, pending = it.live) }
             ).sortedByDescending { it.first }.map { it.second }
             if (transfers == null) return ActivityUiState.Shown(sent.map { it.row }, COVERAGE)
             // Only a row that names its block says what its logs say: one no block was seen for (a
             // transaction mined while the app was closed) gets the verified log beside it.
             val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
+            // A CoW order's fill says what it sold: the sale's own transfer, in the fill, is not listed again.
+            val fills = orders.mapNotNull { order ->
+                (order.end as? CowOrderEnd.Filled)?.let { it.transactionHash.lowercase() to order }
+            }.toMap()
             val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
                 .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
                 .map { rows.eventRow(it, parties) to it }
@@ -119,6 +125,9 @@ class AccountActivity(
                 .takeIf { tokens != null }.orEmpty()
                 .filterNot { it.transfer.movesNothing() }
                 .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
+                .filterNot { event ->
+                    fills[event.transactionHash.lowercase()]?.let { event.transfer.soldIn(it) } == true
+                }
                 .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
             val events = (safeEvents + tokenEvents)
                 .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
@@ -170,8 +179,9 @@ class AccountActivity(
     /**
      * The sent rows (newest first) and the [events] (newest first) in one list, newest block
      * first. A sent row still waiting for its block is newer than every block: it goes at the top.
-     * One whose nonce was used with no block seen goes with the newest row sent before it that has
-     * one (at the top when none has), and before the events of that row's block.
+     * One with no block (a nonce used with no block seen, a CoW order never filled) goes with the
+     * newest row sent before it that has one, before the events of that row's block; when none
+     * has, just below the newest row sent after it that has one, and at the top when none has.
      */
     private fun merged(sent: List<Listed>, events: List<Pair<ActivityRow, Long>>): List<ActivityRow> {
         val sentBlocks = ArrayList<Long>(sent.size)
@@ -179,6 +189,8 @@ class AccountActivity(
             sentBlocks += listed.block
                 ?: Long.MAX_VALUE.takeIf { listed.pending }
                 ?: sent.drop(at + 1).firstNotNullOfOrNull { it.block }?.let { it + 1 }
+                // None sent before it has a block: just below the newest sent after it that has one.
+                ?: sentBlocks.lastOrNull { it != Long.MAX_VALUE }
                 ?: Long.MAX_VALUE
         }
         val all = sent.mapIndexed { at, listed -> listed.row to sentBlocks[at] } + events
@@ -223,13 +235,22 @@ class AccountActivity(
      */
     private class Listed(val row: ActivityRow, val block: Long?, val pending: Boolean)
 
-    /** The block that proved an order's end, when one did. */
-    private val CowOrderEnd.block: Long?
+    /**
+     * The block an ended order's row goes by: its fill's, or its cancellation's. One never filled has
+     * none: the block that proved it is the finalized one when the proof ran, which can be days after
+     * it was signed, so it goes where it was signed, as a transaction without a block does.
+     */
+    private val CowOrderEnd.placedAt: Long?
         get() = when (this) {
             is CowOrderEnd.Filled -> block
-            is CowOrderEnd.Unfilled -> endBlock
+            is CowOrderEnd.Unfilled -> endBlock.takeIf { cancelled }
             CowOrderEnd.NotProvable -> null
         }
+
+    /** Whether this transfer is what the filled [order] sold: of its token, from its account, its whole sale. */
+    private fun TokenTransfer.soldIn(order: CowOrderRecord): Boolean =
+        this is TokenTransfer.Fungible && from == order.account && token == order.order.sellToken &&
+            amount == order.order.sellAmount
 
     private companion object {
         const val NOT_LISTED_YET = "ETH it received, and transactions sent from it elsewhere, are not listed yet."

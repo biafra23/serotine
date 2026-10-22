@@ -58,6 +58,9 @@ const val COW_ORDER_CANCEL_TAG = "cow-order-cancel"
 /** Test tag of the button that opens the same swap on Uniswap, for UI tests. */
 const val COW_ORDER_UNISWAP_TAG = "cow-order-uniswap"
 
+/** Test tag of the button that opens the status of a transaction that holds the order back, for UI tests. */
+const val COW_ORDER_EARLIER_TAG = "cow-order-earlier"
+
 /** Test tag of the wallet password field, for UI tests. */
 const val COW_ORDER_PASSWORD_TAG = "cow-order-password"
 
@@ -227,9 +230,11 @@ private fun ColumnScope.OrderContent(
         Text(state.uid, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
     }
     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    state.cancellation?.let { hash ->
-        Text("Its cancellation is on its way and not in a block yet.", style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = { onOpenTransfer(hash) }) { Text("Open the cancellation") }
+    state.earlier?.let { earlier ->
+        earlier.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        OutlinedButton(onClick = { onOpenTransfer(earlier.hash) }, Modifier.testTag(COW_ORDER_EARLIER_TAG)) {
+            Text(earlier.label)
+        }
     }
     state.uniswapAgain?.let { again ->
         Text(
@@ -240,7 +245,7 @@ private fun ColumnScope.OrderContent(
             Text("Swap on Uniswap")
         }
     }
-    if (state.canCancel && state.cancellation == null) {
+    if (state.canCancel && state.earlier == null) {
         Note(
             "Cancelling on chain is a transaction of its own, with its fee: once a block has it, nothing can fill " +
                 "the order. Or wait: it ends by itself at its validity.",

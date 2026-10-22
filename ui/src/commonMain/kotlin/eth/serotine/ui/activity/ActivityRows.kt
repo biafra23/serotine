@@ -278,7 +278,7 @@ internal class ActivityRows(
         val (title, status, state) = when (val end = order.end) {
             null -> Triple(
                 "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}",
-                "Live until ${formatTime(order.order.validTo)}",
+                "May fill until ${formatTime(order.order.validTo)}",
                 ActivityState.WAITING,
             )
             is CowOrderEnd.Filled -> Triple(

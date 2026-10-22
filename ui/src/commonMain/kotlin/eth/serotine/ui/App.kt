@@ -721,8 +721,8 @@ private fun NavController.openCowOrder(uid: String) {
 }
 
 /**
- * Opens Swap with [again] filled in, on Uniswap, in place of the order's status: back from it goes
- * where the order was opened from.
+ * Opens Swap with [again] filled in, on Uniswap, in place of the order's status, and of the Swap it
+ * was opened from if it was (whose order this was): back from it goes where that was opened from.
  */
 private fun NavController.swapAgain(again: SwapAgain) {
     if (currentDestination?.route == SWAP_ROUTE) return
@@ -730,9 +730,9 @@ private fun NavController.swapAgain(again: SwapAgain) {
     val sell = Address.parse(again.sell) ?: return
     val buy = again.buy?.let { Address.parse(it)?.hex ?: return } ?: NATIVE_PICK
     val amount = again.amount.takeIf(AMOUNT_TEXT::matches) ?: return
-    navigate("${Destination.SWAP}/${from.hex}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE") {
-        popUpTo(COW_ORDER_ROUTE) { inclusive = true }
-    }
+    popBackStack(COW_ORDER_ROUTE, inclusive = true)
+    if (currentDestination?.route == SWAP_ROUTE) popBackStack()
+    navigate("${Destination.SWAP}/${from.hex}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE")
 }
 
 /**
