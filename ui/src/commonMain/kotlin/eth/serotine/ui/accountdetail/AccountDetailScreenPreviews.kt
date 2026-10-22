@@ -342,6 +342,7 @@ private fun AccountDetailCheckingPreview() = AccountDetailPreview(
         total = "Checking…",
         totalNote = "Testnet prices · still checking",
         assets = listOf(ether.copy(amount = "Checking…", verified = false, verifiedAt = null, value = null)),
+        pendingAssets = 3,
         tokensNote = "Checking 3 tokens",
     ),
     lightClient = catchingUpStripSample,
@@ -430,6 +431,11 @@ private fun AccountDetailSafeQueueUnreadablePreview() = AccountDetailPreview(
         ),
     ),
 )
+
+@Preview
+@Composable
+private fun AccountDetailSafeQueueReadingPreview() =
+    AccountDetailPreview(treasury.copy(segment = DetailSegment.QUEUE, queue = SafeQueue.Checking))
 
 @Preview
 @Composable
@@ -565,4 +571,5 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailActivityTokensPreview() },
     { AccountDetailSafeActivityPreview() },
     { AccountDetailSafeActivityDarkPreview() },
+    { AccountDetailSafeQueueReadingPreview() },
 )

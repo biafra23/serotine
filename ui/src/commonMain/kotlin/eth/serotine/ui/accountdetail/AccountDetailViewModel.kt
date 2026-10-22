@@ -190,6 +190,7 @@ class AccountDetailViewModel(
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
                     assets = sorted(rows(value), view.sort),
+                    pendingAssets = value.tokens.count { checking(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
                     pricesNote = PRICES + if (network.testnet) ", testnet prices" else "",
@@ -411,11 +412,7 @@ class AccountDetailViewModel(
      */
     private fun tokensNote(value: AccountValue): String? {
         val readings = value.tokens.map { it.holding.reading }
-        // A token last known to hold none has no row, and is not known to hold none now.
-        val checking = readings.count {
-            it == null || it == TokenBalanceReading.Syncing ||
-                (it as? TokenBalanceReading.LastKnown)?.units?.isZero == true
-        }
+        val checking = readings.count(::checking)
         val refused = readings.count { (it as? TokenBalanceReading.Unavailable)?.reason == ReadUnavailable.REFUSED }
         val unverified = readings.count { it is TokenBalanceReading.Unavailable } - refused
         val notTokens = readings.count { it == TokenBalanceReading.NotAToken }
@@ -428,6 +425,14 @@ class AccountDetailViewModel(
         )
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")?.replaceFirstChar { it.uppercase() }
     }
+
+    /**
+     * Whether a token's balance is still being checked: no row yet, and none known not to come.
+     * A token last known to hold none has no row, and is not known to hold none now.
+     */
+    private fun checking(reading: TokenBalanceReading?): Boolean =
+        reading == null || reading == TokenBalanceReading.Syncing ||
+            (reading as? TokenBalanceReading.LastKnown)?.units?.isZero == true
 
     private fun tokens(count: Int) = if (count == 1) "1 token" else "$count tokens"
 

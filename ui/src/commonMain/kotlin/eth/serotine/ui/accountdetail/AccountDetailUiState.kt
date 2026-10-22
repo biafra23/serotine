@@ -17,6 +17,8 @@ sealed interface AccountDetailUiState {
      * ([control]); its [total] in the display currency ("$3,250.00", or "Checking…") and what
      * the total leaves out ([totalNote]: "Testnet prices · 1 asset without a price"); its
      * [assets] — the native currency and every known token it holds — in the [sort] order;
+     * [pendingAssets], how many tokens are still being checked, each drawn as a ghost row after
+     * the [assets] until its balance is read (a row then, or none for a token not held);
      * [tokensNote], what is not known yet about the other tokens ("Checking 3 tokens"), or
      * null; [pricesNote], where the prices come from; and [message], how hiding a token
      * went, until it is said. A Safe's [safe] is what its verified storage says and its [queue]
@@ -37,6 +39,7 @@ sealed interface AccountDetailUiState {
         val total: String,
         val totalNote: String?,
         val assets: List<AssetRow> = emptyList(),
+        val pendingAssets: Int = 0,
         val sort: AssetSort = AssetSort.VALUE,
         val tokensNote: String? = null,
         val pricesNote: String? = null,
