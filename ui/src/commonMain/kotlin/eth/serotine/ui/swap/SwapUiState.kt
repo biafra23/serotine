@@ -1,5 +1,6 @@
 package eth.serotine.ui.swap
 
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
@@ -12,11 +13,11 @@ import eth.serotine.ui.components.UnlockStep
 
 /**
  * Everything the Swap screen renders (docs/swaps.md; screens 22 and 23): the swap being composed,
- * then the review of the approval it needs first, if any, and of the swap itself, each with the
- * unlock that signs it. Every leaf is display-ready. Amounts are token units throughout; a fiat
- * value is only ever a hint beside one, and no amount comes from a price (CLAUDE.md, *Data
- * sources*). While a review is shown it holds the wallet password being typed, which the
- * ViewModel drops as soon as the screen is not shown.
+ * on the venue the user chose, then the review of the approval it needs first, if any, and of the
+ * swap on Uniswap or the order on CoW, each with the unlock that signs it. Every leaf is
+ * display-ready. Amounts are token units throughout; a fiat value is only ever a hint beside one,
+ * and no amount comes from a price (CLAUDE.md, *Data sources*). While a review is shown it holds
+ * the wallet password being typed, which the ViewModel drops as soon as the screen is not shown.
  */
 sealed interface SwapUiState {
 
@@ -34,11 +35,19 @@ sealed interface SwapUiState {
     data class CannotSwap(override val network: String, val message: String) : SwapUiState
 
     /**
-     * Screen 22: the swap [form] and the [fee] level. [earlier] is the hash of a transaction of
-     * the account's that holds the swap back, with its status offered: one that may still be on
-     * its way, an approval or an earlier swap of the token not mined yet.
+     * Screen 22: the swap [form], the [fee] level and the [venue]. [earlier] is the hash of a
+     * transaction of the account's that holds the swap back, with its status offered: one that may
+     * still be on its way, an approval or an earlier swap of the token not mined yet.
+     * [uniswapInstead]: CoW could not quote the swap ([SwapForm.error] says why), and the same
+     * swap on Uniswap is offered, one tap away.
      */
-    data class Compose(val form: SwapForm, val fee: FeeLevel, val earlier: EarlierItem? = null) : SwapUiState {
+    data class Compose(
+        val form: SwapForm,
+        val fee: FeeLevel,
+        val earlier: EarlierItem? = null,
+        val venue: VenueItem = VenueItem(SwapVenue.UNISWAP),
+        val uniswapInstead: Boolean = false,
+    ) : SwapUiState {
         override val network: String
             get() = form.network
     }
@@ -106,9 +115,60 @@ sealed interface SwapUiState {
         override val notSent: NotSentItem? = null,
     ) : SwapUiState, Signable
 
+    /**
+     * Screen 23 for an order on CoW (docs/swaps.md, *The user's choice of venue*): [sold] exact in
+     * [sell]'s units; CoW's [estimate] of what it buys, not verified ([estimateNote]), beside the
+     * verified Uniswap net ([uniswapNet], [uniswapNote]), and which gives more ([comparison];
+     * [uniswapGivesMore] by CoW's own estimate); the [minimum] the order signs and how it is set
+     * ([minimumNote]); until when it may fill ([validUntil]); the contract that settles it
+     * ([settlement]); the verified [balances]; [pending] what earlier transactions not mined yet may
+     * still take; and what CoW learns of it ([disclosure]). An order costs no network fee here.
+     */
+    data class CowReview(
+        override val network: String,
+        val from: SendFrom,
+        val sell: AssetChoice,
+        val sold: String,
+        val buy: AssetChoice,
+        val estimate: String,
+        val estimateNote: String,
+        val uniswapNet: String,
+        val uniswapNote: String,
+        val comparison: String,
+        val uniswapGivesMore: Boolean,
+        val minimum: String,
+        val minimumNote: String,
+        val validUntil: String,
+        val settlement: SpenderItem,
+        val balances: List<BalanceChange>,
+        val pending: String? = null,
+        val disclosure: String,
+        override val unlock: UnlockStep,
+        override val refreshing: Boolean = false,
+        override val signing: Boolean = false,
+    ) : SwapUiState, Signable {
+        // Nothing is broadcast here: CoW's answer, whatever it is, is the order placed.
+        override val notSent: NotSentItem?
+            get() = null
+    }
+
     /** Broadcast: [hash] is the swap's, which the status screen follows. */
     data class Sent(override val network: String, val hash: String) : SwapUiState
+
+    /**
+     * A CoW order signed and handed to CoW: [title] and [message] say how CoW answered and what
+     * follows; [uid] is the order's UID.
+     */
+    data class OrderPlaced(override val network: String, val title: String, val message: String, val uid: String) :
+        SwapUiState
 }
+
+/**
+ * The venue a swap goes to on screen 22 ([chosen]): Uniswap, verified on chain, or CoW Protocol,
+ * through CoW's servers. [cowUnavailable] says why CoW is not offered for this swap, shown greyed
+ * out and said on a tap; null while it is offered.
+ */
+data class VenueItem(val chosen: SwapVenue, val cowUnavailable: String? = null)
 
 /** What a review that signs has: its unlock and where its signature stands. */
 sealed interface Signable {

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AssetChoice
@@ -25,6 +26,7 @@ import eth.serotine.ui.components.SWAP_TOLERANCE_TAG
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import eth.serotine.ui.components.SwapForm
+import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
@@ -92,6 +94,8 @@ class SwapScreenTest {
                 onMax = { events += "max" },
                 onToleranceChange = { events += "tolerance $it" },
                 onFeeChange = { events += "fee $it" },
+                onVenueChange = { events += "venue $it" },
+                onSwapOnUniswap = { events += "uniswap instead" },
                 onReview = { events += "review" },
                 onEdit = { events += "edit" },
                 onRefresh = { events += "refresh" },
@@ -156,6 +160,87 @@ class SwapScreenTest {
         rule.onNodeWithContentDescription("Back").performClick()
 
         assertEquals(listOf("sign", "edit"), events)
+    }
+
+    @Test
+    fun cowGreyedOutSaysWhyOnATapAndIsNotChosen() {
+        val why = "CoW Protocol is offered for tokens sold."
+        show(compose.copy(venue = VenueItem(SwapVenue.UNISWAP, cowUnavailable = why)))
+
+        rule.onNodeWithTag(SWAP_VENUE_COW_TAG).performClick()
+
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(why)
+        assertEquals(emptyList(), events, "not chosen")
+    }
+
+    @Test
+    fun cowOfferedIsChosenOnATap() {
+        show(compose)
+
+        rule.onNodeWithTag(SWAP_VENUE_COW_TAG).performClick()
+
+        assertEquals(listOf("venue COW"), events)
+    }
+
+    @Test
+    fun cowThatCouldNotQuoteOffersTheSameSwapOnUniswap() {
+        show(
+            compose.copy(
+                form = compose.form.copy(error = "CoW did not answer."),
+                venue = VenueItem(SwapVenue.COW),
+                uniswapInstead = true,
+            ),
+        )
+
+        rule.onNodeWithText("CoW did not answer.").performScrollTo()
+        rule.onNodeWithTag(SWAP_UNISWAP_INSTEAD_TAG).performScrollTo().performClick()
+
+        assertEquals(listOf("uniswap instead"), events)
+    }
+
+    @Test
+    fun cowsReviewMarksItsEstimateNotVerifiedAndSignsTheOrder() {
+        show(
+            SwapUiState.CowReview(
+                network = "Sepolia",
+                from = from,
+                sell = usdc,
+                sold = "40 USDC",
+                buy = ether,
+                estimate = "about 0.0161 ETH",
+                estimateNote = "CoW's own estimate. Not verified.",
+                uniswapNet = "0.0142 ETH",
+                uniswapNote = "Uniswap's verified quote at block 9,412,118.",
+                comparison = "By CoW's estimate, CoW gives about 0.0019 ETH more than Uniswap.",
+                uniswapGivesMore = false,
+                minimum = "at least 0.0160195 ETH",
+                minimumNote = "CoW's estimate less the 0.5 % tolerance.",
+                validUntil = "Until 14:27.",
+                settlement = SpenderItem("CoW's settlement contract", "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"),
+                balances = listOf(BalanceChange("USDC balance", "250 USDC", "210 USDC once it fills", "block 1")),
+                disclosure = "Sent to CoW's servers.",
+                unlock = UnlockStep(WalletPassword("made-up test password")),
+            ),
+        )
+
+        rule.onNodeWithText("Review order").assertExists()
+        rule.onNodeWithText("CoW's estimate, not verified").assertExists()
+        rule.onNodeWithTag(SWAP_MINIMUM_TAG).performScrollTo().assertTextEquals("at least 0.0160195 ETH")
+        rule.onNodeWithText("Sent to CoW's servers.").performScrollTo()
+        rule.onNodeWithText("Sign and send to CoW").assertExists()
+        rule.onNodeWithTag(SWAP_SIGN_TAG).performScrollTo().performClick()
+
+        assertEquals(listOf("sign"), events)
+    }
+
+    @Test
+    fun aPlacedOrderSaysHowCowAnsweredAndIsLeftWithDone() {
+        show(SwapUiState.OrderPlaced("Sepolia", "Sent to CoW", "CoW took the order.", "0x" + "c0".repeat(56)))
+
+        rule.onNodeWithText("CoW took the order.").assertExists()
+        rule.onNodeWithTag(SWAP_DONE_TAG).performClick()
+
+        assertEquals(listOf("back"), events)
     }
 
     @Test

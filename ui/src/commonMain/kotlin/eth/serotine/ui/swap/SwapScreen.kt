@@ -2,6 +2,7 @@ package eth.serotine.ui.swap
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,17 +26,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AmountLine
 import eth.serotine.ui.components.AssetChoiceRow
@@ -59,8 +68,11 @@ import eth.serotine.ui.components.RouteSteps
 import eth.serotine.ui.components.Spender
 import eth.serotine.ui.components.SwapFormFields
 import eth.serotine.ui.components.TokenIcon
+import eth.serotine.ui.components.Unavailable
+import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.lightclient.LightClientViewModel
 import kotlinx.coroutines.Dispatchers
 
@@ -81,6 +93,15 @@ const val SWAP_SIGN_TAG = "swap-sign"
 
 /** Test tag of the button that opens the transaction holding the swap back, for UI tests. */
 const val SWAP_EARLIER_TAG = "swap-earlier"
+
+/** Test tag of the venue choice's CoW button, for UI tests. */
+const val SWAP_VENUE_COW_TAG = "swap-venue-cow"
+
+/** Test tag of the button that takes the same swap to Uniswap after CoW could not quote it, for UI tests. */
+const val SWAP_UNISWAP_INSTEAD_TAG = "swap-uniswap-instead"
+
+/** Test tag of the button that leaves a placed CoW order's screen, for UI tests. */
+const val SWAP_DONE_TAG = "swap-done"
 
 /**
  * Binds [SwapScreen] to its ViewModel. A swap broadcast ends the screen through [onSent] with its
@@ -117,6 +138,8 @@ fun SwapRoute(
         onMax = viewModel::onMax,
         onToleranceChange = viewModel::onToleranceChange,
         onFeeChange = viewModel::onFeeChange,
+        onVenueChange = viewModel::onVenueChange,
+        onSwapOnUniswap = viewModel::swapOnUniswap,
         onReview = viewModel::review,
         onEdit = viewModel::edit,
         onRefresh = viewModel::refresh,
@@ -131,9 +154,10 @@ fun SwapRoute(
 }
 
 /**
- * Swap (docs/swaps.md; screens 22 and 23) as a pure function of [state]: the compose step — sell,
- * buy, amount, tolerance and fee — then the review of the approval the swap needs first, if any,
- * and of the swap, each with the unlock that signs it.
+ * Swap (docs/swaps.md; screens 22 and 23) as a pure function of [state]: the compose step — the
+ * venue, sell, buy, amount, tolerance and fee — then the review of the approval the swap needs
+ * first, if any, and of the swap on Uniswap or the order on CoW, each with the unlock that signs it;
+ * and a CoW order once handed to CoW.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -146,6 +170,8 @@ fun SwapScreen(
     onMax: () -> Unit,
     onToleranceChange: (String) -> Unit,
     onFeeChange: (FeeLevel) -> Unit,
+    onVenueChange: (SwapVenue) -> Unit,
+    onSwapOnUniswap: () -> Unit,
     onReview: () -> Unit,
     onEdit: () -> Unit,
     onRefresh: () -> Unit,
@@ -182,7 +208,9 @@ fun SwapScreen(
                         when (state) {
                             is SwapUiState.ApprovalReview -> "Approve"
                             is SwapUiState.SwapReview -> "Review swap"
+                            is SwapUiState.CowReview -> "Review order"
                             is SwapUiState.Sent -> "Sent"
+                            is SwapUiState.OrderPlaced -> "Order"
                             else -> "Swap"
                         },
                     )
@@ -221,6 +249,8 @@ fun SwapScreen(
                     onMax,
                     onToleranceChange,
                     onFeeChange,
+                    onVenueChange,
+                    onSwapOnUniswap,
                     onReview,
                     onOpenTransfer,
                 )
@@ -248,6 +278,27 @@ fun SwapScreen(
                         onRetry,
                     )
                 }
+                is SwapUiState.CowReview -> ReviewColumn {
+                    CowContent(state)
+                    ReviewFooter(
+                        state,
+                        "Sign and send to CoW",
+                        onRefresh,
+                        onPasswordChange,
+                        onSign,
+                        onSignWithBiometrics,
+                        onRetry,
+                    )
+                }
+                is SwapUiState.OrderPlaced -> ReviewColumn {
+                    Text(state.title, style = MaterialTheme.typography.titleLarge)
+                    Text(state.message, style = MaterialTheme.typography.bodyMedium)
+                    Heading("Order")
+                    SelectionContainer {
+                        Text(state.uid, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(onClick = onBack, Modifier.align(Alignment.End).testTag(SWAP_DONE_TAG)) { Text("Done") }
+                }
             }
         }
     }
@@ -262,22 +313,46 @@ private fun ComposeContent(
     onMax: () -> Unit,
     onToleranceChange: (String) -> Unit,
     onFeeChange: (FeeLevel) -> Unit,
+    onVenueChange: (SwapVenue) -> Unit,
+    onSwapOnUniswap: () -> Unit,
     onReview: () -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
 ) {
     val form = state.form
+    val cow = state.venue.chosen == SwapVenue.COW
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Heading("From")
         FromLine(form.from)
+        Heading("Swap on")
+        VenueChoice(state.venue, enabled = !form.quoting, onVenueChange)
+        Note(
+            if (cow) {
+                "Through CoW's servers, which learn this swap. CoW's estimate is shown beside the verified " +
+                    "Uniswap quote, and the order never signs less than that quote, less its fee and the tolerance."
+            } else {
+                "Verified on chain: Uniswap's pools, read through the light client. Nothing goes to a server."
+            },
+        )
         SwapFormFields(form, onSellChange, onBuyChange, onAmountChange, onMax, onToleranceChange, onReview = onReview)
         Heading("Fee")
         FeeChoice(state.fee, enabled = !form.quoting, onFeeChange)
-        Note("The fee is paid in the network's own currency; the review shows the most it can be.")
+        Note(
+            if (cow) {
+                "A CoW order pays its network fee out of the trade. This fee is for an approval, if one is needed."
+            } else {
+                "The fee is paid in the network's own currency; the review shows the most it can be."
+            },
+        )
         form.info?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (state.uniswapInstead) {
+            OutlinedButton(onClick = onSwapOnUniswap, Modifier.testTag(SWAP_UNISWAP_INSTEAD_TAG)) {
+                Text("Swap on Uniswap instead")
+            }
+        }
         state.earlier?.let { earlier ->
             OutlinedButton(onClick = { onOpenTransfer(earlier.hash) }, Modifier.testTag(SWAP_EARLIER_TAG)) {
                 Text(earlier.label)
@@ -299,8 +374,80 @@ private fun ComposeContent(
     }
 }
 
+/**
+ * The venues a swap can go to: Uniswap and CoW Protocol, the [venue] chosen selected. CoW while it
+ * is not offered is greyed out, and a tap on it says why (CLAUDE.md, *Conventions*).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReviewColumn(content: @Composable () -> Unit) {
+private fun VenueChoice(venue: VenueItem, enabled: Boolean, onVenueChange: (SwapVenue) -> Unit) {
+    var notice by remember { mutableStateOf<String?>(null) }
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        SegmentedButton(
+            selected = venue.chosen == SwapVenue.UNISWAP,
+            onClick = { onVenueChange(SwapVenue.UNISWAP) },
+            enabled = enabled,
+            shape = SegmentedButtonDefaults.itemShape(0, 2),
+            label = { Text("Uniswap") },
+        )
+        val cowUnavailable = venue.cowUnavailable
+        SegmentedButton(
+            selected = venue.chosen == SwapVenue.COW,
+            onClick = { if (cowUnavailable != null) notice = cowUnavailable else onVenueChange(SwapVenue.COW) },
+            enabled = enabled,
+            shape = SegmentedButtonDefaults.itemShape(1, 2),
+            modifier = Modifier.testTag(SWAP_VENUE_COW_TAG).unavailable(cowUnavailable != null),
+            label = {
+                Text(
+                    "CoW Protocol",
+                    color = if (cowUnavailable != null) Unavailable.contentColor() else Color.Unspecified,
+                )
+            },
+        )
+    }
+    notice?.let { reason -> UnavailableDialog("CoW Protocol", reason, onDismiss = { notice = null }) }
+}
+
+/**
+ * The order on CoW: what it sells, CoW's estimate beside the verified Uniswap net, the minimum it
+ * signs and until when, and what CoW learns.
+ */
+@Composable
+private fun CowContent(state: SwapUiState.CowReview) {
+    Heading("You sell")
+    AmountLine(state.sell.icon, state.sell.symbol, state.sold)
+    Heading("CoW's estimate, not verified")
+    AmountLine(state.buy.icon, state.buy.symbol, state.estimate)
+    Note(state.estimateNote)
+    Heading("Uniswap, verified")
+    AmountLine(state.buy.icon, state.buy.symbol, state.uniswapNet)
+    Note(state.uniswapNote)
+    Text(
+        state.comparison,
+        color = if (state.uniswapGivesMore) MaterialTheme.colorScheme.error else Color.Unspecified,
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Heading("You receive")
+    SelectionContainer {
+        Text(state.minimum, Modifier.testTag(SWAP_MINIMUM_TAG), style = MaterialTheme.typography.titleMedium)
+    }
+    Note(state.minimumNote)
+    Note(state.validUntil)
+    Heading("Settled by")
+    Spender(state.settlement)
+    Heading("From, and paid to")
+    FromLine(state.from)
+    Heading("Network fee")
+    Text("None from this account: CoW takes it out of the trade, as the estimate says.")
+    Heading("Verified balance")
+    state.balances.forEach { Balance(it) }
+    state.pending?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    Heading("What CoW learns")
+    Note(state.disclosure)
+}
+
+@Composable
+private fun ReviewColumn(content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -313,8 +460,8 @@ private fun ReviewColumn(content: @Composable () -> Unit) {
 @Composable
 private fun ApprovalContent(state: SwapUiState.ApprovalReview) {
     Text(
-        "Before the swap, the router needs your approval to take the ${state.token.symbol} it sells: its own " +
-            "transaction, for this amount exactly.",
+        "Before the swap, ${state.spender.name} needs your approval to take the ${state.token.symbol} it sells: " +
+            "its own transaction, for this amount exactly.",
         style = MaterialTheme.typography.bodyMedium,
     )
     Heading("Allow")
