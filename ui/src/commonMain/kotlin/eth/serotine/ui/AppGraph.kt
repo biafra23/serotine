@@ -464,13 +464,19 @@ class AppGraph(
         soleNetwork,
     )
 
-    fun receiveViewModel(account: AccountId): ReceiveViewModel = ReceiveViewModel(account, ObserveAccount(accounts))
+    fun receiveViewModel(account: AccountId): ReceiveViewModel =
+        ReceiveViewModel(account, ObserveAccount(accounts), ObserveEnabledNetworks(networkSettings))
 
     fun renameAccountViewModel(account: AccountId): RenameAccountViewModel =
         RenameAccountViewModel(account, ObserveAccount(accounts), RenameAccount(accounts))
 
     fun removeAccountViewModel(account: AccountId): RemoveAccountViewModel =
-        RemoveAccountViewModel(account, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
+        RemoveAccountViewModel(
+            account,
+            ObserveAccount(accounts),
+            ObserveAccounts(accounts),
+            RemoveAccount(accounts, keys, walletChanges),
+        )
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(
         ObserveAddressKind(addressKinds),
