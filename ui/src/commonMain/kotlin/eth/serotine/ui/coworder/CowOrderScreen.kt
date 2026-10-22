@@ -245,7 +245,8 @@ private fun ColumnScope.OrderContent(
             Text("Swap on Uniswap")
         }
     }
-    if (state.canCancel && state.earlier == null) {
+    // Shown beside a transaction on its way too: a tap quotes again, which says whether it still holds.
+    if (state.canCancel) {
         Note(
             "Cancelling on chain is a transaction of its own, with its fee: once a block has it, nothing can fill " +
                 "the order. Or wait: it ends by itself at its validity.",

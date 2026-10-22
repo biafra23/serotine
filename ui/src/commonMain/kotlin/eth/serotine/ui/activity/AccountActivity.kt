@@ -113,10 +113,10 @@ class AccountActivity(
             // Only a row that names its block says what its logs say: one no block was seen for (a
             // transaction mined while the app was closed) gets the verified log beside it.
             val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
-            // A CoW order's fill says what it sold: the sale's own transfer, in the fill, is not listed again.
-            val fills = orders.mapNotNull { order ->
-                (order.end as? CowOrderEnd.Filled)?.let { it.transactionHash.lowercase() to order }
-            }.toMap()
+            // A CoW order's fill says what it sold: the sale's own transfer, in the fill, is not listed
+            // again. One settlement can fill several of the account's orders, each of its own token.
+            val fills = orders.filter { it.end is CowOrderEnd.Filled }
+                .groupBy { (it.end as CowOrderEnd.Filled).transactionHash.lowercase() }
             val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
                 .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
                 .map { rows.eventRow(it, parties) to it }
@@ -126,7 +126,7 @@ class AccountActivity(
                 .filterNot { it.transfer.movesNothing() }
                 .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
                 .filterNot { event ->
-                    fills[event.transactionHash.lowercase()]?.let { event.transfer.soldIn(it) } == true
+                    fills[event.transactionHash.lowercase()]?.any { event.transfer.soldIn(it) } == true
                 }
                 .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
             val events = (safeEvents + tokenEvents)

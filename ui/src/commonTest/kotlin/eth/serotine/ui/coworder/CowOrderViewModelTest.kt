@@ -43,6 +43,7 @@ import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemorySentTransfers
 import kotlin.test.assertFalse
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -164,6 +165,20 @@ class CowOrderViewModelTest {
     }
 
     @Test
+    fun theOrderIsDrawnAtOnceAndCowsWordFollowsWhenItComes() = runTest {
+        val answer = CompletableDeferred<CowOrderLife>()
+        cowApi.lifePending = answer
+        val viewModel = viewModel()
+
+        assertEquals(OrderState.LIVE, viewModel.shown.state, "not held back by CoW's answer")
+        assertNull(viewModel.shown.cow)
+        answer.complete(CowOrderLife.Open)
+        runCurrent()
+        val open = "CoW says, not verified: the order is open in its order book, in the auction."
+        assertEquals(open, viewModel.shown.cow)
+    }
+
+    @Test
     fun aProvenFillSaysWhatItBoughtAndCowIsNotAsked() = runTest {
         val trade = CowTrade(
             daily.address,
@@ -253,7 +268,14 @@ class CowOrderViewModelTest {
         val earlier = EarlierTransaction(maybe.hash, note = null, label = "Open the earlier transaction")
         assertEquals(earlier, again.shown.earlier)
         assertTrue(again.shown.error!!.startsWith("An earlier transaction from this account may still be on its way"))
+        assertTrue(again.shown.canCancel, "still there: a tap quotes again, which says whether it still holds")
         assertEquals(1, signer.asked.size)
+
+        // Its end proven meanwhile: what the tap found is of the live order, and goes.
+        orders.orders.value = listOf(record.copy(end = CowOrderEnd.Unfilled(9_412_200, cancelled = true)))
+        runCurrent()
+        assertNull(again.shown.earlier)
+        assertNull(again.shown.error)
     }
 
     @Test

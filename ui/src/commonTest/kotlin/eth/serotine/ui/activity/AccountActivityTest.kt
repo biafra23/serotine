@@ -349,6 +349,53 @@ class AccountActivityTest {
     }
 
     @Test
+    fun twoOrdersFilledInOneSettlementEachListTheirSaleOnce() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val dai = Token(Address.of("0x" + "da".repeat(20)), "DAI", "Dai", 18, "dai")
+        val fillTx = "0x" + "f2".repeat(32)
+        fun filled(record: CowOrderRecord) = record.copy(
+            end = CowOrderEnd.Filled(
+                CowTrade(
+                    alice.address,
+                    record.order.sellToken,
+                    CowOrder.NATIVE_BUY_TOKEN,
+                    record.order.sellAmount,
+                    UInt256.of("16100000000000000"),
+                    UInt256.ZERO,
+                    record.uid,
+                ),
+                9_401_005,
+                fillTx,
+            ),
+        )
+        val usdcOrder = filled(order(320))
+        val daiOrder = order(330).let { base ->
+            val order = base.order.copy(sellToken = dai.address, sellAmount = UInt256.of("40000000000000000000"))
+            base.copy(
+                order = order,
+                uid = order.uid(Network.SEPOLIA.chainId, settlement, alice.address),
+                sell = TransferAsset.Erc20Token(dai),
+            )
+        }.let(::filled)
+        cowOrders.orders.value = listOf(usdcOrder, daiOrder)
+        index.logs = listOf(
+            tokenLog(usdc.address, 9_401_005, alice.address, settlement, word("2625a00"), fillTx, index = 0),
+            tokenLog(dai.address, 9_401_005, alice.address, settlement, word("22b1c8c1227a00000"), fillTx, index = 1),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(
+            listOf("Swapped 40 DAI for 0.0161 ETH on CoW", "Swapped 40 USDC for 0.0161 ETH on CoW"),
+            rows.map { it.title },
+            "each sale said by its own order's row, neither listed again",
+        )
+    }
+
+    @Test
     fun aCowOrdersCancellationOnChainSaysSoAndNamesTheSettlement() = runTest {
         val uid = CowOrderUid.of("0x" + "ab".repeat(32) + alice.address.hex.removePrefix("0x") + "6ad9e7f4")
         history.entries.value = listOf(HistoryEntry(sent(13, SentAction.CowCancellation(settlement, uid), 900)))

@@ -310,7 +310,7 @@ internal class FakeCowChain : CowChain {
 
 /**
  * CoW's order API as a fake: [quote] for every quote, [placement] (CoW's acceptance by default) for
- * every order, and [life] for every order asked about.
+ * every order, and [life] for every order asked about, once [lifePending] completes when it is set.
  */
 internal class FakeCowApi : CowApi {
     var quote: CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NO_CONNECTION)
@@ -343,9 +343,12 @@ internal class FakeCowApi : CowApi {
     var life: CowOrderLife = CowOrderLife.Open
     val lives = mutableListOf<CowOrderUid>()
 
+    /** While set, an order's life waits for it: CoW slow to answer, for as long as a test needs. */
+    var lifePending: CompletableDeferred<CowOrderLife>? = null
+
     override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife {
         lives += uid
-        return life
+        return lifePending?.await() ?: life
     }
 }
 

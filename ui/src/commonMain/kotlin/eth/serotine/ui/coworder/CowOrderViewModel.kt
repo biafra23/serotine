@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -178,9 +179,16 @@ class CowOrderViewModel(
         order,
         observeAccounts(),
         // CoW is asked only while the order may still fill: once its end is proven, the chain says it.
+        // Nothing waits for its answer: the order and its proven end are drawn at once.
         order.map { (it as? CowOrderReading.Found)?.record?.live == true }
             .distinctUntilChanged()
-            .flatMapLatest { live -> if (live) observeCowOrderLife(uid) else flowOf(null) },
+            .flatMapLatest { live ->
+                if (live) {
+                    observeCowOrderLife(uid).map<CowOrderLife, CowOrderLife?> { it }.onStart { emit(null) }
+                } else {
+                    flowOf(null)
+                }
+            },
         order.map { (it as? CowOrderReading.Found)?.record?.order?.validTo }
             .distinctUntilChanged()
             .flatMapLatest { validTo -> validityPassed(validTo) },
@@ -217,7 +225,7 @@ class CowOrderViewModel(
         if (current.quoting) return
         val record = (model.value?.reading as? CowOrderReading.Found)?.record ?: return
         if (!record.live) return
-        step.value = current.copy(quoting = true, error = null)
+        step.value = current.copy(quoting = true, error = null, earlier = null)
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             val next = quoted(record, unlock = null)
@@ -510,7 +518,8 @@ class CowOrderViewModel(
             settlement = settlementOf(record),
             uid = record.uid.hex,
             canCancel = record.live && !model.validityPassed,
-            earlier = step.earlier,
+            // What the last tap on Cancel found is of the live order: once its end is proven, it is said.
+            earlier = step.earlier.takeIf { record.live },
             uniswapAgain = if (state == OrderState.NOT_FILLED || state == OrderState.CANCELLED) {
                 SwapAgain(
                     from = record.account.hex,
@@ -521,7 +530,7 @@ class CowOrderViewModel(
             } else {
                 null
             },
-            error = step.error,
+            error = step.error.takeIf { record.live },
             quoting = step.quoting,
         )
     }
