@@ -811,7 +811,7 @@ class AppNavigationTest {
         // Add token by address, under the bar, with the contract filled in and read.
         rule.waitUntil { rule.onAllNodesWithText("Spam Coin · SPAM").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(
-            listOf("accounts", "account/{chain}/{address}", DETAIL_ROUTE, "activity-add-token/{address}"),
+            listOf("accounts", "account/{chain}/{address}", DETAIL_ROUTE, "activity-add-token/{chain}/{address}"),
             screens(),
         )
         rule.onNodeWithText("Settings").assertIsDisplayed()
@@ -827,7 +827,7 @@ class AppNavigationTest {
         accounts.value = listOf(daily)
         showApp()
         rule.runOnIdle {
-            navController.single().navigate("activity-add-token/0x8617e340b3d01fa5f11f306f4090fd50e238070d")
+            navController.single().navigate("activity-add-token/11155111/0x8617e340b3d01fa5f11f306f4090fd50e238070d")
         }
 
         rule.onNodeWithText("Settings").performClick()
@@ -837,7 +837,7 @@ class AppNavigationTest {
 
         // Back on Tokens, and the Accounts tab's Add token is still where it was.
         rule.waitUntil { screens().last() == "tokens" }
-        assertEquals(listOf("accounts", "activity-add-token/{address}", "settings", "tokens"), screens())
+        assertEquals(listOf("accounts", "activity-add-token/{chain}/{address}", "settings", "tokens"), screens())
     }
 
     @Test

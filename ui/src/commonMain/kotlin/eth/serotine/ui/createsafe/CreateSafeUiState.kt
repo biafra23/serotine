@@ -3,7 +3,7 @@ package eth.serotine.ui.createsafe
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
-import eth.serotine.ui.components.NetworkLabel
+import eth.serotine.ui.components.NetworkChip
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.UnlockStep
 
@@ -153,16 +153,4 @@ data class DeploymentQuoteItem(
     val balance: BalanceChange,
     val simulation: String,
     val pending: String? = null,
-)
-
-/**
- * One network as Create Safe's first choice (N12): its [network], whether it is [selected], and why
- * a Safe cannot be created on it now ([reason]: no account whose key is held here on it to pay, or
- * it is [off]); greyed out while there is one, a tap saying it.
- */
-data class NetworkChip(
-    val network: NetworkLabel,
-    val selected: Boolean,
-    val reason: String? = null,
-    val off: Boolean = false,
 )

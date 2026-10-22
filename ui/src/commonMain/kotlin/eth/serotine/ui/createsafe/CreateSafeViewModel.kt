@@ -40,6 +40,7 @@ import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
+import eth.serotine.ui.components.NetworkChip
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.PROMPT_TOO_LATE

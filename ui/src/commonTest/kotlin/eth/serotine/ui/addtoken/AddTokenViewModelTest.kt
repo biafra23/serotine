@@ -9,11 +9,16 @@ import eth.serotine.domain.repository.TokenSettings
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveTokenMetadata
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.components.NetworkChip
+import eth.serotine.ui.components.NetworkLabel
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,6 +31,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -43,6 +49,8 @@ class AddTokenViewModelTest {
     private val eurc = "0x08210F9170F89Ab7658F0B5E3fF39b0E03C594D4"
     private val userTokens = MemoryUserTokens()
     private val metadata = FakeMetadata()
+    private val networks = MemoryNetworkSettings()
+    private val demand = NetworkDemand()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -55,8 +63,9 @@ class AddTokenViewModelTest {
                 known,
                 ObserveTokenMetadata(metadata),
                 AddToken(userTokens, metadata, known),
-                Network.SEPOLIA,
-                HoldNetwork(NetworkDemand()),
+                ObserveEnabledNetworks(networks),
+                SetNetworkEnabled(networks),
+                HoldNetwork(demand),
                 address,
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -142,8 +151,9 @@ class AddTokenViewModelTest {
             known,
             ObserveTokenMetadata(slow),
             AddToken(userTokens, slow, known),
-            Network.SEPOLIA,
-            HoldNetwork(NetworkDemand()),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
+            HoldNetwork(demand),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(eurc)
@@ -158,6 +168,38 @@ class AddTokenViewModelTest {
         viewModel.add()
         runCurrent()
         assertEquals(TokenSettings.Loaded(emptyList(), emptySet()), userTokens.settings.value)
+    }
+
+    @Test
+    fun theNetworkComesFirstAndItsLightClientIsHeldWhileTheScreenIsOpen() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+
+        assertEquals(
+            listOf(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true)),
+            viewModel.uiState.value.networks,
+        )
+        assertEquals(setOf(Network.SEPOLIA), demand.observe().first(), "read there, so held running")
+    }
+
+    @Test
+    fun withNoNetworkOnTheContractCannotBeReadAndOneTurnedOnIsChosen() = runTest {
+        networks.on.value = emptySet()
+        val viewModel = viewModel()
+        viewModel.onAddressChange(eurc)
+        runCurrent()
+
+        assertEquals(
+            TokenCard.Unavailable(
+                "No network is on in this wallet, so the contract cannot be read. Turn one on first.",
+            ),
+            viewModel.uiState.value.card,
+        )
+        assertEquals(true, viewModel.uiState.value.networks.single().off)
+
+        viewModel.onTurnOnNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(true, viewModel.uiState.value.networks.single().selected)
     }
 
     @Test

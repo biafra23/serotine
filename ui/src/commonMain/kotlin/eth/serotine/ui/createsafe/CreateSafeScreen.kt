@@ -2,8 +2,6 @@ package eth.serotine.ui.createsafe
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +24,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -71,18 +67,14 @@ import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.LightClientItem
-import eth.serotine.ui.components.NetworkMark
+import eth.serotine.ui.components.NetworkChips
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
-import eth.serotine.ui.components.UnavailableDialog
-import eth.serotine.ui.components.UnavailableFix
-import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
-import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.lightclient.LightClientViewModel
 import kotlinx.coroutines.Dispatchers
 
@@ -268,7 +260,9 @@ fun CreateSafeScreen(
                     Modifier.fillMaxSize().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
-                    if (state.networks.isNotEmpty()) NetworkChips(state.networks, actions)
+                    if (state.networks.isNotEmpty()) {
+                        NetworkChips(state.networks, "Create a Safe on", actions.onNetwork, actions.onTurnOnNetwork)
+                    }
                     Text(state.message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 }
                 is CreateSafeUiState.Owners -> OwnersContent(state, actions)
@@ -285,7 +279,9 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (state.networks.isNotEmpty()) NetworkChips(state.networks, actions)
+        if (state.networks.isNotEmpty()) {
+            NetworkChips(state.networks, "Create a Safe on", actions.onNetwork, actions.onTurnOnNetwork)
+        }
         Heading("Name")
         OutlinedTextField(
             value = state.name,
@@ -557,48 +553,5 @@ private fun OwnerRow(owner: OwnerItem, full: Boolean) {
 private fun ContinueButton(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Button(onClick = onClick, enabled = enabled, modifier = modifier.testTag(CREATE_SAFE_CONTINUE_TAG)) {
         Text(label)
-    }
-}
-
-/** Test tag of a network's chip, followed by its chain id, for UI tests. */
-const val CREATE_SAFE_NETWORK_TAG = "create-safe-network-"
-
-/**
- * The network the Safe is created on, the first choice (docs/networks.md, N12): a chip per network
- * with its mark; one where no Safe can be created now greyed out, a tap saying why, with Turn on
- * for one that is off (owner ruling, 2026-10-18, #55).
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun NetworkChips(chips: List<NetworkChip>, actions: CreateSafeActions) {
-    var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
-    unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
-    Heading("Network")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        chips.forEach { chip ->
-            val network = chip.network
-            FilterChip(
-                selected = chip.selected,
-                onClick = {
-                    val reason = chip.reason
-                    when {
-                        reason == null -> actions.onNetwork(network.chainId)
-                        else -> unavailable = UnavailableNotice(
-                            "Create a Safe on ${network.name}",
-                            reason,
-                            if (chip.off) {
-                                val turnOn = { actions.onTurnOnNetwork(network.chainId) }
-                                listOf(UnavailableFix("Turn on ${network.name}", turnOn))
-                            } else {
-                                emptyList()
-                            },
-                        )
-                    }
-                },
-                label = { NetworkMark(network, Modifier.alpha(if (chip.reason == null) 1f else 0.6f)) },
-                modifier = Modifier.testTag(CREATE_SAFE_NETWORK_TAG + network.chainId)
-                    .unavailable(chip.reason != null),
-            )
-        }
     }
 }

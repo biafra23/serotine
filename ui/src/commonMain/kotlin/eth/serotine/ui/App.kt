@@ -295,18 +295,19 @@ private fun Destinations(
                         lightClient = lightClient,
                         onBack = { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) },
                         onStatus = { sent -> navController.openTransfer(account.network, sent) },
-                        onAddToken = { contract -> navController.addToken(contract) },
+                        onAddToken = { contract -> navController.addToken(account.network, contract) },
                     )
                 } else {
                     LaunchedEffect(Unit) { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) }
                 }
             }
-            // Add token from an Activity detail: in this tab, its field filled in with the contract. A
-            // name of its own, so that leaving Settings' Add token never finds this one (leave() tries
-            // the /{address} form of a pattern first).
-            withAddress(Destination.ACTIVITY_ADD_TOKEN, navController) { contract ->
+            // Add token from an Activity detail: in this tab, its field filled in with the contract, on the
+            // Activity's account's network, which the route carries as an account's does. A name of its
+            // own, so that leaving Settings' Add token never finds this one (leave() tries the
+            // /{chain}/{address} form of a pattern first).
+            withAccount(Destination.ACTIVITY_ADD_TOKEN, navController) { contract ->
                 AddTokenRoute(
-                    viewModel { graph.addTokenViewModel(Eip55.format(contract)) },
+                    viewModel { graph.addTokenViewModel(Eip55.format(contract.address), contract.network) },
                     lightClient,
                     onBack = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
                     onAdded = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
@@ -681,10 +682,10 @@ private fun NavController.openActivityDetail(account: AccountId, key: ActivityKe
 }
 
 /** Opens Add token by address over the Accounts tab, with the [contract] (an address) filled in. */
-private fun NavController.addToken(contract: String) {
-    if (currentDestination?.route == "${Destination.ACTIVITY_ADD_TOKEN}/{$ADDRESS}") return
+private fun NavController.addToken(network: Network, contract: String) {
+    if (currentDestination?.route == "${Destination.ACTIVITY_ADD_TOKEN}/{$CHAIN}/{$ADDRESS}") return
     val address = Address.parse(contract) ?: return
-    navigate("${Destination.ACTIVITY_ADD_TOKEN}/${address.hex}")
+    navigate("${Destination.ACTIVITY_ADD_TOKEN}/${network.chainId}/${address.hex}")
 }
 
 /** The status of the transaction [hash] on [network], as a route carries it: the hash in lower case. */
@@ -781,22 +782,6 @@ private fun WithAccount(
         content(account)
     } else {
         LaunchedEffect(Unit) { navController.leave(pattern) }
-    }
-}
-
-/** A screen of one contract, at `pattern/{address}`; a route without a valid address leaves at once. */
-private fun NavGraphBuilder.withAddress(
-    pattern: String,
-    navController: NavController,
-    content: @Composable (Address) -> Unit,
-) {
-    composable("$pattern/{$ADDRESS}") { entry ->
-        val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
-        if (address != null) {
-            content(address)
-        } else {
-            LaunchedEffect(Unit) { navController.leave(pattern) }
-        }
     }
 }
 

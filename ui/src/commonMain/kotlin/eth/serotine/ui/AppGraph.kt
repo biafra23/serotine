@@ -527,14 +527,16 @@ class AppGraph(
         TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens), soleNetwork)
 
     /** Add token by address (docs/wallet-ux.md, screen 20), its field starting with [address]. */
-    fun addTokenViewModel(address: String = ""): AddTokenViewModel =
+    fun addTokenViewModel(address: String = "", network: Network? = null): AddTokenViewModel =
         AddTokenViewModel(
             knownTokens(),
             ObserveTokenMetadata(tokenMetadata),
             AddToken(userTokens, tokenMetadata, knownTokens()),
-            soleNetwork,
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
             HoldNetwork(networkDemand),
             address,
+            network,
         )
 
     private fun knownTokens() = ObserveKnownTokens(tokenCatalog, userTokens, tokenMetadata)

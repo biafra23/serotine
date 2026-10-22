@@ -55,6 +55,7 @@ import eth.serotine.ui.TEST_RELEASE
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkChip
 import eth.serotine.ui.components.NetworkLabel
 import kotlin.test.AfterTest
 import kotlin.test.Test

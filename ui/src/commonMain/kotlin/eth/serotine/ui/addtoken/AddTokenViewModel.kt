@@ -9,11 +9,16 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.KnownTokenList
+import eth.serotine.domain.usecase.NetworkHold
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveTokenMetadata
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.TokenAdd
 import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkChip
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.displayName
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
@@ -35,23 +40,63 @@ import kotlinx.coroutines.launch
  * shows what the contract there says about itself, verified, and adds it through [AddToken],
  * which reads it again before it adds. [address] is the text the field starts with: a contract an
  * Activity detail found, opened from there (docs/wallet-ux.md, screen 26); empty from Settings.
+ * The network comes first (docs/networks.md, N17): [network] when the screen was opened for one (an
+ * Activity's account's), else the first that is on; the contract is read there, its light client
+ * held running while the screen is open.
  */
 class AddTokenViewModel(
     observeKnownTokens: ObserveKnownTokens,
     observeTokenMetadata: ObserveTokenMetadata,
     private val addToken: AddToken,
-    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
-    private val network: Network,
-    /** Keeps [network]'s light client running while this screen is open, with no account on it yet. */
-    holdNetwork: HoldNetwork,
+    observeEnabledNetworks: ObserveEnabledNetworks,
+    private val setNetworkEnabled: SetNetworkEnabled,
+    /** Keeps the network chosen running while this screen is open, with no account on it yet. */
+    private val holdNetwork: HoldNetwork,
     address: String = "",
+    network: Network? = null,
 ) : ViewModel() {
 
-    /** Released when the screen is gone ([onCleared]). */
-    private val hold = holdNetwork(network)
+    /** The network the user, or the screen that opened this one, chose; null: the first that is on. */
+    private val picked = MutableStateFlow(network)
+
+    /** The networks on in this wallet; null until read. */
+    private val on: StateFlow<List<Network>?> =
+        observeEnabledNetworks().stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** The network the token is read and added on; null while none is on. */
+    private val chosen: StateFlow<Network?> = combine(picked, on) { picked, on ->
+        picked ?: on?.firstOrNull()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, network)
+
+    /** The hold on [chosen], moved with it, released when the screen is gone ([onCleared]). */
+    private var hold: NetworkHold? = null
+
+    init {
+        viewModelScope.launch {
+            chosen.collect { network ->
+                hold?.release()
+                hold = network?.let { holdNetwork(it) }
+            }
+        }
+    }
 
     override fun onCleared() {
-        hold.release()
+        hold?.release()
+        hold = null
+    }
+
+    /** Reads and adds the token on the network of [chainId]. */
+    fun onNetwork(chainId: Long) {
+        val network = Network.ofChainId(chainId) ?: return
+        if (outcome.value.adding || outcome.value.done) return
+        picked.value = network
+        outcome.value = Outcome()
+    }
+
+    /** Turns the network of [chainId] on, and chooses it. */
+    fun onTurnOnNetwork(chainId: Long) {
+        val network = Network.ofChainId(chainId) ?: return
+        viewModelScope.launch { if (setNetworkEnabled(network, on = true)) picked.value = network }
     }
 
     private class Outcome(val adding: Boolean = false, val error: String? = null, val done: Boolean = false)
@@ -68,9 +113,9 @@ class AddTokenViewModel(
      */
     private val card: Flow<Pair<Address, TokenCard>?> = channelFlow {
         var current: Job? = null
-        input.collect { parsed ->
+        combine(input, chosen, ::Pair).distinctUntilChanged().collect { (parsed, network) ->
             current?.cancel()
-            if (parsed is AddressInput.Valid) {
+            if (parsed is AddressInput.Valid && network != null) {
                 current = launch {
                     combine(
                         observeKnownTokens(network),
@@ -87,13 +132,20 @@ class AddTokenViewModel(
         }
     }
 
-    val uiState: StateFlow<AddTokenUiState> = combine(typed, input, card, outcome) { text, parsed, card, outcome ->
+    val uiState: StateFlow<AddTokenUiState> = combine(
+        combine(typed, input, ::Pair),
+        card,
+        outcome,
+        combine(chosen, on, ::Pair),
+    ) { (text, parsed), card, outcome, (network, on) ->
         val typedAddress = (parsed as? AddressInput.Valid)?.address
         AddTokenUiState(
+            networks = on?.let { chips(network, it) }.orEmpty(),
             address = text,
             addressError = addressError(text, parsed),
             // Only the typed address's card: until it has one, it is being read.
             card = card?.takeIf { (address, _) -> address == typedAddress }?.second
+                ?: TokenCard.Unavailable(NO_NETWORK).takeIf { typedAddress != null && on?.isEmpty() == true }
                 ?: TokenCard.Checking.takeIf { typedAddress != null },
             adding = outcome.adding,
             error = outcome.error,
@@ -117,6 +169,7 @@ class AddTokenViewModel(
         val shown = uiState.value.card as? TokenCard.Claim ?: return
         if (Address.parse(shown.address) != address) return
         if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
+        val network = chosen.value ?: return
         outcome.value = Outcome(adding = true)
         viewModelScope.launch {
             outcome.value = when (val result = addToken(network, address)) {
@@ -128,6 +181,17 @@ class AddTokenViewModel(
                 TokenAdd.NotSaved -> Outcome(error = "The token could not be saved. Nothing was added.")
             }
         }
+    }
+
+    /** Each network as the first choice (N17): one that is off greyed out, with Turn on. */
+    private fun chips(chosen: Network?, on: List<Network>): List<NetworkChip> = Network.entries.map { network ->
+        val off = network !in on
+        NetworkChip(
+            NetworkLabel.of(network),
+            selected = network == chosen,
+            reason = "${network.displayName} is off in this wallet. Turn it on to add a token there.".takeIf { off },
+            off = off,
+        )
     }
 
     private fun cardOf(address: Address, known: KnownTokenList, reading: MetadataReading?): TokenCard {
@@ -174,6 +238,7 @@ class AddTokenViewModel(
     private companion object {
         const val ADDRESS_LENGTH = 42
         const val NOT_A_TOKEN = "This address does not answer as a token."
+        const val NO_NETWORK = "No network is on in this wallet, so the contract cannot be read. Turn one on first."
         const val SYNCING = "The light client is not synced yet. The contract is read as soon as it is."
     }
 }

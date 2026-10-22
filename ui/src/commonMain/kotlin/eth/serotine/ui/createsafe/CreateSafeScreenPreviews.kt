@@ -6,6 +6,7 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkChip
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.UnlockStep
