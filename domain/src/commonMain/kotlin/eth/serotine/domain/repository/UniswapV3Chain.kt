@@ -23,9 +23,9 @@ interface UniswapV3Chain {
     suspend fun venue(network: Network): VenueReading
 
     /**
-     * [data] called on the contract at [to] on [network], from no sender, as a verified call at
-     * that network's light client's head: what it returned or that it reverted, or why there is
-     * no verified answer. A [network] no adapter serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]).
+     * [data] called on the contract at [to] on [network], from no sender, as a verified call at that network's light
+     * client's head: what it returned or that it reverted, or why there is no verified answer. A [network] no adapter
+     * serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]).
      */
     suspend fun call(network: Network, to: Address, data: ByteArray): Simulation
 }

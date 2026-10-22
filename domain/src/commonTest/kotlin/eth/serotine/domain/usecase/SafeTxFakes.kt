@@ -57,8 +57,20 @@ import kotlinx.coroutines.flow.map
  */
 internal class SafeWorld {
     val safe = Address.of("0x" + "5a".repeat(20))
-    val alice = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Alice", AccountCustody.InKeyStore)
-    val bob = Account(Network.SEPOLIA, Address.of("0x" + "22".repeat(20)), AccountKind.EOA, "Bob", AccountCustody.Watched)
+    val alice = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Alice",
+        AccountCustody.InKeyStore,
+    )
+    val bob = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "22".repeat(20)),
+        AccountKind.EOA,
+        "Bob",
+        AccountCustody.Watched,
+    )
     val carol = Address.of("0x" + "33".repeat(20))
     val stranger = Address.of("0x" + "44".repeat(20))
     val recipient = Address.of("0x" + "bb".repeat(20))
@@ -93,7 +105,11 @@ internal class SafeWorld {
         override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> = flowOf(native)
     }
     val tokenBalances = object : TokenBalances {
-        override fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading> = flowOf(tokens)
+        override fun observeBalance(
+            network: Network,
+            holder: Address,
+            token: Address,
+        ): Flow<TokenBalanceReading> = flowOf(tokens)
     }
 
     /** A request for this Safe, signed by [first] and [second] (none when null). */
@@ -195,7 +211,9 @@ internal class MemorySafeTxQueue : SafeTxQueue {
     }
 
     override suspend fun prune(safe: AccountId, nonce: Long): Boolean {
-        requests.value = requests.value.filterNot { it.network == safe.network && it.safe == safe.address && it.nonce < nonce }
+        requests.value = requests.value.filterNot {
+            it.network == safe.network && it.safe == safe.address && it.nonce < nonce
+        }
         return true
     }
 }
@@ -239,10 +257,22 @@ internal class FakeTransactionInputs : TransactionInputs {
         ),
     )
 
-    override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
+    override suspend fun estimateGas(
+        network: Network,
+        from: Address,
+        to: Address,
+        value: UInt256,
+        data: ByteArray,
+    ): GasEstimate =
         estimate ?: GasEstimate.Estimated(gas)
 
-    override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+    override suspend fun simulate(
+        network: Network,
+        from: Address,
+        to: Address,
+        value: UInt256,
+        data: ByteArray,
+    ): Simulation {
         simulated += Triple(from, to, data)
         return simulation
     }

@@ -238,7 +238,10 @@ class AppNavigationTest {
 
     /** Treasury is a Safe; any other address is an EOA until a Safe is [deployed] there. */
     private val addressKinds = object : AddressKinds {
-        override fun observeKind(network: Network, address: Address): Flow<KindReading> = if (address == treasuryAddress) {
+        override fun observeKind(
+            network: Network,
+            address: Address,
+        ): Flow<KindReading> = if (address == treasuryAddress) {
             val state = SafeState("1.4.1", l2 = false, listOf(daily.address, carol), 2, 4, emptyList(), null)
             flowOf(KindReading.Verified(AddressKind.Safe(state), 9_412_118))
         } else {
@@ -337,7 +340,13 @@ class AppNavigationTest {
         AccountCustody.Watched,
     )
 
-    private val treasury = Account(Network.SEPOLIA, treasuryAddress, AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+    private val treasury = Account(
+        Network.SEPOLIA,
+        treasuryAddress,
+        AccountKind.SAFE,
+        "Treasury",
+        AccountCustody.Watched,
+    )
 
     /** 0.1 ETH from Treasury to Savings at its nonce, 4. */
     private val queued = SigningRequest.of(
@@ -717,7 +726,10 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithText("Co-signer").fetchSemanticsNodes().isNotEmpty() }
         rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG)[0].performClick()
         rule.onNodeWithText("Send from a Safe").assertIsDisplayed()
-        assertEquals(listOf("accounts", "account/{chain}/{address}", "safe/{chain}/{address}/propose?asset={asset}"), screens())
+        assertEquals(
+            listOf("accounts", "account/{chain}/{address}", "safe/{chain}/{address}/propose?asset={asset}"),
+            screens(),
+        )
     }
 
     @Test

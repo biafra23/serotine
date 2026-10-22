@@ -107,7 +107,10 @@ class TransfersTest {
         val vector = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" // EIP-55's own example
 
         assertEquals(RecipientLookup.Found(Address.of(vector), null, null), resolve(Network.SEPOLIA, vector))
-        assertEquals(RecipientLookup.Found(Address.of(vector), null, null), resolve(Network.SEPOLIA, vector.lowercase()))
+        assertEquals(
+            RecipientLookup.Found(Address.of(vector), null, null),
+            resolve(Network.SEPOLIA, vector.lowercase()),
+        )
         assertEquals(RecipientLookup.ChecksumMismatch, resolve(Network.SEPOLIA, vector.replace("aAeb", "aaEb")))
         assertEquals(RecipientLookup.Found(bob, "0xfoo.eth", 5), resolve(Network.SEPOLIA, "0xfoo.eth"))
         assertEquals(RecipientLookup.OffchainOnly, resolve(Network.SEPOLIA, "dark.eth"))
@@ -208,11 +211,18 @@ class TransfersTest {
     @Test
     fun aRecipientThatCanNeverGiveItBackIsRefused() = runTest {
         val names = object : NameResolver {
-            override suspend fun resolve(network: Network, name: String): NameResolution = NameResolution.Resolved(name, Address.ZERO, 77)
+            override suspend fun resolve(
+                network: Network,
+                name: String,
+            ): NameResolution = NameResolution.Resolved(name, Address.ZERO, 77)
         }
         val resolve = ResolveRecipient(names)
         assertEquals(RecipientLookup.ZeroAddress, resolve(Network.SEPOLIA, "0x" + "00".repeat(20)))
-        assertEquals(RecipientLookup.NoAddress, resolve(Network.SEPOLIA, "burn.eth"), "ENS's zero address is no address set")
+        assertEquals(
+            RecipientLookup.NoAddress,
+            resolve(Network.SEPOLIA, "burn.eth"),
+            "ENS's zero address is no address set",
+        )
 
         assertEquals(
             TransferQuoting.ToZeroAddress,
@@ -260,8 +270,12 @@ class TransfersTest {
     fun anOwnTransferNoBlockTookInTimeHoldsItsNonceNoLonger() = runTest {
         val earlier = SentTransfer(
             Network.SEPOLIA,
-            alice, 7, SignedTransfer(byteArrayOf(2, 1)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
-            UInt256.ONE, sentAt = now - RECORD_LIFETIME_SECONDS - 1,
+            alice,
+            7,
+            SignedTransfer(byteArrayOf(2, 1)),
+            SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.ONE,
+            sentAt = now - RECORD_LIFETIME_SECONDS - 1,
         )
         sent.transfers.value = listOf(earlier)
 
@@ -282,8 +296,13 @@ class TransfersTest {
     fun anEarlierTransactionThatMayHaveBeenSentHoldsTheNextOneBack() = runTest {
         val maybe = SentTransfer(
             Network.SEPOLIA,
-            alice, 7, SignedTransfer(byteArrayOf(2, 1)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
-            UInt256.of(900_000_000_000_000_000L), sentAt = now - 60, maybeSent = true,
+            alice,
+            7,
+            SignedTransfer(byteArrayOf(2, 1)),
+            SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.of(900_000_000_000_000_000L),
+            sentAt = now - 60,
+            maybeSent = true,
         )
         sent.transfers.value = listOf(maybe)
 
@@ -338,9 +357,12 @@ class TransfersTest {
     fun whatAnOwnTokenTransferStillMovesIsNotAvailableToTheNext() = runTest {
         val earlier = SentTransfer(
             Network.SEPOLIA,
-            alice, 7, SignedTransfer(byteArrayOf(2, 1)),
+            alice,
+            7,
+            SignedTransfer(byteArrayOf(2, 1)),
             SentAction.Transfer(bob, TransferAsset.Erc20Token(usdc), amount = UInt256.of(4_000_000)),
-            maxCost = UInt256.ONE, sentAt = now,
+            maxCost = UInt256.ONE,
+            sentAt = now,
         )
         sent.transfers.value = listOf(earlier)
         val usdcAsset = TransferAsset.Erc20Token(usdc)
@@ -399,8 +421,12 @@ class TransfersTest {
     fun aSentTransferIsSeenWithItsRecordAndItsReceipt() = runTest {
         val record = SentTransfer(
             Network.SEPOLIA,
-            alice, 7, SignedTransfer(byteArrayOf(2, 9)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
-            UInt256.ONE, 1,
+            alice,
+            7,
+            SignedTransfer(byteArrayOf(2, 9)),
+            SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.ONE,
+            1,
         )
         sent.transfers.value = listOf(record)
         val receipts = object : ReceiptTracker {
@@ -651,8 +677,13 @@ class TransfersTest {
     fun aRetryNoPeerAnsweredStaysMaybeSentFromItsOwnBroadcast() = runTest {
         val maybe = SentTransfer(
             Network.SEPOLIA,
-            alice, 7, SignedTransfer(byteArrayOf(2, 1)), SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
-            UInt256.ONE, sentAt = 1_800_000_000, maybeSent = true,
+            alice,
+            7,
+            SignedTransfer(byteArrayOf(2, 1)),
+            SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            UInt256.ONE,
+            sentAt = 1_800_000_000,
+            maybeSent = true,
         )
         sent.transfers.value = listOf(maybe)
 
@@ -710,12 +741,24 @@ class TransfersTest {
             return fees
         }
 
-        override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate {
+        override suspend fun estimateGas(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): GasEstimate {
             estimates++
             return estimate ?: GasEstimate.Estimated(gas)
         }
 
-        override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+        override suspend fun simulate(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): Simulation {
             simulated += Triple(from, to, value)
             return simulation
         }

@@ -83,11 +83,17 @@ class FileUserTokensTest {
         SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":1,"added":[{"address":"x"}]}""") }
         val tokens = tokens()
 
-        assertEquals(TokenSettings.Loaded(emptyList(), emptySet(), setAside = true), tokens.observe(Network.SEPOLIA).first())
+        assertEquals(
+            TokenSettings.Loaded(emptyList(), emptySet(), setAside = true),
+            tokens.observe(Network.SEPOLIA).first(),
+        )
         assertEquals(1, SystemFileSystem.list(directory).count { it.name.startsWith("tokens.json.damaged-") })
         // Still said after a change writes the new file.
         tokens.add(Network.SEPOLIA, eurc)
-        assertEquals(TokenSettings.Loaded(listOf(eurc), emptySet(), setAside = true), tokens.observe(Network.SEPOLIA).first())
+        assertEquals(
+            TokenSettings.Loaded(listOf(eurc), emptySet(), setAside = true),
+            tokens.observe(Network.SEPOLIA).first(),
+        )
     }
 
     @Test

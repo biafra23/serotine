@@ -21,7 +21,12 @@ class VerifiedTokenMetadataTest {
     private val token = Address.of("0x" + "08".repeat(20))
     private val chain = FakeChain().apply { snapshot = running(head = 9) }
 
-    private fun TestScope.metadata() = VerifiedTokenMetadata(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), 4.seconds)
+    private fun TestScope.metadata() = VerifiedTokenMetadata(
+        Network.SEPOLIA,
+        chain,
+        StandardTestDispatcher(testScheduler),
+        4.seconds,
+    )
 
     /** An ABI `string` answer: offset, length, the UTF-8 bytes padded to a word. */
     private fun string(text: String): String {
@@ -72,7 +77,10 @@ class VerifiedTokenMetadataTest {
         answer(Abi.SYMBOL, CallOutcome.Returned(string("BIG"), 9))
         answer(Abi.NAME, CallOutcome.Returned(string("Big"), 9))
 
-        assertEquals(listOf<MetadataReading>(MetadataReading.NotAToken), metadata().observe(Network.SEPOLIA, token).toList())
+        assertEquals(
+            listOf<MetadataReading>(MetadataReading.NotAToken),
+            metadata().observe(Network.SEPOLIA, token).toList(),
+        )
     }
 
     @Test
@@ -82,7 +90,10 @@ class VerifiedTokenMetadataTest {
         answer(Abi.SYMBOL, CallOutcome.Returned("", 9))
         answer(Abi.NAME, CallOutcome.Returned("", 9))
         val metadata = metadata()
-        assertEquals(listOf<MetadataReading>(MetadataReading.NotAToken), metadata.observe(Network.SEPOLIA, token).toList())
+        assertEquals(
+            listOf<MetadataReading>(MetadataReading.NotAToken),
+            metadata.observe(Network.SEPOLIA, token).toList(),
+        )
 
         chain.snapshot = running(head = 10)
         answer(Abi.DECIMALS, CallOutcome.Returned(word(6), 10))

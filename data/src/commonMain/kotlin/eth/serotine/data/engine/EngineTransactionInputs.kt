@@ -95,15 +95,30 @@ class EngineTransactionInputs internal constructor(
             }
         }
 
-    override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation =
-        ask(network, Simulation::Unavailable) { chain -> chain.callFrom(from, to, value.toDecimal(), data).toSimulation() }
+    override suspend fun simulate(
+        network: Network,
+        from: Address,
+        to: Address,
+        value: UInt256,
+        data: ByteArray,
+    ): Simulation =
+        ask(
+            network,
+            Simulation::Unavailable,
+        ) { chain -> chain.callFrom(from, to, value.toDecimal(), data).toSimulation() }
 
     /**
      * [read] on [dispatcher] while reads can be verified; otherwise, or when the engine fails, [unavailable].
      * A [network] this adapter does not serve is [ReadUnavailable.NO_ENGINE]: never read from another chain.
      */
-    private suspend fun <T> ask(network: Network, unavailable: (ReadUnavailable) -> T, read: (TransactingChain) -> T): T =
-        if (network != served) unavailable(ReadUnavailable.NO_ENGINE) else chain.askVerified(dispatcher, unavailable, read)
+    private suspend fun <T> ask(
+        network: Network,
+        unavailable: (ReadUnavailable) -> T,
+        read: (TransactingChain) -> T,
+    ): T =
+        if (network != served) unavailable(
+                ReadUnavailable.NO_ENGINE,
+            ) else chain.askVerified(dispatcher, unavailable, read)
 
     private companion object {
         /** The blocks the fee history covers: about two minutes of Sepolia. */

@@ -19,8 +19,20 @@ import kotlinx.coroutines.test.runTest
 class ObserveSafeTest {
 
     private val safe = Address.of("0x" + "5a".repeat(20))
-    private val alice = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Alice", AccountCustody.InKeyStore)
-    private val bob = Account(Network.SEPOLIA, Address.of("0x" + "22".repeat(20)), AccountKind.EOA, "Bob", AccountCustody.Watched)
+    private val alice = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Alice",
+        AccountCustody.InKeyStore,
+    )
+    private val bob = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "22".repeat(20)),
+        AccountKind.EOA,
+        "Bob",
+        AccountCustody.Watched,
+    )
     private val carol = Address.of("0x" + "33".repeat(20))
     private val state =
         SafeState("1.4.1", l2 = false, listOf(alice.address, bob.address, carol), 2, 4, emptyList(), guard = null)

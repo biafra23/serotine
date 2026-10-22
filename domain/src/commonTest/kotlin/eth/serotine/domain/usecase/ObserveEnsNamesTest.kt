@@ -26,8 +26,21 @@ class ObserveEnsNamesTest {
     private val savings = Address.of("0x" + "ab".repeat(20))
     private val elsewhere = Address.of("0x" + "cd".repeat(20))
     private val byName =
-        Account(Network.SEPOLIA, savings, AccountKind.EOA, "savings.eth", AccountCustody.Watched, ensName = "savings.eth")
-    private val daily = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.Watched)
+        Account(
+            Network.SEPOLIA,
+            savings,
+            AccountKind.EOA,
+            "savings.eth",
+            AccountCustody.Watched,
+            ensName = "savings.eth",
+        )
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.Watched,
+    )
 
     private val names = object : NameResolver {
         var answer: NameResolution = NameResolution.Resolved("savings.eth", savings, 100)

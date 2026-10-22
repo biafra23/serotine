@@ -25,7 +25,13 @@ class ObserveAccountsTest {
 
     @Test
     fun emitsTheRepositoryStreamUnchanged() = runTest {
-        val account = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.InKeyStore)
+        val account = Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "11".repeat(20)),
+            AccountKind.EOA,
+            "Savings",
+            AccountCustody.InKeyStore,
+        )
         repository.accounts.value = listOf(account)
 
         assertEquals(AccountList.Loaded(listOf(account)), observeAccounts().first())

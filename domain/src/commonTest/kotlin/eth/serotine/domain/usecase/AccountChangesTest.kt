@@ -21,7 +21,13 @@ import kotlinx.coroutines.test.runTest
 /** [ObserveAccount], [RenameAccount] and [RemoveAccount] over fake ports. */
 class AccountChangesTest {
 
-    private val keyed = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+    private val keyed = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
     private val watched =
         Account(Network.SEPOLIA, Address.of("0x" + "22".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched)
     private val stranger = Address.of("0x" + "33".repeat(20))
@@ -100,7 +106,11 @@ class AccountChangesTest {
         val changes = WalletChanges()
         keys.importing = watched.address
         keys.importDelayMillis = 1_000
-        val import = async { ImportMnemonicAccount(keys, repository, changes)(Mnemonic("words"), WalletPassword("pw"), Network.SEPOLIA) }
+        val import = async { ImportMnemonicAccount(
+            keys,
+            repository,
+            changes,
+        )(Mnemonic("words"), WalletPassword("pw"), Network.SEPOLIA) }
         runCurrent() // the import holds the wallet while it stores the key
         val removal = async { RemoveAccount(repository, keys, changes)(watched.id) }
         advanceUntilIdle()

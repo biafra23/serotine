@@ -25,7 +25,12 @@ class VerifiedTokenBalancesTest {
     private val chain = FakeChain().apply { snapshot = running(head = 9) }
     private val calldata = Abi.balanceOf(holder).toHex()
 
-    private fun TestScope.balances() = VerifiedTokenBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), 4.seconds)
+    private fun TestScope.balances() = VerifiedTokenBalances(
+        Network.SEPOLIA,
+        chain,
+        StandardTestDispatcher(testScheduler),
+        4.seconds,
+    )
 
     @Test
     fun balanceOfIsTheSelectorAndThePaddedHolder() {
@@ -117,7 +122,12 @@ class VerifiedTokenBalancesTest {
             }
         }
 
-        val readings = VerifiedTokenBalances(Network.SEPOLIA, counting, StandardTestDispatcher(testScheduler), 4.seconds)
+        val readings = VerifiedTokenBalances(
+            Network.SEPOLIA,
+            counting,
+            StandardTestDispatcher(testScheduler),
+            4.seconds,
+        )
             .observeBalance(Network.SEPOLIA, holder, usdc).toList()
 
         assertEquals(listOf<TokenBalanceReading>(TokenBalanceReading.Unavailable(ReadUnavailable.REFUSED)), readings)

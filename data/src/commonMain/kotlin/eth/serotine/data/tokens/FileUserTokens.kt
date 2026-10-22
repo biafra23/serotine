@@ -50,7 +50,8 @@ class FileUserTokens(
         decode = { version, text ->
             val stored = JSON.decodeFromString(StoredSettings.serializer(), text)
             All(
-                stored.added.mapNotNull { it.toToken(version) }.distinctBy { (network, token) -> network to token.address },
+                stored.added.mapNotNull { it.toToken(version) }.distinctBy {
+                    (network, token) -> network to token.address },
                 (
                     stored.hidden.map { Network.SEPOLIA to Address.of(it) }.takeIf { version < 2 }.orEmpty() +
                         stored.hiddenOn.mapNotNull { it.toHidden() }

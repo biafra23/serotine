@@ -47,7 +47,8 @@ class VerifiedAddressKindsTest {
 
     private fun TestScope.kinds() =
         VerifiedAddressKinds(
-            Network.SEPOLIA, chain,
+            Network.SEPOLIA,
+            chain,
             StandardTestDispatcher(testScheduler),
             4.seconds,
             safes,
@@ -74,7 +75,10 @@ class VerifiedAddressKindsTest {
         chain.snapshot = running(head = 9)
         chain.codes[address] = ProvenCode("ef0100" + delegate.hex.removePrefix("0x"), blockNumber = 9)
 
-        assertEquals(KindReading.Verified(AddressKind.DelegatedEoa(delegate), 9), kinds().observeKind(Network.SEPOLIA, address).first())
+        assertEquals(
+            KindReading.Verified(AddressKind.DelegatedEoa(delegate), 9),
+            kinds().observeKind(Network.SEPOLIA, address).first(),
+        )
     }
 
     @Test
@@ -92,7 +96,10 @@ class VerifiedAddressKindsTest {
     @Test
     fun whatCannotBeProvenIsSaidSo() = runTest {
         chain.snapshot = running(head = 9)
-        assertEquals(KindReading.Unavailable(ReadUnavailable.UNPROVEN), kinds().observeKind(Network.SEPOLIA, address).first())
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(Network.SEPOLIA, address).first(),
+        )
 
         chain.snapshot = EngineSnapshot.Booting
         assertEquals(KindReading.Syncing, kinds().observeKind(Network.SEPOLIA, address).first())
@@ -113,7 +120,10 @@ class VerifiedAddressKindsTest {
         chain.snapshot = running(head = 9)
         chain.failure = Error("native library broken")
 
-        assertEquals(KindReading.Unavailable(ReadUnavailable.UNPROVEN), kinds().observeKind(Network.SEPOLIA, address).first())
+        assertEquals(
+            KindReading.Unavailable(ReadUnavailable.UNPROVEN),
+            kinds().observeKind(Network.SEPOLIA, address).first(),
+        )
     }
 
     @Test
@@ -183,7 +193,10 @@ class VerifiedAddressKindsTest {
         val guard = Address.of("0x" + "44".repeat(20))
         chain.storage[address to "4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8"] = word(guard)
 
-        val reading = kinds().observeKind(Network.SEPOLIA, address).first { it !is KindReading.Syncing } as KindReading.Verified
+        val reading = kinds().observeKind(
+            Network.SEPOLIA,
+            address,
+        ).first { it !is KindReading.Syncing } as KindReading.Verified
         assertEquals(guard, (reading.kind as AddressKind.Safe).state.guard)
     }
 
@@ -192,7 +205,10 @@ class VerifiedAddressKindsTest {
         chain.snapshot = running(head = 9)
         val kinds = kinds()
         suspend fun kind() =
-            (kinds.observeKind(Network.SEPOLIA, address).first { it !is KindReading.Syncing } as KindReading.Verified).kind
+            (kinds.observeKind(
+                Network.SEPOLIA,
+                address,
+            ).first { it !is KindReading.Syncing } as KindReading.Verified).kind
 
         // A pinned proxy whose singleton is not pinned.
         safeStorage()
@@ -237,7 +253,10 @@ class VerifiedAddressKindsTest {
         chain.slots.remove(Triple(address, 1L, module))
         val kinds = kinds()
         suspend fun kind() =
-            (kinds.observeKind(Network.SEPOLIA, address).first { it !is KindReading.Syncing } as KindReading.Verified).kind
+            (kinds.observeKind(
+                Network.SEPOLIA,
+                address,
+            ).first { it !is KindReading.Syncing } as KindReading.Verified).kind
         assertEquals(emptyList(), (kind() as AddressKind.Safe).state.modules)
 
         // Setup always writes the sentinel: a set-up Safe without it was written by other means.
@@ -252,7 +271,10 @@ class VerifiedAddressKindsTest {
         chain.snapshot = running(head = 9)
         val kinds = kinds()
         suspend fun kind() =
-            (kinds.observeKind(Network.SEPOLIA, address).first { it !is KindReading.Syncing } as KindReading.Verified).kind
+            (kinds.observeKind(
+                Network.SEPOLIA,
+                address,
+            ).first { it !is KindReading.Syncing } as KindReading.Verified).kind
 
         safeStorage()
         chain.slots[Triple(address, 3L, null)] = word(3) // three owners counted, two listed
@@ -273,7 +295,10 @@ class VerifiedAddressKindsTest {
         chain.storage[address to VerifiedAddressKinds.MODULE_GUARD_SLOT.toHex()] = word(planted)
         val kinds = kinds()
         suspend fun kind() =
-            (kinds.observeKind(Network.SEPOLIA, address).first { it !is KindReading.Syncing } as KindReading.Verified).kind
+            (kinds.observeKind(
+                Network.SEPOLIA,
+                address,
+            ).first { it !is KindReading.Syncing } as KindReading.Verified).kind
         // 1.4.1 never consults a module guard: a word there is no protection.
         assertEquals(null, (kind() as AddressKind.Safe).state.moduleGuard)
 
@@ -561,14 +586,20 @@ class VerifiedAddressKindsTest {
 
         // The next head: the reading stands, nothing is asked again.
         chain.snapshot = running(head = 10)
-        val standing = kinds.observeKind(Network.SEPOLIA, address).first { it !is KindReading.Syncing } as KindReading.Verified
+        val standing = kinds.observeKind(
+            Network.SEPOLIA,
+            address,
+        ).first { it !is KindReading.Syncing } as KindReading.Verified
         assertEquals(9, standing.blockNumber)
         assertEquals(asked, chain.proofRequests.size)
 
         // Five heads on: read again, and labelled with its new block.
         chain.snapshot = running(head = 14)
         chain.slotBlock = 14
-        val again = kinds.observeKind(Network.SEPOLIA, address).first { it !is KindReading.Syncing } as KindReading.Verified
+        val again = kinds.observeKind(
+            Network.SEPOLIA,
+            address,
+        ).first { it !is KindReading.Syncing } as KindReading.Verified
         assertEquals(14, again.blockNumber)
     }
 

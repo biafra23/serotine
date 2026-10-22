@@ -281,9 +281,21 @@ class FindUniswapRouteTest {
         override suspend fun fees(network: Network): FeeReading = fees
         override suspend fun nonce(network: Network, account: Address): NonceReading = error("not asked")
         override suspend fun minedNonce(network: Network, account: Address): NonceReading = error("not asked")
-        override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
+        override suspend fun estimateGas(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): GasEstimate =
             error("not asked")
-        override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation =
+        override suspend fun simulate(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): Simulation =
             error("not asked")
     }
 }

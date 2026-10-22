@@ -266,7 +266,10 @@ class TransactionHistoriesTest {
 
         history.settle(sent.hash, SentOutcome.Finalized(120, succeeded = true))
         receipt(sent).value = TransactionProgress.Pending
-        assertEquals(TransactionProgress.Finalized(120, succeeded = true), observe(Network.SEPOLIA, sent.hash).first().progress)
+        assertEquals(
+            TransactionProgress.Finalized(120, succeeded = true),
+            observe(Network.SEPOLIA, sent.hash).first().progress,
+        )
 
         history.entries.value = listOf(HistoryEntry(sent, SentOutcome.NonceUsed))
         val used = observe(Network.SEPOLIA, sent.hash).first()

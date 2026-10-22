@@ -19,10 +19,10 @@ interface PriceFeeds {
     fun quotes(network: Network): Map<PriceId, PriceId>
 
     /**
-     * What the feed of [priceId] on [network] answers, read through that network's light
-     * client, re-emitted when the verified head moves; equal readings are not repeated.
-     * [FeedReading.NoPrice] with [NoPriceReason.NO_FEED], once, for a price id with no feed in
-     * [quotes] of [network]. A [network] no adapter serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
+     * What the feed of [priceId] on [network] answers, read through that network's light client, re-emitted when the
+     * verified head moves; equal readings are not repeated. [FeedReading.NoPrice] with [NoPriceReason.NO_FEED], once,
+     * for a price id with no feed in [quotes] of [network]. A [network] no adapter serves here is refused, never
+     * answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
      */
     fun observe(network: Network, priceId: PriceId): Flow<FeedReading>
 }

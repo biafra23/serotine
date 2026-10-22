@@ -63,7 +63,9 @@ class FileNetworkSettings(
         }
         .distinctUntilChanged()
 
-    override suspend fun setEnabled(network: Network, on: Boolean): Boolean = file.change(notSaved = false) { recorded ->
+    override suspend fun setEnabled(network: Network, on: Boolean): Boolean = file.change(
+        notSaved = false,
+    ) { recorded ->
         withDefaults(recorded).let { all ->
             if (all[network] == on && recorded.keys.containsAll(Network.entries)) {
                 Decision(true)

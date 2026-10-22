@@ -96,7 +96,9 @@ class TokenSettingsTest {
         val added = AddToken(userTokens, metadata, known)(Network.SEPOLIA, eurc)
 
         assertEquals(TokenAdd.Added(Token(eurc, "EURC", "EURC", 6, icon = null)), added)
-        assertTrue(known(Network.SEPOLIA).first().tokens.any { it.token.address == eurc && it.origin == TokenOrigin.ADDED })
+        assertTrue(
+            known(Network.SEPOLIA).first().tokens.any { it.token.address == eurc && it.origin == TokenOrigin.ADDED },
+        )
     }
 
     @Test
@@ -110,7 +112,10 @@ class TokenSettingsTest {
         assertEquals(TokenAdd.NotVerified(null), AddToken(userTokens, metadata, known)(Network.SEPOLIA, eurc))
 
         metadata.of(eurc).value = MetadataReading.Unavailable(ReadUnavailable.REFUSED)
-        assertEquals(TokenAdd.NotVerified(ReadUnavailable.REFUSED), AddToken(userTokens, metadata, known)(Network.SEPOLIA, eurc))
+        assertEquals(
+            TokenAdd.NotVerified(ReadUnavailable.REFUSED),
+            AddToken(userTokens, metadata, known)(Network.SEPOLIA, eurc),
+        )
     }
 
     @Test
@@ -128,7 +133,11 @@ class TokenSettingsTest {
         assertEquals(TokenChange.Changed, SetTokenHidden(userTokens)(Network.SEPOLIA, eurc, hidden = true))
         assertEquals(TokenChange.AlreadyPresent, SetTokenHidden(userTokens)(Network.SEPOLIA, eurc, hidden = true))
         assertEquals(TokenChange.Changed, RemoveToken(userTokens)(Network.SEPOLIA, eurc))
-        assertEquals(TokenChange.NotFound, RemoveToken(userTokens)(Network.SEPOLIA, usdc.address), "a built-in token is only hidden")
+        assertEquals(
+            TokenChange.NotFound,
+            RemoveToken(userTokens)(Network.SEPOLIA, usdc.address),
+            "a built-in token is only hidden",
+        )
         assertEquals(TokenSettings.Loaded(emptyList(), emptySet()), userTokens.settings.value)
     }
 }

@@ -24,7 +24,8 @@ internal class MemoryHistoryStarts(vararg initial: Pair<Address, HistoryStart>) 
 
     // One network's starts, by address: these tests are all Sepolia's.
     override fun observe(): Flow<HistoryStartList> =
-        starts.map { held -> HistoryStartList.Loaded(held.mapKeys { (address, _) -> AccountId(Network.SEPOLIA, address) }) }
+        starts.map {
+            held -> HistoryStartList.Loaded(held.mapKeys { (address, _) -> AccountId(Network.SEPOLIA, address) }) }
 
     override suspend fun note(id: AccountId, atSeconds: Long): Boolean {
         val address = id.address

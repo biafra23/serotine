@@ -453,17 +453,33 @@ class ProposeSafeSwapTest {
 
         override suspend fun nonce(network: Network, account: Address): NonceReading = error("a proposal sends nothing")
 
-        override suspend fun minedNonce(network: Network, account: Address): NonceReading = error("a proposal sends nothing")
+        override suspend fun minedNonce(network: Network, account: Address): NonceReading = error(
+            "a proposal sends nothing",
+        )
 
-        override suspend fun fees(network: Network): FeeReading = error("whoever executes it pays: the route is ranked gross")
+        override suspend fun fees(network: Network): FeeReading = error(
+            "whoever executes it pays: the route is ranked gross",
+        )
 
-        override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate =
+        override suspend fun estimateGas(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): GasEstimate =
             error("a proposal sends nothing")
 
         /** An engine that runs no call from a contract's address. */
         var refusing = false
 
-        override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+        override suspend fun simulate(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): Simulation {
             simulated += from to to
             if (refusing) return Simulation.Refused
             if (to == router) return routerRun

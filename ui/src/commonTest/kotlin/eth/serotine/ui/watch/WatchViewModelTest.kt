@@ -44,7 +44,13 @@ import kotlinx.coroutines.test.setMain
 class WatchViewModelTest {
 
     private val vitalik = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-    private val daily = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
     private val accounts = FakeAccounts(daily)
     private val reading = MutableStateFlow<KindReading>(KindReading.Verified(AddressKind.Eoa, 9_412_118))
     private val kinds = object : AddressKinds {
@@ -141,7 +147,10 @@ class WatchViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         // The card shows an account; at Add the use case proves again, and cannot.
         val syncing = object : AddressKinds {
-            override fun observeKind(network: Network, address: Address): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
+            override fun observeKind(
+                network: Network,
+                address: Address,
+            ): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
         }
         val viewModel = WatchViewModel(
             ObserveAddressKind(kinds),

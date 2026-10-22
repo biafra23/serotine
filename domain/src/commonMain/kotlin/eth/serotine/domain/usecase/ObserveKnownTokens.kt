@@ -64,7 +64,8 @@ class ObserveKnownTokens(
             if (builtIn.isEmpty()) {
                 flowOf(emptyList())
             } else {
-                combine(builtIn.map { token -> checkOf(network, token).map { check -> token to check } }) { it.toList() }
+                combine(builtIn.map {
+                    token -> checkOf(network, token).map { check -> token to check } }) { it.toList() }
             }
         }
 

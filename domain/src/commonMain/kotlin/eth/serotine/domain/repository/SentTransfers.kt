@@ -33,13 +33,13 @@ interface SentTransfers {
     suspend fun record(transfer: SentTransfer): Boolean
 
     /**
-     * Forgets [account]'s transactions (an address on a network: it counts its nonces on each
-     * chain apart) whose nonce is below [minedCount], its verified count of mined transactions (each of those nonces is used on chain, by that transaction or another),
-     * but for a Safe's deployment whose Safe is not listed yet ([SentAction.SafeDeployment.listed]
-     * null), which is kept until it was taken before [unlistedBefore] (unix seconds): it is the
-     * only record of the Safe's owners and name. One no block took stays, past the time it holds
-     * its nonce (`RECORD_LIFETIME_SECONDS`), so that its status is still found.
-     * [SentTransfer.prunable] is the rule. False when the record could not be saved.
+     * Forgets [account]'s transactions (an address on a network: it counts its nonces on each chain apart) whose nonce
+     * is below [minedCount], its verified count of mined transactions (each of those nonces is used on chain, by that
+     * transaction or another), but for a Safe's deployment whose Safe is not listed yet
+     * ([SentAction.SafeDeployment.listed] null), which is kept until it was taken before [unlistedBefore] (unix
+     * seconds): it is the only record of the Safe's owners and name. One no block took stays, past the time it holds
+     * its nonce (`RECORD_LIFETIME_SECONDS`), so that its status is still found. [SentTransfer.prunable] is the rule.
+     * False when the record could not be saved.
      */
     suspend fun prune(account: AccountId, minedCount: Long, unlistedBefore: Long): Boolean
 }

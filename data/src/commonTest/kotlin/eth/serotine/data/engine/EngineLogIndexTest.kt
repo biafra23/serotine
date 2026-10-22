@@ -47,7 +47,8 @@ class EngineLogIndexTest {
     @Test
     fun aChangeIsOneConfigWithAnAddressEntryAndATopicEntryAtAllThreePositions() = runTest {
         val taken = index().configure(
-            Network.SEPOLIA, listOf(
+            Network.SEPOLIA,
+            listOf(
                 LogWatch(LogWatchKey.Mention(alice), 9_400_000),
                 LogWatch(LogWatchKey.Emitter(vault), 9_500_000),
                 LogWatch(LogWatchKey.Emitter(vault), 9_450_000),
@@ -84,7 +85,11 @@ class EngineLogIndexTest {
     @Test
     fun anEntryBothWatchedAndUnwatchedIsTheCallersError() = runTest {
         assertFailsWith<IllegalArgumentException> {
-            index().configure(Network.SEPOLIA, listOf(LogWatch(LogWatchKey.Mention(alice), 1)), listOf(LogWatchKey.Mention(alice)))
+            index().configure(
+                Network.SEPOLIA,
+                listOf(LogWatch(LogWatchKey.Mention(alice), 1)),
+                listOf(LogWatchKey.Mention(alice)),
+            )
         }
     }
 
@@ -115,7 +120,10 @@ class EngineLogIndexTest {
     @Test
     fun aMentionIsQueriedAtItsPositionAndAnEmitterByItsAddress() = runTest {
         chain.answer = "[]"
-        index().logs(Network.SEPOLIA, LogQuery(LogWatchKey.Mention(alice), 9_400_000, 9_400_255, listOf(transfer), position = 2))
+        index().logs(
+            Network.SEPOLIA,
+            LogQuery(LogWatchKey.Mention(alice), 9_400_000, 9_400_255, listOf(transfer), position = 2),
+        )
         index().logs(Network.SEPOLIA, LogQuery(LogWatchKey.Emitter(vault), 16, 32))
 
         assertEquals(
@@ -145,18 +153,33 @@ class EngineLogIndexTest {
         assertEquals(token, logs.single().log.address)
 
         chain.answer = "[${log(150)},${log(201)}]"
-        assertEquals(LogsReading.Unavailable(ReadUnavailable.UNPROVEN), index().logs(Network.SEPOLIA, query), "outside the range")
+        assertEquals(
+            LogsReading.Unavailable(ReadUnavailable.UNPROVEN),
+            index().logs(Network.SEPOLIA, query),
+            "outside the range",
+        )
         chain.answer = "[${log(150, topic2 = transfer)}]"
-        assertEquals(LogsReading.Unavailable(ReadUnavailable.UNPROVEN), index().logs(Network.SEPOLIA, query), "not naming Alice")
+        assertEquals(
+            LogsReading.Unavailable(ReadUnavailable.UNPROVEN),
+            index().logs(Network.SEPOLIA, query),
+            "not naming Alice",
+        )
         chain.answer = "[{\"address\":\"${token.hex}\"}]"
-        assertEquals(LogsReading.Unavailable(ReadUnavailable.UNPROVEN), index().logs(Network.SEPOLIA, query), "not a log")
+        assertEquals(
+            LogsReading.Unavailable(ReadUnavailable.UNPROVEN),
+            index().logs(Network.SEPOLIA, query),
+            "not a log",
+        )
     }
 
     @Test
     fun aRangeBelowTheEntrysBlockOrOfAnEntryNotFollowedIsNotAskedOfTheEngine() = runTest {
         val belowAlices = LogQuery(LogWatchKey.Mention(alice), 99, 200, position = 1)
         assertEquals(LogsReading.BeforeStart(100), index().logs(Network.SEPOLIA, belowAlices))
-        assertEquals(LogsReading.NotWatched, index().logs(Network.SEPOLIA, LogQuery(LogWatchKey.Emitter(alice), 100, 200)))
+        assertEquals(
+            LogsReading.NotWatched,
+            index().logs(Network.SEPOLIA, LogQuery(LogWatchKey.Emitter(alice), 100, 200)),
+        )
         chain.status = """{"error":"handle is paused"}"""
         assertEquals(
             LogsReading.Unavailable(ReadUnavailable.UNPROVEN),
@@ -194,7 +217,10 @@ class EngineLogIndexTest {
         assertEquals(LogsReading.Unavailable(ReadUnavailable.UNPROVEN), index().logs(Network.SEPOLIA, query))
         chain.base.snapshot = EngineSnapshot.Down
         assertEquals(LogsReading.Unavailable(ReadUnavailable.NO_ENGINE), index().logs(Network.SEPOLIA, query))
-        assertEquals(LogsReading.Unavailable(ReadUnavailable.NO_ENGINE), index(chain = null).logs(Network.SEPOLIA, query))
+        assertEquals(
+            LogsReading.Unavailable(ReadUnavailable.NO_ENGINE),
+            index(chain = null).logs(Network.SEPOLIA, query),
+        )
     }
 }
 

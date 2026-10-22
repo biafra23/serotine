@@ -4,13 +4,12 @@ import eth.serotine.domain.model.AccountId
 import kotlinx.coroutines.flow.Flow
 
 /**
- * The port for where each account's history starts (issue #85): the block from which its
- * network's [LogIndex] follows the account. A start is an account's, by its [AccountId]: the
- * same address on two networks has two starts, each a block of its own chain. An account is noted when it is added, with the time
- * ([HistoryStart.Noted]); `FollowAccountLogs` fixes the block once the light client has a head
- * to measure it from ([HistoryStart.Fixed]), and forgets the start once the account is gone and
- * the index stopped following it. The history is checked from the fixed block on and not before
- * it: for an account not created here, that is the block it was added at (owner ruling,
+ * The port for where each account's history starts (issue #85): the block from which its network's [LogIndex] follows
+ * the account. A start is an account's, by its [AccountId]: the same address on two networks has two starts, each a
+ * block of its own chain. An account is noted when it is added, with the time ([HistoryStart.Noted]);
+ * `FollowAccountLogs` fixes the block once the light client has a head to measure it from ([HistoryStart.Fixed]), and
+ * forgets the start once the account is gone and the index stopped following it. The history is checked from the fixed
+ * block on and not before it: for an account not created here, that is the block it was added at (owner ruling,
  * 2026-10-20). Public data only. :data keeps it in a file. Never throws.
  */
 interface HistoryStarts {

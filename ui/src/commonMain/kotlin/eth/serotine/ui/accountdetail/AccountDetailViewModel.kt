@@ -135,7 +135,11 @@ class AccountDetailViewModel(
             if (name == null) {
                 flowOf(null)
             } else {
-                observeEnsNames.check(network, address, name).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
+                observeEnsNames.check(
+                    network,
+                    address,
+                    name,
+                ).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
             }
         }
 

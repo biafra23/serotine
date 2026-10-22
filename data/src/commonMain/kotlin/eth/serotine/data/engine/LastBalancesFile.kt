@@ -46,7 +46,9 @@ internal class LastBalancesFile(
         empty = Kept(emptyMap()),
         decode = { version, text ->
             val stored = JSON.decodeFromString(StoredBalances.serializer(), text).balances
-            val migrated = if (version < 2) stored.map { it.copy(id = "${Network.SEPOLIA.chainId}:${it.id}") } else stored
+            val migrated = if (version < 2) stored.map { it.copy(
+                    id = "${Network.SEPOLIA.chainId}:${it.id}",
+                ) } else stored
             Kept(migrated.associateBy { it.id })
         },
         encode = { kept ->

@@ -14,11 +14,10 @@ import kotlinx.coroutines.flow.Flow
  */
 interface NativeBalances {
     /**
-     * The balance of [address] on [network], re-emitted when the verified head moves or the light
-     * client's state changes; consecutive equal readings are not repeated. A
-     * [BalanceReading.Verified] was proven against the sync committee at its block; when
-     * no proof is possible the reading says why. A [network] no adapter serves here is refused, never answered from another network
-     * ([ReadUnavailable.NO_ENGINE]). Never fails.
+     * The balance of [address] on [network], re-emitted when the verified head moves or the light client's state
+     * changes; consecutive equal readings are not repeated. A [BalanceReading.Verified] was proven against the sync
+     * committee at its block; when no proof is possible the reading says why. A [network] no adapter serves here is
+     * refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
      */
     fun observeBalance(network: Network, address: Address): Flow<BalanceReading>
 }

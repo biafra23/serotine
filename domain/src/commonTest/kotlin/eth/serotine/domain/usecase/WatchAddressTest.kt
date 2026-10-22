@@ -21,7 +21,13 @@ import kotlinx.coroutines.test.runTest
 class WatchAddressTest {
 
     private val address = Address.of("0x" + "ab".repeat(20))
-    private val daily = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
     private val repository = ListAccountRepository(daily)
     private var reading: KindReading = KindReading.Verified(AddressKind.Eoa, 100)
     private val kinds = object : AddressKinds {
@@ -49,7 +55,14 @@ class WatchAddressTest {
         val added = watch(Network.SEPOLIA, address, "  ", ensName = "savings.eth") as AddressWatch.Added
 
         assertEquals(
-            Account(Network.SEPOLIA, address, AccountKind.EOA, "savings.eth", AccountCustody.Watched, ensName = "savings.eth"),
+            Account(
+                Network.SEPOLIA,
+                address,
+                AccountKind.EOA,
+                "savings.eth",
+                AccountCustody.Watched,
+                ensName = "savings.eth",
+            ),
             added.account,
         )
     }
@@ -58,7 +71,10 @@ class WatchAddressTest {
     fun aNameGivenIsTheUsersEvenWithAnEnsName() = runTest {
         val added = watch(Network.SEPOLIA, address, "Savings", ensName = "savings.eth") as AddressWatch.Added
 
-        assertEquals(Account(Network.SEPOLIA, address, AccountKind.EOA, "Savings", AccountCustody.Watched), added.account)
+        assertEquals(
+            Account(Network.SEPOLIA, address, AccountKind.EOA, "Savings", AccountCustody.Watched),
+            added.account,
+        )
     }
 
     @Test
@@ -67,14 +83,20 @@ class WatchAddressTest {
 
         val added = watch(Network.SEPOLIA, address, "", ensName = long) as AddressWatch.Added
 
-        assertEquals(Account(Network.SEPOLIA, address, AccountKind.EOA, "Account 2", AccountCustody.Watched), added.account)
+        assertEquals(
+            Account(Network.SEPOLIA, address, AccountKind.EOA, "Account 2", AccountCustody.Watched),
+            added.account,
+        )
     }
 
     @Test
     fun aDelegatedAccountIsStillAnAccount() = runTest {
         reading = KindReading.Verified(AddressKind.DelegatedEoa(daily.address), 100)
 
-        assertEquals(AccountCustody.Watched, (watch(Network.SEPOLIA, address, "") as AddressWatch.Added).account.custody)
+        assertEquals(
+            AccountCustody.Watched,
+            (watch(Network.SEPOLIA, address, "") as AddressWatch.Added).account.custody,
+        )
     }
 
     @Test
@@ -83,7 +105,10 @@ class WatchAddressTest {
         reading = KindReading.Verified(AddressKind.Safe(state), 100)
 
         val added = watch(Network.SEPOLIA, address, "Treasury") as AddressWatch.Added
-        assertEquals(Account(Network.SEPOLIA, address, AccountKind.SAFE, "Treasury", AccountCustody.Watched), added.account)
+        assertEquals(
+            Account(Network.SEPOLIA, address, AccountKind.SAFE, "Treasury", AccountCustody.Watched),
+            added.account,
+        )
     }
 
     @Test
@@ -120,7 +145,10 @@ class WatchAddressTest {
             }
         }
 
-        assertEquals(AddressWatch.AlreadyInWallet(other), WatchAddress(repository, racing)(Network.SEPOLIA, address, "Mine"))
+        assertEquals(
+            AddressWatch.AlreadyInWallet(other),
+            WatchAddress(repository, racing)(Network.SEPOLIA, address, "Mine"),
+        )
     }
 
     @Test
@@ -132,7 +160,10 @@ class WatchAddressTest {
 
     @Test
     fun aNameTooLongOrAListThatCannotBeSavedChangesNothing() = runTest {
-        assertEquals(AddressWatch.NameTooLong, watch(Network.SEPOLIA, address, "x".repeat(RenameAccount.MAX_LABEL_LENGTH + 1)))
+        assertEquals(
+            AddressWatch.NameTooLong,
+            watch(Network.SEPOLIA, address, "x".repeat(RenameAccount.MAX_LABEL_LENGTH + 1)),
+        )
 
         repository.failSaves = true
         assertEquals(AddressWatch.NotSaved, watch(Network.SEPOLIA, address, "Savings"))

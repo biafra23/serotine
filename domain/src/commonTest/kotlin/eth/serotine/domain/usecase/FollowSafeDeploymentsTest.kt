@@ -88,7 +88,10 @@ class FollowSafeDeploymentsTest {
         safeThere()
         runCurrent()
         assertEquals(
-            listOf(world.alice, Account(Network.SEPOLIA, world.safe, AccountKind.SAFE, "Vault", AccountCustody.Watched)),
+            listOf(
+                world.alice,
+                Account(Network.SEPOLIA, world.safe, AccountKind.SAFE, "Vault", AccountCustody.Watched),
+            ),
             accounts.accounts.value,
         )
         assertEquals(SafeListing.LISTED, listed, "ended: never listed again")
@@ -133,7 +136,13 @@ class FollowSafeDeploymentsTest {
 
     @Test
     fun aSafeInTheWalletAlreadyEndsAsListedAtOnce() = runTest {
-        accounts.accounts.value += Account(Network.SEPOLIA, world.safe, AccountKind.SAFE, "Mine", AccountCustody.Watched)
+        accounts.accounts.value += Account(
+            Network.SEPOLIA,
+            world.safe,
+            AccountKind.SAFE,
+            "Mine",
+            AccountCustody.Watched,
+        )
         world.sent.transfers.value = listOf(deployment)
         follow()
 

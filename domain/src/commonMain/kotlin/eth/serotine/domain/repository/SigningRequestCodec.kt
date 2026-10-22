@@ -16,8 +16,9 @@ interface SigningRequestCodec {
     fun encode(request: SigningRequest): String
 
     /**
-     * The request [text] carries, or why it carries none: anything that is not exactly a request
-     * of a version this build reads, for a network the app knows, is refused, never repaired. What it decodes is not checked against the chain here.
+     * The request [text] carries, or why it carries none: anything that is not exactly a request of a version this
+     * build reads, for a network the app knows, is refused, never repaired. What it decodes is not checked against the
+     * chain here.
      */
     fun decode(text: String): SigningRequestDecoding
 }

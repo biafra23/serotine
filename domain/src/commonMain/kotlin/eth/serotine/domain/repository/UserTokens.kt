@@ -15,7 +15,9 @@ interface UserTokens {
     /** The settings of [network], re-emitted on each change, or why they cannot be read. Never throws. */
     fun observe(network: Network): Flow<TokenSettings>
 
-    /** Adds [token] on [network]; [TokenChange.AlreadyPresent] when its address is added there already. Never throws. */
+    /**
+     * Adds [token] on [network]; [TokenChange.AlreadyPresent] when its address is added there already. Never throws.
+     */
     suspend fun add(network: Network, token: Token): TokenChange
 
     /**

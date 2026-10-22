@@ -30,7 +30,10 @@ class ObserveUsdPrice(private val feeds: PriceFeeds) {
         // A table whose quotes go round in a circle never reaches USD: no price, not no end.
         if (quote == id || quote in path) return flowOf(Price.NoPrice(NoPriceReason.NO_FEED))
         val own = feeds.observe(network, id).map { it.asPrice() }
-        return if (quote == PriceId.USD) own else combine(own, usd(network, quote, path + id)) { price, rate -> price * rate }
+        return if (quote == PriceId.USD) own else combine(
+            own,
+            usd(network, quote, path + id),
+        ) { price, rate -> price * rate }
     }
 
     private fun FeedReading.asPrice(): Price = when (this) {

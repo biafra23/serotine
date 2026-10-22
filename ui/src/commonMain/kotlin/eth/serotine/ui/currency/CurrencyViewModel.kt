@@ -25,7 +25,10 @@ class CurrencyViewModel(
 
     private val outcome = MutableStateFlow(Outcome())
 
-    val uiState: StateFlow<CurrencyUiState> = combine(observeDisplayCurrencies(network), outcome) { currencies, outcome ->
+    val uiState: StateFlow<CurrencyUiState> = combine(
+        observeDisplayCurrencies(network),
+        outcome,
+    ) { currencies, outcome ->
         CurrencyUiState(
             options = currencies.offered.map { CurrencyOption(it.code, nameOf(it), chosen = it == currencies.chosen) },
             notice = when {
@@ -44,7 +47,10 @@ class CurrencyViewModel(
         val currency = DisplayCurrency.entries.firstOrNull { it.code == code } ?: return
         if (outcome.value.done) return
         viewModelScope.launch {
-            outcome.value = if (setDisplayCurrency(network, currency)) Outcome(done = true) else Outcome(error = NOT_SAVED)
+            outcome.value = if (setDisplayCurrency(
+                    network,
+                    currency,
+                )) Outcome(done = true) else Outcome(error = NOT_SAVED)
         }
     }
 

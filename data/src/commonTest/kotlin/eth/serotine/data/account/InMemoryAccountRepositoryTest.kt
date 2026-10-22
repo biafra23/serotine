@@ -15,9 +15,21 @@ import kotlinx.coroutines.test.runTest
 
 class InMemoryAccountRepositoryTest {
 
-    private val eoa = Account(Network.SEPOLIA, Address.of("0x" + "aa".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+    private val eoa = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "aa".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
     private val safe =
-        Account(Network.SEPOLIA, Address.of("0x" + "bb".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
+        Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "bb".repeat(20)),
+            AccountKind.SAFE,
+            "Treasury",
+            AccountCustody.InKeyStore,
+        )
 
     @Test
     fun startsWithTheInitialAccountsAndEmitsAdditions() = runTest {
@@ -61,7 +73,14 @@ class InMemoryAccountRepositoryTest {
 
     @Test
     fun aRenameMakesTheNameTheUsers() = runTest {
-        val byName = Account(Network.SEPOLIA, eoa.address, AccountKind.EOA, "daily.eth", AccountCustody.Watched, ensName = "daily.eth")
+        val byName = Account(
+            Network.SEPOLIA,
+            eoa.address,
+            AccountKind.EOA,
+            "daily.eth",
+            AccountCustody.Watched,
+            ensName = "daily.eth",
+        )
         val repository = InMemoryAccountRepository(listOf(byName))
 
         assertEquals(AccountChange.Changed, repository.rename(eoa.id, "Daily"))

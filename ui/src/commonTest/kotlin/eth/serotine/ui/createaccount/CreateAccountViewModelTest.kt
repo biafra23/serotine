@@ -53,7 +53,8 @@ class CreateAccountViewModelTest {
             NewRecoveryPhrase(keys),
             ImportMnemonicAccount(keys, accounts, WalletChanges()),
             DescribeKeyStore(keys),
-            Network.SEPOLIA, Random(7),
+            Network.SEPOLIA,
+            Random(7),
         )
     }
 

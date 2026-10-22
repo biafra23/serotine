@@ -115,7 +115,9 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun theKeyOfAWatchedAccountIsAnImportThatSucceeded() = runTest {
-        repository.accounts.value = listOf(Account(Network.SEPOLIA, address, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        repository.accounts.value = listOf(
+        Account(Network.SEPOLIA, address, AccountKind.EOA, "Savings", AccountCustody.Watched),
+    )
         keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
         typeWordsAndPassword()
 
@@ -169,7 +171,9 @@ class MnemonicImportViewModelTest {
 
     @Test
     fun anAccountAlreadyInTheWalletIsAnError() = runTest {
-        repository.accounts.value = listOf(Account(Network.SEPOLIA, address, AccountKind.EOA, "Daily", AccountCustody.InKeyStore))
+        repository.accounts.value = listOf(
+        Account(Network.SEPOLIA, address, AccountKind.EOA, "Daily", AccountCustody.InKeyStore),
+    )
         keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
         typeWordsAndPassword()
 

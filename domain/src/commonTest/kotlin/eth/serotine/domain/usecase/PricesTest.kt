@@ -40,7 +40,10 @@ class PricesTest {
         feeds.answer(LINK_ID, 0.005, updatedAt = 900, ageSeconds = 300)
         feeds.answer(ETH, 2_400.0, updatedAt = 1_100, ageSeconds = 100)
 
-        assertEquals(Price.Priced(12.0, updatedAt = 900, ageSeconds = 300, stale = false), usd(Network.SEPOLIA, LINK_ID).first())
+        assertEquals(
+            Price.Priced(12.0, updatedAt = 900, ageSeconds = 300, stale = false),
+            usd(Network.SEPOLIA, LINK_ID).first(),
+        )
     }
 
     @Test
@@ -204,10 +207,14 @@ class PricesTest {
     @Test
     fun aPortfolioStillValuedInThePreviousCurrencyIsIncomplete() = runTest {
         pricesAndBalances()
-        val accounts = ListAccountRepository(Account(Network.SEPOLIA, holder, AccountKind.EOA, "Daily", AccountCustody.Watched))
+        val accounts = ListAccountRepository(
+            Account(Network.SEPOLIA, holder, AccountKind.EOA, "Daily", AccountCustody.Watched),
+        )
         val portfolio = Portfolio(
             AccountList.Loaded(accounts.accounts.value),
-            mapOf(holder.onSepolia to accountValue(holder.onSepolia).first { it.total.complete && it.tokens.size == 2 }),
+            mapOf(
+                holder.onSepolia to accountValue(holder.onSepolia).first { it.total.complete && it.tokens.size == 2 },
+            ),
             DisplayCurrency.EUR,
         )
 
@@ -218,10 +225,14 @@ class PricesTest {
     fun thePortfolioSumsItsAccountsInOneCurrency() = runTest {
         pricesAndBalances()
         metadata.of(usdc.address).value = MetadataReading.Verified("USDC", "USDC", 6, 9)
-        val accounts = ListAccountRepository(Account(Network.SEPOLIA, holder, AccountKind.EOA, "Daily", AccountCustody.Watched))
+        val accounts = ListAccountRepository(
+            Account(Network.SEPOLIA, holder, AccountKind.EOA, "Daily", AccountCustody.Watched),
+        )
         val portfolio = ObservePortfolio(ObserveAccounts(accounts), accountValue, currencies)
 
-        val read = portfolio(Network.SEPOLIA).first { it.total.complete && it.values[holder.onSepolia]?.tokens?.size == 2 }
+        val read = portfolio(
+            Network.SEPOLIA,
+        ).first { it.total.complete && it.values[holder.onSepolia]?.tokens?.size == 2 }
 
         assertEquals(Total(3_250.0, valued = 2, leftOut = 1), read.total)
     }

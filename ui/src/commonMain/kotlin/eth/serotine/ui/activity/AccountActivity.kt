@@ -106,8 +106,10 @@ class AccountActivity(
                 .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
                 .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
             val events = (safeEvents + tokenEvents)
-                .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
-                    .thenByDescending { it.second.logIndex })
+                .sortedWith(
+                    compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
+                    .thenByDescending { it.second.logIndex },
+                )
                 .map { (row, event) -> row to event.blockNumber }
             val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
             val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"

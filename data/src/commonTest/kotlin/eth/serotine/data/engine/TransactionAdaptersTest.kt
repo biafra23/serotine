@@ -38,7 +38,11 @@ class TransactionAdaptersTest {
     private val alice = Address.of("0x" + "aa".repeat(20))
     private val bob = Address.of("0x" + "bb".repeat(20))
 
-    private fun TestScope.inputs() = EngineTransactionInputs(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler))
+    private fun TestScope.inputs() = EngineTransactionInputs(
+        Network.SEPOLIA,
+        chain,
+        StandardTestDispatcher(testScheduler),
+    )
 
     private fun synced(finalized: Long = 0) {
         chain.base.snapshot = running(head = 100).copy(finalizedBlock = finalized)
@@ -150,7 +154,8 @@ class TransactionAdaptersTest {
         var answers = 0
         chain.feeAnswer = { if (++answers <= 2) null else history }
         val inputs = EngineTransactionInputs(
-            Network.SEPOLIA, chain,
+            Network.SEPOLIA,
+            chain,
             StandardTestDispatcher(testScheduler),
             timeSource = testScheduler.timeSource,
         )
@@ -174,7 +179,8 @@ class TransactionAdaptersTest {
             null
         }
         val inputs = EngineTransactionInputs(
-            Network.SEPOLIA, chain,
+            Network.SEPOLIA,
+            chain,
             StandardTestDispatcher(testScheduler),
             timeSource = testScheduler.timeSource,
         )
@@ -201,7 +207,11 @@ class TransactionAdaptersTest {
         assertEquals(FeeReading.Unavailable(ReadUnavailable.NO_ENGINE), inputs().fees(Network.SEPOLIA))
         assertEquals(
             NonceReading.Unavailable(ReadUnavailable.NO_ENGINE),
-            EngineTransactionInputs(Network.SEPOLIA, null, StandardTestDispatcher(testScheduler)).nonce(Network.SEPOLIA, alice),
+            EngineTransactionInputs(
+                Network.SEPOLIA,
+                null,
+                StandardTestDispatcher(testScheduler),
+            ).nonce(Network.SEPOLIA, alice),
         )
 
         synced()
@@ -214,9 +224,15 @@ class TransactionAdaptersTest {
         synced()
         val value = UInt256.of(5)
         chain.estimate = EstimateAnswer.Gas(21_000)
-        assertEquals(GasEstimate.Estimated(21_000), inputs().estimateGas(Network.SEPOLIA, alice, bob, value, ByteArray(0)))
+        assertEquals(
+            GasEstimate.Estimated(21_000),
+            inputs().estimateGas(Network.SEPOLIA, alice, bob, value, ByteArray(0)),
+        )
         chain.estimate = EstimateAnswer.Reverted("08c379a0")
-        assertEquals(GasEstimate.Reverted("08c379a0"), inputs().estimateGas(Network.SEPOLIA, alice, bob, value, ByteArray(0)))
+        assertEquals(
+            GasEstimate.Reverted("08c379a0"),
+            inputs().estimateGas(Network.SEPOLIA, alice, bob, value, ByteArray(0)),
+        )
         chain.estimate = EstimateAnswer.Infeasible("insufficient funds for transfer")
         assertEquals(
             GasEstimate.Infeasible("insufficient funds for transfer"),
@@ -224,7 +240,10 @@ class TransactionAdaptersTest {
         )
 
         chain.call = CallOutcome.Returned("01", 99)
-        assertEquals(Simulation.Succeeded("01", 99), inputs().simulate(Network.SEPOLIA, alice, bob, value, ByteArray(0)))
+        assertEquals(
+            Simulation.Succeeded("01", 99),
+            inputs().simulate(Network.SEPOLIA, alice, bob, value, ByteArray(0)),
+        )
         chain.call = CallOutcome.Reverted(99)
         assertEquals(Simulation.Reverted(99), inputs().simulate(Network.SEPOLIA, alice, bob, value, ByteArray(0)))
         chain.call = null
@@ -276,12 +295,22 @@ class TransactionAdaptersTest {
         chain.send = SendAnswer.Sent("0x" + "ab".repeat(32))
         assertEquals(Broadcast.Sent("0x" + "ab".repeat(32)), broadcaster.send(Network.SEPOLIA, byteArrayOf(2, 1)))
         chain.send = SendAnswer.Rejected("nonce too low: next nonce 8, tx nonce 7")
-        assertEquals(Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7"), broadcaster.send(Network.SEPOLIA, byteArrayOf(2)))
+        assertEquals(
+            Broadcast.Rejected("nonce too low: next nonce 8, tx nonce 7"),
+            broadcaster.send(Network.SEPOLIA, byteArrayOf(2)),
+        )
         chain.failure = Error("native library broken")
-        assertEquals(Broadcast.Unavailable("the light client failed (Error)"), broadcaster.send(Network.SEPOLIA, byteArrayOf(2)))
+        assertEquals(
+            Broadcast.Unavailable("the light client failed (Error)"),
+            broadcaster.send(Network.SEPOLIA, byteArrayOf(2)),
+        )
         assertEquals(
             Broadcast.Unavailable("no light client on this device"),
-            EngineBroadcaster(Network.SEPOLIA, null, StandardTestDispatcher(testScheduler)).send(Network.SEPOLIA, byteArrayOf(2)),
+            EngineBroadcaster(
+                Network.SEPOLIA,
+                null,
+                StandardTestDispatcher(testScheduler),
+            ).send(Network.SEPOLIA, byteArrayOf(2)),
         )
     }
 
@@ -372,11 +401,17 @@ class TransactionAdaptersTest {
         assertEquals(listOf("serotine.eth"), chain.resolved, "lower-cased before it is asked")
 
         chain.name = NameAnswer(bob.hex, 90, verified = false, error = null)
-        assertEquals(NameResolution.Unavailable(ReadUnavailable.UNPROVEN), names.resolve(Network.SEPOLIA, "serotine.eth"))
+        assertEquals(
+            NameResolution.Unavailable(ReadUnavailable.UNPROVEN),
+            names.resolve(Network.SEPOLIA, "serotine.eth"),
+        )
         chain.name = NameAnswer(null, 90, verified = true, error = null)
         assertEquals(NameResolution.NoAddress, names.resolve(Network.SEPOLIA, "serotine.eth"))
         chain.name = NameAnswer(null, -1, verified = false, error = "no snap peer")
-        assertEquals(NameResolution.Unavailable(ReadUnavailable.UNPROVEN), names.resolve(Network.SEPOLIA, "serotine.eth"))
+        assertEquals(
+            NameResolution.Unavailable(ReadUnavailable.UNPROVEN),
+            names.resolve(Network.SEPOLIA, "serotine.eth"),
+        )
 
         assertEquals(NameResolution.NotAName, names.resolve(Network.SEPOLIA, "serotine"))
         assertEquals(NameResolution.NotAName, names.resolve(Network.SEPOLIA, "a..eth"))

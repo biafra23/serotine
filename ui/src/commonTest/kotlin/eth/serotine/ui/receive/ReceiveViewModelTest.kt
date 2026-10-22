@@ -30,13 +30,22 @@ class ReceiveViewModelTest {
         "Daily",
         AccountCustody.Watched,
     )
-    private val safe = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Family", AccountCustody.Watched)
+    private val safe = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "5a".repeat(20)),
+        AccountKind.SAFE,
+        "Family",
+        AccountCustody.Watched,
+    )
     private val accounts = FakeAccounts(eoa, safe)
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun viewModel(address: Address) = ReceiveViewModel(AccountId(Network.SEPOLIA, address), ObserveAccount(accounts))
+    private fun viewModel(address: Address) = ReceiveViewModel(
+        AccountId(Network.SEPOLIA, address),
+        ObserveAccount(accounts),
+    )
 
     @Test
     fun theAddressIsChecksummedAndTheWarningNamesTheNetwork() = runTest {

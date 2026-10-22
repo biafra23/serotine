@@ -114,23 +114,48 @@ class MyotisNode private constructor(
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
 
     /** Native-currency balances, verified by this node's light client. */
-    val nativeBalances: NativeBalances = VerifiedNativeBalances(network, chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val nativeBalances: NativeBalances = VerifiedNativeBalances(
+        network,
+        chain,
+        Dispatchers.IO,
+        POLL_INTERVAL,
+        lastBalances,
+    )
 
     /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
     val addressKinds: AddressKinds =
-        VerifiedAddressKinds(network, chain, Dispatchers.IO, POLL_INTERVAL, SafeDeployments.of(network), debugLog = debugLog)
+        VerifiedAddressKinds(
+            network,
+            chain,
+            Dispatchers.IO,
+            POLL_INTERVAL,
+            SafeDeployments.of(network),
+            debugLog = debugLog,
+        )
 
     /** What a token contract says about itself, as verified calls. */
     val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(network, chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
-    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(network, chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
+    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(
+        network,
+        chain,
+        Dispatchers.IO,
+        POLL_INTERVAL,
+        ChainlinkFeeds.of(network),
+    )
 
     /** What the same feeds answered some time ago, from their round histories, as verified calls. */
     val priceHistory: PriceHistory = VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network))
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
-    val tokenBalances: TokenBalances = VerifiedTokenBalances(network, chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
+    val tokenBalances: TokenBalances = VerifiedTokenBalances(
+        network,
+        chain,
+        Dispatchers.IO,
+        POLL_INTERVAL,
+        lastBalances,
+    )
 
     /** This node's light client, for the user to watch. */
     val lightClient: LightClient = EngineLightClient(network, chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
@@ -240,7 +265,9 @@ class MyotisNode private constructor(
         )
         val config = EngineConfig(
             name,
-            0, 0, 0, // the network's default EL and discv5 ports; rpcPort is unused, nothing listens
+            0,
+            0,
+            0, // the network's default EL and discv5 ports; rpcPort is unused, nothing listens
             ports.syncSnapshot().toString(),
             TARGET_SNAP_PEERS,
             true, // strict state freshness

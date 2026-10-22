@@ -162,7 +162,13 @@ class AccountsScreenTest {
         rule.onNodeWithText("Daily").performTouchInput { longClick() }
         rule.onNodeWithText("Send").performClick()
 
-        assertEquals(listOf(AccountAction.Receive(Network.SEPOLIA.chainId, savings.address), AccountAction.Send(Network.SEPOLIA.chainId, daily.address)), actions)
+        assertEquals(
+            listOf(
+                AccountAction.Receive(Network.SEPOLIA.chainId, savings.address),
+                AccountAction.Send(Network.SEPOLIA.chainId, daily.address),
+            ),
+            actions,
+        )
     }
 
     @Test
@@ -230,7 +236,13 @@ class AccountsScreenTest {
         rule.onNodeWithText("Treasury").performTouchInput { longClick() }
         rule.onNodeWithText("Send").performClick()
 
-        assertEquals(listOf(AccountAction.Receive(Network.SEPOLIA.chainId, watched.address), AccountAction.Propose(Network.SEPOLIA.chainId, treasury.address)), actions)
+        assertEquals(
+            listOf(
+                AccountAction.Receive(Network.SEPOLIA.chainId, watched.address),
+                AccountAction.Propose(Network.SEPOLIA.chainId, treasury.address),
+            ),
+            actions,
+        )
     }
 
     @OptIn(ExperimentalTestApi::class)

@@ -347,7 +347,13 @@ class SafeTxViewModel(
 
     /** What the screen shows and acts on, or why there is no transaction to act on ([Queued]). */
     private val context: StateFlow<Source?> =
-        combine(queued, request, owners, accounts, observeKnownTokens(network)) { queued, request, owners, accounts, tokens ->
+        combine(
+            queued,
+            request,
+            owners,
+            accounts,
+            observeKnownTokens(network),
+        ) { queued, request, owners, accounts, tokens ->
             if (queued !is Queued.Found || request == null) return@combine queued
             val held = accounts.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
             Context(

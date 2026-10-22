@@ -275,7 +275,9 @@ class SerotineWallet {
         if (foregroundWork.isNotEmpty()) return
         foregroundWork = listOf(
             scope.launch {
-                reportingFailure("upgrade notices") { FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)() }
+                reportingFailure(
+                    "upgrade notices",
+                ) { FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)() }
             },
             scope.launch {
                 // The Safes this wallet deployed are listed whatever screen is open, and again after a

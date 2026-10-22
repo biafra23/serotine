@@ -386,12 +386,19 @@ class SafeCreationTest {
         // Codeless: nothing waits for code that will never come.
         assertEquals(DeployedSafeListing.NoSafe, list.afterRevert(Network.SEPOLIA, deployment))
         kind.value = KindReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
-        assertEquals(DeployedSafeListing.NotVerified(ReadUnavailable.STALE_ANCHOR), list.afterRevert(Network.SEPOLIA, deployment))
+        assertEquals(
+            DeployedSafeListing.NotVerified(ReadUnavailable.STALE_ANCHOR),
+            list.afterRevert(Network.SEPOLIA, deployment),
+        )
         kind.value = KindReading.Syncing
         assertEquals(DeployedSafeListing.NotVerified(null), list.afterRevert(Network.SEPOLIA, deployment))
         val reversed = SafeState("1.4.1", false, owners.reversed(), 1, 0, emptyList(), null)
         kind.value = KindReading.Verified(AddressKind.Safe(reversed), 130)
-        assertEquals(DeployedSafeListing.NotTheSafe, list.afterRevert(Network.SEPOLIA, deployment), "the owners in another order")
+        assertEquals(
+            DeployedSafeListing.NotTheSafe,
+            list.afterRevert(Network.SEPOLIA, deployment),
+            "the owners in another order",
+        )
         assertEquals(listOf(world.alice), accounts.accounts.value)
 
         // Someone's copy of the same call was mined first: the very Safe planned.
@@ -455,9 +462,13 @@ class SafeCreationTest {
         returns(plan.address)
         val other = SentTransfer(
             Network.SEPOLIA,
-            world.alice.address, 7, SignedTransfer(byteArrayOf(2, 7)),
-            SentAction.Transfer(world.carol, TransferAsset.Native, UInt256.ONE), UInt256.ONE,
-            sentAt = 1_799_999_000, maybeSent = true,
+            world.alice.address,
+            7,
+            SignedTransfer(byteArrayOf(2, 7)),
+            SentAction.Transfer(world.carol, TransferAsset.Native, UInt256.ONE),
+            UInt256.ONE,
+            sentAt = 1_799_999_000,
+            maybeSent = true,
         )
         world.sent.transfers.value = listOf(other)
 

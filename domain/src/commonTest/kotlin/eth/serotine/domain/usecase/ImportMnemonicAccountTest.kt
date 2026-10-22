@@ -71,14 +71,29 @@ class ImportMnemonicAccountTest {
             MnemonicImport.Added(expected, KeyProtection.SOFTWARE_KEY_STORE, steppedDown = true),
             import(mnemonic, password, Network.SEPOLIA),
         )
-        assertEquals(MnemonicImport.AlreadyAdded(expected, steppedDown = true), import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(
+            MnemonicImport.AlreadyAdded(expected, steppedDown = true),
+            import(mnemonic, password, Network.SEPOLIA),
+        )
     }
 
     @Test
     fun theNextAccountTakesTheFirstFreeName() = runTest {
         repository.accounts.value = listOf(
-            Account(Network.SEPOLIA, Address.of("0x" + "aa".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore),
-            Account(Network.SEPOLIA, Address.of("0x" + "bb".repeat(20)), AccountKind.EOA, "Account 3", AccountCustody.InKeyStore),
+            Account(
+                Network.SEPOLIA,
+                Address.of("0x" + "aa".repeat(20)),
+                AccountKind.SAFE,
+                "Treasury",
+                AccountCustody.InKeyStore,
+            ),
+            Account(
+                Network.SEPOLIA,
+                Address.of("0x" + "bb".repeat(20)),
+                AccountKind.EOA,
+                "Account 3",
+                AccountCustody.InKeyStore,
+            ),
         )
         val mnemonic = Mnemonic("second words")
         keys.results[mnemonic] = KeyImport.Stored(second, KeyProtection.HARDWARE)
@@ -105,7 +120,9 @@ class ImportMnemonicAccountTest {
 
     @Test
     fun aWatchedEntryThatCannotBeUpgradedSaysTheListWasNotSaved() = runTest {
-        repository.accounts.value = listOf(Account(Network.SEPOLIA, first, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        repository.accounts.value = listOf(
+        Account(Network.SEPOLIA, first, AccountKind.EOA, "Savings", AccountCustody.Watched),
+    )
         repository.failSaves = true
         val mnemonic = Mnemonic("first words")
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
@@ -115,7 +132,9 @@ class ImportMnemonicAccountTest {
 
     @Test
     fun aWatchedEntryRemovedByAnotherWriterBeforeTheUpgradeIsReadAgainAndAdded() = runTest {
-        repository.accounts.value = listOf(Account(Network.SEPOLIA, first, AccountKind.EOA, "Savings", AccountCustody.Watched))
+        repository.accounts.value = listOf(
+        Account(Network.SEPOLIA, first, AccountKind.EOA, "Savings", AccountCustody.Watched),
+    )
         repository.removeBeforeNextCustodyChange = true
         val mnemonic = Mnemonic("first words")
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)

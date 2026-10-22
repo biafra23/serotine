@@ -36,7 +36,12 @@ class VerifiedPriceHistoryTest {
         }
     }
 
-    private fun TestScope.history() = VerifiedPriceHistory(Network.SEPOLIA, counting, StandardTestDispatcher(testScheduler), listOf(eth))
+    private fun TestScope.history() = VerifiedPriceHistory(
+        Network.SEPOLIA,
+        counting,
+        StandardTestDispatcher(testScheduler),
+        listOf(eth),
+    )
 
     private fun word(n: Long) = n.toString(16).padStart(64, '0')
 
@@ -96,7 +101,10 @@ class VerifiedPriceHistoryTest {
         history.before(Network.SEPOLIA, eth.priceId, 86_400)
         val first = asked.toList()
 
-        assertEquals(PastReading.Verified(48e-6, hourly[47], stale = false), history.before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.Verified(48e-6, hourly[47], stale = false),
+            history.before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
         assertEquals(first, asked)
     }
 
@@ -129,7 +137,10 @@ class VerifiedPriceHistoryTest {
     fun aFeedThatHasNotUpdatedSinceAnswersItsLatestRoundStaleOnceOlderThanItsHeartbeat() = runTest {
         rounds(listOf(head - 200_000, head - 90_000))
 
-        assertEquals(PastReading.Verified(200e-8, head - 90_000, stale = false), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.Verified(200e-8, head - 90_000, stale = false),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
         assertTrue(asked.isEmpty())
 
         rounds(listOf(head - 200_000, head - 100_000))
@@ -148,13 +159,19 @@ class VerifiedPriceHistoryTest {
         rounds(hourly)
         chain.calls[eth.address to Abi.getRoundData(RoundId(3, 48)).toHex()] = CallOutcome.Reverted(9)
 
-        assertEquals(PastReading.NoPrice(NoPriceReason.NOT_A_FEED), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.NoPrice(NoPriceReason.NOT_A_FEED),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
 
         rounds(hourly)
         // Round 49 says it is older than round 48.
         chain.calls[eth.address to Abi.getRoundData(RoundId(3, 49)).toHex()] =
             CallOutcome.Returned(roundHex(RoundId(3, 49), 4_900, hourly[0]), 9)
-        assertEquals(PastReading.NoPrice(NoPriceReason.NOT_A_FEED), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.NoPrice(NoPriceReason.NOT_A_FEED),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
     }
 
     @Test
@@ -163,18 +180,27 @@ class VerifiedPriceHistoryTest {
         chain.calls[eth.address to Abi.getRoundData(RoundId(3, 48)).toHex()] =
             CallOutcome.Returned("0".repeat(320), 9)
 
-        assertEquals(PastReading.NoPrice(NoPriceReason.NOT_A_FEED), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.NoPrice(NoPriceReason.NOT_A_FEED),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
     }
 
     @Test
     fun changedDecimalsAreNoPriceAndAnUnprovenRoundUnavailable() = runTest {
         rounds(hourly)
         chain.calls[eth.address to Abi.DECIMALS.toHex()] = CallOutcome.Returned(word(18), 9)
-        assertEquals(PastReading.NoPrice(NoPriceReason.DECIMALS_CHANGED), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.NoPrice(NoPriceReason.DECIMALS_CHANGED),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
 
         rounds(hourly)
         chain.calls.remove(eth.address to Abi.getRoundData(RoundId(3, 49)).toHex())
-        assertEquals(PastReading.Unavailable(ReadUnavailable.UNPROVEN), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.UNPROVEN),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
     }
 
     @Test
@@ -187,20 +213,35 @@ class VerifiedPriceHistoryTest {
         assertEquals(PastReading.Syncing, history().before(Network.SEPOLIA, eth.priceId, 86_400))
 
         chain.snapshot = running(phase = EngineSnapshot.Phase.STALE_ANCHOR, head = 9, headTimestamp = head)
-        assertEquals(PastReading.Unavailable(ReadUnavailable.STALE_ANCHOR), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.STALE_ANCHOR),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
 
         chain.snapshot = EngineSnapshot.Down
-        assertEquals(PastReading.Unavailable(ReadUnavailable.NO_ENGINE), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.NO_ENGINE),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
 
         chain.failure = IllegalStateException("engine")
-        assertEquals(PastReading.Unavailable(ReadUnavailable.UNPROVEN), history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.UNPROVEN),
+            history().before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
     }
 
     @Test
     fun aPriceIdWithoutAFeedOrADeviceWithoutAnEngine() = runTest {
-        assertEquals(PastReading.NoPrice(NoPriceReason.NO_FEED), history().before(Network.SEPOLIA, PriceId("UNI"), 86_400))
+        assertEquals(
+            PastReading.NoPrice(NoPriceReason.NO_FEED),
+            history().before(Network.SEPOLIA, PriceId("UNI"), 86_400),
+        )
         val none = VerifiedPriceHistory(Network.SEPOLIA, null, StandardTestDispatcher(testScheduler), listOf(eth))
-        assertEquals(PastReading.Unavailable(ReadUnavailable.NO_ENGINE), none.before(Network.SEPOLIA, eth.priceId, 86_400))
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.NO_ENGINE),
+            none.before(Network.SEPOLIA, eth.priceId, 86_400),
+        )
     }
 
     private companion object {

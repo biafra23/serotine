@@ -36,9 +36,21 @@ class FileAccountRepositoryTest {
     private val file = Path(directory, "accounts.json")
 
     private val eoa =
-        Account(Network.SEPOLIA, Address.of("0x" + "aa".repeat(20)), AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)
+        Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "aa".repeat(20)),
+            AccountKind.EOA,
+            "Account 1",
+            AccountCustody.InKeyStore,
+        )
     private val safe =
-        Account(Network.SEPOLIA, Address.of("0x" + "bb".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
+        Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "bb".repeat(20)),
+            AccountKind.SAFE,
+            "Treasury",
+            AccountCustody.InKeyStore,
+        )
     private val watched =
         Account(Network.SEPOLIA, Address.of("0x" + "dd".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched)
     private val byName = Account(
@@ -318,7 +330,15 @@ class FileAccountRepositoryTest {
         // Another process adds an account behind this instance's back.
         repository().add(safe)
 
-        mine.add(Account(Network.SEPOLIA, Address.of("0x" + "cc".repeat(20)), AccountKind.EOA, "Account 3", AccountCustody.InKeyStore))
+        mine.add(
+            Account(
+                Network.SEPOLIA,
+                Address.of("0x" + "cc".repeat(20)),
+                AccountKind.EOA,
+                "Account 3",
+                AccountCustody.InKeyStore,
+            ),
+        )
 
         val stored = (repository().observeAccounts().first() as AccountList.Loaded).accounts
         assertEquals(listOf("Account 1", "Treasury", "Account 3"), stored.map { it.label })

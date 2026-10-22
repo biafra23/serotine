@@ -40,7 +40,13 @@ internal class FactoryInputs(
 ) : TransactionInputs by inputs {
     var deployment: Simulation? = null
 
-    override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+    override suspend fun simulate(
+        network: Network,
+        from: Address,
+        to: Address,
+        value: UInt256,
+        data: ByteArray,
+    ): Simulation {
         if (to != release.proxyFactory) return inputs.simulate(Network.SEPOLIA, from, to, value, data)
         deployment?.let { return it }
         // createProxyWithNonce(singleton, initializer, saltNonce): the selector, three head words, the

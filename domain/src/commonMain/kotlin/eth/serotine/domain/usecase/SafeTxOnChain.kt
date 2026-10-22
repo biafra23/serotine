@@ -376,7 +376,8 @@ class QuoteSafeExecution(
             if (confirmed.size >= threshold) return@coroutineScope Confirmed.Enough(confirmed.take(threshold))
             val others = state.owners.filter { owner -> confirmed.none { it.owner == owner } }
             val readings = others
-                .map { owner -> async { owner to approvals.approval(request.network, request.safe, owner, request.hash) } }
+                .map {
+                    owner -> async { owner to approvals.approval(request.network, request.safe, owner, request.hash) } }
                 .awaitAll()
             val approved = readings.filter { (_, reading) -> (reading as? ApprovalReading.Read)?.approved == true }
                 .map { (owner, _) -> SafeSignature.ApprovedHash(owner) }

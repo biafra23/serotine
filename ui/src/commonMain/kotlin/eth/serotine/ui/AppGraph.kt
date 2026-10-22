@@ -349,7 +349,13 @@ class AppGraph(
     private fun observeSafeTxQueue(network: Network) =
         ObserveSafeTxQueue(safeTxQueue, observeSafe(), signatureRecovery, network)
 
-    private fun signSafeTx(network: Network) = SignSafeTx(signer, observeSafe(), signatureRecovery, safeTxQueue, network)
+    private fun signSafeTx(network: Network) = SignSafeTx(
+        signer,
+        observeSafe(),
+        signatureRecovery,
+        safeTxQueue,
+        network,
+    )
 
     /** Send from the account at [from], with the token at [asset] chosen (null: the network's currency). */
     fun sendViewModel(from: AccountId, asset: Address?): SendViewModel = SendViewModel(
@@ -414,7 +420,10 @@ class AppGraph(
      * The detail of the row [key] of the Activity of the [account] (docs/wallet-ux.md, screen 26),
      * read from what its Activity is read from.
      */
-    fun activityDetailViewModel(account: AccountId, key: ActivityKey): ActivityDetailViewModel = ActivityDetailViewModel(
+    fun activityDetailViewModel(
+        account: AccountId,
+        key: ActivityKey,
+    ): ActivityDetailViewModel = ActivityDetailViewModel(
         account,
         key,
         ObserveAccountHistory(transactionHistory),
@@ -513,5 +522,9 @@ class AppGraph(
         SecurityViewModel(DescribeKeyStore(keys), EnableBiometricUnlock(keys), DisableBiometricUnlock(keys))
 
     fun mnemonicImportViewModel(): MnemonicImportViewModel =
-        MnemonicImportViewModel(ImportMnemonicAccount(keys, accounts, walletChanges), DescribeKeyStore(keys), soleNetwork)
+        MnemonicImportViewModel(
+            ImportMnemonicAccount(keys, accounts, walletChanges),
+            DescribeKeyStore(keys),
+            soleNetwork,
+        )
 }

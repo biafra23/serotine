@@ -52,12 +52,24 @@ class LastBalancesFileTest {
     fun aBalanceProvenBeforeARestartIsLastKnownAfterItUntilAHeadCanBeRead() = runTest {
         chain.snapshot = running(head = 9, headTimestamp = 1_792_100_000)
         chain.proofs[address] = ProvenBalance("5", 9)
-        val before = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
+        val before = VerifiedNativeBalances(
+            Network.SEPOLIA,
+            chain,
+            StandardTestDispatcher(testScheduler),
+            POLL,
+            lastBalances(),
+        )
         assertEquals(BalanceReading.Verified(Wei.of("5"), 9), before.observeBalance(Network.SEPOLIA, address).first())
 
         // A new process: nothing proven in it yet, and the light client still catching up.
         chain.snapshot = running(phase = EngineSnapshot.Phase.CATCHING_UP)
-        val after = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
+        val after = VerifiedNativeBalances(
+            Network.SEPOLIA,
+            chain,
+            StandardTestDispatcher(testScheduler),
+            POLL,
+            lastBalances(),
+        )
         assertEquals(
             BalanceReading.LastKnown(Wei.of("5"), 9, asOf = 1_792_100_000),
             after.observeBalance(Network.SEPOLIA, address).first(),
@@ -107,7 +119,9 @@ class LastBalancesFileTest {
     fun anEntryThatIsNoAmountIsNotUsedAndADamagedFileIsSetAside() = runTest {
         SystemFileSystem.createDirectories(directory)
         SystemFileSystem.sink(file).buffered().use {
-            it.writeString("""{"version":1,"balances":[{"id":"native:${address.hex}","units":"-5","block":9,"asOf":null}]}""")
+            it.writeString(
+                """{"version":1,"balances":[{"id":"native:${address.hex}","units":"-5","block":9,"asOf":null}]}""",
+            )
         }
         assertNull(native(lastBalances()).load(address))
 
@@ -139,11 +153,22 @@ class LastBalancesFileTest {
     fun aBalanceKeptBeforeNetworksIsSepolias() = runTest {
         SystemFileSystem.createDirectories(directory)
         SystemFileSystem.sink(file).buffered().use {
-            it.writeString("""{"version":1,"balances":[{"id":"native:${address.hex}","units":"5","block":9,"asOf":7}]}""")
+            it.writeString(
+                """{"version":1,"balances":[{"id":"native:${address.hex}","units":"5","block":9,"asOf":7}]}""",
+            )
         }
         chain.snapshot = running(phase = EngineSnapshot.Phase.CATCHING_UP)
-        val balances = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL, lastBalances())
+        val balances = VerifiedNativeBalances(
+            Network.SEPOLIA,
+            chain,
+            StandardTestDispatcher(testScheduler),
+            POLL,
+            lastBalances(),
+        )
 
-        assertEquals(BalanceReading.LastKnown(Wei.of("5"), 9, asOf = 7), balances.observeBalance(Network.SEPOLIA, address).first())
+        assertEquals(
+            BalanceReading.LastKnown(Wei.of("5"), 9, asOf = 7),
+            balances.observeBalance(Network.SEPOLIA, address).first(),
+        )
     }
 }

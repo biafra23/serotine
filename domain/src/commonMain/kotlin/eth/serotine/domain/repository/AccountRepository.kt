@@ -6,10 +6,10 @@ import eth.serotine.domain.model.AccountId
 import kotlinx.coroutines.flow.Flow
 
 /**
- * The port through which the domain reaches the accounts the wallet manages: networks,
- * addresses, kinds and labels, never key material. An account is named by its [AccountId], an
- * address on a network: the same address may be listed once on each network. :data supplies the implementation (a file the list
- * survives restarts in); the UI never sees this interface, only the use cases that consume it.
+ * The port through which the domain reaches the accounts the wallet manages: networks, addresses, kinds and labels,
+ * never key material. An account is named by its [AccountId], an address on a network: the same address may be listed
+ * once on each network. :data supplies the implementation (a file the list survives restarts in); the UI never sees
+ * this interface, only the use cases that consume it.
  */
 interface AccountRepository {
     /**
@@ -21,10 +21,9 @@ interface AccountRepository {
     fun observeAccounts(): Flow<AccountList>
 
     /**
-     * Appends [account] to the list ([AccountAdd.Added]); or, when its [Account.id] is already
-     * managed (the same address on the same network), leaves the existing entry exactly as it is ([AccountAdd.AlreadyPresent]); or,
-     * when the list cannot be stored or is [AccountList.Unreadable], changes nothing
-     * ([AccountAdd.NotSaved]). Never throws.
+     * Appends [account] to the list ([AccountAdd.Added]); or, when its [Account.id] is already managed (the same
+     * address on the same network), leaves the existing entry exactly as it is ([AccountAdd.AlreadyPresent]); or, when
+     * the list cannot be stored or is [AccountList.Unreadable], changes nothing ([AccountAdd.NotSaved]). Never throws.
      */
     suspend fun add(account: Account): AccountAdd
 

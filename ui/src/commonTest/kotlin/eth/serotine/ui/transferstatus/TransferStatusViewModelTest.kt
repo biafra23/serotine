@@ -244,7 +244,9 @@ class TransferStatusViewModelTest {
         assertEquals(emptyList(), accounts.accounts.value, "this screen lists nothing itself")
 
         // Listed by the app's follower: the record says so, the list has its name now.
-        accounts.accounts.value = listOf(Account(Network.SEPOLIA, safe, AccountKind.SAFE, "Vault", AccountCustody.Watched))
+        accounts.accounts.value = listOf(
+        Account(Network.SEPOLIA, safe, AccountKind.SAFE, "Vault", AccountCustody.Watched),
+    )
         sent.transfers.value = listOf(ended(SafeListing.LISTED))
         runCurrent()
         assertEquals("In your wallet as Vault.", viewModel.shown.deployment?.listing)

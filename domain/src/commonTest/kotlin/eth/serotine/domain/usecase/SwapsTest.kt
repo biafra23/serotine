@@ -444,7 +444,9 @@ class SwapsTest {
         val simulated = mutableListOf<Pair<Address, String>>()
         val reverting = mutableSetOf<String>()
 
-        override suspend fun nonce(network: Network, account: Address): NonceReading = NonceReading.Read(maxOf(7, mined))
+        override suspend fun nonce(network: Network, account: Address): NonceReading = NonceReading.Read(
+            maxOf(7, mined),
+        )
         override suspend fun minedNonce(network: Network, account: Address): NonceReading = if (minedUnreadable) {
             NonceReading.Unavailable(ReadUnavailable.UNPROVEN)
         } else {
@@ -458,12 +460,24 @@ class SwapsTest {
             ),
         )
 
-        override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate {
+        override suspend fun estimateGas(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): GasEstimate {
             estimates++
             return if (data.toHex() in reverting) GasEstimate.Reverted("") else GasEstimate.Estimated(150_000)
         }
 
-        override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+        override suspend fun simulate(
+            network: Network,
+            from: Address,
+            to: Address,
+            value: UInt256,
+            data: ByteArray,
+        ): Simulation {
             simulated += to to data.toHex()
             if (data.toHex() in reverting) return Simulation.Reverted(120)
             if (to == router) return Simulation.Succeeded(routerReturns, 120)

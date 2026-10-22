@@ -37,7 +37,9 @@ class ObserveSafe(
                         val inWallet = (list as? AccountList.Loaded)?.accounts.orEmpty()
                             .filter { it.address in kind.state.owners }
                             .groupBy { it.address }
-                            .map { (_, entries) -> entries.firstOrNull { it.custody == AccountCustody.InKeyStore } ?: entries.first() }
+                            .map { (_, entries) ->
+                                entries.firstOrNull { it.custody == AccountCustody.InKeyStore } ?: entries.first()
+                            }
                         SafeReading.Verified(kind.state, reading.blockNumber, inWallet)
                     }
                     else -> SafeReading.NotASafe

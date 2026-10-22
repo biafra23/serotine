@@ -46,7 +46,10 @@ internal class ActivitySources(
     private val accounts: Flow<AccountList> = observeAccounts()
 
     /** The wallet's accounts and the addresses it sent to: whom the rows name, and which senders they caution about. */
-    val parties: Flow<Parties> = combine(accounts, observeSentTo()) { list, sentTo -> Parties(list, sentTo, account.network) }
+    val parties: Flow<Parties> = combine(
+        accounts,
+        observeSentTo(),
+    ) { list, sentTo -> Parties(list, sentTo, account.network) }
 
     /** The account's kind while it is in the wallet; null while it is not. */
     private val kind = accounts
@@ -101,7 +104,9 @@ internal class Parties(val list: AccountList, private val sentTo: Set<Address>, 
      * accounts cannot be read.
      */
     val names: Map<Address, String> =
-        (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }.associate { it.address to it.label }
+        (list as? AccountList.Loaded)?.accounts.orEmpty()
+            .filter { it.network == network }
+            .associate { it.address to it.label }
 
     /**
      * Whether a transfer from [sender] is from someone the user deals with: one of the wallet's

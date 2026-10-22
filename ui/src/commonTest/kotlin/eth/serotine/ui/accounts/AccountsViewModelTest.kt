@@ -116,8 +116,20 @@ class AccountsViewModelTest {
     }
 
     private val treasury =
-        Account(Network.SEPOLIA, Address.of("0x" + "ab".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.InKeyStore)
-    private val daily = Account(Network.SEPOLIA, Address.of("0x" + "cd".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+        Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "ab".repeat(20)),
+            AccountKind.SAFE,
+            "Treasury",
+            AccountCustody.InKeyStore,
+        )
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "cd".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
 
     private fun treasuryItem(balance: String, verified: Boolean) =
         AccountItem(
@@ -396,7 +408,13 @@ class AccountsViewModelTest {
     @Test
     fun aSafeIsNeverShownWithMoreControlThanIsKnown() {
         val item = AccountItem.from(
-            Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Family", AccountCustody.InKeyStore),
+            Account(
+                Network.SEPOLIA,
+                Address.of("0x" + "5a".repeat(20)),
+                AccountKind.SAFE,
+                "Family",
+                AccountCustody.InKeyStore,
+            ),
             null,
             Network.SEPOLIA,
         )
@@ -406,7 +424,13 @@ class AccountsViewModelTest {
     @Test
     fun aWatchedAccountIsWatchOnly() {
         val item = AccountItem.from(
-            Account(Network.SEPOLIA, Address.of("0x" + "ee".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched),
+            Account(
+                Network.SEPOLIA,
+                Address.of("0x" + "ee".repeat(20)),
+                AccountKind.EOA,
+                "Savings",
+                AccountCustody.Watched,
+            ),
             null,
             Network.SEPOLIA,
         )

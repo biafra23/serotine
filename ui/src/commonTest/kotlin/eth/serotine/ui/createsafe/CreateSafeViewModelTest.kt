@@ -104,7 +104,13 @@ class CreateSafeViewModelTest {
         AccountCustody.InKeyStore,
     )
     private val treasury =
-        Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
+        Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "5a".repeat(20)),
+            AccountKind.SAFE,
+            "Treasury",
+            AccountCustody.Watched,
+        )
     private val friend = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
 
     private val accounts = FakeAccounts(daily, savings, treasury)

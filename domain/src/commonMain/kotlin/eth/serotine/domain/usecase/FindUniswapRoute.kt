@@ -199,7 +199,12 @@ class FindUniswapRoute(
         return PoolRead.Listed(Pool(listed, liquidity))
     }
 
-    private suspend fun quote(network: Network, deployment: UniswapV3Deployment, route: SwapRoute, amountIn: UInt256): Quoted =
+    private suspend fun quote(
+        network: Network,
+        deployment: UniswapV3Deployment,
+        route: SwapRoute,
+        amountIn: UInt256,
+    ): Quoted =
         when (val answer = chain.call(network, deployment.quoterV2, QuoterV2.quote(route, amountIn))) {
             is Simulation.Succeeded -> QuoterV2.quoteOf(route, answer.returnHex)
                 ?.let { Quoted.Read(it, answer.blockNumber) }

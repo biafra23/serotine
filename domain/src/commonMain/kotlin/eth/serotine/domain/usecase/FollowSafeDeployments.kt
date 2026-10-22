@@ -97,7 +97,10 @@ class FollowSafeDeployments(
             is TransactionProgress.Finalized -> progress.succeeded
             else -> return null
         }
-        val outcome = if (succeeded) listDeployedSafe(transfer.network, deployment) else listDeployedSafe.afterRevert(transfer.network, deployment)
+        val outcome = if (succeeded) listDeployedSafe(
+                transfer.network,
+                deployment,
+            ) else listDeployedSafe.afterRevert(transfer.network, deployment)
         return when (outcome) {
             is DeployedSafeListing.Listed, is DeployedSafeListing.AlreadyInWallet -> SafeListing.LISTED
             DeployedSafeListing.NoSafe -> SafeListing.NO_SAFE

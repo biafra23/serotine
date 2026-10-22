@@ -100,7 +100,9 @@ internal class MemorySafeTxQueue : SafeTxQueue {
 
     override suspend fun prune(safe: AccountId, nonce: Long): Boolean {
         if (failSaves) return false
-        requests.value = requests.value.filterNot { it.network == safe.network && it.safe == safe.address && it.nonce < nonce }
+        requests.value = requests.value.filterNot {
+            it.network == safe.network && it.safe == safe.address && it.nonce < nonce
+        }
         return true
     }
 }
@@ -134,10 +136,28 @@ internal class FakeCodec : SigningRequestCodec {
  */
 internal class SafeWorld {
     val safe = Address.of("0x" + "5a".repeat(20))
-    val alice = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Alice", AccountCustody.InKeyStore)
-    val bob = Account(Network.SEPOLIA, Address.of("0x" + "22".repeat(20)), AccountKind.EOA, "Bob", AccountCustody.Watched)
+    val alice = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Alice",
+        AccountCustody.InKeyStore,
+    )
+    val bob = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "22".repeat(20)),
+        AccountKind.EOA,
+        "Bob",
+        AccountCustody.Watched,
+    )
     val carol = Address.of("0x" + "33".repeat(20))
-    val dave = Account(Network.SEPOLIA, Address.of("0x" + "44".repeat(20)), AccountKind.EOA, "Dave", AccountCustody.InKeyStore)
+    val dave = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "44".repeat(20)),
+        AccountKind.EOA,
+        "Dave",
+        AccountCustody.InKeyStore,
+    )
     val treasury = Account(Network.SEPOLIA, safe, AccountKind.SAFE, "Treasury", AccountCustody.Watched)
 
     /** EIP-55's own example: 0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB. */

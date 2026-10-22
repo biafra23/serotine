@@ -81,7 +81,11 @@ class CheckSafeSwap(
         }
         // Read beside the quote, once the verdict needs it: a status not in yet holds back no other.
         val head = async { lightClient.observeStatus(network).first() }
-        val now = when (val answer = uniswap.call(network, deployment.quoterV2, QuoterV2.quote(swap.route, swap.amountIn))) {
+        val now = when (val answer = uniswap.call(
+            network,
+            deployment.quoterV2,
+            QuoterV2.quote(swap.route, swap.amountIn),
+        )) {
             is Simulation.Succeeded -> QuoterV2.quoteOf(swap.route, answer.returnHex)
                 ?.let { SwapNow.Quoted(it.amountOut, answer.blockNumber) }
                 ?: SwapNow.Unavailable(ReadUnavailable.UNPROVEN)
@@ -306,7 +310,11 @@ class ProposeSafeSwap(
         // only those decoded exactly count, the verified run before execution being the backstop
         // (docs/swaps.md, *Only what is decoded counts*).
         val allowance = soldToken?.let { token ->
-            val onChain = when (val read = readAllowance(safe, token.address, router) { to, data -> uniswap.call(network, to, data) }) {
+            val onChain = when (val read = readAllowance(
+                safe,
+                token.address,
+                router,
+            ) { to, data -> uniswap.call(network, to, data) }) {
                 is AllowanceRead.Read -> read.allowance
                 AllowanceRead.NotAToken -> return@cancellingReads SafeSwapProposing.NotAToken
                 AllowanceRead.Refused ->

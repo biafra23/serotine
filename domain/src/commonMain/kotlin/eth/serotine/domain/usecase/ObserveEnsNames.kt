@@ -18,13 +18,12 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 
 /**
- * Whether the ENS name each account's name follows ([Account.ensName]) still points to the
- * account's address (issue #67): resolved again as Watch resolved it ([NameResolver], against
- * finalized state, on the account's own network), at once and then every [interval] while observed; every [retryDelay] instead
- * until the first verified answer, since nothing is known of the name before it, while after it
- * the answer stands until a verified one replaces it. One reader per account ([readEach]), started when it
- * follows a name and stopped when it no longer does (a rename, a removal). What the Accounts
- * rows and an account's header show of its name.
+ * Whether the ENS name each account's name follows ([Account.ensName]) still points to the account's address (issue
+ * #67): resolved again as Watch resolved it ([NameResolver], against finalized state, on the account's own network), at
+ * once and then every [interval] while observed; every [retryDelay] instead until the first verified answer, since
+ * nothing is known of the name before it, while after it the answer stands until a verified one replaces it. One reader
+ * per account ([readEach]), started when it follows a name and stopped when it no longer does (a rename, a removal).
+ * What the Accounts rows and an account's header show of its name.
  */
 class ObserveEnsNames(
     private val accounts: AccountRepository,

@@ -30,8 +30,20 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountLogsTest {
 
-    private val alice = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Alice", AccountCustody.InKeyStore)
-    private val vault = Account(Network.SEPOLIA, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Vault", AccountCustody.Watched)
+    private val alice = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Alice",
+        AccountCustody.InKeyStore,
+    )
+    private val vault = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "5a".repeat(20)),
+        AccountKind.SAFE,
+        "Vault",
+        AccountCustody.Watched,
+    )
     private val accounts = ListAccountRepository()
     private val starts = MemoryHistoryStarts()
     private val history = MemoryTransactionHistory()
@@ -128,7 +140,13 @@ class AccountLogsTest {
         assertEquals(HistoryStart.Fixed(1_000), starts.starts.value[alice.address], "it sent the deployment")
         assertEquals(HistoryStart.Fixed(1_000), starts.starts.value[vault.address])
 
-        val bob = Account(Network.SEPOLIA, Address.of("0x" + "22".repeat(20)), AccountKind.EOA, "Bob", AccountCustody.InKeyStore)
+        val bob = Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "22".repeat(20)),
+            AccountKind.EOA,
+            "Bob",
+            AccountCustody.InKeyStore,
+        )
         history.entries.value = listOf(HistoryEntry(sent(bob.address, nativeTo(alice.address), DAY)))
         accounts.accounts.value += bob
         runCurrent()

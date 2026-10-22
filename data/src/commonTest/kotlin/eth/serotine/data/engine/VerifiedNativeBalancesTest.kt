@@ -26,7 +26,12 @@ class VerifiedNativeBalancesTest {
     private val address = Address.of("0x" + "ab".repeat(20))
     private val chain = FakeChain()
 
-    private fun TestScope.balances() = VerifiedNativeBalances(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL)
+    private fun TestScope.balances() = VerifiedNativeBalances(
+        Network.SEPOLIA,
+        chain,
+        StandardTestDispatcher(testScheduler),
+        POLL,
+    )
 
     private fun TestScope.step(snapshot: EngineSnapshot) {
         chain.snapshot = snapshot
@@ -139,7 +144,10 @@ class VerifiedNativeBalancesTest {
 
         chain.proofs.remove(address)
         chain.snapshot = running(head = 10)
-        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(Network.SEPOLIA, address).first())
+        assertEquals(
+            BalanceReading.Unavailable(ReadUnavailable.UNPROVEN),
+            balances.observeBalance(Network.SEPOLIA, address).first(),
+        )
     }
 
     @Test
@@ -147,13 +155,22 @@ class VerifiedNativeBalancesTest {
         val balances = balances()
 
         chain.snapshot = running(phase = Phase.STALE_ANCHOR)
-        assertEquals(BalanceReading.Unavailable(ReadUnavailable.STALE_ANCHOR), balances.observeBalance(Network.SEPOLIA, address).first())
+        assertEquals(
+            BalanceReading.Unavailable(ReadUnavailable.STALE_ANCHOR),
+            balances.observeBalance(Network.SEPOLIA, address).first(),
+        )
 
         chain.snapshot = running(head = 3) // no proof for the address: the engine could not prove it
-        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(Network.SEPOLIA, address).first())
+        assertEquals(
+            BalanceReading.Unavailable(ReadUnavailable.UNPROVEN),
+            balances.observeBalance(Network.SEPOLIA, address).first(),
+        )
 
         chain.proofs[address] = ProvenBalance("not a number", 3)
-        assertEquals(BalanceReading.Unavailable(ReadUnavailable.UNPROVEN), balances.observeBalance(Network.SEPOLIA, address).first())
+        assertEquals(
+            BalanceReading.Unavailable(ReadUnavailable.UNPROVEN),
+            balances.observeBalance(Network.SEPOLIA, address).first(),
+        )
     }
 
     @Test
@@ -209,7 +226,12 @@ class VerifiedNativeBalancesTest {
         )
         assertEquals(
             listOf<BalanceReading>(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE)),
-            VerifiedNativeBalances(Network.SEPOLIA, null, StandardTestDispatcher(testScheduler), POLL).observeBalance(Network.SEPOLIA, address).toList(),
+            VerifiedNativeBalances(
+                Network.SEPOLIA,
+                null,
+                StandardTestDispatcher(testScheduler),
+                POLL,
+            ).observeBalance(Network.SEPOLIA, address).toList(),
         )
     }
 

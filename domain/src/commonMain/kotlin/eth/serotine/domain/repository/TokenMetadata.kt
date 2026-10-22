@@ -12,9 +12,9 @@ import kotlinx.coroutines.flow.Flow
  */
 interface TokenMetadata {
     /**
-     * What the contract at [token] on [network] says, once it can be read verified: [MetadataReading.Syncing]
-     * or [MetadataReading.Unavailable] until then, then one answer, after which the flow ends.
-     * A [network] no adapter serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
+     * What the contract at [token] on [network] says, once it can be read verified: [MetadataReading.Syncing] or
+     * [MetadataReading.Unavailable] until then, then one answer, after which the flow ends. A [network] no adapter
+     * serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
      */
     fun observe(network: Network, token: Address): Flow<MetadataReading>
 }

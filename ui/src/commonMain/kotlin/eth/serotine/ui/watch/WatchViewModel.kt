@@ -95,7 +95,10 @@ class WatchViewModel(
                     // which of its owners' keys are held here.
                     else -> combine(
                         observeAccounts(),
-                        observeAddressKind(network, address).map<KindReading, KindReading?> { it }.onStart { emit(null) },
+                        observeAddressKind(
+                            network,
+                            address,
+                        ).map<KindReading, KindReading?> { it }.onStart { emit(null) },
                     ) { list, reading -> address to detectionOf(address, list, reading) }
                 }
             }
@@ -172,7 +175,12 @@ class WatchViewModel(
                     return@launch
                 }
             }
-            outcome.value = when (val result = watchAddress(network, resolved.address, typed.value.name, resolved.name)) {
+            outcome.value = when (val result = watchAddress(
+                network,
+                resolved.address,
+                typed.value.name,
+                resolved.name,
+            )) {
                 is AddressWatch.Added -> Outcome(done = true)
                 is AddressWatch.AlreadyInWallet ->
                     Outcome(error = "Already in your wallet as “${result.account.label}”.")

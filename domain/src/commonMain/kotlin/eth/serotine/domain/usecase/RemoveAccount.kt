@@ -12,11 +12,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
- * Takes an account out of the wallet, and with it the key this device holds for it when no
- * other account needs that key: the entry first, then the key, so a failure between the two leaves a key without an entry
- * (re-importing the phrase finds it again) and never an entry that claims a key that is
- * gone. One step that a cancelled caller does not cut in half. The recovery phrase is the
- * only way back for a key, which the screen says before it asks for this.
+ * Takes an account out of the wallet, and with it the key this device holds for it when no other account needs that
+ * key: the entry first, then the key, so a failure between the two leaves a key without an entry (re-importing the
+ * phrase finds it again) and never an entry that claims a key that is gone. One step that a cancelled caller does not
+ * cut in half. The recovery phrase is the only way back for a key, which the screen says before it asks for this.
  *
  * The key is the address's, not the account's (docs/networks.md, N7): the same address held
  * here on another network signs with the same key, so the key is deleted only with the last

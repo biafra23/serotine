@@ -126,7 +126,12 @@ class ObserveUpgradeWarningTest {
         val start = glamsterdam.activationTime!! - 60
         val seen = mutableListOf<UpgradeWarning>()
         backgroundScope.launch {
-            ObserveUpgradeWarning(Network.SEPOLIA, upgrades, known, lightClient) { start + currentTime / 1_000 }().collect { seen += it }
+            ObserveUpgradeWarning(
+                Network.SEPOLIA,
+                upgrades,
+                known,
+                lightClient,
+            ) { start + currentTime / 1_000 }().collect { seen += it }
         }
         runCurrent()
         assertEquals(listOf<UpgradeWarning>(UpgradeWarning.Ahead(glamsterdam)), seen)

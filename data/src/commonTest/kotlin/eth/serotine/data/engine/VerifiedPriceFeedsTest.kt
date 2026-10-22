@@ -53,7 +53,10 @@ class VerifiedPriceFeedsTest {
     fun aRoundOlderThanTheHeartbeatAndItsGraceIsStale() = runTest {
         answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 5_000), 9))
 
-        val reading = feeds().observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        val reading = feeds().observe(
+            Network.SEPOLIA,
+            eth.priceId,
+        ).first { it !is FeedReading.Syncing } as FeedReading.Verified
         assertEquals(5_000, reading.ageSeconds)
         assertEquals(true, reading.stale)
     }
@@ -62,7 +65,10 @@ class VerifiedPriceFeedsTest {
     fun theSameRoundTurnsStaleAsTheVerifiedHeadMovesOn() = runTest {
         answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 9_400), 9))
         val feeds = feeds()
-        suspend fun reading() = feeds.observe(Network.SEPOLIA, eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        suspend fun reading() = feeds.observe(
+            Network.SEPOLIA,
+            eth.priceId,
+        ).first { it !is FeedReading.Syncing } as FeedReading.Verified
         assertEquals(false, reading().stale)
 
         // Past the heartbeat, but within the grace a heartbeat update takes to land: not stale.

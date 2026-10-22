@@ -14,10 +14,10 @@ import kotlinx.coroutines.flow.Flow
  */
 interface AddressKinds {
     /**
-     * The kind of [address] on [network], re-emitted when the verified head moves or the light client's
-     * state changes; consecutive equal readings are not repeated. A [KindReading.Verified]
-     * was proven at its block; when no proof is possible the reading says why.
-     * A [network] no adapter serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
+     * The kind of [address] on [network], re-emitted when the verified head moves or the light client's state changes;
+     * consecutive equal readings are not repeated. A [KindReading.Verified] was proven at its block; when no proof is
+     * possible the reading says why. A [network] no adapter serves here is refused, never answered from another network
+     * ([ReadUnavailable.NO_ENGINE]). Never fails.
      */
     fun observeKind(network: Network, address: Address): Flow<KindReading>
 }

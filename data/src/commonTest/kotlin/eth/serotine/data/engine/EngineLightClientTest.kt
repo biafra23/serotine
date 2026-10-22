@@ -22,7 +22,12 @@ class EngineLightClientTest {
 
     private val chain = FakeChain()
 
-    private fun TestScope.client() = EngineLightClient(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler), POLL)
+    private fun TestScope.client() = EngineLightClient(
+        Network.SEPOLIA,
+        chain,
+        StandardTestDispatcher(testScheduler),
+        POLL,
+    )
 
     @Test
     fun followsAColdStartTheWayMyotisReadsIt() = runTest {
@@ -59,7 +64,10 @@ class EngineLightClientTest {
     @Test
     fun aStalledHeadSleepAndAStaleAnchorAreStatesToo() = runTest {
         chain.snapshot = running(headAgeMs = 150_000)
-        assertEquals(LightClientStatus.WaitingForHead(headAgeSeconds = 150), client().observeStatus(Network.SEPOLIA).first())
+        assertEquals(
+            LightClientStatus.WaitingForHead(headAgeSeconds = 150),
+            client().observeStatus(Network.SEPOLIA).first(),
+        )
 
         chain.snapshot = running(paused = true)
         assertEquals(LightClientStatus.Sleeping, client().observeStatus(Network.SEPOLIA).first())
@@ -77,10 +85,18 @@ class EngineLightClientTest {
     @Test
     fun aDownEngineOrNoneIsSaidOnceAndNotPolled() = runTest {
         chain.snapshot = EngineSnapshot.Down
-        assertEquals(listOf<LightClientStatus>(LightClientStatus.Unavailable), client().observeStatus(Network.SEPOLIA).toList())
         assertEquals(
             listOf<LightClientStatus>(LightClientStatus.Unavailable),
-            EngineLightClient(Network.SEPOLIA, null, StandardTestDispatcher(testScheduler), POLL).observeStatus(Network.SEPOLIA).toList(),
+            client().observeStatus(Network.SEPOLIA).toList(),
+        )
+        assertEquals(
+            listOf<LightClientStatus>(LightClientStatus.Unavailable),
+            EngineLightClient(
+                Network.SEPOLIA,
+                null,
+                StandardTestDispatcher(testScheduler),
+                POLL,
+            ).observeStatus(Network.SEPOLIA).toList(),
         )
     }
 

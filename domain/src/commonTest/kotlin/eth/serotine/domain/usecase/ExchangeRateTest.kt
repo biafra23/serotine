@@ -111,7 +111,10 @@ class ExchangeRateTest {
     fun aLastingAnswerEndsTheReadAtOnce() = runTest {
         feeds.of(ETH).value = FeedReading.Unavailable(ReadUnavailable.NO_ENGINE)
 
-        assertEquals(RateResult.NotRead(Price.Unavailable(ReadUnavailable.NO_ENGINE)), read(Network.SEPOLIA, ETH, DisplayCurrency.USD))
+        assertEquals(
+            RateResult.NotRead(Price.Unavailable(ReadUnavailable.NO_ENGINE)),
+            read(Network.SEPOLIA, ETH, DisplayCurrency.USD),
+        )
     }
 
     @Test
@@ -119,7 +122,10 @@ class ExchangeRateTest {
         feeds.of(ETH).value = FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED)
         feeds.answer(EUR, 1.2)
 
-        assertEquals(RateResult.NotRead(Price.NoPrice(NoPriceReason.DECIMALS_CHANGED)), read(Network.SEPOLIA, ETH, DisplayCurrency.EUR))
+        assertEquals(
+            RateResult.NotRead(Price.NoPrice(NoPriceReason.DECIMALS_CHANGED)),
+            read(Network.SEPOLIA, ETH, DisplayCurrency.EUR),
+        )
         assertTrue(history.asked.isEmpty())
     }
 

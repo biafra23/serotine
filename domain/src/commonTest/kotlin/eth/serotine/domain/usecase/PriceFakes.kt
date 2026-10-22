@@ -64,7 +64,10 @@ internal class FakeTokenBalances : TokenBalances {
     fun of(holder: Address, token: Address) =
         readings.getOrPut(holder to token) { MutableStateFlow(TokenBalanceReading.Syncing) }
 
-    override fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading> = of(holder, token)
+    override fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading> = of(
+        holder,
+        token,
+    )
 }
 
 internal val ETH = PriceId("ETH")

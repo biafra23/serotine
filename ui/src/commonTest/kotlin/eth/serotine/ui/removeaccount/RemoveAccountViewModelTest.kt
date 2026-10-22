@@ -25,14 +25,24 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class RemoveAccountViewModelTest {
 
-    private val daily = Account(Network.SEPOLIA, Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
     private val savings =
         Account(Network.SEPOLIA, Address.of("0x" + "22".repeat(20)), AccountKind.EOA, "Savings", AccountCustody.Watched)
     private val accounts = FakeAccounts(daily, savings)
     private val keys = FakeKeys()
 
     private fun viewModel(address: Address) =
-        RemoveAccountViewModel(AccountId(Network.SEPOLIA, address), ObserveAccount(accounts), RemoveAccount(accounts, keys, WalletChanges()))
+        RemoveAccountViewModel(
+            AccountId(Network.SEPOLIA, address),
+            ObserveAccount(accounts),
+            RemoveAccount(accounts, keys, WalletChanges()),
+        )
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()

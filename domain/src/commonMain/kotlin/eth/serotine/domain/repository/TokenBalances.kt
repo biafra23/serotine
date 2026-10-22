@@ -14,9 +14,9 @@ import kotlinx.coroutines.flow.Flow
  */
 interface TokenBalances {
     /**
-     * The balance [holder] has of the token at [token] on [network], re-emitted when the verified head
-     * moves or the light client's state changes; consecutive equal readings are not
-     * repeated. A [network] no adapter serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
+     * The balance [holder] has of the token at [token] on [network], re-emitted when the verified head moves or the
+     * light client's state changes; consecutive equal readings are not repeated. A [network] no adapter serves here is
+     * refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). Never fails.
      */
     fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading>
 }

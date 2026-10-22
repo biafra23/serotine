@@ -47,7 +47,9 @@ class FileHistoryStarts(
             val stored = StoredStarts(FORMAT_VERSION, starts.map { (id, start) -> StoredStart(id, start) })
             JSON.encodeToString(StoredStarts.serializer(), stored)
         },
-        incomplete = { text, starts -> JSON.decodeFromString(StoredStarts.serializer(), text).starts.size > starts.size },
+        incomplete = {
+            text,
+                starts -> JSON.decodeFromString(StoredStarts.serializer(), text).starts.size > starts.size },
     )
 
     override fun observe(): Flow<HistoryStartList> = file.observe().map { read ->

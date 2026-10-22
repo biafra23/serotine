@@ -33,7 +33,11 @@ class VerifiedNativeBalances internal constructor(
         chain,
         dispatcher,
         pollInterval,
-        kept = lastBalances?.kept<Address, Wei>(id = { "${served.chainId}:native:${it.hex}" }, units = { it.decimal }, parse = Wei::parse)
+        kept = lastBalances?.kept<Address, Wei>(
+            id = { "${served.chainId}:native:${it.hex}" },
+            units = { it.decimal },
+            parse = Wei::parse,
+        )
             ?: KeptProofs.none(),
     ) { verified, address ->
         verified.proveBalance(address)?.let { proven ->

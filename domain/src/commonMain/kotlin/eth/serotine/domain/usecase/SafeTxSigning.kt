@@ -467,7 +467,10 @@ class SignSafeTx(
         if (request.network != network) return refused(SafeTxRefusal.WrongChain(request.network.chainId))
         request.unsignable()?.let { return refused(it) }
         val state = when (
-            val check = observeSafe.check(AccountId(request.network, request.safe), budget.coerceAtMost(SAFE_CHECK_BUDGET))
+            val check = observeSafe.check(
+                AccountId(request.network, request.safe),
+                budget.coerceAtMost(SAFE_CHECK_BUDGET),
+            )
         ) {
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
@@ -738,12 +741,11 @@ internal fun SigningRequest.moves(token: Address?): UInt256 = when (val action =
 }
 
 /**
- * A Safe transfer proposed for review: [tx] at the Safe's next nonce, after [queuedAhead]
- * nonces queued before it (two transactions at one nonce, of which one runs, count once); the Safe's verified state ([safe]); its balance of the asset
- * ([balanceBefore], at [balanceBlock]), what those queued before it may move of it
- * ([queuedAmount]: per nonce the most of its alternatives, as only one of them runs) and what
- * this one leaves ([balanceAfter]); and whether the Safe's call was
- * run as a verified call ([simulation]). Only [ProposeSafeTx] makes one.
+ * A Safe transfer proposed for review: [tx] at the Safe's next nonce, after [queuedAhead] nonces queued before it (two
+ * transactions at one nonce, of which one runs, count once); the Safe's verified state ([safe]); its balance of the
+ * asset ([balanceBefore], at [balanceBlock]), what those queued before it may move of it ([queuedAmount]: per nonce the
+ * most of its alternatives, as only one of them runs) and what this one leaves ([balanceAfter]); and whether the Safe's
+ * call was run as a verified call ([simulation]). Only [ProposeSafeTx] makes one.
  */
 @ConsistentCopyVisibility
 data class SafeTxProposal internal constructor(

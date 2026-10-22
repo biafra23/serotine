@@ -49,7 +49,13 @@ class AddTokenViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val known = ObserveKnownTokens(ListCatalog(usdc), userTokens, metadata)
         val viewModel =
-            AddTokenViewModel(known, ObserveTokenMetadata(metadata), AddToken(userTokens, metadata, known), Network.SEPOLIA, address)
+            AddTokenViewModel(
+                known,
+                ObserveTokenMetadata(metadata),
+                AddToken(userTokens, metadata, known),
+                Network.SEPOLIA,
+                address,
+            )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
     }
@@ -129,7 +135,12 @@ class AddTokenViewModelTest {
         }
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val known = ObserveKnownTokens(ListCatalog(usdc), userTokens, metadata)
-        val viewModel = AddTokenViewModel(known, ObserveTokenMetadata(slow), AddToken(userTokens, slow, known), Network.SEPOLIA)
+        val viewModel = AddTokenViewModel(
+            known,
+            ObserveTokenMetadata(slow),
+            AddToken(userTokens, slow, known),
+            Network.SEPOLIA,
+        )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(eurc)
         runCurrent()

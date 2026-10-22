@@ -12,10 +12,11 @@ import eth.serotine.domain.model.PriceId
  */
 interface PriceHistory {
     /**
-     * The round of [priceId]'s feed on [network] in effect [secondsBefore] seconds before the verified head,
-     * by the head's own time, never the device's clock: the last round updated at or before
-     * then. [PastReading.NoPrice] with [NoPriceReason.NO_FEED] for a price id with no feed in
-     * [PriceFeeds.quotes] of [network]. A [network] no adapter serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). One read, when called; never fails.
+     * The round of [priceId]'s feed on [network] in effect [secondsBefore] seconds before the verified head, by the
+     * head's own time, never the device's clock: the last round updated at or before then. [PastReading.NoPrice] with
+     * [NoPriceReason.NO_FEED] for a price id with no feed in [PriceFeeds.quotes] of [network]. A [network] no adapter
+     * serves here is refused, never answered from another network ([ReadUnavailable.NO_ENGINE]). One read, when called;
+     * never fails.
      */
     suspend fun before(network: Network, priceId: PriceId, secondsBefore: Long): PastReading
 }

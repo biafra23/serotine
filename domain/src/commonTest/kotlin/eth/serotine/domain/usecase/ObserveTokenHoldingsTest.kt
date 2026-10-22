@@ -78,7 +78,10 @@ class ObserveTokenHoldingsTest {
     @Test
     fun hidingATokenStopsOnlyItsOwnReading() = runTest {
         val seen = mutableListOf<List<TokenHolding>>()
-        backgroundScope.launch { ObserveTokenHoldings(known, balances)(Network.SEPOLIA, holder).collect { seen += it.holdings } }
+        backgroundScope.launch { ObserveTokenHoldings(
+            known,
+            balances,
+        )(Network.SEPOLIA, holder).collect { seen += it.holdings } }
         runCurrent()
         asked.clear()
 

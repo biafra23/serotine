@@ -176,7 +176,11 @@ class QuoteSwap(
         // quotes, the costly reads, come only once none of it does.
         val native = async { nativeBalances.observeBalance(network, from).first() }
         val soldBalance = soldToken?.let { async { tokenBalances.observeBalance(network, from, it.address).first() } }
-        val boughtBalance = boughtToken?.let { async { tokenBalances.observeBalance(network, from, it.address).first() } }
+        val boughtBalance = boughtToken?.let { async { tokenBalances.observeBalance(
+            network,
+            from,
+            it.address,
+        ).first() } }
         val head = async { lightClient.observeStatus(network).first() }
         val records = async { unminedOf(network, sentTransfers, inputs, from, clock) }
         val deployment = when (val venue = findRoute.venue(network)) {

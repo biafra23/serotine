@@ -93,12 +93,24 @@ internal class FakeTransactionInputs : TransactionInputs {
         return fees
     }
 
-    override suspend fun estimateGas(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): GasEstimate {
+    override suspend fun estimateGas(
+        network: Network,
+        from: Address,
+        to: Address,
+        value: UInt256,
+        data: ByteArray,
+    ): GasEstimate {
         estimated += Triple(from, to, value)
         return estimate
     }
 
-    override suspend fun simulate(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): Simulation {
+    override suspend fun simulate(
+        network: Network,
+        from: Address,
+        to: Address,
+        value: UInt256,
+        data: ByteArray,
+    ): Simulation {
         gate?.await()
         return runs[to] ?: simulation
     }
@@ -210,7 +222,8 @@ internal class MemoryHistoryStarts : HistoryStarts {
 
     // One network's starts, by address: these tests are all Sepolia's.
     override fun observe(): Flow<HistoryStartList> =
-        starts.map { held -> HistoryStartList.Loaded(held.mapKeys { (address, _) -> AccountId(Network.SEPOLIA, address) }) }
+        starts.map {
+            held -> HistoryStartList.Loaded(held.mapKeys { (address, _) -> AccountId(Network.SEPOLIA, address) }) }
 
     override suspend fun note(id: AccountId, atSeconds: Long): Boolean {
         val address = id.address

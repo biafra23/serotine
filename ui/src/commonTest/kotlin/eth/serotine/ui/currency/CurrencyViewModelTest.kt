@@ -33,7 +33,11 @@ class CurrencyViewModelTest {
 
     private fun TestScope.viewModel(): CurrencyViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val viewModel = CurrencyViewModel(ObserveDisplayCurrencies(feeds, setting), SetDisplayCurrency(feeds, setting), Network.SEPOLIA)
+        val viewModel = CurrencyViewModel(
+            ObserveDisplayCurrencies(feeds, setting),
+            SetDisplayCurrency(feeds, setting),
+            Network.SEPOLIA,
+        )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
     }
