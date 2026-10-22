@@ -628,7 +628,7 @@ class SwapViewModel(
         val swapper = when (list) {
             is AccountList.Unreadable -> Swapper.Cannot(LIST_UNAVAILABLE)
             is AccountList.Loaded -> {
-                val account = list.accounts.firstOrNull { it.address == from }
+                val account = list.accounts.firstOrNull { it.id == this@SwapViewModel.account }
                 when {
                     account == null -> Swapper.Cannot(NOT_IN_WALLET)
                     account.kind == AccountKind.SAFE -> Swapper.Cannot(SAFE)

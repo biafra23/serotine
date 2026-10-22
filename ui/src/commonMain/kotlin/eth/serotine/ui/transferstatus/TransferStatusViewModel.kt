@@ -233,7 +233,8 @@ class TransferStatusViewModel(
             ""
         }
         // The name it has in the wallet now, or the one it was to be listed under.
-        val label = (list as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == deployment.safe }?.label
+        val label = (list as? AccountList.Loaded)?.accounts
+            ?.firstOrNull { it.network == network && it.address == deployment.safe }?.label
             ?: deployment.label
         val mined = progress is TransactionProgress.Included || progress is TransactionProgress.Finalized
         val (text, listingFailed) = when (deployment.listed) {

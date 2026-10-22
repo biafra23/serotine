@@ -13,14 +13,16 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /**
  * [LastExchangeRate] kept in the file at [path] (a [VersionedJsonFile]), one rate per network:
  * what a home-screen widget shows without starting the light client. Format 2 keeps each
  * network's by its chain id; the one rate of a format-1 file was Sepolia's, the only one a
- * widget could show then (docs/networks.md, *The widget*). A rate in a currency this build does not
- * know, or one that is no rate, reads as none kept; a damaged file is set aside, and one that
- * cannot be read is none kept too, the file left as it is. Public data only.
+ * widget could show then (docs/networks.md, *The widget*). A rate of a network or in a currency
+ * this build does not know, or one that is no rate, reads as none kept, and the file is kept aside
+ * before the next save rewrites it, so a newer build's rates are not lost; a damaged file is set
+ * aside, and one that cannot be read is none kept too, the file left as it is. Public data only.
  */
 class FileLastExchangeRate(
     path: String,
@@ -48,6 +50,12 @@ class FileLastExchangeRate(
                 )
             }
         },
+        // A rate this build cannot read (a network or a currency it does not know): the file is kept
+        // aside before the next save rewrites it, as every file is that passes entries over.
+        incomplete = { text, kept ->
+            val stored = LENIENT.decodeFromString(StoredRateFile.serializer(), text)
+            stored.version >= 2 && stored.rates.size > kept.rates.size
+        },
         encode = { kept ->
             val stored = StoredRates(
                 FORMAT_VERSION,
@@ -69,6 +77,10 @@ class FileLastExchangeRate(
     /** The file's layout from format 2. [version] comes first and is always written. */
     @Serializable
     private class StoredRates(val version: Int, val rates: List<StoredRate>)
+
+    /** Any format's file, read leniently: its [version], and from format 2 its [rates]. */
+    @Serializable
+    private class StoredRateFile(val version: Int, val rates: List<JsonElement> = emptyList())
 
     /**
      * One rate: format 1's whole file, with its [version]; from format 2 a network's, the network
@@ -113,5 +125,6 @@ class FileLastExchangeRate(
         /** 2 since networks: one rate per network, by its chain id. */
         const val FORMAT_VERSION = 2
         val JSON = Json { encodeDefaults = true }
+        val LENIENT = Json { ignoreUnknownKeys = true }
     }
 }

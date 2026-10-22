@@ -343,7 +343,9 @@ class SafeTxViewModel(
     }
 
     private val accounts: Flow<List<Account>> = observeAccounts()
-        .map { (it as? AccountList.Loaded)?.accounts.orEmpty() }
+        // The Safe's network's accounts: what pays for an approval or an execution there, and what names
+        // its owners; an owner whose key is held on another network still signs ([ObserveSafe]).
+        .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network } }
 
     /** What the screen shows and acts on, or why there is no transaction to act on ([Queued]). */
     private val context: StateFlow<Source?> =

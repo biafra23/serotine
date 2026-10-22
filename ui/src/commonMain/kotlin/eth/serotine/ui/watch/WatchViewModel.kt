@@ -195,7 +195,8 @@ class WatchViewModel(
     }
 
     private fun detectionOf(address: Address, list: AccountList, reading: KindReading?): Detection {
-        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        // In the wallet on this network: the same address on another network is another account.
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
         return detectionOf(address, list, accounts.firstOrNull { it.address == address }, reading, accounts)
     }
 

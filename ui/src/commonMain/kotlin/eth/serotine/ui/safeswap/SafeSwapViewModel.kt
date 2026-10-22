@@ -645,7 +645,8 @@ class SafeSwapViewModel(
         typed: Inputs,
         replaced: Replaced?,
     ): Model {
-        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        // The Safe's network's accounts only: the same address on another network is another account.
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
         val sender = when (list) {
             is AccountList.Unreadable -> Sender.Cannot(LIST_UNAVAILABLE)
             is AccountList.Loaded -> {

@@ -97,4 +97,20 @@ class FileLastExchangeRateTest {
 
         assertEquals(snapshot, store().load(Network.SEPOLIA))
     }
+
+    @Test
+    fun aRateOfANetworkThisBuildDoesNotKnowIsKeptAsideBeforeTheNextSave() = runTest {
+        write(
+            """{"version":2,"rates":[{"chain":424242,"base":"ETH","quote":"EUR","rate":1.0,"dayAgoRate":null,""" +
+                """"updatedAt":1,"readAt":2,"stale":false}]}""",
+        )
+
+        assertNull(store().load(Network.SEPOLIA))
+        assertTrue(store().save(Network.SEPOLIA, snapshot))
+        assertEquals(snapshot, store().load(Network.SEPOLIA))
+        assertTrue(
+            SystemFileSystem.list(directory).any { it.name.contains("damaged") },
+            "the other network's rate is kept",
+        )
+    }
 }
