@@ -35,6 +35,9 @@ class AddressActivityTest {
         val asked = mutableListOf<Long>()
         val hashes = mutableMapOf<Long, String>()
 
+        /** Blocks the follower holds no hash for: their `base` hash is null. */
+        val unheld = mutableSetOf<Long>()
+
         fun hashOf(block: Long) = hashes[block] ?: ("0x" + block.toString(16).padStart(64, '0'))
 
         override fun setActivityWatch(configJson: String): Boolean {
@@ -44,7 +47,8 @@ class AddressActivityTest {
 
         override fun addressActivity(afterBlock: Long): String? {
             asked += afterBlock
-            return report?.replace(BASE, """{"block":$afterBlock,"hash":"${hashOf(afterBlock)}"}""")
+            val hash = if (afterBlock in unheld) "null" else "\"${hashOf(afterBlock)}\""
+            return report?.replace(BASE, """{"block":$afterBlock,"hash":$hash}""")
         }
 
         companion object {
@@ -120,6 +124,26 @@ class AddressActivityTest {
     }
 
     @Test
+    fun aProofBlockTheFollowerDoesNotHoldIsNotVouchedFor() {
+        val engine = FakeActivity().apply { report = report(to = 500, watching = listOf(a)) }
+        val activity = AddressActivity(engine)
+        engine.unheld += 490
+        assertFalse(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
+    }
+
+    @Test
+    fun aReorgToALowerHeadIsReadAfreshNotAnsweredFromTheHigherHeadsReport() {
+        // Chain X reached 501 with nothing touching the address: the proof at 490 stands.
+        val engine = FakeActivity().apply { report = report(to = 501, watching = listOf(a)) }
+        val activity = AddressActivity(engine)
+        assertTrue(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 501))
+
+        // A reorg above 490 to chain Y, whose head is 500 and whose block 500 names the address.
+        engine.report = report(to = 500, touched = touch(a, 500), watching = listOf(a))
+        assertFalse(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
+    }
+
+    @Test
     fun anAddressNobodyAsksAboutIsUnwatchedAndARefusedPushWaits() {
         val engine = FakeActivity().apply { report = report(to = 500, watching = emptyList()) }
         val activity = AddressActivity(engine)
@@ -144,7 +168,9 @@ class AddressActivityTest {
         val activity = AddressActivity(engine, clock)
         assertFalse(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
         val reports = { engine.asked.count { it == 200L } }
+        val checks = { engine.asked.count { it == 490L } } // the proof block's own report
         assertEquals(1, reports())
+        assertEquals(1, checks())
 
         // The follower caught up meanwhile; within 2 s the cached report stands.
         engine.report = report(to = 500, watching = listOf(a))
@@ -153,10 +179,12 @@ class AddressActivityTest {
         clock += 3.seconds
         assertTrue(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
         assertEquals(2, reports())
+        assertEquals(2, checks())
         // Once more only, at one head.
         clock += 3.seconds
         activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500)
         assertEquals(2, reports())
+        assertEquals(2, checks())
     }
 
     @Test
@@ -184,7 +212,11 @@ class AddressActivityTest {
 
     @Test
     fun aProofOlderThanTheReportOrAHeadPastItIsNoVouching() {
-        val engine = FakeActivity().apply { report = report(to = 500, from = 300, watching = listOf(a)) }
+        // Block 299 is below the follower's window: it holds no hash for it.
+        val engine = FakeActivity().apply {
+            report = report(to = 500, from = 300, watching = listOf(a))
+            unheld += 299
+        }
         val activity = AddressActivity(engine)
 
         assertFalse(activity.unchangedSince(a, Kind.LOG, 299, engine.hashOf(299), 500))

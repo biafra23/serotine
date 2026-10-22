@@ -44,13 +44,15 @@ internal interface ActivityChain {
  * a sibling the chain left, or one whose block a later reorg replaced (or any block below it),
  * is made again. A proof that names no hash, or whose block the follower does not hold, never
  * stands. (A replaced block that touched the address no longer shows in the report, which is
- * why a touch check alone could not catch this.)
+ * why a touch check alone could not catch this.) The hash and the blocks after it come from one
+ * report, read after the proof's block for the head being asked about: a report kept from
+ * another head — one a reorg has since lowered, for instance — never vouches.
  *
  * **The watch list** follows what readings ask about: an address is watched the first time it
  * is asked about, so the answer for it is false until the engine's next report lists it; one
- * not asked about for [IDLE_HEADS] heads is unwatched, so the list does not only grow. A report
- * is asked for once per verified head, however many readings ask, and once more while its
- * newest block is still a gap (the follower lags the head by a moment). One that no longer
+ * not asked about for [IDLE_HEADS] heads is unwatched, so the list does not only grow. Each
+ * report is read once per verified head (and per proof block), however many readings ask, and
+ * once more while its newest block is still a gap (the follower lags the head by a moment). One that no longer
  * lists an address (the engine restarted) watches it again; a push the engine refused is not
  * repeated for [REFUSED_BACKOFF_HEADS] heads.
  */
@@ -73,11 +75,17 @@ internal class AddressActivity(
     @Volatile
     private var last: Fetched? = null
 
-    private class Fetched(val report: Report, val at: TimeMark, val reread: Boolean)
+    private class Fetched(val report: Report, val at: TimeMark, val reread: Boolean) {
+        /** Whether this answers for [head]: it reaches it, and is not a top gap due its one re-read. */
+        fun serves(head: Long): Boolean {
+            val topGap = report.to == head && report.gapAtTop()
+            return report.to >= head && !(topGap && !reread && at.elapsedNow() >= TOP_GAP_RETRY)
+        }
+    }
 
-    /** Block number to the hash the engine holds for it now, read at the head of the value. */
+    /** Per proof block, the report after it and the head it was read for ([reportAfter]). */
     @Volatile
-    private var canonical: Map<Long, Pair<Long, String?>> = emptyMap()
+    private var checks: Map<Long, Pair<Long, Fetched>> = emptyMap()
 
     /** The head each watched address was last asked about at. */
     @Volatile
@@ -105,14 +113,19 @@ internal class AddressActivity(
             watch(address, head)
             return false
         }
-        if (report.from > provenAt || report.to < head) return false
+        provenHash ?: return false
+        // One read for the whole check, made for this head: the proof's block as the follower
+        // holds it now and the blocks after it, from the same chain. A report kept from a head
+        // a reorg has since lowered or replaced never answers it.
+        val since = reportAfter(provenAt, head) ?: return false
+        if (since.from > provenAt + 1 || since.to < head) return false
         // The proof's own block is the canonical one: not a sibling the chain left, and not
         // replaced since by a reorg below the head.
-        if (provenHash == null || canonicalHash(provenAt, head) != provenHash.lowercase()) return false
-        val gaps = report.gaps[kind.json] ?: return false
+        if (since.base?.first != provenAt || since.base.second != provenHash.lowercase()) return false
+        val gaps = since.gaps[kind.json] ?: return false
         if (gaps.any { (low, high) -> low <= head && high >= provenAt }) return false
         // From the block after the proof's: what the proof's own block did is in the proof.
-        return report.touched.none { it.address == address.hex && it.block in (provenAt + 1)..head }
+        return since.touched.none { it.address == address.hex && it.block in (provenAt + 1)..head }
     }
 
     /**
@@ -127,36 +140,33 @@ internal class AddressActivity(
         return !(gaps.size == 1 && gaps[0].first <= report.from && gaps[0].second >= report.to)
     }
 
-    /** The report reaching [head], read again when the last one stops below it, or once more
-     *  when its newest block was still a gap. */
+    /**
+     * The report reaching [head], for the watch list and [hasAccountCoverage]: read again when
+     * the last one stops below it, or once more when its newest block was still a gap. Never
+     * what vouches for a proof ([reportAfter] is).
+     */
     private fun reportAt(head: Long): Report? {
-        last?.let { fetched ->
-            val fresh = fetched.report.to >= head
-            val topGap = fetched.report.to == head && fetched.report.gapAtTop()
-            if (fresh && !(topGap && !fetched.reread && fetched.at.elapsedNow() >= TOP_GAP_RETRY)) {
-                return fetched.report
-            }
-        }
-        val json = read { chain?.addressActivity((head - LOOKBACK).coerceAtLeast(0)) } ?: return null
-        val report = Report.parse(json) ?: return null
-        val reread = last?.report?.to == report.to
-        last = Fetched(report, clock.markNow(), reread)
+        last?.let { if (it.serves(head)) return it.report }
+        val report = fetch((head - LOOKBACK).coerceAtLeast(0)) ?: return null
+        last = Fetched(report, clock.markNow(), reread = last?.report?.to == report.to)
         return report
     }
 
-    /** The hash the engine holds for [block], read once per head. */
-    private fun canonicalHash(block: Long, head: Long): String? {
-        canonical[block]?.takeIf { it.first == head }?.let { return it.second }
-        val hash = baseHash(block)
-        canonical = (canonical + (block to (head to hash))).let { if (it.size > MAX_HASHES) it - it.keys.min() else it }
-        return hash
+    /**
+     * The report after [provenAt] read for [head], once per head and proof block (and once more
+     * when its newest block was still a gap): its `base` and its blocks come from one read.
+     */
+    private fun reportAfter(provenAt: Long, head: Long): Report? {
+        val kept = checks[provenAt]?.takeIf { it.first == head }?.second
+        if (kept != null && kept.serves(head)) return kept.report
+        val report = fetch(provenAt) ?: return null
+        val fetched = Fetched(report, clock.markNow(), reread = kept?.report?.to == report.to)
+        checks = (checks + (provenAt to (head to fetched))).let { if (it.size > MAX_CHECKS) it - it.keys.min() else it }
+        return report
     }
 
-    /** The engine's hash for [block]: the `base` of a report after it. */
-    private fun baseHash(block: Long): String? {
-        val json = read { chain?.addressActivity(block) } ?: return null
-        return Report.base(json)?.takeIf { it.first == block }?.second
-    }
+    private fun fetch(afterBlock: Long): Report? =
+        read { chain?.addressActivity(afterBlock) }?.let { Report.parse(it) }
 
     private fun watch(address: Address, head: Long) {
         if (refusedAt[address.hex]?.let { head - it < REFUSED_BACKOFF_HEADS } == true) return
@@ -190,6 +200,8 @@ internal class AddressActivity(
 
     /** One report, as far as this reads it. */
     private class Report(
+        /** The block the report starts after and the hash the follower holds for it; null when it holds none. */
+        val base: Pair<Long, String>?,
         val from: Long,
         val to: Long,
         val gaps: Map<String, List<Pair<Long, Long>>>,
@@ -216,6 +228,7 @@ internal class AddressActivity(
                         }
                     }
                     Report(
+                        base = base(root),
                         from = root.getValue("from").jsonPrimitive.long,
                         to = root.getValue("to").jsonPrimitive.long,
                         gaps = gaps,
@@ -230,12 +243,10 @@ internal class AddressActivity(
             }
 
             /** A report's `base`: the block it starts after and the hash the engine holds for it. */
-            fun base(json: String): Pair<Long, String>? = try {
-                val base = Json.parseToJsonElement(json).jsonObject.getValue("base").jsonObject
+            private fun base(root: JsonObject): Pair<Long, String>? {
+                val base = root.getValue("base").jsonObject
                 val hash = base.getValue("hash").takeIf { it !is JsonNull }?.jsonPrimitive?.content?.lowercase()
-                hash?.let { base.getValue("block").jsonPrimitive.long to it }
-            } catch (e: Exception) {
-                null
+                return hash?.let { base.getValue("block").jsonPrimitive.long to it }
             }
 
             private fun touchOf(o: JsonObject) =
@@ -253,8 +264,8 @@ internal class AddressActivity(
         /** Heads a refused watch push waits before it is pushed again. */
         const val REFUSED_BACKOFF_HEADS = 50L
 
-        /** Canonical block hashes kept: more than the engine's window. */
-        const val MAX_HASHES = 512
+        /** Proof blocks whose reports are kept: more than the engine's window. */
+        const val MAX_CHECKS = 512
 
         /** How long a report whose newest block was a gap serves before it is read once more. */
         val TOP_GAP_RETRY = 2.seconds
