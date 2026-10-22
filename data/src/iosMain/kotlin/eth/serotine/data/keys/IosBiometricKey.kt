@@ -15,7 +15,6 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readString
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import platform.Foundation.NSData
 import platform.Foundation.NSError
@@ -65,11 +64,11 @@ class IosBiometricKey(private val stateFile: String) : BiometricKey {
         return when (val code = canEvaluate(LAContext())) {
             null -> null
             // Until the passcode is entered no key can be made: the enrolled set cannot be read.
-            LA_BIOMETRY_LOCKOUT -> BiometricUnavailable.LOCKED_OUT
-            LA_BIOMETRY_NOT_ENROLLED -> BiometricUnavailable.NOT_ENROLLED
-            LA_PASSCODE_NOT_SET -> BiometricUnavailable.NO_PASSCODE
+            LaError.BIOMETRY_LOCKOUT -> BiometricUnavailable.LOCKED_OUT
+            LaError.BIOMETRY_NOT_ENROLLED -> BiometricUnavailable.NOT_ENROLLED
+            LaError.PASSCODE_NOT_SET -> BiometricUnavailable.NO_PASSCODE
             // On a device with Face ID, the user declined it for this app or turned it off since.
-            LA_BIOMETRY_NOT_AVAILABLE -> if (biometryType() == LABiometryTypeNone) {
+            LaError.BIOMETRY_NOT_AVAILABLE -> if (biometryType() == LABiometryTypeNone) {
                 BiometricUnavailable.NO_HARDWARE
             } else {
                 BiometricUnavailable.NOT_ALLOWED
@@ -84,7 +83,7 @@ class IosBiometricKey(private val stateFile: String) : BiometricKey {
 
     override fun isInvalidated(): Boolean {
         val state = read() ?: return false
-        return changedSince(state)
+        return enrolledNow().changedSince(state)
     }
 
     override fun create(): Boolean = locked {
@@ -127,25 +126,11 @@ class IosBiometricKey(private val stateFile: String) : BiometricKey {
             println("Serotine: the biometric key's state cannot be read (${e.message ?: e::class.simpleName})")
             null
         } ?: return BiometricUnwrap.Unusable(BiometricUnusable.OFF)
-        if (changedSince(state)) return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
+        if (enrolledNow().changedSince(state)) return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
         val context = LAContext()
         context.localizedFallbackTitle = USE_THE_PASSWORD
         try {
-            when (val code = evaluate(context, reason)) {
-                null -> Unit
-                LA_USER_CANCEL, LA_USER_FALLBACK, LA_SYSTEM_CANCEL, LA_APP_CANCEL -> return BiometricUnwrap.Cancelled
-                // The face or finger was not recognised, try after try: not a dismissal.
-                LA_AUTHENTICATION_FAILED -> return BiometricUnwrap.Failed
-                LA_BIOMETRY_LOCKOUT -> return BiometricUnwrap.Unusable(BiometricUnusable.LOCKED_OUT)
-                LA_NOT_INTERACTIVE -> return BiometricUnwrap.Unusable(BiometricUnusable.NO_PROMPT)
-                LA_BIOMETRY_NOT_ENROLLED, LA_PASSCODE_NOT_SET ->
-                    return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
-                LA_BIOMETRY_NOT_AVAILABLE -> return BiometricUnwrap.Unusable(BiometricUnusable.SENSOR_UNAVAILABLE)
-                else -> {
-                    println("Serotine: the biometric prompt failed ($code)")
-                    return BiometricUnwrap.Failed
-                }
-            }
+            evaluate(context, reason)?.let { code -> return LaError.unwrapFailure(code) }
             return try {
                 // The context the user just passed: the enclave decrypts once, without a second prompt.
                 val key = IosSecurity.restoreEnclaveKey(state.key.fromHex(), context)
@@ -185,7 +170,7 @@ class IosBiometricKey(private val stateFile: String) : BiometricKey {
         suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { context.invalidate() }
             context.evaluatePolicy(LAPolicyDeviceOwnerAuthenticationWithBiometrics, reason) { success, error ->
-                continuation.resume(if (success) null else error?.code ?: LA_AUTHENTICATION_FAILED)
+                continuation.resume(if (success) null else error?.code ?: LaError.AUTHENTICATION_FAILED)
             }
         }
 
@@ -195,18 +180,6 @@ class IosBiometricKey(private val stateFile: String) : BiometricKey {
 
         private const val VERSION = 1
         private const val USE_THE_PASSWORD = "Use the password"
-
-        // LAError's codes (LocalAuthentication/LAError.h).
-        private const val LA_AUTHENTICATION_FAILED = -1L
-        private const val LA_USER_CANCEL = -2L
-        private const val LA_USER_FALLBACK = -3L
-        private const val LA_SYSTEM_CANCEL = -4L
-        private const val LA_PASSCODE_NOT_SET = -5L
-        private const val LA_BIOMETRY_NOT_AVAILABLE = -6L
-        private const val LA_BIOMETRY_NOT_ENROLLED = -7L
-        private const val LA_BIOMETRY_LOCKOUT = -8L
-        private const val LA_APP_CANCEL = -9L
-        private const val LA_NOT_INTERACTIVE = -1004L
 
         /** The kind of sensor the device has, enrolled or allowed or not. */
         private fun biometryType(): LABiometryType = LAContext().let { context ->
@@ -220,30 +193,14 @@ class IosBiometricKey(private val stateFile: String) : BiometricKey {
             if (context.canEvaluatePolicy(LAPolicyDeviceOwnerAuthenticationWithBiometrics, error.ptr)) {
                 null
             } else {
-                error.value?.code ?: LA_BIOMETRY_NOT_AVAILABLE
+                error.value?.code ?: LaError.BIOMETRY_NOT_AVAILABLE
             }
-        }
-
-        /**
-         * Whether the biometrics enrolled now are not the set [state]'s key was made under: one
-         * was added or removed, or none is left. Not when that cannot be told now (a lockout, a
-         * sensor in use): the enclave refuses an invalidated key anyway.
-         */
-        private fun changedSince(state: BiometricKeyState): Boolean = when (val now = enrolledNow()) {
-            is Enrolled.Known -> now.state.toHex() != state.enrolled
-            Enrolled.None -> true
-            Enrolled.Unknown -> false
         }
 
         /** The fingerprint of the biometrics enrolled now (`evaluatedPolicyDomainState`), as far as it can be told. */
         private fun enrolledNow(): Enrolled {
             val context = LAContext()
-            return when (canEvaluate(context)) {
-                null, LA_BIOMETRY_LOCKOUT -> context.evaluatedPolicyDomainState?.toByteArray()
-                    ?.let { Enrolled.Known(it) } ?: Enrolled.Unknown
-                LA_BIOMETRY_NOT_ENROLLED, LA_PASSCODE_NOT_SET -> Enrolled.None
-                else -> Enrolled.Unknown
-            }
+            return LaError.enrolled(canEvaluate(context)) { context.evaluatedPolicyDomainState?.toByteArray() }
         }
 
         private fun NSData.toByteArray(): ByteArray {
@@ -253,19 +210,3 @@ class IosBiometricKey(private val stateFile: String) : BiometricKey {
         }
     }
 }
-
-/** What [IosBiometricKey] can tell of the biometrics enrolled now. */
-internal sealed interface Enrolled {
-    /** The set's fingerprint. */
-    class Known(val state: ByteArray) : Enrolled
-
-    /** None enrolled, or no passcode, without which none can be. */
-    data object None : Enrolled
-
-    /** Not now: biometrics cannot be evaluated at the moment. */
-    data object Unknown : Enrolled
-}
-
-/** [IosBiometricKey]'s state file: the enclave key's handle and the enrolled set's fingerprint, both hex. */
-@Serializable
-internal class BiometricKeyState(val version: Int, val key: String, val enrolled: String)
