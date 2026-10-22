@@ -348,6 +348,23 @@ private fun AccountDetailCheckingPreview() = AccountDetailPreview(
     lightClient = catchingUpStripSample,
 )
 
+@Preview
+@Composable
+private fun AccountDetailCheckingDarkPreview() = AccountDetailPreview(
+    daily.copy(
+        label = "Savings",
+        address = SAVINGS,
+        control = Control.WATCH_ONLY,
+        total = "Checking…",
+        totalNote = "Testnet prices · still checking",
+        assets = listOf(ether.copy(amount = "Checking…", verified = false, verifiedAt = null, value = null)),
+        pendingAssets = 3,
+        tokensNote = "Checking 3 tokens",
+    ),
+    darkTheme = true,
+    lightClient = catchingUpStripSample,
+)
+
 private const val LAST_KNOWN = "Last verified Oct 19, 2026, 2:32 PM · may have changed since"
 
 /** The verified head too old to read at: the amounts last verified, each said to be so. */
@@ -572,4 +589,5 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailSafeActivityPreview() },
     { AccountDetailSafeActivityDarkPreview() },
     { AccountDetailSafeQueueReadingPreview() },
+    { AccountDetailCheckingDarkPreview() },
 )
