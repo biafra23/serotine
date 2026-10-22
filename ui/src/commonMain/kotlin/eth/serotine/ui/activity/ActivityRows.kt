@@ -245,6 +245,7 @@ internal class ActivityRows(
             } else {
                 Triple("Deployed", transfer.account, "Paid by")
             }
+            is SentAction.CowCancellation -> Triple("Cancelled a CoW order on chain", action.settlement, "On CoW ·")
         }
         val (status, state) = statusOf(entry)
         return ActivityRow(

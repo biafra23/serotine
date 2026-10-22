@@ -74,7 +74,9 @@ class FindUniswapRoute(
 
     /**
      * The best route on [network] for selling exactly [amountIn] (not zero) of [sell] for [buy],
-     * ranked by [ranking].
+     * ranked by [ranking]. With [withFee], ranked net of fees, the chosen route's own fee in the
+     * bought token is had even when it is the only route ([RouteFinding.Found.feeOut]): a CoW
+     * order's floor stands on it (docs/swaps.md, *The signed minimum*).
      */
     suspend operator fun invoke(
         network: Network,
@@ -82,6 +84,7 @@ class FindUniswapRoute(
         buy: TransferAsset,
         amountIn: UInt256,
         ranking: RouteRanking = RouteRanking.NET_OF_FEES,
+        withFee: Boolean = false,
     ): RouteFinding {
         require(!amountIn.isZero) { "a swap sells something" }
         val deployment = when (val venue = chain.venue(network)) {
@@ -96,7 +99,7 @@ class FindUniswapRoute(
         return coroutineScope {
             // The fees do not depend on the pools: read beside them, not after.
             val fees = if (ranking == RouteRanking.NET_OF_FEES) async { inputs.fees() } else null
-            find(deployment, tokenIn, tokenOut, amountIn, ranking) { fees?.await() }
+            find(deployment, tokenIn, tokenOut, amountIn, ranking, withFee) { fees?.await() }
                 .also { fees?.cancel() }
         }
     }
@@ -107,6 +110,7 @@ class FindUniswapRoute(
         tokenOut: Address,
         amountIn: UInt256,
         ranking: RouteRanking,
+        withFee: Boolean,
         fees: suspend () -> FeeReading?,
     ): RouteFinding {
         val toRead = SwapRoutes.poolsToRead(tokenIn, tokenOut, deployment.weth9)
@@ -131,7 +135,7 @@ class FindUniswapRoute(
         val quotes = quoted.filterIsInstance<Quoted.Read>()
         if (quotes.isEmpty()) return RouteFinding.NoRoute
 
-        val costs = if (ranking == RouteRanking.NET_OF_FEES && quotes.size > 1) {
+        val costs = if (ranking == RouteRanking.NET_OF_FEES && (quotes.size > 1 || withFee)) {
             costs(deployment, quotes.map { it.quote }, tokenOut, liquidity, fees())
         } else {
             null
@@ -147,6 +151,7 @@ class FindUniswapRoute(
             netOfFees = ranking == RouteRanking.NET_OF_FEES && (costs != null || quotes.size == 1),
             blockNumber = blockNumber,
             spotOut = spotOut(best.route, amountIn, best.route.poolKeys.map { prices[it] }, blockNumber),
+            feeOut = costs?.get(best),
         )
     }
 
@@ -275,7 +280,9 @@ sealed interface RouteFinding {
      * ranked net of their fees or not ([netOfFees]); the quote was run against the state of
      * [blockNumber] (null: not said). [spotOut] is what the route returns at its pools' spot
      * prices, less their fees, the price impact's measure, each read at [blockNumber]; null when
-     * a pool's `slot0` could not be read at that block.
+     * a pool's `slot0` could not be read at that block. [feeOut] is the route's expected network
+     * fee, its QuoterV2 gas × (the next base fee + the Normal tip), in the bought token; null when
+     * it was not asked for or could not be had (no fee reading, no pool to convert through).
      */
     data class Found(
         val deployment: UniswapV3Deployment,
@@ -285,6 +292,7 @@ sealed interface RouteFinding {
         val netOfFees: Boolean,
         val blockNumber: Long?,
         val spotOut: UInt256? = null,
+        val feeOut: UInt256? = null,
     ) : RouteFinding
 
     /** The two assets are one token on Uniswap: the same one, or ETH and WETH, a wrap. */

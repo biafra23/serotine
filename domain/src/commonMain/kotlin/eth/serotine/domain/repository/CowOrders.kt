@@ -28,6 +28,13 @@ interface CowOrders {
     suspend fun record(order: CowOrderRecord): Boolean
 
     /**
+     * Sets the end of the order recorded under [uid] to [end], keeping the rest of its record as it
+     * is by then (its placement may have changed since it was read). False when no order is
+     * recorded under [uid], or the record could not be saved.
+     */
+    suspend fun end(uid: CowOrderUid, end: CowOrderEnd): Boolean
+
+    /**
      * Drops the orders whose end is known ([CowOrderRecord.end] set) and that were signed before
      * [signedBefore] (unix seconds); a live order is never dropped. False when the record could
      * not be saved.

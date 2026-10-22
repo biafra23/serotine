@@ -1,6 +1,7 @@
 package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
@@ -170,4 +171,11 @@ sealed interface SentAction {
         val minimumOut: UInt256,
         val weth: Address? = null,
     ) : SentAction
+
+    /**
+     * The account's cancellation on chain of its CoW order [uid] (`invalidateOrder`), sent to the
+     * settlement contract [settlement] (docs/swaps.md, *Proving an order's end*): once mined and
+     * finalized, nothing can fill the order. It moves nothing but the fee.
+     */
+    data class CowCancellation(val settlement: Address, val uid: CowOrderUid) : SentAction
 }
