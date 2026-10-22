@@ -43,6 +43,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
 import eth.serotine.ui.accounts.AccountsRoute
@@ -268,6 +269,7 @@ private fun Destinations(
                     onReceive = { navController.open(AccountAction.Receive(chainId, account.address.hex)) },
                     onRename = { navController.open(AccountAction.Rename(chainId, account.address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(chainId, account.address.hex)) },
+                    onAddOnNetwork = { navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex)) },
                     onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
                     onImportRequest = { navController.importRequest(account) },
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
@@ -328,6 +330,12 @@ private fun Destinations(
                 RemoveAccountRoute(
                     viewModel = viewModel { graph.removeAccountViewModel(account) },
                     onClose = { navController.leave(Destination.REMOVE) },
+                )
+            }
+            dialogWithAccount(Destination.ADD_ON_NETWORK, navController) { account ->
+                AddOnNetworksRoute(
+                    viewModel = viewModel { graph.addOnNetworksViewModel(account) },
+                    onClose = { navController.leave(Destination.ADD_ON_NETWORK) },
                 )
             }
         }
@@ -604,6 +612,7 @@ private fun NavController.open(action: AccountAction) {
         is AccountAction.Receive -> Destination.RECEIVE
         is AccountAction.Rename -> Destination.RENAME
         is AccountAction.Remove -> Destination.REMOVE
+        is AccountAction.AddOnNetwork -> Destination.ADD_ON_NETWORK
         is AccountAction.Copy -> return
     }
     // A second tap while the first one's screen is opening: one screen, the first one asked
@@ -800,6 +809,7 @@ private object Destination {
     const val WATCH = "watch"
     const val RENAME = "rename"
     const val REMOVE = "remove"
+    const val ADD_ON_NETWORK = "add-on-network"
     const val SETTINGS = "settings"
     const val DEBUG = "debug"
     const val CURRENCY = "currency"

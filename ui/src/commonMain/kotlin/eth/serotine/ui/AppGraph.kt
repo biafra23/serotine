@@ -35,6 +35,7 @@ import eth.serotine.domain.repository.TransactionHistory
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.UserTokens
+import eth.serotine.domain.usecase.AddOnNetworks
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
@@ -110,6 +111,7 @@ import eth.serotine.ui.accounts.AccountsViewModel
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activitydetail.ActivityDetailViewModel
+import eth.serotine.ui.addnetwork.AddOnNetworksViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
@@ -463,6 +465,16 @@ class AppGraph(
         WarmFeeHistory(transactionInputs),
         soleNetwork,
     )
+
+    /** Add on another network (docs/networks.md, N6), for the EOA [account]. */
+    fun addOnNetworksViewModel(account: AccountId): AddOnNetworksViewModel =
+        AddOnNetworksViewModel(
+            account,
+            ObserveAccounts(accounts),
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
+            AddOnNetworks(accounts, walletChanges),
+        )
 
     fun receiveViewModel(account: AccountId): ReceiveViewModel =
         ReceiveViewModel(account, ObserveAccount(accounts), ObserveEnabledNetworks(networkSettings))

@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -126,6 +127,7 @@ fun AccountDetailRoute(
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
+    onAddOnNetwork: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val strip by lightClient.item.collectAsStateWithLifecycle()
@@ -157,6 +159,7 @@ fun AccountDetailRoute(
         onOpenActivity = onOpenActivity,
         modifier = modifier,
         onTurnOnNetwork = viewModel::turnOnNetwork,
+        onAddOnNetwork = onAddOnNetwork,
     )
 }
 
@@ -170,7 +173,8 @@ fun AccountDetailRoute(
  * Activity tab's rows open their detail through [onOpenActivity]. A Safe's Queue opens a
  * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest].
  * The account's network is named beside its control (docs/networks.md, N3 and N4); while it is off,
- * Send and Swap say so and offer to turn it on through [onTurnOnNetwork] (N19).
+ * Send and Swap say so and offer to turn it on through [onTurnOnNetwork] (N19). An externally owned
+ * account's menu adds it on another network through [onAddOnNetwork] (N5).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -193,6 +197,7 @@ fun AccountDetailScreen(
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
     onTurnOnNetwork: () -> Unit = {},
+    onAddOnNetwork: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -263,6 +268,9 @@ fun AccountDetailScreen(
                                 sort,
                                 MenuAction("Copy address", SerotineIcons.ContentCopy) { copy(state.address) },
                                 MenuAction("Rename", Icons.Filled.Edit, onClick = onRename),
+                                // An EOA's address is the same account on every chain (N5).
+                                MenuAction("Add on another network…", Icons.Filled.Add, onClick = onAddOnNetwork)
+                                    .takeIf { state.kind == AccountKind.EOA },
                                 MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove),
                             ),
                             expanded = menu,

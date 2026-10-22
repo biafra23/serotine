@@ -253,6 +253,9 @@ sealed interface AccountAction {
 
     /** Take it out of the wallet. */
     data class Remove(override val chainId: Long, override val address: String) : AccountAction
+
+    /** Add it on another network (docs/networks.md, N5); offered for an externally owned account. */
+    data class AddOnNetwork(override val chainId: Long, override val address: String) : AccountAction
 }
 
 /**

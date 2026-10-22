@@ -348,7 +348,7 @@ private fun accountMenu(
             )
         } ?: UnavailableNotice("Send", reason)
     }
-    return listOf(
+    return listOfNotNull(
         MenuAction("Send", Icons.AutoMirrored.Filled.Send, unavailable = sendNotice != null) {
             when {
                 sendNotice != null -> onUnavailable(sendNotice)
@@ -359,6 +359,9 @@ private fun accountMenu(
         MenuAction("Receive", SerotineIcons.QrCode) { act(AccountAction.Receive(chainId, address)) },
         MenuAction("Copy address", SerotineIcons.ContentCopy) { act(AccountAction.Copy(chainId, address)) },
         MenuAction("Rename", Icons.Filled.Edit) { act(AccountAction.Rename(chainId, address)) },
+        // An EOA's address is the same account on every chain (N5); a Safe exists where it was deployed.
+        MenuAction("Add on another network…", Icons.Filled.Add) { act(AccountAction.AddOnNetwork(chainId, address)) }
+            .takeIf { account.kind == AccountKind.EOA },
         MenuAction("Remove", Icons.Filled.Delete, destructive = true) { act(AccountAction.Remove(chainId, address)) },
     )
 }
