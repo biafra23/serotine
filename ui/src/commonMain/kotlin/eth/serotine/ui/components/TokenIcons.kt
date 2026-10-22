@@ -64,57 +64,7 @@ object TokenIcons {
     }
 
     /** `eth`. */
-    private val eth: ImageVector by lazy {
-        icon("eth")
-            .addPath(
-                addPathNodes(
-                    "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
-                ),
-                fill = SolidColor(Color(0xFF627EEA)),
-                pathFillType = PathFillType.EvenOdd,
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 4v8.87l7.497 3.35z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.602f,
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 4L9 16.22l7.498 -3.35z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 21.968v6.027L24 17.616z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.602f,
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 27.995v-6.028L9 17.616z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 20.573l7.497 -4.353 -7.497 -3.348z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.2f,
-            )
-            .addPath(
-                addPathNodes(
-                    "M9 16.22l7.498 4.353v-7.701z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.602f,
-            )
-            .build()
-    }
+    private val eth: ImageVector by lazy { ethGlyph("eth", Color(0xFF627EEA)) }
 
     /** `usdc`. */
     private val usdc: ImageVector by lazy {
@@ -272,58 +222,8 @@ object TokenIcons {
             .build()
     }
 
-    /** `weth`. */
-    private val weth: ImageVector by lazy {
-        icon("weth")
-            .addPath(
-                addPathNodes(
-                    "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
-                ),
-                fill = SolidColor(Color(0xFFEC1C79)),
-                pathFillType = PathFillType.EvenOdd,
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 4v8.87l7.497 3.35z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.602f,
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 4L9 16.22l7.498 -3.35z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 21.968v6.027L24 17.616z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.602f,
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 27.995v-6.028L9 17.616z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-            )
-            .addPath(
-                addPathNodes(
-                    "M16.498 20.573l7.497 -4.353 -7.497 -3.348z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.2f,
-            )
-            .addPath(
-                addPathNodes(
-                    "M9 16.22l7.498 4.353v-7.701z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-                fillAlpha = 0.602f,
-            )
-            .build()
-    }
+    /** `weth`: `eth`'s glyph on the pink of the common WETH logo. */
+    private val weth: ImageVector by lazy { ethGlyph("weth", Color(0xFFEC1C79)) }
 
     /** `dai`. */
     private val dai: ImageVector by lazy {
@@ -539,6 +439,58 @@ object TokenIcons {
             .build()
     }
 }
+
+/** The `eth` icon's glyph on a circle of [background], which `eth` and `weth` share. */
+private fun ethGlyph(name: String, background: Color): ImageVector =
+    icon(name)
+        .addPath(
+            addPathNodes(
+                "M0,16a16,16 0 1,0 32,0a16,16 0 1,0 -32,0z",
+            ),
+            fill = SolidColor(background),
+            pathFillType = PathFillType.EvenOdd,
+        )
+        .addPath(
+            addPathNodes(
+                "M16.498 4v8.87l7.497 3.35z",
+            ),
+            fill = SolidColor(Color(0xFFFFFFFF)),
+            fillAlpha = 0.602f,
+        )
+        .addPath(
+            addPathNodes(
+                "M16.498 4L9 16.22l7.498 -3.35z",
+            ),
+            fill = SolidColor(Color(0xFFFFFFFF)),
+        )
+        .addPath(
+            addPathNodes(
+                "M16.498 21.968v6.027L24 17.616z",
+            ),
+            fill = SolidColor(Color(0xFFFFFFFF)),
+            fillAlpha = 0.602f,
+        )
+        .addPath(
+            addPathNodes(
+                "M16.498 27.995v-6.028L9 17.616z",
+            ),
+            fill = SolidColor(Color(0xFFFFFFFF)),
+        )
+        .addPath(
+            addPathNodes(
+                "M16.498 20.573l7.497 -4.353 -7.497 -3.348z",
+            ),
+            fill = SolidColor(Color(0xFFFFFFFF)),
+            fillAlpha = 0.2f,
+        )
+        .addPath(
+            addPathNodes(
+                "M9 16.22l7.498 4.353v-7.701z",
+            ),
+            fill = SolidColor(Color(0xFFFFFFFF)),
+            fillAlpha = 0.602f,
+        )
+        .build()
 
 /**
  * A square of [units] drawn at 32 dp: 32 is the CC0 set's own viewport, 24 web3icons'.
