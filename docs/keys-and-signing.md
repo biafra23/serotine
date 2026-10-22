@@ -300,10 +300,13 @@ its KDoc and returns it as a result the UI shows as state.
     `MacSecureEnclaveSecret`; the key is not permanent, so it needs no
     keychain entitlement, and the app signed or not makes it the same way;
   - `sign(…, Unlock.WithBiometrics(reason))` has the enclave decrypt through
-    an `LAContext` that carries the reason and "Use the password"
-    (`MacLocalAuthentication`, messages sent through the Objective-C runtime,
-    since LocalAuthentication has no C API): the system shows its Touch ID
-    prompt for that use, and the decryption waits for it. A prompt that does
+    an `LAContext` that carries the reason (`MacLocalAuthentication`,
+    messages sent through the Objective-C runtime, since LocalAuthentication
+    has no C API): the system shows its Touch ID prompt for that use, and the
+    decryption waits for it. On macOS 15 the prompt's one way out is Cancel,
+    with no password button, and the signing screen then offers the wallet
+    password; the context still names "Use the password" as its fallback,
+    whose press, where macOS shows it, reads as a dismissal. A prompt that does
     not pass fails the decryption with LocalAuthentication's error, at the
     top of the error or underneath it, which reads as on iOS (Security's own
     "cancelled by the user" reads as a dismissal too); a cancelled caller

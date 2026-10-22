@@ -134,14 +134,14 @@ class MacBiometricKeyTest {
         assertTrue(unwrap.isCancelled)
     }
 
-    @Ignore // Shows the Touch ID prompt: press its Cancel button, then run it again and press "Use the password".
+    @Ignore // Shows the Touch ID prompt: press its Cancel button, not the sensor.
     @Test
     fun aPromptTheUserDismissesIsACancel() = runBlocking {
         assumeTouchId()
         assertTrue(key.create())
         val wrapped = key.wrap(ByteArray(32))
 
-        val outcome = withTimeout(60_000) { key.unwrap(wrapped, "test: press Cancel or Use the password") }
+        val outcome = withTimeout(60_000) { key.unwrap(wrapped, "test: press Cancel") }
 
         assertEquals(BiometricUnwrap.Cancelled, outcome)
     }

@@ -29,8 +29,9 @@ import kotlin.coroutines.resume
  *
  * Wrapping a DEK is ECIES to the public half, which needs no biometric. Unwrapping has the
  * enclave decrypt through an `LAContext` ([MacLocalAuthentication]) that carries the caller's
- * reason, so the system shows its Touch ID prompt for that one use, with "Use the password" as
- * the way out.
+ * reason, so the system shows its Touch ID prompt for that one use. On macOS 15 its one way
+ * out is Cancel, and the signing screen then offers the wallet password; the context also names
+ * "Use the password" as the fallback, which reads as a dismissal where macOS shows it.
  */
 class MacBiometricKey(private val stateFile: String) : BiometricKey {
 
