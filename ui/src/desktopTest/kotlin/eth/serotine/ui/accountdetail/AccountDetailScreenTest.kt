@@ -1,10 +1,15 @@
 package eth.serotine.ui.accountdetail
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -12,6 +17,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -25,6 +31,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.activity.ActivityKey
@@ -41,6 +50,7 @@ import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 /** Renders the stateless [AccountDetailScreen] headless for its states. */
 class AccountDetailScreenTest {
@@ -179,6 +189,43 @@ class AccountDetailScreenTest {
         rule.onNodeWithContentDescription("More actions").performClick()
         rule.onNodeWithText("Rename").assertIsDisplayed()
         rule.onNodeWithText("Sort by name").assertDoesNotExist()
+    }
+
+    @Test
+    fun sendSwapAndReceiveShareOneLineInFullOnANarrowPhoneAndWithLargerText() {
+        var width by mutableStateOf(375.dp)
+        var fontScale by mutableStateOf(1f)
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+                Box(Modifier.requiredWidth(width)) { Screen(ready, verifiedStripSample) }
+            }
+        }
+
+        // An iPhone mini's width; narrower still, where the buttons leave out their icons; and an
+        // iPhone's width with the text made larger.
+        for ((narrow, scale) in listOf(375.dp to 1f, 320.dp to 1f, 393.dp to 1.5f)) {
+            width = narrow
+            fontScale = scale
+            rule.waitForIdle()
+            val labels = listOf("Send", "Swap", "Receive")
+            val tops = labels.map { rule.onNodeWithText(it).getBoundsInRoot().top }
+            assertEquals(1, tops.distinct().size, "one line at $narrow, text ×$scale: $tops")
+            for (label in labels) {
+                assertFalse(ellipsized(label), "$label cut off at $narrow, text ×$scale")
+            }
+        }
+    }
+
+    /**
+     * Whether the text [label] is drawn cut off: narrower than it needs. (Not isLineEllipsized,
+     * which the desktop's text layout does not report.)
+     */
+    private fun ellipsized(label: String): Boolean {
+        val layouts = mutableListOf<TextLayoutResult>()
+        rule.onNodeWithText(label, useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        val layout = layouts.single()
+        return layout.multiParagraph.intrinsics.maxIntrinsicWidth > layout.size.width
     }
 
     @Test
