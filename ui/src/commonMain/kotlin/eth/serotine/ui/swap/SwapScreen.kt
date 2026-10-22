@@ -55,7 +55,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AmountLine
-import eth.serotine.ui.components.AssetChoiceRow
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.FeeChoice

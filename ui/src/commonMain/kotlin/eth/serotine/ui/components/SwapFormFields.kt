@@ -1,5 +1,6 @@
 package eth.serotine.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,11 +14,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 
-/** Test tag of each asset to sell, for UI tests. */
+/** Test tag of the field that opens the menu of the assets to sell, for UI tests. */
 const val SWAP_SELL_TAG = "swap-sell"
 
-/** Test tag of each asset to buy, for UI tests. */
+/** Test tag of the field that opens the menu of the assets to buy, for UI tests. */
 const val SWAP_BUY_TAG = "swap-buy"
 
 /** Test tag of the amount field, for UI tests. */
@@ -61,6 +63,8 @@ data class SwapForm(
 /**
  * The swap form's fields (screen 22): the asset sold, the amount, the asset bought and the
  * tolerance; all but the tolerance held while [SwapForm.fixed]. Swap and a Safe's swap share them.
+ * Each asset is chosen from a dropdown menu, which takes one line of the screen however many
+ * assets the wallet lists.
  * The keyboard's Next key on the amount goes to the tolerance, whose Done does what their Review
  * button does: [onReview].
  */
@@ -76,13 +80,15 @@ internal fun SwapFormFields(
 ) {
     val toleranceField = remember { FocusRequester() }
     Heading("Sell")
-    Column {
-        form.sellOptions.forEach { asset ->
-            val enabled = !form.quoting && !form.fixed
-            AssetChoiceRow(asset, selected = asset == form.sell, enabled = enabled, tag = SWAP_SELL_TAG) {
-                onSellChange(asset.contract)
-            }
-        }
+    val assetsEnabled = !form.quoting && !form.fixed
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        AssetDropdown(
+            options = form.sellOptions,
+            selected = form.sell,
+            placeholder = "Choose the asset to sell",
+            enabled = assetsEnabled,
+            tag = SWAP_SELL_TAG,
+        ) { onSellChange(it.contract) }
         form.note?.let { Note(it) }
     }
     Heading("Amount")
@@ -100,13 +106,14 @@ internal fun SwapFormFields(
         keyboardActions = nextTo(toleranceField),
     )
     Heading("Buy")
-    Column {
-        form.buyOptions.forEach { asset ->
-            val enabled = !form.quoting && !form.fixed
-            AssetChoiceRow(asset, selected = asset == form.buy, enabled = enabled, tag = SWAP_BUY_TAG) {
-                onBuyChange(asset.contract)
-            }
-        }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        AssetDropdown(
+            options = form.buyOptions,
+            selected = form.buy,
+            placeholder = "Choose the asset to buy",
+            enabled = assetsEnabled,
+            tag = SWAP_BUY_TAG,
+        ) { onBuyChange(it.contract) }
         Note("Only the assets your wallet lists: what a swap buys shows among the account's assets and can be sent.")
     }
     Heading("Slippage tolerance")

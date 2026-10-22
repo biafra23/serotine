@@ -1,5 +1,8 @@
 package eth.serotine.ui.swap
 
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -16,6 +19,7 @@ import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.ASSET_OPTION_TAG
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.RouteStep
@@ -83,10 +87,12 @@ class SwapScreenTest {
 
     private val events = mutableListOf<String>()
 
-    private fun show(state: SwapUiState) = rule.setContent {
+    private fun show(state: SwapUiState) = show(mutableStateOf(state))
+
+    private fun show(state: State<SwapUiState>) = rule.setContent {
         SerotineTheme {
             SwapScreen(
-                state = state,
+                state = state.value,
                 lightClient = verifiedStripSample,
                 onSellChange = { events += "sell $it" },
                 onBuyChange = { events += "buy $it" },
@@ -114,8 +120,10 @@ class SwapScreenTest {
     fun theComposeStepChoosesBothAssetsTheAmountAndTheTolerance() {
         show(compose)
 
-        rule.onAllNodesWithTag(SWAP_SELL_TAG)[0].performClick()
-        rule.onAllNodesWithTag(SWAP_BUY_TAG)[0].performClick()
+        rule.onNodeWithTag(SWAP_SELL_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG)[0].performClick()
+        rule.onNodeWithTag(SWAP_BUY_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG)[0].performClick()
         rule.onNodeWithTag(SWAP_AMOUNT_TAG).performTextInput("40")
         rule.onNodeWithTag(SWAP_TOLERANCE_TAG).performTextInput("1")
         rule.onNodeWithTag(SWAP_REVIEW_TAG).performScrollTo().assertIsNotEnabled()
@@ -123,6 +131,47 @@ class SwapScreenTest {
         // The fields are stateless here: each edit is of the state's text, typed at its start.
         assertEquals(listOf("sell null", "buy null", "amount 40"), events.take(3))
         assertEquals("tolerance 10.5", events.last())
+    }
+
+    @Test
+    fun eachAssetIsChosenFromAMenuThatShowsTheChosenOneAndClosesOnAChoice() {
+        show(compose)
+
+        rule.onNodeWithText("Choose the asset to buy").assertExists()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        rule.onNodeWithTag(SWAP_SELL_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(2)
+        rule.onNodeWithContentDescription("Chosen").assertExists()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG)[1].performClick()
+
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        assertEquals(listOf("sell $usdcContract"), events)
+    }
+
+    @Test
+    fun noAssetMenuOpensWhileTheReviewIsQuoted() {
+        show(compose.copy(form = compose.form.copy(quoting = true)))
+
+        rule.onNodeWithTag(SWAP_SELL_TAG).assertIsNotEnabled().performClick()
+        rule.onNodeWithTag(SWAP_BUY_TAG).assertIsNotEnabled().performClick()
+
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun aMenuOpenWhenTheReviewIsQuotedStaysClosedAfterwards() {
+        val state = mutableStateOf<SwapUiState>(compose)
+        show(state)
+
+        rule.onNodeWithTag(SWAP_SELL_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(2)
+        state.value = compose.copy(form = compose.form.copy(quoting = true))
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        state.value = compose
+
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        assertEquals(emptyList(), events)
     }
 
     @Test
