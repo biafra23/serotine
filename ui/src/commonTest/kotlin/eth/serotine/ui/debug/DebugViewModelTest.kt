@@ -10,6 +10,7 @@ import eth.serotine.ui.MemoryDebugScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -18,7 +19,6 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -26,11 +26,12 @@ class DebugViewModelTest {
 
     private val log = FakeDebugLog()
 
-    private fun viewModel() = DebugViewModel(
+    private fun TestScope.viewModel() = DebugViewModel(
         ObserveDebugLog(log),
         SetDebugLogLevel(log),
         ClearDebugLog(log),
         formatTime = { "t$it" },
+        background = UnconfinedTestDispatcher(testScheduler),
     )
 
     @AfterTest
@@ -101,10 +102,10 @@ class DebugViewModelTest {
         val setting = MemoryDebugScreen()
         val tab = DebugTabViewModel(ObserveDebugScreen(setting))
         runCurrent()
-        assertFalse(tab.shown.value)
+        assertEquals(false, tab.shown.value)
 
         setting.enabled.value = true
         runCurrent()
-        assertTrue(tab.shown.value)
+        assertEquals(true, tab.shown.value)
     }
 }

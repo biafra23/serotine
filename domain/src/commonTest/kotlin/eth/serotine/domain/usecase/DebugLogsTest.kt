@@ -4,9 +4,12 @@ import eth.serotine.domain.model.LogLevel
 import eth.serotine.domain.model.LogRecord
 import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,6 +17,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** The Debug tab's switch and its log, over fake ports. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class DebugLogsTest {
 
     private val log = MemoryLog()
@@ -41,31 +45,32 @@ class DebugLogsTest {
     }
 
     @Test
-    fun turningTheTabOffEmptiesTheLogAndSetsItBackToInfo() = runTest {
-        SetDebugScreen(setting, log)(true)
-        log.level.value = LogLevel.DEBUG
-        log.records.value = listOf(record(1, LogLevel.DEBUG))
+    fun theSwitchIsSavedOrSaysItWasNot() = runTest {
+        assertTrue(SetDebugScreen(setting)(true))
         assertTrue(ObserveDebugScreen(setting)().first())
 
-        assertTrue(SetDebugScreen(setting, log)(false))
-
-        assertFalse(ObserveDebugScreen(setting)().first())
-        assertEquals(LogLevel.INFO, log.level.value)
-        assertTrue(log.records.value.isEmpty())
+        setting.failSaves = true
+        assertFalse(SetDebugScreen(setting)(false))
+        assertTrue(ObserveDebugScreen(setting)().first())
     }
 
     @Test
-    fun aSwitchThatCannotBeSavedLeavesTheLogAsItIs() = runTest {
+    fun theLogRecordsWhileTheTabIsOnAndIsEmptiedAndBackAtInfoOnceItIsOff() = runTest {
+        backgroundScope.launch { FollowDebugScreen(setting, log)() }
+        runCurrent()
+        assertFalse(log.recordingNow, "off from the start: nothing recorded")
+
         setting.enabled.value = true
-        setting.failSaves = true
+        runCurrent()
+        assertTrue(log.recordingNow)
         log.level.value = LogLevel.DEBUG
         log.records.value = listOf(record(1, LogLevel.DEBUG))
 
-        assertFalse(SetDebugScreen(setting, log)(false))
-
-        assertTrue(setting.enabled.value)
-        assertEquals(LogLevel.DEBUG, log.level.value)
-        assertEquals(1, log.records.value.size)
+        setting.enabled.value = false
+        runCurrent()
+        assertFalse(log.recordingNow)
+        assertEquals(LogLevel.INFO, log.level.value)
+        assertTrue(log.records.value.isEmpty())
     }
 
     private fun record(id: Long, level: LogLevel) = LogRecord(id, 1_000 * id, level, "Myotis", "request $id")
@@ -73,6 +78,7 @@ class DebugLogsTest {
     private class MemoryLog : DebugLog {
         val records = MutableStateFlow<List<LogRecord>>(emptyList())
         val level = MutableStateFlow(LogLevel.INFO)
+        var recordingNow = true
 
         override fun observeRecords(): Flow<List<LogRecord>> = records
         override fun observeLevel(): Flow<LogLevel> = level
@@ -81,6 +87,9 @@ class DebugLogsTest {
         }
         override fun clear() {
             records.value = emptyList()
+        }
+        override fun setRecording(recording: Boolean) {
+            recordingNow = recording
         }
     }
 

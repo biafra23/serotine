@@ -498,12 +498,11 @@ class AppNavigationTest {
         rule.onNodeWithText("Accounts").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
 
-        // Turned off again, the tab goes and the log is emptied.
+        // Turned off again, the tab goes.
         rule.onNodeWithText("Settings").performClick()
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().performClick()
         rule.waitUntil { !debugScreen.enabled.value }
         rule.onNodeWithText("Debug").assertDoesNotExist()
-        assertEquals(emptyList(), debugLog.records.value)
     }
 
     @Test

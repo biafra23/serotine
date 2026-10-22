@@ -10,9 +10,11 @@ import kotlin.time.TimeSource
 /**
  * [inner] with each request it is asked written to [log] under [SOURCE], named after the
  * `io.myotis.api` call it makes: at [LogLevel.INFO] the name, whether it was answered (ok) or
- * not (failed) and how long it took; at [LogLevel.DEBUG] also what was asked and what came back,
- * each cut at [MAX_DETAIL] characters. Failed means no answer: none at all, the engine's refusal
- * or an exception, which is recorded and thrown on. A verified "reverted" is an answer.
+ * not (failed, with the engine's reason when it gives one) and how long it took; at
+ * [LogLevel.DEBUG] also what was asked and what came back, each cut at [MAX_DETAIL] characters.
+ * Failed means no answer: none at all, the engine's refusal or rejection, or an exception, which
+ * is recorded and thrown on. A verified revert is an answer, and so is a status read of an
+ * engine still starting. Nothing is built for a request the log would not keep.
  *
  * What it records is public chain data and this node's own requests: addresses, calls, signed
  * transactions (public once broadcast) and the engine's answers. No key ever reaches a chain.
@@ -24,7 +26,7 @@ internal class LoggedChain(
 ) : EngineChain {
 
     override fun snapshot(): EngineSnapshot =
-        request("status", { "" }, { it is EngineSnapshot.Running }) { inner.snapshot() }
+        request("status", { "" }, { if (it == EngineSnapshot.Down) "no engine" else null }) { inner.snapshot() }
 
     override fun proveBalance(address: Address): ProvenBalance? =
         request("requestAccount", { "address=${address.hex}" }, ::answered) { inner.proveBalance(address) }
@@ -65,7 +67,13 @@ internal class LoggedChain(
     override fun estimateGas(from: Address, to: Address, valueWei: String, data: ByteArray): EstimateAnswer = request(
         "estimateGasDetailed",
         { "from=${from.hex}, to=${to.hex}, value=$valueWei wei, data=${data.hex()}" },
-        { it is EstimateAnswer.Gas },
+        { answer ->
+            when (answer) {
+                is EstimateAnswer.Gas, is EstimateAnswer.Reverted, is EstimateAnswer.Infeasible -> null
+                is EstimateAnswer.Refused -> "refused: ${answer.detail}"
+                is EstimateAnswer.Unavailable -> answer.detail ?: ""
+            }
+        },
     ) { inner.estimateGas(from, to, valueWei, data) }
 
     override fun callFrom(from: Address, to: Address, valueWei: String, data: ByteArray): CallOutcome? = request(
@@ -74,19 +82,31 @@ internal class LoggedChain(
         ::callAnswered,
     ) { inner.callFrom(from, to, valueWei, data) }
 
-    override fun sendRaw(raw: ByteArray): SendAnswer =
-        request("sendRawTransactionDetailed", { "raw=${raw.hex()}" }, { it is SendAnswer.Sent }) { inner.sendRaw(raw) }
+    override fun sendRaw(raw: ByteArray): SendAnswer = request(
+        "sendRawTransactionDetailed",
+        { "raw=${raw.hex()}" },
+        { answer ->
+            when (answer) {
+                is SendAnswer.Sent -> null
+                is SendAnswer.Rejected -> "rejected: ${answer.detail}"
+                is SendAnswer.Refused -> "refused: ${answer.detail}"
+                is SendAnswer.Unavailable -> answer.detail ?: ""
+            }
+        },
+    ) { inner.sendRaw(raw) }
 
     override fun receipt(hash: String): String? =
         request("getTransactionReceipt", { "hash=$hash" }, ::answered) { inner.receipt(hash) }
 
     override fun resolveName(name: String): NameAnswer =
-        request("ens.resolveAddress", { "name=$name, root=FINALIZED" }, { it.error == null }) {
+        request("ens.resolveAddress", { "name=$name, root=FINALIZED" }, { it.error }) {
             inner.resolveName(name)
         }
 
     override fun setLogIndexConfig(configJson: String): Boolean =
-        request("setLogIndexConfig", { "config=$configJson" }, { it }) { inner.setLogIndexConfig(configJson) }
+        request("setLogIndexConfig", { "config=$configJson" }, { if (it) null else "not taken" }) {
+            inner.setLogIndexConfig(configJson)
+        }
 
     override fun logIndexStatus(): String? =
         request("logIndexStatusJson", { "" }, ::jsonAnswered) { inner.logIndexStatus() }
@@ -95,27 +115,28 @@ internal class LoggedChain(
         request("getLogs", { "filter=$filterJson" }, ::jsonAnswered) { inner.logs(filterJson) }
 
     /**
-     * [block], the request [name], recorded with whether [ok] says its answer is one; [params]
-     * says what was asked, built only when the log keeps [LogLevel.DEBUG].
+     * [block], the request [name], recorded with what [failure] says of its answer: null when it
+     * is one, else why not ("" for no reason given). [params] says what was asked, built only
+     * when the log keeps [LogLevel.DEBUG]; and nothing at all is built when it keeps nothing.
      */
-    private inline fun <T> request(name: String, params: () -> String, ok: (T) -> Boolean, block: () -> T): T {
+    private inline fun <T> request(name: String, params: () -> String, failure: (T) -> String?, block: () -> T): T {
+        if (!log.isLoggable(LogLevel.INFO)) return block()
         val started = timeSource.markNow()
         val answer = try {
             block()
         } catch (e: Throwable) {
-            record(name, started, ok = false, params, e::class.simpleName ?: "an exception") { "threw $e" }
+            record(name, started, e::class.simpleName ?: "an exception", params) { "threw $e" }
             throw e
         }
-        record(name, started, ok(answer), params, why = null) { answer.toString() }
+        record(name, started, failure(answer), params) { answer.toString() }
         return answer
     }
 
     private inline fun record(
         name: String,
         started: TimeMark,
-        ok: Boolean,
+        failure: String?,
         params: () -> String,
-        why: String?,
         response: () -> String,
     ) {
         val took = started.elapsedNow().inWholeMilliseconds
@@ -123,16 +144,27 @@ internal class LoggedChain(
         if (log.isLoggable(LogLevel.DEBUG)) {
             log.log(LogLevel.DEBUG, SOURCE, "$name(${params().cut()}) → ${response().cut()}")
         }
-        val result = if (ok) "ok" else "failed" + (why?.let { " ($it)" } ?: "")
+        val result = when {
+            failure == null -> "ok"
+            failure.isEmpty() -> "failed"
+            else -> "failed (${failure.take(MAX_REASON)})"
+        }
         log.log(LogLevel.INFO, SOURCE, "$name: $result, $took ms")
     }
 
-    private fun answered(answer: Any?): Boolean = answer != null
+    private fun answered(answer: Any?): String? = if (answer != null) null else ""
 
-    private fun callAnswered(answer: CallOutcome?): Boolean =
-        answer is CallOutcome.Returned || answer is CallOutcome.Reverted
+    private fun callAnswered(answer: CallOutcome?): String? = when (answer) {
+        is CallOutcome.Returned, is CallOutcome.Reverted -> null
+        CallOutcome.Refused -> "refused"
+        null -> ""
+    }
 
-    private fun jsonAnswered(answer: String?): Boolean = answer != null && !answer.trimStart().startsWith("{\"error\"")
+    private fun jsonAnswered(answer: String?): String? = when {
+        answer == null -> ""
+        answer.trimStart().startsWith("{\"error\"") -> answer.trim()
+        else -> null
+    }
 
     private fun ByteArray.hex(): String = "0x" + toHex()
 
@@ -144,5 +176,8 @@ internal class LoggedChain(
 
         /** The most of what was asked, and of what came back, one record keeps. */
         const val MAX_DETAIL = 2_000
+
+        /** The most of the engine's reason for a failure an INFO line keeps. */
+        const val MAX_REASON = 200
     }
 }

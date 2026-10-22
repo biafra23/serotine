@@ -107,10 +107,15 @@ fun SettingsScreen(
                     .testTag(SETTINGS_DEBUG_SCREEN_TAG),
                 headlineContent = { Text("Debug tab") },
                 supportingContent = {
-                    Text(
-                        "Adds a tab with a log of the light client's requests, kept in memory on this device " +
-                            "only. Turning it off empties the log.",
-                    )
+                    Column {
+                        Text(
+                            "Adds a tab with a log of the light client's requests, kept in memory on this device " +
+                                "only. Turning it off empties the log.",
+                        )
+                        if (state.debugScreenNotSaved) {
+                            Text("The change could not be saved.", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 },
                 // The row is the toggle: the switch only shows its state.
                 trailingContent = { Switch(checked = state.debugScreen, onCheckedChange = null) },

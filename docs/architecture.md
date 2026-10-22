@@ -137,7 +137,10 @@ review finding, whatever it saves.
   `FollowSafeDeployments`, which lists the Safes this wallet deployed
   whatever screen is open (docs/wallet-ux.md, screen 15). On Android both run
   while the application holds the engine; on the desktop, while `main()`
-  runs; on iOS, while the app is in the foreground.
+  runs; on iOS, while the app is in the foreground. `FollowDebugScreen`, which
+  keeps the debug log recording only while the Debug tab is on and empties it
+  when the tab is turned off (screen 27), runs for the life of the process on
+  every host: it needs no engine.
 - **Two tabs, Accounts | Settings, under a bottom bar** — a `NavigationBar`, and
   a `NavigationRail` on a wide desktop window — around that one `NavHost`.
   Each tab is a nested graph. Settings opens over the Accounts tab's stack and

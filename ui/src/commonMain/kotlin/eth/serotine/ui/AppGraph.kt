@@ -211,7 +211,10 @@ class AppGraph(
      * node writes each request into.
      */
     private val debugLog: DebugLog,
-    /** Whether the user turned the Debug tab on in Settings. */
+    /**
+     * Whether the user turned the Debug tab on in Settings: the host's one instance, which its
+     * `FollowDebugScreen` keeps [debugLog] to.
+     */
     private val debugScreen: DebugScreenSetting,
     /**
      * The debug build's switch that allows screen recordings of the protected screens; null in a
@@ -457,7 +460,7 @@ class AppGraph(
             network,
             screenCaptureDebugSwitch,
             ObserveDebugScreen(debugScreen),
-            SetDebugScreen(debugScreen, debugLog),
+            SetDebugScreen(debugScreen),
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */

@@ -6,28 +6,37 @@ import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Whether the Debug tab is on, as Settings and the bottom bar show it. */
 class ObserveDebugScreen(private val setting: DebugScreenSetting) {
     operator fun invoke(): Flow<Boolean> = setting.observe()
 }
 
+/** Turns the Debug tab on or off; false when that could not be saved. [FollowDebugScreen] does the rest. */
+class SetDebugScreen(private val setting: DebugScreenSetting) {
+    suspend operator fun invoke(enabled: Boolean): Boolean = setting.set(enabled)
+}
+
 /**
- * Turns the Debug tab on or off; false when that could not be saved. Turning it off also
- * empties the log and sets it back to [LogLevel.INFO], so what a debugging session recorded in
- * detail does not stay in memory behind a tab no longer shown.
+ * Keeps the debug log to the Debug tab's switch, for as long as it runs: the work no screen owns,
+ * which a host runs for the life of its process. While the tab is on the log records; while it
+ * is off it records nothing, holds nothing and is back at [LogLevel.INFO], so neither the work of
+ * recording nor what a debugging session recorded in detail stays behind a tab no longer shown.
+ * Runs until cancelled.
  */
-class SetDebugScreen(
+class FollowDebugScreen(
     private val setting: DebugScreenSetting,
     private val log: DebugLog,
 ) {
-    suspend operator fun invoke(enabled: Boolean): Boolean {
-        val saved = setting.set(enabled)
-        if (saved && !enabled) {
-            log.setLevel(LogLevel.INFO)
-            log.clear()
+    suspend operator fun invoke() {
+        setting.observe().distinctUntilChanged().collect { enabled ->
+            log.setRecording(enabled)
+            if (!enabled) {
+                log.setLevel(LogLevel.INFO)
+                log.clear()
+            }
         }
-        return saved
     }
 }
 

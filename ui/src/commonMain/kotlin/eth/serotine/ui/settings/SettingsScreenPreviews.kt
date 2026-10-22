@@ -96,6 +96,11 @@ private fun SettingsDebugBuildCaptureAllowedPreview() = SettingsPreview(synced.c
 @Composable
 private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(debugScreen = true))
 
+/** A switch of the Debug tab that could not be saved. */
+@Preview
+@Composable
+private fun SettingsDebugScreenNotSavedPreview() = SettingsPreview(synced.copy(debugScreenNotSaved = true))
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsSyncedPreview() },
@@ -107,4 +112,5 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsDebugBuildPreview() },
     { SettingsDebugBuildCaptureAllowedPreview() },
     { SettingsDebugScreenPreview() },
+    { SettingsDebugScreenNotSavedPreview() },
 )

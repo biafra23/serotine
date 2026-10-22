@@ -12,5 +12,6 @@ import kotlinx.coroutines.flow.stateIn
  * which `App` creates in the host's scope, as the tabs are the app's and no one screen's.
  */
 class DebugTabViewModel(observeDebugScreen: ObserveDebugScreen) : ViewModel() {
-    val shown: StateFlow<Boolean> = observeDebugScreen().stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** Whether the tab shows; null until the setting has been read, so nothing acts on a guess. */
+    val shown: StateFlow<Boolean?> = observeDebugScreen().stateIn(viewModelScope, SharingStarted.Eagerly, null)
 }

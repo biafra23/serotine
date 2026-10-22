@@ -31,6 +31,18 @@ class MemoryDebugLogTest {
     }
 
     @Test
+    fun itRecordsNothingWhileStoppedAndAgainOnceStarted() = runTest {
+        log.setRecording(false)
+        assertFalse(log.isLoggable(LogLevel.INFO))
+        log.log(LogLevel.INFO, "Myotis", "not kept")
+
+        log.setRecording(true)
+        log.log(LogLevel.INFO, "Myotis", "kept")
+
+        assertEquals(listOf("kept"), log.observeRecords().first().map { it.message })
+    }
+
+    @Test
     fun itKeepsTheLastRecordsOnlyAndNumbersThemOnAcrossAClear() = runTest {
         (1..5).forEach { log.log(LogLevel.INFO, "Myotis", "request $it") }
 

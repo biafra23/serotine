@@ -21,6 +21,7 @@ import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
@@ -99,6 +100,9 @@ class SerotineWallet {
 
     /** The Debug tab's log: in memory for the life of the process, never in a file. */
     private val debugLog = MemoryDebugLog()
+
+    /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
+    private val debugScreen = FileDebugScreen("$dataDir/debug-screen.json")
 
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background;
     // its state can be fetched again, so it stays out of backups. The balances last verified are
@@ -187,8 +191,7 @@ class SerotineWallet {
             uniswap = node.uniswap,
             network = Network.SEPOLIA,
             debugLog = debugLog,
-            // Whether the user turned the Debug tab on, beside the other settings.
-            debugScreen = FileDebugScreen("$dataDir/debug-screen.json"),
+            debugScreen = debugScreen,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
             screenCaptureDebugSwitch = null,
         )
@@ -210,6 +213,8 @@ class SerotineWallet {
     init {
         // At launch the app is in the foreground: the work starts with the wallet.
         startForegroundWork()
+        // The debug log records while the Debug tab is on, for the life of the process.
+        scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
             keepAwakeUntil("pause the engine", node.pause())

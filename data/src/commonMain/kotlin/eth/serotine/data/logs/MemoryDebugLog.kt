@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -27,8 +28,8 @@ interface LogSink {
 
 /**
  * The [DebugLog] of the process, in memory only: the last [capacity] records, the oldest
- * dropped first, gone when the process ends. It starts at [LogLevel.INFO]. [now] dates each
- * record, in unix milliseconds.
+ * dropped first, gone when the process ends. It starts at [LogLevel.INFO], recording. [now]
+ * dates each record, in unix milliseconds.
  */
 @OptIn(ExperimentalTime::class)
 class MemoryDebugLog(
@@ -47,6 +48,9 @@ class MemoryDebugLog(
 
     private val level = MutableStateFlow(LogLevel.INFO)
 
+    @Volatile
+    private var recording = true
+
     override fun observeRecords(): Flow<List<LogRecord>> = kept.map { it.records }
 
     override fun observeLevel(): Flow<LogLevel> = level
@@ -59,7 +63,11 @@ class MemoryDebugLog(
         kept.update { Kept(emptyList(), it.nextId) }
     }
 
-    override fun isLoggable(level: LogLevel): Boolean = level >= this.level.value
+    override fun setRecording(recording: Boolean) {
+        this.recording = recording
+    }
+
+    override fun isLoggable(level: LogLevel): Boolean = recording && level >= this.level.value
 
     override fun log(level: LogLevel, source: String, message: String) {
         if (!isLoggable(level)) return

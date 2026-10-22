@@ -1,7 +1,10 @@
 package eth.serotine.ui.debug
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -57,11 +60,28 @@ class DebugScreenTest {
     }
 
     @Test
-    fun anEmptyLogSaysSoAndCannotBeCleared() {
+    fun anEmptyLogSaysSoAndCanStillBeCleared() {
         show(DebugUiState())
 
         rule.onNodeWithText("Nothing recorded yet.").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Clear the log").assertIsNotEnabled()
+        // The log may hold records at a level not shown: clearing stays possible.
+        rule.onNodeWithContentDescription("Clear the log").assertIsEnabled().performClick()
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun atTheTopANewerLineComesIntoViewAsItArrives() {
+        val lines = (60L downTo 1L).map { DebugLogLine(it, "14:03:27.481", LogLevel.INFO, "Myotis · request $it") }
+        var state by mutableStateOf(DebugUiState(lines = lines, recorded = lines.size))
+        rule.setContent {
+            SerotineTheme { DebugScreen(state, onLevel = {}, onFilter = {}, onClear = {}) }
+        }
+        rule.onNodeWithText("Myotis · request 60").assertIsDisplayed()
+
+        val newer = DebugLogLine(61, "14:03:28.002", LogLevel.INFO, "Myotis · request 61")
+        state = state.copy(lines = listOf(newer) + lines, recorded = lines.size + 1)
+
+        rule.onNodeWithText("Myotis · request 61").assertIsDisplayed()
     }
 
     @Test

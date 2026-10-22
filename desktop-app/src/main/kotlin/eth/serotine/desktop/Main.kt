@@ -28,6 +28,7 @@ import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
@@ -132,8 +133,10 @@ private fun openWallet(dataDir: File) {
     val debugLog: ((String) -> Unit)? =
         if (System.getProperty(DEBUG_LOG_PROPERTY) == "true") { line -> System.err.println(line) } else null
     // The balances last verified are kept beside it, to be shown as such after a restart. Each
-    // request asked of the engine goes to the Debug tab's log, in memory, in any run.
+    // request asked of the engine goes to the Debug tab's log, in memory, in any run, while the
+    // user has that tab turned on (debugScreen, followed below).
     val apiLog = MemoryDebugLog()
+    val debugScreen = FileDebugScreen(dataDir.resolve("debug-screen.json").path)
     val node = MyotisNode.start(
         Network.SEPOLIA,
         dataDir.resolve("myotis"),
@@ -164,6 +167,16 @@ private fun openWallet(dataDir: File) {
                 throw e
             } catch (e: Exception) {
                 System.err.println("Serotine: upgrade notices stopped: $e")
+            }
+        }
+        LaunchedEffect(Unit) {
+            // The debug log records while the Debug tab is on. A failure ends it, never the wallet.
+            try {
+                FollowDebugScreen(debugScreen, apiLog)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following the Debug tab's switch stopped: ${e::class.simpleName}")
             }
         }
         LaunchedEffect(Unit) {
@@ -252,8 +265,7 @@ private fun openWallet(dataDir: File) {
                 uniswap = node.uniswap,
                 network = Network.SEPOLIA,
                 debugLog = apiLog,
-                // Whether the user turned the Debug tab on, beside the other settings.
-                debugScreen = FileDebugScreen(dataDir.resolve("debug-screen.json").path),
+                debugScreen = debugScreen,
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.
                 screenCaptureDebugSwitch = null,
             )

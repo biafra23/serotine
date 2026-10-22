@@ -13,7 +13,6 @@ import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.ui.APP_VERSION
-import eth.serotine.ui.FakeDebugLog
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
@@ -48,7 +47,6 @@ class SettingsViewModelTest {
     }
 
     private val debugScreen = MemoryDebugScreen()
-    private val debugLog = FakeDebugLog()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -67,7 +65,7 @@ class SettingsViewModelTest {
                 Network.SEPOLIA,
                 screenCapture = null,
                 ObserveDebugScreen(debugScreen),
-                SetDebugScreen(debugScreen, debugLog),
+                SetDebugScreen(debugScreen),
                 clock = { 1_000 },
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -105,7 +103,7 @@ class SettingsViewModelTest {
             Network.SEPOLIA,
             switch,
             ObserveDebugScreen(debugScreen),
-            SetDebugScreen(debugScreen, debugLog),
+            SetDebugScreen(debugScreen),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -123,7 +121,7 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun theDebugTabsSwitchTurnsItOnAndOffEmptyingTheLog() = runTest {
+    fun theDebugTabsSwitchTurnsItOnAndOffAndSaysWhenThatCouldNotBeSaved() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val known = ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata())
         val currencies = ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting())
@@ -134,7 +132,7 @@ class SettingsViewModelTest {
             Network.SEPOLIA,
             screenCapture = null,
             ObserveDebugScreen(debugScreen),
-            SetDebugScreen(debugScreen, debugLog),
+            SetDebugScreen(debugScreen),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -143,11 +141,18 @@ class SettingsViewModelTest {
         viewModel.showDebugScreen(true)
         runCurrent()
         assertTrue(viewModel.uiState.value.debugScreen)
+        assertFalse(viewModel.uiState.value.debugScreenNotSaved)
 
-        debugLog.records.value = listOf(debugLog.record(1))
+        debugScreen.failSaves = true
+        viewModel.showDebugScreen(false)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.debugScreen)
+        assertTrue(viewModel.uiState.value.debugScreenNotSaved)
+
+        debugScreen.failSaves = false
         viewModel.showDebugScreen(false)
         runCurrent()
         assertFalse(viewModel.uiState.value.debugScreen)
-        assertTrue(debugLog.records.value.isEmpty())
+        assertFalse(viewModel.uiState.value.debugScreenNotSaved)
     }
 }

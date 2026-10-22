@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
  * The port for the app's debug log, which the Debug tab shows: what the adapters record about
  * their work, such as each request the light client's engine is asked. :data keeps it in memory
  * for the life of the process, the most recent records only: it is never written to a file and
- * never leaves the device.
+ * never leaves the device. It records from the start, until [setRecording] stops it.
  */
 interface DebugLog {
     /** The records kept, oldest first, re-emitted on each one added and on [clear]. Never throws. */
@@ -25,6 +25,9 @@ interface DebugLog {
 
     /** Drops every record kept. */
     fun clear()
+
+    /** Records from now on, or, [recording] false, records nothing until it is turned on again. */
+    fun setRecording(recording: Boolean)
 }
 
 /**

@@ -54,18 +54,35 @@ class LoggedChainTest {
     }
 
     @Test
-    fun aRefusalIsAFailureAndARevertAnAnswer() = runTest {
+    fun aRefusalIsAFailureWithItsReasonAndARevertAnAnswer() = runTest {
         engine.transacting.call = CallOutcome.Refused
         chain.callFrom(account, account, "0", byteArrayOf(1))
         engine.transacting.call = CallOutcome.Reverted(7)
         chain.callFrom(account, account, "0", byteArrayOf(1))
+        engine.transacting.estimate = EstimateAnswer.Reverted("08c379a0")
+        chain.estimateGas(account, account, "0", byteArrayOf(1))
         engine.transacting.send = SendAnswer.Rejected("nonce too low")
         chain.sendRaw(byteArrayOf(2))
 
         assertEquals(
-            listOf("callDetailed: failed, 0 ms", "callDetailed: ok, 0 ms", "sendRawTransactionDetailed: failed, 0 ms"),
+            listOf(
+                "callDetailed: failed (refused), 0 ms",
+                "callDetailed: ok, 0 ms",
+                "estimateGasDetailed: ok, 0 ms",
+                "sendRawTransactionDetailed: failed (rejected: nonce too low), 0 ms",
+            ),
             records().map { it.message },
         )
+    }
+
+    @Test
+    fun aLogThatRecordsNothingCostsTheRequestNothing() = runTest {
+        log.setRecording(false)
+        engine.base.proofs[account] = ProvenBalance("1000", 9_412_118)
+
+        assertEquals(ProvenBalance("1000", 9_412_118), chain.proveBalance(account))
+
+        assertTrue(records().isEmpty())
     }
 
     @Test
@@ -94,10 +111,12 @@ class LoggedChainTest {
     }
 
     @Test
-    fun aStatusReadIsOkOnlyFromARunningEngine() = runTest {
+    fun aStatusReadFailsOnlyWithoutAnEngine() = runTest {
+        chain.snapshot()
+        engine.base.snapshot = EngineSnapshot.Down
         chain.snapshot()
 
-        assertEquals(listOf("status: failed, 0 ms"), records().map { it.message })
+        assertEquals(listOf("status: ok, 0 ms", "status: failed (no engine), 0 ms"), records().map { it.message })
     }
 }
 

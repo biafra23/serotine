@@ -65,7 +65,9 @@ fun DebugScreen(
             TopAppBar(
                 title = { Text("Debug") },
                 actions = {
-                    IconButton(onClick = onClear, enabled = state.recorded > 0) {
+                    // Never greyed out: clearing an empty log is no harm, and the log can hold
+                    // records at a level the screen does not show.
+                    IconButton(onClick = onClear) {
                         Icon(Icons.Filled.Delete, contentDescription = "Clear the log")
                     }
                 },
@@ -128,15 +130,24 @@ fun DebugScreen(
                     )
                 }
             } else {
-                SelectionContainer {
-                    LazyColumn(
-                        Modifier.fillMaxSize().testTag(DEBUG_LOG_TAG),
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                    ) {
-                        items(state.lines, key = { it.id }) { line -> LogLine(line) }
-                    }
-                }
+                LogLines(state.lines)
             }
+        }
+    }
+}
+
+/**
+ * [lines], newest first, keyed by record: at the top of the list a newer line comes into view as
+ * it arrives (the list stays at its first item), and scrolled down, the lines read stay put.
+ */
+@Composable
+private fun LogLines(lines: List<DebugLogLine>) {
+    SelectionContainer {
+        LazyColumn(
+            Modifier.fillMaxSize().testTag(DEBUG_LOG_TAG),
+            contentPadding = PaddingValues(vertical = 8.dp),
+        ) {
+            items(lines, key = { it.id }) { line -> LogLine(line) }
         }
     }
 }

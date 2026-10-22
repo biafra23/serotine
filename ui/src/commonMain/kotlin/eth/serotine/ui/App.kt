@@ -108,7 +108,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
         // Whether the bar has a Debug tab: the app's tabs, so scoped to the host too.
         val debugTab = viewModel { graph.debugTabViewModel() }
         val debugShown by debugTab.shown.collectAsStateWithLifecycle()
-        val tabs = Tab.entries.filter { it != Tab.DEBUG || debugShown }
+        val tabs = Tab.entries.filter { it != Tab.DEBUG || debugShown == true }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
             Tab.entries.firstOrNull { it.graph == destination.route }
@@ -205,7 +205,7 @@ private fun Destinations(
     navController: NavHostController,
     update: UpdateRequiredViewModel,
     lightClient: LightClientViewModel,
-    debugShown: Boolean,
+    debugShown: Boolean?,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -224,9 +224,10 @@ private fun Destinations(
             }
         }
     }
-    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts.
+    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts. Not
+    // before the setting is read (null), so a Debug screen the system restored stays.
     LaunchedEffect(debugShown) {
-        if (!debugShown) navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
+        if (debugShown == false) navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
     }
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is

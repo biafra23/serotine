@@ -38,6 +38,12 @@ internal class FakeDebugLog : DebugLog {
         records.value = emptyList()
     }
 
+    var recordingNow = true
+
+    override fun setRecording(recording: Boolean) {
+        recordingNow = recording
+    }
+
     /** A record [id] from the engine, at [level], [epochMillis] its id in seconds. */
     fun record(id: Long, level: LogLevel = LogLevel.INFO, message: String = "request $id") =
         LogRecord(id, id * 1_000, level, "Myotis", message)

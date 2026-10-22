@@ -15,6 +15,7 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -40,14 +41,17 @@ class SettingsViewModel(
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
+    /** Whether the last switch of the Debug tab could not be saved. */
+    private val debugScreenNotSaved = MutableStateFlow(false)
+
     val uiState: StateFlow<SettingsUiState> =
         combine(
             observeLightClient().asItems(clock),
             observeKnownTokens(),
             observeDisplayCurrencies(),
             screenCapture?.allowed ?: flowOf(null),
-            observeDebugScreen(),
-        ) { item, known, currencies, captureAllowed, debugScreen ->
+            combine(observeDebugScreen(), debugScreenNotSaved, ::Pair),
+        ) { item, known, currencies, captureAllowed, (debugScreen, notSaved) ->
             val builtIn = known.tokens.count { it.origin == TokenOrigin.BUILT_IN }
             val added = if (known.settingsUnavailable) {
                 "added ones cannot be read"
@@ -60,7 +64,16 @@ class SettingsViewModel(
                 currencies.setAside -> " (your saved choice was damaged and set aside)"
                 else -> ""
             }
-            SettingsUiState(network.displayName, item, APP_VERSION, tokens, currency, captureAllowed, debugScreen)
+            SettingsUiState(
+                network.displayName,
+                item,
+                APP_VERSION,
+                tokens,
+                currency,
+                captureAllowed,
+                debugScreen,
+                notSaved,
+            )
         }
         .stateIn(
             viewModelScope,
@@ -80,10 +93,10 @@ class SettingsViewModel(
     }
 
     /**
-     * Shows the Debug tab, or hides it and empties its log. A switch that cannot be saved leaves
-     * the row as it was, which shows it did not take.
+     * Shows the Debug tab, or hides it, which empties its log. A switch that cannot be saved
+     * leaves the row as it was, saying so.
      */
     fun showDebugScreen(shown: Boolean) {
-        viewModelScope.launch { setDebugScreen(shown) }
+        viewModelScope.launch { debugScreenNotSaved.value = !setDebugScreen(shown) }
     }
 }
