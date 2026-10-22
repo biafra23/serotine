@@ -276,6 +276,8 @@ class AppGraph(
             SetTokenHidden(userTokens),
             ObserveEnsNames(accounts, names),
             accountActivity(),
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
         )
 
     /**

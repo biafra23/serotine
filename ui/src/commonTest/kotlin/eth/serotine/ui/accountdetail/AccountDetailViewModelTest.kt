@@ -31,6 +31,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
@@ -41,6 +42,7 @@ import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
@@ -53,6 +55,7 @@ import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryHistoryStarts
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemorySafeTxQueue
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
@@ -60,6 +63,7 @@ import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.shortAddress
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -130,8 +134,12 @@ class AccountDetailViewModelTest {
         SetTokenHidden(userTokens),
         ObserveEnsNames(accounts, names),
         activity(),
+        ObserveEnabledNetworks(networks),
+        SetNetworkEnabled(networks),
         formatTime = { "<$it>" },
     )
+
+    private val networks = MemoryNetworkSettings()
 
     private fun activity() = AccountActivity(
         ObserveAccountHistory(history),
@@ -146,6 +154,34 @@ class AccountDetailViewModelTest {
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
     @Test
+    fun onANetworkThatIsOffSendAndSwapWaitForItAndALastBalanceSaysSo() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = emptySet()
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(daily.address).value =
+            BalanceReading.LastKnown(Wei.of("1500000000000000000"), 9_412_118, asOf = 1_792_100_000)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(false, ready.networkOn)
+        assertEquals("Last verified <1792100000> · Sepolia is off", ready.assets.first().lastKnown)
+        assertEquals(
+            "Sepolia is off in this wallet, so its balances are not checked and nothing can be sent from Daily. " +
+                "Turned on, it checks them again first.",
+            ready.sendReason,
+        )
+        assertEquals(false, ready.canSwap)
+
+        viewModel.turnOnNetwork()
+        runCurrent()
+        assertEquals(setOf(Network.SEPOLIA), networks.on.value)
+        val on = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(true, on.networkOn)
+        assertEquals(null, on.sendReason)
+    }
+
+    @Test
     fun showsTheAccountWithItsVerifiedBalanceAndTheBlockItWasVerifiedAt() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = viewModel()
@@ -156,6 +192,7 @@ class AccountDetailViewModelTest {
             AccountDetailUiState.Ready(
                 label = "Daily",
                 address = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
+                network = NetworkLabel.of(Network.SEPOLIA),
                 kind = AccountKind.EOA,
                 control = Control.FULL_CONTROL,
                 total = "Checking…",
@@ -714,6 +751,8 @@ class AccountDetailViewModelTest {
             SetTokenHidden(userTokens),
             ObserveEnsNames(accounts, names),
             activity(),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

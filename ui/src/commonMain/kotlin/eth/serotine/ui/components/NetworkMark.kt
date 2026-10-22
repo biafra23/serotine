@@ -16,6 +16,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import eth.serotine.domain.model.Network
+
+/** A network as a screen names it: its [chainId], its [name] and whether it is a [testnet]. */
+data class NetworkLabel(val chainId: Long, val name: String, val testnet: Boolean) {
+    companion object {
+        /** [network]'s label. */
+        fun of(network: Network): NetworkLabel = NetworkLabel(network.chainId, network.displayName, network.testnet)
+    }
+}
+
+/** [label]'s mark. */
+@Composable
+internal fun NetworkMark(
+    label: NetworkLabel,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.titleSmall,
+) = NetworkMark(label.chainId, label.name, label.testnet, modifier, style)
 
 /**
  * A network's mark (docs/networks.md, N1): its colour beside its [name], and "Testnet" after a

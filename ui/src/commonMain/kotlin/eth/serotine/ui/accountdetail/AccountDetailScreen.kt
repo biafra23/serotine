@@ -66,12 +66,14 @@ import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.WithActionMenu
@@ -154,6 +156,7 @@ fun AccountDetailRoute(
         onImportRequest = onImportRequest,
         onOpenActivity = onOpenActivity,
         modifier = modifier,
+        onTurnOnNetwork = viewModel::turnOnNetwork,
     )
 }
 
@@ -166,6 +169,8 @@ fun AccountDetailRoute(
  * [onSend] opens Send with the token at a contract chosen, or the network's currency (null). The
  * Activity tab's rows open their detail through [onOpenActivity]. A Safe's Queue opens a
  * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest].
+ * The account's network is named beside its control (docs/networks.md, N3 and N4); while it is off,
+ * Send and Swap say so and offer to turn it on through [onTurnOnNetwork] (N19).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,6 +192,7 @@ fun AccountDetailScreen(
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
+    onTurnOnNetwork: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -205,13 +211,27 @@ fun AccountDetailScreen(
     // Send greyed out where it cannot be done: a tap says why (owner ruling, 2026-10-18, #55).
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
+    // On a network that is off, the way to an action is to turn the network on (N19).
+    val notice: (String, String) -> UnavailableNotice = { action, reason ->
+        val ready = state as? AccountDetailUiState.Ready
+        if (ready != null && !ready.networkOn) {
+            val network = ready.network.name
+            UnavailableNotice(
+                "$action needs $network",
+                reason,
+                listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
+            )
+        } else {
+            UnavailableNotice(action, reason)
+        }
+    }
     val send: (String?) -> Unit = { contract ->
         val reason = (state as? AccountDetailUiState.Ready)?.sendReason
-        if (reason == null) onSend(contract) else unavailable = UnavailableNotice("Send", reason)
+        if (reason == null) onSend(contract) else unavailable = notice("Send", reason)
     }
     val swap: (String?) -> Unit = { contract ->
         val reason = (state as? AccountDetailUiState.Ready)?.swapReason
-        if (reason == null) onSwap(contract) else unavailable = UnavailableNotice("Swap", reason)
+        if (reason == null) onSwap(contract) else unavailable = notice("Swap", reason)
     }
     Scaffold(
         modifier = modifier,
@@ -336,11 +356,21 @@ private fun Details(
                         )
                     }
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // The account's network beside its control (N3, N4): the same address on
+                        // another network is another account.
+                        NetworkMark(state.network, style = MaterialTheme.typography.labelMedium)
                         ControlBadge(state.control)
                         state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+                    }
+                    if (!state.networkOn) {
+                        Text(
+                            "${state.network.name} is off in this wallet: nothing is checked.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
                     }
                     // Why the title is the address: the ENS name it was named by no longer points here.
                     state.nameNote?.let {

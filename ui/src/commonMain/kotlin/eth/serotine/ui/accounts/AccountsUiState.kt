@@ -256,11 +256,11 @@ sealed interface AccountAction {
 }
 
 /**
- * Why nothing can be sent from [account] while its [network] is off in this wallet (docs/networks.md,
- * N19), the way to get it being to turn the network on.
+ * Why nothing can be [done] ("sent", "swapped") from [account] while its [network] is off in this
+ * wallet (docs/networks.md, N19), the way to get it being to turn the network on.
  */
-internal fun networkOffReason(network: String, account: String): String =
-    "$network is off in this wallet, so its balances are not checked and nothing can be sent from $account. " +
+internal fun networkOffReason(network: String, account: String, done: String = "sent"): String =
+    "$network is off in this wallet, so its balances are not checked and nothing can be $done from $account. " +
         "Turned on, it checks them again first."
 
 /** What Create Safe says while the account list is still being read. */
