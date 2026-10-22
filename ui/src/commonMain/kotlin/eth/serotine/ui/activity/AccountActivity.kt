@@ -113,8 +113,9 @@ class AccountActivity(
             // Only a row that names its block says what its logs say: one no block was seen for (a
             // transaction mined while the app was closed) gets the verified log beside it.
             val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
-            // A CoW order's fill says what it sold: the sale's own transfer, in the fill, is not listed
-            // again. One settlement can fill several of the account's orders, each of its own token.
+            // A CoW order's fill says what it sold and bought: its own transfers of them, in the fill, are
+            // not listed again, nor is the settlement paying the account called an unfamiliar sender. One
+            // settlement can fill several of the account's orders, each of its own token.
             val fills = orders.filter { it.end is CowOrderEnd.Filled }
                 .groupBy { (it.end as CowOrderEnd.Filled).transactionHash.lowercase() }
             val safeEvents = (safe as? IndexedHistory.Read)?.events.orEmpty()
@@ -126,7 +127,8 @@ class AccountActivity(
                 .filterNot { it.transfer.movesNothing() }
                 .filterNot { event -> seenInBlocks[event.transactionHash]?.let { event.transfer.saidBy(it) } == true }
                 .filterNot { event ->
-                    fills[event.transactionHash.lowercase()]?.any { event.transfer.soldIn(it) } == true
+                    val fill = fills[event.transactionHash.lowercase()].orEmpty()
+                    fill.any { event.transfer.soldIn(it) || event.transfer.boughtIn(it) }
                 }
                 .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
             val events = (safeEvents + tokenEvents)
@@ -251,6 +253,13 @@ class AccountActivity(
     private fun TokenTransfer.soldIn(order: CowOrderRecord): Boolean =
         this is TokenTransfer.Fungible && from == order.account && token == order.order.sellToken &&
             amount == order.order.sellAmount
+
+    /** Whether this transfer is what the filled [order] bought: its trade's buy, from its settlement to its account. */
+    private fun TokenTransfer.boughtIn(order: CowOrderRecord): Boolean {
+        val trade = (order.end as? CowOrderEnd.Filled)?.trade ?: return false
+        return this is TokenTransfer.Fungible && from == order.settlement && to == order.account &&
+            token == trade.buyToken && amount == trade.buyAmount
+    }
 
     private companion object {
         const val NOT_LISTED_YET = "ETH it received, and transactions sent from it elsewhere, are not listed yet."

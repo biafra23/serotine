@@ -34,7 +34,9 @@ sealed interface CowOrderUiState {
      * - [cow]: CoW's word on its off-chain life, labelled as CoW's and never a fill; null when not
      *   asked (an order whose end is proven); [placement] how CoW answered when it was sent.
      * - [validUntil], the [settlement] contract that settles it, and its [uid].
-     * - [canCancel]: "Cancel on chain" applies; [earlier] a transaction that holds it back (its
+     * - [canCancel]: "Cancel on chain" applies; [cancelReason] why it cannot be done from here (the
+     *   account's key is not on this device), drawn greyed out with this said on a tap, else null;
+     *   [earlier] a transaction that holds it back (its
      *   cancellation sent, or one that may still be on its way), with its status;
      *   [uniswapAgain]: proven not to have swapped, the same swap on Uniswap, which Swap opens with.
      * - [error]: why the last cancellation could not be quoted; [quoting] while one is.
@@ -57,6 +59,7 @@ sealed interface CowOrderUiState {
         val settlement: SpenderItem,
         val uid: String,
         val canCancel: Boolean = false,
+        val cancelReason: String? = null,
         val earlier: EarlierTransaction? = null,
         val uniswapAgain: SwapAgain? = null,
         val error: String? = null,

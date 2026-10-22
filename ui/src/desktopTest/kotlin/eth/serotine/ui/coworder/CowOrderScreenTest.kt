@@ -1,5 +1,6 @@
 package eth.serotine.ui.coworder
 
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -10,6 +11,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
+import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
@@ -77,6 +79,18 @@ class CowOrderScreenTest {
         rule.onNodeWithTag(COW_ORDER_CANCEL_TAG).performScrollTo().performClick()
 
         assertEquals(listOf("cancel"), events)
+    }
+
+    @Test
+    fun cancelGreyedOutSaysWhyOnATapAndCancelsNothing() {
+        show(live.copy(cancelReason = "This account is watch-only: its key is not on this device."))
+
+        rule.onNodeWithTag(COW_ORDER_CANCEL_TAG).performScrollTo().performClick()
+
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "This account is watch-only: its key is not on this device.",
+        )
+        assertEquals(emptyList(), events)
     }
 
     @Test

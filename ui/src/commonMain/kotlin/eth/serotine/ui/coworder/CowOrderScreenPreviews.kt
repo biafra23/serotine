@@ -38,7 +38,7 @@ private val live = CowOrderUiState.Shown(
     held = "The USDC it sells is held back from other sends and swaps until it fills or can no longer fill.",
     cow = "CoW says, not verified: the order is open in its order book, in the auction.",
     placement = "CoW took the order when it was sent.",
-    validUntil = "Valid until 19 Oct 2026, 14:27: the verified head's time when it was signed, and 5 minutes.",
+    validUntil = "Valid until 19 Oct 2026, 14:27: the verified head's time when it was quoted, and 5 minutes.",
     settlement = SpenderItem("CoW's settlement contract", SETTLEMENT),
     uid = UID,
     canCancel = true,
@@ -218,6 +218,16 @@ private fun CowOrderMissingPreview() = CowOrderPreview(
 @Composable
 private fun CowOrderLoadingPreview() = CowOrderPreview(CowOrderUiState.Loading("Sepolia"))
 
+@Preview
+@Composable
+private fun CowOrderKeyNotHerePreview() = CowOrderPreview(
+    live.copy(
+        from = SendFrom("This account", DAILY),
+        cancelReason = "This account is not in your wallet any more, so its key is not on this device. The order " +
+            "ends by itself at its validity.",
+    ),
+)
+
 /** Every preview above, which CowOrderScreenPreviewsTest renders: a new preview goes in here too. */
 internal val cowOrderScreenPreviews: List<@Composable () -> Unit> = listOf(
     { CowOrderLivePreview() },
@@ -235,4 +245,5 @@ internal val cowOrderScreenPreviews: List<@Composable () -> Unit> = listOf(
     { CowOrderCancelSentPreview() },
     { CowOrderMissingPreview() },
     { CowOrderLoadingPreview() },
+    { CowOrderKeyNotHerePreview() },
 )

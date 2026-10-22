@@ -228,6 +228,34 @@ class CowOrderViewModelTest {
     }
 
     @Test
+    fun anOrderWhoseAccountCannotSignHereHasItsCancelGreyedOutSayingWhy() = runTest {
+        val viewModel = viewModel()
+        assertTrue(viewModel.shown.canCancel)
+        assertNull(viewModel.shown.cancelReason)
+
+        accounts.accounts.value = listOf(daily.copy(custody = AccountCustody.Watched))
+        assertTrue(viewModel.shown.canCancel, "shown, greyed out")
+        assertEquals(
+            "This account is watch-only: its key is not on this device, so the cancellation cannot be signed " +
+                "here. The order ends by itself at its validity.",
+            viewModel.shown.cancelReason,
+        )
+        viewModel.cancel()
+        assertTrue(!viewModel.shown.quoting, "nothing is quoted")
+
+        accounts.accounts.value = emptyList()
+        assertEquals("This account", viewModel.shown.from.label)
+        assertTrue(viewModel.shown.cancelReason!!.startsWith("This account is not in your wallet any more"))
+
+        accounts.unreadable.value = true
+        assertTrue(viewModel.shown.cancelReason!!.startsWith("Your account list cannot be read right now"))
+
+        accounts.unreadable.value = false
+        accounts.accounts.value = listOf(daily)
+        assertNull(viewModel.shown.cancelReason)
+    }
+
+    @Test
     fun anOrderPastItsValidityHasNothingToCancel() = runTest {
         now = validTo + 1
         val viewModel = viewModel()

@@ -49,8 +49,10 @@ sealed interface CowOrderList {
     data class Loaded(val orders: List<CowOrderRecord>) : CowOrderList
 
     /**
-     * The record exists but cannot be read: no order is known to be live or not, so nothing may
-     * be sold until it can be read.
+     * The record exists but cannot be read: no order is known to be live or not, so no token may
+     * be swapped until it can be read. Send holds nothing back meanwhile
+     * ([eth.serotine.domain.usecase.QuoteTransfer]): a transfer swaps nothing, and an order whose
+     * tokens are gone cannot fill.
      */
     data object Unreadable : CowOrderList
 }
@@ -59,7 +61,8 @@ sealed interface CowOrderList {
  * One CoW order signed on this device: [order], whose UID is [uid], signed by [account] with
  * [signature] on [network] for the settlement contract [settlement], whose logs alone count for
  * it; the swap it is, [sell] for [buy] as the user chose them (the order's own tokens, native
- * ether bought as CoW's marker); signed when the verified head was at [signedAt] (unix seconds),
+ * ether bought as CoW's marker); signed from a quote made when the verified head was at [signedAt]
+ * (unix seconds, at most a minute before the signature: `validTo` is that time and five minutes),
  * and proven from block [rangeStart] on, the block that was finalized then. [placement] is how its
  * POST stands: [CowPlacement.Attempted] from before the request on, then CoW's answer. [end] is
  * what the chain proved of it (null: not yet).

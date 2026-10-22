@@ -459,7 +459,14 @@ The user decides which venue each swap uses (owner's direction,
   - a device whose light client cannot date a finalized block (iOS, until
     Myotis's iOS module reads a block by number: *Proving an order's end*);
   - a Safe, until its pre-signature is built (*Later on CoW*). A Safe's swap
-    is its own screen (24), which has no venue choice.
+    is its own screen (24), which has no venue choice;
+  - a token an earlier CoW order of the account may still sell: one order
+    per token at a time. The new one waits until a finalized block is past
+    the earlier order's `validTo`, or its end is proven, even when the
+    settlement already counts it filled at the head. Send and a Uniswap swap
+    of the token are freed sooner, at that head read (*A signed order is
+    live until it is proven dead*). The refusal opens the earlier order's
+    status.
 
   What compose knows before anything is asked, ETH sold and the device,
   greys CoW out on the choice, and a tap says why. The rest only a quote
@@ -509,7 +516,8 @@ can still fill could swap them twice.
 - **A live order is kept across restarts.** It sits in a record of its own
   beside `sent-transfers.json`. The record holds:
   - the order, its UID, its signature and the account;
-  - the finalized block when it was signed, where the proof's range starts;
+  - the finalized block when its quote was made, at most a minute before
+    it was signed, where the proof's range starts;
   - how its POST stands: attempted from before the request on, then CoW's
     answer;
   - and, once proven, its end.
@@ -518,8 +526,9 @@ can still fill could swap them twice.
   in it is a code of its own, so a newer build's record still reads. Only
   damage to the storage loses an order from it, and the damaged file is
   kept aside; an order lost that way holds nothing back.
-- **Send and a new swap hold back the sold amount of a live order**, as they
-  do for a transfer not mined yet (docs/embedding-myotis.md, *Sending*).
+- **Send and a new Uniswap swap hold back the sold amount of a live
+  order**, as they do for a transfer not mined yet
+  (docs/embedding-myotis.md, *Sending*).
   - The hold-back ends as soon as the order is known to have filled: its
     `Trade` is found, or `filledAmount(uid)` at the head reads the sell
     amount. From then on the balance already shows the fill, so holding it
@@ -552,9 +561,9 @@ So the proof is the account's own verified logs.
   account, for `Trade` and `OrderInvalidated`, over a range. A topic entry
   matches logs from any contract, so only those the pinned `GPv2Settlement`
   emitted count. The range runs:
-  - from the block that was finalized when the order was signed. A block
-    made after the signature can replace the head of that moment, but never
-    a finalized block;
+  - from the block that was finalized when the order's quote was made, at
+    most a minute before it was signed. A block made after that can replace
+    the head of that moment, but never a finalized block;
   - to an end block, which has to be finalized.
 
   - The engine answers only a range it has covered (Myotis

@@ -2,6 +2,7 @@ package eth.serotine.ui.coworder
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
@@ -152,12 +153,14 @@ class CowOrderViewModel(
     }
 
     /**
-     * The order, the account's name for its account, CoW's word while it is live, and whether its
-     * validity has passed by [clock] (which changes at that moment, not only with the record).
+     * The order, the account's name for its account, why that account cannot sign here ([cannotSign],
+     * null when its key is on this device), CoW's word while it is live, and whether its validity has
+     * passed by [clock] (which changes at that moment, not only with the record).
      */
     private data class Model(
         val reading: CowOrderReading,
         val label: String?,
+        val cannotSign: String?,
         val life: CowOrderLife?,
         val validityPassed: Boolean,
     )
@@ -194,8 +197,14 @@ class CowOrderViewModel(
             .flatMapLatest { validTo -> validityPassed(validTo) },
     ) { reading, accounts, life, passed ->
         val record = (reading as? CowOrderReading.Found)?.record
-        val label = (accounts as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == record?.account }?.label
-        Model(reading, label, life, passed)
+        val account = (accounts as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == record?.account }
+        val cannotSign = when {
+            accounts !is AccountList.Loaded -> LIST_UNAVAILABLE
+            account == null -> NOT_IN_WALLET
+            account.custody != AccountCustody.InKeyStore -> WATCH_ONLY
+            else -> null
+        }
+        Model(reading, account?.label, cannotSign, life, passed)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -224,7 +233,7 @@ class CowOrderViewModel(
         val current = step.value as? Step.Viewing ?: return
         if (current.quoting) return
         val record = (model.value?.reading as? CowOrderReading.Found)?.record ?: return
-        if (!record.live) return
+        if (!record.live || model.value?.cannotSign != null) return
         step.value = current.copy(quoting = true, error = null, earlier = null)
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
@@ -514,10 +523,11 @@ class CowOrderViewModel(
             },
             cow = life?.let(::lifeText),
             placement = placementText(record.placement),
-            validUntil = "Valid until $until: the verified head's time when it was signed, and 5 minutes.",
+            validUntil = "Valid until $until: the verified head's time when it was quoted, and 5 minutes.",
             settlement = settlementOf(record),
             uid = record.uid.hex,
             canCancel = record.live && !model.validityPassed,
+            cancelReason = model.cannotSign,
             // What the last tap on Cancel found is of the live order: once its end is proven, it is said.
             earlier = step.earlier.takeIf { record.live },
             uniswapAgain = if (state == OrderState.NOT_FILLED || state == OrderState.CANCELLED) {
@@ -612,5 +622,11 @@ class CowOrderViewModel(
             "was dropped once its end was proven and a week had passed since it was signed."
         const val UNREADABLE = "The record of this device's CoW orders cannot be read right now."
         const val CANCEL_FAILED = "Serotine could not finish this cancellation. Try again."
+        const val LIST_UNAVAILABLE = "Your account list cannot be read right now, so nothing can be signed. " +
+            "Serotine keeps trying. Meanwhile the order ends by itself at its validity."
+        const val NOT_IN_WALLET = "This account is not in your wallet any more, so its key is not on this " +
+            "device. The order ends by itself at its validity."
+        const val WATCH_ONLY = "This account is watch-only: its key is not on this device, so the cancellation " +
+            "cannot be signed here. The order ends by itself at its validity."
     }
 }

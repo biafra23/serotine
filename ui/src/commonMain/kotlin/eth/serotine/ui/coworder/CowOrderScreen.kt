@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -28,7 +29,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -48,8 +52,12 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.Spender
+import eth.serotine.ui.components.Unavailable
+import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.lightclient.LightClientViewModel
 
 /** Test tag of the button that cancels the order on chain, for UI tests. */
@@ -247,14 +255,21 @@ private fun ColumnScope.OrderContent(
     }
     // Shown beside a transaction on its way too: a tap quotes again, which says whether it still holds.
     if (state.canCancel) {
+        var unavailable by remember { mutableStateOf<String?>(null) }
+        val reason = state.cancelReason
         Note(
             "Cancelling on chain is a transaction of its own, with its fee: once a block has it, nothing can fill " +
                 "the order. Or wait: it ends by itself at its validity.",
         )
         OutlinedButton(
-            onClick = onCancel,
+            onClick = { if (reason == null) onCancel() else unavailable = reason },
             enabled = !state.quoting,
-            modifier = Modifier.align(Alignment.End).testTag(COW_ORDER_CANCEL_TAG),
+            modifier = Modifier.align(Alignment.End).testTag(COW_ORDER_CANCEL_TAG).unavailable(reason != null),
+            colors = if (reason == null) {
+                ButtonDefaults.outlinedButtonColors()
+            } else {
+                ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+            },
         ) {
             if (state.quoting) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -263,6 +278,9 @@ private fun ColumnScope.OrderContent(
             } else {
                 Text("Cancel on chain")
             }
+        }
+        unavailable?.let {
+            UnavailableDialog(UnavailableNotice("Cancel on chain", it), onDismiss = { unavailable = null })
         }
     }
 }
