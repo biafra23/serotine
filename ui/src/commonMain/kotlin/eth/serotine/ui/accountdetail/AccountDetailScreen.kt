@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -502,6 +503,10 @@ private fun SegmentChoice(
                 selected = segment == choice,
                 onClick = { onSegment(choice) },
                 shape = SegmentedButtonDefaults.itemShape(index, segments.size),
+                // Four tabs share a phone's width: no check mark beside the chosen one (its fill says it),
+                // and less side padding, so that "Queue (12)" stays on one line.
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                icon = {},
                 label = {
                     Text(
                         when (choice) {
@@ -511,6 +516,8 @@ private fun SegmentChoice(
                             DetailSegment.QUEUE -> (queue as? SafeQueue.Shown)?.let { "Queue (${it.rows.size})" }
                                 ?: "Queue"
                         },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
             )

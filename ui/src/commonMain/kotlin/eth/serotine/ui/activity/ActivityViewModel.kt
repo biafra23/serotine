@@ -32,14 +32,15 @@ import kotlinx.coroutines.flow.stateIn
 
 /**
  * The ViewModel of an account's Activity, its detail's Activity tab (docs/wallet-ux.md, screen 25;
- * issue #85): the transactions this device sent for the account at [address] ([ObserveAccountHistory]) and, for an account of the
- * wallet, what the engine's verified log index holds of it: every token transfer to or from it
- * ([ObserveTokenTransfers]) and, for a Safe, its own events ([ObserveSafeHistory]). The names the
- * wallet gives the addresses they concern come from [ObserveAccounts], the tokens' symbols and
- * decimals from the tokens it knows ([ObserveKnownTokens]); a transfer received from an address the
- * wallet never sent to ([ObserveSentToAddresses]) and that is none of its accounts is cautioned. A
- * log of a transaction listed as sent, in a block, is left out when its row says the same.
- * [formatTime] dates each in the user's own time zone. No intents: a row opens its detail, which is navigation.
+ * issue #85): the transactions this device sent for the account at [address]
+ * ([ObserveAccountHistory]) and, for an account of the wallet, what the engine's verified log
+ * index holds of it: every token transfer to or from it ([ObserveTokenTransfers]) and, for a
+ * Safe, its own events ([ObserveSafeHistory]). The names the wallet gives the addresses they
+ * concern come from [ObserveAccounts], the tokens' symbols and decimals from the tokens it knows
+ * ([ObserveKnownTokens]); a transfer received from an address the wallet never sent to
+ * ([ObserveSentToAddresses]) and that is none of its accounts is cautioned. A log of a
+ * transaction listed as sent, in a block, is left out when its row says the same. [formatTime]
+ * dates each in the user's own time zone. No intents: a row opens its detail, which is navigation.
  */
 class ActivityViewModel(
     private val address: Address,
