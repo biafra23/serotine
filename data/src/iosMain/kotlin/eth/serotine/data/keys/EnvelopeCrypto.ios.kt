@@ -2,6 +2,12 @@ package eth.serotine.data.keys
 
 import eth.serotine.data.files.syncDirectoryOf
 import eth.serotine.data.files.writeFully
+import eth.serotine.data.keys.sodium.crypto_aead_aes256gcm_decrypt
+import eth.serotine.data.keys.sodium.crypto_aead_aes256gcm_encrypt
+import eth.serotine.data.keys.sodium.crypto_aead_aes256gcm_is_available
+import eth.serotine.data.keys.sodium.crypto_pwhash
+import eth.serotine.data.keys.sodium.crypto_pwhash_alg_argon2id13
+import eth.serotine.data.keys.sodium.sodium_init
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UByteVar
@@ -53,7 +59,7 @@ internal actual object EnvelopeCrypto {
 
     private val ready: Boolean by lazy {
         // 0: initialized now, 1: already initialized; -1: failed.
-        libsodium.sodium_init() >= 0 && libsodium.crypto_aead_aes256gcm_is_available() == 1
+        sodium_init() >= 0 && crypto_aead_aes256gcm_is_available() == 1
     }
 
     actual fun available(): Boolean = ready
@@ -85,7 +91,7 @@ internal actual object EnvelopeCrypto {
         val result = out.withBytes { outPtr ->
             password.withBytes { passwordPtr ->
                 salt.withBytes { saltPtr ->
-                    eth.serotine.data.keys.sodium.crypto_pwhash(
+                    crypto_pwhash(
                         outPtr,
                         outLength.convert(),
                         passwordPtr,
@@ -93,7 +99,7 @@ internal actual object EnvelopeCrypto {
                         saltPtr,
                         opsLimit.convert(),
                         memLimitBytes.convert(),
-                        libsodium.crypto_pwhash_alg_argon2id13(),
+                        crypto_pwhash_alg_argon2id13(),
                     )
                 }
             }
@@ -115,7 +121,7 @@ internal actual object EnvelopeCrypto {
                 aad.withBytes { aadPtr ->
                     nonce.withBytes { noncePtr ->
                         key.withBytes { keyPtr ->
-                            libsodium.crypto_aead_aes256gcm_encrypt(
+                            crypto_aead_aes256gcm_encrypt(
                                 outPtr, null,
                                 inPtr, plaintext.size.convert(),
                                 aadPtr, aad.size.convert(),
@@ -139,7 +145,7 @@ internal actual object EnvelopeCrypto {
                 aad.withBytes { aadPtr ->
                     nonce.withBytes { noncePtr ->
                         key.withBytes { keyPtr ->
-                            libsodium.crypto_aead_aes256gcm_decrypt(
+                            crypto_aead_aes256gcm_decrypt(
                                 outPtr, null,
                                 null,
                                 inPtr, ciphertext.size.convert(),

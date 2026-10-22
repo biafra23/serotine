@@ -7,8 +7,9 @@ import eth.serotine.ui.components.Control
  * ([address]: an address or an ENS name; [name]), why it names no address ([addressError]),
  * what the field says otherwise ([addressNote]: a name being resolved, the block it was
  * resolved at), whether a name that could not be verified may be resolved again
- * ([canRetryLookup]), what the light client says is at the address ([detection], null until
- * the text names one), and how adding went.
+ * ([canRetryLookup]), the name an empty [name] leaves the account with ([nameDefault]: the ENS
+ * name typed, which the account's name then follows; null: "Account N"), what the light client
+ * says is at the address ([detection], null until the text names one), and how adding went.
  */
 data class WatchUiState(
     val address: String = "",
@@ -16,6 +17,7 @@ data class WatchUiState(
     val addressError: String? = null,
     val addressNote: String? = null,
     val canRetryLookup: Boolean = false,
+    val nameDefault: String? = null,
     val detection: Detection? = null,
     val adding: Boolean = false,
     val nameError: String? = null,
@@ -23,6 +25,10 @@ data class WatchUiState(
     /** Added: the screen leaves. */
     val done: Boolean = false,
 ) {
+    /** Whether adding now would name the account by [nameDefault]: no name typed, and an add it can be. */
+    val followsEns: Boolean
+        get() = nameDefault != null && name.isBlank() && (detection is Detection.Account || detection is Detection.Safe)
+
     /** Only a verified account or Safe can be added, and one add at a time. */
     val canAdd: Boolean
         get() = (detection is Detection.Account || detection is Detection.Safe) && !adding

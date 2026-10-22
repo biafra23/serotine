@@ -44,6 +44,32 @@ class WatchAddressTest {
     }
 
     @Test
+    fun withoutANameItsNameFollowsTheEnsNameItWasResolvedFrom() = runTest {
+        val added = watch(address, "  ", ensName = "savings.eth") as AddressWatch.Added
+
+        assertEquals(
+            Account(address, AccountKind.EOA, "savings.eth", AccountCustody.Watched, ensName = "savings.eth"),
+            added.account,
+        )
+    }
+
+    @Test
+    fun aNameGivenIsTheUsersEvenWithAnEnsName() = runTest {
+        val added = watch(address, "Savings", ensName = "savings.eth") as AddressWatch.Added
+
+        assertEquals(Account(address, AccountKind.EOA, "Savings", AccountCustody.Watched), added.account)
+    }
+
+    @Test
+    fun anEnsNameTooLongForARowIsNotFollowed() = runTest {
+        val long = "a".repeat(RenameAccount.MAX_LABEL_LENGTH - 3) + ".eth"
+
+        val added = watch(address, "", ensName = long) as AddressWatch.Added
+
+        assertEquals(Account(address, AccountKind.EOA, "Account 2", AccountCustody.Watched), added.account)
+    }
+
+    @Test
     fun aDelegatedAccountIsStillAnAccount() = runTest {
         reading = KindReading.Verified(AddressKind.DelegatedEoa(daily.address), 100)
 

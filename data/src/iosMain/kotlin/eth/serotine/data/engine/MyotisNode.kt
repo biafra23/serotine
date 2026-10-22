@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
+import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.data.safe.SafeDeployments
@@ -15,11 +16,13 @@ import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
+import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.UniswapV3Chain
 import io.myotis.engine.ios.BeaconState
 import io.myotis.engine.ios.ChainHandle
@@ -39,12 +42,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSLog
 import kotlin.concurrent.Volatile
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 
 /**
  * The embedded Myotis engine of this process on iOS (docs/embedding-myotis.md): one engine
@@ -58,7 +61,12 @@ import kotlin.time.TimeSource
  * below the iOS module's typed API is used.
  */
 @OptIn(ExperimentalAtomicApi::class)
-class MyotisNode private constructor(network: Network, lastBalancesPath: String?, debugLog: ((String) -> Unit)?) {
+class MyotisNode private constructor(
+    network: Network,
+    lastBalancesPath: String?,
+    private val debugLog: ((String) -> Unit)?,
+    apiLog: LogSink?,
+) {
 
     private sealed interface State {
         data object Booting : State
@@ -82,6 +90,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     @Volatile
     private var bootJob: Job? = null
 
+    /** The debug build's drain of the engine's own log, while the engine runs. */
+    @Volatile
+    private var logPump: Job? = null
+
     /**
      * Whether the host last asked for networking off. A pause can come before the boot has
      * finished (the app backgrounded right after launch); the boot applies it then.
@@ -92,10 +104,16 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     /** Runs pause and resume one at a time, in the order asked: each blocks while it lasts. */
     private val control = Dispatchers.IO.limitedParallelism(1)
 
-    private val chain = HandleChain()
+    /** The engine's handle, unwrapped: what [activity] reads (in memory, so neither logged nor shared). */
+    private val handleChain = HandleChain()
+
+    /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
+    private val chain: EngineChain = handleChain.let { handle ->
+        SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
+    }
 
     /** Which accounts the verified blocks touched, so a proof stands until one did (Myotis #691). */
-    private val activity = AddressActivity(chain)
+    private val activity = AddressActivity(handleChain)
 
     /** The balances last verified, kept for after a restart; none kept without a path. */
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
@@ -113,6 +131,9 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
     val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network), activity)
 
+    /** What the same feeds answered some time ago, from their round histories, as verified calls. */
+    val priceHistory: PriceHistory = VerifiedPriceHistory(chain, Dispatchers.IO, ChainlinkFeeds.of(network))
+
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
     val tokenBalances: TokenBalances = VerifiedTokenBalances(
         chain,
@@ -123,8 +144,14 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         gated = BuiltInTokens.of(network).mapTo(HashSet()) { it.address },
     )
 
-    /** This node's light client, for the user to watch. */
-    val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
+    /**
+     * This node's light client, for the user to watch. It gives no finalized block's own time here:
+     * the iOS module reads no block by number yet, so no CoW order is offered on iOS.
+     */
+    val lightClient: LightClient =
+        object : LightClient by EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL) {
+            override val datesFinalizedBlocks: Boolean = false
+        }
 
     /** Network upgrades this build does not support, as peers report them to this node. */
     val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -140,6 +167,12 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
+
+    /**
+     * CoW Protocol's settlement contracts on this node's network, proven by their code
+     * (docs/swaps.md, *CoW Protocol*).
+     */
+    val cow: CowChain = VerifiedCow(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
     val receipts: ReceiptTracker = EngineReceipts(chain, Dispatchers.IO, POLL_INTERVAL)
@@ -198,11 +231,11 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
                 if (if (wanted) handle.pause() else handle.resume()) {
                     networkingPaused = wanted
                 } else {
-                    println("Serotine: the engine did not ${if (wanted) "pause" else "resume"} its networking")
+                    log("Serotine: the engine did not ${if (wanted) "pause" else "resume"} its networking")
                 }
             } catch (e: Throwable) {
                 // The engine keeps its last networking state.
-                println("Serotine: the engine's networking could not be switched: $e")
+                log("Serotine: the engine's networking could not be switched: $e")
             }
         }
 
@@ -217,7 +250,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
      */
     fun shutdown() {
         val running = state.exchange(State.Down) as? State.Running
+        logPump?.cancel()
         running?.stop()
+        // In a debug build, what the engine said while stopping, which the pump no longer drains.
+        if (running != null) debugLog?.let { EngineLogPump(Myotis::drainLogs, it).drainNow() }
         bootJob?.let { job -> runBlocking { withTimeoutOrNull(SHUTDOWN_WAIT) { job.join() } } }
         scope.cancel()
     }
@@ -251,8 +287,8 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             val info = engine.availableNetworks().firstOrNull { it.name == handle.networkName }
             val running = State.Running(engine, handle, info?.clGenesisTime ?: 0, info?.secondsPerSlot ?: 0)
             val started = handle.start()
-            // The engine says why only in its own log, drained before anything stops it.
-            val refusal = if (started) null else Myotis.drainLogs(ENGINE_LOG_LINES)
+            // The engine says why only in its own log, at its end, drained before anything stops it.
+            val refusal = if (started) null else EngineLogPump.lastLines(Myotis::drainLogs, ENGINE_LOG_LINES)
             val kept = started && state.compareAndSet(State.Booting, running)
             if (!started) state.compareAndSet(State.Booting, State.Down)
             owned = false
@@ -261,6 +297,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
             // and resume the host asks for from here on queues there too, so the last one asked
             // for is the state the engine ends in.
             if (kept) followPauseWanted()
+            // The engine's own log, in a debug build: the one account of why a sync stalls.
+            if (kept && debugLog != null) {
+                logPump = scope.launch { EngineLogPump(Myotis::drainLogs, debugLog).run(ENGINE_LOG_INTERVAL) }
+            }
             refusal?.let { report("the engine refused to start $name:\n$it") }
         } catch (e: Throwable) {
             if (owned) {
@@ -274,20 +314,10 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         }
     }
 
-    private inner class HandleChain : TransactingChain, LogIndexChain, ActivityChain {
+    private inner class HandleChain : EngineChain, ActivityChain {
 
-        /**
-         * The last snapshot read and when. Every adapter, and each of its subscribers, polls on
-         * its own: those that ask within [SNAPSHOT_REUSE] of one read share it, so they cost the
-         * engine one status call, not one each.
-         */
-        private val lastRead = AtomicReference<TimedSnapshot?>(null)
-
-        override fun snapshot(): EngineSnapshot {
-            lastRead.load()?.let { if (it.at.elapsedNow() < SNAPSHOT_REUSE) return it.snapshot }
-            val at = TimeSource.Monotonic.markNow()
-            return read().also { lastRead.store(TimedSnapshot(at, it)) }
-        }
+        // Each call a status read; SharedSnapshots shares one among the pollers.
+        override fun snapshot(): EngineSnapshot = read()
 
         private fun read(): EngineSnapshot {
             val running = when (val current = state.load()) {
@@ -332,6 +362,11 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
                 wsBoundPeriods = status.wsBoundPeriods,
                 upgrade = status.upgradeAdvisory?.toNetworkUpgrade(),
                 finalizedBlock = status.finalizedBlockNumber,
+                // No finalized timestamp on iOS: Myotis 0.1.18's iOS module reads no block by
+                // number (its block reads are internal), and the slot's time is no stand-in for the
+                // header's (docs/swaps.md, *Proving an order's end*). A CoW order is then not
+                // offered here, as it waits for a finalized block's own time.
+                finalizedHeader = null,
             )
         }
 
@@ -440,8 +475,6 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         }
     }
 
-    private class TimedSnapshot(val at: TimeSource.Monotonic.ValueTimeMark, val snapshot: EngineSnapshot)
-
     companion object {
         /** How often the verified reads poll the engine, as on the JVM targets. */
         internal val POLL_INTERVAL = 4.seconds
@@ -455,8 +488,11 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
         /** Faster than balances: a progress display that moves in 4 s steps looks stuck. */
         private val PROGRESS_POLL_INTERVAL = 1.seconds
 
-        /** Engine log lines a failed start reports. */
+        /** Engine log lines a failed start reports: the last ones, where it says why. */
         private const val ENGINE_LOG_LINES = 40
+
+        /** How often a debug build drains the engine's log; its ring holds hours of lines. */
+        private val ENGINE_LOG_INTERVAL = 1.seconds
 
         /** How long [shutdown] waits for a boot in progress to stop its own engine. */
         private val SHUTDOWN_WAIT = 15.seconds
@@ -465,19 +501,23 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
          * A node for [network] with its state under [dataDir] (a path in the app's own
          * container), booting off the caller's thread: creating the engine and starting it
          * block, and none of it may run on the main thread. [debugLog] takes the adapters'
-         * diagnostics: a debug build's log, null in a release build; public chain data only.
+         * diagnostics and, while the engine runs, the engine's own log ([EngineLogPump]): a
+         * debug build's log, null in a release build, which leaves the engine's log undrained;
+         * public chain data only.
          * [lastBalances] is the file the balances last verified are kept in, to be shown as such
          * after a restart until a head can be read ([LastBalancesFile]); null keeps them for the
-         * process only. An engine that fails to start gets a node whose balances and light
-         * client say so.
+         * process only. [apiLog] takes each request the adapters make of the engine
+         * ([LoggedChain]): the Debug tab's log, in memory only; null records none. An engine that
+         * fails to start gets a node whose balances and light client say so.
          */
         fun start(
             network: Network,
             dataDir: String,
             lastBalances: String? = null,
             debugLog: ((String) -> Unit)? = null,
+            apiLog: LogSink? = null,
         ): MyotisNode {
-            val node = MyotisNode(network, lastBalances, debugLog)
+            val node = MyotisNode(network, lastBalances, debugLog, apiLog)
             node.bootJob = node.scope.launch {
                 try {
                     node.boot(network, dataDir)
@@ -495,10 +535,17 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
 }
 
 /**
- * Why there is no light client, on the console: the one fact a user's "No light client" cannot
- * tell a developer. Engine state only; no key material is anywhere near this path.
+ * Why there is no light client, in the device's log: the one fact a user's "No light client"
+ * cannot tell a developer. Engine state only; no key material is anywhere near this path.
  */
-private fun report(why: String) = println("Serotine: no light client: $why")
+private fun report(why: String) = log("Serotine: no light client: $why")
+
+/**
+ * [line] in the device's log: NSLog, since println's stdout reaches no one unless Xcode runs the
+ * app. The line is the format itself, its `%` escaped, so nothing crosses NSLog's C varargs: with
+ * `NSLog("%@", line)` the debug app died at launch on the simulator (#129's CI).
+ */
+private fun log(line: String) = NSLog(line.replace("%", "%%"))
 
 /** Creates [path] and its parents; an existing directory is fine, a failure the engine's to tell. */
 @OptIn(ExperimentalForeignApi::class)

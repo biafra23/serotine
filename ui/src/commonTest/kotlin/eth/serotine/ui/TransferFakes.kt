@@ -1,11 +1,26 @@
 package eth.serotine.ui
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrder
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowApi
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowOrderEnd
+import eth.serotine.domain.repository.CowOrderLife
+import eth.serotine.domain.repository.CowOrderList
+import eth.serotine.domain.repository.CowOrderRecord
+import eth.serotine.domain.repository.CowOrders
+import eth.serotine.domain.repository.CowPlacement
+import eth.serotine.domain.repository.CowQuoteReading
+import eth.serotine.domain.repository.CowUnavailable
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.FeeReading
@@ -25,11 +40,14 @@ import eth.serotine.domain.repository.LogsReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NonceReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.SwapVenueSetting
+import eth.serotine.domain.repository.VenueChoice
 import eth.serotine.domain.repository.prunable
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
@@ -250,3 +268,98 @@ internal class FakeLogIndex : LogIndex {
 
 /** [address] as a 32-byte log topic: left-padded with zeros. */
 internal fun topicOf(address: Address): String = "0x" + "00".repeat(12) + address.hex.removePrefix("0x")
+
+/** The record of CoW orders in memory, as the port's contract says one behaves; empty until a test adds one. */
+internal class MemoryCowOrders : CowOrders {
+    val orders = MutableStateFlow<List<CowOrderRecord>>(emptyList())
+
+    override fun observe(): Flow<CowOrderList> = orders.map { CowOrderList.Loaded(it) }
+
+    override suspend fun record(order: CowOrderRecord): Boolean {
+        orders.value = if (orders.value.any { it.uid == order.uid }) {
+            orders.value.map { if (it.uid == order.uid) order else it }
+        } else {
+            orders.value + order
+        }
+        return true
+    }
+
+    override suspend fun end(uid: CowOrderUid, end: CowOrderEnd): Boolean {
+        if (orders.value.none { it.uid == uid }) return false
+        orders.value = orders.value.map { if (it.uid == uid) it.copy(end = end) else it }
+        return true
+    }
+
+    override suspend fun prune(signedBefore: Long): Boolean {
+        orders.value = orders.value.filterNot { !it.live && it.signedAt < signedBefore }
+        return true
+    }
+}
+
+/** CoW's contracts as a chain: [venue] (none by default), and no answer to a call unless [answers] has one. */
+internal class FakeCowChain : CowChain {
+    var venue: CowVenueReading = CowVenueReading.NotPinned
+    val answers = mutableMapOf<Pair<Address, String>, Simulation>()
+
+    override suspend fun venue(network: Network): CowVenueReading = venue
+
+    override suspend fun call(to: Address, data: ByteArray): Simulation =
+        answers[to to data.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }]
+            ?: Simulation.Unavailable(ReadUnavailable.UNPROVEN)
+}
+
+/**
+ * CoW's order API as a fake: [quote] for every quote, [placement] (CoW's acceptance by default) for
+ * every order, and [life] for every order asked about, once [lifePending] completes when it is set.
+ */
+internal class FakeCowApi : CowApi {
+    var quote: CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NO_CONNECTION)
+    var placement: CowPlacement? = null
+    val quotes = mutableListOf<Address>()
+    val placed = mutableListOf<CowOrderUid>()
+
+    override suspend fun quote(
+        network: Network,
+        sellToken: Address,
+        buyToken: Address,
+        sellAmount: UInt256,
+        from: Address,
+    ): CowQuoteReading {
+        quotes += sellToken
+        return quote
+    }
+
+    override suspend fun place(
+        network: Network,
+        order: CowOrder,
+        owner: Address,
+        signature: Signature,
+        uid: CowOrderUid,
+    ): CowPlacement {
+        placed += uid
+        return placement ?: CowPlacement.Accepted(uid)
+    }
+
+    var life: CowOrderLife = CowOrderLife.Open
+    val lives = mutableListOf<CowOrderUid>()
+
+    /** While set, an order's life waits for it: CoW slow to answer, for as long as a test needs. */
+    var lifePending: CompletableDeferred<CowOrderLife>? = null
+
+    override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife {
+        lives += uid
+        return lifePending?.await() ?: life
+    }
+}
+
+/** The venue last chosen, in memory: none until a test or a choice sets one. */
+internal class MemorySwapVenue : SwapVenueSetting {
+    val choice = MutableStateFlow<VenueChoice>(VenueChoice.Chosen(null))
+
+    override fun observe(): Flow<VenueChoice> = choice
+
+    override suspend fun choose(venue: SwapVenue): Boolean {
+        choice.value = VenueChoice.Chosen(venue)
+        return true
+    }
+}

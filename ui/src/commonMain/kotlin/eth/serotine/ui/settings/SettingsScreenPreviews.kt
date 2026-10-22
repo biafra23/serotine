@@ -23,14 +23,21 @@ private val synced = SettingsUiState(
     network,
     LightClientItem("Verified at block 8,412,307 · 8 s ago", null, false, VERIFIED),
     VERSION,
-    tokens = "3 built in · 1 added",
+    tokens = "11 built in · 1 added",
     currency = "EUR",
 )
 
 @Composable
 private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        SettingsScreen(state = state, onCurrency = {}, onTokens = {}, onSecurity = {}, onScreenCaptureChange = {})
+        SettingsScreen(
+            state = state,
+            onCurrency = {},
+            onTokens = {},
+            onSecurity = {},
+            onScreenCaptureChange = {},
+            onDebugScreenChange = {},
+        )
     }
 }
 
@@ -69,7 +76,7 @@ private fun SettingsHeadTooOldDarkPreview() = SettingsPreview(headTooOld, darkTh
 @Composable
 private fun SettingsUnreadablePreview() = SettingsPreview(
     synced.copy(
-        tokens = "3 built in · added ones cannot be read",
+        tokens = "11 built in · added ones cannot be read",
         currency = "USD (your choice cannot be read)",
     ),
 )
@@ -84,6 +91,16 @@ private fun SettingsDebugBuildPreview() = SettingsPreview(synced.copy(screenCapt
 @Composable
 private fun SettingsDebugBuildCaptureAllowedPreview() = SettingsPreview(synced.copy(screenCaptureAllowed = true))
 
+/** The Debug tab turned on. */
+@Preview
+@Composable
+private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(debugScreen = true))
+
+/** A switch of the Debug tab that could not be saved. */
+@Preview
+@Composable
+private fun SettingsDebugScreenNotSavedPreview() = SettingsPreview(synced.copy(debugScreenNotSaved = true))
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsSyncedPreview() },
@@ -94,4 +111,6 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsHeadTooOldDarkPreview() },
     { SettingsDebugBuildPreview() },
     { SettingsDebugBuildCaptureAllowedPreview() },
+    { SettingsDebugScreenPreview() },
+    { SettingsDebugScreenNotSavedPreview() },
 )

@@ -9,12 +9,15 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveKnownTokens
+import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveLightClient
+import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryDebugScreen
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlinx.coroutines.Dispatchers
@@ -40,8 +43,11 @@ class SettingsViewModelTest {
     private val usdc = Token(Address.of("0x" + "1c".repeat(20)), "USDC", "USDC", 6, "usdc")
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
     private val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(): Flow<LightClientStatus> = status
     }
+
+    private val debugScreen = MemoryDebugScreen()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -59,11 +65,13 @@ class SettingsViewModelTest {
                 currencies,
                 Network.SEPOLIA,
                 screenCapture = null,
+                ObserveDebugScreen(debugScreen),
+                SetDebugScreen(debugScreen),
                 clock = { 1_000 },
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
 
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         runCurrent()
 
         val state = viewModel.uiState.value
@@ -89,7 +97,15 @@ class SettingsViewModelTest {
         val known = ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata())
         val currencies = ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting())
         val switch = ScreenCaptureDebugSwitch()
-        val viewModel = SettingsViewModel(ObserveLightClient(lightClient), known, currencies, Network.SEPOLIA, switch)
+        val viewModel = SettingsViewModel(
+            ObserveLightClient(lightClient),
+            known,
+            currencies,
+            Network.SEPOLIA,
+            switch,
+            ObserveDebugScreen(debugScreen),
+            SetDebugScreen(debugScreen),
+        )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
         assertEquals(false, viewModel.uiState.value.screenCaptureAllowed, "every start begins with capture blocked")
@@ -103,5 +119,41 @@ class SettingsViewModelTest {
         runCurrent()
         assertFalse(switch.allowed.value)
         assertEquals(false, viewModel.uiState.value.screenCaptureAllowed)
+    }
+
+    @Test
+    fun theDebugTabsSwitchTurnsItOnAndOffAndSaysWhenThatCouldNotBeSaved() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val known = ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata())
+        val currencies = ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting())
+        val viewModel = SettingsViewModel(
+            ObserveLightClient(lightClient),
+            known,
+            currencies,
+            Network.SEPOLIA,
+            screenCapture = null,
+            ObserveDebugScreen(debugScreen),
+            SetDebugScreen(debugScreen),
+        )
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertFalse(viewModel.uiState.value.debugScreen)
+
+        viewModel.showDebugScreen(true)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.debugScreen)
+        assertFalse(viewModel.uiState.value.debugScreenNotSaved)
+
+        debugScreen.failSaves = true
+        viewModel.showDebugScreen(false)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.debugScreen)
+        assertTrue(viewModel.uiState.value.debugScreenNotSaved)
+
+        debugScreen.failSaves = false
+        viewModel.showDebugScreen(false)
+        runCurrent()
+        assertFalse(viewModel.uiState.value.debugScreen)
+        assertFalse(viewModel.uiState.value.debugScreenNotSaved)
     }
 }

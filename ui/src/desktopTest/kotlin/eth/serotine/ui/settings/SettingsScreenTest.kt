@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import eth.serotine.ui.components.LightClientItem
@@ -27,8 +28,9 @@ class SettingsScreenTest {
     private var currencyOpened = 0
     private var securityOpened = 0
     private val screenCaptureChanges = mutableListOf<Boolean>()
+    private val debugScreenChanges = mutableListOf<Boolean>()
 
-    private fun show(screenCaptureAllowed: Boolean? = null) = rule.setContent {
+    private fun show(screenCaptureAllowed: Boolean? = null, debugScreen: Boolean = false) = rule.setContent {
         SerotineTheme {
             val lightClient = LightClientItem("Verified at block 9,412,118 · 8 s ago", null, false, VERIFIED)
             SettingsScreen(
@@ -39,11 +41,13 @@ class SettingsScreenTest {
                     tokens = "3 built in · 1 added",
                     currency = "EUR",
                     screenCaptureAllowed = screenCaptureAllowed,
+                    debugScreen = debugScreen,
                 ),
                 onCurrency = { currencyOpened++ },
                 onTokens = { tokensOpened++ },
                 onSecurity = { securityOpened++ },
                 onScreenCaptureChange = { screenCaptureChanges += it },
+                onDebugScreenChange = { debugScreenChanges += it },
             )
         }
     }
@@ -113,5 +117,21 @@ class SettingsScreenTest {
 
         rule.onNodeWithTag(SETTINGS_SCREEN_CAPTURE_TAG).assertIsOn().performClick()
         assertEquals(listOf(false), screenCaptureChanges)
+    }
+
+    @Test
+    fun theDebugTabsRowTurnsItOnAndOff() {
+        show()
+
+        rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().assertIsOff().performClick()
+        assertEquals(listOf(true), debugScreenChanges)
+    }
+
+    @Test
+    fun theDebugTabsRowSaysWhenItIsOn() {
+        show(debugScreen = true)
+
+        rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().assertIsOn().performClick()
+        assertEquals(listOf(false), debugScreenChanges)
     }
 }

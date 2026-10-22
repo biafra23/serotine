@@ -46,9 +46,9 @@ private val uni = TokenItem(
     hidden = true,
 )
 
-private val eurc = TokenItem(
-    "EURC",
-    "Euro Coin",
+private val eurs = TokenItem(
+    "EURS",
+    "STASIS EURS Token",
     "0x27b1fdb04752bbc536007a920d24acb045561c26",
     null,
     builtIn = false,
@@ -57,7 +57,22 @@ private val eurc = TokenItem(
     hidden = false,
 )
 
-private val known = TokensUiState(listOf(usdc, link, uni, eurc))
+private val known = TokensUiState(listOf(usdc, link, uni, eurs))
+
+/** Every built-in token with its bundled icon, at the address of its row in [usdc]. */
+private val builtIn = listOf(
+    "USDC" to "USDC",
+    "EURC" to "EURC",
+    "PYUSD" to "PayPal USD",
+    "LINK" to "ChainLink Token",
+    "UNI" to "Uniswap",
+    "WETH" to "Wrapped Ether",
+    "GHO" to "Gho Token",
+    "DAI" to "DAI",
+    "USDT" to "USDT",
+    "WBTC" to "WBTC",
+    "AAVE" to "AAVE",
+).map { (symbol, name) -> usdc.copy(symbol = symbol, name = name, icon = symbol.lowercase()) }
 
 @Composable
 private fun TokensPreview(
@@ -124,10 +139,21 @@ private fun TokensUnreadablePreview() = TokensPreview(
     ),
 )
 
+// The built-in list in two halves, a phone's height each: every bundled icon is drawn.
+@Preview
+@Composable
+private fun TokensBuiltInPreview() = TokensPreview(TokensUiState(builtIn.take(6)))
+
+@Preview
+@Composable
+private fun TokensBuiltInRestPreview() = TokensPreview(TokensUiState(builtIn.drop(6)))
+
 /** Every preview above, which TokensScreenPreviewsTest renders: a new preview goes in here too. */
 internal val tokensScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TokensListPreview() },
     { TokensListDarkPreview() },
     { TokensChecksPreview() },
     { TokensUnreadablePreview() },
+    { TokensBuiltInPreview() },
+    { TokensBuiltInRestPreview() },
 )

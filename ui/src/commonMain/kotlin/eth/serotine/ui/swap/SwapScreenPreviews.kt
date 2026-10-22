@@ -1,6 +1,7 @@
 package eth.serotine.ui.swap
 
 import androidx.compose.runtime.Composable
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AssetChoice
@@ -19,8 +20,9 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 // The Swap screen in Android Studio's preview pane, one preview per state it draws differently.
 // Built from display-ready values, as the screen tests are, never from the ViewModel.
 // SwapScreenPreviewsTest renders each one in swapScreenPreviews, at the end. The addresses are
-// EIP-55's own examples standing in for the account, the tokens, the router and the pools; the
-// names, amounts, blocks, times and the password are made up.
+// EIP-55's own examples standing in for the account, the tokens, the router and the pools, and CoW's
+// settlement contract, which is public; the names, amounts, blocks, times, the order's UID and the
+// password are made up.
 
 private const val DAILY = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 private const val USDC = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb"
@@ -28,6 +30,7 @@ private const val ROUTER = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
 private const val POOL = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
 private const val SECOND_POOL = "0x52908400098527886E0F7030069857D2E4169EE7"
 private const val LINK = "0xde709f2102306220921060314715629080e2fb77"
+private const val SETTLEMENT = "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"
 
 private val from = SendFrom("Daily", DAILY)
 
@@ -53,6 +56,12 @@ private val empty = SwapUiState.Compose(
         canMax = true,
     ),
     fee = FeeLevel.NORMAL,
+    // ETH sold: CoW is greyed out, as the ViewModel draws it.
+    venue = VenueItem(
+        SwapVenue.UNISWAP,
+        cowUnavailable = "CoW Protocol is offered for tokens sold: selling ETH would go through CoW's ETH-flow " +
+            "contract, which this wallet does not use yet. Sell WETH on CoW, or swap ETH on Uniswap.",
+    ),
 )
 
 private val composed = empty.with {
@@ -65,7 +74,9 @@ private val composed = empty.with {
         amountHint = "≈ $40.00 · testnet prices",
         canReview = true,
     )
-}
+}.copy(venue = VenueItem(SwapVenue.UNISWAP))
+
+private val onCow = composed.copy(venue = VenueItem(SwapVenue.COW))
 
 /** This form step with [edit] applied to its form and the fee [fee]. */
 private fun SwapUiState.Compose.with(fee: FeeLevel = this.fee, edit: (SwapForm) -> SwapForm = { it }) =
@@ -122,6 +133,32 @@ private val review = SwapUiState.SwapReview(
     unlock = UnlockStep(),
 )
 
+private val cowReview = SwapUiState.CowReview(
+    network = "Sepolia",
+    from = from,
+    sell = usdc,
+    sold = "40 USDC",
+    buy = ether,
+    estimate = "about 0.015931 ETH",
+    estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade: 0.41 USDC. Not verified.",
+    uniswapNet = "0.015688 ETH",
+    uniswapNote = "Uniswap's verified quote at block 8,412,307 less its expected network fee, about 0.000185 ETH.",
+    comparison = "By CoW's estimate, CoW gives about 0.000243 ETH more than Uniswap. Only the minimum below is signed.",
+    uniswapGivesMore = false,
+    minimum = "at least 0.015851 ETH",
+    minimumNote = "CoW's estimate less the 0.5 % tolerance, never below the Uniswap net less it (0.01561 ETH). A " +
+        "fill that buys less is refused by the settlement contract.",
+    validUntil = "Until 19 Oct 2026, 14:27: the verified head's time and 5 minutes. It fills by then or not at all.",
+    settlement = SpenderItem("CoW's settlement contract", SETTLEMENT),
+    balances = listOf(
+        BalanceChange("USDC balance", "250 USDC", "210 USDC once it fills", "verified at block 8,412,305"),
+    ),
+    disclosure = "Sent to CoW's servers (api.cow.fi): this account's address, the pair, the amounts, the signed " +
+        "order and this device's IP address. Whether it fills, and what it bought, is read from the chain, never " +
+        "from CoW.",
+    unlock = UnlockStep(),
+)
+
 private val hopReview = review.copy(
     sell = usdc,
     sold = "40 USDC",
@@ -165,6 +202,8 @@ private fun SwapPreview(
             onMax = {},
             onToleranceChange = {},
             onFeeChange = {},
+            onVenueChange = {},
+            onSwapOnUniswap = {},
             onReview = {},
             onEdit = {},
             onRefresh = {},
@@ -173,6 +212,7 @@ private fun SwapPreview(
             onSignWithBiometrics = {},
             onRetry = {},
             onOpenTransfer = {},
+            onOpenOrder = {},
             onBack = {},
         )
     }
@@ -218,6 +258,38 @@ private fun SwapComposeNoRoutePreview() = SwapPreview(
             error = "No Uniswap v3 pool takes USDC for LINK, directly or through WETH, for this amount.",
         )
     },
+)
+
+@Preview
+@Composable
+private fun SwapComposeCowOrdersUnreadablePreview() = SwapPreview(
+    composed.with {
+        it.copy(
+            error = "The record of this device's CoW orders cannot be read: one may still fill, so no token is " +
+                "swapped until it can be read.",
+        )
+    },
+)
+
+@Preview
+@Composable
+private fun SwapComposeOnCowPreview() = SwapPreview(onCow)
+
+@Preview
+@Composable
+private fun SwapComposeCowDidNotAnswerPreview() = SwapPreview(
+    onCow.with { it.copy(error = "CoW did not answer.") }.copy(uniswapInstead = true),
+)
+
+@Preview
+@Composable
+private fun SwapComposeEarlierOrderLivePreview() = SwapPreview(
+    onCow.with {
+        it.copy(
+            error = "An earlier CoW order selling USDC may still fill: one order of a token at a time, since both " +
+                "would draw on one allowance. It is done once it fills or can no longer fill.",
+        )
+    }.copy(liveOrder = "0x" + "c1".repeat(32) + "5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" + "6ad9e7f4"),
 )
 
 @Preview
@@ -312,6 +384,42 @@ private fun SwapReviewNotSentPreview() = SwapPreview(
 
 @Preview
 @Composable
+private fun SwapCowReviewPreview() = SwapPreview(
+    cowReview.copy(unlock = UnlockStep(WalletPassword("made-up preview password"))),
+)
+
+@Preview
+@Composable
+private fun SwapCowReviewDarkPreview() = SwapPreview(cowReview, darkTheme = true)
+
+@Preview
+@Composable
+private fun SwapCowReviewUniswapGivesMorePreview() = SwapPreview(
+    cowReview.copy(
+        estimate = "about 0.015402 ETH",
+        comparison = "By CoW's own estimate, Uniswap gives more. The order is signed at the floor below, and may " +
+            "well not fill. Then nothing is swapped, but the USDC it sells stays held back until a finalized block " +
+            "is past its validity, about 18 to 24 minutes from now.",
+        uniswapGivesMore = true,
+        minimum = "at least 0.01561 ETH",
+    ),
+)
+
+@Preview
+@Composable
+private fun SwapOrderPlacedPreview() = SwapPreview(
+    SwapUiState.OrderPlaced(
+        "Sepolia",
+        "Sent to CoW",
+        "CoW took the order. It fills before 19 Oct 2026, 14:27 or not at all; what it bought shows once the " +
+            "chain proves it. The USDC it sells is held back from other sends and swaps until it fills or can no " +
+            "longer fill.",
+        "0x" + "c0".repeat(32) + "5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" + "6ad9e7f4",
+    ),
+)
+
+@Preview
+@Composable
 private fun SwapLoadingPreview() = SwapPreview(SwapUiState.Loading("Sepolia"))
 
 @Preview
@@ -335,6 +443,10 @@ internal val swapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SwapComposeQuotingPreview() },
     { SwapComposeInputErrorsPreview() },
     { SwapComposeNoRoutePreview() },
+    { SwapComposeCowOrdersUnreadablePreview() },
+    { SwapComposeOnCowPreview() },
+    { SwapComposeCowDidNotAnswerPreview() },
+    { SwapComposeEarlierOrderLivePreview() },
     { SwapComposeApprovalSentPreview() },
     { SwapComposeEarlierMaybeSentPreview() },
     { SwapComposeTokenNotFoundPreview() },
@@ -347,6 +459,10 @@ internal val swapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SwapReviewSigningPreview() },
     { SwapReviewRefreshingPreview() },
     { SwapReviewNotSentPreview() },
+    { SwapCowReviewPreview() },
+    { SwapCowReviewDarkPreview() },
+    { SwapCowReviewUniswapGivesMorePreview() },
+    { SwapOrderPlacedPreview() },
     { SwapLoadingPreview() },
     { SwapWatchOnlyPreview() },
     { SwapSentPreview() },

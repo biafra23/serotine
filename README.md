@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/serotine_logo_dark.svg">
+    <img src="assets/serotine_logo.svg" alt="Serotine logo" width="200">
+  </picture>
+</p>
+
 # Serotine
 
 A Compose Multiplatform wallet for Ethereum accounts (EOAs) and
@@ -106,9 +113,11 @@ and the rules they follow: [docs/wallet-ux.md](docs/wallet-ux.md); swaps:
 
 ## Releases
 
-Every `v*` tag publishes a pre-release with the signed Android APK, the debug
-APK, the macOS dmgs (arm64 + x64), the Linux debs (x64, and arm64 while the
-repository is public) and the Windows msi. The
+Every `v*` tag publishes a pre-release with the signed Android APK (once its
+release key is set up, docs/android-release-signing.md), the debug APK, the
+macOS dmgs (arm64 + x64) and the Linux debs (x64, and arm64 while the
+repository is public). The Windows msi joins them once Myotis ships a Windows
+engine library; until then it is built on `main` but not published. The
 tag's version must match the `version` in `build.gradle.kts`
 (release-version-guard.yml refuses otherwise), and the Android release key
 lives only in the `android-release` environment

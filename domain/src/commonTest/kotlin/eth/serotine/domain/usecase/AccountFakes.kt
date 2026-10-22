@@ -44,7 +44,7 @@ internal class ListAccountRepository(vararg initial: Account) : AccountRepositor
         change(address) { current -> current.map { if (it.address == address) it.copy(custody = custody) else it } }
 
     override suspend fun rename(address: Address, label: String): AccountChange = change(address) { current ->
-        current.map { if (it.address == address) it.copy(label = label) else it }
+        current.map { if (it.address == address) it.copy(label = label, ensName = null) else it }
     }
 
     override suspend fun remove(address: Address): AccountChange = change(address) { current ->

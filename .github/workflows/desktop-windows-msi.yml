@@ -9,9 +9,13 @@ name: Desktop MSI (Windows)
 # would need the windows-11-arm runner and an arm64 JDK.
 
 on:
+  # No v* tag trigger for now (owner's decision, 2026-10-21): Myotis publishes
+  # no Windows engine library yet (its myotis-engine-natives/platforms.txt), so
+  # the msi installs an app that cannot sync. It still builds and smoke-tests on
+  # main and on packaging PRs; put the tag back, and the notes' Windows line,
+  # once the Windows natives ship. A dispatch on a tag still publishes it.
   push:
     branches: [ "main" ]
-    tags: [ "v*" ]
   # Path-filtered, unlike the dmg. A Windows packaging leg on every PR would
   # cost more than it tells (the reason desktop-linux-deb.yml has no PR trigger
   # at all), but a change to the packaging should prove the msi before it
@@ -333,9 +337,10 @@ jobs:
           cat > "$notes" <<'NOTES'
           Pre-release build of the Serotine wallet apps.
 
-          **Android (`*-android.apk`)** — the Serotine app, signed with Serotine's own release key
-          (its certificate's SHA-256 is in `android-app/release-signing-cert.sha256` in the
-          repository). Install via "Install unknown apps" and switch that off again afterwards;
+          **Android (`*-android.apk`)**, in a release that has it — the Serotine app, signed with
+          Serotine's own release key (its certificate's SHA-256 is in
+          `android-app/release-signing-cert.sha256` in the repository). A release without it carries
+          only the debug app below. Install via "Install unknown apps" and switch that off again afterwards;
           only ever install Serotine, and its updates, from this releases page.
 
           **Android debug (`*-android-debug.apk`)** — a separate test app ("Serotine Debug", amber
@@ -350,8 +355,7 @@ jobs:
           **Desktop Linux (`Serotine-v<version>-<arch>.deb`)** — install with
           `sudo apt install ./Serotine-v<version>-<arch>.deb`.
 
-          **Desktop Windows (`Serotine-v<version>-x64.msi`)** — unsigned; per-user install, no
-          administrator rights needed. SmartScreen warns on the first run.
+          **Desktop Windows** — not in this release: the embedded engine has no Windows build yet.
           NOTES
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \

@@ -5,12 +5,15 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.balanceText
+import eth.serotine.ui.components.ensNameNote
 import eth.serotine.ui.components.lastKnownNote
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.valuationText
@@ -112,7 +115,9 @@ sealed interface AccountsUiState {
  * currency, or why it has none ("No price"; null while the balance is not verified). For a
  * Safe, [signers] is its verified threshold of its owners ("2/3"; null until verified), and
  * [kindNote] what the row says of its kind ("Safe", or "Not a recognised Safe" once its
- * address no longer verifies as one); null for any other account.
+ * address no longer verifies as one); null for any other account. [label] is the account's
+ * name, or its short address once the ENS name its name follows no longer points to it, which
+ * [nameNote] then says.
  */
 data class AccountItem(
     val label: String,
@@ -125,6 +130,7 @@ data class AccountItem(
     val value: String? = null,
     val signers: String? = null,
     val kindNote: String? = null,
+    val nameNote: String? = null,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -149,7 +155,8 @@ data class AccountItem(
          * balance's [value] with the currency it is in (null before it is valued); for a Safe,
          * its verified [safe] reading. [address] is its EIP-55 form, which a caller that
          * re-renders the row per balance computes once; [formatTime] dates a balance last
-         * verified (unix seconds).
+         * verified (unix seconds); [ensName] is the latest check of the ENS name its name
+         * follows, if it follows one (null: none yet).
          */
         fun from(
             account: Account,
@@ -159,8 +166,9 @@ data class AccountItem(
             value: Pair<Valuation?, DisplayCurrency>? = null,
             safe: SafeReading? = null,
             formatTime: (Long) -> String = ::formatDateTime,
+            ensName: EnsNameCheck? = null,
         ): AccountItem = AccountItem(
-            label = account.label,
+            label = accountName(account, address, ensName),
             address = address,
             kind = account.kind,
             // A Safe's control is its verified owners'; until they are read, no more than watch-only.
@@ -177,6 +185,7 @@ data class AccountItem(
                 safe == SafeReading.NotASafe -> "Not a recognised Safe"
                 else -> "Safe"
             },
+            nameNote = ensNameNote(account, ensName),
         )
     }
 }

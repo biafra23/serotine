@@ -1,0 +1,39 @@
+# The libsodium functions the iOS key envelope calls (EnvelopeCrypto.ios.kt), declared here
+# rather than taken from the libsodium bindings' own cinterop, for two reasons:
+# - The bindings publish their cinterop per target only (iosArm64, iosSimulatorArm64), with no
+#   commonized iosMain metadata, so the shared iosMain cannot see their `libsodium` package:
+#   `:data:compileIosMainKotlinMetadata`, part of `./gradlew build` on macOS, fails on it. This
+#   project's own cinterop is commonized (kotlin.mpp.enableCInteropCommonization).
+# - crypto_pwhash takes the password as bytes. The bindings' declaration takes `const char *`,
+#   which Kotlin/Native turns into a String parameter: the password would have to become a
+#   String the app cannot zero, and bytes that are not UTF-8 would not reach libsodium as they
+#   are.
+# Apart from that passwd type (the ABI is the same: a pointer), the declarations are libsodium's
+# own (sodium.h of the bindings' libsodium.a, 1.0.19), and the symbols are the ones in that
+# libsodium.a, linked from the bindings' klib.
+package = eth.serotine.data.keys.sodium
+---
+#include <stddef.h>
+
+int sodium_init(void);
+
+int crypto_pwhash_alg_argon2id13(void);
+
+int crypto_pwhash(unsigned char * const out, unsigned long long outlen,
+                  const unsigned char * const passwd, unsigned long long passwdlen,
+                  const unsigned char * const salt, unsigned long long opslimit,
+                  size_t memlimit, int alg);
+
+int crypto_aead_aes256gcm_is_available(void);
+
+int crypto_aead_aes256gcm_encrypt(unsigned char *c, unsigned long long *clen_p,
+                                  const unsigned char *m, unsigned long long mlen,
+                                  const unsigned char *ad, unsigned long long adlen,
+                                  const unsigned char *nsec, const unsigned char *npub,
+                                  const unsigned char *k);
+
+int crypto_aead_aes256gcm_decrypt(unsigned char *m, unsigned long long *mlen_p,
+                                  unsigned char *nsec,
+                                  const unsigned char *c, unsigned long long clen,
+                                  const unsigned char *ad, unsigned long long adlen,
+                                  const unsigned char *npub, const unsigned char *k);

@@ -27,14 +27,15 @@ class ObserveUpgradeWarningTest {
 
     @Test
     fun nothingReportedOrRecordedIsNoWarning() = runTest {
-        lightClient.status.value = LightClientStatus.Synced(100, null)
+        lightClient.status.value = LightClientStatus.Synced(100, null, finalized = null)
         assertEquals(UpgradeWarning.None, observe(beforeIt).first())
     }
 
     @Test
     fun anUpgradeAheadIsAheadWhateverTheLightClientDoes() = runTest {
         upgrades.report.value = glamsterdam
-        for (status in listOf(LightClientStatus.Synced(100, null), LightClientStatus.CatchingUp(1, 4))) {
+        val statuses = listOf(LightClientStatus.Synced(100, null, finalized = null), LightClientStatus.CatchingUp(1, 4))
+        for (status in statuses) {
             lightClient.status.value = status
             assertEquals(UpgradeWarning.Ahead(glamsterdam), observe(beforeIt).first())
         }
@@ -44,7 +45,7 @@ class ObserveUpgradeWarningTest {
     fun peersAloneNeverMakeTheAppClaimItStoppedVerifying() = runTest {
         upgrades.report.value = activated
         val verifying = listOf(
-            LightClientStatus.Synced(100, null),
+            LightClientStatus.Synced(100, null, finalized = null),
             LightClientStatus.WaitingForProofPeers(100, null),
             // Networking off on purpose, and no light client at all, say nothing either way.
             LightClientStatus.Sleeping,
@@ -82,7 +83,7 @@ class ObserveUpgradeWarningTest {
 
         // A light client that verifies fresh heads after it, with no peer reporting it: this
         // version follows the network, and the record alone says nothing.
-        lightClient.status.value = LightClientStatus.Synced(100, null)
+        lightClient.status.value = LightClientStatus.Synced(100, null, finalized = null)
         assertEquals(UpgradeWarning.None, observe(afterIt).first())
     }
 
@@ -96,7 +97,7 @@ class ObserveUpgradeWarningTest {
         assertEquals(UpgradeWarning.Ahead(glamsterdam), observe(beforeIt).first())
         assertEquals(UpgradeWarning.Activated(glamsterdam), observe(afterIt).first())
 
-        lightClient.status.value = LightClientStatus.Synced(100, null)
+        lightClient.status.value = LightClientStatus.Synced(100, null, finalized = null)
         assertEquals(UpgradeWarning.None, observe(afterIt).first())
     }
 

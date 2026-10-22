@@ -1,6 +1,8 @@
 package eth.serotine.ios
 
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.cow.FileCowOrders
+import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
@@ -8,10 +10,13 @@ import eth.serotine.data.keys.IosBiometricKey
 import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.iosHardwareSecret
+import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -19,12 +24,14 @@ import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -41,6 +48,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSLog
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSProcessInfo
@@ -94,16 +102,33 @@ class SerotineWallet {
     private val keys = "$dataDir/keys"
     private val hardware = iosHardwareSecret(keys)
 
+    /** The Debug tab's log: in memory for the life of the process, never in a file. */
+    private val debugLog = MemoryDebugLog()
+
+    /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
+    private val debugScreen = FileDebugScreen("$dataDir/debug-screen.json")
+
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background;
     // its state can be fetched again, so it stays out of backups. The balances last verified are
-    // kept beside it, to be shown as such after a restart. The adapters' diagnostics go to the
-    // console in a debug build only.
+    // kept beside it, to be shown as such after a restart. The adapters' diagnostics and the
+    // engine's own log go to the device's log in a debug build only: NSLog, not println, whose
+    // stdout reaches no one on a device unless Xcode launched the app. Each request asked of the
+    // engine goes to the Debug tab's log ([debugLog]), in memory, in any build.
     @OptIn(ExperimentalNativeApi::class)
     private val node: MyotisNode = run {
         val engineDir = "$dataDir/myotis"
         createDirectoryOutOfBackups(engineDir)
-        val debugLog: ((String) -> Unit)? = if (Platform.isDebugBinary) { line -> println(line) } else null
-        MyotisNode.start(Network.SEPOLIA, engineDir, lastBalances = "$dataDir/last-balances.json", debugLog = debugLog)
+        // The line is NSLog's format, its `%` escaped, so nothing crosses NSLog's C varargs: with
+        // NSLog("%@", line) the debug app died at launch on the simulator (#129's CI).
+        val debugLog: ((String) -> Unit)? =
+            if (Platform.isDebugBinary) { line -> NSLog(line.replace("%", "%%")) } else null
+        MyotisNode.start(
+            Network.SEPOLIA,
+            engineDir,
+            lastBalances = "$dataDir/last-balances.json",
+            debugLog = debugLog,
+            apiLog = this.debugLog,
+        )
     }
 
     // One record per process, read by the screens and written by the notices; this version's only.
@@ -120,6 +145,9 @@ class SerotineWallet {
     // of them kept for good with how it ended (issue #85): each record goes into both.
     private val sentRecord = FileSentTransfers("$dataDir/sent-transfers.json")
     private val transactionHistory = FileTransactionHistory("$dataDir/transaction-history.json")
+
+    /** The CoW orders signed here, each live until its end is proven (docs/swaps.md): public data only. */
+    private val cowOrders = FileCowOrders("$dataDir/cow-orders.json")
     private val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
 
     internal val graph: AppGraph = run {
@@ -168,7 +196,17 @@ class SerotineWallet {
             safeReleases = PinnedSafeReleases(),
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
+            // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
+            // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*). Until
+            // Myotis's iOS module reads a block by number, no finalized block's own time is known here,
+            // so no CoW order is offered on iOS (docs/swaps.md, *Proving an order's end*).
+            cowChain = node.cow,
+            cowApi = HttpCowApi.create(),
+            cowOrders = cowOrders,
+            swapVenue = FileSwapVenue("$dataDir/swap-venue.json"),
             network = Network.SEPOLIA,
+            debugLog = debugLog,
+            debugScreen = debugScreen,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
             screenCaptureDebugSwitch = null,
         )
@@ -190,6 +228,8 @@ class SerotineWallet {
     init {
         // At launch the app is in the foreground: the work starts with the wallet.
         startForegroundWork()
+        // The debug log records while the Debug tab is on, for the life of the process.
+        scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
             keepAwakeUntil("pause the engine", node.pause())
@@ -273,6 +313,12 @@ class SerotineWallet {
                         node.logIndex,
                         Network.SEPOLIA,
                     )()
+                }
+            },
+            scope.launch {
+                // Each CoW order's end is proven from the accounts' log-index entries (docs/swaps.md).
+                reportingFailure("proving the CoW orders' ends") {
+                    ProveCowOrderEnds(cowOrders, node.logIndex, node.lightClient, accounts)()
                 }
             },
         )

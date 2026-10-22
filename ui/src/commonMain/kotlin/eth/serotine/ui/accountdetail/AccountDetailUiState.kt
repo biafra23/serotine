@@ -3,6 +3,7 @@ package eth.serotine.ui.accountdetail
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.ui.accounts.sendBlockedReason
 import eth.serotine.ui.accounts.swapBlockedReason
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 
 /** Everything the account detail screen renders (docs/wallet-ux.md, screen 4). */
@@ -16,13 +17,19 @@ sealed interface AccountDetailUiState {
      * ([control]); its [total] in the display currency ("$3,250.00", or "Checking…") and what
      * the total leaves out ([totalNote]: "Testnet prices · 1 asset without a price"); its
      * [assets] — the native currency and every known token it holds — in the [sort] order;
+     * [pendingAssets], how many tokens' balances are not read at all yet, each drawn as a ghost
+     * row after the [assets] until it is (a row then, or none for a token not held);
      * [tokensNote], what is not known yet about the other tokens ("Checking 3 tokens"), or
      * null; [pricesNote], where the prices come from; and [message], how hiding a token
      * went, until it is said. A Safe's [safe] is what its verified storage says and its [queue]
      * the transactions waiting for its owners on this device (both null for any other account);
-     * the screen shows its Assets, its Owners or its Queue ([segment]), [kindNote] says what it is
+     * the screen shows one of its [segments] ([segment]): its Assets, its Activity, and a Safe's
+     * Owners or Queue. [kindNote] says what it is
      * ("Safe", or "Not a recognised Safe" once its address no longer verifies as one) and
-     * [threshold] its verified threshold of its owners ("2/3"), for its blockie.
+     * [threshold] its verified threshold of its owners ("2/3"), for its blockie. [label] is the
+     * account's name, or its short address once the ENS name its name follows no longer points
+     * to it, which [nameNote] then says. [activity] is what its Activity tab lists while that tab
+     * is shown, and Loading on any other.
      */
     data class Ready(
         val label: String,
@@ -32,6 +39,7 @@ sealed interface AccountDetailUiState {
         val total: String,
         val totalNote: String?,
         val assets: List<AssetRow> = emptyList(),
+        val pendingAssets: Int = 0,
         val sort: AssetSort = AssetSort.VALUE,
         val tokensNote: String? = null,
         val pricesNote: String? = null,
@@ -41,7 +49,13 @@ sealed interface AccountDetailUiState {
         val kindNote: String? = null,
         val threshold: String? = null,
         val queue: SafeQueue? = null,
+        val nameNote: String? = null,
+        val activity: ActivityUiState = ActivityUiState.Loading,
     ) : AccountDetailUiState {
+
+        /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
+        val segments: List<DetailSegment>
+            get() = if (safe != null) DetailSegment.entries else listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY)
 
         /**
          * Whether Send can be done: for an account whose key is held here, and for a Safe with
@@ -67,6 +81,18 @@ sealed interface AccountDetailUiState {
         /** Why Swap cannot be done from this account, and how to get there; null when it can. */
         val swapReason: String?
             get() = swapBlockedReason(kind, control)
+
+        /**
+         * Whether the screen shows the [assets]: on the Assets [segment], and on a Safe's Owners or
+         * Queue one only for an account that has none. The top bar's menu offers the other [sort] order while it does.
+         */
+        val showsAssets: Boolean
+            get() = when (segment) {
+                DetailSegment.ASSETS -> true
+                DetailSegment.ACTIVITY -> false
+                DetailSegment.OWNERS -> safe == null
+                DetailSegment.QUEUE -> queue == null
+            }
     }
 
     /** The account is not in the wallet (removed): the screen leaves. */
@@ -76,10 +102,16 @@ sealed interface AccountDetailUiState {
     data class Unavailable(val message: String) : AccountDetailUiState
 }
 
-/** What a Safe's detail shows (docs/wallet-ux.md, screen 16: Assets | Owners | Queue). */
+/**
+ * What an account's detail shows, in the order of its tabs (docs/wallet-ux.md, screens 4 and 16:
+ * Assets | Activity, and a Safe's Owners | Queue).
+ */
 enum class DetailSegment {
-    /** Its assets, as any account's. */
+    /** Its assets. */
     ASSETS,
+
+    /** Its Activity (docs/wallet-ux.md, screen 25). */
+    ACTIVITY,
 
     /** Its owners, threshold, modules and guard. */
     OWNERS,
@@ -159,7 +191,7 @@ sealed interface SafeDetails {
  */
 data class OwnerRow(val address: String, val label: String?, val heldHere: Boolean)
 
-/** How the asset rows are ordered (docs/wallet-ux.md, screen 4: Sort: Value | Name). */
+/** How the asset rows are ordered (docs/wallet-ux.md, screen 4: Sort by value / by name). */
 enum class AssetSort {
     /** Highest value first; the assets without a price follow the priced ones, by name. */
     VALUE,

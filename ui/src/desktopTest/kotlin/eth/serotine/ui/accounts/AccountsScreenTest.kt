@@ -109,6 +109,14 @@ class AccountsScreenTest {
     }
 
     @Test
+    fun anEnsNameThatNoLongerPointsToTheAccountIsSaidUnderItsRow() {
+        val note = "ENS name “savings.eth” no longer points to this address"
+        show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily, savings.copy(nameNote = note))))
+
+        rule.onNodeWithText(note).assertIsDisplayed()
+    }
+
+    @Test
     fun aTapOpensTheAccount() {
         show(AccountsUiState.Ready("Sepolia", syncing, listOf(daily)))
 

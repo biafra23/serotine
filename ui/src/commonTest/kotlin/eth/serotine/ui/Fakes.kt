@@ -45,7 +45,9 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
     }
 
     override suspend fun rename(address: Address, label: String): AccountChange =
-        change(address) { list -> list.map { if (it.address == address) it.copy(label = label) else it } }
+        change(address) { list ->
+            list.map { if (it.address == address) it.copy(label = label, ensName = null) else it }
+        }
 
     override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
         change(address) { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }

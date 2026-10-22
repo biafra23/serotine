@@ -28,11 +28,12 @@ kotlin {
         }
     }
     jvm("desktop")
-    // The iOS envelope's own declaration of libsodium's crypto_pwhash, which takes the
-    // password as bytes (src/nativeInterop/cinterop/sodiumPwhash.def says why).
+    // The iOS envelope's own declarations of the libsodium functions it calls: commonized, so
+    // the shared iosMain sees them, and crypto_pwhash taking the password as bytes
+    // (src/nativeInterop/cinterop/sodium.def says why).
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-        target.compilations.getByName("main").cinterops.create("sodiumPwhash") {
-            definitionFile.set(project.file("src/nativeInterop/cinterop/sodiumPwhash.def"))
+        target.compilations.getByName("main").cinterops.create("sodium") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/sodium.def"))
         }
     }
 
@@ -50,10 +51,13 @@ kotlin {
             implementation(libs.kotlincrypto.sha2)
             implementation(libs.kotlincrypto.sha3)
             implementation(libs.kotlincrypto.hmac.sha2)
+            // CoW Protocol's order API (eth.serotine.data.cow); its engine comes per platform.
+            implementation(libs.ktor.client.core)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
         // libsecp256k1's JNI bindings, which secp256k1-kmp looks up by reflection at first
         // use: the Android one (.so files for the four Android ABIs) on Android, the JVM one
@@ -90,6 +94,10 @@ kotlin {
                 }
                 // JNA's API to compile against only (both pinned to 5.18.1).
                 compileOnly(libs.jna)
+                // Ktor's own engine for CoW's API, on Android and the desktop: no OkHttp, and no
+                // retry of a request behind the caller's back (docs/swaps.md, *A signed order is
+                // live until it is proven dead*).
+                implementation(libs.ktor.client.cio)
             }
         }
         androidMain.get().dependsOn(jvmSharedMain)
@@ -114,9 +122,11 @@ kotlin {
         // the engine's static library inside each target's cinterop klib (iosMain's MyotisNode).
         iosMain.dependencies {
             implementation(libs.myotis.ios)
-            // The key envelope's libsodium (Argon2id, AES-256-GCM) through the bindings'
-            // cinterop, and its libsodium.a, which they link into the app.
+            // The key envelope's libsodium.a (Argon2id, AES-256-GCM), which the bindings' klib
+            // links into the app; the calls are declared in src/nativeInterop/cinterop/sodium.def.
             implementation(libs.libsodium.bindings)
+            // NSURLSession beneath CoW's API on iOS.
+            implementation(libs.ktor.client.darwin)
         }
         // The envelope's tests, which need its primitives (EnvelopeCrypto) and so run where
         // those are: the desktop and the iOS simulator. Android's unit tests run on the build
@@ -154,5 +164,12 @@ providers.gradleProperty("myotisLibraryDir").orNull?.let { dir ->
     tasks.matching { it.name == "desktopTest" }.configureEach {
         (this as Test).systemProperty("java.library.path", dir)
         systemProperty("serotine.myotisLibraryDir", dir)
+    }
+}
+// CowApiSepoliaTest asks CoW Protocol's real order API on Sepolia (api.cow.fi), so it needs the
+// network and runs only with -PcowApiNetwork; without it, it is skipped.
+if (providers.gradleProperty("cowApiNetwork").isPresent) {
+    tasks.matching { it.name == "desktopTest" }.configureEach {
+        (this as Test).systemProperty("serotine.cowApiNetwork", "true")
     }
 }

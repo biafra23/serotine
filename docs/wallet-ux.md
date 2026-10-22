@@ -33,12 +33,12 @@ the text wins.
 - **The light client's state is in sight wherever it decides something**
   (owner's request, 2026-10-20). Every screen whose content or actions
   depend on what the light client can verify draws its status strip (as on
-  Accounts, 1) under the top bar: Account detail and Safe detail (4, 16),
-  Send and its status (7 to 9), Swap (docs/swaps.md), Watch address (10),
-  Create Safe (13 to 15), a Safe's transaction (17) and its proposal, swap
-  and import, Activity (25), and the token list Settings opens and Add
-  token (18, 20). A screen that needs nothing verified draws none:
-  Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
+  Accounts, 1) under the top bar: Account detail and Safe detail (4,
+  16), their Activity tab (25) included, Send and its status (7 to 9),
+  Swap (docs/swaps.md), Watch address (10), Create Safe (13 to 15), a
+  Safe's transaction (17) and its proposal, swap and import, and the
+  token list Settings opens and Add token (18, 20). A screen that needs
+  nothing verified draws none: Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
   Security (21) and Display currency (19). Settings itself (18) keeps its
   own Light client row instead of the strip.
 - **A balance last verified is shown as such** (owner's request,
@@ -109,6 +109,16 @@ the text wins.
   (the unlock, Security, Create account, Import mnemonic), whose Done
   predates this rule, submit without reading the button's state or
   closing the keyboard, their ViewModels refusing what is not ready.
+- **Rows on their way hold their room** (owner's request, 2026-10-22). A
+  list whose rows arrive after the screen is drawn does not push what is
+  below it down as they come: grey ghost rows in the shape and height of its
+  rows (`components/Ghost.kt`) stand in until they are read. Where the
+  number of rows is known first, there is a ghost per row: the Assets tab's
+  one per token whose balance is not read at all yet (4), which its row
+  takes over, or gives up at the bottom when the token is not held. Where
+  it is not (Activity, 25; a Safe's Owners and Queue, 16; a Safe
+  transaction's owners, 17), three ghosts stand in for the rows, and screen
+  readers hear what is being read ("Reading the Safe's storage").
 - **Long press is never the only way.** A long press (a right click on
   desktop) opens an item's menu; every action in it is also reachable from a
   visible control (the detail screen's buttons), and the menu has an
@@ -120,7 +130,9 @@ The bottom bar is **Accounts | Settings**: a `NavigationBar`, and a
 `NavigationRail` on a wide desktop window. Each tab is a nested graph of the
 one `NavHost`, and switching tabs keeps the user's place: Settings opens over
 the Accounts tab's stack and closes back to it, with nothing saved aside (owner
-ruling, 2026-10-18, #49, for now; docs/architecture.md). The light
+ruling, 2026-10-18, #49, for now; docs/architecture.md). A third tab, Debug
+(27), joins them while the user has it turned on in Settings, and opens over
+the Accounts tab's stack in Settings' place. The light
 client's status strip stays at the top of Accounts, and of every other screen
 whose content or actions depend on it (*Rules every screen follows*). A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
@@ -179,16 +191,23 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send, Swap, Receive and Activity buttons (Send greyed out as in 3;
+   - Send, Swap and Receive buttons, in one line whose width they share,
+     on a phone as narrow as an iPhone mini's too (Send greyed out as in 3;
      Swap, 22, greyed out, a tap saying why, when watch-only; on a Safe,
      Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
-     swap*; Activity opens 25).
-   - Sort: Value | Name. Under Value, assets without a price follow the
-     priced ones, by name; a stale price sorts by the value it shows.
+     swap*).
+   - The tabs Assets | Activity: Assets is what follows, Activity is 25,
+     drawn in the tab, read only while the tab is shown.
+   - Sorted by value, highest first: assets without a price follow the
+     priced ones, by name; a stale price sorts by the value it shows. The
+     top bar's menu sorts by name instead ("Sort by name", then "Sort by
+     value" back), offered while the asset rows are shown.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
      tap opens Send (7) with the asset chosen; where Send cannot be done
      (as in 3) the row is drawn as ever and the tap says why, as the
-     greyed-out Send button does. A long press opens 5.
+     greyed-out Send button does. A long press opens 5. A token whose
+     balance is not read at all yet holds a ghost row's place after the
+     rows (*Rows on their way hold their room*).
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
@@ -290,9 +309,18 @@ upgrades*).
       and the finalized block it was resolved at, whatever the card says; a
       name that could not be verified offers Try again. At Add the name is resolved again: what is
       watched is the address it has then, and one that moved, or cannot be
-      verified again, is said and nothing is added. The account's name is
-      not filled from the ENS name (that waits for primary names, #67). The
-      zero address is refused: nobody holds its key.
+      verified again, is said and nothing is added. An account added by a
+      name and given none of the user's is named by it, and its name follows
+      that ENS name (`Account.ensName`, issue #67) until the user renames it:
+      the name field says so and shows the name. Wherever the name is shown
+      (Accounts rows, the account's header) it is resolved again, at once and
+      every 10 minutes (every 30 s until a first verified answer,
+      `ObserveEnsNames`); once a verified answer says it no longer points to
+      the account, or that it can no longer be verified to (its resolver
+      answers only off-chain), the row and header show the short address and
+      say why. A name with no verified answer right now stands as last
+      verified. Primary names (the reverse record, any account) are still to
+      come in #67. The zero address is refused: nobody holds its key.
 11. **Import recovery phrase**: today's seed screen, with the account's name,
     the wallet password (on the first key) and the biometric opt-in (still to
     come; until then it is turned on in Security, 21).
@@ -383,9 +411,10 @@ upgrades*).
       `DEPLOYMENT_LIFETIME_SECONDS`, a week), so leaving the status screen,
       or the app, loses nothing; and a Safe once listed and then removed by
       the user is not listed again.
-16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
-    owners are shown with blockies, a "this device" mark on the ones held
-    here, and the threshold; the modules and guard follow them.
+16. **Safe detail**: as 4, with the tabs Assets | Activity | Owners |
+    Queue (n). The owners are shown with blockies, a "this device" mark
+    on the ones held here, and the threshold; the modules and guard
+    follow them.
     - Queue lists this device's pending transactions in nonce order, from
       the Safe's verified nonce on: one whose nonce the Safe has passed is
       gone (`ObserveSafeTxQueue`), and the file drops it at the next
@@ -559,7 +588,9 @@ upgrades*).
       signatures change and when the screen is shown again. That reading
       checks the Safe as a one-shot check does: a reading that could not be
       verified this time is waited out for the next one, for up to 45 s, the
-      rows saying "Reading the owners and their approvals…" meanwhile.
+      ghost rows standing in for them meanwhile (*Rows on their way hold
+      their room*), said to screen readers as "Reading the owners and their
+      approvals".
     - Share request opens the request's text (`EncodeSigningRequest`) as one
       QR code when it fits one (else it says to share the text), with Copy
       text and, where the platform has a share sheet, Share. It is offered
@@ -605,7 +636,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
 
 25. **Activity**: the transactions this device sent for an account, its
     token transfers and, for a Safe, its own events on chain, newest first,
-    under the Accounts tab like the account it is of (`activity/{address}`).
+    in the Activity tab of the account's detail (4, 16).
     - First, what the list covers: transactions sent from this device, and
       on chain from the block its history starts at on (when it was
       deployed from this device, or added here: "since added", owner ruling
@@ -621,16 +652,23 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       saw it: in its block or finalized there, reverted, no block seen yet,
       no peer confirmed its broadcast, or mined while the app was not
       watching unless another transaction took its nonce. A tap opens its
-      status (9).
+      detail (26), and from there its status (9).
     - A Safe's Activity lists the approvals and executions of its
       transactions and its deployment, whichever account here sent them
       ("Executed transaction 4", "By Alice · …").
+    - The CoW orders an account signed here (docs/swaps.md) sit among its
+      transactions: "CoW order: 40 USDC for at least 0.0159 ETH" on top
+      while it may fill, then as the chain proves it, at the block of its
+      fill or cancellation ("Swapped 40 USDC for 0.0161 ETH on CoW", "CoW
+      order cancelled"), or where it was signed when it never filled ("CoW
+      order not filled"). A fill's transfer of what it sold is not listed
+      again. A tap opens the order's status, not 26.
     - And its events on chain, from the engine's verified log index
       (`ObserveSafeHistory`): ETH received ("Received 0.5 ETH", "From Bob ·
       …"), executions and failed ones, approvals, its set-up, owner,
       threshold, module, guard and fallback-handler changes, a module's
       transactions and messages signed. Each sits among the sent
-      transactions by its block ("Block 9,415,302") and opens nothing yet;
+      transactions by its block ("Block 9,415,302") and opens its detail (26);
       one whose transaction is listed as sent from here, in a block, is left
       out when its row says the same (an execution, an approval, a
       deployment); a failure and a settings change are not. A module
@@ -649,8 +687,16 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       and not the other side, and is marked as unconfirmed. A transfer of
       nothing is left out: anyone can have a token log one from any address,
       which plants a look-alike address in a history. An added token whose
-      symbol is a built-in token's warns, as every screen does. By block like
-      the events, opening nothing yet; the transfer a row sent from here, in
+      symbol is a built-in token's warns, as every screen does. One received
+      from an address this wallet never sent to and that is none of its
+      accounts (`ObserveSentToAddresses`: the recipients of the transfers
+      and Safe transactions its accounts sent, approved or executed) is
+      cautioned, "From an address you have not sent to: compare every
+      character before you copy it" (owner's request on #136, 2026-10-21):
+      anyone can send a little from a look-alike of an address the user
+      uses, so that it is copied from the history later. ETH a Safe
+      received is cautioned alike. By block like
+      the events, opening its detail (26); the transfer a row sent from here, in
       a block, already says (its token, amount and recipient, or the amount
       sold in a swap) is that row alone.
     - Where the list comes from: every transaction a peer took (or maybe
@@ -665,6 +711,42 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       nonce is used, by this transaction or by one that took its place,
       which the device cannot tell apart. The status screen (9) reads the
       same history once the record has forgotten a transaction.
+26. **Activity detail**: one row of 25 in full, under the Accounts tab like
+    its list (`activity/{address}/tx/{hash}`, `?log=` the log index for an
+    event). Its row's headline and status first, then every party it
+    concerns, each address in full (EIP-55, its blockie, the wallet's name
+    for it) and every hash (the transaction's, a Safe transaction's, a
+    message's), each selectable and with Copy, then what it moved, its
+    nonce, when a peer took it and its block. Read from what 25 is read
+    from, so it says what the row says.
+    - A transaction sent from here: From, its other side by kind (To, the
+      token contract and the amount; the spender and the allowance; the
+      router and both tokens of a swap; the Safe, its nonce, the Safe
+      transaction's hash and whom it calls; a deployment's Safe, owners,
+      threshold and version), and Status, which opens 9 (Try again is
+      there).
+    - A token's transfer the wallet shows: From, To, the amount or the
+      token id, and the contract. One of a contract it does not show names
+      the contract alone, as its row does, and says why: such a contract can
+      log any transfer between any addresses, and an address copied from it
+      could be a look-alike planted for the user. An ERC-20 one the wallet
+      does not list has Add token, which opens 20 under the Accounts tab
+      with the contract filled in and read; its claim is shown before it is
+      added, as from Settings, and once added the detail says what moved.
+      An ERC-721 one, a hidden token or a built-in one its contract
+      contradicts has none (the wallet adds ERC-20 tokens, and lists the
+      others already).
+    - A Safe's event: what it names (the sender of ETH received, an owner,
+      a module, a guard, a handler, the hashes), and the Safe.
+    - A transfer whose row is cautioned about its sender says why beside
+      its fields: the sender is none of the user's accounts and was never
+      sent to from this device, and a look-alike is compared in full before
+      anything is sent to it.
+    - One no longer there (a reorganisation replaced its block, once every
+      block from the history's start is checked again) says so; while the
+      blocks it is in are still being checked, or its history cannot be
+      read yet, it is loading (the strip says why the light client is not
+      answering). A transfer of nothing is not detailed, as it is not listed.
 
 ### Settings tab
 
@@ -672,7 +754,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
     for now) · Light client (status) · Debug build (the debug Android app
     only: *Allow screen recording*, rule 8 of docs/keys-and-signing.md) ·
-    About. Tokens opens the list of every token the
+    Developer (*Debug tab*, a switch in every build: 27; turning it off
+    empties the log) · About. Tokens opens the list of every token the
     wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
@@ -700,6 +783,23 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - After a change of the enrolled biometrics it reads "Stopped working",
       with the switch still on: turning it off deletes the invalidated key,
       and turning it on again makes a new one.
+
+### Debug tab
+
+27. **Debug**, shown while Settings' *Debug tab* switch is on (a file of its
+    own, `debug-screen.json`): a log of every request the app asks of the
+    Myotis engine, newest first. At INFO, each request's `io.myotis.api`
+    name, whether it was answered (ok) or not (failed), its time and how long
+    it took; at DEBUG, also what it asked and what came back, cut at 2,000
+    characters each. A filter keeps the lines that contain the text typed,
+    and the trash icon empties the log. The log records only while the
+    switch is on, and is kept in memory only, the last 2,000 records, never
+    written to a file and never sent anywhere; it starts at INFO with each
+    launch, and a lower level shows more from then on, never what went
+    unrecorded before. What it holds is public chain data
+    and the app's own requests (addresses, calls, signed transactions), never
+    a key, a password or a recovery phrase. More logs are to join it under
+    sources of their own.
 
 ## Prices
 
@@ -755,17 +855,77 @@ read through the light client. Applied:
   contract says; it does not make the oracle right. That is the reason a
   price never becomes a signed amount.
 
+## Home-screen widget
+
+An Android home-screen widget with one exchange rate: the network's native
+currency in the display currency (screen 19), in USD where that is ETH
+itself, or none is chosen, or the network does not offer the one stored (as
+the screens have it) — "ETH · EUR", "€2,046.20" — with its change over
+the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
+"24h 0.00%" when it rounds to no move, and a line that dates it: "Verified
+Oct 21, 2:05 PM · may have changed since · testnet prices". A tap on the
+refresh button reads it now (below); a tap anywhere else opens the app. The desktop has no
+home screen, and iOS's widget (a WidgetKit extension) is still to come.
+
+- **Only verified rates, dated.** The rate is the price the screens show
+  (*Prices*, above), every check included; the change is the same path read
+  from each feed's own round history, a day back by the head's own time:
+  `getRoundData` calls of the feed's proxy at the verified head, never a
+  call at a past block and never a rate the device kept, so both ends of the
+  change are what the light client proved. A day back with no verified,
+  fresh round on the path (a stale or unproven feed, an aggregator that took
+  over since) shows "24h —", never a change against something else. The
+  widget shows the last rate read, from a file of its own
+  (`last-exchange-rate.json`: a price and its times, public data only), with
+  the date and time it was verified and marked as possibly changed since,
+  as the one older answer CLAUDE.md's *Trust* allows is (a balance; a kept
+  rate is not on that list, so this is for the owner to rule on); a stale
+  one says how old its price was ("price 2 h old"), and none read yet says
+  "No verified rate yet". It is a price like any other: shown, never
+  signed.
+- **Sparing the battery and metered data.** Drawing the widget never starts
+  the light client, and the widget never wakes the device on a timer of its
+  own (`updatePeriodMillis` 0). While the app is closed, a JobScheduler job
+  refreshes it about every three hours, and only while a widget is placed,
+  on an unmetered network and a battery that is not low, so the system
+  batches it and holds it back in Doze and Data Saver; it wakes the engine
+  for that read alone (none of the app's other background work), gives the
+  light client four minutes, and lets it sleep again. Placing a widget asks
+  for one such run at once. While the app is open, whose light client runs
+  anyway, the rate is read again when it is half an hour old or the display
+  currency changes: the rate now is the screens' own reading, and the day
+  back is a handful of calls. The search for a day back's round starts at as
+  many rounds back as heartbeats fit, so an hourly feed takes two calls, and
+  the rounds read are kept in memory (a round, once written, never changes),
+  so a search soon after reads few or none again.
+- **Refresh now.** A small button beside the 24-hour change (the rate below
+  keeps the whole width; on a narrow widget the pair gives way first, then
+  the change, and the button stays) reads it at once, on any network, metered
+  included, since the user asked for it: one job, expedited
+  where Android offers that (12 and later) and its quota allows, waking the
+  engine for that read alone as the background refresh does, and joining a
+  background read already under way rather than making a second. A spinner
+  stands in the button's place until it ends. Without a network that reaches
+  the internet (a captive portal included) it says so and reads nothing; a
+  refresh Android has not started within two minutes is given up and said
+  so; a read that gets no verified rate says so too and leaves the last one
+  shown. A second tap while one is on its way adds nothing.
+
 ## Tokens
 
 The ruling (CLAUDE.md, *Data sources*, 2026-10-16): a built-in list, more by
 address. Applied:
 
 - **A built-in entry** is its address, symbol, name, decimals, icon key and
-  price id, keyed by network. On Sepolia the list is USDC, LINK and UNI: the
-  issuers' own test deployments of tokens with an icon in the CC0 set (the
-  owner's choice, 2026-10-17). EURC, WETH and PYUSD have no CC0 icon, and
-  Aave's faucet tokens (DAI, USDT, WBTC, AAVE) are not their issuers', so all
-  of them are added by address. It is checked twice against the contract's
+  price id, keyed by network. On Sepolia the list is the issuers' own test
+  deployments, USDC and EURC (Circle), PYUSD (Paxos), LINK and UNI, with WETH9
+  (the WETH of Uniswap's list and of the swaps), and the tokens of Aave v3's
+  Sepolia market: Aave's own GHO and its faucet tokens DAI, USDT, WBTC and
+  AAVE, which anyone can mint and so have no price (the owner's choices,
+  2026-10-17 and 2026-10-22). WETH has ether's price, one ether being locked
+  in WETH9 for each. Uniswap's own list names only UNI and WETH on Sepolia,
+  and its pools there hold look-alikes of most other symbols, so the list is
+  not taken from them. It is checked twice against the contract's
   `symbol()` and `decimals()`: by the PR that adds it, which shows the values
   read, and by the app with verified calls each time it runs. (That reading
   of the ruling's "when it is listed" as two checks is the owner's to
@@ -773,11 +933,13 @@ address. Applied:
   contract contradicts, or whose contract does not answer as a token, is not
   shown, and Settings → Tokens says why. While the check has no verified
   answer yet the entry is shown: its balance is a verified call of its own.
-- **Icons are bundled** as Compose `ImageVector`s, converted from the SVGs of
-  the CC0 `cryptocurrency-icons` set at a pinned commit, with their provenance
-  and licence stated (`TokenIcons`); the built-in list keeps to tokens that set
-  has an icon for. A token the user adds gets a monogram of its symbol. Nothing is
-  fetched to draw a token.
+- **Icons are bundled** as Compose `ImageVector`s, converted from SVGs at a
+  pinned commit, with their provenance and licence stated (`TokenIcons`): the
+  CC0 `cryptocurrency-icons` set, and for EURC, PYUSD and GHO, which it lacks,
+  the MIT-licensed `web3icons` drawings of their issuers' logos (the owner's
+  choice, 2026-10-22). WETH is the CC0 ether glyph on a colour of its own.
+  Every built-in token has one. A token the user adds gets a monogram of its
+  symbol. Nothing is fetched to draw a token.
 - **A token the user adds** is read from its contract (`symbol()`, `name()`,
   `decimals()`, verified) and labelled as the contract's claim, with the block
   it was read at, cut on screen beyond 24 characters of symbol or 48 of name.
@@ -798,8 +960,9 @@ address. Applied:
   hidden; an added one can also be removed.
 - **Balances are verified `balanceOf` calls**, one per token and account,
   each labelled with the block it ran against. A call that reverts, or returns
-  anything but one word, is a verified "not a token", not a zero. With a short
-  list that is enough. Once the list grows, the calls are batched through
+  anything but one word, is a verified "not a token", not a zero. The list has
+  eleven entries on Sepolia and is still read a call at a time; batching the
+  calls is the next step, through
   Multicall3's `aggregate3`. Its code hash on Sepolia is
   `0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891`,
   proven 2026-10-17, and is pinned before any batch trusts it.
@@ -925,7 +1088,8 @@ Still the owner's decisions (CLAUDE.md, docs/keys-and-signing.md and issue
 - which recovery modules come (none is pinned, so none is offered when a
   Safe is created, screen 14), and how: still open (issues #54, #72);
 - the dApp connection protocol;
-- any network other than Sepolia.
+- any network other than Sepolia (Ethereum and Gnosis Chain are planned in
+  docs/networks.md, which waits on the owner's rulings).
 
 Swapping tokens has a page of its own, docs/swaps.md (issue #69). The swap
 screens there are numbered from 22.

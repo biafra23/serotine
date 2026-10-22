@@ -2,21 +2,28 @@ package eth.serotine.desktop
 
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.cow.FileCowOrders
+import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
+import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -24,12 +31,14 @@ import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
+import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -123,16 +132,21 @@ private fun openWallet(dataDir: File) {
     val hardware = desktopHardwareSecret(keys.path)
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
     // background; without its host library (useBundledEngineLibrary), balances say so. The adapters'
-    // diagnostics go to stderr only in a development run (`:desktop-app:run` sets the property;
-    // no installer does): the desktop's debug build.
+    // diagnostics and the engine's own log go to stderr only in a development run
+    // (`:desktop-app:run` sets the property; no installer does): the desktop's debug build.
     val debugLog: ((String) -> Unit)? =
         if (System.getProperty(DEBUG_LOG_PROPERTY) == "true") { line -> System.err.println(line) } else null
-    // The balances last verified are kept beside it, to be shown as such after a restart.
+    // The balances last verified are kept beside it, to be shown as such after a restart. Each
+    // request asked of the engine goes to the Debug tab's log, in memory, in any run, while the
+    // user has that tab turned on (debugScreen, followed below).
+    val apiLog = MemoryDebugLog()
+    val debugScreen = FileDebugScreen(dataDir.resolve("debug-screen.json").path)
     val node = MyotisNode.start(
         Network.SEPOLIA,
         dataDir.resolve("myotis"),
         lastBalances = dataDir.resolve("last-balances.json").path,
         debugLog = debugLog,
+        apiLog = apiLog,
     )
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
@@ -146,6 +160,8 @@ private fun openWallet(dataDir: File) {
     // of them kept for good with how it ended (issue #85): each record goes into both.
     val sentRecord = FileSentTransfers(dataDir.resolve("sent-transfers.json").path)
     val transactionHistory = FileTransactionHistory(dataDir.resolve("transaction-history.json").path)
+    // The CoW orders signed here, each live until its end is proven (docs/swaps.md): public data only.
+    val cowOrders = FileCowOrders(dataDir.resolve("cow-orders.json").path)
     val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
     application(exitProcessOnExit = false) {
         LaunchedEffect(Unit) {
@@ -157,6 +173,16 @@ private fun openWallet(dataDir: File) {
                 throw e
             } catch (e: Exception) {
                 System.err.println("Serotine: upgrade notices stopped: $e")
+            }
+        }
+        LaunchedEffect(Unit) {
+            // The debug log records while the Debug tab is on. A failure ends it, never the wallet.
+            try {
+                FollowDebugScreen(debugScreen, apiLog)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following the Debug tab's switch stopped: ${e::class.simpleName}")
             }
         }
         LaunchedEffect(Unit) {
@@ -205,6 +231,18 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following the accounts' logs stopped: ${e::class.simpleName}")
             }
         }
+        LaunchedEffect(Unit) {
+            // Each CoW order's end is proven from the accounts' log-index entries, while the app runs
+            // (docs/swaps.md, *Proving an order's end*), after the ended ones signed over a week ago are
+            // dropped. A failure ends it, never the wallet.
+            try {
+                ProveCowOrderEnds(cowOrders, node.logIndex, node.lightClient, accounts)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: proving the CoW orders' ends stopped: ${e::class.simpleName}")
+            }
+        }
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
@@ -243,7 +281,15 @@ private fun openWallet(dataDir: File) {
                 safeReleases = PinnedSafeReleases(),
                 // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
                 uniswap = node.uniswap,
+                // CoW Protocol: its pinned contracts proven by their code, and its order API, an
+                // off-chain service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
+                cowChain = node.cow,
+                cowApi = HttpCowApi.create(),
+                cowOrders = cowOrders,
+                swapVenue = FileSwapVenue(dataDir.resolve("swap-venue.json").path),
                 network = Network.SEPOLIA,
+                debugLog = apiLog,
+                debugScreen = debugScreen,
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.
                 screenCaptureDebugSwitch = null,
             )
@@ -251,6 +297,9 @@ private fun openWallet(dataDir: File) {
         Window(
             onCloseRequest = ::exitApplication,
             title = "Serotine",
+            // The title bar's and taskbar's icon; an installed app's dock and launcher icon is
+            // the installer's (iconFile, desktop-app/build.gradle.kts).
+            icon = remember { AppIcon.image?.let { BitmapPainter(it.toComposeImageBitmap()) } },
             state = rememberWindowState(width = 480.dp, height = 760.dp),
         ) {
             App(graph)

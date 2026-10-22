@@ -321,6 +321,10 @@ private fun AccountRow(account: AccountItem) {
         supportingContent = {
             Column {
                 Text(account.kindNote?.let { "${account.shortAddress} · $it" } ?: account.shortAddress)
+                // The ENS name the row was named by, which no longer points here: why it shows the address.
+                account.nameNote?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                }
                 // A balance last verified, not current: said under the row, where there is room.
                 account.balanceNote?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)

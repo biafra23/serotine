@@ -1,5 +1,15 @@
 package eth.serotine.ui.accountdetail
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -7,6 +17,9 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -15,10 +28,22 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
+import eth.serotine.ui.activity.ActivityKey
+import eth.serotine.ui.activity.ActivityRow
+import eth.serotine.ui.activity.ActivityState
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
+import eth.serotine.ui.components.GHOST_ROW_TAG
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
@@ -28,6 +53,7 @@ import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 /** Renders the stateless [AccountDetailScreen] headless for its states. */
 class AccountDetailScreenTest {
@@ -49,7 +75,10 @@ class AccountDetailScreenTest {
     private fun show(
         state: AccountDetailUiState,
         lightClient: LightClientItem = verifiedStripSample,
-    ) = rule.setContent {
+    ) = rule.setContent { Screen(state, lightClient) }
+
+    @Composable
+    private fun Screen(state: AccountDetailUiState, lightClient: LightClientItem) {
         SerotineTheme {
             AccountDetailScreen(
                 state,
@@ -58,7 +87,6 @@ class AccountDetailScreenTest {
                 onSend = { events += "send $it" },
                 onSwap = { events += "swap $it" },
                 onReceive = { events += "receive" },
-                onActivity = { events += "activity" },
                 onCopy = { events += "copy $it" },
                 onRename = { events += "rename" },
                 onRemove = { events += "remove" },
@@ -68,6 +96,7 @@ class AccountDetailScreenTest {
                 onSegment = { events += "segment $it" },
                 onOpenSafeTx = { events += "open $it" },
                 onImportRequest = { events += "import" },
+                onOpenActivity = { events += "open activity $it" },
             )
         }
     }
@@ -93,7 +122,7 @@ class AccountDetailScreenTest {
     }
 
     @Test
-    fun eachRowHasItsValueAndTheRowsAreSortedByValueOrName() {
+    fun eachRowHasItsValue() {
         show(
             ready.copy(
                 assets = listOf(
@@ -106,8 +135,100 @@ class AccountDetailScreenTest {
         // The header's total and the ETH row's value.
         rule.onAllNodesWithText("$3,000.00", useUnmergedTree = true).assertCountEquals(2)
         rule.onNodeWithText("No price", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("Name").performClick()
-        assertEquals(listOf("sort NAME"), events)
+    }
+
+    @Test
+    fun theMenuSortsTheRowsTheOtherWay() {
+        var state by mutableStateOf(ready)
+        rule.setContent {
+            SerotineTheme {
+                AccountDetailScreen(
+                    state,
+                    lightClient = verifiedStripSample,
+                    onBack = {},
+                    onSend = {},
+                    onSwap = {},
+                    onReceive = {},
+                    onCopy = {},
+                    onRename = {},
+                    onRemove = {},
+                    onHideToken = { _, _ -> },
+                    onMessageShown = {},
+                    onSort = { order ->
+                        events += "sort $order"
+                        state = state.copy(sort = order)
+                    },
+                    onSegment = {},
+                    onOpenSafeTx = {},
+                    onImportRequest = {},
+                    onOpenActivity = {},
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Sort by value").assertDoesNotExist()
+        rule.onNodeWithText("Sort by name").performClick()
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Sort by name").assertDoesNotExist()
+        rule.onNodeWithText("Sort by value").performClick()
+
+        assertEquals(listOf("sort NAME", "sort VALUE"), events)
+    }
+
+    @Test
+    fun aSafesOwnersOfferNoSort() {
+        show(ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.OWNERS))
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Rename").assertIsDisplayed()
+        rule.onNodeWithText("Sort by name").assertDoesNotExist()
+    }
+
+    @Test
+    fun theActivityOffersNoSort() {
+        show(ready.copy(segment = DetailSegment.ACTIVITY))
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Rename").assertIsDisplayed()
+        rule.onNodeWithText("Sort by name").assertDoesNotExist()
+    }
+
+    @Test
+    fun sendSwapAndReceiveShareOneLineInFullOnANarrowPhoneAndWithLargerText() {
+        var width by mutableStateOf(375.dp)
+        var fontScale by mutableStateOf(1f)
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+                Box(Modifier.requiredWidth(width)) { Screen(ready, verifiedStripSample) }
+            }
+        }
+
+        // An iPhone mini's width; narrower still, where the buttons leave out their icons; and an
+        // iPhone's width with the text made larger.
+        for ((narrow, scale) in listOf(375.dp to 1f, 320.dp to 1f, 393.dp to 1.5f)) {
+            width = narrow
+            fontScale = scale
+            rule.waitForIdle()
+            val labels = listOf("Send", "Swap", "Receive")
+            val tops = labels.map { rule.onNodeWithText(it).getBoundsInRoot().top }
+            assertEquals(1, tops.distinct().size, "one line at $narrow, text ×$scale: $tops")
+            for (label in labels) {
+                assertFalse(ellipsized(label), "$label cut off at $narrow, text ×$scale")
+            }
+        }
+    }
+
+    /**
+     * Whether the text [label] is drawn cut off: narrower than it needs. (Not isLineEllipsized,
+     * which the desktop's text layout does not report.)
+     */
+    private fun ellipsized(label: String): Boolean {
+        val layouts = mutableListOf<TextLayoutResult>()
+        rule.onNodeWithText(label, useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        val layout = layouts.single()
+        return layout.multiParagraph.intrinsics.maxIntrinsicWidth > layout.size.width
     }
 
     @Test
@@ -299,6 +420,126 @@ class AccountDetailScreenTest {
     }
 
     @Test
+    fun anAccountsTabsAreAssetsAndActivityAndASafesOwnersAndQueueFollow() {
+        show(ready)
+
+        rule.onNodeWithText("Assets").assertIsDisplayed()
+        rule.onNodeWithText("Owners").assertDoesNotExist()
+        rule.onNodeWithText("Activity").performClick()
+        assertEquals(listOf("segment ACTIVITY"), events)
+
+        assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY), ready.segments)
+        assertEquals(
+            listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY, DetailSegment.OWNERS, DetailSegment.QUEUE),
+            ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking).segments,
+        )
+    }
+
+    private val sent = ActivityRow(
+        key = "0x" + "1".repeat(64),
+        title = "Sent 0.25 ETH",
+        detail = "To Bob · 0x5aAe…eAed",
+        about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        time = "Oct 19, 2026, 2:02 PM",
+        status = "Reverted in block 9,401,220",
+        state = ActivityState.FAILED,
+        opens = ActivityKey("0x" + "1".repeat(64)),
+    )
+
+    @Test
+    fun theActivityTabSaysWhatEachRowDidAndHowItEndedAndATapOpensItsDetail() {
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(sent), "Transactions sent from this device."),
+            ),
+        )
+
+        rule.onNodeWithText("Transactions sent from this device.").assertIsDisplayed()
+        rule.onNodeWithText("Reverted in block 9,401,220").assertIsDisplayed()
+        rule.onNodeWithText("To Bob · 0x5aAe…eAed").assertIsDisplayed()
+        rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG).assertCountEquals(0)
+        rule.onNodeWithText("Sent 0.25 ETH").performClick()
+
+        assertEquals(listOf("open activity ${sent.opens}"), events)
+    }
+
+    @Test
+    fun aSafesEventInItsActivityOpensTheDetailOfItsLog() {
+        val opens = ActivityKey("0x" + "2".repeat(64), 0)
+        val event = sent.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = opens)
+        show(
+            ready.copy(
+                kind = AccountKind.SAFE,
+                safe = SafeDetails.Checking,
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(event), "Its events on chain."),
+            ),
+        )
+
+        rule.onNodeWithText("Received 1 ETH").performClick()
+
+        assertEquals(listOf("open activity $opens"), events)
+    }
+
+    @Test
+    fun backFromARowsDetailTheActivityIsWhereItWasLeftOnceItIsReadAgain() {
+        val rows = (1..40).map { n ->
+            val hash = "0x" + n.toString(16).padStart(64, '0')
+            sent.copy(key = hash, title = "Sent $n ETH", opens = ActivityKey(hash))
+        }
+        val read = ActivityUiState.Shown(rows, "Transactions sent from this device.")
+        var activity by mutableStateOf<ActivityUiState>(read)
+        var shown by mutableStateOf(true)
+        // As the back stack keeps an entry's saved state while another one is in front.
+        rule.setContent {
+            val entry = rememberSaveableStateHolder()
+            if (shown) {
+                entry.SaveableStateProvider("account") {
+                    Screen(ready.copy(segment = DetailSegment.ACTIVITY, activity = activity), verifiedStripSample)
+                }
+            }
+        }
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Sent 30 ETH"))
+
+        // Back from a row's detail after the Activity's state expired: it is read again from Loading.
+        shown = false
+        rule.waitForIdle()
+        activity = ActivityUiState.Loading
+        shown = true
+        rule.waitForIdle()
+        activity = read
+
+        rule.onNodeWithText("Sent 30 ETH").assertIsDisplayed()
+        rule.onNodeWithText("Sent 1 ETH").assertDoesNotExist()
+    }
+
+    @Test
+    fun anEmptyActivitySaysSo() {
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(emptyList(), "Transactions sent from this device."),
+            ),
+        )
+
+        rule.onNodeWithText("Nothing sent from this device yet.").assertIsDisplayed()
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(0)
+    }
+
+    @Test
+    fun anUnreadableActivitySaysWhy() {
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Unavailable("The history cannot be read right now."),
+            ),
+        )
+
+        rule.onNodeWithText("The history cannot be read right now.").assertIsDisplayed()
+    }
+
+    @Test
     fun aSafesOwnersAreBehindTheirSegmentWithTheOnesHeldHereMarked() {
         show(
             ready.copy(
@@ -377,5 +618,70 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Queue").assertIsDisplayed()
         rule.onNodeWithText("Send")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+    }
+
+    @Test
+    fun eachTokenStillCheckedHoldsTheRoomOfItsRowSoTheRowTakesItWithoutAJump() {
+        val ether = AssetRow("ETH", "Ether", "1.5 ETH", "eth", verified = true, "block 9", value = "$3,000.00")
+        show(ready.copy(assets = listOf(ether), pendingAssets = 2, tokensNote = "Checking 2 tokens"))
+
+        val ghosts = rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true)
+        ghosts.assertCountEquals(2)
+        assertEquals(
+            rule.onNodeWithTag(ACCOUNT_ASSET_TAG).getBoundsInRoot().height,
+            ghosts[0].getBoundsInRoot().height,
+        )
+        rule.onNodeWithContentDescription("Tokens not read yet").assertExists()
+    }
+
+    @Test
+    fun noGhostRowOnceEveryTokenIsChecked() {
+        show(ready.copy(assets = listOf(AssetRow("ETH", "Ether", "1.5 ETH", "eth", verified = true))))
+
+        rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun anActivityBeingReadShowsGhostRowsOfItsRowsHeight() {
+        var activity by mutableStateOf<ActivityUiState>(ActivityUiState.Loading)
+        rule.setContent {
+            Screen(ready.copy(segment = DetailSegment.ACTIVITY, activity = activity), verifiedStripSample)
+        }
+
+        val ghosts = rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true)
+        ghosts.assertCountEquals(GHOST_ROWS_UNKNOWN)
+        rule.onNodeWithContentDescription("Reading the activity").assertExists()
+        val ghost = ghosts[0].getBoundsInRoot().height
+
+        activity = ActivityUiState.Shown(listOf(sent), "Transactions sent from this device.")
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true).assertCountEquals(0)
+        assertEquals(ghost, rule.onNodeWithTag(ACTIVITY_ROW_TAG).getBoundsInRoot().height)
+    }
+
+    @Test
+    fun aSafesQueueBeingReadShowsGhostRowsOfItsRowsHeight() {
+        val safe = ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.QUEUE)
+        var queue by mutableStateOf<SafeQueue>(SafeQueue.Checking)
+        rule.setContent { Screen(safe.copy(queue = queue), verifiedStripSample) }
+
+        val ghosts = rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true)
+        ghosts.assertCountEquals(GHOST_ROWS_UNKNOWN)
+        rule.onNodeWithContentDescription("Reading this device's queue").assertExists()
+        val ghost = ghosts[0].getBoundsInRoot().height
+
+        queue = SafeQueue.Shown(
+            listOf(QueueRow("0x" + "3c".repeat(32), "Send 40 USDC", null, "Nonce 12 · next", "1 of 2 signatures")),
+        )
+        rule.waitForIdle()
+        assertEquals(ghost, rule.onNodeWithTag(ACCOUNT_QUEUE_ROW_TAG).getBoundsInRoot().height)
+    }
+
+    @Test
+    fun aSafeBeingReadShowsGhostOwners() {
+        show(ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.OWNERS))
+
+        rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true).assertCountEquals(GHOST_ROWS_UNKNOWN)
+        rule.onNodeWithContentDescription("Reading the Safe's storage").assertExists()
     }
 }

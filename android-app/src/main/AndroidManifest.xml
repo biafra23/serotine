@@ -46,5 +46,25 @@
             android:name=".upgrade.UpgradeCheckJob"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- The exchange-rate widget. Not exported: the system's widget host reaches it anyway,
+             and no other app may make it draw. -->
+        <receiver
+            android:name=".widget.RateWidget"
+            android:exported="false"
+            android:label="@string/rate_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/rate_widget_info" />
+        </receiver>
+
+        <!-- The widget's refresh while the app is closed: on an unmetered network only. -->
+        <service
+            android:name=".widget.RateRefreshJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

@@ -15,8 +15,10 @@ import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DecodedSafeTx
+import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
@@ -25,12 +27,16 @@ import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
+import eth.serotine.ui.activity.AccountActivity
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
 import eth.serotine.ui.components.displaySymbol
+import eth.serotine.ui.components.ensNameNote
 import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
@@ -58,12 +64,14 @@ import kotlinx.coroutines.launch
 /**
  * The account detail screen's ViewModel: the account under [address], what it holds and what
  * that is worth in the display currency ([ObserveAccountValue]), on [network], as
- * [AccountDetailUiState]; for a Safe also its verified owners ([ObserveSafe]) and the
- * transactions queued for them on this device ([ObserveSafeTxQueue], decoded here, a token
- * transfer's amount in the units of a token the wallet knows: [ObserveKnownTokens]). Its intents
- * are the order of the rows ([sortBy]), the segment shown ([show]) and hiding a token
+ * [AccountDetailUiState], named as [ObserveEnsNames] finds; for a Safe also its verified
+ * owners ([ObserveSafe]) and the transactions queued for them on this device
+ * ([ObserveSafeTxQueue], decoded here, a token transfer's amount in the units of a token the
+ * wallet knows: [ObserveKnownTokens]); and its Activity ([AccountActivity]), read only while its
+ * tab is shown. Its intents are the order of the rows ([sortBy]), the segment shown ([show]) and hiding a token
  * ([hideToken], said through [messageShown]); what else the user does from the screen is
- * navigation (Send, Receive, Rename, Remove, a queued transaction, Import a request) or the
+ * navigation (Send, Receive, Rename, Remove, a row of its Activity, a queued transaction, Import a
+ * request) or the
  * clipboard, which the route handles.
  */
 class AccountDetailViewModel(
@@ -75,6 +83,10 @@ class AccountDetailViewModel(
     observeKnownTokens: ObserveKnownTokens,
     private val setTokenHidden: SetTokenHidden,
     private val network: Network,
+    /** Whether the ENS name the account's name follows still points to it. */
+    observeEnsNames: ObserveEnsNames,
+    /** What its Activity tab lists. */
+    activity: AccountActivity,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -109,6 +121,18 @@ class AccountDetailViewModel(
         }
     }
 
+    /** The check of the ENS name the account's name follows; none for a name of the user's, nor before the first. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val ensName = lookup.map { (it as? AccountLookup.Found)?.account?.ensName }
+        .distinctUntilChanged()
+        .flatMapLatest { name ->
+            if (name == null) {
+                flowOf(null)
+            } else {
+                observeEnsNames.check(address, name).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
+            }
+        }
+
     /** A Safe's queue, with the tokens its transfers are shown in; none for any other account. */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val queue = isSafe.flatMapLatest { isSafe ->
@@ -121,6 +145,25 @@ class AccountDetailViewModel(
         }
     }
 
+    /**
+     * The account's Activity, read while its tab is shown and for 5 s after, as the screen's own
+     * state is: back on the tab within that, it is there at once, and not read again.
+     */
+    private val sharedActivity = activity.of(address).stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+        ActivityUiState.Loading,
+    )
+
+    /** The Activity while its tab is shown for an account of the wallet; Loading, and nothing read, otherwise. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val activityState = combine(
+        view.map { it.segment == DetailSegment.ACTIVITY },
+        lookup.map { it is AccountLookup.Found },
+    ) { onTab, found -> onTab && found }
+        .distinctUntilChanged()
+        .flatMapLatest { shown -> if (shown) sharedActivity else flowOf(ActivityUiState.Loading) }
+
     /** What the queue segment is drawn from. */
     private sealed interface QueueView {
         data object None : QueueView
@@ -129,10 +172,16 @@ class AccountDetailViewModel(
     }
 
     val uiState: StateFlow<AccountDetailUiState> =
-        combine(lookup, observeAccountValue(address), safe, queue, view) { lookup, value, safe, queue, view ->
+        combine(
+            lookup,
+            observeAccountValue(address),
+            safe,
+            queue,
+            combine(view, ensName, activityState, ::Triple),
+        ) { lookup, value, safe, queue, (view, ensName, activity) ->
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
-                    label = lookup.account.label,
+                    label = accountName(lookup.account, display, ensName),
                     address = display,
                     kind = lookup.account.kind,
                     // A Safe's control is its verified owners'; until they are read, watch-only.
@@ -141,6 +190,7 @@ class AccountDetailViewModel(
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
                     assets = sorted(rows(value), view.sort),
+                    pendingAssets = value.tokens.count { awaitingFirst(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
                     pricesNote = PRICES + if (network.testnet) ", testnet prices" else "",
@@ -155,6 +205,9 @@ class AccountDetailViewModel(
                     threshold = (safe as? SafeReading.Verified)
                         ?.let { "${it.state.threshold}/${it.state.owners.size}" },
                     queue = queueOf(queue, safe),
+                    nameNote = ensNameNote(lookup.account, ensName),
+                    // Not the last one read while another tab is shown: that tab's state says Loading.
+                    activity = if (view.segment == DetailSegment.ACTIVITY) activity else ActivityUiState.Loading,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
@@ -171,7 +224,7 @@ class AccountDetailViewModel(
         view.update { it.copy(sort = order) }
     }
 
-    /** Shows a Safe's [segment]. */
+    /** Shows the account's [segment]: its Assets or Activity, or a Safe's Owners or Queue. */
     fun show(segment: DetailSegment) {
         view.update { it.copy(segment = segment) }
     }
@@ -359,11 +412,7 @@ class AccountDetailViewModel(
      */
     private fun tokensNote(value: AccountValue): String? {
         val readings = value.tokens.map { it.holding.reading }
-        // A token last known to hold none has no row, and is not known to hold none now.
-        val checking = readings.count {
-            it == null || it == TokenBalanceReading.Syncing ||
-                (it as? TokenBalanceReading.LastKnown)?.units?.isZero == true
-        }
+        val checking = readings.count(::checking)
         val refused = readings.count { (it as? TokenBalanceReading.Unavailable)?.reason == ReadUnavailable.REFUSED }
         val unverified = readings.count { it is TokenBalanceReading.Unavailable } - refused
         val notTokens = readings.count { it == TokenBalanceReading.NotAToken }
@@ -376,6 +425,22 @@ class AccountDetailViewModel(
         )
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")?.replaceFirstChar { it.uppercase() }
     }
+
+    /**
+     * Whether a token's balance is still being checked: no row yet, and none known not to come.
+     * A token last known to hold none has no row, and is not known to hold none now.
+     */
+    private fun checking(reading: TokenBalanceReading?): Boolean =
+        reading == null || reading == TokenBalanceReading.Syncing ||
+            (reading as? TokenBalanceReading.LastKnown)?.units?.isZero == true
+
+    /**
+     * Whether a token's balance has not been read at all yet: a ghost row holds its place. One last
+     * known to hold none is still checked, but holds no place: it most likely has no row to come,
+     * and it may wait for a readable head for long.
+     */
+    private fun awaitingFirst(reading: TokenBalanceReading?): Boolean =
+        reading == null || reading == TokenBalanceReading.Syncing
 
     private fun tokens(count: Int) = if (count == 1) "1 token" else "$count tokens"
 

@@ -58,9 +58,12 @@ consumer developed against an unreleased engine, Myotis's
 - **Android:** the `:data` module's Android target is what resolves the AAR;
   minSdk 29, two ABIs — a build that ships other ABIs has no engine there.
   The engine's start belongs in a foreground service once sync runs in the
-  background, as in the Myotis app. Until then the one background run is the
-  daily network-upgrade check (*Network upgrades*, below): a JobScheduler job
-  that holds the engine awake for five minutes.
+  background, as in the Myotis app. Until then the background runs are two
+  JobScheduler jobs: the daily network-upgrade check (*Network upgrades*,
+  below), which holds the engine awake for five minutes, and, while an
+  exchange-rate widget is placed, its refresh on an unmetered network about
+  every three hours, which wakes the engine for that one read
+  (docs/wallet-ux.md, *Home-screen widget*).
 - **Desktop:** the JVM jar does not carry the host library;
   `eth.myotis:myotis-engine-natives-<platform>` does, at the engine's version
   (macOS arm64 and x64, Linux x64 and arm64; Windows has none yet). The
@@ -80,6 +83,20 @@ consumer developed against an unreleased engine, Myotis's
   for no ports (its peer caches and snapshot live under its data directory)
   and answers a read on a paused or starting handle at once as unavailable.
   The log index (*History*) is twinned too, from Myotis 0.1.18 (its #687).
+  The iOS module reads no block by number in 0.1.18 (its block reads are
+  internal), so the iOS node gives the finalized block no timestamp, and no
+  CoW order is offered on iOS until it does (docs/swaps.md, *Proving an
+  order's end*).
+- **The engine's own log** is not printed by the engine: its tracing lines go
+  into a ring in the library (4096 lines, the oldest dropped when full), which
+  a host drains with `Myotis.drainLogs`. A debug build's `MyotisNode` drains
+  it every second while the engine runs (`EngineLogPump`) into the same
+  `debugLog` the adapters write to, each line marked `Myotis:` (logcat in the
+  debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build, so a
+  device's log has it without Xcode attached; the iOS node's own reports,
+  why there is no light client among them, go there too, in every build). A
+  release build leaves it undrained; a failed start still reports its last
+  40 lines.
 
 ## What exists today
 
@@ -211,7 +228,8 @@ consumer developed against an unreleased engine, Myotis's
   block (biafra23/myotis#662), and once it lands a Safe is proven in one
   request. Until then the debug builds log which proof failed or straddled
   and how many reads a Safe took (`MyotisNode.start`'s `debugLog`: logcat in
-  the debug app, stderr in `:desktop-app:run`; public chain data only). A
+  the debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build;
+  public chain data only). A
   one-shot check of a Safe (an import, the checks before Sign, Approve,
   Execute and a proposal, and a transaction's owners as its screen reads
   them) waits out an unproven reading for the next one, for up to 45 s
@@ -480,6 +498,29 @@ answered with an empty list.
     For an account not created here that is not so, so the adapter reads the
     entry's block from the status first and refuses such a range
     (`LogsReading.BeforeStart`) rather than let it read as complete.
+- **The finalized block and its time.** The light client's status carries
+  the finalized block (`StatusSnapshot.finalizedBlockNumber`) with its own
+  header's timestamp (`FinalizedTimes`): `VerifiedReads.getBlockByNumber` of
+  that block.
+  - It is read once per finalized block, only while the light client is
+    synced and not paused, and after a read that failed not again for 12 s,
+    as the status is polled every second.
+  - It is read in a scope of its own, never in the status poll, which must
+    not block; until the newest finalized block's header is had, the newest
+    one had stands, finalized too, only older.
+  - `FinalizedHeaders` reads it through the engine chain
+    (`VerifiedChain.blockByNumber`), so the Debug tab's log has it as
+    `getBlockByNumber`, as every other request.
+  - A header counts only when its `number` is the block asked for: the
+    engine has answered a read for a past block from its head before.
+
+  Not the finalized slot's time: the slot the engine pairs with
+  the block can be a later, empty one (docs/swaps.md, *Proving an order's
+  end*). A CoW order's end is proven at this block.
+- **`ProveCowOrderEnds`** (`:domain`, run by the hosts beside
+  `FollowAccountLogs`) reads each live CoW order's `Trade` and
+  `OrderInvalidated` from its account's `Mention` entry, up to the finalized
+  block (docs/swaps.md, *Proving an order's end*).
 - **`FollowAccountLogs`** (`:domain`, run by the hosts while the engine runs,
   never by `App`) keeps the index following the accounts:
   - Every account is a `Mention` entry, and a Safe an `Emitter` entry too,
@@ -497,7 +538,7 @@ answered with an empty list.
   - An account removed is unwatched, and its start forgotten once the engine
     took that.
 - **`ObserveSafeHistory`** and **`ObserveTokenTransfers`** (`:domain`)
-  read, for the Activity screen, a Safe's own events (`SafeEvents`: Safe
+  read, for the account detail's Activity tab, a Safe's own events (`SafeEvents`: Safe
   1.3.0's and 1.4.1's, each in the form its version indexes it in) from its
   `Emitter` entry, and an account's ERC-20 and ERC-721 `Transfer`s
   (`TokenTransfers`) from its `Mention` entry, queried at topic 1 and topic
@@ -590,5 +631,6 @@ user to update — before it, and, after it, nothing else.
   answer is trusted or shown as untrusted — recorded in CLAUDE.md under *Data
   sources* before the code lands. Prices, the token list and Safe
   co-signing are decided there (2026-10-16), each without an off-chain
-  service; the dApp connection protocol and CoW Protocol's order API
-  (docs/swaps.md) are still open.
+  service. CoW Protocol's order API is the first off-chain service allowed
+  (2026-10-22), for the swaps the user sends to CoW (docs/swaps.md). The dApp
+  connection protocol is still open.

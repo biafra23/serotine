@@ -21,13 +21,16 @@ import kotlinx.coroutines.flow.first
  * another contract is refused, and so is an address whose kind cannot be verified right now:
  * the account's kind is chain data, shown verified or not at all. An address already in the
  * wallet, watched or with its key, is refused and named. [label] is trimmed; empty, the
- * account is named "Account N" as an import names it.
+ * account's name follows [ensName], the ENS name the address was resolved from (issue #67), or,
+ * with none or one longer than [RenameAccount.MAX_LABEL_LENGTH], is "Account N" as an import
+ * names it. The caller resolves [ensName] to [address] just before; whether it still points
+ * there is checked again while it is shown ([ObserveEnsNames]).
  */
 class WatchAddress(
     private val accounts: AccountRepository,
     private val kinds: AddressKinds,
 ) {
-    suspend operator fun invoke(address: Address, label: String): AddressWatch {
+    suspend operator fun invoke(address: Address, label: String, ensName: String? = null): AddressWatch {
         val name = label.trim()
         if (name.length > RenameAccount.MAX_LABEL_LENGTH) return AddressWatch.NameTooLong
         val current = when (val list = accounts.observeAccounts().first()) {
@@ -44,11 +47,14 @@ class WatchAddress(
                 AddressKind.Eoa, is AddressKind.DelegatedEoa -> AccountKind.EOA
             }
         }
+        // A name too long for a row is no name to follow.
+        val follows = ensName?.takeIf { name.isEmpty() && it.length <= RenameAccount.MAX_LABEL_LENGTH }
         val account = Account(
             address,
             kind,
-            name.ifEmpty { nextFreeLabel(current) },
+            follows ?: name.ifEmpty { nextFreeLabel(current) },
             AccountCustody.Watched,
+            ensName = follows,
         )
         return when (accounts.add(account)) {
             AccountAdd.Added -> AddressWatch.Added(account)

@@ -21,31 +21,47 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccountCowOrders
+import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
+import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeRecovery
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
+import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemorySafeTxQueue
+import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.activity.AccountActivity
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.shortAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -54,6 +70,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -75,6 +92,11 @@ class AccountDetailViewModelTest {
         AccountCustody.InKeyStore,
     )
     private val accounts = FakeAccounts(daily)
+    private val history = MemoryTransactionHistory()
+    private val cowOrders = MemoryCowOrders()
+    private val logIndex = FakeLogIndex()
+    private val historyStarts = MemoryHistoryStarts()
+    private val names = FakeNames()
     private val balances = FakeBalances()
     private val usdc =
         Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc", PriceId("USDC"))
@@ -109,8 +131,21 @@ class AccountDetailViewModelTest {
         ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
         Network.SEPOLIA,
+        ObserveEnsNames(accounts, names),
+        activity(),
         formatTime = { "<$it>" },
     )
+
+    private fun activity() = AccountActivity(
+        ObserveAccountHistory(history),
+        ObserveAccounts(accounts),
+        ObserveSafeHistory(logIndex, historyStarts),
+        ObserveTokenTransfers(logIndex, historyStarts),
+        ObserveKnownTokens(catalog, userTokens, metadata),
+        ObserveSentToAddresses(history),
+        ObserveAccountCowOrders(cowOrders, Network.SEPOLIA),
+        Network.SEPOLIA,
+    ) { "at $it" }
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -131,6 +166,7 @@ class AccountDetailViewModelTest {
                 total = "Checking…",
                 totalNote = "Testnet prices · still checking",
                 assets = listOf(AssetRow("ETH", "Ether", "Syncing…", "eth", verified = false)),
+                pendingAssets = 3,
                 tokensNote = "Checking 3 tokens",
                 pricesNote = "Prices: Chainlink feeds, read through the light client, testnet prices",
             ),
@@ -210,6 +246,42 @@ class AccountDetailViewModelTest {
         accounts.accounts.value = emptyList()
         runCurrent()
         assertEquals(AccountDetailUiState.Gone, viewModel.uiState.value)
+    }
+
+    @Test
+    fun aNameThatFollowsAnEnsNameGivesWayToTheAddressOnceTheNameMoves() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        names.names["daily.eth"] = NameResolution.Resolved("daily.eth", daily.address, 90)
+        accounts.accounts.value = listOf(daily.copy(label = "daily.eth", ensName = "daily.eth"))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        val named = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals("daily.eth", named.label)
+        assertEquals(null, named.nameNote)
+
+        // The name now points nowhere: the screen opened again checks it at once.
+        names.names["daily.eth"] = NameResolution.NoAddress
+        val again = viewModel()
+        backgroundScope.launch { again.uiState.collect {} }
+        runCurrent()
+        val moved = again.uiState.value as AccountDetailUiState.Ready
+        assertEquals(shortAddress(Eip55.format(daily.address)), moved.label)
+        assertEquals("ENS name “daily.eth” no longer points to this address", moved.nameNote)
+    }
+
+    @Test
+    fun aNameThatResolvesOnlyOffchainIsSaidToBeUnverifiable() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        names.names["daily.eth"] = NameResolution.OffchainOnly
+        accounts.accounts.value = listOf(daily.copy(label = "daily.eth", ensName = "daily.eth"))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(shortAddress(Eip55.format(daily.address)), ready.label)
+        assertEquals("ENS name “daily.eth” can no longer be verified to point to this address", ready.nameNote)
     }
 
     @Test
@@ -301,6 +373,30 @@ class AccountDetailViewModelTest {
         )
         assertEquals("Checking…", ready.total)
         assertEquals("Checking 1 token · 1 token did not answer as a token", ready.tokensNote)
+        // The token last known to hold none is still checked, but holds no row's place meanwhile.
+        assertEquals(0, ready.pendingAssets)
+    }
+
+    @Test
+    fun eachTokenStillCheckedHoldsAPlaceUntilItsBalanceIsRead() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals(3, (viewModel.uiState.value as AccountDetailUiState.Ready).pendingAssets)
+
+        // One held: its row takes a place; one not held: it gives its place up.
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("1250000000"), 9)
+        tokenBalances.of(daily.address, link.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 9)
+        runCurrent()
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf("ETH", "USDC"), ready.assets.map { it.symbol })
+        assertEquals(1, ready.pendingAssets)
+
+        tokenBalances.of(daily.address, uni.address).value = TokenBalanceReading.Unavailable(ReadUnavailable.UNPROVEN)
+        runCurrent()
+        assertEquals(0, (viewModel.uiState.value as AccountDetailUiState.Ready).pendingAssets)
     }
 
     @Test
@@ -405,6 +501,40 @@ class AccountDetailViewModelTest {
             ),
             ready.safe,
         )
+    }
+
+    @Test
+    fun theActivityIsReadOnlyWhileItsTabIsShownAndKeptForAQuickReturn() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        fun activity() = (viewModel.uiState.value as AccountDetailUiState.Ready).activity
+        // The log index's coverage is what the Activity's token transfers are read from.
+        fun reading() = logIndex.coverage.subscriptionCount.value > 0
+
+        assertEquals(ActivityUiState.Loading, activity())
+        assertFalse(reading(), "Assets reads no history")
+
+        viewModel.show(DetailSegment.ACTIVITY)
+        runCurrent()
+        val shown = assertIs<ActivityUiState.Shown>(activity())
+        assertEquals(emptyList(), shown.rows)
+        assertTrue(reading())
+
+        viewModel.show(DetailSegment.ASSETS)
+        runCurrent()
+        assertEquals(ActivityUiState.Loading, activity())
+
+        // Back within 5 s: the list as it was, not read again.
+        viewModel.show(DetailSegment.ACTIVITY)
+        runCurrent()
+        assertEquals(shown, activity())
+
+        viewModel.show(DetailSegment.ASSETS)
+        advanceTimeBy(5_001)
+        runCurrent()
+        assertFalse(reading(), "5 s after its tab was left, the history is no longer read")
     }
 
     @Test
@@ -575,6 +705,8 @@ class AccountDetailViewModelTest {
             ObserveKnownTokens(catalog, userTokens, metadata),
             SetTokenHidden(userTokens),
             Network.SEPOLIA,
+            ObserveEnsNames(accounts, names),
+            activity(),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

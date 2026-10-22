@@ -142,11 +142,70 @@ if (stageMyotisLibrary != null) {
     tasks.configureEach { if (name == "prepareAppResources") dependsOn(stageMyotisLibrary) }
 }
 val myotisLibraryDir: Provider<String> = providers.gradleProperty("myotisLibraryDir")
+// Through a provider, not jvmArgs: Compose sets the run task's jvmArgs after this, replacing
+// whatever was added here, so neither property ever reached a development run.
 tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
-    myotisLibraryDir.orNull?.let { jvmArgs("-Dmyotis.engine.lib=${File(it, myotisLibraryName).absolutePath}") }
-    // The desktop's debug build: a development run logs the adapters' diagnostics (which proof
-    // of a Safe's read failed or straddled) to stderr. No installer sets it.
-    jvmArgs("-Dserotine.debugLog=true")
+    // Locals, not the script's vals: a provider holding the script object cannot be cached.
+    val libraryDir = myotisLibraryDir
+    val libraryName = myotisLibraryName
+    jvmArgumentProviders.add(
+        CommandLineArgumentProvider {
+            listOfNotNull(
+                libraryDir.orNull?.let { "-Dmyotis.engine.lib=${File(it, libraryName).absolutePath}" },
+                // The desktop's debug build: a development run logs the adapters' diagnostics
+                // (which proof of a Safe's read failed or straddled) and the engine's own log to
+                // stderr. No installer sets it.
+                "-Dserotine.debugLog=true",
+            )
+        },
+    )
+}
+
+// ---------------------------------------------------------------------------
+// The app icons: the ANDROID launcher icon, rendered for each desktop. scripts/gen_app_icons.java
+// reads the launcher icon's committed resources (the mark's foreground vector and its
+// background colour, both generated from assets/serotine_logo.svg by
+// scripts/gen_android_icons.py) and writes the dmg's .icns, the msi's .ico and a PNG for the
+// deb, the window and the tray, so the installers and the APK carry the same icon by
+// construction and nothing binary is committed. Plain JDK in single-file source mode on the
+// JDK 21 toolchain, headless so the render never touches the window server. The PNG goes on
+// the classpath (AppIcon.kt).
+// ---------------------------------------------------------------------------
+val appIcons = layout.buildDirectory.dir("generated/app-icons")
+val appIconResources = layout.buildDirectory.dir("generated/app-icon-resources")
+val generateAppIcons = tasks.register<Exec>("generateAppIcons") {
+    group = "build"
+    description = "Render the desktop app icons (.icns, .ico, .png) from the Android launcher icon resources"
+    val script = rootProject.file("scripts/gen_app_icons.java")
+    val res = rootProject.file("android-app/src/main/res")
+    val foreground = res.resolve("drawable/ic_launcher_foreground.xml")
+    val background = res.resolve("values/ic_launcher_background.xml")
+    inputs.files(script, foreground, background)
+        .withPropertyName("iconSources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(appIcons).withPropertyName("installerIcons")
+    outputs.dir(appIconResources).withPropertyName("iconResources")
+    executable = javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }.get().executablePath.asFile.absolutePath
+    args(
+        "-Djava.awt.headless=true", script.absolutePath, foreground.absolutePath, background.absolutePath,
+        "--icns", appIcons.get().file("Serotine.icns").asFile.absolutePath,
+        "--ico", appIcons.get().file("Serotine.ico").asFile.absolutePath,
+        "--png", appIconResources.get().file("serotine-icon.png").asFile.absolutePath,
+    )
+}
+sourceSets.main {
+    resources.srcDir(files(appIconResources).builtBy(generateAppIcons))
+}
+// The installers bake the icons in (iconFile below); Compose's packaging tasks do not see
+// that as a task dependency.
+tasks.configureEach {
+    if (name.startsWith("package") || name.startsWith("createDistributable")
+        || name.startsWith("createReleaseDistributable")
+    ) {
+        dependsOn(generateAppIcons)
+    }
 }
 
 compose.desktop {
@@ -180,13 +239,16 @@ compose.desktop {
             macOS {
                 bundleID = "eth.serotine"
                 dockName = "Serotine"
+                iconFile.set(appIcons.map { it.file("Serotine.icns") })
             }
             linux {
+                iconFile.set(appIconResources.map { it.file("serotine-icon.png") })
                 packageVersion = releaseVersion
                 debMaintainer = "dirk@jaeckel.com"
                 menuGroup = "Utility"
             }
             windows {
+                iconFile.set(appIcons.map { it.file("Serotine.ico") })
                 packageVersion = releaseVersion
                 // The msi's UpgradeCode: a newer msi with the SAME code upgrades the
                 // installed app in place; a different one installs beside it. Generated
