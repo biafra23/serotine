@@ -4,14 +4,17 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowDeployment
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.FeeTier
+import eth.serotine.domain.model.GPv2Settlement
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.SwapRoute
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
@@ -24,8 +27,15 @@ import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.BiometricUnlock
+import eth.serotine.domain.repository.CowPlacement
+import eth.serotine.domain.repository.CowQuoteReading
+import eth.serotine.domain.repository.CowRefusal
+import eth.serotine.domain.repository.CowUnavailable
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.domain.repository.FinalizedBlock
 import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.HistoryStart
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
@@ -39,7 +49,10 @@ import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.Unlock
+import eth.serotine.domain.repository.VenueChoice
 import eth.serotine.domain.repository.VenueReading
+import eth.serotine.domain.usecase.ChooseSwapVenue
+import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.FindUniswapRoute
 import eth.serotine.domain.usecase.ObserveAccountValue
@@ -47,8 +60,11 @@ import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveSwapVenue
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.PlaceCowOrder
+import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteSwap
 import eth.serotine.domain.usecase.QuoteTokenApproval
 import eth.serotine.domain.usecase.RebroadcastTransfer
@@ -59,6 +75,7 @@ import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
+import eth.serotine.ui.FakeCowApi
 import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
@@ -69,9 +86,13 @@ import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryCowOrders
+import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemorySentTransfers
+import eth.serotine.ui.MemorySwapVenue
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.RouteStep
+import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import kotlinx.coroutines.Dispatchers
@@ -140,6 +161,10 @@ class SwapViewModelTest {
     private val broadcaster = FakeBroadcaster()
     private val sent = MemorySentTransfers()
     private val cowOrders = MemoryCowOrders()
+    private val cowChain = FakeCowChain()
+    private val cowApi = FakeCowApi()
+    private val swapVenue = MemorySwapVenue()
+    private val historyStarts = MemoryHistoryStarts()
     private val clock = TestTimeSource()
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
@@ -186,7 +211,7 @@ class SwapViewModelTest {
                 tokenBalances,
                 sent,
                 cowOrders,
-                FakeCowChain(),
+                cowChain,
                 light,
                 Network.SEPOLIA,
                 now,
@@ -196,6 +221,23 @@ class SwapViewModelTest {
             SendTokenApproval(signer, broadcaster, sent, now),
             RebroadcastTransfer(broadcaster, sent, FakeReceipts()),
             WarmFeeHistory(inputs),
+            ObserveSwapVenue(swapVenue),
+            ChooseSwapVenue(swapVenue),
+            CowOfferedOnThisDevice(light),
+            QuoteCowSwap(
+                cowChain,
+                cowApi,
+                FindUniswapRoute(uniswap, inputs),
+                inputs,
+                tokenBalances,
+                sent,
+                cowOrders,
+                historyStarts,
+                light,
+                Network.SEPOLIA,
+                now,
+            ),
+            PlaceCowOrder(FindUniswapRoute(uniswap, inputs), signer, cowOrders, cowApi, light),
             Network.SEPOLIA,
             clock,
             formatTime = { "at $it" },
@@ -460,6 +502,253 @@ class SwapViewModelTest {
         assertEquals("Swap 40 USDC for at least 0.01592 ETH", unlock.reason)
     }
 
+    private val cow = CowDeployment(
+        settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41"),
+        vaultRelayer = Address.of("0xc92e8bdf79f0507f65a392b0ab4667716bfe0110"),
+    )
+
+    /**
+     * CoW chosen, and everything a CoW quote checks on verified state in place: the pinned venue and
+     * its domain separator, a finalized block, the account followed from before it, and CoW
+     * answering [quote].
+     */
+    private fun cowReady(
+        quote: CowQuoteReading = CowQuoteReading.Quoted(UInt256.of("16100000000000000"), UInt256.ONE),
+    ) {
+        swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.COW)
+        cowChain.venue = CowVenueReading.Verified(cow)
+        // Sepolia's domain separator for the settlement, as the contract answers it.
+        cowChain.answers[cow.settlement to GPv2Settlement.domainSeparator().hex()] =
+            Simulation.Succeeded("daee378bd0eb30ddf479272accf91761e697bc00e067a268f95f1d2732ed230b", 9_412_118)
+        light.status.value = LightClientStatus.Synced(9_412_118, headTime, FinalizedBlock(9_412_050, headTime - 816))
+        historyStarts.starts.value = mapOf(daily.address to HistoryStart.Fixed(9_000_000))
+        cowApi.quote = quote
+    }
+
+    @Test
+    fun aSwapStartsAtTheVenueLastChosenAndAChoiceIsKeptForTheNext() = runTest {
+        swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.COW)
+        val viewModel = viewModel(sell = usdc.address)
+        assertEquals(VenueItem(SwapVenue.COW), assertIs<SwapUiState.Compose>(viewModel.uiState.value).venue)
+
+        viewModel.onVenueChange(SwapVenue.UNISWAP)
+        runCurrent()
+
+        assertEquals(SwapVenue.UNISWAP, assertIs<SwapUiState.Compose>(viewModel.uiState.value).venue.chosen)
+        assertEquals(VenueChoice.Chosen(SwapVenue.UNISWAP), swapVenue.choice.value)
+    }
+
+    @Test
+    fun cowIsGreyedOutForEtherSoldAndCannotBeChosenThen() = runTest {
+        swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.COW)
+        val viewModel = viewModel()
+
+        val venue = assertIs<SwapUiState.Compose>(viewModel.uiState.value).venue
+        assertEquals(SwapVenue.UNISWAP, venue.chosen, "ETH sold: on Uniswap")
+        assertTrue(venue.cowUnavailable!!.startsWith("CoW Protocol is offered for tokens sold"), venue.cowUnavailable)
+        viewModel.onVenueChange(SwapVenue.COW)
+        runCurrent()
+        assertEquals(SwapVenue.UNISWAP, assertIs<SwapUiState.Compose>(viewModel.uiState.value).venue.chosen)
+        assertEquals(VenueChoice.Chosen(SwapVenue.COW), swapVenue.choice.value, "the choice kept for a token sold")
+    }
+
+    @Test
+    fun aCowOrderIsReviewedBesideTheVerifiedUniswapNetAndPlaced() = runTest {
+        cowReady()
+        val viewModel = reviewed()
+
+        val review = assertIs<SwapUiState.CowReview>(viewModel.uiState.value)
+        assertEquals("40 USDC", review.sold)
+        assertEquals("about 0.0161 ETH", review.estimate)
+        assertTrue(review.estimateNote.endsWith("Not verified."), review.estimateNote)
+        assertTrue(review.uniswapNote.startsWith("Uniswap's verified quote"), review.uniswapNote)
+        assertFalse(review.uniswapGivesMore)
+        assertEquals("at least 0.0160195 ETH", review.minimum, "CoW's estimate less the tolerance, above the floor")
+        assertEquals(SpenderItem("CoW's settlement contract", Eip55.format(cow.settlement)), review.settlement)
+        assertTrue(review.disclosure.startsWith("Sent to CoW's servers"))
+        assertEquals(listOf(usdc.address), cowApi.quotes, "CoW asked once, for the review")
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        val placed = assertIs<SwapUiState.OrderPlaced>(viewModel.uiState.value)
+        assertEquals("Sent to CoW", placed.title)
+        val record = cowOrders.orders.value.single()
+        assertEquals(record.uid.hex, placed.uid)
+        assertEquals(listOf(record.uid), cowApi.placed)
+        assertEquals(listOf("made-up test password"), signer.passwords)
+    }
+
+    @Test
+    fun cowsEstimateBelowTheUniswapNetIsSaidAndTheOrderSignsTheFloor() = runTest {
+        cowReady(CowQuoteReading.Quoted(UInt256.of("12000000000000000"), UInt256.ONE))
+        val review = assertIs<SwapUiState.CowReview>(reviewed().uiState.value)
+
+        assertTrue(review.uniswapGivesMore)
+        assertTrue(review.comparison.startsWith("By CoW's own estimate, Uniswap gives more."), review.comparison)
+        val floor = review.minimum.removePrefix("at least ")
+        assertTrue("never below the Uniswap net less it ($floor)" in review.minimumNote, review.minimumNote)
+    }
+
+    @Test
+    fun cowThatDoesNotAnswerIsSaidAndTheSameSwapIsOfferedOnUniswapNeverTakenByItself() = runTest {
+        cowReady(CowQuoteReading.Unavailable(CowUnavailable.TIMEOUT))
+        val viewModel = reviewed()
+
+        val compose = assertIs<SwapUiState.Compose>(viewModel.uiState.value)
+        assertEquals("CoW did not answer.", compose.form.error)
+        assertTrue(compose.uniswapInstead)
+        assertEquals(SwapVenue.COW, compose.venue.chosen, "nothing switched by itself")
+
+        viewModel.swapOnUniswap()
+        runCurrent()
+
+        assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
+        assertEquals(VenueChoice.Chosen(SwapVenue.UNISWAP), swapVenue.choice.value)
+        assertEquals(1, cowApi.quotes.size, "CoW not asked again")
+    }
+
+    @Test
+    fun anUndecodableAnswerOrARefusalIsSaidInItsOwnWords() = runTest {
+        cowReady(CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE))
+        assertEquals(
+            "CoW gave an answer this version does not understand: an update of Serotine brings CoW back.",
+            assertIs<SwapUiState.Compose>(reviewed().uiState.value).form.error,
+        )
+        cowApi.quote = CowQuoteReading.Refused(CowRefusal.NO_LIQUIDITY, "NoLiquidity")
+        val viewModel = reviewed()
+        val compose = assertIs<SwapUiState.Compose>(viewModel.uiState.value)
+        assertEquals("CoW found no liquidity for this swap (CoW's word: NoLiquidity).", compose.form.error)
+        assertTrue(compose.uniswapInstead)
+    }
+
+    @Test
+    fun onADeviceThatCannotProveAnOrdersEndCowIsGreyedOut() = runTest {
+        swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.COW)
+        light.datesFinalizedBlocks = false
+        val venue = assertIs<SwapUiState.Compose>(viewModel(sell = usdc.address).uiState.value).venue
+
+        assertEquals(SwapVenue.UNISWAP, venue.chosen)
+        val why = venue.cowUnavailable
+        assertTrue(why!!.startsWith("CoW Protocol is not offered on this device"), why)
+    }
+
+    @Test
+    fun aVenueGreyedOutComesBackOnlyAtTheUsersTap() = runTest {
+        swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.COW)
+        val viewModel = viewModel()
+        assertEquals(SwapVenue.UNISWAP, assertIs<SwapUiState.Compose>(viewModel.uiState.value).venue.chosen)
+
+        viewModel.onSellChange(usdc.address.hex)
+
+        assertEquals(SwapVenue.UNISWAP, assertIs<SwapUiState.Compose>(viewModel.uiState.value).venue.chosen)
+        viewModel.onVenueChange(SwapVenue.COW)
+        assertEquals(SwapVenue.COW, assertIs<SwapUiState.Compose>(viewModel.uiState.value).venue.chosen)
+    }
+
+    @Test
+    fun cowIsAskedNothingUntilItIsChosenAndTheReviewAskedFor() = runTest {
+        cowReady()
+        swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.UNISWAP)
+        val viewModel = reviewed()
+        assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
+        viewModel.edit()
+        viewModel.onVenueChange(SwapVenue.COW)
+        runCurrent()
+
+        assertTrue(cowApi.quotes.isEmpty(), "chosen, not yet reviewed: CoW knows nothing")
+        viewModel.review()
+        runCurrent()
+        assertEquals(1, cowApi.quotes.size)
+    }
+
+    @Test
+    fun cowsVaultRelayerIsApprovedFirstWhenItMayNotTakeTheAmount() = runTest {
+        cowReady()
+        allow(UInt256.of(5_000_000))
+        val approval = assertIs<SwapUiState.ApprovalReview>(reviewed().uiState.value)
+
+        assertEquals(SpenderItem("CoW's vault relayer", Eip55.format(cow.vaultRelayer)), approval.spender)
+        assertTrue("the order is signed on its own" in approval.simulation, approval.simulation)
+        assertTrue(cowApi.quotes.isEmpty(), "CoW is asked once the allowance is there")
+    }
+
+    @Test
+    fun theBiometricPromptSaysWhatTheOrderSignsInFull() = runTest {
+        biometrics = BiometricUnlock.On
+        cowReady()
+        val viewModel = reviewed()
+        viewModel.signWithBiometrics()
+        runCurrent()
+
+        val unlock = assertIs<Unlock.WithBiometrics>(signer.asked.single().second)
+        assertEquals("Sign a CoW order: 40 USDC for at least 0.0160195 ETH", unlock.reason)
+    }
+
+    @Test
+    fun aQuoteStaleByTheVerifiedHeadAtTheTapIsQuotedAgainNotSigned() = runTest {
+        cowReady()
+        val viewModel = reviewed()
+        val finalized = FinalizedBlock(9_412_050, headTime - 816)
+        light.status.value = LightClientStatus.Synced(9_412_123, headTime + 61, finalized)
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        val review = assertIs<SwapUiState.CowReview>(viewModel.uiState.value)
+        assertEquals(STALE_QUOTE, review.unlock.error)
+        assertTrue(signer.asked.isEmpty(), "nothing signed")
+        assertEquals(2, cowApi.quotes.size, "quoted again")
+    }
+
+    @Test
+    fun howCowAnsweredTheOrderIsSaid() = runTest {
+        cowReady()
+        cowApi.placement = CowPlacement.Refused(CowRefusal.FUNDS, "InsufficientBalance")
+        val refused = reviewed()
+        refused.onPasswordChange("made-up test password")
+        refused.sign()
+        runCurrent()
+        val placed = assertIs<SwapUiState.OrderPlaced>(refused.uiState.value)
+        assertEquals("CoW refused the order", placed.title)
+        assertTrue("(InsufficientBalance)" in placed.message, placed.message)
+
+        cowOrders.orders.value = emptyList()
+        cowApi.placement = CowPlacement.Unclear(CowUnavailable.UNDECODABLE)
+        val unread = reviewed()
+        unread.onPasswordChange("made-up test password")
+        unread.sign()
+        runCurrent()
+        assertEquals("CoW's answer could not be read", assertIs<SwapUiState.OrderPlaced>(unread.uiState.value).title)
+    }
+
+    @Test
+    fun whereUniswapGivesMoreTheSameSwapOnUniswapIsOneTapFromTheReview() = runTest {
+        cowReady(CowQuoteReading.Quoted(UInt256.of("12000000000000000"), UInt256.ONE))
+        val viewModel = reviewed()
+        assertTrue(assertIs<SwapUiState.CowReview>(viewModel.uiState.value).uniswapGivesMore)
+
+        viewModel.swapOnUniswap()
+        runCurrent()
+
+        assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
+        assertEquals(VenueChoice.Chosen(SwapVenue.UNISWAP), swapVenue.choice.value)
+    }
+
+    @Test
+    fun aLiveOrderOfTheTokenOffersNoUniswapSwapOfIt() = runTest {
+        cowReady()
+        val first = reviewed()
+        first.onPasswordChange("made-up test password")
+        first.sign()
+        runCurrent()
+
+        val compose = assertIs<SwapUiState.Compose>(reviewed().uiState.value)
+        assertTrue(compose.form.error!!.startsWith("An earlier CoW order selling USDC may still fill"))
+        assertFalse(compose.uniswapInstead, "the order and a Uniswap swap could both swap")
+    }
+
     /** Verified calls of the factory, its pool and QuoterV2 a test answers; the factory lists nothing else. */
     private inner class PoolChain : UniswapV3Chain {
         val answers = mutableMapOf<Pair<Address, String>, String>()
@@ -477,6 +766,7 @@ class SwapViewModelTest {
 
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+        override var datesFinalizedBlocks: Boolean = true
 
         override fun observeStatus(): Flow<LightClientStatus> = status
     }

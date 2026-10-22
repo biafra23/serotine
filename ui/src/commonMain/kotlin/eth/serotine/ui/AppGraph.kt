@@ -40,7 +40,9 @@ import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
+import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
+import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
@@ -70,14 +72,17 @@ import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveSentTransfer
+import eth.serotine.domain.usecase.ObserveSwapVenue
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.PlaceCowOrder
 import eth.serotine.domain.usecase.PlanSafe
 import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.ProposeSafeTx
+import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteSafeApproval
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.QuoteSafeExecution
@@ -407,6 +412,22 @@ class AppGraph(
         SendTokenApproval(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
+        ObserveSwapVenue(swapVenue),
+        ChooseSwapVenue(swapVenue),
+        CowOfferedOnThisDevice(lightClient),
+        QuoteCowSwap(
+            cowChain,
+            cowApi,
+            FindUniswapRoute(uniswap, transactionInputs),
+            transactionInputs,
+            tokenBalances,
+            sentTransfers,
+            cowOrders,
+            historyStarts,
+            lightClient,
+            network,
+        ),
+        PlaceCowOrder(FindUniswapRoute(uniswap, transactionInputs), signer, cowOrders, cowApi, lightClient),
         network,
     )
 

@@ -148,6 +148,7 @@ class SafeSwapsTest {
     @Test
     fun aVerdictThatNeedsNoHeadIsGivenWhileTheLightClientSaysNothingYet() = runTest {
         val silent = object : LightClient {
+            override val datesFinalizedBlocks = true
             override fun observeStatus(): Flow<LightClientStatus> = flow { awaitCancellation() }
         }
         val checkSilently = CheckSafeSwap(chain, silent, Network.SEPOLIA)

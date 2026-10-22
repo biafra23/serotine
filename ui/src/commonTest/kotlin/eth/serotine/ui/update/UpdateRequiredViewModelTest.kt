@@ -41,6 +41,7 @@ class UpdateRequiredViewModelTest {
                 override suspend fun save(record: KnownUpgrade): Boolean = error("not used by this test")
             },
             object : LightClient {
+                override val datesFinalizedBlocks = true
                 override fun observeStatus(): Flow<LightClientStatus> = status
             },
             clock = { 1_791_400_000 },

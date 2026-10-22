@@ -498,6 +498,7 @@ class AccountsViewModelTest {
 
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+        override val datesFinalizedBlocks = true
         override fun observeStatus(): Flow<LightClientStatus> = status
     }
 

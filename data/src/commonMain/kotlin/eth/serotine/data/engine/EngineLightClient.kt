@@ -26,6 +26,10 @@ class EngineLightClient internal constructor(
     private val pollInterval: Duration,
 ) : LightClient {
 
+    // What the chain's snapshot reads: the JVM engine's finalized header (FinalizedHeaders). The
+    // iOS node, whose engine reads none yet, says otherwise.
+    override val datesFinalizedBlocks: Boolean = true
+
     override fun observeStatus(): Flow<LightClientStatus> {
         val chain = chain ?: return flowOf(LightClientStatus.Unavailable)
         return chain.snapshots(pollInterval).map(::statusOf).distinctUntilChanged().flowOn(dispatcher)

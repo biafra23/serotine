@@ -658,16 +658,22 @@ class SendViewModel(
         )
     }
 
-    /** What this account's earlier transfers, not mined yet, may still take, when anything. */
+    /** What this account's earlier transfers, not mined yet, and its CoW orders may still take, when anything. */
     private fun pendingText(quote: TransferQuote, option: AssetOption): String? {
         val native = network.nativeSymbol
         val parts = listOfNotNull(
             quote.pendingTokenAmount?.takeUnless { it.isZero }?.let { exactAmount(it, option.decimals, option.symbol) },
             quote.pendingCost.takeUnless { it.isZero }?.let { "up to " + exactAmount(it, NATIVE_DECIMALS, native) },
         )
-        if (parts.isEmpty()) return null
-        return "Earlier transfers from this account, not mined yet, may still take ${parts.joinToString(" and ")}: " +
-            "the balance after counts it."
+        val held = quote.heldByOrders?.takeUnless { it.isZero }?.let { exactAmount(it, option.decimals, option.symbol) }
+        val sentences = listOfNotNull(
+            parts.takeIf { it.isNotEmpty() }?.let {
+                "Earlier transfers from this account, not mined yet, may still take ${it.joinToString(" and ")}."
+            },
+            held?.let { "This account's CoW orders that may still fill hold back $it." },
+        )
+        if (sentences.isEmpty()) return null
+        return sentences.joinToString(" ") + " The balance after counts it."
     }
 
     private fun recipientItem(found: RecipientLookup.Found, accounts: List<Account>, asset: AssetOption?) =
@@ -702,7 +708,8 @@ class SendViewModel(
         } else {
             "Not enough ${network.nativeSymbol} for the most the fee can be. Transfers not mined yet count too."
         }
-        TransferQuoting.InsufficientToken -> "This account holds less ${option.symbol} than that."
+        TransferQuoting.InsufficientToken -> "This account holds less ${option.symbol} than that, once what its " +
+            "transfers not mined yet and its CoW orders that may still fill can take is set aside."
         is TransferQuoting.Infeasible -> "This transfer cannot succeed: ${quoting.detail}"
         is TransferQuoting.Reverts -> {
             val at = quoting.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()

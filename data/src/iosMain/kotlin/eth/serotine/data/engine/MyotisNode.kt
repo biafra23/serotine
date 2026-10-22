@@ -130,8 +130,14 @@ class MyotisNode private constructor(
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
     val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances)
 
-    /** This node's light client, for the user to watch. */
-    val lightClient: LightClient = EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
+    /**
+     * This node's light client, for the user to watch. It gives no finalized block's own time here:
+     * the iOS module reads no block by number yet, so no CoW order is offered on iOS.
+     */
+    val lightClient: LightClient =
+        object : LightClient by EngineLightClient(chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL) {
+            override val datesFinalizedBlocks: Boolean = false
+        }
 
     /** Network upgrades this build does not support, as peers report them to this node. */
     val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(chain, Dispatchers.IO, POLL_INTERVAL)

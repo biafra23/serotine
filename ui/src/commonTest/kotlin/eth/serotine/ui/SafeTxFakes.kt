@@ -196,6 +196,7 @@ internal class SafeWorld {
         LightClientStatus.Synced(headBlock = 100, headTimestamp = HEAD_TIME, finalized = null),
     )
     val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(): Flow<LightClientStatus> = head
     }
 

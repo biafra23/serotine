@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
@@ -19,6 +20,7 @@ import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.BiometricUnlock
 import eth.serotine.domain.repository.BiometricUnusable
 import eth.serotine.domain.repository.Broadcast
+import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
@@ -131,6 +133,7 @@ class SendViewModelTest {
     private val sent = MemorySentTransfers()
     private val cowOrders = MemoryCowOrders()
     private val light = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
     }
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
@@ -473,7 +476,51 @@ class SendViewModelTest {
         viewModel.review()
         runCurrent()
 
-        assertEquals("This account holds less USDC than that.", viewModel.compose.error)
+        assertEquals(
+            "This account holds less USDC than that, once what its transfers not mined yet and its CoW orders " +
+                "that may still fill can take is set aside.",
+            viewModel.compose.error,
+        )
+    }
+
+    @Test
+    fun whatALiveCowOrderMayStillTakeIsHeldBackAndSaid() = runTest {
+        holding()
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val hundredUsdc = UInt256.of(100_000_000)
+        val order =
+            CowOrder(usdc.address, CowOrder.NATIVE_BUY_TOKEN, daily.address, hundredUsdc, UInt256.ONE, 1_900_000_000)
+        cowOrders.orders.value = listOf(
+            CowOrderRecord(
+                account = daily.address,
+                network = Network.SEPOLIA,
+                settlement = settlement,
+                order = order,
+                uid = order.uid(Network.SEPOLIA.chainId, settlement, daily.address),
+                signature = FakeSigner.SIGNATURE,
+                sell = TransferAsset.Erc20Token(usdc),
+                buy = TransferAsset.Native,
+                signedAt = 1_899_999_700,
+                rangeStart = 9_412_000,
+            ),
+        )
+        val viewModel = viewModel(asset = usdc.address)
+        runCurrent()
+        viewModel.onToChange(friend.hex)
+        viewModel.onAmountChange("200")
+        viewModel.review()
+        runCurrent()
+        assertTrue(viewModel.compose.error!!.startsWith("This account holds less USDC than that"), "250 less 100")
+
+        viewModel.edit()
+        viewModel.onAmountChange("100")
+        viewModel.review()
+        runCurrent()
+
+        assertEquals(
+            "This account's CoW orders that may still fill hold back 100 USDC. The balance after counts it.",
+            viewModel.review.pending,
+        )
     }
 
     @Test

@@ -150,6 +150,9 @@ class QuoteCowSwap(
         tolerance: SlippageTolerance,
     ): CowSwapQuoting = cancellingReads {
         if (amountIn.isZero) return@cancellingReads CowSwapQuoting.NothingToSwap
+        if (!lightClient.datesFinalizedBlocks) {
+            return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.NOT_ON_THIS_DEVICE)
+        }
         val soldToken = (sell as? TransferAsset.Erc20Token)?.token
             ?: return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.SELLS_ETHER)
         val buyToken = (buy as? TransferAsset.Erc20Token)?.token?.address ?: CowOrder.NATIVE_BUY_TOKEN
@@ -337,6 +340,12 @@ private fun CallRefusal.asCowSwapQuoting(): CowSwapQuoting = when (this) {
 
 /** Why CoW is not offered for a swap (docs/swaps.md, *The user's choice of venue*). */
 enum class CowNotOffered {
+    /**
+     * This device's light client gives no finalized block's own time, which proving an order's end
+     * needs ([LightClient.datesFinalizedBlocks]): no order is offered here.
+     */
+    NOT_ON_THIS_DEVICE,
+
     /** Native ether is sold: that takes CoW's ETH-flow contract, not pinned yet. */
     SELLS_ETHER,
 

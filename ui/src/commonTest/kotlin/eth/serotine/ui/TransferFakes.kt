@@ -1,18 +1,25 @@
 package eth.serotine.ui
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowApi
 import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowOrderEnd
+import eth.serotine.domain.repository.CowOrderLife
 import eth.serotine.domain.repository.CowOrderList
 import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.CowOrders
+import eth.serotine.domain.repository.CowPlacement
+import eth.serotine.domain.repository.CowQuoteReading
+import eth.serotine.domain.repository.CowUnavailable
 import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
@@ -39,6 +46,8 @@ import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.SwapVenueSetting
+import eth.serotine.domain.repository.VenueChoice
 import eth.serotine.domain.repository.prunable
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
@@ -287,13 +296,58 @@ internal class MemoryCowOrders : CowOrders {
     }
 }
 
-/** CoW's contracts as a chain without them: no venue, and no answer to a call unless [answers] has one. */
+/** CoW's contracts as a chain: [venue] (none by default), and no answer to a call unless [answers] has one. */
 internal class FakeCowChain : CowChain {
+    var venue: CowVenueReading = CowVenueReading.NotPinned
     val answers = mutableMapOf<Pair<Address, String>, Simulation>()
 
-    override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned
+    override suspend fun venue(network: Network): CowVenueReading = venue
 
     override suspend fun call(to: Address, data: ByteArray): Simulation =
         answers[to to data.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }]
             ?: Simulation.Unavailable(ReadUnavailable.UNPROVEN)
+}
+
+/** CoW's order API as a fake: [quote] for every quote, [placement] (CoW's acceptance by default) for every order. */
+internal class FakeCowApi : CowApi {
+    var quote: CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NO_CONNECTION)
+    var placement: CowPlacement? = null
+    val quotes = mutableListOf<Address>()
+    val placed = mutableListOf<CowOrderUid>()
+
+    override suspend fun quote(
+        network: Network,
+        sellToken: Address,
+        buyToken: Address,
+        sellAmount: UInt256,
+        from: Address,
+    ): CowQuoteReading {
+        quotes += sellToken
+        return quote
+    }
+
+    override suspend fun place(
+        network: Network,
+        order: CowOrder,
+        owner: Address,
+        signature: Signature,
+        uid: CowOrderUid,
+    ): CowPlacement {
+        placed += uid
+        return placement ?: CowPlacement.Accepted(uid)
+    }
+
+    override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife = CowOrderLife.Open
+}
+
+/** The venue last chosen, in memory: none until a test or a choice sets one. */
+internal class MemorySwapVenue : SwapVenueSetting {
+    val choice = MutableStateFlow<VenueChoice>(VenueChoice.Chosen(null))
+
+    override fun observe(): Flow<VenueChoice> = choice
+
+    override suspend fun choose(venue: SwapVenue): Boolean {
+        choice.value = VenueChoice.Chosen(venue)
+        return true
+    }
 }
