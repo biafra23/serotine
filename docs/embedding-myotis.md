@@ -604,5 +604,6 @@ user to update — before it, and, after it, nothing else.
   answer is trusted or shown as untrusted — recorded in CLAUDE.md under *Data
   sources* before the code lands. Prices, the token list and Safe
   co-signing are decided there (2026-10-16), each without an off-chain
-  service; the dApp connection protocol and CoW Protocol's order API
-  (docs/swaps.md) are still open.
+  service. CoW Protocol's order API is the first off-chain service allowed
+  (2026-10-22), for the swaps the user sends to CoW (docs/swaps.md). The dApp
+  connection protocol is still open.
