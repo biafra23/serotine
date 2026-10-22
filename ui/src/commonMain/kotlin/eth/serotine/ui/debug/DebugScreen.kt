@@ -106,11 +106,12 @@ fun DebugScreen(
                         }
                     },
                     supportingText = {
+                        val records = if (state.recorded == 1) "record" else "records"
                         Text(
                             if (state.lines.size == state.recorded) {
-                                "${state.recorded} records"
+                                "${state.recorded} $records"
                             } else {
-                                "${state.lines.size} of ${state.recorded} records"
+                                "${state.lines.size} of ${state.recorded} $records"
                             },
                         )
                     },

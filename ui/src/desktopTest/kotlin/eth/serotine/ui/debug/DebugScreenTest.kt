@@ -42,7 +42,7 @@ class DebugScreenTest {
         rule.onNodeWithTag(DEBUG_LOG_TAG).assertIsDisplayed()
         rule.onNodeWithText("14:03:27.481  INFO").assertIsDisplayed()
         rule.onNodeWithText("Myotis · requestAccount: ok, 34 ms").assertIsDisplayed()
-        rule.onNodeWithText("1 records").assertIsDisplayed()
+        rule.onNodeWithText("1 record").assertIsDisplayed()
     }
 
     @Test

@@ -140,16 +140,20 @@ internal class LoggedChain(
         response: () -> String,
     ) {
         val took = started.elapsedNow().inWholeMilliseconds
-        // The detail first: newest first, the Debug tab shows it under the line it belongs to.
-        if (log.isLoggable(LogLevel.DEBUG)) {
-            log.log(LogLevel.DEBUG, SOURCE, "$name(${params().cut()}) → ${response().cut()}")
-        }
         val result = when {
             failure == null -> "ok"
             failure.isEmpty() -> "failed"
             else -> "failed (${failure.take(MAX_REASON)})"
         }
-        log.log(LogLevel.INFO, SOURCE, "$name: $result, $took ms")
+        val line = LogLevel.INFO to "$name: $result, $took ms"
+        // The detail first, and the two in one write: newest first, the Debug tab shows the detail
+        // right under the line it belongs to, whatever other requests run at the same time.
+        val entries = if (log.isLoggable(LogLevel.DEBUG)) {
+            listOf(LogLevel.DEBUG to "$name(${params().cut()}) → ${response().cut()}", line)
+        } else {
+            listOf(line)
+        }
+        log.log(SOURCE, entries)
     }
 
     private fun answered(answer: Any?): String? = if (answer != null) null else ""

@@ -43,6 +43,19 @@ class MemoryDebugLogTest {
     }
 
     @Test
+    fun entriesWrittenTogetherStayTogetherAndBelowTheLevelAreLeftOut() = runTest {
+        val log = MemoryDebugLog(now = { time++ })
+        log.log(LogLevel.INFO, "Myotis", "before")
+        log.log("Myotis", listOf(LogLevel.DEBUG to "detail", LogLevel.INFO to "line"))
+        log.setLevel(LogLevel.DEBUG)
+        log.log("Myotis", listOf(LogLevel.DEBUG to "detail 2", LogLevel.INFO to "line 2"))
+
+        val kept = log.observeRecords().first()
+        assertEquals(listOf("before", "line", "detail 2", "line 2"), kept.map { it.message })
+        assertEquals(listOf(1L, 2L, 3L, 4L), kept.map { it.id })
+    }
+
+    @Test
     fun itKeepsTheLastRecordsOnlyAndNumbersThemOnAcrossAClear() = runTest {
         (1..5).forEach { log.log(LogLevel.INFO, "Myotis", "request $it") }
 

@@ -23,7 +23,14 @@ interface LogSink {
      * Records [message] from [source] at [level], or nothing below the log's level. Never throws,
      * never blocks: any thread may call it. [message] must hold no key material.
      */
-    fun log(level: LogLevel, source: String, message: String)
+    fun log(level: LogLevel, source: String, message: String) = log(source, listOf(level to message))
+
+    /**
+     * Records each of [entries] (a level and a message) from [source] that is at the log's level
+     * or above, in their order and next to each other: no other writer's record comes between
+     * them. Otherwise as [log].
+     */
+    fun log(source: String, entries: List<Pair<LogLevel, String>>)
 }
 
 /**
@@ -69,17 +76,18 @@ class MemoryDebugLog(
 
     override fun isLoggable(level: LogLevel): Boolean = recording && level >= this.level.value
 
-    override fun log(level: LogLevel, source: String, message: String) {
-        if (!isLoggable(level)) return
+    override fun log(source: String, entries: List<Pair<LogLevel, String>>) {
+        if (entries.none { (level, _) -> isLoggable(level) }) return
         val at = now()
         kept.update { current ->
-            val record = LogRecord(current.nextId, at, level, source, message)
-            val records = if (current.records.size < capacity) {
-                current.records + record
-            } else {
-                current.records.subList(current.records.size - capacity + 1, current.records.size) + record
+            // Asked again inside the update: one that loses its race to setRecording(false) and a
+            // clear() is retried, and then adds nothing, so no record outlives the switch.
+            val added = entries.filter { (level, _) -> isLoggable(level) }
+            if (added.isEmpty()) return@update current
+            val records = added.mapIndexed { index, (level, message) ->
+                LogRecord(current.nextId + index, at, level, source, message)
             }
-            Kept(records, current.nextId + 1)
+            Kept((current.records + records).takeLast(capacity), current.nextId + records.size)
         }
     }
 
