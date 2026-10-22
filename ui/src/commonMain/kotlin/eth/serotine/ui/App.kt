@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -51,6 +52,7 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
+import eth.serotine.ui.debug.DebugRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
@@ -79,7 +81,8 @@ import eth.serotine.ui.watch.WatchRoute
  * window or activity, after building the [graph] with its platform adapters.
  *
  * Two tabs, Accounts and Settings, under a bottom bar (a rail on a wide window), around the
- * one [NavHost] (docs/architecture.md). Each tab is a nested graph with its own back stack;
+ * one [NavHost] (docs/architecture.md), and a third, Debug, once the user turns it on in
+ * Settings. Each tab is a nested graph with its own back stack;
  * a flow that ends in a key operation covers the bar. While a network upgrade has left this
  * version unable to follow the network, it shows the update screen and nothing else.
  */
@@ -102,6 +105,10 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
         val update = viewModel { graph.updateRequiredViewModel() }
         // One strip for every screen that draws it, followed while one of them is shown.
         val lightClient = viewModel { graph.lightClientViewModel() }
+        // Whether the bar has a Debug tab: the app's tabs, so scoped to the host too.
+        val debugTab = viewModel { graph.debugTabViewModel() }
+        val debugShown by debugTab.shown.collectAsStateWithLifecycle()
+        val tabs = Tab.entries.filter { it != Tab.DEBUG || debugShown }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
             Tab.entries.firstOrNull { it.graph == destination.route }
@@ -114,7 +121,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
             Row(Modifier.fillMaxSize()) {
                 if (wide && selected != null) {
                     NavigationRail {
-                        Tab.entries.forEach { tab ->
+                        tabs.forEach { tab ->
                             NavigationRailItem(
                                 selected = tab == selected,
                                 onClick = { select(tab) },
@@ -132,7 +139,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
                     bottomBar = {
                         if (!wide && selected != null) {
                             NavigationBar {
-                                Tab.entries.forEach { tab ->
+                                tabs.forEach { tab ->
                                     NavigationBarItem(
                                         selected = tab == selected,
                                         onClick = { select(tab) },
@@ -151,6 +158,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
                         navController,
                         update,
                         lightClient,
+                        debugShown,
                         Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
                     )
                 }
@@ -164,20 +172,26 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
 private enum class Tab(val label: String, val icon: ImageVector, val graph: String, val start: String) {
     ACCOUNTS("Accounts", SerotineIcons.Wallet, "accounts-tab", Destination.ACCOUNTS),
     SETTINGS("Settings", Icons.Filled.Settings, "settings-tab", Destination.SETTINGS),
+
+    /** Shown only while the user has it turned on in Settings. */
+    DEBUG("Debug", Icons.Filled.Build, "debug-tab", Destination.DEBUG),
 }
 
 /**
- * Shows [tab]. The current one again returns to its start. Settings opens over the Accounts
- * tab's stack, which stays as the user left it, and Accounts closes Settings back down to it
- * — as the back key does. No stack is saved aside, so none can come back after the user has
- * left it by another way (saveState/restoreState would bring back an account screen left by
- * the back key from Settings).
+ * Shows [tab]. The current one again returns to its start. Settings and Debug each open over
+ * the Accounts tab's stack, which stays as the user left it, one at a time: either replaces the
+ * other, and Accounts closes it back down to that stack — as the back key does. No stack is
+ * saved aside, so none can come back after the user has left it by another way
+ * (saveState/restoreState would bring back an account screen left by the back key from Settings).
  */
 private fun NavController.select(tab: Tab, current: Tab?) {
     when {
         tab == current -> popBackStack(tab.start, inclusive = false)
-        tab == Tab.ACCOUNTS -> popBackStack(Tab.SETTINGS.graph, inclusive = true)
-        else -> navigate(tab.graph) { launchSingleTop = true }
+        tab == Tab.ACCOUNTS -> current?.let { popBackStack(it.graph, inclusive = true) }
+        else -> {
+            current?.takeIf { it != Tab.ACCOUNTS }?.let { popBackStack(it.graph, inclusive = true) }
+            navigate(tab.graph) { launchSingleTop = true }
+        }
     }
 }
 
@@ -191,6 +205,7 @@ private fun Destinations(
     navController: NavHostController,
     update: UpdateRequiredViewModel,
     lightClient: LightClientViewModel,
+    debugShown: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -208,6 +223,10 @@ private fun Destinations(
                 popUpTo(Destination.UPDATE_REQUIRED) { inclusive = true }
             }
         }
+    }
+    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts.
+    LaunchedEffect(debugShown) {
+        if (!debugShown) navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
     }
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is
@@ -345,6 +364,11 @@ private fun Destinations(
                     onBack = { navController.leave(Destination.ADD_TOKEN) },
                     onAdded = { navController.leave(Destination.ADD_TOKEN) },
                 )
+            }
+        }
+        navigation(startDestination = Destination.DEBUG, route = Tab.DEBUG.graph) {
+            composable(Destination.DEBUG) {
+                DebugRoute(viewModel { graph.debugViewModel() })
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
@@ -738,6 +762,7 @@ private object Destination {
     const val RENAME = "rename"
     const val REMOVE = "remove"
     const val SETTINGS = "settings"
+    const val DEBUG = "debug"
     const val CURRENCY = "currency"
     const val TOKENS = "tokens"
     const val SECURITY = "security"

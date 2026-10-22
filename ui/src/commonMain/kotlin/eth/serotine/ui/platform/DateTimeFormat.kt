@@ -6,3 +6,9 @@ package eth.serotine.ui.platform
  * a network upgrade with.
  */
 expect fun formatDateTime(epochSeconds: Long): String
+
+/**
+ * [epochMillis] (unix milliseconds) as the time of day in the user's own time zone, to the
+ * millisecond: "14:03:27.481". What the Debug tab dates its log records with.
+ */
+expect fun formatTimeOfDay(epochMillis: Long): String

@@ -45,7 +45,8 @@ rule in code.
   (`SigningRequestCodec`).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
   `KeyStore` and `Signer`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
-  `DisplayCurrencySetting`, `SentTransfers`, and `NativeBalances`, `TokenBalances`,
+  `DisplayCurrencySetting`, `DebugScreenSetting`, `DebugLog` (in memory, written by the
+  engine adapter through `LogSink`), `SentTransfers`, and `NativeBalances`, `TokenBalances`,
   `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient`,
   `NetworkUpgrades`, and for sending `TransactionInputs`, `Broadcaster`,
   `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine; for a
@@ -80,10 +81,11 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`, `SafeTx` and its `SigningRequest`, `SafeRelease`) and the encodings computed here (`SafeCreation`: `setup`, `createProxyWithNonce` and the CREATE2 address) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution, a Safe's deployment) |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `history` — where each account's history starts —, `rates` — the exchange rate last verified, for a home-screen widget —, `files`) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `history` — where each account's history starts —, `rates` — the exchange rate last verified, for a home-screen widget —, `logs` — the Debug tab's log, in memory, and the `LogSink` adapters write it through —, `files`) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `safepropose` is Send from a Safe, on the same transfer form; `transferstatus` follows a transaction once sent; `safetx` is one Safe transaction with its signing, approval and execution steps; `safeimport` imports a signing request; `createsafe` holds one screen with three steps, owners, threshold and review) |
 | `eth.serotine.ui.activity` | an account's Activity, a tab of its detail rather than a screen, so with no ViewModel of its own: `AccountActivity`, which `AccountDetailViewModel` reads while the tab is shown, `ActivityUiState` and the list's items (`activityItems`), which `AccountDetailScreen` draws in the tab |
 | `eth.serotine.ui.ratewidget` | what a host's home-screen widget shows of the exchange rate last verified, display-ready (`rateWidgetContent`); the host draws it in its own widget toolkit: no screen, no ViewModel |
+| `eth.serotine.ui.debug` | the Debug tab (`DebugScreen`, `DebugViewModel`, `DebugUiState`), and `DebugTabViewModel`, which tells `App` whether the bar shows the tab |
 | `eth.serotine.ui.lightclient` | `LightClientViewModel`, the light client's status strip as the screens that depend on it draw it: no screen of its own |
 | `eth.serotine.ui.components` | stateless composables more than one screen draws (the blockie, an account's avatar, a token's icon, a QR code, the long-press menu, the transfer form, the unlock that signs, a Safe transaction's decoded action, a signing request shared) and the display helpers and display-ready types they share (EIP-55, amounts, the light client's line, the seed screens' password step, the transfer form's inputs and texts, what a Safe transaction does and why one is refused); no ViewModel, no use case |
 | `eth.serotine.ui.platform` | the shared UI's `expect`/`actual` seams (keeping a window out of screen capture, keeping the display on, the clipboard, the share sheet, dates in the user's locale) |
@@ -142,7 +144,11 @@ review finding, whatever it saves.
   closes back down to it, so switching tabs keeps the user's place in Accounts
   with no stack saved aside to go stale (owner ruling, 2026-10-18, #49: this
   tab model stands for now); re-selecting the current tab returns
-  to its start. A route's arguments are identifiers only
+  to its start. A third tab, Debug, joins the bar while the user has it
+  turned on in Settings, and follows the same model: it opens over the
+  Accounts tab's stack in Settings' place (one of the two at a time), and
+  `App` reads whether it shows from `DebugTabViewModel`, created in the
+  host's scope like the update screen's. A route's arguments are identifiers only
   (`account/{address}`), never an object: the destination's ViewModel loads
   what it shows through its use cases. The bar shows on the tabs' screens; a
   flow that ends in a key operation or a transaction (import, create, send,

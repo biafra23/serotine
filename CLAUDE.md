@@ -90,7 +90,9 @@ Modules (Gradle):
   the record of sent transactions and the history of them, kept for good
   (`eth.serotine.data.transfers`); where each account's history starts
   (`eth.serotine.data.history`); the exchange rate last verified, for the
-  home-screen widget (`eth.serotine.data.rates`); and the
+  home-screen widget (`eth.serotine.data.rates`); the Debug tab's log, in
+  memory only, which the engine adapter writes each request into
+  (`eth.serotine.data.logs`); and the
   display currency
   (`eth.serotine.data.settings`).
   Targets Android + desktop + iOS; the Android target is what resolves the

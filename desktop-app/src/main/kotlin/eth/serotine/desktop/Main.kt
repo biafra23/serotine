@@ -15,9 +15,11 @@ import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
+import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -129,12 +131,15 @@ private fun openWallet(dataDir: File) {
     // (`:desktop-app:run` sets the property; no installer does): the desktop's debug build.
     val debugLog: ((String) -> Unit)? =
         if (System.getProperty(DEBUG_LOG_PROPERTY) == "true") { line -> System.err.println(line) } else null
-    // The balances last verified are kept beside it, to be shown as such after a restart.
+    // The balances last verified are kept beside it, to be shown as such after a restart. Each
+    // request asked of the engine goes to the Debug tab's log, in memory, in any run.
+    val apiLog = MemoryDebugLog()
     val node = MyotisNode.start(
         Network.SEPOLIA,
         dataDir.resolve("myotis"),
         lastBalances = dataDir.resolve("last-balances.json").path,
         debugLog = debugLog,
+        apiLog = apiLog,
     )
     // One record per process, read by the screens and written by the notices; this version's only.
     val knownUpgrades = FileKnownUpgradeStore(dataDir.resolve("upgrade.json").path, APP_VERSION)
@@ -246,6 +251,9 @@ private fun openWallet(dataDir: File) {
                 // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
                 uniswap = node.uniswap,
                 network = Network.SEPOLIA,
+                debugLog = apiLog,
+                // Whether the user turned the Debug tab on, beside the other settings.
+                debugScreen = FileDebugScreen(dataDir.resolve("debug-screen.json").path),
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.
                 screenCaptureDebugSwitch = null,
             )

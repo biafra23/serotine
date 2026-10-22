@@ -9,12 +9,16 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveKnownTokens
+import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveLightClient
+import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.ui.APP_VERSION
+import eth.serotine.ui.FakeDebugLog
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryDebugScreen
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +47,9 @@ class SettingsViewModelTest {
         override fun observeStatus(): Flow<LightClientStatus> = status
     }
 
+    private val debugScreen = MemoryDebugScreen()
+    private val debugLog = FakeDebugLog()
+
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
@@ -59,6 +66,8 @@ class SettingsViewModelTest {
                 currencies,
                 Network.SEPOLIA,
                 screenCapture = null,
+                ObserveDebugScreen(debugScreen),
+                SetDebugScreen(debugScreen, debugLog),
                 clock = { 1_000 },
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -89,7 +98,15 @@ class SettingsViewModelTest {
         val known = ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata())
         val currencies = ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting())
         val switch = ScreenCaptureDebugSwitch()
-        val viewModel = SettingsViewModel(ObserveLightClient(lightClient), known, currencies, Network.SEPOLIA, switch)
+        val viewModel = SettingsViewModel(
+            ObserveLightClient(lightClient),
+            known,
+            currencies,
+            Network.SEPOLIA,
+            switch,
+            ObserveDebugScreen(debugScreen),
+            SetDebugScreen(debugScreen, debugLog),
+        )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
         assertEquals(false, viewModel.uiState.value.screenCaptureAllowed, "every start begins with capture blocked")
@@ -103,5 +120,34 @@ class SettingsViewModelTest {
         runCurrent()
         assertFalse(switch.allowed.value)
         assertEquals(false, viewModel.uiState.value.screenCaptureAllowed)
+    }
+
+    @Test
+    fun theDebugTabsSwitchTurnsItOnAndOffEmptyingTheLog() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val known = ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata())
+        val currencies = ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting())
+        val viewModel = SettingsViewModel(
+            ObserveLightClient(lightClient),
+            known,
+            currencies,
+            Network.SEPOLIA,
+            screenCapture = null,
+            ObserveDebugScreen(debugScreen),
+            SetDebugScreen(debugScreen, debugLog),
+        )
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertFalse(viewModel.uiState.value.debugScreen)
+
+        viewModel.showDebugScreen(true)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.debugScreen)
+
+        debugLog.records.value = listOf(debugLog.record(1))
+        viewModel.showDebugScreen(false)
+        runCurrent()
+        assertFalse(viewModel.uiState.value.debugScreen)
+        assertTrue(debugLog.records.value.isEmpty())
     }
 }

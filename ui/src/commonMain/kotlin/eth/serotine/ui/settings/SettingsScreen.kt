@@ -30,6 +30,9 @@ const val SETTINGS_VERSION_TAG = "settings-version"
 /** Test tag of the debug build's screen-recording row, for UI tests. */
 const val SETTINGS_SCREEN_CAPTURE_TAG = "settings-screen-capture"
 
+/** Test tag of the Debug tab's row, for UI tests. */
+const val SETTINGS_DEBUG_SCREEN_TAG = "settings-debug-screen"
+
 /** Binds [SettingsScreen] to its ViewModel. */
 @Composable
 fun SettingsRoute(
@@ -40,14 +43,22 @@ fun SettingsRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    SettingsScreen(state, onCurrency, onTokens, onSecurity, viewModel::allowScreenCapture, modifier)
+    SettingsScreen(
+        state,
+        onCurrency,
+        onTokens,
+        onSecurity,
+        viewModel::allowScreenCapture,
+        viewModel::showDebugScreen,
+        modifier,
+    )
 }
 
 /**
  * The Settings tab as a pure function of [state]; the display currency opens through
  * [onCurrency], Tokens through [onTokens], and Security (the wallet password, biometric unlock)
- * through [onSecurity]. In a debug build, a switch allows screen recordings of the protected
- * screens through [onScreenCaptureChange].
+ * through [onSecurity]. A switch shows the Debug tab through [onDebugScreenChange]. In a debug
+ * build, a switch allows screen recordings of the protected screens through [onScreenCaptureChange].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +68,7 @@ fun SettingsScreen(
     onTokens: () -> Unit,
     onSecurity: () -> Unit,
     onScreenCaptureChange: (Boolean) -> Unit,
+    onDebugScreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
@@ -87,6 +99,21 @@ fun SettingsScreen(
             ListItem(
                 leadingContent = { LightClientHealthDot(state.lightClient.health) },
                 headlineContent = { Text(state.lightClient.text) },
+            )
+            Section("Developer")
+            ListItem(
+                modifier = Modifier
+                    .toggleable(value = state.debugScreen, role = Role.Switch, onValueChange = onDebugScreenChange)
+                    .testTag(SETTINGS_DEBUG_SCREEN_TAG),
+                headlineContent = { Text("Debug tab") },
+                supportingContent = {
+                    Text(
+                        "Adds a tab with a log of the light client's requests, kept in memory on this device " +
+                            "only. Turning it off empties the log.",
+                    )
+                },
+                // The row is the toggle: the switch only shows its state.
+                trailingContent = { Switch(checked = state.debugScreen, onCheckedChange = null) },
             )
             state.screenCaptureAllowed?.let { allowed ->
                 Section("Debug build")

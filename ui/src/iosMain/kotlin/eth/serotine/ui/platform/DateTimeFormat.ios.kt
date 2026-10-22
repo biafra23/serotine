@@ -13,3 +13,10 @@ actual fun formatDateTime(epochSeconds: Long): String {
     formatter.timeStyle = NSDateFormatterShortStyle
     return formatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochSeconds.toDouble()))
 }
+
+/** Foundation's hours, minutes, seconds and milliseconds, in the device's time zone. */
+actual fun formatTimeOfDay(epochMillis: Long): String {
+    val formatter = NSDateFormatter()
+    formatter.dateFormat = "HH:mm:ss.SSS"
+    return formatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMillis / 1_000.0))
+}

@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
+import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.TokenOrigin
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.components.LightClientItem
@@ -18,11 +20,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * The Settings screen's ViewModel: the display currency, the known tokens, the [network], the
- * light client's state and the version; and, in a debug build, the switch that allows screen
- * recordings of the protected screens.
+ * light client's state, the Debug tab's switch and the version; and, in a debug build, the
+ * switch that allows screen recordings of the protected screens.
  */
 class SettingsViewModel(
     observeLightClient: ObserveLightClient,
@@ -31,6 +34,8 @@ class SettingsViewModel(
     network: Network,
     /** The debug build's screen-capture switch; null in a release build, which offers none. */
     private val screenCapture: ScreenCaptureDebugSwitch?,
+    observeDebugScreen: ObserveDebugScreen,
+    private val setDebugScreen: SetDebugScreen,
     /** Now, in unix seconds: what the light client's line dates the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
@@ -41,7 +46,8 @@ class SettingsViewModel(
             observeKnownTokens(),
             observeDisplayCurrencies(),
             screenCapture?.allowed ?: flowOf(null),
-        ) { item, known, currencies, captureAllowed ->
+            observeDebugScreen(),
+        ) { item, known, currencies, captureAllowed, debugScreen ->
             val builtIn = known.tokens.count { it.origin == TokenOrigin.BUILT_IN }
             val added = if (known.settingsUnavailable) {
                 "added ones cannot be read"
@@ -54,7 +60,7 @@ class SettingsViewModel(
                 currencies.setAside -> " (your saved choice was damaged and set aside)"
                 else -> ""
             }
-            SettingsUiState(network.displayName, item, APP_VERSION, tokens, currency, captureAllowed)
+            SettingsUiState(network.displayName, item, APP_VERSION, tokens, currency, captureAllowed, debugScreen)
         }
         .stateIn(
             viewModelScope,
@@ -71,5 +77,13 @@ class SettingsViewModel(
     /** Allows screen recordings of the protected screens, or blocks them again; a release build has no switch. */
     fun allowScreenCapture(allowed: Boolean) {
         screenCapture?.allow(allowed)
+    }
+
+    /**
+     * Shows the Debug tab, or hides it and empties its log. A switch that cannot be saved leaves
+     * the row as it was, which shows it did not take.
+     */
+    fun showDebugScreen(shown: Boolean) {
+        viewModelScope.launch { setDebugScreen(shown) }
     }
 }

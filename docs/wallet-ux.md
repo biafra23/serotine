@@ -120,7 +120,9 @@ The bottom bar is **Accounts | Settings**: a `NavigationBar`, and a
 `NavigationRail` on a wide desktop window. Each tab is a nested graph of the
 one `NavHost`, and switching tabs keeps the user's place: Settings opens over
 the Accounts tab's stack and closes back to it, with nothing saved aside (owner
-ruling, 2026-10-18, #49, for now; docs/architecture.md). The light
+ruling, 2026-10-18, #49, for now; docs/architecture.md). A third tab, Debug
+(27), joins them while the user has it turned on in Settings, and opens over
+the Accounts tab's stack in Settings' place. The light
 client's status strip stays at the top of Accounts, and of every other screen
 whose content or actions depend on it (*Rules every screen follows*). A flow that ends in a key
 operation or a transaction (import, create account, create Safe, send, a
@@ -730,7 +732,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
     for now) · Light client (status) · Debug build (the debug Android app
     only: *Allow screen recording*, rule 8 of docs/keys-and-signing.md) ·
-    About. Tokens opens the list of every token the
+    Developer (*Debug tab*, a switch in every build: 27; turning it off
+    empties the log) · About. Tokens opens the list of every token the
     wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
@@ -758,6 +761,22 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - After a change of the enrolled biometrics it reads "Stopped working",
       with the switch still on: turning it off deletes the invalidated key,
       and turning it on again makes a new one.
+
+### Debug tab
+
+27. **Debug**, shown while Settings' *Debug tab* switch is on (a file of its
+    own, `debug-screen.json`): a log of every request the app asks of the
+    Myotis engine, newest first. At INFO, each request's `io.myotis.api`
+    name, whether it was answered (ok) or not (failed), its time and how long
+    it took; at DEBUG, also what it asked and what came back, cut at 2,000
+    characters each. A filter keeps the lines that contain the text typed,
+    and the trash icon empties the log. The log is kept in memory only, the
+    last 2,000 records, never written to a file and never sent anywhere; it
+    starts at INFO with each launch, and a lower level shows more from then
+    on, never what went unrecorded before. What it holds is public chain data
+    and the app's own requests (addresses, calls, signed transactions), never
+    a key, a password or a recovery phrase. More logs are to join it under
+    sources of their own.
 
 ## Prices
 

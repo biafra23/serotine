@@ -8,9 +8,11 @@ import eth.serotine.data.keys.IosBiometricKey
 import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.iosHardwareSecret
+import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -95,11 +97,15 @@ class SerotineWallet {
     private val keys = "$dataDir/keys"
     private val hardware = iosHardwareSecret(keys)
 
+    /** The Debug tab's log: in memory for the life of the process, never in a file. */
+    private val debugLog = MemoryDebugLog()
+
     // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background;
     // its state can be fetched again, so it stays out of backups. The balances last verified are
     // kept beside it, to be shown as such after a restart. The adapters' diagnostics and the
     // engine's own log go to the device's log in a debug build only: NSLog, not println, whose
-    // stdout reaches no one on a device unless Xcode launched the app.
+    // stdout reaches no one on a device unless Xcode launched the app. Each request asked of the
+    // engine goes to the Debug tab's log ([debugLog]), in memory, in any build.
     @OptIn(ExperimentalNativeApi::class)
     private val node: MyotisNode = run {
         val engineDir = "$dataDir/myotis"
@@ -108,7 +114,13 @@ class SerotineWallet {
         // NSLog("%@", line) the debug app died at launch on the simulator (#129's CI).
         val debugLog: ((String) -> Unit)? =
             if (Platform.isDebugBinary) { line -> NSLog(line.replace("%", "%%")) } else null
-        MyotisNode.start(Network.SEPOLIA, engineDir, lastBalances = "$dataDir/last-balances.json", debugLog = debugLog)
+        MyotisNode.start(
+            Network.SEPOLIA,
+            engineDir,
+            lastBalances = "$dataDir/last-balances.json",
+            debugLog = debugLog,
+            apiLog = this.debugLog,
+        )
     }
 
     // One record per process, read by the screens and written by the notices; this version's only.
@@ -174,6 +186,9 @@ class SerotineWallet {
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
             network = Network.SEPOLIA,
+            debugLog = debugLog,
+            // Whether the user turned the Debug tab on, beside the other settings.
+            debugScreen = FileDebugScreen("$dataDir/debug-screen.json"),
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
             screenCaptureDebugSwitch = null,
         )

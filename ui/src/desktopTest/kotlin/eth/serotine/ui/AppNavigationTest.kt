@@ -135,6 +135,7 @@ import eth.serotine.ui.safetx.SAFE_TX_SIGN_TAG
 import eth.serotine.ui.send.SEND_AMOUNT_REVIEWED_TAG
 import eth.serotine.ui.send.SEND_PASSWORD_TAG
 import eth.serotine.ui.send.SEND_SIGN_TAG
+import eth.serotine.ui.settings.SETTINGS_DEBUG_SCREEN_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
 import eth.serotine.ui.tokens.TOKENS_ROW_TAG
 import eth.serotine.ui.transferstatus.TRANSFER_HASH_TAG
@@ -246,6 +247,9 @@ class AppNavigationTest {
         }
     }
 
+    private val debugLog = FakeDebugLog()
+    private val debugScreen = MemoryDebugScreen()
+
     private val graph = AppGraph(
         accounts = accountRepository,
         keys = object : KeyStore {
@@ -312,6 +316,8 @@ class AppNavigationTest {
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
         },
         network = Network.SEPOLIA,
+        debugLog = debugLog,
+        debugScreen = debugScreen,
         screenCaptureDebugSwitch = null,
     )
 
@@ -467,6 +473,37 @@ class AppNavigationTest {
         // Selecting the tab it is on returns to the tab's start.
         rule.onNodeWithText("Accounts").performClick()
         rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun theDebugTabShowsOnceTurnedOnInSettingsAndOpensOverTheAccountsTabAsSettingsDoes() {
+        accounts.value = listOf(daily)
+        debugLog.records.value = listOf(debugLog.record(1, message = "requestAccount: ok, 34 ms"))
+        showApp()
+        rule.onNodeWithText("Debug").assertDoesNotExist()
+        rule.onNodeWithText("Daily").performClick()
+
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().performClick()
+        rule.waitUntil { debugScreen.enabled.value }
+        rule.onNodeWithText("Debug").performClick()
+        rule.onNodeWithText("Myotis · requestAccount: ok, 34 ms").assertIsDisplayed()
+
+        // Debug took Settings' place over the Accounts tab: back leaves it for the account.
+        rule.runOnIdle { navController.single().popBackStack() }
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+
+        rule.onAllNodesWithText("Debug").assertCountEquals(1)
+        rule.onNodeWithText("Debug").performClick()
+        rule.onNodeWithText("Accounts").performClick()
+        rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+
+        // Turned off again, the tab goes and the log is emptied.
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().performClick()
+        rule.waitUntil { !debugScreen.enabled.value }
+        rule.onNodeWithText("Debug").assertDoesNotExist()
+        assertEquals(emptyList(), debugLog.records.value)
     }
 
     @Test
