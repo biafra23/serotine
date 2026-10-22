@@ -641,6 +641,11 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - A Safe's Activity lists the approvals and executions of its
       transactions and its deployment, whichever account here sent them
       ("Executed transaction 4", "By Alice · …").
+    - The CoW orders an account signed here (docs/swaps.md) sit among its
+      transactions by when each was signed: "CoW order: 40 USDC for at
+      least 0.0159 ETH", live until its validity, then as the chain proves
+      it ("Swapped 40 USDC for 0.0161 ETH on CoW", "CoW order not filled",
+      "CoW order cancelled"). A tap opens the order's status, not 26.
     - And its events on chain, from the engine's verified log index
       (`ObserveSafeHistory`): ETH received ("Received 0.5 ETH", "From Bob ·
       …"), executions and failed ones, approvals, its set-up, owner,

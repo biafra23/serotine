@@ -186,7 +186,11 @@ class SwapViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun TestScope.viewModel(from: Address = daily.address, sell: Address? = null): SwapViewModel {
+    private fun TestScope.viewModel(
+        from: Address = daily.address,
+        sell: Address? = null,
+        fill: SwapFill? = null,
+    ): SwapViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { headTime }
         val viewModel = SwapViewModel(
@@ -241,6 +245,7 @@ class SwapViewModelTest {
             Network.SEPOLIA,
             clock,
             formatTime = { "at $it" },
+            fill = fill,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -747,6 +752,21 @@ class SwapViewModelTest {
         val compose = assertIs<SwapUiState.Compose>(reviewed().uiState.value)
         assertTrue(compose.form.error!!.startsWith("An earlier CoW order selling USDC may still fill"))
         assertFalse(compose.uniswapInstead, "the order and a Uniswap swap could both swap")
+        assertEquals(cowOrders.orders.value.single().uid.hex, compose.liveOrder, "its status, one tap away")
+    }
+
+    @Test
+    fun theSameSwapAgainOpensFilledInOnTheVenueAsked() = runTest {
+        swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.COW)
+        val viewModel = viewModel(sell = usdc.address, fill = SwapFill(buy = null, "40", SwapVenue.UNISWAP))
+
+        val compose = assertIs<SwapUiState.Compose>(viewModel.uiState.value)
+        assertEquals("USDC", compose.form.sell?.symbol)
+        assertEquals("ETH", compose.form.buy?.symbol)
+        assertEquals("40", compose.form.amount)
+        assertEquals(SwapVenue.UNISWAP, compose.venue.chosen, "the venue asked, not the last chosen")
+        assertTrue(compose.form.canReview)
+        assertEquals(VenueChoice.Chosen(SwapVenue.COW), swapVenue.choice.value, "nothing chosen for the next swap")
     }
 
     /** Verified calls of the factory, its pool and QuoterV2 a test answers; the factory lists nothing else. */

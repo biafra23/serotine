@@ -5,10 +5,13 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
+import eth.serotine.domain.repository.CowOrderEnd
+import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
+import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.KnownToken
 import eth.serotine.domain.usecase.IndexedEvent
@@ -36,7 +39,9 @@ import kotlinx.coroutines.flow.map
  * and decimals from the tokens it knows ([ObserveKnownTokens]); a transfer received from an
  * address the wallet never sent to ([ObserveSentToAddresses]) and that is none of its accounts
  * is cautioned. A log of a transaction listed as sent, in a block, is left out when its row says
- * the same. [formatTime] dates each in the user's own time zone. A row opens its detail, which
+ * the same. The CoW orders the account signed here ([ObserveAccountCowOrders]) are listed among
+ * the transactions, by when each was signed, and open their status. [formatTime] dates each in
+ * the user's own time zone. A row opens its detail, which
  * is navigation.
  */
 class AccountActivity(
@@ -46,6 +51,7 @@ class AccountActivity(
     private val observeTokenTransfers: ObserveTokenTransfers,
     private val observeKnownTokens: ObserveKnownTokens,
     private val observeSentTo: ObserveSentToAddresses,
+    private val observeCowOrders: ObserveAccountCowOrders,
     private val network: Network,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) {
@@ -68,7 +74,7 @@ class AccountActivity(
         )
 
         val state: Flow<ActivityUiState> = combine(
-            observeAccountHistory(address),
+            combine(observeAccountHistory(address), observeCowOrders(address)) { history, orders -> history to orders },
             sources.parties,
             sources.safeHistory,
             sources.transfers,
@@ -77,20 +83,30 @@ class AccountActivity(
         )
 
         private fun render(
-            history: HistoryList,
+            sentHere: Pair<HistoryList, List<CowOrderRecord>>,
             parties: Parties,
             safe: IndexedHistory<SafeChainEvent>?,
             transfers: IndexedHistory<TokenTransferEvent>?,
             tokens: Map<Address, KnownToken>?,
         ): ActivityUiState {
             val names = parties.names
+            val (history, orders) = sentHere
             val entries = when (history) {
                 HistoryList.Unreadable -> return ActivityUiState.Unavailable(UNREADABLE)
                 is HistoryList.Loaded -> history.entries
             }
-            val sent = entries.map {
-                Listed(rows.row(it, names), it.outcome.blockNumberOrNull, pending = it.outcome == SentOutcome.NotSeen)
-            }
+            // The CoW orders signed here among them, by when each was signed: a live one waits for
+            // its end as a transaction waits for its block.
+            val sent = (
+                entries.map {
+                    val listed = Listed(
+                        rows.row(it, names),
+                        it.outcome.blockNumberOrNull,
+                        pending = it.outcome == SentOutcome.NotSeen,
+                    )
+                    it.transfer.sentAt to listed
+                } + orders.map { it.signedAt to Listed(rows.orderRow(it), it.end?.block, pending = it.live) }
+            ).sortedByDescending { it.first }.map { it.second }
             if (transfers == null) return ActivityUiState.Shown(sent.map { it.row }, COVERAGE)
             // Only a row that names its block says what its logs say: one no block was seen for (a
             // transaction mined while the app was closed) gets the verified log beside it.
@@ -206,6 +222,14 @@ class AccountActivity(
      * [pending]: no block seen yet, nor its nonce used.
      */
     private class Listed(val row: ActivityRow, val block: Long?, val pending: Boolean)
+
+    /** The block that proved an order's end, when one did. */
+    private val CowOrderEnd.block: Long?
+        get() = when (this) {
+            is CowOrderEnd.Filled -> block
+            is CowOrderEnd.Unfilled -> endBlock
+            CowOrderEnd.NotProvable -> null
+        }
 
     private companion object {
         const val NOT_LISTED_YET = "ETH it received, and transactions sent from it elsewhere, are not listed yet."

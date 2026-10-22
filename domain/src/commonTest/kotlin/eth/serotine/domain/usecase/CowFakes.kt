@@ -97,7 +97,13 @@ internal class FakeCowApi : CowApi {
         return placement ?: CowPlacement.Accepted(uid)
     }
 
-    override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife = CowOrderLife.Open
+    var life: CowOrderLife = CowOrderLife.Open
+    val lives = mutableListOf<CowOrderUid>()
+
+    override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife {
+        lives += uid
+        return life
+    }
 }
 
 /** CoW's contracts on chain: [venue], and each call's answer from [answers] (a revert otherwise). */

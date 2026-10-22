@@ -46,9 +46,10 @@ data class ActivityRow(
 /**
  * Which row of an account's Activity a detail is of: the transaction [hash] (`0x` and 64 lower-case
  * hex digits), and for an event of the log index the [logIndex] of its log in the block; null for a
- * transaction sent from this device.
+ * transaction sent from this device. For a CoW order signed here ([cowOrder]), [hash] is its UID,
+ * and a tap opens the order's status instead.
  */
-data class ActivityKey(val hash: String, val logIndex: Int? = null)
+data class ActivityKey(val hash: String, val logIndex: Int? = null, val cowOrder: Boolean = false)
 
 /** How a sent transaction ended, as an [ActivityRow] marks it. */
 enum class ActivityState {

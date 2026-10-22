@@ -738,7 +738,8 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        assertEquals(listOf("accounts", "account/{address}", "swap/{address}?asset={asset}"), screens())
+        val swap = "swap/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}"
+        assertEquals(listOf("accounts", "account/{address}", swap), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
