@@ -144,6 +144,19 @@ class AddressActivityTest {
     }
 
     @Test
+    fun aReorgThatKeepsTheHeadsNumberIsSeenAtTheNextPoll() {
+        val clock = TestTimeSource()
+        val engine = FakeActivity().apply { report = report(to = 500, watching = listOf(a)) }
+        val activity = AddressActivity(engine, clock)
+        assertTrue(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
+
+        // Another block 500 replaces the first, and it names the address.
+        engine.report = report(to = 500, touched = touch(a, 500), watching = listOf(a))
+        clock += 4.seconds
+        assertFalse(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
+    }
+
+    @Test
     fun anAddressNobodyAsksAboutIsUnwatchedAndARefusedPushWaits() {
         val engine = FakeActivity().apply { report = report(to = 500, watching = emptyList()) }
         val activity = AddressActivity(engine)
@@ -171,6 +184,7 @@ class AddressActivityTest {
         val checks = { engine.asked.count { it == 490L } } // the proof block's own report
         assertEquals(1, reports())
         assertEquals(1, checks())
+        clock += 0.5.seconds // the same poll
 
         // The follower caught up meanwhile; within 2 s the cached report stands.
         engine.report = report(to = 500, watching = listOf(a))
@@ -179,12 +193,11 @@ class AddressActivityTest {
         clock += 3.seconds
         assertTrue(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
         assertEquals(2, reports())
-        assertEquals(2, checks())
-        // Once more only, at one head.
+        // Once more only, at one head; the proof block's own report at every poll.
         clock += 3.seconds
         activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500)
         assertEquals(2, reports())
-        assertEquals(2, checks())
+        assertEquals(3, checks())
     }
 
     @Test

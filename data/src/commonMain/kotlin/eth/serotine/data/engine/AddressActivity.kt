@@ -45,14 +45,14 @@ internal interface ActivityChain {
  * is made again. A proof that names no hash, or whose block the follower does not hold, never
  * stands. (A replaced block that touched the address no longer shows in the report, which is
  * why a touch check alone could not catch this.) The hash and the blocks after it come from one
- * report, read after the proof's block for the head being asked about: a report kept from
- * another head — one a reorg has since lowered, for instance — never vouches.
+ * report, read after the proof's block for the head being asked about and shared only by the
+ * readings of one poll: a report kept from another head or an earlier poll never vouches.
  *
  * **The watch list** follows what readings ask about: an address is watched the first time it
  * is asked about, so the answer for it is false until the engine's next report lists it; one
- * not asked about for [IDLE_HEADS] heads is unwatched, so the list does not only grow. Each
- * report is read once per verified head (and per proof block), however many readings ask, and
- * once more while its newest block is still a gap (the follower lags the head by a moment). One that no longer
+ * not asked about for [IDLE_HEADS] heads is unwatched, so the list does not only grow. The
+ * watch list's report is read once per verified head, however many readings ask, and once more
+ * while its newest block is still a gap (the follower lags the head by a moment). One that no longer
  * lists an address (the engine restarted) watches it again; a push the engine refused is not
  * repeated for [REFUSED_BACKOFF_HEADS] heads.
  */
@@ -153,14 +153,16 @@ internal class AddressActivity(
     }
 
     /**
-     * The report after [provenAt] read for [head], once per head and proof block (and once more
-     * when its newest block was still a gap): its `base` and its blocks come from one read.
+     * The report after [provenAt] read for [head]: its `base` and its blocks come from one read.
+     * Shared by the readings of one poll — the same head, within [CHECK_SHARED] — and read again
+     * otherwise, so a reorg that keeps the head's number (or lowers it and climbs back between
+     * two polls) is seen at the next poll, not at the next head.
      */
     private fun reportAfter(provenAt: Long, head: Long): Report? {
-        val kept = checks[provenAt]?.takeIf { it.first == head }?.second
-        if (kept != null && kept.serves(head)) return kept.report
+        checks[provenAt]?.takeIf { (at, fetched) -> at == head && fetched.at.elapsedNow() < CHECK_SHARED }
+            ?.let { return it.second.report }
         val report = fetch(provenAt) ?: return null
-        val fetched = Fetched(report, clock.markNow(), reread = kept?.report?.to == report.to)
+        val fetched = Fetched(report, clock.markNow(), reread = false)
         checks = (checks + (provenAt to (head to fetched))).let { if (it.size > MAX_CHECKS) it - it.keys.min() else it }
         return report
     }
@@ -269,5 +271,8 @@ internal class AddressActivity(
 
         /** How long a report whose newest block was a gap serves before it is read once more. */
         val TOP_GAP_RETRY = 2.seconds
+
+        /** How long a proof block's report serves the readings of one poll. */
+        val CHECK_SHARED = 1.seconds
     }
 }
