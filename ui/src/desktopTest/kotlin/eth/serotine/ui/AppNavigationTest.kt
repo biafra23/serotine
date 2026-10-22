@@ -138,6 +138,7 @@ import eth.serotine.ui.send.SEND_AMOUNT_REVIEWED_TAG
 import eth.serotine.ui.send.SEND_PASSWORD_TAG
 import eth.serotine.ui.send.SEND_SIGN_TAG
 import eth.serotine.ui.settings.SETTINGS_DEBUG_SCREEN_TAG
+import eth.serotine.ui.settings.SETTINGS_NETWORK_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
 import eth.serotine.ui.tokens.TOKENS_ROW_TAG
 import eth.serotine.ui.transferstatus.TRANSFER_HASH_TAG
@@ -324,6 +325,7 @@ class AppNavigationTest {
         debugScreen = debugScreen,
         screenCaptureDebugSwitch = null,
         networkDemand = NetworkDemand(),
+        networkSettings = MemoryNetworkSettings(),
     )
 
     private val daily = Account(
@@ -479,7 +481,7 @@ class AppNavigationTest {
 
         rule.onNodeWithText("Settings").performClick()
         rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
-        rule.onNodeWithText("The only network for now").assertIsDisplayed()
+        rule.onNodeWithTag(SETTINGS_NETWORK_TAG + Network.SEPOLIA.chainId).assertIsDisplayed()
 
         rule.onNodeWithText("Accounts").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()

@@ -135,12 +135,21 @@ enum class LightClientHealth {
  * These states as the strip shows them, dated by [clock] (unix seconds): re-dated every
  * second while one shows a head block's age, unchanged otherwise.
  */
+fun Flow<LightClientStatus>.asItems(clock: () -> Long): Flow<LightClientItem> =
+    redatedWhile { it.dated }.map { LightClientItem.from(it, clock()) }
+
+/** Whether this state's line shows a head block's age ("· 8 s ago"), which moves on every second. */
+internal val LightClientStatus.dated: Boolean
+    get() = this is LightClientStatus.Synced && headTimestamp != null ||
+        this is LightClientStatus.WaitingForProofPeers && headTimestamp != null
+
+/**
+ * Each value, emitted again every second while [dated] says it shows an age, so that age is
+ * re-dated on screen; once otherwise.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
-fun Flow<LightClientStatus>.asItems(clock: () -> Long): Flow<LightClientItem> = flatMapLatest { status ->
-    val dated = status is LightClientStatus.Synced && status.headTimestamp != null ||
-        status is LightClientStatus.WaitingForProofPeers && status.headTimestamp != null
-    val ticks = if (dated) everySecond else flowOf(Unit)
-    ticks.map { LightClientItem.from(status, clock()) }
+internal fun <T> Flow<T>.redatedWhile(dated: (T) -> Boolean): Flow<T> = flatMapLatest { value ->
+    if (dated(value)) everySecond.map { value } else flowOf(value)
 }
 
 /** Now, in unix seconds: the clock the screens date the head block against. */

@@ -1,18 +1,21 @@
 package eth.serotine.ui.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +36,9 @@ const val SETTINGS_SCREEN_CAPTURE_TAG = "settings-screen-capture"
 /** Test tag of the Debug tab's row, for UI tests. */
 const val SETTINGS_DEBUG_SCREEN_TAG = "settings-debug-screen"
 
+/** Test tag of a network's row, followed by its chain id, for UI tests. */
+const val SETTINGS_NETWORK_TAG = "settings-network-"
+
 /** Binds [SettingsScreen] to its ViewModel. */
 @Composable
 fun SettingsRoute(
@@ -51,6 +57,9 @@ fun SettingsRoute(
         viewModel::allowScreenCapture,
         viewModel::showDebugScreen,
         modifier,
+        onNetworkChange = viewModel::switchNetwork,
+        onConfirmTurnOff = viewModel::confirmTurnOff,
+        onCancelTurnOff = viewModel::cancelTurnOff,
     )
 }
 
@@ -59,6 +68,9 @@ fun SettingsRoute(
  * [onCurrency], Tokens through [onTokens], and Security (the wallet password, biometric unlock)
  * through [onSecurity]. A switch shows the Debug tab through [onDebugScreenChange]. In a debug
  * build, a switch allows screen recordings of the protected screens through [onScreenCaptureChange].
+ * Each network's switch turns it on or off through [onNetworkChange] (its chain id, and whether
+ * on); the confirmation before a network with accounts is turned off answers through
+ * [onConfirmTurnOff] and [onCancelTurnOff] (docs/networks.md, N16 and N20).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,7 +82,24 @@ fun SettingsScreen(
     onScreenCaptureChange: (Boolean) -> Unit,
     onDebugScreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onNetworkChange: (chainId: Long, on: Boolean) -> Unit = { _, _ -> },
+    onConfirmTurnOff: () -> Unit = {},
+    onCancelTurnOff: () -> Unit = {},
 ) {
+    state.turningOff?.let { asked ->
+        AlertDialog(
+            onDismissRequest = onCancelTurnOff,
+            title = { Text(asked.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(asked.text)
+                    asked.waiting?.let { Text(it) }
+                }
+            },
+            confirmButton = { TextButton(onClick = onConfirmTurnOff) { Text("Turn off") } },
+            dismissButton = { TextButton(onClick = onCancelTurnOff) { Text("Cancel") } },
+        )
+    }
     Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Section("Display")
@@ -90,15 +119,35 @@ fun SettingsScreen(
                 headlineContent = { Text("Security") },
                 supportingContent = { Text("Wallet password · Biometric unlock") },
             )
-            Section("Network")
-            ListItem(
-                headlineContent = { Text(state.network) },
-                supportingContent = { Text("The only network for now") },
-            )
-            Section("Light client")
-            ListItem(
-                leadingContent = { LightClientHealthDot(state.lightClient.health) },
-                headlineContent = { Text(state.lightClient.text) },
+            Section("Networks")
+            state.networks.forEach { network ->
+                ListItem(
+                    modifier = Modifier
+                        .toggleable(
+                            value = network.on,
+                            role = Role.Switch,
+                            onValueChange = { onNetworkChange(network.chainId, it) },
+                        )
+                        .testTag(SETTINGS_NETWORK_TAG + network.chainId),
+                    leadingContent = { LightClientHealthDot(network.health) },
+                    headlineContent = { Text(if (network.testnet) "${network.name} · Testnet" else network.name) },
+                    supportingContent = {
+                        Column {
+                            Text(network.line)
+                            if (network.notSaved) {
+                                Text("The change could not be saved.", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    },
+                    // The row is the toggle: the switch only shows its state.
+                    trailingContent = { Switch(checked = network.on, onCheckedChange = null) },
+                )
+            }
+            Text(
+                "A network that is off checks nothing; its accounts stay in your list.",
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Section("Developer")
             ListItem(
