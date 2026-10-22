@@ -1046,7 +1046,8 @@ Still the owner's decisions (CLAUDE.md, docs/keys-and-signing.md and issue
 - which recovery modules come (none is pinned, so none is offered when a
   Safe is created, screen 14), and how: still open (issues #54, #72);
 - the dApp connection protocol;
-- any network other than Sepolia.
+- any network other than Sepolia (Ethereum and Gnosis Chain are planned in
+  docs/networks.md, which waits on the owner's rulings).
 
 Swapping tokens has a page of its own, docs/swaps.md (issue #69). The swap
 screens there are numbered from 22.
