@@ -44,7 +44,6 @@ import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
 import eth.serotine.ui.accounts.AccountsRoute
 import eth.serotine.ui.activity.ActivityKey
-import eth.serotine.ui.activity.ActivityRoute
 import eth.serotine.ui.activitydetail.ActivityDetailRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.components.Eip55
@@ -244,19 +243,11 @@ private fun Destinations(
                     onSwap = { contract -> navController.swap(address.hex, contract) },
                     onSafeSwap = { contract -> navController.safeSwap(address, contract) },
                     onReceive = { navController.open(AccountAction.Receive(address.hex)) },
-                    onActivity = { navController.openActivity(address) },
                     onRename = { navController.open(AccountAction.Rename(address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(address.hex)) },
                     onOpenSafeTx = { hash -> navController.openSafeTx(address, hash) },
                     onImportRequest = { navController.importRequest(address) },
-                )
-            }
-            withAddress(Destination.ACTIVITY, navController) { address ->
-                ActivityRoute(
-                    viewModel = viewModel { graph.activityViewModel(address) },
-                    lightClient = lightClient,
-                    onBack = { navController.leave(Destination.ACTIVITY) },
-                    onOpen = { key -> navController.openActivityDetail(address, key) },
+                    onOpenActivity = { key -> navController.openActivityDetail(address, key) },
                 )
             }
             composable(
@@ -639,13 +630,6 @@ private fun NavController.safeSwap(safe: Address, asset: String?, replacing: Dig
     val query = listOfNotNull(token?.let { "$ASSET=${it.hex}" }, replacing?.let { "$REPLACING=0x${it.hex}" })
         .joinToString("&")
     navigate("${Destination.SAFE}/${safe.hex}/${Destination.SWAP}" + if (query.isEmpty()) "" else "?$query")
-}
-
-/** Opens the Activity of the account at [address]: the transactions this device sent for it. */
-private fun NavController.openActivity(address: Address) {
-    // A second tap while the first one's screen is opening: one screen, the first one asked for.
-    if (currentDestination?.route == "${Destination.ACTIVITY}/{$ADDRESS}") return
-    navigate("${Destination.ACTIVITY}/${address.hex}")
 }
 
 /** Opens the detail of the row [key] of the Activity of the account at [address]. */

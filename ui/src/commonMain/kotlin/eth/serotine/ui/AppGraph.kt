@@ -93,8 +93,8 @@ import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.accounts.AccountsViewModel
+import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityKey
-import eth.serotine.ui.activity.ActivityViewModel
 import eth.serotine.ui.activitydetail.ActivityDetailViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
@@ -232,6 +232,7 @@ class AppGraph(
             SetTokenHidden(userTokens),
             network,
             ObserveEnsNames(accounts, names),
+            accountActivity(),
         )
 
     /**
@@ -374,11 +375,10 @@ class AppGraph(
     )
 
     /**
-     * The transactions this device sent for the account at [address], its token transfers and, for
-     * a Safe, its events on chain (docs/wallet-ux.md, screen 25).
+     * What an account's Activity tab lists: the transactions this device sent for it, its token
+     * transfers and, for a Safe, its events on chain (docs/wallet-ux.md, screen 25).
      */
-    fun activityViewModel(address: Address): ActivityViewModel = ActivityViewModel(
-        address,
+    private fun accountActivity(): AccountActivity = AccountActivity(
         ObserveAccountHistory(transactionHistory),
         ObserveAccounts(accounts),
         ObserveSafeHistory(logIndex, historyStarts),

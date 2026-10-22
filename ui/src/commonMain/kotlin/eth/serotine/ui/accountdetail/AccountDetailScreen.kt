@@ -4,18 +4,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -50,12 +51,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.activity.ActivityKey
+import eth.serotine.ui.activity.ActivityUiState
+import eth.serotine.ui.activity.activityItems
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.AddressLine
@@ -95,12 +100,12 @@ const val ACCOUNT_SWAP_TAG = "account-swap"
 const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
 
 /**
- * Binds [AccountDetailScreen] to its ViewModel. An account that leaves the wallet while the
- * screen is shown (removed from here or elsewhere) ends the screen through [onGone] — once
- * the screen is the one in front: under the remove dialog it waits, so the dialog can say
- * how the removal went before both close. Send is [onSend] from an account and [onPropose]
- * from a Safe, whose transfers are Safe transactions its owners sign; Swap likewise [onSwap] and
- * [onSafeSwap].
+ * Binds [AccountDetailScreen] to its ViewModel; a row of its Activity opens its detail
+ * ([onOpenActivity]). An account that leaves the wallet while the screen is shown (removed from
+ * here or elsewhere) ends the screen through [onGone] — once the screen is the one in front:
+ * under the remove dialog it waits, so the dialog can say how the removal went before both
+ * close. Send is [onSend] from an account and [onPropose] from a Safe, whose transfers are Safe
+ * transactions its owners sign; Swap likewise [onSwap] and [onSafeSwap].
  */
 @Composable
 fun AccountDetailRoute(
@@ -113,11 +118,11 @@ fun AccountDetailRoute(
     onSwap: (contract: String?) -> Unit,
     onSafeSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
-    onActivity: () -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
     onOpenSafeTx: (hash: String) -> Unit,
     onImportRequest: () -> Unit,
+    onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -138,7 +143,6 @@ fun AccountDetailRoute(
         onSend = { contract -> if (isSafe) onPropose(contract) else onSend(contract) },
         onSwap = { contract -> if (isSafe) onSafeSwap(contract) else onSwap(contract) },
         onReceive = onReceive,
-        onActivity = onActivity,
         onCopy = rememberCopyText(),
         onRename = onRename,
         onRemove = onRemove,
@@ -148,19 +152,20 @@ fun AccountDetailRoute(
         onSegment = viewModel::show,
         onOpenSafeTx = onOpenSafeTx,
         onImportRequest = onImportRequest,
+        onOpenActivity = onOpenActivity,
         modifier = modifier,
     )
 }
 
 /**
  * One account (docs/wallet-ux.md, screens 4 and 16) as a pure function of [state]: its blockie,
- * balance, address and control, Send (where it can send), Receive and Activity (the
- * transactions this device sent for it, [onActivity]) as buttons, and Copy,
+ * balance, address and control, Send (where it can send), Swap and Receive as buttons, and Copy,
  * Rename and Remove in the top bar's menu, so none of them depends on the long press of the
  * account list; while the asset rows are shown, the menu also sorts them the other way
- * ([onSort]). [onSend] opens Send with the token at a contract chosen, or the network's
- * currency (null). A Safe's Queue opens a transaction through [onOpenSafeTx] by its hash, and
- * Import a request through [onImportRequest].
+ * ([onSort]). Under the buttons are its tabs, Assets | Activity and a Safe's Owners | Queue.
+ * [onSend] opens Send with the token at a contract chosen, or the network's currency (null). The
+ * Activity tab's rows open their detail through [onOpenActivity]. A Safe's Queue opens a
+ * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -171,7 +176,6 @@ fun AccountDetailScreen(
     onSend: (contract: String?) -> Unit,
     onSwap: (contract: String?) -> Unit,
     onReceive: () -> Unit,
-    onActivity: () -> Unit,
     onCopy: (String) -> Unit,
     onRename: () -> Unit,
     onRemove: () -> Unit,
@@ -181,6 +185,7 @@ fun AccountDetailScreen(
     onSegment: (DetailSegment) -> Unit,
     onOpenSafeTx: (hash: String) -> Unit,
     onImportRequest: () -> Unit,
+    onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -263,7 +268,6 @@ fun AccountDetailScreen(
                     send,
                     swap,
                     onReceive,
-                    onActivity,
                     copy,
                     onCopyContract = { contract ->
                         onCopy(contract)
@@ -273,111 +277,150 @@ fun AccountDetailScreen(
                     onSegment = onSegment,
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
+                    onOpenActivity = onOpenActivity,
                 )
             }
         }
     }
 }
 
+/**
+ * The account below the top bar, as one list: its header, buttons and tabs, then the tab shown.
+ * Lazy, so that a long Activity is composed as it scrolls into view.
+ */
 @Composable
 private fun Details(
     state: AccountDetailUiState.Ready,
     onSend: (String?) -> Unit,
     onSwap: (String?) -> Unit,
     onReceive: () -> Unit,
-    onActivity: () -> Unit,
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
     onSegment: (DetailSegment) -> Unit,
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
+    onOpenActivity: (ActivityKey) -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    // Each item ends with the space before the next, but an Activity's rows, which follow one another.
+    val spaced = Modifier.padding(bottom = 16.dp)
+    // Back from a row's detail, the restored position waits for the rows it points into: measured
+    // against the spinner of an Activity read again, it would be cut back to the top for good.
+    val position = rememberLazyListState()
+    val whileReading = remember { LazyListState() }
+    val reading = state.segment == DetailSegment.ACTIVITY && state.activity == ActivityUiState.Loading
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        state = if (reading) whileReading else position,
+        contentPadding = PaddingValues(16.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            AccountAvatar(state.address, size = 56.dp, threshold = state.threshold)
-            Column {
-                Text(
-                    state.total,
-                    Modifier.testTag(ACCOUNT_TOTAL_TAG),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                // Right under the total it qualifies: testnet prices, what it leaves out.
-                state.totalNote?.let { note ->
+        item {
+            Row(
+                spaced,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AccountAvatar(state.address, size = 56.dp, threshold = state.threshold)
+                Column {
                     Text(
-                        note,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        state.total,
+                        Modifier.testTag(ACCOUNT_TOTAL_TAG),
+                        style = MaterialTheme.typography.headlineSmall,
                     )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ControlBadge(state.control)
-                    state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
-                }
-                // Why the title is the address: the ENS name it was named by no longer points here.
-                state.nameNote?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                    // Right under the total it qualifies: testnet prices, what it leaves out.
+                    state.totalNote?.let { note ->
+                        Text(
+                            note,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ControlBadge(state.control)
+                        state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+                    }
+                    // Why the title is the address: the ENS name it was named by no longer points here.
+                    state.nameNote?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
                 }
             }
         }
         // In full, as docs/wallet-ux.md's screen 4 has it, with Copy beside it.
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            SelectionContainer(Modifier.weight(1f)) {
-                Text(
-                    state.address,
-                    Modifier.testTag(ACCOUNT_ADDRESS_TAG),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            IconButton(onClick = { onCopy(state.address) }) {
-                Icon(SerotineIcons.ContentCopy, contentDescription = "Copy address", Modifier.size(18.dp))
+        item {
+            Row(
+                spaced,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SelectionContainer(Modifier.weight(1f)) {
+                    Text(
+                        state.address,
+                        Modifier.testTag(ACCOUNT_ADDRESS_TAG),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                IconButton(onClick = { onCopy(state.address) }) {
+                    Icon(SerotineIcons.ContentCopy, contentDescription = "Copy address", Modifier.size(18.dp))
+                }
             }
         }
-        // Four buttons: on a narrow phone the last ones go to a second line rather than squeezed.
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(
-                onClick = { onSend(null) },
-                modifier = Modifier.unavailable(!state.canSend),
-                colors = if (state.canSend) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("Send")
-            }
-            FilledTonalButton(
-                onClick = { onSwap(null) },
-                modifier = Modifier.testTag(ACCOUNT_SWAP_TAG).unavailable(!state.canSwap),
-                colors = if (state.canSwap) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
-            ) {
-                Icon(SerotineIcons.Swap, contentDescription = null, Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("Swap")
-            }
-            FilledTonalButton(onClick = onReceive) {
-                Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("Receive")
-            }
-            FilledTonalButton(onClick = onActivity) {
-                Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("Activity")
-            }
-        }
-        val safe = state.safe
-        if (safe != null) SegmentChoice(state.segment, state.queue, onSegment)
+        item { Actions(state, onSend, onSwap, onReceive, spaced) }
+        item { SegmentChoice(state.segments, state.segment, state.queue, onSegment, spaced) }
         // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
-            state.showsAssets -> Assets(state, onSend, onSwap, onCopyContract, onHideToken)
-            state.segment == DetailSegment.OWNERS -> SafeOwners(checkNotNull(safe))
-            else -> SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest)
+            state.showsAssets -> item { Assets(state, onSend, onSwap, onCopyContract, onHideToken) }
+            state.segment == DetailSegment.ACTIVITY -> activityItems(state.activity, onOpenActivity)
+            state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe)) }
+            else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
+        }
+    }
+}
+
+/** Send, Swap and Receive: on a narrow phone the last one goes to a second line rather than squeezed. */
+@Composable
+private fun Actions(
+    state: AccountDetailUiState.Ready,
+    onSend: (String?) -> Unit,
+    onSwap: (String?) -> Unit,
+    onReceive: () -> Unit,
+    modifier: Modifier,
+) {
+    FlowRow(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilledTonalButton(
+            onClick = { onSend(null) },
+            modifier = Modifier.unavailable(!state.canSend),
+            colors = if (state.canSend) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Send")
+        }
+        FilledTonalButton(
+            onClick = { onSwap(null) },
+            modifier = Modifier.testTag(ACCOUNT_SWAP_TAG).unavailable(!state.canSwap),
+            colors = if (state.canSwap) ButtonDefaults.filledTonalButtonColors() else Unavailable.buttonColors(),
+        ) {
+            Icon(SerotineIcons.Swap, contentDescription = null, Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Swap")
+        }
+        FilledTonalButton(onClick = onReceive) {
+            Icon(SerotineIcons.QrCode, contentDescription = null, Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Receive")
         }
     }
 }
@@ -431,24 +474,40 @@ private fun Assets(
     }
 }
 
-/** A Safe's Assets | Owners | Queue (n) (docs/wallet-ux.md, screen 16). */
+/**
+ * The account's tabs, [segments]: Assets | Activity, and a Safe's Owners | Queue (n)
+ * (docs/wallet-ux.md, screens 4 and 16).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SegmentChoice(segment: DetailSegment, queue: SafeQueue?, onSegment: (DetailSegment) -> Unit) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        DetailSegment.entries.forEachIndexed { index, choice ->
+private fun SegmentChoice(
+    segments: List<DetailSegment>,
+    segment: DetailSegment,
+    queue: SafeQueue?,
+    onSegment: (DetailSegment) -> Unit,
+    modifier: Modifier,
+) {
+    SingleChoiceSegmentedButtonRow(modifier.fillMaxWidth()) {
+        segments.forEachIndexed { index, choice ->
             SegmentedButton(
                 selected = segment == choice,
                 onClick = { onSegment(choice) },
-                shape = SegmentedButtonDefaults.itemShape(index, DetailSegment.entries.size),
+                shape = SegmentedButtonDefaults.itemShape(index, segments.size),
+                // Four tabs share a phone's width: no check mark beside the chosen one (its fill says it),
+                // and less side padding, so that "Queue (12)" stays on one line.
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                icon = {},
                 label = {
                     Text(
                         when (choice) {
                             DetailSegment.ASSETS -> "Assets"
+                            DetailSegment.ACTIVITY -> "Activity"
                             DetailSegment.OWNERS -> "Owners"
                             DetailSegment.QUEUE -> (queue as? SafeQueue.Shown)?.let { "Queue (${it.rows.size})" }
                                 ?: "Queue"
                         },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
             )

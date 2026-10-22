@@ -710,7 +710,7 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(TRANSFER_HASH_TAG).performScrollTo().assertTextEquals(sent.hash)
         assertEquals(
-            listOf("accounts", "account/{address}", "activity/{address}", DETAIL_ROUTE, "transfer/{hash}"),
+            listOf("accounts", "account/{address}", DETAIL_ROUTE, "transfer/{hash}"),
             screens(),
         )
         rule.onNodeWithText("Done").performScrollTo().performClick()
@@ -753,7 +753,7 @@ class AppNavigationTest {
         // Add token by address, under the bar, with the contract filled in and read.
         rule.waitUntil { rule.onAllNodesWithText("Spam Coin · SPAM").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(
-            listOf("accounts", "account/{address}", "activity/{address}", DETAIL_ROUTE, "activity-add-token/{address}"),
+            listOf("accounts", "account/{address}", DETAIL_ROUTE, "activity-add-token/{address}"),
             screens(),
         )
         rule.onNodeWithText("Settings").assertIsDisplayed()
@@ -761,7 +761,7 @@ class AppNavigationTest {
 
         // Back on the detail, which says what moved now that the wallet lists the token.
         rule.waitUntil { rule.onAllNodesWithText("Received 1 SPAM").fetchSemanticsNodes().isNotEmpty() }
-        assertEquals(listOf("accounts", "account/{address}", "activity/{address}", DETAIL_ROUTE), screens())
+        assertEquals(listOf("accounts", "account/{address}", DETAIL_ROUTE), screens())
     }
 
     @Test

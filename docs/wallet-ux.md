@@ -33,12 +33,12 @@ the text wins.
 - **The light client's state is in sight wherever it decides something**
   (owner's request, 2026-10-20). Every screen whose content or actions
   depend on what the light client can verify draws its status strip (as on
-  Accounts, 1) under the top bar: Account detail and Safe detail (4, 16),
-  Send and its status (7 to 9), Swap (docs/swaps.md), Watch address (10),
-  Create Safe (13 to 15), a Safe's transaction (17) and its proposal, swap
-  and import, Activity (25), and the token list Settings opens and Add
-  token (18, 20). A screen that needs nothing verified draws none:
-  Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
+  Accounts, 1) under the top bar: Account detail and Safe detail (4,
+  16), their Activity tab (25) included, Send and its status (7 to 9),
+  Swap (docs/swaps.md), Watch address (10), Create Safe (13 to 15), a
+  Safe's transaction (17) and its proposal, swap and import, and the
+  token list Settings opens and Add token (18, 20). A screen that needs
+  nothing verified draws none: Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
   Security (21) and Display currency (19). Settings itself (18) keeps its
   own Light client row instead of the strip.
 - **A balance last verified is shown as such** (owner's request,
@@ -179,10 +179,12 @@ upgrades*).
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.
-   - Send, Swap, Receive and Activity buttons (Send greyed out as in 3;
+   - Send, Swap and Receive buttons (Send greyed out as in 3;
      Swap, 22, greyed out, a tap saying why, when watch-only; on a Safe,
      Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
-     swap*; Activity opens 25).
+     swap*).
+   - The tabs Assets | Activity: Assets is what follows, Activity is 25,
+     drawn in the tab, read only while the tab is shown.
    - Sorted by value, highest first: assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows. The
      top bar's menu sorts by name instead ("Sort by name", then "Sort by
@@ -394,9 +396,10 @@ upgrades*).
       `DEPLOYMENT_LIFETIME_SECONDS`, a week), so leaving the status screen,
       or the app, loses nothing; and a Safe once listed and then removed by
       the user is not listed again.
-16. **Safe detail**: as 4, with the segments Assets | Owners | Queue (n). The
-    owners are shown with blockies, a "this device" mark on the ones held
-    here, and the threshold; the modules and guard follow them.
+16. **Safe detail**: as 4, with the tabs Assets | Activity | Owners |
+    Queue (n). The owners are shown with blockies, a "this device" mark
+    on the ones held here, and the threshold; the modules and guard
+    follow them.
     - Queue lists this device's pending transactions in nonce order, from
       the Safe's verified nonce on: one whose nonce the Safe has passed is
       gone (`ObserveSafeTxQueue`), and the file drops it at the next
@@ -616,7 +619,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
 
 25. **Activity**: the transactions this device sent for an account, its
     token transfers and, for a Safe, its own events on chain, newest first,
-    under the Accounts tab like the account it is of (`activity/{address}`).
+    in the Activity tab of the account's detail (4, 16).
     - First, what the list covers: transactions sent from this device, and
       on chain from the block its history starts at on (when it was
       deployed from this device, or added here: "since added", owner ruling

@@ -26,27 +26,37 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
+import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenHoldings
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeRecovery
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemorySafeTxQueue
+import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.activity.AccountActivity
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.shortAddress
@@ -58,6 +68,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -79,6 +90,9 @@ class AccountDetailViewModelTest {
         AccountCustody.InKeyStore,
     )
     private val accounts = FakeAccounts(daily)
+    private val history = MemoryTransactionHistory()
+    private val logIndex = FakeLogIndex()
+    private val historyStarts = MemoryHistoryStarts()
     private val names = FakeNames()
     private val balances = FakeBalances()
     private val usdc =
@@ -115,8 +129,19 @@ class AccountDetailViewModelTest {
         SetTokenHidden(userTokens),
         Network.SEPOLIA,
         ObserveEnsNames(accounts, names),
+        activity(),
         formatTime = { "<$it>" },
     )
+
+    private fun activity() = AccountActivity(
+        ObserveAccountHistory(history),
+        ObserveAccounts(accounts),
+        ObserveSafeHistory(logIndex, historyStarts),
+        ObserveTokenTransfers(logIndex, historyStarts),
+        ObserveKnownTokens(catalog, userTokens, metadata),
+        ObserveSentToAddresses(history),
+        Network.SEPOLIA,
+    ) { "at $it" }
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -450,6 +475,40 @@ class AccountDetailViewModelTest {
     }
 
     @Test
+    fun theActivityIsReadOnlyWhileItsTabIsShownAndKeptForAQuickReturn() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        fun activity() = (viewModel.uiState.value as AccountDetailUiState.Ready).activity
+        // The log index's coverage is what the Activity's token transfers are read from.
+        fun reading() = logIndex.coverage.subscriptionCount.value > 0
+
+        assertEquals(ActivityUiState.Loading, activity())
+        assertFalse(reading(), "Assets reads no history")
+
+        viewModel.show(DetailSegment.ACTIVITY)
+        runCurrent()
+        val shown = assertIs<ActivityUiState.Shown>(activity())
+        assertEquals(emptyList(), shown.rows)
+        assertTrue(reading())
+
+        viewModel.show(DetailSegment.ASSETS)
+        runCurrent()
+        assertEquals(ActivityUiState.Loading, activity())
+
+        // Back within 5 s: the list as it was, not read again.
+        viewModel.show(DetailSegment.ACTIVITY)
+        runCurrent()
+        assertEquals(shown, activity())
+
+        viewModel.show(DetailSegment.ASSETS)
+        advanceTimeBy(5_001)
+        runCurrent()
+        assertFalse(reading(), "5 s after its tab was left, the history is no longer read")
+    }
+
+    @Test
     fun aSafesQueueListsItsTransactionsInNonceOrderWithTheirSignaturesAndWhatIsNotSignedHere() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val treasury = Account(Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Treasury", AccountCustody.Watched)
@@ -618,6 +677,7 @@ class AccountDetailViewModelTest {
             SetTokenHidden(userTokens),
             Network.SEPOLIA,
             ObserveEnsNames(accounts, names),
+            activity(),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

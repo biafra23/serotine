@@ -1,7 +1,9 @@
 package eth.serotine.ui.accountdetail
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -10,6 +12,8 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -18,9 +22,15 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
+import eth.serotine.ui.activity.ActivityKey
+import eth.serotine.ui.activity.ActivityRow
+import eth.serotine.ui.activity.ActivityState
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.LightClientItem
@@ -52,7 +62,10 @@ class AccountDetailScreenTest {
     private fun show(
         state: AccountDetailUiState,
         lightClient: LightClientItem = verifiedStripSample,
-    ) = rule.setContent {
+    ) = rule.setContent { Screen(state, lightClient) }
+
+    @Composable
+    private fun Screen(state: AccountDetailUiState, lightClient: LightClientItem) {
         SerotineTheme {
             AccountDetailScreen(
                 state,
@@ -61,7 +74,6 @@ class AccountDetailScreenTest {
                 onSend = { events += "send $it" },
                 onSwap = { events += "swap $it" },
                 onReceive = { events += "receive" },
-                onActivity = { events += "activity" },
                 onCopy = { events += "copy $it" },
                 onRename = { events += "rename" },
                 onRemove = { events += "remove" },
@@ -71,6 +83,7 @@ class AccountDetailScreenTest {
                 onSegment = { events += "segment $it" },
                 onOpenSafeTx = { events += "open $it" },
                 onImportRequest = { events += "import" },
+                onOpenActivity = { events += "open activity $it" },
             )
         }
     }
@@ -123,7 +136,6 @@ class AccountDetailScreenTest {
                     onSend = {},
                     onSwap = {},
                     onReceive = {},
-                    onActivity = {},
                     onCopy = {},
                     onRename = {},
                     onRemove = {},
@@ -136,6 +148,7 @@ class AccountDetailScreenTest {
                     onSegment = {},
                     onOpenSafeTx = {},
                     onImportRequest = {},
+                    onOpenActivity = {},
                 )
             }
         }
@@ -153,6 +166,15 @@ class AccountDetailScreenTest {
     @Test
     fun aSafesOwnersOfferNoSort() {
         show(ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.OWNERS))
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Rename").assertIsDisplayed()
+        rule.onNodeWithText("Sort by name").assertDoesNotExist()
+    }
+
+    @Test
+    fun theActivityOffersNoSort() {
+        show(ready.copy(segment = DetailSegment.ACTIVITY))
 
         rule.onNodeWithContentDescription("More actions").performClick()
         rule.onNodeWithText("Rename").assertIsDisplayed()
@@ -345,6 +367,126 @@ class AccountDetailScreenTest {
         show(ready.copy(message = said))
 
         rule.onNodeWithText(said).assertIsDisplayed()
+    }
+
+    @Test
+    fun anAccountsTabsAreAssetsAndActivityAndASafesOwnersAndQueueFollow() {
+        show(ready)
+
+        rule.onNodeWithText("Assets").assertIsDisplayed()
+        rule.onNodeWithText("Owners").assertDoesNotExist()
+        rule.onNodeWithText("Activity").performClick()
+        assertEquals(listOf("segment ACTIVITY"), events)
+
+        assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY), ready.segments)
+        assertEquals(
+            listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY, DetailSegment.OWNERS, DetailSegment.QUEUE),
+            ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking).segments,
+        )
+    }
+
+    private val sent = ActivityRow(
+        key = "0x" + "1".repeat(64),
+        title = "Sent 0.25 ETH",
+        detail = "To Bob · 0x5aAe…eAed",
+        about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        time = "Oct 19, 2026, 2:02 PM",
+        status = "Reverted in block 9,401,220",
+        state = ActivityState.FAILED,
+        opens = ActivityKey("0x" + "1".repeat(64)),
+    )
+
+    @Test
+    fun theActivityTabSaysWhatEachRowDidAndHowItEndedAndATapOpensItsDetail() {
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(sent), "Transactions sent from this device."),
+            ),
+        )
+
+        rule.onNodeWithText("Transactions sent from this device.").assertIsDisplayed()
+        rule.onNodeWithText("Reverted in block 9,401,220").assertIsDisplayed()
+        rule.onNodeWithText("To Bob · 0x5aAe…eAed").assertIsDisplayed()
+        rule.onAllNodesWithTag(ACCOUNT_ASSET_TAG).assertCountEquals(0)
+        rule.onNodeWithText("Sent 0.25 ETH").performClick()
+
+        assertEquals(listOf("open activity ${sent.opens}"), events)
+    }
+
+    @Test
+    fun aSafesEventInItsActivityOpensTheDetailOfItsLog() {
+        val opens = ActivityKey("0x" + "2".repeat(64), 0)
+        val event = sent.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = opens)
+        show(
+            ready.copy(
+                kind = AccountKind.SAFE,
+                safe = SafeDetails.Checking,
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(event), "Its events on chain."),
+            ),
+        )
+
+        rule.onNodeWithText("Received 1 ETH").performClick()
+
+        assertEquals(listOf("open activity $opens"), events)
+    }
+
+    @Test
+    fun backFromARowsDetailTheActivityIsWhereItWasLeftOnceItIsReadAgain() {
+        val rows = (1..40).map { n ->
+            val hash = "0x" + n.toString(16).padStart(64, '0')
+            sent.copy(key = hash, title = "Sent $n ETH", opens = ActivityKey(hash))
+        }
+        val read = ActivityUiState.Shown(rows, "Transactions sent from this device.")
+        var activity by mutableStateOf<ActivityUiState>(read)
+        var shown by mutableStateOf(true)
+        // As the back stack keeps an entry's saved state while another one is in front.
+        rule.setContent {
+            val entry = rememberSaveableStateHolder()
+            if (shown) {
+                entry.SaveableStateProvider("account") {
+                    Screen(ready.copy(segment = DetailSegment.ACTIVITY, activity = activity), verifiedStripSample)
+                }
+            }
+        }
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Sent 30 ETH"))
+
+        // Back from a row's detail after the Activity's state expired: it is read again from Loading.
+        shown = false
+        rule.waitForIdle()
+        activity = ActivityUiState.Loading
+        shown = true
+        rule.waitForIdle()
+        activity = read
+
+        rule.onNodeWithText("Sent 30 ETH").assertIsDisplayed()
+        rule.onNodeWithText("Sent 1 ETH").assertDoesNotExist()
+    }
+
+    @Test
+    fun anEmptyActivitySaysSo() {
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(emptyList(), "Transactions sent from this device."),
+            ),
+        )
+
+        rule.onNodeWithText("Nothing sent from this device yet.").assertIsDisplayed()
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(0)
+    }
+
+    @Test
+    fun anUnreadableActivitySaysWhy() {
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Unavailable("The history cannot be read right now."),
+            ),
+        )
+
+        rule.onNodeWithText("The history cannot be read right now.").assertIsDisplayed()
     }
 
     @Test
