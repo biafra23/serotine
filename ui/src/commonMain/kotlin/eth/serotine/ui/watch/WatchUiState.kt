@@ -1,6 +1,7 @@
 package eth.serotine.ui.watch
 
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.NetworkLabel
 
 /**
  * Everything the Watch address screen renders (docs/wallet-ux.md, screen 10): what is typed
@@ -10,6 +11,13 @@ import eth.serotine.ui.components.Control
  * ([canRetryLookup]), the name an empty [name] leaves the account with ([nameDefault]: the ENS
  * name typed, which the account's name then follows; null: "Account N"), what the light client
  * says is at the address ([detection], null until the text names one), and how adding went.
+ *
+ * With two or more networks on (docs/networks.md, N10 and N11), [detection] stays null and each
+ * network says its own ([networks]); an address with no code on every one of them is offered on
+ * all of them by [question] ("Watch it on Ethereum and Gnosis Chain?"), [choosing] once the user
+ * asked to tick the networks instead. A Safe or another contract is offered only where it is.
+ * [noNetwork] says that no network is on, so nothing can be checked. The networks that are off are
+ * listed greyed out ([offNetworks]), each with Turn on as the way to check the address there too.
  */
 data class WatchUiState(
     val address: String = "",
@@ -24,15 +32,43 @@ data class WatchUiState(
     val error: String? = null,
     /** Added: the screen leaves. */
     val done: Boolean = false,
+    val networks: List<WatchNetwork> = emptyList(),
+    val question: String? = null,
+    val choosing: Boolean = false,
+    val noNetwork: String? = null,
+    val offNetworks: List<NetworkLabel> = emptyList(),
 ) {
     /** Whether adding now would name the account by [nameDefault]: no name typed, and an add it can be. */
     val followsEns: Boolean
-        get() = nameDefault != null && name.isBlank() && (detection is Detection.Account || detection is Detection.Safe)
+        get() = nameDefault != null && name.isBlank() && (detection.addable || networks.any { it.offered })
 
-    /** Only a verified account or Safe can be added, and one add at a time. */
+    /**
+     * Only a verified account or Safe can be added, and one add at a time: on the one network on,
+     * or, with more, on all of them as [question] offers, or on those ticked.
+     */
     val canAdd: Boolean
-        get() = (detection is Detection.Account || detection is Detection.Safe) && !adding
+        get() = !adding && when {
+            networks.isEmpty() -> detection.addable
+            question != null && !choosing -> true
+            else -> networks.any { it.offered && it.chosen }
+        }
 }
+
+/**
+ * One network's row while two or more are on (N10, N11): its [network], what is at the address
+ * there ([detection]), whether it can be added there ([offered]: an account or a Safe, not yet in
+ * the wallet), and whether it is ticked ([chosen]).
+ */
+data class WatchNetwork(
+    val network: NetworkLabel,
+    val detection: Detection,
+    val offered: Boolean,
+    val chosen: Boolean = false,
+)
+
+/** Whether this card is one that can be added: an account or a Safe. */
+internal val Detection?.addable: Boolean
+    get() = this is Detection.Account || this is Detection.Safe
 
 /** The detection card: what is at the typed address, display-ready. */
 sealed interface Detection {

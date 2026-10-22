@@ -495,7 +495,8 @@ class AppGraph(
         ObserveAccounts(accounts),
         WatchAddress(accounts, addressKinds),
         ResolveRecipient(names),
-        soleNetwork,
+        ObserveEnabledNetworks(networkSettings),
+        SetNetworkEnabled(networkSettings),
         HoldNetwork(networkDemand),
     )
 
