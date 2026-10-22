@@ -1,31 +1,27 @@
 package eth.serotine.ui.activity
 
 /**
- * Everything an account's Activity screen renders (docs/wallet-ux.md, screen 25; issue #85): the
- * transactions this device sent for it and, for a Safe, its own events on chain, newest first.
- * Display-ready.
+ * Everything an account's Activity renders, the Activity tab of its detail (docs/wallet-ux.md,
+ * screen 25; issue #85): the transactions this device sent for it and, for a Safe, its own events
+ * on chain, newest first. Display-ready.
  */
 sealed interface ActivityUiState {
 
-    /** The account's name, or its short address while it is not in the wallet. */
-    val title: String
-
     /** Nothing read yet. */
-    data class Loading(override val title: String) : ActivityUiState
+    data object Loading : ActivityUiState
 
     /**
      * The [rows], newest first (none: nothing listed yet, which [empty] says), and [coverage],
      * what the list covers and what it leaves out.
      */
     data class Shown(
-        override val title: String,
         val rows: List<ActivityRow>,
         val coverage: String,
         val empty: String = "Nothing sent from this device yet.",
     ) : ActivityUiState
 
     /** The history cannot be read right now, for the reason [message] gives. */
-    data class Unavailable(override val title: String, val message: String) : ActivityUiState
+    data class Unavailable(val message: String) : ActivityUiState
 }
 
 /**

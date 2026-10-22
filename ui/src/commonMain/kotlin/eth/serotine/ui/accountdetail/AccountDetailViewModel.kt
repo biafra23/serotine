@@ -63,7 +63,8 @@ import kotlinx.coroutines.launch
  * transfer's amount in the units of a token the wallet knows: [ObserveKnownTokens]). Its intents
  * are the order of the rows ([sortBy]), the segment shown ([show]) and hiding a token
  * ([hideToken], said through [messageShown]); what else the user does from the screen is
- * navigation (Send, Receive, Rename, Remove, a queued transaction, Import a request) or the
+ * navigation (Send, Receive, Rename, Remove, a row of its Activity, a queued transaction, Import a
+ * request) or the
  * clipboard, which the route handles.
  */
 class AccountDetailViewModel(
@@ -171,7 +172,7 @@ class AccountDetailViewModel(
         view.update { it.copy(sort = order) }
     }
 
-    /** Shows a Safe's [segment]. */
+    /** Shows the account's [segment]: its Assets or Activity, or a Safe's Owners or Queue. */
     fun show(segment: DetailSegment) {
         view.update { it.copy(segment = segment) }
     }

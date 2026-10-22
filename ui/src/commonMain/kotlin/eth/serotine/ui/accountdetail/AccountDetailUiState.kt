@@ -20,7 +20,8 @@ sealed interface AccountDetailUiState {
      * null; [pricesNote], where the prices come from; and [message], how hiding a token
      * went, until it is said. A Safe's [safe] is what its verified storage says and its [queue]
      * the transactions waiting for its owners on this device (both null for any other account);
-     * the screen shows its Assets, its Owners or its Queue ([segment]), [kindNote] says what it is
+     * the screen shows one of its [segments] ([segment]): its Assets, its Activity, and a Safe's
+     * Owners or Queue. [kindNote] says what it is
      * ("Safe", or "Not a recognised Safe" once its address no longer verifies as one) and
      * [threshold] its verified threshold of its owners ("2/3"), for its blockie.
      */
@@ -42,6 +43,10 @@ sealed interface AccountDetailUiState {
         val threshold: String? = null,
         val queue: SafeQueue? = null,
     ) : AccountDetailUiState {
+
+        /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
+        val segments: List<DetailSegment>
+            get() = if (safe != null) DetailSegment.entries else listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY)
 
         /**
          * Whether Send can be done: for an account whose key is held here, and for a Safe with
@@ -76,10 +81,16 @@ sealed interface AccountDetailUiState {
     data class Unavailable(val message: String) : AccountDetailUiState
 }
 
-/** What a Safe's detail shows (docs/wallet-ux.md, screen 16: Assets | Owners | Queue). */
+/**
+ * What an account's detail shows, in the order of its tabs (docs/wallet-ux.md, screens 4 and 16:
+ * Assets | Activity, and a Safe's Owners | Queue).
+ */
 enum class DetailSegment {
-    /** Its assets, as any account's. */
+    /** Its assets. */
     ASSETS,
+
+    /** Its Activity (docs/wallet-ux.md, screen 25). */
+    ACTIVITY,
 
     /** Its owners, threshold, modules and guard. */
     OWNERS,

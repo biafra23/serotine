@@ -511,7 +511,7 @@ answered with an empty list.
   - An account removed is unwatched, and its start forgotten once the engine
     took that.
 - **`ObserveSafeHistory`** and **`ObserveTokenTransfers`** (`:domain`)
-  read, for the Activity screen, a Safe's own events (`SafeEvents`: Safe
+  read, for the account detail's Activity tab, a Safe's own events (`SafeEvents`: Safe
   1.3.0's and 1.4.1's, each in the form its version indexes it in) from its
   `Emitter` entry, and an account's ERC-20 and ERC-721 `Transfer`s
   (`TokenTransfers`) from its `Mention` entry, queried at topic 1 and topic

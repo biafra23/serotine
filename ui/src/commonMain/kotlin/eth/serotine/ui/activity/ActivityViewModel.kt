@@ -31,8 +31,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * The Activity screen's ViewModel (docs/wallet-ux.md, screen 25; issue #85): the transactions this
- * device sent for the account at [address] ([ObserveAccountHistory]) and, for an account of the
+ * The ViewModel of an account's Activity, its detail's Activity tab (docs/wallet-ux.md, screen 25;
+ * issue #85): the transactions this device sent for the account at [address] ([ObserveAccountHistory]) and, for an account of the
  * wallet, what the engine's verified log index holds of it: every token transfer to or from it
  * ([ObserveTokenTransfers]) and, for a Safe, its own events ([ObserveSafeHistory]). The names the
  * wallet gives the addresses they concern come from [ObserveAccounts], the tokens' symbols and
@@ -75,7 +75,7 @@ class ActivityViewModel(
         ).stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-            ActivityUiState.Loading(sources.shortTitle),
+            ActivityUiState.Loading,
         )
 
     private fun render(
@@ -86,15 +86,14 @@ class ActivityViewModel(
         tokens: Map<Address, KnownToken>?,
     ): ActivityUiState {
         val names = parties.names
-        val title = sources.titleOf(names)
         val entries = when (history) {
-            HistoryList.Unreadable -> return ActivityUiState.Unavailable(title, UNREADABLE)
+            HistoryList.Unreadable -> return ActivityUiState.Unavailable(UNREADABLE)
             is HistoryList.Loaded -> history.entries
         }
         val sent = entries.map {
             Listed(rows.row(it, names), it.outcome.blockNumberOrNull, pending = it.outcome == SentOutcome.NotSeen)
         }
-        if (transfers == null) return ActivityUiState.Shown(title, sent.map { it.row }, COVERAGE)
+        if (transfers == null) return ActivityUiState.Shown(sent.map { it.row }, COVERAGE)
         // Only a row that names its block says what its logs say: one no block was seen for (a
         // transaction mined while the app was closed) gets the verified log beside it.
         val seenInBlocks = entries.filter { it.outcome.blockNumberOrNull != null }.associateBy { it.transfer.hash }
@@ -120,7 +119,6 @@ class ActivityViewModel(
             if (safe == null) "ETH it received, and transactions sent from it elsewhere, are not listed yet." else null,
         )
         return ActivityUiState.Shown(
-            title = title,
             rows = merged(sent, events),
             coverage = covered.joinToString(" "),
             empty = "Nothing listed yet.",

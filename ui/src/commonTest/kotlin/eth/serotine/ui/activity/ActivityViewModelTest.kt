@@ -132,7 +132,6 @@ class ActivityViewModelTest {
 
         val shown = assertIs<ActivityUiState.Shown>(viewModel().uiState.value)
 
-        assertEquals("Alice", shown.title)
         assertEquals(
             listOf(
                 ActivityRow(
@@ -176,7 +175,6 @@ class ActivityViewModelTest {
 
         val shown = assertIs<ActivityUiState.Shown>(viewModel(treasury.address).uiState.value)
 
-        assertEquals("Treasury", shown.title)
         assertEquals(listOf("Executed transaction 4"), shown.rows.map { it.title })
         assertEquals("By Alice · 0x8f3A…91c2", shown.rows.single().detail)
     }

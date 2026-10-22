@@ -2,6 +2,10 @@ package eth.serotine.ui.accountdetail
 
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.activity.ActivityKey
+import eth.serotine.ui.activity.ActivityRow
+import eth.serotine.ui.activity.ActivityState
+import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.catchingUpStripSample
@@ -13,7 +17,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 // The account detail screen in Android Studio's preview pane, one preview per state it draws
 // differently. Built from display-ready values, as the screen tests are, never from the
 // ViewModel. AccountDetailScreenPreviewsTest renders each one in accountDetailScreenPreviews,
-// at the end. The addresses are EIP-55's own examples, and the amounts are made up.
+// at the end. The addresses are EIP-55's own examples, and the amounts and hashes are made up.
 
 private const val DAILY = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 private const val SAVINGS = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
@@ -111,11 +115,193 @@ private val treasury = AccountDetailUiState.Ready(
     ),
 )
 
+private const val ACTIVITY_COVERAGE = "Transactions sent from this device. Transactions received, and those sent " +
+    "from this account elsewhere, are not listed yet."
+
+private val activityRows = listOf(
+    ActivityRow(
+        key = "0x" + "6".repeat(64),
+        title = "Swapped 100 USDC for at least 4.28845 LINK",
+        detail = "On Uniswap · 0x3bFA…e48E",
+        about = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+        time = "Oct 19, 2026, 4:10 PM",
+        status = "In block 9,412,190",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "6".repeat(64)),
+    ),
+    ActivityRow(
+        key = "0x" + "1".repeat(64),
+        title = "Sent 0.25 ETH",
+        detail = "To Bob · 0x5aAe…eAed",
+        about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        time = "Oct 19, 2026, 2:02 PM",
+        status = "No block seen to include it yet",
+        state = ActivityState.WAITING,
+        opens = ActivityKey("0x" + "1".repeat(64)),
+    ),
+    ActivityRow(
+        key = "0x" + "2".repeat(64),
+        title = "Executed a Safe transaction",
+        detail = "Safe nonce 4 · Treasury · 0xfB69…d359",
+        about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        time = "Oct 18, 2026, 9:15 AM",
+        status = "Finalized in block 9,412,118",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "2".repeat(64)),
+    ),
+    ActivityRow(
+        key = "0x" + "3".repeat(64),
+        title = "Sent 40 USDC",
+        detail = "To 0xdbF0…C6FB",
+        about = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+        time = "Oct 17, 2026, 9:40 PM",
+        status = "Reverted in block 9,401,220",
+        state = ActivityState.FAILED,
+        opens = ActivityKey("0x" + "3".repeat(64)),
+    ),
+    ActivityRow(
+        key = "0x" + "4".repeat(64),
+        title = "Sent 1 ETH",
+        detail = "To Carol · 0xD122…9aDb",
+        about = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+        time = "Oct 12, 2026, 11:03 AM",
+        status = "Mined while the app was not watching, unless another transaction took its nonce",
+        state = ActivityState.UNKNOWN,
+        opens = ActivityKey("0x" + "4".repeat(64)),
+    ),
+    ActivityRow(
+        key = "0x" + "5".repeat(64),
+        title = "Deployed a Safe",
+        detail = "Safe Vault · 0x5290…9EE7",
+        about = "0x52908400098527886E0F7030069857D2E4169EE7",
+        time = "Oct 10, 2026, 8:30 AM",
+        status = "No peer confirmed its broadcast",
+        state = ActivityState.UNCONFIRMED,
+        opens = ActivityKey("0x" + "5".repeat(64)),
+    ),
+)
+
+private const val SAFE_ACTIVITY_COVERAGE = "Transactions sent from this device. On chain from block 9,400,000 on, " +
+    "when it was added here: its events, checked from block 9,410,000 so far; its token transfers."
+
+private const val TOKENS_ACTIVITY_COVERAGE = "Transactions sent from this device. On chain from block 9,400,000 on, " +
+    "when it was added here: its token transfers. ETH it received, and transactions sent from it elsewhere, " +
+    "are not listed yet."
+
+/** An account's token transfers among a transaction sent from here. */
+private val tokenActivityRows = listOf(
+    ActivityRow(
+        key = "0x" + "f".repeat(64) + ":1",
+        title = "Received 0.01 USDC",
+        detail = "From 0x5290…9EE7",
+        about = "0x52908400098527886E0F7030069857D2E4169EE7",
+        time = "Block 9,418,200",
+        status = "From an address you have not sent to: compare every character before you copy it",
+        state = ActivityState.CAUTION,
+        opens = ActivityKey("0x" + "f".repeat(64), 1),
+    ),
+    ActivityRow(
+        key = "0x" + "b".repeat(64) + ":2",
+        title = "Received 250 USDC",
+        detail = "From Treasury · 0xfB69…d359",
+        about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        time = "Block 9,417,045",
+        status = "On chain, from the token's verified logs",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "b".repeat(64), 2),
+    ),
+    ActivityRow(
+        key = "0x" + "c".repeat(64),
+        title = "Sent 40.5 USDC",
+        detail = "To Bob · 0x5aAe…eAed",
+        about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        time = "Oct 19, 2026, 2:02 PM",
+        status = "Finalized in block 9,412,118",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "c".repeat(64)),
+    ),
+    ActivityRow(
+        key = "0x" + "d".repeat(64) + ":0",
+        title = "An unlisted token logged a transfer to it",
+        detail = "Contract 0x27b1…1c26",
+        about = "0x27b1fdb04752bbc536007a920d24acb045561c26",
+        time = "Block 9,408,511",
+        status = "The claim of a contract the wallet does not list: open it to add it as a token and see what moved",
+        state = ActivityState.UNKNOWN,
+        opens = ActivityKey("0x" + "d".repeat(64), 0),
+    ),
+    ActivityRow(
+        key = "0x" + "e".repeat(64) + ":5",
+        title = "Received 1.25 LINK",
+        detail = "From Carol · 0xdbF0…C6FB",
+        about = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+        time = "Block 9,402,980",
+        status = "On chain, from the token's verified logs",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "e".repeat(64), 5),
+    ),
+)
+
+/** A Safe's events among a transaction sent from here, as its Activity merges them by block. */
+private val safeActivityRows = listOf(
+    ActivityRow(
+        key = "0x" + "a".repeat(64) + ":0",
+        title = "Module enabled",
+        detail = "0x8617…070D",
+        about = "0x8617E340B3D01FA5F11F306F4090FD50E238070D",
+        time = "Block 9,416,880",
+        status = "A module can move this Safe's funds without its owners",
+        state = ActivityState.WARNING,
+        opens = ActivityKey("0x" + "a".repeat(64), 0),
+    ),
+    ActivityRow(
+        key = "0x" + "6".repeat(64) + ":0",
+        title = "Received 0.5 ETH",
+        detail = "From Bob · 0x5aAe…eAed",
+        about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        time = "Block 9,415,302",
+        status = "On chain, from the Safe's verified logs",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "6".repeat(64), 0),
+    ),
+    ActivityRow(
+        key = "0x" + "7".repeat(64),
+        title = "Executed transaction 4",
+        detail = "By Alice · 0xfB69…d359",
+        about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        time = "Oct 19, 2026, 2:02 PM",
+        status = "In block 9,412,118",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "7".repeat(64)),
+    ),
+    ActivityRow(
+        key = "0x" + "8".repeat(64) + ":3",
+        title = "Owner added",
+        detail = "Carol · 0xdbF0…C6FB",
+        about = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+        time = "Block 9,411,040",
+        status = "On chain, from the Safe's verified logs",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "8".repeat(64), 3),
+    ),
+    ActivityRow(
+        key = "0x" + "9".repeat(64) + ":1",
+        title = "A Safe transaction failed",
+        detail = "Safe transaction 0x3f1c…a9e2",
+        about = "0x52908400098527886E0F7030069857D2E4169EE7",
+        time = "Block 9,410,377",
+        status = "Failed on chain: its call reverted",
+        state = ActivityState.FAILED,
+        opens = ActivityKey("0x" + "9".repeat(64), 1),
+    ),
+)
+
 @Composable
 private fun AccountDetailPreview(
     state: AccountDetailUiState,
     darkTheme: Boolean = false,
     lightClient: LightClientItem = verifiedStripSample,
+    activity: ActivityUiState = ActivityUiState.Loading,
 ) {
     SerotineTheme(darkTheme = darkTheme) {
         AccountDetailScreen(
@@ -125,7 +311,6 @@ private fun AccountDetailPreview(
             onSend = {},
             onSwap = {},
             onReceive = {},
-            onActivity = {},
             onCopy = {},
             onRename = {},
             onRemove = {},
@@ -135,6 +320,8 @@ private fun AccountDetailPreview(
             onSegment = {},
             onOpenSafeTx = {},
             onImportRequest = {},
+            activity = activity,
+            onOpenActivity = {},
         )
     }
 }
@@ -271,6 +458,64 @@ private fun AccountDetailNotASafePreview() = AccountDetailPreview(
 
 @Preview
 @Composable
+private fun AccountDetailActivityPreview() = AccountDetailPreview(
+    daily.copy(segment = DetailSegment.ACTIVITY),
+    activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE),
+)
+
+@Preview
+@Composable
+private fun AccountDetailActivityDarkPreview() = AccountDetailPreview(
+    daily.copy(segment = DetailSegment.ACTIVITY),
+    darkTheme = true,
+    activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE),
+)
+
+@Preview
+@Composable
+private fun AccountDetailActivityEmptyPreview() = AccountDetailPreview(
+    daily.copy(segment = DetailSegment.ACTIVITY),
+    activity = ActivityUiState.Shown(emptyList(), ACTIVITY_COVERAGE),
+)
+
+@Preview
+@Composable
+private fun AccountDetailActivityLoadingPreview() =
+    AccountDetailPreview(daily.copy(segment = DetailSegment.ACTIVITY), activity = ActivityUiState.Loading)
+
+@Preview
+@Composable
+private fun AccountDetailActivityUnavailablePreview() = AccountDetailPreview(
+    daily.copy(segment = DetailSegment.ACTIVITY),
+    activity = ActivityUiState.Unavailable(
+        "The history of your transactions cannot be read right now. Serotine keeps trying.",
+    ),
+)
+
+@Preview
+@Composable
+private fun AccountDetailActivityTokensPreview() = AccountDetailPreview(
+    daily.copy(segment = DetailSegment.ACTIVITY),
+    activity = ActivityUiState.Shown(tokenActivityRows, TOKENS_ACTIVITY_COVERAGE),
+)
+
+@Preview
+@Composable
+private fun AccountDetailSafeActivityPreview() = AccountDetailPreview(
+    treasury.copy(segment = DetailSegment.ACTIVITY),
+    activity = ActivityUiState.Shown(safeActivityRows, SAFE_ACTIVITY_COVERAGE),
+)
+
+@Preview
+@Composable
+private fun AccountDetailSafeActivityDarkPreview() = AccountDetailPreview(
+    treasury.copy(segment = DetailSegment.ACTIVITY),
+    darkTheme = true,
+    activity = ActivityUiState.Shown(safeActivityRows, SAFE_ACTIVITY_COVERAGE),
+)
+
+@Preview
+@Composable
 private fun AccountDetailLoadingPreview() = AccountDetailPreview(AccountDetailUiState.Loading)
 
 @Preview
@@ -297,4 +542,12 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailNotASafePreview() },
     { AccountDetailLoadingPreview() },
     { AccountDetailListUnavailablePreview() },
+    { AccountDetailActivityPreview() },
+    { AccountDetailActivityDarkPreview() },
+    { AccountDetailActivityEmptyPreview() },
+    { AccountDetailActivityLoadingPreview() },
+    { AccountDetailActivityUnavailablePreview() },
+    { AccountDetailActivityTokensPreview() },
+    { AccountDetailSafeActivityPreview() },
+    { AccountDetailSafeActivityDarkPreview() },
 )
