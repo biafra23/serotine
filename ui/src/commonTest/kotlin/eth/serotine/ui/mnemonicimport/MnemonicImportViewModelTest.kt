@@ -29,7 +29,10 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WalletChanges
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Entering
 import eth.serotine.ui.mnemonicimport.MnemonicImportUiState.Imported
@@ -75,7 +78,12 @@ class MnemonicImportViewModelTest {
             factory = viewModelFactory {
                 initializer {
                     val import = ImportMnemonicAccount(keys, repository, WalletChanges())
-                    MnemonicImportViewModel(import, DescribeKeyStore(keys), Network.SEPOLIA)
+                    MnemonicImportViewModel(
+                        import,
+                        DescribeKeyStore(keys),
+                        ObserveEnabledNetworks(networks),
+                        SetNetworkEnabled(networks),
+                    )
                 }
             },
         )[MnemonicImportViewModel::class]
@@ -85,7 +93,10 @@ class MnemonicImportViewModelTest {
     private fun typeWordsAndPassword() {
         viewModel.onPhraseChange(twelveWords)
         viewModel.onPasswordChange(password)
+        viewModel.onNetworkToggle(Network.SEPOLIA.chainId)
     }
+
+    private val networks = MemoryNetworkSettings()
 
     @BeforeTest
     fun routeMainThroughTheTestScheduler() = Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -98,19 +109,19 @@ class MnemonicImportViewModelTest {
         val start = assertIs<Entering>(viewModel.uiState.value)
         assertEquals("", start.phrase.text)
         assertEquals(0, start.wordCount)
-        assertFalse(start.canImport)
+        assertFalse(start.wordsAndPasswordReady)
 
         viewModel.onPhraseChange("one two three four five six seven eight nine ten eleven")
         assertEquals(11, entering().wordCount)
-        assertFalse(entering().canImport)
+        assertFalse(entering().wordsAndPasswordReady)
 
         viewModel.onPhraseChange("$twelveWords ")
         assertEquals("$twelveWords ", entering().phrase.text, "the field shows back exactly what was typed")
         assertEquals(12, entering().wordCount)
-        assertFalse(entering().canImport, "not without the wallet password")
+        assertFalse(entering().wordsAndPasswordReady, "not without the wallet password")
 
         viewModel.onPasswordChange(password)
-        assertTrue(entering().canImport)
+        assertTrue(entering().wordsAndPasswordReady)
     }
 
     @Test
@@ -343,6 +354,7 @@ class MnemonicImportViewModelTest {
         viewModel.onPhraseChange(twelveWords)
         viewModel.onPasswordChange(password)
         viewModel.onRepeatChange(password)
+        viewModel.onNetworkToggle(Network.SEPOLIA.chainId)
 
         viewModel.onImport()
         runCurrent()
@@ -404,11 +416,11 @@ class MnemonicImportViewModelTest {
         viewModel.onPasswordChange(password)
         viewModel.onRepeatChange("correct hors")
         assertEquals("The two passwords differ", entering().passwordHint)
-        assertFalse(entering().canImport)
+        assertFalse(entering().wordsAndPasswordReady)
 
         viewModel.onRepeatChange(password)
         assertEquals(null, entering().passwordHint)
-        assertTrue(entering().canImport)
+        assertTrue(entering().wordsAndPasswordReady)
     }
 
     @Test

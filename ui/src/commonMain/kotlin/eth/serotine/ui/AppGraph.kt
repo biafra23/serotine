@@ -550,7 +550,8 @@ class AppGraph(
         NewRecoveryPhrase(keys),
         ImportMnemonicAccount(keys, accounts, walletChanges),
         DescribeKeyStore(keys),
-        soleNetwork,
+        ObserveEnabledNetworks(networkSettings),
+        SetNetworkEnabled(networkSettings),
     )
 
     fun updateRequiredViewModel(): UpdateRequiredViewModel =
@@ -563,6 +564,7 @@ class AppGraph(
         MnemonicImportViewModel(
             ImportMnemonicAccount(keys, accounts, walletChanges),
             DescribeKeyStore(keys),
-            soleNetwork,
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
         )
 }

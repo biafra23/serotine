@@ -15,8 +15,11 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.NewRecoveryPhrase
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.components.PasswordStep
 import kotlin.random.Random
 import kotlin.test.AfterTest
@@ -43,6 +46,7 @@ class CreateAccountViewModelTest {
     private val account = Address.of("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266")
     private val accounts = FakeAccounts()
     private val keys = FakeKeyStore()
+    private val networks = MemoryNetworkSettings()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -53,7 +57,8 @@ class CreateAccountViewModelTest {
             NewRecoveryPhrase(keys),
             ImportMnemonicAccount(keys, accounts, WalletChanges()),
             DescribeKeyStore(keys),
-            Network.SEPOLIA,
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
             Random(7),
         )
     }
@@ -66,6 +71,7 @@ class CreateAccountViewModelTest {
             onCheckedWordChange(index, " ${hardhat.split(" ")[position - 1].uppercase()} ")
         }
         onCheck()
+        onNetworkToggle(Network.SEPOLIA.chainId)
     }
 
     @Test

@@ -110,7 +110,7 @@ class AccountChangesTest {
             keys,
             repository,
             changes,
-        )(Mnemonic("words"), WalletPassword("pw"), Network.SEPOLIA) }
+        )(Mnemonic("words"), WalletPassword("pw"), listOf(Network.SEPOLIA)) }
         runCurrent() // the import holds the wallet while it stores the key
         val removal = async { RemoveAccount(repository, keys, changes)(watched.id) }
         advanceUntilIdle()
