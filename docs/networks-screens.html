@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serotine network screens</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{--surface-0:#f5f4ef;--surface-1:#efede6;--surface-2:#ffffff;--surface-3:#ffffff;--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-accent:#185fa5;--text-success:#3b6d11;--text-warning:#854f0b;--text-danger:#a32d2d;--bg-accent:#e6f1fb;--bg-success:#eaf3de;--bg-warning:#faeeda;--fill-control:rgba(0,0,0,0.07);--fill-accent:#2f6fd0;--on-accent:#ffffff;--border:rgba(0,0,0,0.1);--border-strong:rgba(0,0,0,0.18);--border-stronger:rgba(0,0,0,0.35);--font-sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--surface-0:#1a1a19;--surface-1:#262624;--surface-2:#2c2c2a;--surface-3:#343432;--text-primary:#f1efe8;--text-secondary:#b4b2a9;--text-accent:#85b7eb;--text-success:#97c459;--text-warning:#ef9f27;--text-danger:#f09595;--bg-accent:#0c447c;--bg-success:#27500a;--bg-warning:#633806;--fill-control:rgba(255,255,255,0.1);--fill-accent:#378add;--on-accent:#ffffff;--border:rgba(255,255,255,0.1);--border-strong:rgba(255,255,255,0.18);--border-stronger:rgba(255,255,255,0.35)}}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:var(--font-sans)}
+main{max-width:1180px;margin:0 auto;padding:24px 16px}
+h1{font-size:22px;font-weight:500;margin:0 0 4px}
+.lead{color:var(--text-secondary);font-size:14px;margin:0 0 8px;line-height:1.5}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;padding:1rem 0}
+.ph{border:0.5px solid var(--border-strong);border-radius:16px;background:var(--surface-2);height:440px;display:flex;flex-direction:column;overflow:hidden;font-size:12px;position:relative;line-height:1.35}
+.hd{padding:10px 12px 4px;display:flex;align-items:center;gap:6px;font-weight:500;font-size:14px}
+.bd{flex:1;padding:0 12px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.r{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)}
+.f{flex:1;min-width:0}.e{text-align:right}
+.m{color:var(--text-secondary);font-size:11px}
+.bl{width:28px;height:28px;border-radius:50%;image-rendering:pixelated;display:block}
+.av{position:relative;flex:none;line-height:0}
+.ov{position:absolute;right:-7px;bottom:-4px;background:var(--surface-2);border:0.5px solid var(--border-stronger);border-radius:7px;font-size:11px;padding:0 3px;line-height:14px;font-weight:500;color:var(--text-primary)}
+.b{font-size:11px;padding:0 5px;border-radius:5px;line-height:15px;display:inline-block}
+.ok{background:var(--bg-success);color:var(--text-success)}.co{background:var(--bg-warning);color:var(--text-warning)}.wo{background:var(--fill-control);color:var(--text-secondary)}
+.nav{display:flex;border-top:0.5px solid var(--border);padding:6px 0 8px;font-size:11px;color:var(--text-secondary)}.nav>div{flex:1;text-align:center}.nav i{font-size:18px;display:block}.on{color:var(--text-accent)}
+.fab{position:absolute;right:12px;bottom:52px;width:42px;height:42px;border-radius:12px;background:var(--fill-accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-size:22px}
+.cap{font-size:12px;color:var(--text-secondary);margin-top:6px}
+.btn{border:0.5px solid var(--border-strong);border-radius:8px;text-align:center;padding:6px;font-size:12px}
+.pri{background:var(--fill-accent);color:var(--on-accent);border-color:transparent}
+.tk{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex:none}
+.menu{position:absolute;background:var(--surface-3);border:0.5px solid var(--border-stronger);border-radius:8px;padding:4px 0;font-size:12px;z-index:2}
+.menu div{padding:6px 12px;display:flex;gap:8px;align-items:center}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,0.4);z-index:1}
+.tot{background:var(--surface-1);border-radius:8px;padding:8px 10px}
+.big{font-size:20px;font-weight:500}
+.strip{font-size:11px;color:var(--text-success);background:var(--bg-success);border-radius:6px;padding:3px 8px}
+.in{border:0.5px solid var(--border-strong);border-radius:6px;padding:6px 8px;font-size:12px;color:var(--text-secondary)}
+.chip{border:0.5px solid var(--border-strong);border-radius:12px;padding:1px 8px;font-size:11px}
+.chip.s{background:var(--bg-accent);color:var(--text-accent);border-color:transparent}
+.w{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}.w span{background:var(--surface-1);border-radius:5px;padding:3px 4px;font-size:11px}
+.nw{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;border-radius:10px;padding:0 7px 0 5px;line-height:17px;white-space:nowrap}
+.nw::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--nw)}
+.nw.eth{--nw:#627eea;background:rgba(98,126,234,0.14);color:#3d55b5}
+.nw.gno{--nw:#3e6957;background:rgba(62,105,87,0.14);color:#2f5444}
+.nw.sep{--nw:#b07a1e;background:var(--bg-warning);color:var(--text-warning)}
+@media (prefers-color-scheme:dark){.nw.eth{color:#a9b8f5}.nw.gno{--nw:#6fb394;color:#9fd1b9}}
+.sec{display:flex;align-items:center;gap:6px;margin-top:4px;padding:4px 0 2px;border-bottom:0.5px solid var(--border-strong);flex-wrap:wrap}
+.sec .st{flex-basis:100%;font-size:10px;color:var(--text-secondary);display:flex;align-items:center;gap:4px}
+.ph{height:480px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+.dg{background:#3b8d2a}.dy{background:#d29a1e}.dr{background:#c64040}
+.ck{font-size:16px;color:var(--text-accent)}
+.cko{font-size:16px;color:var(--text-secondary)}
+.dis{opacity:0.45}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface-3);border-top:0.5px solid var(--border-stronger);border-radius:14px 14px 0 0;padding:10px 12px 12px;z-index:2;display:flex;flex-direction:column;gap:6px}
+.dlg{position:absolute;left:14px;right:14px;top:110px;background:var(--surface-3);border:0.5px solid var(--border-stronger);border-radius:12px;padding:12px;z-index:2;display:flex;flex-direction:column;gap:8px}
+.err{background:rgba(198,64,64,0.12);color:var(--text-danger);border-radius:6px;padding:5px 8px;font-size:11px}
+h2.grp{font-size:15px;font-weight:500;margin:22px 0 0}
+.off{opacity:0.55}
+.dk{background:var(--border-stronger)}
+</style>
+</head>
+<body>
+<main>
+<h1>Serotine networks: Ethereum and Gnosis Chain</h1>
+<p class="lead">Mockups N1 to N20 for the plan in <code>docs/networks.md</code> (drawn 2026-10-22), which wins where the two differ. Each account belongs to one network; there is no app-wide network switch, though each network can be turned off. Sepolia keeps every testnet warning. Blockies are real (ethereum/blockies, seeded by the lowercase address); the QR code is illustrative; amounts, names and addresses are made up.</p>
+<h2 class="sr-only">Phone-screen mockups of Serotine with accounts on Ethereum, Gnosis Chain and Sepolia.</h2>
+
+<h2 class="grp">Accounts and an account</h2>
+<div class="g">
+
+<div><div class="ph" style="height:640px">
+<div class="hd"><span class="f">Accounts</span></div>
+<div class="bd">
+<div class="tot"><div class="m">Total · EUR · Ethereum and Gnosis Chain</div><div class="big">€14,286.40</div><div class="m">4 accounts · Sepolia not included</div></div>
+<div class="sec"><span class="nw eth">Ethereum</span><span class="f"></span><span class="m">€12,840.10</span><span class="st"><span class="dot dg"></span>Verified at block 23,618,402 · 6 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH<div class="m">€9,612.30</div></div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x5ad1e7c93b04f2a8e6d1c5b7a9f3e2d4c8b607be" width="8" height="8"></canvas><span class="ov">2/3</span></span><div class="f">Family Safe <span class="b co">Co-signer</span><div class="m">0x5aD1…07Be</div></div><div class="e">1.076 ETH<div class="m">€3,227.80</div></div></div>
+<div class="sec"><span class="nw gno">Gnosis Chain</span><span class="f"></span><span class="m">€1,446.30</span><span class="st"><span class="dot dg"></span>Verified at block 42,907,115 · 3 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">1,571.2 XDAI<div class="m">€1,446.30</div></div></div>
+<div class="sec"><span class="nw sep">Sepolia · Testnet</span><span class="f"></span><span class="m">€2,520.00 · testnet prices</span><span class="st"><span class="dot dg"></span>Verified at block 9,412,118 · 8 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x3c9e1a7b5d2f8e4c6b0a9d3e7f1c5a2b8e4d6f09" width="8" height="8"></canvas></span><div class="f">Savings <span class="b wo">Watch</span><div class="m">0x3C9e…6F09</div></div><div class="e">0.84 ETH<div class="m">€2,520.00 · testnet prices</div></div></div>
+</div>
+<div class="fab"><i class="ti ti-plus" aria-hidden="true"></i></div>
+<div class="nav"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N1 · Accounts: one section per network, each with its light client and total. The top total leaves Sepolia out.</div></div>
+
+<div><div class="ph" style="height:580px">
+<div class="hd"><span class="f">Accounts</span></div>
+<div class="bd">
+<div class="tot"><div class="m">Total · EUR · Ethereum and Gnosis Chain</div><div class="big">€12,840.10</div><div class="m">1 account not verified right now</div></div>
+<div class="sec"><span class="nw eth">Ethereum</span><span class="f"></span><span class="m">€12,840.10</span><span class="st"><span class="dot dg"></span>Verified at block 23,618,402 · 6 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH<div class="m">€9,612.30</div></div></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x5ad1e7c93b04f2a8e6d1c5b7a9f3e2d4c8b607be" width="8" height="8"></canvas><span class="ov">2/3</span></span><div class="f">Family Safe <span class="b co">Co-signer</span><div class="m">0x5aD1…07Be</div></div><div class="e">1.076 ETH<div class="m">€3,227.80</div></div></div>
+<div class="sec"><span class="nw gno">Gnosis Chain</span><span class="f"></span><span class="st"><span class="dot dr"></span>Verifying sync-committee periods, 3 of 7</span></div>
+<div class="r" style="opacity:0.6"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">1,571.2 XDAI<div class="m">Last verified 09:12 · may have changed since</div></div></div>
+<div class="m">Gnosis Chain's balances are left out of the total until its light client verifies again. Ethereum is unaffected.</div>
+</div>
+<div class="fab"><i class="ti ti-plus" aria-hidden="true"></i></div>
+<div class="nav"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N2 · Accounts while one network catches up: its section says why, the others go on.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Main</span><i class="ti ti-dots-vertical" aria-hidden="true"></i></div>
+<div class="bd">
+<div style="display:flex;gap:10px;align-items:center"><canvas class="bl" style="width:44px;height:44px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div><div class="big">€11,401.55</div><div class="m">0x8F3a…91c2 <i class="ti ti-copy" aria-hidden="true"></i></div><div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap"><span class="nw eth">Ethereum</span><span class="b ok">Full control</span></div></div></div>
+<div class="strip">Ethereum · verified at block 23,618,402 · 6 s ago</div>
+<div style="display:flex;gap:6px"><div class="btn pri f">Send</div><div class="btn f">Swap</div><div class="btn f">Receive</div></div>
+<div style="display:flex;gap:6px"><span class="chip s">Assets</span><span class="chip">Activity</span></div>
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">Ξ</span><div class="f">ETH<div class="m">3.2041</div></div><div class="e">€9,612.30</div></div>
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">$</span><div class="f">USDC<div class="m">1,250.00</div></div><div class="e">€1,151.25</div></div>
+<div class="r"><span class="tk" style="background:var(--fill-control)">DAI</span><div class="f">DAI<div class="m">500.00</div></div><div class="e">€460.50</div></div>
+<div class="r"><span class="tk" style="background:var(--bg-success);color:var(--text-success)">€</span><div class="f">EURC<div class="m">177.50</div></div><div class="e">€177.50</div></div>
+<div class="m">Prices: Chainlink feeds on Ethereum at block 23,618,402, verified</div>
+</div></div><div class="cap">N3 · Account detail on Ethereum: the network beside the badge, real prices, no testnet note.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Savings</span><i class="ti ti-dots-vertical" aria-hidden="true"></i></div>
+<div class="bd">
+<div style="display:flex;gap:10px;align-items:center"><canvas class="bl" style="width:44px;height:44px" data-a="0x3c9e1a7b5d2f8e4c6b0a9d3e7f1c5a2b8e4d6f09" width="8" height="8"></canvas><div><div class="big">€2,671.00</div><div class="m">testnet prices</div><div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap"><span class="nw sep">Sepolia · Testnet</span><span class="b wo">Watch-only</span></div></div></div>
+<div class="strip">Sepolia · verified at block 9,412,118 · 8 s ago</div>
+<div style="display:flex;gap:6px"><div class="btn f dis">Send</div><div class="btn f dis">Swap</div><div class="btn f">Receive</div></div>
+<div style="display:flex;gap:6px"><span class="chip s">Assets</span><span class="chip">Activity</span></div>
+<div class="r"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">Ξ</span><div class="f">ETH<div class="m">0.84</div></div><div class="e">€2,520.00<div class="m">testnet prices</div></div></div>
+<div class="r"><span class="tk" style="background:var(--fill-control)">L</span><div class="f">LINK<div class="m">11.8</div></div><div class="e">€151.00<div class="m">testnet prices</div></div></div>
+<div class="r"><span class="tk" style="background:var(--fill-control)">UN</span><div class="f">UNI<div class="m">3.5</div></div><div class="e m">no price</div></div>
+<div class="m">Prices: Chainlink, testnet prices, at block 9,412,118. Sepolia's coins have no market value.</div>
+</div></div><div class="cap">N4 · Account detail on Sepolia: the testnet mark and "testnet prices" on every value, as today.</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Accounts</span></div>
+<div class="bd">
+<div class="sec"><span class="nw eth">Ethereum</span><span class="f"></span><span class="st"><span class="dot dg"></span>Verified at block 23,618,402 · 6 s ago</span></div>
+<div class="r" style="background:var(--surface-1)"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH</div></div>
+</div>
+<div class="menu" style="left:40px;top:84px;width:190px">
+<div><i class="ti ti-send" aria-hidden="true"></i>Send</div><div><i class="ti ti-qrcode" aria-hidden="true"></i>Receive</div><div><i class="ti ti-copy" aria-hidden="true"></i>Copy address</div><div><i class="ti ti-edit" aria-hidden="true"></i>Rename</div><div style="background:var(--bg-accent);color:var(--text-accent)"><i class="ti ti-world-plus" aria-hidden="true"></i>Add on another network…</div><div style="color:var(--text-danger)"><i class="ti ti-trash" aria-hidden="true"></i>Remove</div></div>
+<div class="nav" style="margin-top:auto"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N5 · Account menu: "Add on another network…" for an EOA (held or watched), never for a Safe.</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Accounts</span></div>
+<div class="bd">
+<div class="sec"><span class="nw eth">Ethereum</span><span class="f"></span><span class="st"><span class="dot dg"></span>Verified at block 23,618,402 · 6 s ago</span></div>
+<div class="r" style="background:var(--surface-1)"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH</div></div>
+</div>
+<div class="scrim"></div>
+<div class="sheet">
+<div style="font-weight:500">Add Main on another network</div>
+<div class="m">The same address and key. No password needed: nothing is signed.</div>
+<div class="r"><i class="ti ti-square-check-filled ck" aria-hidden="true"></i><span class="nw gno">Gnosis Chain</span><span class="m f e">Real funds, fees in xDAI</span></div>
+<div class="r"><i class="ti ti-square cko" aria-hidden="true"></i><span class="nw sep">Sepolia · Testnet</span><span class="m f e">Test ether only</span></div>
+<div class="r" style="border:0"><span class="m">Already on Ethereum</span></div>
+<div class="btn pri">Add on Gnosis Chain</div>
+</div>
+</div><div class="cap">N6 · Add on another network: the networks it is not on yet. No password: nothing is signed.</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Accounts</span></div>
+<div class="bd">
+<div class="sec"><span class="nw gno">Gnosis Chain</span><span class="f"></span><span class="st"><span class="dot dg"></span>Verified at block 42,907,115 · 3 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">1,571.2 XDAI</div></div>
+</div>
+<div class="scrim"></div>
+<div class="dlg">
+<div style="font-weight:500;font-size:14px">Remove Main from Gnosis Chain?</div>
+<div style="display:flex;gap:6px;align-items:center"><canvas class="bl" style="width:22px;height:22px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><span class="nw gno">Gnosis Chain</span><span class="m">0x8F3a…91c2</span></div>
+<div class="m">Its key stays on this device: Main on Ethereum still uses it. The funds stay on chain; add the account on Gnosis Chain again to see them.</div>
+<div class="m">Removing the last network's account deletes the key, and only the recovery phrase brings it back.</div>
+<div style="display:flex;gap:6px"><div class="btn f">Cancel</div><div class="btn f" style="color:var(--text-danger)">Remove</div></div>
+</div>
+</div><div class="cap">N7 · Remove: the key is deleted only with the last account at its address.</div></div>
+
+</div>
+
+<h2 class="grp">Adding accounts</h2>
+<div class="g">
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Create account</span><span class="m">4 of 4</span></div>
+<div class="bd">
+<div style="font-weight:500">Add to which networks?</div>
+<div class="m">The account has the same address on each. Every network you choose adds it to your account list, and its light client runs while it has accounts.</div>
+<div class="r"><i class="ti ti-square cko" aria-hidden="true"></i><div class="f"><span class="nw eth">Ethereum</span><div class="m">Real funds, fees in ETH</div></div></div>
+<div class="r"><i class="ti ti-square cko" aria-hidden="true"></i><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">Real funds, fees in xDAI</div></div></div>
+<div class="r"><i class="ti ti-square cko dis" aria-hidden="true"></i><div class="f dis"><span class="nw sep">Sepolia · Testnet</span><div class="m">Off in this wallet · tap to turn on</div></div></div>
+<div class="m">Name</div><div class="in" style="color:var(--text-primary)">Main</div>
+<div class="btn pri dis" style="margin-top:auto">Create</div>
+<div class="m" style="margin-bottom:10px;text-align:center">Choose at least one network</div>
+</div></div><div class="cap">N8 · Create account, last step: the question, nothing ticked; a network that is off (here a release build's Sepolia) greyed out with Turn on.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Import recovery phrase</span></div>
+<div class="bd">
+<div class="m"><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i> Phrase checked · password entered</div>
+<div class="tot" style="display:flex;gap:10px;align-items:center"><canvas class="bl" style="width:32px;height:32px" data-a="0x9a4fe2c71b6d3e8a5c9f0b2d7e4a1c6f3b8d5e21" width="8" height="8"></canvas><div><div style="font-weight:500">0x9a4F…5e21</div><div class="m">First account of this phrase</div></div></div>
+<div style="font-weight:500">Add to which networks?</div>
+<div class="r"><i class="ti ti-square-check-filled ck" aria-hidden="true"></i><div class="f"><span class="nw eth">Ethereum</span><div class="m">Real funds, fees in ETH</div></div></div>
+<div class="r"><i class="ti ti-square-check-filled ck" aria-hidden="true"></i><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">Real funds, fees in xDAI</div></div></div>
+<div class="r"><i class="ti ti-square cko" aria-hidden="true"></i><div class="f"><span class="nw sep">Sepolia · Testnet</span><div class="m">Test ether only, no market value</div></div></div>
+<div class="m" style="margin-top:auto">The key is sealed when you tap Import, in one step with the accounts.</div>
+<div class="btn pri" style="margin-bottom:10px">Import and add 2 accounts</div>
+</div></div><div class="cap">N9 · Import recovery phrase: the same question, answered before the key is sealed; here with two networks.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Watch address</span></div>
+<div class="strip" style="margin:0 12px">3 networks checking · 2 verified</div>
+<div class="bd" style="margin-top:6px">
+<div class="m">Address, or ENS name (Ethereum, Sepolia)</div><div class="in" style="color:var(--text-primary);display:flex;gap:6px;align-items:center"><canvas class="bl" style="width:18px;height:18px" data-a="0x2e6b1d9f4a7c3e5b8d0f6a2c9e1b4d7f3a5c8e60" width="8" height="8"></canvas>0x2E6b1d9F…3a5C8e60</div>
+<div class="m">Name</div><div class="in" style="color:var(--text-primary)">Partner</div>
+<div class="r"><span class="nw eth">Ethereum</span><span class="f m">EOA · 0.412 ETH</span><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i></div>
+<div class="r"><span class="nw gno">Gnosis Chain</span><span class="f m">EOA · 88.0 XDAI</span><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i></div>
+<div class="r"><span class="nw sep">Sepolia</span><span class="f m">Checking… (light client starting)</span><i class="ti ti-loader-2" aria-hidden="true"></i></div>
+<div class="tot"><div style="font-weight:500;font-size:12px">This address has no code: it is the same account on every network.</div><div class="m">Watch it on all three networks?</div></div>
+<div class="btn pri">Add on all three</div>
+<div class="btn" style="margin-bottom:10px">Choose networks</div>
+</div></div><div class="cap">N10 · Watch address, an EOA: asked to add it on all three; Add waits for the networks still checking.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Watch address</span></div>
+<div class="bd">
+<div class="m">Address, or ENS name (Ethereum, Sepolia)</div><div class="in" style="color:var(--text-primary)">0x7C2d5E8a…6b9F3e72</div>
+<div class="m">Name</div><div class="in" style="color:var(--text-primary)">Club Safe</div>
+<div class="r"><i class="ti ti-square cko dis" aria-hidden="true"></i><span class="nw eth dis">Ethereum</span><span class="f m">Nothing deployed here</span></div>
+<div class="r" style="align-items:flex-start"><i class="ti ti-square-check-filled ck" aria-hidden="true"></i><div class="f"><span class="nw gno">Gnosis Chain</span><div style="display:flex;gap:8px;align-items:center;margin-top:4px"><span class="av"><canvas class="bl" style="width:30px;height:30px" data-a="0x7c2d5e8a1b4f6c9e3a0d7b2f5e8c1a4d6b9f3e72" width="8" height="8"></canvas><span class="ov">2/3</span></span><div><div style="font-weight:500">SafeL2 1.4.1</div><div class="m">2 of 3 owners · you hold 1</div></div></div><span class="b co" style="margin-top:4px">Co-signer</span></div></div>
+<div class="r"><i class="ti ti-square cko dis" aria-hidden="true"></i><span class="nw sep dis">Sepolia</span><span class="f m">Nothing deployed here</span></div>
+<div class="m">A Safe exists only on the networks it was deployed on, so it is offered only there. Detected from verified code and storage, per network.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Add on Gnosis Chain</div>
+</div></div><div class="cap">N11 · Watch address, a Safe: only the network where it is a Safe; no all-three question.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Create Safe</span><span class="m">1 of 3</span></div>
+<div class="bd">
+<div class="m">Network</div>
+<div style="display:flex;gap:4px;flex-wrap:wrap"><span class="chip s">Ethereum</span><span class="chip">Gnosis Chain</span><span class="chip dis">Sepolia</span></div>
+<div class="m" style="font-size:10px">Sepolia: no account with a key there to pay for the deployment. Tap for the ways to get one.</div>
+<div class="m">Name</div><div class="in" style="color:var(--text-primary)">Family Safe</div>
+<div class="m">Owners · any of your EOAs, on any network</div>
+<div class="r"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div class="f">Main<div class="m">Key on this device</div></div><i class="ti ti-check" aria-hidden="true"></i></div>
+<div class="r"><canvas class="bl" data-a="0x2e6b1d9f4a7c3e5b8d0f6a2c9e1b4d7f3a5c8e60" width="8" height="8"></canvas><div class="f">Partner<div class="m">Watched</div></div><i class="ti ti-check" aria-hidden="true"></i></div>
+<div class="r"><canvas class="bl" data-a="0x9a4fe2c71b6d3e8a5c9f0b2d7e4a1c6f3b8d5e21" width="8" height="8"></canvas><div class="f">0x9a4F…5e21<div class="m">Typed</div></div><i class="ti ti-check" aria-hidden="true"></i></div>
+<div class="m">The Safe will exist on Ethereum only. Main pays for it there.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Next</div>
+</div></div><div class="cap">N12 · Create Safe: the network first; a network without a payer held here is greyed out with the reason.</div></div>
+
+</div>
+
+<h2 class="grp">Moving value</h2>
+<div class="g">
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Receive</span></div>
+<div class="bd" style="align-items:center;text-align:center">
+<div style="display:flex;gap:8px;align-items:center"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><span style="font-weight:500">Main</span><span class="nw gno">Gnosis Chain</span></div>
+<div style="background:#fff;padding:8px;border-radius:8px"><canvas class="qr" data-a="0x8F3a2c71E5b9D04A6f1e3C2bA7d90E5f4C6b91c2" width="29" height="29" style="width:122px;height:122px;image-rendering:pixelated;display:block"></canvas></div>
+<div style="font-family:var(--font-mono);font-size:11px;word-break:break-all">0x8F3a2c71E5b9D04A6f1e3C2bA7d90E5f4C6b91c2</div>
+<div class="b co" style="padding:3px 8px">Only send Gnosis Chain assets to this account</div>
+<div class="m">The same address takes assets on Ethereum and Sepolia too; they show in the wallet once Main is added on that network.</div>
+<div style="display:flex;gap:6px;width:100%"><div class="btn f"><i class="ti ti-copy" aria-hidden="true"></i> Copy</div><div class="btn f"><i class="ti ti-share" aria-hidden="true"></i> Share</div></div>
+</div></div><div class="cap">N13 · Receive on Gnosis Chain. For a Safe: "This Safe exists only on Gnosis Chain".</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Review</span><span class="nw eth">On Ethereum</span></div>
+<div class="bd">
+<div style="text-align:center"><div class="big">250 USDC</div><div class="m">≈ €230.25</div></div>
+<div class="r"><span class="m" style="width:34px">To</span><canvas class="bl" style="width:22px;height:22px" data-a="0xd8da6bf26964af9d7eed9e03e53415d37aa96045" width="8" height="8"></canvas><div class="f">vitalik.eth<div class="m" style="word-break:break-all">0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 · ENS on Ethereum, finalized block 23,618,370</div></div></div>
+<div class="r"><span class="m" style="width:34px">From</span><canvas class="bl" style="width:22px;height:22px" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas><div class="f">Main</div></div>
+<div class="r"><span class="m f">Fee, at most</span>0.00042 ETH</div>
+<div class="tot"><div class="m">Simulated on Ethereum at block 23,618,402, verified</div>USDC 1,250.00 → 1,000.00</div>
+<div class="in">Wallet password</div>
+<div style="display:flex;gap:6px;margin-top:auto;margin-bottom:10px"><div class="btn" style="width:40px"><i class="ti ti-fingerprint" aria-hidden="true"></i></div><div class="btn pri f">Sign and send on Ethereum</div></div>
+</div></div><div class="cap">N14 · Send review on Ethereum: the network at the top, in the simulation and on the button. On Sepolia it says "Sepolia · testnet" and "testnet prices".</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Import a request</span></div>
+<div class="bd">
+<div style="display:flex;gap:8px;align-items:center"><span class="av"><canvas class="bl" data-a="0x7c2d5e8a1b4f6c9e3a0d7b2f5e8c1a4d6b9f3e72" width="8" height="8"></canvas><span class="ov">2/3</span></span><div class="f">Club Safe<div><span class="nw gno">Gnosis Chain</span></div></div></div>
+<div class="m">Signing request</div>
+<div class="in" style="font-family:var(--font-mono);font-size:10px;height:70px;overflow:hidden;word-break:break-all">{"v":1,"chainId":1,"safe":"0x7c2d5e8a1b4f6c9e3a0d7b2f5e8c1a4d6b9f3e72","tx":{"to":"0x2e6b…","value":"500000000000000000",…</div>
+<div class="err"><i class="ti ti-alert-circle" aria-hidden="true"></i> This request is for the Safe at this address on <b>Ethereum</b>. This account is the Safe on <b>Gnosis Chain</b>: a different Safe, with its own owners and nonce. Nothing was imported.</div>
+<div class="m">Add the Safe on Ethereum (Watch address) to sign it there.</div>
+<div class="btn pri dis" style="margin-top:auto;margin-bottom:10px">Import</div>
+</div></div><div class="cap">N15 · A signing request for the same address on another network is refused, naming both networks.</div></div>
+
+</div>
+
+<h2 class="grp">Settings</h2>
+<div class="g">
+
+<div><div class="ph" style="height:540px">
+<div class="hd"><span class="f">Settings</span></div>
+<div class="bd">
+<div class="m">Display</div>
+<div class="r"><i class="ti ti-currency-euro" aria-hidden="true"></i><div class="f">Display currency</div><span class="m">EUR</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="r"><i class="ti ti-coins" aria-hidden="true"></i><div class="f">Tokens<div class="m">31 built in on 3 networks · 1 added</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="r"><i class="ti ti-lock" aria-hidden="true"></i><div class="f">Security</div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="m">Networks</div>
+<div class="r"><span class="dot dg"></span><div class="f"><span class="nw eth">Ethereum</span><div class="m">2 accounts · verified at block 23,618,402</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="r"><span class="dot dy"></span><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">1 account · waiting for proof peers</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="r"><span class="dot dk"></span><div class="f"><span class="nw sep">Sepolia · Testnet</span><div class="m">1 account · Off</div></div><i class="ti ti-toggle-left" style="font-size:24px;color:var(--text-secondary)" aria-hidden="true"></i></div>
+<div class="m">A network that is off checks nothing; its accounts stay in your list. Tap a row for its light client.</div>
+<div class="r"><i class="ti ti-info-circle" aria-hidden="true"></i><div class="f">About</div><span class="m">v0.2.0</span></div>
+</div>
+<div class="nav"><div><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div class="on"><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N16 · Settings: a Networks section with a switch per network. A release build's defaults on an updated install: Ethereum and Gnosis Chain on, Sepolia off with its account.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Add token</span></div>
+<div class="bd">
+<div class="m">Network</div>
+<div style="display:flex;gap:4px;flex-wrap:wrap"><span class="chip">Ethereum</span><span class="chip s">Gnosis Chain</span><span class="chip">Sepolia</span></div>
+<div class="m">Contract address on Gnosis Chain</div><div class="in" style="color:var(--text-primary)">0x4b1E07aC…D2c97c9D</div>
+<div class="tot" style="display:flex;gap:10px;align-items:center"><span class="tk" style="width:34px;height:34px;background:var(--fill-control)">GN</span><div><div style="font-weight:500">Gnosis Token · GNO</div><div class="m">18 decimals, read from the contract on Gnosis Chain at block 42,907,115</div></div></div>
+<div class="m">Name and symbol are the contract's own claim. A token is its network and its address; the same symbol on another network is another token.</div>
+<div class="btn pri" style="margin-top:auto;margin-bottom:10px">Add token on Gnosis Chain</div>
+</div></div><div class="cap">N17 · Add token: the network first, then the contract, read on that network.</div></div>
+
+</div>
+<h2 class="grp">A network that is off</h2>
+<div class="g">
+
+<div><div class="ph" style="height:600px">
+<div class="hd"><span class="f">Accounts</span></div>
+<div class="bd">
+<div class="tot"><div class="m">Total · EUR · Ethereum and Gnosis Chain</div><div class="big">€11,058.60</div><div class="m">Sepolia is off and not included</div></div>
+<div class="sec"><span class="nw eth">Ethereum</span><span class="f"></span><span class="m">€9,612.30</span><span class="st"><span class="dot dg"></span>Verified at block 23,618,402 · 6 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH<div class="m">€9,612.30</div></div></div>
+<div class="sec"><span class="nw gno">Gnosis Chain</span><span class="f"></span><span class="m">€1,446.30</span><span class="st"><span class="dot dg"></span>Verified at block 42,907,115 · 3 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">1,571.2 XDAI<div class="m">€1,446.30</div></div></div>
+<div class="sec"><span class="nw sep">Sepolia · Testnet</span><span class="f"></span><span class="m">Off</span><span class="st"><span class="dot dk"></span>Off in this wallet · nothing is checked</span></div>
+<div class="r off"><span class="av"><canvas class="bl" data-a="0x6d2b8f4a1c7e3d9b5f0a2c8e6b4d1f7a3c9e5b18" width="8" height="8"></canvas></span><div class="f">Test <span class="b ok">Key</span><div class="m">0x6D2b…5B18</div></div><div class="e">0.84 ETH</div></div>
+<div class="m off" style="margin-top:-4px">Last verified Oct 21, 18:02 · Sepolia is off</div>
+</div>
+<div class="fab"><i class="ti ti-plus" aria-hidden="true"></i></div>
+<div class="nav"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N18 · Accounts with Sepolia off: its section reads "Off", its account stays, dimmed, with its last verified balance, out of every total.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Test</span><i class="ti ti-dots-vertical" aria-hidden="true"></i></div>
+<div class="bd">
+<div style="display:flex;gap:10px;align-items:center"><canvas class="bl" style="width:44px;height:44px" data-a="0x6d2b8f4a1c7e3d9b5f0a2c8e6b4d1f7a3c9e5b18" width="8" height="8"></canvas><div><div class="big" style="color:var(--text-secondary)">0.84 ETH</div><div class="m">Last verified Oct 21, 18:02</div><div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap"><span class="nw sep">Sepolia · Off</span><span class="b ok">Full control</span></div></div></div>
+<div class="strip" style="background:var(--fill-control);color:var(--text-secondary)">Sepolia is off in this wallet: nothing is checked.</div>
+<div style="display:flex;gap:6px"><div class="btn f dis">Send</div><div class="btn f dis">Swap</div><div class="btn f">Receive</div></div>
+<div class="r off"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">Ξ</span><div class="f">ETH<div class="m">0.84 · last verified</div></div></div>
+<div class="r off"><span class="tk" style="background:var(--fill-control)">L</span><div class="f">LINK<div class="m">11.8 · last verified</div></div></div>
+</div>
+<div class="scrim"></div>
+<div class="dlg" style="top:150px">
+<div style="font-weight:500;font-size:14px">Send needs Sepolia</div>
+<div class="m">Sepolia is off in this wallet, so its balances are not checked and nothing can be sent from Test. Turned on, it checks them again first.</div>
+<div class="btn pri">Turn on Sepolia</div>
+<div class="btn">Close</div>
+</div>
+</div><div class="cap">N19 · An account on a network that is off: Send and Swap greyed out, a tap says why and offers Turn on. Receive, Rename and Remove work.</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Settings</span></div>
+<div class="bd">
+<div class="m">Networks</div>
+<div class="r"><span class="dot dg"></span><div class="f"><span class="nw eth">Ethereum</span><div class="m">2 accounts</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="r"><span class="dot dg"></span><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">1 account</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+</div>
+<div class="scrim"></div>
+<div class="dlg">
+<div style="font-weight:500;font-size:14px">Turn off Gnosis Chain?</div>
+<div class="m">Its account, Main, stays in your list. Its balances are not checked and nothing can be sent from it until you turn Gnosis Chain on again.</div>
+<div class="m" style="color:var(--text-warning)"><i class="ti ti-clock" aria-hidden="true"></i> A transaction sent from Main is not confirmed yet. It is followed again when Gnosis Chain is back on.</div>
+<div style="display:flex;gap:6px"><div class="btn f">Cancel</div><div class="btn f pri">Turn off</div></div>
+</div>
+<div class="nav" style="margin-top:auto"><div><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div class="on"><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N20 · Turning a network off asks first, naming its accounts and what waits until it is on again.</div></div>
+
+</div>
+</main>
+<script>
+function bk(seed){const r=[0,0,0,0];for(let i=0;i<seed.length;i++){r[i%4]=((r[i%4]<<5)-r[i%4])+seed.charCodeAt(i);}
+function rnd(){const t=r[0]^(r[0]<<11);r[0]=r[1];r[1]=r[2];r[2]=r[3];r[3]=(r[3]^(r[3]>>19)^t^(t>>8));return (r[3]>>>0)/((1<<31)>>>0);}
+function col(){const h=Math.floor(rnd()*360);const s=(rnd()*60+40)+'%';const l=(rnd()+rnd()+rnd()+rnd())*25+'%';return 'hsl('+h+','+s+','+l+')';}
+const c=col(),bg=col(),sp=col();const d=[];for(let y=0;y<8;y++){const row=[];for(let x=0;x<4;x++)row[x]=Math.floor(rnd()*2.3);d.push(...row.concat(row.slice(0,4).reverse()));}return {c,bg,sp,d};}
+document.querySelectorAll('canvas.bl').forEach(cv=>{const b=bk(cv.dataset.a.toLowerCase());const x=cv.getContext('2d');x.fillStyle=b.bg;x.fillRect(0,0,8,8);b.d.forEach((v,i)=>{if(v){x.fillStyle=v===1?b.c:b.sp;x.fillRect(i%8,Math.floor(i/8),1,1);}});});
+document.querySelectorAll('canvas.qr').forEach(cv=>{const x=cv.getContext('2d');const n=29;let s=0;for(const ch of cv.dataset.a)s=(s*31+ch.charCodeAt(0))>>>0;function r(){s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296;}
+x.fillStyle='#fff';x.fillRect(0,0,n,n);x.fillStyle='#111';for(let i=0;i<n;i++)for(let j=0;j<n;j++){if(r()<0.48)x.fillRect(i,j,1,1);}
+[[0,0],[n-7,0],[0,n-7]].forEach(([a,b])=>{x.fillStyle='#fff';x.fillRect(a-1<0?a:a-1,b-1<0?b:b-1,8,8);x.fillStyle='#111';x.fillRect(a,b,7,7);x.fillStyle='#fff';x.fillRect(a+1,b+1,5,5);x.fillStyle='#111';x.fillRect(a+2,b+2,3,3);});});
+</script>
+</body>
+</html>
