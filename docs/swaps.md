@@ -815,9 +815,9 @@ the plan asks again (CLAUDE.md, *Multi-PR plans*, step 3).
 2. **The use cases.**
    - CoW's quote and the order's placement.
    - The proof of an order's end, from the account's log-index entry.
-   - The cancellation on chain, as a `SentAction`.
-   - The hold-back of a live order in Send's and the swaps' quotes.
-3. **Adapters.**
+   - The cancellation on chain, as a `SentAction`, stored and listed in
+     Activity.
+3. **Adapters and wiring.**
    - The pinned `GPv2Settlement` and `GPv2VaultRelayer` with their code
      hashes.
    - Ktor, the app's first HTTP client, and the three calls, decoded
@@ -825,13 +825,18 @@ the plan asks again (CLAUDE.md, *Multi-PR plans*, step 3).
    - The record of live orders and the chosen venue, each a file of its own.
    - The finalized block and its header's timestamp from the engine, and an
      order's `Trade` and `OrderInvalidated` from the log index.
+   - The hold-back of a live order in Send's and the Uniswap swap's quotes
+     (it needs the record's file, so it moved here from part 2).
+   - The ports wired into `AppGraph` and the hosts, which run the proof of
+     an order's end beside `FollowAccountLogs`.
    - Network tests, `@Ignore`d: a quote from `api.cow.fi/sepolia`, and part
      0's spike again (*Proving an order's end*).
 4. **Screens.**
    - The venue choice on Swap, compose (22), and CoW's review on 23.
    - The status (9) of a live order: "Cancel on chain", and once its end is
-     proven unfilled, the same swap on Uniswap.
-   - Previews, tests, and the wiring into `AppGraph` and the hosts.
+     proven unfilled, the same swap on Uniswap; and the status of a
+     cancellation on chain.
+   - Previews and tests.
 
 Not part of either plan, and plans of their own when the owner wants them: a
 Safe's pre-signed CoW order, CoW's ETH flow, and Uniswap v4.
