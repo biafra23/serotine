@@ -35,9 +35,11 @@ const val GHOST_ROW_TAG = "ghost-row"
 @Composable
 fun GhostLine(width: Dp, modifier: Modifier = Modifier, style: TextStyle = LocalTextStyle.current) {
     val color = MaterialTheme.colorScheme.surfaceVariant
-    // An empty text measures one line of its style: the bar is drawn over its middle.
+    // A space measures one line of its style as any text does, where an empty text need not (on
+    // macOS a ghost line of one was not a row's line high), and draws nothing: the bar is drawn
+    // over its middle.
     Text(
-        "",
+        " ",
         modifier.width(width).clearAndSetSemantics {}.drawBehind {
             val inset = size.height * 0.2f
             drawRoundRect(
