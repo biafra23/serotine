@@ -19,7 +19,7 @@ sealed interface TransferStatusUiState {
      * The transaction [hash]: what was sent ([sent] for a transfer, [safeTx] for a Safe
      * transaction's approval or execution, [deployment] for a Safe's deployment, [approval] for a
      * token approval, [swap] for a swap, [cancellation] for a CoW order's cancellation on chain; all
- * null when this device has no record of it), its
+     * null when this device has no record of it), its
      * [steps] in order, and [note], what to know about where it stands (a failure, or that it
      * cannot be verified right now), or null. [finished] once its
      * block is finalized. [notSent] while it is recorded as maybe sent (no peer answered its
