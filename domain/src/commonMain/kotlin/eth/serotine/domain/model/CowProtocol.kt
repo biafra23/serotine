@@ -16,13 +16,14 @@ data class CowDeployment(val settlement: Address, val vaultRelayer: Address)
 
 /**
  * A CoW Protocol sell order as Serotine signs one (docs/swaps.md, *An order, step by step*):
- * sell exactly [sellAmount] of [sellToken] for at least [buyAmount] of [buyToken], paid to
- * [receiver], until [validTo] (unix seconds, a `uint32`), with the app data whose hash is
- * [appData] (`0x` and 64 lower-case hex digits).
+ * sell exactly [sellAmount] of [sellToken] for at least [buyAmount] (never zero: an order with no
+ * minimum gives the sold token away) of [buyToken], paid to [receiver], until [validTo] (unix
+ * seconds, a `uint32`).
  *
- * GPv2's other order fields are fixed here, not chosen: no fee (`feeAmount` 0, the fee comes out
- * of the price), a sell order, fill-or-kill (`partiallyFillable` false), and both tokens moved
- * as plain ERC-20 balances. [buyToken] may be [NATIVE_BUY_TOKEN], CoW's marker for native ether
+ * GPv2's other order fields are fixed here, not chosen: the app data [CowAppData.HASH] (nothing
+ * beyond the required fields, owner ruling, 2026-10-22), no fee (`feeAmount` 0, the fee comes out
+ * of the price), a sell order, fill-or-kill (`partiallyFillable` false), and both tokens moved as
+ * plain ERC-20 balances. [buyToken] may be [NATIVE_BUY_TOKEN], CoW's marker for native ether
  * bought; native ether is never sold this way (it would need CoW's ETH-flow contract).
  */
 data class CowOrder(
@@ -32,12 +33,11 @@ data class CowOrder(
     val sellAmount: UInt256,
     val buyAmount: UInt256,
     val validTo: Long,
-    val appData: String,
 ) {
     init {
         require(validTo in 0..UINT32_MAX) { "validTo is a uint32: $validTo" }
-        require(APP_DATA.matches(appData)) { "app data is a 32-byte hash: '$appData'" }
         require(!sellAmount.isZero) { "an order sells something" }
+        require(!buyAmount.isZero) { "an order buys at least something" }
         require(sellToken != NATIVE_BUY_TOKEN) { "native ether is not sold by a signed order" }
         require(sellToken != buyToken) { "an order buys another token than it sells" }
     }
@@ -57,7 +57,7 @@ data class CowOrder(
             sellAmount = sellAmount,
             buyAmount = buyAmount,
             validTo = validTo,
-            appData = appData,
+            appData = CowAppData.HASH,
             feeAmount = UInt256.ZERO,
             partiallyFillable = false,
         ),
@@ -73,8 +73,6 @@ data class CowOrder(
 
         /** The largest `uint32`, the most [validTo] can be. */
         const val UINT32_MAX: Long = 0xFFFF_FFFFL
-
-        private val APP_DATA = Regex("^0x[0-9a-f]{64}$")
     }
 }
 
@@ -149,8 +147,9 @@ value class CowOrderUid private constructor(val hex: String) {
 internal object GPv2Signing {
 
     /** keccak256 of `EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)`. */
-    val DOMAIN_TYPEHASH: ByteArray =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)".encodeToByteArray())
+    val DOMAIN_TYPEHASH: ByteArray = keccak256(
+        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)".encodeToByteArray(),
+    )
 
     /** keccak256 of GPv2's `Order` type: `GPv2Order.TYPE_HASH`, `0xd5a25ba2…e489`. */
     val ORDER_TYPEHASH: ByteArray = keccak256(
@@ -209,8 +208,8 @@ internal object GPv2Signing {
 
 /**
  * One fill of an order, as the settlement contract's `Trade` log says it (`GPv2Settlement`):
- * [owner] sold [sellAmount] of [sellToken] for [buyAmount] of [buyToken], [feeAmount] of the sold
- * token going to fees, for the order [uid].
+ * [owner] sold [sellAmount] of [sellToken], fees included, for [buyAmount] of [buyToken];
+ * [feeAmount] of the sold amount went to fees; the order is [uid].
  */
 data class CowTrade(
     val owner: Address,
@@ -264,17 +263,18 @@ object GPv2Settlement {
 
     /**
      * The fill a log reports when [settlement] emitted it ([emitter]) as a `Trade` with [topics]
-     * and [data] (`0x` and lower-case hex), or null for any other log: another contract's (a
-     * topic entry matches logs from any contract), another event, or data of another shape.
+     * and [data] (`0x` and lower-case hex), its UID naming the owner the log names; null for any
+     * other log: another contract's (a topic entry matches logs from any contract), another
+     * event, or data of another shape.
      */
     fun tradeOf(settlement: Address, emitter: Address, topics: List<String>, data: String): CowTrade? {
         if (emitter != settlement || topics.size != 2 || topics[0] != TRADE_TOPIC) return null
         val owner = AbiWords.address(topics[1].removePrefix("0x").hexToBytesOrNull() ?: return null) ?: return null
-        val data = data.removePrefix("0x").hexToBytesOrNull() ?: return null
-        if (data.size < TRADE_UID_OFFSET) return null
-        val head = AbiWords.words(data.copyOf(TRADE_UID_OFFSET), TRADE_HEAD_WORDS) ?: return null
+        val bytes = data.removePrefix("0x").hexToBytesOrNull() ?: return null
+        if (bytes.size < TRADE_UID_OFFSET) return null
+        val head = AbiWords.words(bytes.copyOf(TRADE_UID_OFFSET), TRADE_HEAD_WORDS) ?: return null
         if (AbiWords.long(head[5]) != TRADE_UID_OFFSET.toLong()) return null
-        val uid = uidAt(data, TRADE_UID_OFFSET) ?: return null
+        val uid = uidAt(bytes, TRADE_UID_OFFSET)?.takeIf { it.owner == owner } ?: return null
         return CowTrade(
             owner = owner,
             sellToken = AbiWords.address(head[0]) ?: return null,
@@ -294,10 +294,10 @@ object GPv2Settlement {
     fun invalidationOf(settlement: Address, emitter: Address, topics: List<String>, data: String): CowOrderUid? {
         if (emitter != settlement || topics.size != 2 || topics[0] != ORDER_INVALIDATED_TOPIC) return null
         val owner = AbiWords.address(topics[1].removePrefix("0x").hexToBytesOrNull() ?: return null) ?: return null
-        val data = data.removePrefix("0x").hexToBytesOrNull() ?: return null
-        if (data.size < WORD) return null
-        if (AbiWords.long(data.copyOf(WORD)) != WORD.toLong()) return null
-        return uidAt(data, WORD)?.takeIf { it.owner == owner }
+        val bytes = data.removePrefix("0x").hexToBytesOrNull() ?: return null
+        if (bytes.size < WORD) return null
+        if (AbiWords.long(bytes.copyOf(WORD)) != WORD.toLong()) return null
+        return uidAt(bytes, WORD)?.takeIf { it.owner == owner }
     }
 
     /** The 56-byte `bytes` at [offset] of [data], the last thing in it, zero-padded: a UID. */

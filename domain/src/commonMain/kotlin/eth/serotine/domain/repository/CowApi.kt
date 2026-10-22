@@ -37,12 +37,19 @@ interface CowApi {
 
     /**
      * Hands [order], signed by [owner] with [signature] (EIP-712), to CoW's order book on
-     * [network]. Whatever this answers, the order was signed and may have reached CoW: it stays
-     * live until the chain proves it can no longer fill (docs/swaps.md, *A signed order is live
-     * until it is proven dead*). The request is made once, never retried by the client: an
-     * answer is the one that happened.
+     * [network]; [uid] is its UID as computed here, which CoW's answer must name, or the answer is
+     * no acceptance ([CowPlacement.Unclear]). Whatever this answers, the order was signed and may
+     * have reached CoW: it stays live until the chain proves it can no longer fill (docs/swaps.md,
+     * *A signed order is live until it is proven dead*). The request is made once, never retried
+     * by the client: an answer is the one that happened. Never [CowPlacement.Attempted].
      */
-    suspend fun place(network: Network, order: CowOrder, owner: Address, signature: Signature): CowPlacement
+    suspend fun place(
+        network: Network,
+        order: CowOrder,
+        owner: Address,
+        signature: Signature,
+        uid: CowOrderUid,
+    ): CowPlacement
 
     /** How the order [uid] stands in CoW's order book on [network]: CoW's own report. */
     suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife
@@ -103,8 +110,15 @@ enum class CowUnavailable {
     NOT_PINNED,
 }
 
-/** What [CowApi.place] answers. The order is live in every case (see [CowApi.place]). */
+/** How an order's POST to CoW stands. The order is live in every case (see [CowApi.place]). */
 sealed interface CowPlacement {
+
+    /**
+     * The POST is made, or about to be, and no answer is recorded: CoW may hold the order. What
+     * an order is recorded with before it is sent, so that a record never reads as unsent once a
+     * request may have left.
+     */
+    data object Attempted : CowPlacement
 
     /** CoW took the order under [uid], the UID computed here. */
     data class Accepted(val uid: CowOrderUid) : CowPlacement

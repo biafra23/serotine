@@ -1,19 +1,7 @@
 package eth.serotine.domain.repository
 
+import eth.serotine.domain.model.SwapVenue
 import kotlinx.coroutines.flow.Flow
-
-/**
- * Where a swap goes: Uniswap's contracts, verified on chain, or CoW Protocol, through CoW's
- * servers. The user decides for each swap (owner's direction, 2026-10-22; docs/swaps.md, *The
- * user's choice of venue*).
- */
-enum class SwapVenue {
-    /** Uniswap v3, quoted and sent through the light client alone. */
-    UNISWAP,
-
-    /** CoW Protocol: an order signed here and handed to CoW's order API. */
-    COW,
-}
 
 /**
  * The port for the venue the user last chose on Swap, compose (22), which the next swap starts

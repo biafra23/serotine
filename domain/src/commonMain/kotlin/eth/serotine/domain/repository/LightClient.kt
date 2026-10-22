@@ -76,5 +76,6 @@ sealed interface LightClientStatus {
 data class FinalizedBlock(val number: Long, val timestamp: Long) {
     init {
         require(number >= 0) { "a block number is never negative" }
+        require(timestamp >= 0) { "a block's time is never before 1970" }
     }
 }
