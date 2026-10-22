@@ -30,6 +30,9 @@ class AddressActivityTest {
      */
     internal class FakeActivity : ActivityChain {
         var report: String? = null
+
+        /** A report for one `afterBlock` only, in place of [report] (two reads that differ). */
+        val reportsAfter = mutableMapOf<Long, String>()
         var takes = true
         val pushes = mutableListOf<String>()
         val asked = mutableListOf<Long>()
@@ -48,7 +51,7 @@ class AddressActivityTest {
         override fun addressActivity(afterBlock: Long): String? {
             asked += afterBlock
             val hash = if (afterBlock in unheld) "null" else "\"${hashOf(afterBlock)}\""
-            return report?.replace(BASE, """{"block":$afterBlock,"hash":$hash}""")
+            return (reportsAfter[afterBlock] ?: report)?.replace(BASE, """{"block":$afterBlock,"hash":$hash}""")
         }
 
         companion object {
@@ -154,6 +157,37 @@ class AddressActivityTest {
         engine.report = report(to = 500, touched = touch(a, 500), watching = listOf(a))
         clock += 4.seconds
         assertFalse(activity.unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
+    }
+
+    @Test
+    fun aVouchingReportThatNoLongerWatchesTheAddressIsNoVouching() {
+        // The watch list's report still lists the address; the report after the proof's block,
+        // read later (the address unwatched meanwhile, or the engine restarted), does not.
+        val engine = FakeActivity().apply {
+            report = report(to = 500, watching = listOf(a))
+            reportsAfter[490] = report(to = 500, watching = emptyList())
+        }
+        assertFalse(AddressActivity(engine).unchangedSince(a, Kind.LOG, 490, engine.hashOf(490), 500))
+    }
+
+    @Test
+    fun severalFactsAreAnsweredFromOneReport() {
+        val engine = FakeActivity().apply { report = report(to = 500, accountGaps = "[]", watching = listOf(a, b)) }
+        val activity = AddressActivity(engine)
+        val facts = listOf(a to Kind.LOG, b to Kind.ACCOUNT)
+        assertTrue(activity.unchangedSince(facts, 490, engine.hashOf(490), 500))
+        assertEquals(1, engine.asked.count { it == 490L }, "one read for both facts")
+
+        // A touch of either fact's address is a change of the reading.
+        engine.report = report(to = 501, accountGaps = "[]", touched = touch(b, 501), watching = listOf(a, b))
+        assertFalse(activity.unchangedSince(facts, 490, engine.hashOf(490), 501))
+    }
+
+    @Test
+    fun everyUnwatchedAddressOfAReadingIsWatchedAtOnce() {
+        val engine = FakeActivity().apply { report = report(to = 500, watching = emptyList()) }
+        assertFalse(AddressActivity(engine).unchangedSince(listOf(a to Kind.LOG, b to Kind.ACCOUNT), 490, engine.hashOf(490), 500))
+        assertEquals(listOf("""{"watch":["${a.hex}"]}""", """{"watch":["${b.hex}"]}"""), engine.pushes)
     }
 
     @Test

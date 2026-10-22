@@ -104,13 +104,25 @@ internal class AddressActivity(
      * (null: the engine did not prove it), is known not to have changed by the verified head
      * [head]. Never blocks on I/O.
      */
-    fun unchangedSince(address: Address, kind: Kind, provenAt: Long, provenHash: String?, head: Long): Boolean {
-        if (chain == null || provenAt < 0 || head < provenAt) return false
-        askedAt = askedAt + (address.hex to head)
+    fun unchangedSince(address: Address, kind: Kind, provenAt: Long, provenHash: String?, head: Long): Boolean =
+        unchangedSince(listOf(address to kind), provenAt, provenHash, head)
+
+    /**
+     * Whether every one of [facts] — an address and the kind of fact about it — proven at block
+     * [provenAt], of hash [provenHash], is known not to have changed by the verified head [head]:
+     * all answered from one report, so a reading that rests on several facts (a price: its
+     * aggregator's logs and its proxy's own state) is never checked against two readings of the
+     * chain. Never blocks on I/O.
+     */
+    fun unchangedSince(facts: List<Pair<Address, Kind>>, provenAt: Long, provenHash: String?, head: Long): Boolean {
+        if (chain == null || provenAt < 0 || head < provenAt || facts.isEmpty()) return false
+        val addresses = facts.map { it.first }.distinct()
+        askedAt = askedAt + addresses.map { it.hex to head }
         val report = reportAt(head) ?: return false
         pruneIdle(report, head)
-        if (address.hex !in report.watching) {
-            watch(address, head)
+        val unwatched = addresses.filter { it.hex !in report.watching }
+        if (unwatched.isNotEmpty()) {
+            unwatched.forEach { watch(it, head) }
             return false
         }
         provenHash ?: return false
@@ -122,10 +134,15 @@ internal class AddressActivity(
         // The proof's own block is the canonical one: not a sibling the chain left, and not
         // replaced since by a reorg below the head.
         if (since.base?.first != provenAt || since.base.second != provenHash.lowercase()) return false
-        val gaps = since.gaps[kind.json] ?: return false
-        if (gaps.any { (low, high) -> low <= head && high >= provenAt }) return false
-        // From the block after the proof's: what the proof's own block did is in the proof.
-        return since.touched.none { it.address == address.hex && it.block in (provenAt + 1)..head }
+        return facts.all { (address, kind) ->
+            // Watched by the very report that vouches: one that stopped watching the address
+            // (unwatched meanwhile, an engine restart) lists none of its touches.
+            if (address.hex !in since.watching) return@all false
+            val gaps = since.gaps[kind.json] ?: return@all false
+            if (gaps.any { (low, high) -> low <= head && high >= provenAt }) return@all false
+            // From the block after the proof's: what the proof's own block did is in the proof.
+            since.touched.none { it.address == address.hex && it.block in (provenAt + 1)..head }
+        }
     }
 
     /**

@@ -109,8 +109,13 @@ class VerifiedPriceFeeds internal constructor(
         val noted = aggregators[id] ?: return false
         if (noted.block != provenAt || noted.hash != provenHash) return false
         val proxy = pinned.getValue(id).address
-        return activity.unchangedSince(noted.aggregator, AddressActivity.Kind.LOG, provenAt, provenHash, head) &&
-            activity.unchangedSince(proxy, AddressActivity.Kind.ACCOUNT, provenAt, provenHash, head)
+        // Both from one report: a reorg between two reads could hide the aggregator's new round.
+        return activity.unchangedSince(
+            listOf(noted.aggregator to AddressActivity.Kind.LOG, proxy to AddressActivity.Kind.ACCOUNT),
+            provenAt,
+            provenHash,
+            head,
+        )
     }
 
     /**
