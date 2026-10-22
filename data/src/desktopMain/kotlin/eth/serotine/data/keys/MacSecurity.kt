@@ -8,7 +8,8 @@ import com.sun.jna.Pointer
 import com.sun.jna.ptr.PointerByReference
 
 /**
- * The few CoreFoundation and Security.framework calls [MacSecureEnclaveSecret] needs, mapped
+ * The few CoreFoundation and Security.framework calls [MacSecureEnclaveSecret] and
+ * [MacBiometricKey] need, mapped
  * with JNA: no native build step, the frameworks are on every Mac. A failing call throws an
  * [IllegalStateException] naming the call and its error code, never key material.
  *
@@ -38,6 +39,11 @@ internal class MacSecurity private constructor() {
         fun CFDataGetLength(data: Pointer): Long
         fun CFDataGetBytePtr(data: Pointer): Pointer?
         fun CFErrorGetCode(error: Pointer): Long
+        fun CFErrorGetDomain(error: Pointer): Pointer?
+        fun CFErrorCopyUserInfo(error: Pointer): Pointer?
+
+        // Boolean is one byte: JNA's Kotlin Boolean would read the register's upper bits too.
+        fun CFStringGetCString(string: Pointer, buffer: Memory, size: Long, encoding: Int): Byte
         fun CFGetTypeID(cf: Pointer): Long
         fun CFDataGetTypeID(): Long
         fun CFRelease(cf: Pointer)
@@ -45,6 +51,12 @@ internal class MacSecurity private constructor() {
 
     @Suppress("FunctionName") // Security.framework's own names
     private interface Security : Library {
+        fun SecAccessControlCreateWithFlags(
+            allocator: Pointer?,
+            protection: Pointer,
+            flags: Long,
+            error: PointerByReference,
+        ): Pointer?
         fun SecKeyCreateRandomKey(parameters: Pointer, error: PointerByReference): Pointer?
         fun SecKeyCopyAttributes(key: Pointer): Pointer?
         fun SecKeyCreateWithData(keyData: Pointer, attributes: Pointer, error: PointerByReference): Pointer?
@@ -71,6 +83,7 @@ internal class MacSecurity private constructor() {
     private fun cfConstant(name: String): Pointer = cfLibrary.getGlobalVariableAddress(name).getPointer(0)
     private fun secConstant(name: String): Pointer = secLibrary.getGlobalVariableAddress(name).getPointer(0)
 
+    private val underlyingError = cfConstant("kCFErrorUnderlyingErrorKey")
     private val keyCallBacks = cfLibrary.getGlobalVariableAddress("kCFTypeDictionaryKeyCallBacks")
     private val valueCallBacks = cfLibrary.getGlobalVariableAddress("kCFTypeDictionaryValueCallBacks")
     private val falseValue = cfConstant("kCFBooleanFalse")
@@ -81,6 +94,9 @@ internal class MacSecurity private constructor() {
     private val secureEnclave = secConstant("kSecAttrTokenIDSecureEnclave")
     private val privateKeyAttributes = secConstant("kSecPrivateKeyAttrs")
     private val isPermanent = secConstant("kSecAttrIsPermanent")
+    private val accessControl = secConstant("kSecAttrAccessControl")
+    private val whenPasscodeSetThisDeviceOnly = secConstant("kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly")
+    private val authenticationContext = secConstant("kSecUseAuthenticationContext")
     private val keyClass = secConstant("kSecAttrKeyClass")
     private val privateKeyClass = secConstant("kSecAttrKeyClassPrivate")
     private val ecies = secConstant("kSecKeyAlgorithmECIESEncryptionCofactorVariableIVX963SHA256AESGCM")
@@ -91,9 +107,39 @@ internal class MacSecurity private constructor() {
      * not permanent, so no keychain item and no keychain entitlement, and with no user-authentication
      * requirement (the envelope's `HW_pw`). The caller releases it.
      */
-    fun createEnclaveKey(): Pointer = owning { own ->
+    fun createEnclaveKey(): Pointer = createEnclaveKey(access = null)
+
+    /**
+     * A new P-256 key inside the Secure Enclave for the envelope's biometric path (`HW_bio`, rule 3
+     * of docs/keys-and-signing.md), made as [createEnclaveKey]'s but under
+     * `[.privateKeyUsage, .biometryCurrentSet]` and `WhenPasscodeSetThisDeviceOnly`: every use of
+     * its private half needs Touch ID of the fingers enrolled now, the enclave enforcing it, and
+     * removing the login password or changing the fingers makes the key useless. No password
+     * fallback (`.userPresence` would be one). The caller releases it.
+     */
+    fun createBiometricEnclaveKey(): Pointer = owning { own ->
+        val access = own(
+            call("SecAccessControlCreateWithFlags") { error ->
+                sec.SecAccessControlCreateWithFlags(
+                    null,
+                    whenPasscodeSetThisDeviceOnly,
+                    PRIVATE_KEY_USAGE or BIOMETRY_CURRENT_SET,
+                    error,
+                )
+            },
+        )
+        createEnclaveKey(access)
+    }
+
+    private fun createEnclaveKey(access: Pointer?): Pointer = owning { own ->
         val bits = own(number(256))
-        val privateAttributes = own(dictionary(isPermanent to falseValue))
+        val privateAttributes = own(
+            if (access == null) {
+                dictionary(isPermanent to falseValue)
+            } else {
+                dictionary(isPermanent to falseValue, accessControl to access)
+            },
+        )
         val parameters = own(
             dictionary(
                 keyType to ecKeyType,
@@ -119,17 +165,21 @@ internal class MacSecurity private constructor() {
         }
     }
 
-    /** The enclave key [handle] ([tokenObjectIdOf]) refers to. The caller releases it. */
-    fun restoreEnclaveKey(handle: ByteArray): Pointer = owning { own ->
+    /**
+     * The enclave key [handle] ([tokenObjectIdOf]) refers to. A key under access control asks
+     * its user through [authentication], an `LAContext` ([MacLocalAuthentication]), when it is
+     * used: the system shows its prompt then, saying the context's reason. The caller releases it.
+     */
+    fun restoreEnclaveKey(handle: ByteArray, authentication: Pointer? = null): Pointer = owning { own ->
         val data = own(data(handle))
-        val attributes = own(
-            dictionary(
-                keyType to ecKeyType,
-                keyClass to privateKeyClass,
-                tokenId to secureEnclave,
-                tokenObjectId to data,
-            ),
+        val entries = mutableListOf(
+            keyType to ecKeyType,
+            keyClass to privateKeyClass,
+            tokenId to secureEnclave,
+            tokenObjectId to data,
         )
+        if (authentication != null) entries += authenticationContext to authentication
+        val attributes = own(dictionary(*entries.toTypedArray()))
         call("SecKeyCreateWithData") { error -> sec.SecKeyCreateWithData(data, attributes, error) }
     }
 
@@ -154,7 +204,9 @@ internal class MacSecurity private constructor() {
 
     /**
      * [ciphertext] decrypted by the enclave with [privateKey]. The caller zeroes the result;
-     * CF's copy is zeroed here.
+     * CF's copy is zeroed here. With a key under access control it blocks while the system's
+     * prompt is up; a prompt that does not pass fails it with LocalAuthentication's error
+     * ([SecurityCallFailed.localAuthentication]), at the top or underneath.
      */
     fun eciesDecrypt(privateKey: Pointer, ciphertext: ByteArray): ByteArray {
         val input = data(ciphertext)
@@ -191,8 +243,41 @@ internal class MacSecurity private constructor() {
     private fun call(name: String, block: (PointerByReference) -> Pointer?): Pointer {
         val error = PointerByReference()
         block(error)?.let { return it }
-        val code = error.value?.let { cfError -> cf.CFErrorGetCode(cfError).also { cf.CFRelease(cfError) } }
-        error("$name failed (${code ?: "no error"})")
+        val cfError = error.value ?: throw SecurityCallFailed(name, emptyList())
+        try {
+            throw SecurityCallFailed(name, chainOf(cfError))
+        } finally {
+            cf.CFRelease(cfError)
+        }
+    }
+
+    /** [cfError]'s domain and code, then its underlying error's, and so on, a few deep. */
+    private fun chainOf(cfError: Pointer): List<SecurityCallFailed.Cause> {
+        val chain = mutableListOf<SecurityCallFailed.Cause>()
+        var current: Pointer? = cfError
+        var userInfo: Pointer? = null
+        try {
+            while (current != null && chain.size < MAX_UNDERLYING) {
+                chain += SecurityCallFailed.Cause(cf.CFErrorGetDomain(current)?.let(::stringOf), cf.CFErrorGetCode(current))
+                // The underlying error belongs to the user info, which is released only once it is read.
+                val info = cf.CFErrorCopyUserInfo(current)
+                userInfo?.let(cf::CFRelease)
+                userInfo = info
+                current = info?.let { cf.CFDictionaryGetValue(it, underlyingError) }
+            }
+        } finally {
+            userInfo?.let(cf::CFRelease)
+        }
+        return chain
+    }
+
+    private fun stringOf(string: Pointer): String? {
+        val buffer = Memory(STRING_BYTES)
+        return if (cf.CFStringGetCString(string, buffer, STRING_BYTES, UTF8) != 0.toByte()) {
+            buffer.getString(0, "UTF-8")
+        } else {
+            null
+        }
     }
 
     private fun dictionary(vararg entries: Pair<Pointer, Pointer>): Pointer = checkNotNull(
@@ -242,6 +327,10 @@ internal class MacSecurity private constructor() {
         private const val SECURITY = "/System/Library/Frameworks/Security.framework/Security"
         private const val UTF8 = 0x08000100 // kCFStringEncodingUTF8
         private const val SINT32_TYPE = 3L // kCFNumberSInt32Type
+        private const val STRING_BYTES = 256L
+        private const val MAX_UNDERLYING = 4
+        private const val BIOMETRY_CURRENT_SET = 1L shl 3 // kSecAccessControlBiometryCurrentSet
+        private const val PRIVATE_KEY_USAGE = 1L shl 30 // kSecAccessControlPrivateKeyUsage
 
         val onMac: Boolean = System.getProperty("os.name").orEmpty().lowercase().contains("mac")
 
@@ -255,5 +344,31 @@ internal class MacSecurity private constructor() {
                 null
             }
         }
+    }
+}
+
+/**
+ * A Security.framework [call] that failed, with its error's domain and code and those of the
+ * errors underneath it ([causes], the top one first, empty when it gave none); never key material.
+ */
+internal class SecurityCallFailed(val call: String, val causes: List<Cause>) :
+    IllegalStateException("$call failed (${causes.joinToString { "${it.code} in ${it.domain}" }.ifEmpty { "no error" }})") {
+
+    /** One error of the chain. */
+    data class Cause(val domain: String?, val code: Long)
+
+    /**
+     * LocalAuthentication's code ([LaError]) when the system's prompt is what failed the call,
+     * found at the top or underneath; Security's own "the user cancelled" reads as
+     * [LaError.USER_CANCEL].
+     */
+    val localAuthentication: Long?
+        get() = causes.firstOrNull { it.domain == LOCAL_AUTHENTICATION_DOMAIN }?.code
+            ?: LaError.USER_CANCEL.takeIf { Cause(OS_STATUS_DOMAIN, ERR_SEC_USER_CANCELED) in causes }
+
+    private companion object {
+        const val LOCAL_AUTHENTICATION_DOMAIN = "com.apple.LocalAuthentication"
+        const val OS_STATUS_DOMAIN = "NSOSStatusErrorDomain"
+        const val ERR_SEC_USER_CANCELED = -128L
     }
 }

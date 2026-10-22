@@ -125,7 +125,7 @@ enum class PasswordCost {
 /** The envelope's biometric path on this device, as [KeyStore.describe] reports it. */
 sealed interface BiometricUnlock {
 
-    /** Serotine has no biometric path on this platform yet (the desktop). */
+    /** Serotine has no biometric path on this platform yet (Windows and Linux). */
     data object NotOnThisDevice : BiometricUnlock
 
     /** This device cannot offer one now, for [reason]. */

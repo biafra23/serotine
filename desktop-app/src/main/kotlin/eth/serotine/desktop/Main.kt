@@ -13,6 +13,7 @@ import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
+import eth.serotine.data.keys.desktopBiometricKey
 import eth.serotine.data.keys.desktopHardwareSecret
 import eth.serotine.data.keys.desktopPasswordOnlyProtection
 import eth.serotine.data.logs.MemoryDebugLog
@@ -228,9 +229,15 @@ private fun openWallet(dataDir: File) {
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
-            // (the owner's rulings of 2026-10-15 and -16). One instance is both the key store
-            // and the signer, so that their calls take turns.
-            val keyStore = EnvelopeKeyStore(keys.path, hardware, withoutHardware = desktopPasswordOnlyProtection())
+            // (the owner's rulings of 2026-10-15 and -16); Touch ID on a Mac, the user's opt-in
+            // in Settings → Security (rule 3). One instance is both the key store and the
+            // signer, so that their calls take turns.
+            val keyStore = EnvelopeKeyStore(
+                keys.path,
+                hardware,
+                withoutHardware = desktopPasswordOnlyProtection(),
+                biometricKey = desktopBiometricKey(keys.path),
+            )
             AppGraph(
                 accounts = accounts,
                 keys = keyStore,
