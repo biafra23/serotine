@@ -110,7 +110,7 @@ class MyotisNode private constructor(network: Network, lastBalancesPath: String?
     val tokenMetadata: TokenMetadata = VerifiedTokenMetadata(chain, Dispatchers.IO, POLL_INTERVAL)
 
     /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
-    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network))
+    val priceFeeds: PriceFeeds = VerifiedPriceFeeds(chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network), activity)
 
     /** ERC-20 balances, each a verified call of the token's `balanceOf`. */
     val tokenBalances: TokenBalances = VerifiedTokenBalances(chain, Dispatchers.IO, POLL_INTERVAL, lastBalances, activity)

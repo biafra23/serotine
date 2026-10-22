@@ -88,6 +88,13 @@ internal class ProvenReads<K, T>(
      */
     private val unchangedSince: (key: K, provenAt: Long, head: Long) -> Boolean = { _, _, _ -> false },
     /**
+     * A kept proof's value as of a later verified head produced at `headTimestamp` (unix
+     * seconds; null when unknown), for a fact whose reading also depends on the head's time
+     * — a price's age. Asked only when [unchangedSince] vouched for the proof; null proves the
+     * fact again. The value as it is by default.
+     */
+    private val atHead: (key: K, value: T, headTimestamp: Long?) -> T? = { _, value, _ -> value },
+    /**
      * Where the last proof of each key is kept beyond the process ([KeptProofs]), so that a
      * restart can say what was last verified before a head can be read; none by default.
      */
@@ -147,7 +154,11 @@ internal class ProvenReads<K, T>(
         val head = snapshot.readableHead ?: return syncing(key)
         // Asked outside the lock: it reads the engine (in memory, but across JNA).
         proofsLock.withLock { proofs[key] }?.let { kept ->
-            if (head >= kept.head && unchangedSince(key, kept.reading.blockNumber, head)) return kept.reading
+            if (head >= kept.head && unchangedSince(key, kept.reading.blockNumber, head)) {
+                atHead(key, kept.reading.value, snapshot.headTimestamp)?.let {
+                    return EngineReading.Proven(it, kept.reading.blockNumber)
+                }
+            }
         }
         while (true) {
             val pending = CompletableDeferred<EngineReading<T>?>()

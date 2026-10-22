@@ -76,6 +76,93 @@ class VerifiedPriceFeedsTest {
         assertEquals(true, reading().stale)
     }
 
+    /** An engine follower whose report a test sets (see [AddressActivity]). */
+    private class Activity : ActivityChain {
+        var report: String? = null
+        override fun setActivityWatch(configJson: String): Boolean = true
+        override fun addressActivity(afterBlock: Long): String? = report
+    }
+
+    private val aggregator = Address.of("0x" + "a9".repeat(20))
+
+    /** A report through [to], covering both kinds unless told, with [touched] (address to block). */
+    private fun report(to: Long, accountGaps: String = "[]", touched: List<Pair<Address, Long>> = emptyList()) =
+        """{"from":1,"to":$to,"base":{"block":0,"hash":null},"gaps":{"account":$accountGaps,"log":[]},""" +
+            """"touched":[${touched.joinToString(",") { (a, b) ->
+                """{"address":"${a.hex}","block":$b,"blockHash":"0x${"11".repeat(32)}","via":["log"]}"""
+            }}],"watching":["${aggregator.hex}","${eth.address.hex}"]}"""
+
+    @Test
+    fun aKeptPriceIsReDatedAtEachHeadAndProvenAgainOnlyWhenItsFeedMayHaveChanged() = runTest {
+        val activity = Activity().apply { report = report(to = 9) }
+        val feeds = VerifiedPriceFeeds(
+            chain,
+            StandardTestDispatcher(testScheduler),
+            4.seconds,
+            listOf(eth),
+            AddressActivity(activity),
+        )
+        suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 9)
+        answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 9_400), 9))
+        assertEquals(FeedReading.Verified(1.0, 9_400, ageSeconds = 600, stale = false), reading())
+
+        // A new head, nothing touched the feed: the proof at block 9 stands, re-dated at the new
+        // head's time, though a call would now answer 2.
+        answer(CallOutcome.Returned(word(8), 10), CallOutcome.Returned(round(word(200_000_000), 10_010), 10))
+        chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 10)
+        chain.snapshot = running(head = 10, headTimestamp = 10_012)
+        activity.report = report(to = 10)
+        assertEquals(FeedReading.Verified(1.0, 9_400, ageSeconds = 612, stale = false), reading())
+
+        // Its aggregator emitted a log (a new round): proven again.
+        chain.snapshot = running(head = 11, headTimestamp = 10_024)
+        activity.report = report(to = 11, touched = listOf(aggregator to 11))
+        assertEquals(FeedReading.Verified(2.0, 10_010, ageSeconds = 14, stale = false), reading())
+    }
+
+    @Test
+    fun aPriceIsNotKeptWithoutTheProxysAccountCoverageOrAKnownAggregator() = runTest {
+        val activity = Activity().apply { report = report(to = 9) }
+        val feeds = VerifiedPriceFeeds(
+            chain,
+            StandardTestDispatcher(testScheduler),
+            4.seconds,
+            listOf(eth),
+            AddressActivity(activity),
+        )
+        suspend fun reading() = feeds.observe(eth.priceId).first { it !is FeedReading.Syncing } as FeedReading.Verified
+        // No aggregator() answer: nothing to watch, so no proof is vouched for.
+        answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(100_000_000), 9_400), 9))
+        reading()
+        answer(CallOutcome.Returned(word(8), 10), CallOutcome.Returned(round(word(200_000_000), 10_010), 10))
+        chain.snapshot = running(head = 10, headTimestamp = 10_012)
+        activity.report = report(to = 10)
+        assertEquals(2.0, reading().price)
+
+        // With the aggregator known, an account gap on the proxy (no block access list: a
+        // switch to another aggregator would not show) is no vouching either.
+        chain.calls[eth.address to Abi.AGGREGATOR.toHex()] =
+            CallOutcome.Returned("0".repeat(24) + aggregator.hex.removePrefix("0x"), 11)
+        answer(CallOutcome.Returned(word(8), 11), CallOutcome.Returned(round(word(300_000_000), 10_020), 11))
+        chain.snapshot = running(head = 11, headTimestamp = 10_024)
+        activity.report = report(to = 11)
+        assertEquals(3.0, reading().price)
+        answer(CallOutcome.Returned(word(8), 12), CallOutcome.Returned(round(word(400_000_000), 10_030), 12))
+        chain.snapshot = running(head = 12, headTimestamp = 10_036)
+        activity.report = report(to = 12, accountGaps = "[[12,12]]")
+        assertEquals(4.0, reading().price)
+    }
+
+    @Test
+    fun anAggregatorWordIsAnAddressOnlyWithItsUpperBytesZero() {
+        assertEquals(aggregator, Abi.address("0".repeat(24) + aggregator.hex.removePrefix("0x")))
+        assertEquals(null, Abi.address("1" + "0".repeat(23) + aggregator.hex.removePrefix("0x")))
+        assertEquals(null, Abi.address("00"))
+    }
+
     @Test
     fun aRoundDatedWellAfterTheHeadIsNoFeedsAnswer() = runTest {
         answer(CallOutcome.Returned(word(8), 9), CallOutcome.Returned(round(word(1), 10_000 + 3_600), 9))

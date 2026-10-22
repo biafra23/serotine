@@ -27,6 +27,19 @@ internal object Abi {
         return toDecimal(returnedHex.fromHex())
     }
 
+    /** A Chainlink proxy's `aggregator()`: the contract its rounds are read from. */
+    val AGGREGATOR: ByteArray = "245a7bfc".fromHex()
+
+    /**
+     * The one address word [returnedHex] holds, or null when it is not exactly one word whose
+     * upper 12 bytes are zero.
+     */
+    fun address(returnedHex: String): Address? {
+        if (returnedHex.length != WORD_HEX_DIGITS || !returnedHex.all { it in HEX }) return null
+        if (returnedHex.take(24).any { it != '0' }) return null
+        return Address.parse("0x" + returnedHex.drop(24))
+    }
+
     /** Chainlink's `latestRoundData()`: no arguments, the selector alone. */
     val LATEST_ROUND_DATA: ByteArray = "feaf968c".fromHex()
 
