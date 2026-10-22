@@ -468,8 +468,12 @@ The user decides which venue each swap uses (owner's direction,
   - or is refused (no liquidity, an unsupported token, the account
     deny-listed),
 
-  the review says why: "CoW did not answer". It offers the same swap on
-  Uniswap, one tap away. Nothing switches by itself.
+  the review says why, in the words of each case: "CoW did not answer" for
+  no answer or an HTTP error, "CoW gave an answer this version does not
+  understand" for one that cannot be decoded or checked (*How often CoW's
+  API changes*, point 3), and CoW's own refusal for a refusal, a deny-listed
+  account included. It offers the same swap on Uniswap, one tap away.
+  Nothing switches by itself.
 - **A posted order that does not fill.** Once its end is proven (*Proving an
   order's end*), the status offers the same swap on Uniswap. Taking it is the
   user's choice, never automatic.
@@ -496,7 +500,9 @@ can still fill could swap them twice.
   beside `sent-transfers.json`. The record holds:
   - the order, its UID, its signature and the account;
   - the finalized block when it was signed, where the proof's range starts;
-  - how far its proof has come.
+  - how its POST stands: attempted from before the request on, then CoW's
+    answer;
+  - and, once proven, its end.
 - **Send and a new swap hold back the sold amount of a live order**, as they
   do for a transfer not mined yet (docs/embedding-myotis.md, *Sending*).
   - The hold-back ends as soon as the order is known to have filled: its
@@ -563,11 +569,14 @@ So the proof is the account's own verified logs.
   - *Expiry.* The first finalized block whose own timestamp, read from its
     verified header, is past `validTo`. No settlement can fill the order in a
     block past `validTo`.
+    - The header's timestamp is exactly the value the settlement compares
+      with `validTo` (`order.validTo >= block.timestamp`).
     - Not the finalized slot's time (genesis + slot × seconds per slot). The
       spike below found the finalized slot naming an empty slot after the
-      finalized block's own, twice: 12 seconds later than its block.
-    - Timed by the slot, a finalized block still at `validTo` could end the
-      range while the block after it fills the order.
+      finalized block's own, twice: 12 seconds later than its block. Under
+      checkpoint semantics that pairing is harmless, as no block lies between
+      the two; but `io.myotis.api` promises nothing of how it pairs the
+      finalized slot with its block, and the header needs no such promise.
   - *Cancellation on chain.* The block of the account's
     `invalidateOrder(uid)`, once it is finalized. Nothing can settle the
     order after it, since a fill would overflow the maximum it writes. A
@@ -787,8 +796,10 @@ docs/architecture.md.
    transactions); and 17's offer to propose a swap again with a fresh
    minimum.
 
-**`feature/swaps-cow`** (issue #144), from `main`, its part PRs merged into
-it by their author (owner's answer, 2026-10-22)
+**`feature/swaps-cow`** (issue #144), from `main`. The owner answered yes to
+its part PRs being merged by their author on 2026-10-22, in that session's
+conversation: plan history, not a standing authorization. A session resuming
+the plan asks again (CLAUDE.md, *Multi-PR plans*, step 3).
 
 0. **The design.** This page and CLAUDE.md take the direction of 2026-10-22
    (the user's choice of venue), CoW's *Data sources* ruling (decision 7) and

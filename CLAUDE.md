@@ -838,8 +838,9 @@ discussion that produced this note.
     address is not hidden for now.
   - Of CoW's answers about an order, only its off-chain life is shown. A
     fill, and every amount it moved, comes from the account's verified logs
-    alone. The swap's review shows CoW's estimate, marked as not verified,
-    to compare the venues (issue #144).
+    alone. The swap's review also shows CoW's estimate, marked as not
+    verified, to compare the venues: this follows from #144's design point
+    3, not from the ruling's words.
   - The order is built, hashed and checked here. Its signed minimum is never
     below the verified Uniswap quote less the gas and the tolerance, and a
     pair with no Uniswap route is not offered on CoW.
