@@ -9,31 +9,43 @@ When the owner accepts it, the rulings it needs go into CLAUDE.md in the first
 part's PR, and docs/wallet-ux.md takes over the screens as each part lands.
 
 The mockups (source: `networks-screens.html`, which opens in a browser) are
-numbered N1 to N17 below. They follow the style of `wallet-ux-screens.html`:
+numbered N1 to N20 below. They follow the style of `wallet-ux-screens.html`:
 real blockies, made-up amounts and addresses, an illustrative QR code. Where a
 mockup and this text differ, the text wins.
 
-![Screens N1 to N17, numbered as below](networks-screens.png)
+![Screens N1 to N20, numbered as below](networks-screens.png)
 
-## The three decisions this plan is built on
+## The decisions this plan is built on
 
-These come from the owner's request (2026-10-22):
+These come from the owner's requests (2026-10-22):
 
 1. **No global switch.** There is no "current network" and no network picker
-   for the app. Nothing in Settings turns a network on or off. Every value and
-   every action is about one account, and **each account belongs to one
-   chain**. A screen takes its network from the account it shows. A screen
-   that lists accounts (Accounts, Create Safe's owners and payer, Send's "your
-   accounts" chips) shows each account with its network.
+   that the app is "on". Every value and every action is about one account,
+   and **each account belongs to one chain**. A screen takes its network from
+   the account it shows. A screen that lists accounts (Accounts, Create
+   Safe's owners and payer, Send's "your accounts" chips) shows each account
+   with its network. Turning a network off (decision 4) is not such a switch:
+   it stops one network, and the others and their accounts carry on.
 2. **Creating an EOA asks which networks to add it to.** Create account and
    Import recovery phrase end with a question: *add to which networks?*
    Ethereum, Gnosis Chain and Sepolia are each a check box. The key is stored
    once. Each network ticked adds one account to the list (N8, N9).
 3. **Watching an EOA asks whether to add it on all three.** An address with
    no code is the same account on every EVM chain. When the Watch screen
-   detects an EOA, it asks whether to add it on all three networks, with a way
-   to choose fewer (N10). A Safe or another contract exists only on the chains
+   detects an EOA, it asks whether to add it on all three networks (on every
+   network that is on, when one is off, and not at all when only one is),
+   with a way to choose fewer (N10). A Safe or another contract exists only on the chains
    it was deployed on, and is offered only where it is detected (N11).
+4. **Each network can be turned off** (owner's request, 2026-10-22, the same
+   day). Settings → Networks has a switch per network (N16). A network that
+   is off runs no light client and reads nothing. **Its accounts stay in the
+   list**, visible, and what needs no chain still works on them: open,
+   rename, copy the address, **remove** (N18, N19). *Networks on and off*,
+   below, has the details.
+5. **The build decides which networks are on at first start.** A release
+   build starts with **Ethereum and Gnosis Chain on** and Sepolia off. A debug
+   build starts with **Sepolia on** and the other two off, so a development
+   build never touches real funds unless its user turns a network on.
 
 And one rule carries over: **the testnet warnings stay on Sepolia accounts**.
 "testnet prices" on every fiat value, the "Testnet" mark, "Only send Sepolia
@@ -57,8 +69,8 @@ needs nothing new from the engine:
 - Each network costs well under 1 MB of disk. While awake, a network costs
   about 2 to 6 MB a minute on mainnet at the engine's defaults, and Gnosis
   polls 2.4 times as often (Myotis docs/disk-and-network-usage.md). That
-  cost is why a network runs only while the user has an account on it (*The
-  engine host*, below).
+  cost is why a network runs only while it is on and the user has an
+  account on it (*The engine host*, below).
 - ENS: the registry is pinned for mainnet and Sepolia. **Gnosis has no ENS.**
   Myotis resolves Genome's `.gno` names there instead (open question 2).
 - The log index (*History* in docs/embedding-myotis.md) is per network, and
@@ -166,9 +178,81 @@ a Sepolia one:
 | `safe-tx-queue.json` | nothing: each request carries its chain id already; lookups by Safe become by `AccountId` |
 | `last-exchange-rate.json` | one entry per network (*The widget*); the widgets placed before the update are Sepolia's, the only rate they could show |
 | `upgrade.json` | one known upgrade per network |
+| `networks.json` (new) | which networks are on (*Networks on and off*) |
 
 The key store's envelopes and `display-currency.json` are not per network and
 are unchanged.
+
+## Networks on and off
+
+- **The setting.** A small port of its own, `NetworkSettings`
+  (`observe()`: which networks are on; `setEnabled(network, on)`), with a
+  file adapter, `networks.json` beside the account list. Use cases read it
+  like any other port; the engine host (below) follows it. A network that is
+  off is a fact the screens show, never a reason to hide an account.
+- **The defaults, per network.** `networks.json` records each network the
+  wallet has decided about. A start that finds a network the file does not
+  mention gives it its build's default and records it: a release build turns
+  on Ethereum and Gnosis Chain and leaves Sepolia off, a debug build turns on
+  Sepolia and leaves the other two off. So a fresh install, an update from
+  the Sepolia-only release and an update that brings a network the file has
+  not seen yet all get the defaults for what is new to them. "Debug" is what each host already calls its debug build: the
+  `eth.serotine.debug` Android app (debuggable), the iOS debug binary
+  (`Platform.isDebugBinary`), and the desktop's development run
+  (`:desktop-app:run`, which sets a JVM property no installer sets). The
+  composition root passes the default to the adapter, and the domain never
+  asks which build it is. Once a network is recorded, the user's choice for
+  it stands, and no update resets it.
+- **An install updated from the Sepolia-only release** has no
+  `networks.json`, so it gets its build's defaults for all three. A release build
+  therefore turns Sepolia off, and the user's Sepolia accounts show as on a
+  network that is off until the user turns it on (open question 10).
+- **Turning a network off** asks first when it has accounts: "Turn off
+  Gnosis Chain? Its account, Main, stays in your list. Its balances are not
+  checked and nothing can be sent from it until you turn Gnosis Chain on
+  again" (N20). When a
+  transaction from one of its accounts is not confirmed yet, or a Safe
+  deployed from one is not listed yet, the dialog says so: following it
+  waits until the network is on again. The records keep it
+  (`SentTransfers`, `FollowSafeDeployments`), so nothing is lost. Its light
+  client stops at once. Turning a network on asks nothing and starts its
+  light client.
+- **An account on a network that is off** (N18, N19):
+  - is listed in its network's section, which reads "Off" with a grey dot
+    and is left out of every total;
+  - shows its balances as last verified, dated and dimmed, with "Gnosis Chain
+    is off" in place of "may have changed since" (the rule of 2026-10-19,
+    which this extends: an older answer, labelled, never acted on), or "Not
+    checked: Gnosis Chain is off" when none was ever verified;
+  - can be opened, renamed, copied and **removed**, with removal following
+    the key rule of N7 (no network needs to run for it);
+  - keeps Receive, which needs nothing verified, with the line "Gnosis Chain
+    is off in this wallet: what is sent here arrives, but is shown only once
+    you turn it on";
+  - greys out everything that needs the chain (Send, Swap, a Safe's propose,
+    sign, approve, execute and import, and Add on another network *from* a
+    network that is off). Each says "Gnosis Chain is off" when tapped, with
+    **Turn on Gnosis Chain** as the way to get it (`UnavailableDialog`, the
+    rule of 2026-10-18).
+- **Adding an account to a network that is off.** The network step (N8, N9),
+  "Add on another network" (N6), Create Safe's network chips (N12) and Add
+  token's (N17) list a network that is off greyed out, saying it is off.
+  A tap offers **Turn on**, after which it can be chosen. The Watch screen
+  (N10) checks only the networks that are on. With two or more on, its
+  question asks about **every network that is on** ("Watch it on Ethereum
+  and Gnosis Chain?"; "…on all three networks?" when all three are on).
+  With one on (a debug build's Sepolia), there is nothing to choose between,
+  so no question is asked, and Add watches the address on that network. Either
+  way a network that is off is listed greyed out with its Turn on, which
+  makes it one more network to choose.
+- **Upgrades and the widget.** A network that is off reports no upgrade, so
+  it shows no banner and sends no notification, and it never counts towards
+  the update screen (open question 4 counts only networks that are on and
+  have accounts). A widget for a network that is off shows its last rate,
+  dated, with "Gnosis Chain is off", and its refresh does nothing.
+- **All three off** is allowed: every section reads "Off", nothing is
+  hidden, and each of the FAB's ways to add an account says which network
+  to turn on.
 
 ## The engine host
 
@@ -178,16 +262,18 @@ are unchanged.
   (the handle, `ProvenReads`, the adapters of that chain). The ports'
   adapters in `:data` route each call to the `ChainNode` of its network. The
   iOS `MyotisNode` twin splits the same way.
-- **A network runs while it is needed, and only then.** No switch decides
-  this; the account list does. A network's handle is created and started
-  when the first account on it is added (or at launch, when one exists), or
-  while a screen asks about a network with no account yet (the Watch screen
-  checking an address on all three, N10). It is stopped 30 s after its last
-  account is removed and no screen asks. Pause and resume (Android's 30 s
-  after the last hold, the desktop's window) apply to all running networks at
-  once. A user with only Ethereum accounts never syncs Gnosis or Sepolia.
-- **Background work** follows the same rule. The daily upgrade check runs per
-  network with accounts. The widget's refresh wakes only its own network.
+- **A network runs while it is on and needed, and only then.** A network
+  that is off never runs. A network that is on runs while it has accounts
+  (from launch, or from the first account added) or while a screen asks
+  about it (the Watch screen checking an address on every network that is
+  on, N10). It is stopped 30 s after its last account is removed and no
+  screen asks, and at once when it is turned off. Pause and resume
+  (Android's 30 s after the last hold, the desktop's window) apply to all
+  running networks at once. A user with only Ethereum accounts never syncs
+  Gnosis or Sepolia, whether those are on or off.
+- **Background work** follows the same rule. The daily upgrade check runs for
+  each network that is on and has accounts. The widget's refresh wakes only
+  its own network, and only while it is on.
 - **Last balances** stay per (network, address), so a restart shows each
   network's balances as last verified, with that network's own head time.
 
@@ -267,7 +353,7 @@ are unchanged.
 
 ## Screens
 
-N1 to N17 below. Every other screen keeps its design and gains the account's
+N1 to N20 below. Every other screen keeps its design and gains the account's
 network where docs/wallet-ux.md has it say "Sepolia" today.
 
 ### Accounts and an account
@@ -301,6 +387,8 @@ network where docs/wallet-ux.md has it say "Sepolia" today.
 - **N8 Create account, last step**: after the phrase, the check and the
   password, "Add to which networks?" with the three networks as check boxes,
   **none ticked** (the question is asked, not pre-answered; open question 8),
+  a network that is off greyed out with its Turn on (N8 draws a release
+  build's defaults, Sepolia off),
   each with one line ("Real funds", "Real funds, fees in xDAI", "Testnet: test
   ether only"). Create is greyed out until one is ticked; a tap on it says
   so. The key is sealed once; one account per network ticked is added under
@@ -322,7 +410,9 @@ network where docs/wallet-ux.md has it say "Sepolia" today.
   EOA, the screen asks: "This address has no code. Watch it on all three
   networks?", with **Add on all three** and **Choose networks**. Choose
   shows the rows as check boxes. A network still checking says so, and Add
-  waits for the networks chosen.
+  waits for the networks chosen. With a network off, the question names the
+  networks that are on, and the one that is off is greyed out with its Turn
+  on (*Networks on and off*).
 - **N11 Watch address, a Safe**: a Safe is detected per network. Only the
   networks where it is a Safe are offered (each with its `t/n` and owners,
   which may differ per network), and the all-three question is not asked.
@@ -347,13 +437,24 @@ network where docs/wallet-ux.md has it say "Sepolia" today.
 ### Settings
 
 - **N16 Settings**: the Network row becomes a **Networks** section. One row
-  per network shows its accounts and its light client ("2 accounts · Verified
-  at block N", "No accounts · not running"). A row opens that network's light
-  client. There are no switches: a network runs because it has accounts.
-  (The mockup has no Sepolia account, unlike N1, so that it can draw a
-  network that is not running.)
+  per network, each with its **switch**, its accounts and its light client
+  ("2 accounts · Verified at block N", "1 account · Off"). A row opens that
+  network's light client. N16 draws a release build's defaults on an install
+  updated from the Sepolia-only release: Ethereum and Gnosis Chain on,
+  Sepolia off with its one account.
 - **N17 Add token**: the network first, then the address, read on that
   network.
+
+### A network that is off
+
+- **N18 Accounts with Sepolia off**: Sepolia's section reads "Off" with a grey
+  dot, its account is dimmed with its last verified balance, dated, and
+  "Sepolia is off", and nothing of it is in a total.
+- **N19 An account on a network that is off**: its screen with Send and Swap
+  greyed out. A tap on Send says why, with Turn on Sepolia. Receive, Rename
+  and Remove work.
+- **N20 Turning a network off**: the confirmation in Settings, naming its
+  accounts and what waits until it is on again.
 
 ### Upgrades and the update screen
 
@@ -369,7 +470,7 @@ greys out its accounts' actions with that reason (open question 4).
 
 Each placed widget shows one network's native rate. Android's widget
 configuration asks for the network when it is placed, offering the networks
-with accounts. A Sepolia widget keeps "testnet prices"; an Ethereum one shows
+that are on and have accounts. A Sepolia widget keeps "testnet prices"; an Ethereum one shows
 ETH at mainnet's rate, a Gnosis one xDAI at its rate. Each refresh wakes only
 that network. A widget placed before the update has no network in its state
 and is migrated as Sepolia, still marked "testnet prices". Choosing another
@@ -384,13 +485,16 @@ releasable. The parts, in order:
 1. **Network-aware model, Sepolia only.** `AccountId`, `Account.network`,
    ports that take the network, the files' new versions with the migration
    as Sepolia, routes by `(chainId, address)`, ViewModels and use cases
-   without an injected network, `RemoveAccount`'s last-account rule. The
-   rulings this plan needs go into CLAUDE.md here. No visible change.
+   without an injected network, `RemoveAccount`'s last-account rule,
+   `NetworkSettings` and `networks.json`. The rulings this plan needs go
+   into CLAUDE.md here. No visible change: the file records Sepolia, the
+   only network, as on in both builds. Ethereum and Gnosis Chain get their
+   build's default when parts 4 and 5 bring them, by the per-network rule.
 2. **The engine host.** `MyotisHost` and `ChainNode` (JVM and iOS), the
-   per-network routing, starting and stopping a network with its accounts,
-   the background jobs per network. Still Sepolia only, so it is tested
+   per-network routing, starting and stopping a network with its accounts
+   and its switch, the background jobs per network. Still Sepolia only, so it is tested
    against Sepolia and a fake second network.
-3. **The screens.** N1 to N17 with Sepolia as the only real network. Previews
+3. **The screens.** N1 to N20 with Sepolia as the only real network. Previews
    and screen tests use made-up Ethereum and Gnosis states, and the network
    steps are tested against a fake two-network catalog. The screenshots
    artifact shows them.
@@ -398,9 +502,11 @@ releasable. The parts, in order:
    and icons, Safe deployments and fallback handler, Uniswap v3 and
    Multicall3 pins, each proven on mainnet by the PR, with the values read
    stated; the ENS root. A real-network test like `MyotisNodeSepoliaTest`.
+   From here a release build starts with Ethereum on and Sepolia off.
 5. **Gnosis Chain.** `Network.GNOSIS`; the xDAI icon and price, its feeds,
    tokens, Safe deployments (L2), fallback handler, and what open questions 2
-   and 7 decide for names and swaps.
+   and 7 decide for names and swaps. A release build's defaults gain Gnosis
+   Chain, which completes decision 5.
 6. **The final PR** `feature/networks` → `main`, after the internal review of
    the whole diff. Mainnet starts holding real value with this release.
 
@@ -440,3 +546,11 @@ own conversation, the owner merges each part.
    answers), or Ethereum ticked?
 9. **The built-in token lists** for Ethereum and Gnosis: which of the
    candidates above, as for Sepolia's list.
+10. **An updated install's Sepolia.** A release build updated from the
+    Sepolia-only release turns Sepolia off with the other defaults, so the
+    user's Sepolia accounts show as off until turned on (the plan, which
+    applies "at first start" to an update too). Or should an update keep
+    Sepolia on when it has accounts there?
+11. **Receive on a network that is off**: kept, with its line saying the
+    arrival is not shown until the network is on (the plan), or greyed out
+    like Send?

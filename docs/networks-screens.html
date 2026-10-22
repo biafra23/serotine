@@ -59,12 +59,14 @@ h1{font-size:22px;font-weight:500;margin:0 0 4px}
 .dlg{position:absolute;left:14px;right:14px;top:110px;background:var(--surface-3);border:0.5px solid var(--border-stronger);border-radius:12px;padding:12px;z-index:2;display:flex;flex-direction:column;gap:8px}
 .err{background:rgba(198,64,64,0.12);color:var(--text-danger);border-radius:6px;padding:5px 8px;font-size:11px}
 h2.grp{font-size:15px;font-weight:500;margin:22px 0 0}
+.off{opacity:0.55}
+.dk{background:var(--border-stronger)}
 </style>
 </head>
 <body>
 <main>
 <h1>Serotine networks: Ethereum and Gnosis Chain</h1>
-<p class="lead">Mockups N1 to N17 for the plan in <code>docs/networks.md</code> (drawn 2026-10-22), which wins where the two differ. Each account belongs to one network; there is no app-wide network switch. Sepolia keeps every testnet warning. Blockies are real (ethereum/blockies, seeded by the lowercase address); the QR code is illustrative; amounts, names and addresses are made up.</p>
+<p class="lead">Mockups N1 to N20 for the plan in <code>docs/networks.md</code> (drawn 2026-10-22), which wins where the two differ. Each account belongs to one network; there is no app-wide network switch, though each network can be turned off. Sepolia keeps every testnet warning. Blockies are real (ethereum/blockies, seeded by the lowercase address); the QR code is illustrative; amounts, names and addresses are made up.</p>
 <h2 class="sr-only">Phone-screen mockups of Serotine with accounts on Ethereum, Gnosis Chain and Sepolia.</h2>
 
 <h2 class="grp">Accounts and an account</h2>
@@ -184,11 +186,11 @@ h2.grp{font-size:15px;font-weight:500;margin:22px 0 0}
 <div class="m">The account has the same address on each. Every network you choose adds it to your account list, and its light client runs while it has accounts.</div>
 <div class="r"><i class="ti ti-square cko" aria-hidden="true"></i><div class="f"><span class="nw eth">Ethereum</span><div class="m">Real funds, fees in ETH</div></div></div>
 <div class="r"><i class="ti ti-square cko" aria-hidden="true"></i><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">Real funds, fees in xDAI</div></div></div>
-<div class="r"><i class="ti ti-square cko" aria-hidden="true"></i><div class="f"><span class="nw sep">Sepolia · Testnet</span><div class="m">Test ether only, no market value</div></div></div>
+<div class="r"><i class="ti ti-square cko dis" aria-hidden="true"></i><div class="f dis"><span class="nw sep">Sepolia · Testnet</span><div class="m">Off in this wallet · tap to turn on</div></div></div>
 <div class="m">Name</div><div class="in" style="color:var(--text-primary)">Main</div>
 <div class="btn pri dis" style="margin-top:auto">Create</div>
 <div class="m" style="margin-bottom:10px;text-align:center">Choose at least one network</div>
-</div></div><div class="cap">N8 · Create account, last step: the question, nothing ticked; Create greyed out until one is.</div></div>
+</div></div><div class="cap">N8 · Create account, last step: the question, nothing ticked; a network that is off (here a release build's Sepolia) greyed out with Turn on.</div></div>
 
 <div><div class="ph">
 <div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Import recovery phrase</span></div>
@@ -296,14 +298,14 @@ h2.grp{font-size:15px;font-weight:500;margin:22px 0 0}
 <div class="r"><i class="ti ti-coins" aria-hidden="true"></i><div class="f">Tokens<div class="m">31 built in on 3 networks · 1 added</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
 <div class="r"><i class="ti ti-lock" aria-hidden="true"></i><div class="f">Security</div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
 <div class="m">Networks</div>
-<div class="r"><span class="dot dg"></span><div class="f"><span class="nw eth">Ethereum</span><div class="m">2 accounts · verified at block 23,618,402</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
-<div class="r"><span class="dot dy"></span><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">1 account · waiting for proof peers</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
-<div class="r"><span class="dot" style="background:var(--border-stronger)"></span><div class="f"><span class="nw sep">Sepolia · Testnet</span><div class="m">No accounts · not running</div></div><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
-<div class="m">A network runs while it has accounts. There is nothing to switch.</div>
+<div class="r"><span class="dot dg"></span><div class="f"><span class="nw eth">Ethereum</span><div class="m">2 accounts · verified at block 23,618,402</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="r"><span class="dot dy"></span><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">1 account · waiting for proof peers</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="r"><span class="dot dk"></span><div class="f"><span class="nw sep">Sepolia · Testnet</span><div class="m">1 account · Off</div></div><i class="ti ti-toggle-left" style="font-size:24px;color:var(--text-secondary)" aria-hidden="true"></i></div>
+<div class="m">A network that is off checks nothing; its accounts stay in your list. Tap a row for its light client.</div>
 <div class="r"><i class="ti ti-info-circle" aria-hidden="true"></i><div class="f">About</div><span class="m">v0.2.0</span></div>
 </div>
 <div class="nav"><div><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div class="on"><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
-</div><div class="cap">N16 · Settings: a Networks section, one row per network with its light client; a row opens it. No switches. Shown here with no Sepolia account, to draw a network that is not running.</div></div>
+</div><div class="cap">N16 · Settings: a Networks section with a switch per network. A release build's defaults on an updated install: Ethereum and Gnosis Chain on, Sepolia off with its account.</div></div>
 
 <div><div class="ph">
 <div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Add token</span></div>
@@ -315,6 +317,61 @@ h2.grp{font-size:15px;font-weight:500;margin:22px 0 0}
 <div class="m">Name and symbol are the contract's own claim. A token is its network and its address; the same symbol on another network is another token.</div>
 <div class="btn pri" style="margin-top:auto;margin-bottom:10px">Add token on Gnosis Chain</div>
 </div></div><div class="cap">N17 · Add token: the network first, then the contract, read on that network.</div></div>
+
+</div>
+<h2 class="grp">A network that is off</h2>
+<div class="g">
+
+<div><div class="ph" style="height:600px">
+<div class="hd"><span class="f">Accounts</span></div>
+<div class="bd">
+<div class="tot"><div class="m">Total · EUR · Ethereum and Gnosis Chain</div><div class="big">€11,058.60</div><div class="m">Sepolia is off and not included</div></div>
+<div class="sec"><span class="nw eth">Ethereum</span><span class="f"></span><span class="m">€9,612.30</span><span class="st"><span class="dot dg"></span>Verified at block 23,618,402 · 6 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">3.2041 ETH<div class="m">€9,612.30</div></div></div>
+<div class="sec"><span class="nw gno">Gnosis Chain</span><span class="f"></span><span class="m">€1,446.30</span><span class="st"><span class="dot dg"></span>Verified at block 42,907,115 · 3 s ago</span></div>
+<div class="r"><span class="av"><canvas class="bl" data-a="0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2" width="8" height="8"></canvas></span><div class="f">Main <span class="b ok">Key</span><div class="m">0x8F3a…91c2</div></div><div class="e">1,571.2 XDAI<div class="m">€1,446.30</div></div></div>
+<div class="sec"><span class="nw sep">Sepolia · Testnet</span><span class="f"></span><span class="m">Off</span><span class="st"><span class="dot dk"></span>Off in this wallet · nothing is checked</span></div>
+<div class="r off"><span class="av"><canvas class="bl" data-a="0x6d2b8f4a1c7e3d9b5f0a2c8e6b4d1f7a3c9e5b18" width="8" height="8"></canvas></span><div class="f">Test <span class="b ok">Key</span><div class="m">0x6D2b…5B18</div></div><div class="e">0.84 ETH</div></div>
+<div class="m off" style="margin-top:-4px">Last verified Oct 21, 18:02 · Sepolia is off</div>
+</div>
+<div class="fab"><i class="ti ti-plus" aria-hidden="true"></i></div>
+<div class="nav"><div class="on"><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N18 · Accounts with Sepolia off: its section reads "Off", its account stays, dimmed, with its last verified balance, out of every total.</div></div>
+
+<div><div class="ph">
+<div class="hd"><i class="ti ti-arrow-left" aria-hidden="true"></i><span class="f">Test</span><i class="ti ti-dots-vertical" aria-hidden="true"></i></div>
+<div class="bd">
+<div style="display:flex;gap:10px;align-items:center"><canvas class="bl" style="width:44px;height:44px" data-a="0x6d2b8f4a1c7e3d9b5f0a2c8e6b4d1f7a3c9e5b18" width="8" height="8"></canvas><div><div class="big" style="color:var(--text-secondary)">0.84 ETH</div><div class="m">Last verified Oct 21, 18:02</div><div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap"><span class="nw sep">Sepolia · Off</span><span class="b ok">Full control</span></div></div></div>
+<div class="strip" style="background:var(--fill-control);color:var(--text-secondary)">Sepolia is off in this wallet: nothing is checked.</div>
+<div style="display:flex;gap:6px"><div class="btn f dis">Send</div><div class="btn f dis">Swap</div><div class="btn f">Receive</div></div>
+<div class="r off"><span class="tk" style="background:var(--bg-accent);color:var(--text-accent)">Ξ</span><div class="f">ETH<div class="m">0.84 · last verified</div></div></div>
+<div class="r off"><span class="tk" style="background:var(--fill-control)">L</span><div class="f">LINK<div class="m">11.8 · last verified</div></div></div>
+</div>
+<div class="scrim"></div>
+<div class="dlg" style="top:150px">
+<div style="font-weight:500;font-size:14px">Send needs Sepolia</div>
+<div class="m">Sepolia is off in this wallet, so its balances are not checked and nothing can be sent from Test. Turned on, it checks them again first.</div>
+<div class="btn pri">Turn on Sepolia</div>
+<div class="btn">Close</div>
+</div>
+</div><div class="cap">N19 · An account on a network that is off: Send and Swap greyed out, a tap says why and offers Turn on. Receive, Rename and Remove work.</div></div>
+
+<div><div class="ph">
+<div class="hd"><span class="f">Settings</span></div>
+<div class="bd">
+<div class="m">Networks</div>
+<div class="r"><span class="dot dg"></span><div class="f"><span class="nw eth">Ethereum</span><div class="m">2 accounts</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="r"><span class="dot dg"></span><div class="f"><span class="nw gno">Gnosis Chain</span><div class="m">1 account</div></div><i class="ti ti-toggle-right" style="font-size:24px;color:var(--text-accent)" aria-hidden="true"></i></div>
+</div>
+<div class="scrim"></div>
+<div class="dlg">
+<div style="font-weight:500;font-size:14px">Turn off Gnosis Chain?</div>
+<div class="m">Its account, Main, stays in your list. Its balances are not checked and nothing can be sent from it until you turn Gnosis Chain on again.</div>
+<div class="m" style="color:var(--text-warning)"><i class="ti ti-clock" aria-hidden="true"></i> A transaction sent from Main is not confirmed yet. It is followed again when Gnosis Chain is back on.</div>
+<div style="display:flex;gap:6px"><div class="btn f">Cancel</div><div class="btn f pri">Turn off</div></div>
+</div>
+<div class="nav" style="margin-top:auto"><div><i class="ti ti-wallet" aria-hidden="true"></i>Accounts</div><div class="on"><i class="ti ti-settings" aria-hidden="true"></i>Settings</div></div>
+</div><div class="cap">N20 · Turning a network off asks first, naming its accounts and what waits until it is on again.</div></div>
 
 </div>
 </main>
