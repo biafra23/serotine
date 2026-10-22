@@ -386,7 +386,8 @@ private fun SwapCowReviewUniswapGivesMorePreview() = SwapPreview(
     cowReview.copy(
         estimate = "about 0.015402 ETH",
         comparison = "By CoW's own estimate, Uniswap gives more. The order is signed at the floor below, and may " +
-            "well not fill: then nothing is swapped, and the same swap can go to Uniswap.",
+            "well not fill. Then nothing is swapped, but the USDC it sells stays held back until a finalized block " +
+            "is past its validity, about 18 to 24 minutes from now.",
         uniswapGivesMore = true,
         minimum = "at least 0.01561 ETH",
     ),

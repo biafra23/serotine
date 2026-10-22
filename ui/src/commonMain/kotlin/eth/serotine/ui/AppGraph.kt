@@ -42,6 +42,7 @@ import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
 import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
+import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
@@ -413,6 +414,7 @@ class AppGraph(
         WarmFeeHistory(transactionInputs),
         ObserveSwapVenue(swapVenue),
         ChooseSwapVenue(swapVenue),
+        CowOfferedOnThisDevice(lightClient),
         QuoteCowSwap(
             cowChain,
             cowApi,

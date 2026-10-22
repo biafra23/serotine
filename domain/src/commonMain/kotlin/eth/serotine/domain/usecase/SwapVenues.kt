@@ -1,6 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.SwapVenue
+import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.VenueChoice
 import kotlinx.coroutines.flow.Flow
@@ -20,4 +21,12 @@ class ObserveSwapVenue(private val setting: SwapVenueSetting) {
 /** Keeps [SwapVenue] as the one the next swap starts at; false when it could not be saved. */
 class ChooseSwapVenue(private val setting: SwapVenueSetting) {
     suspend operator fun invoke(venue: SwapVenue): Boolean = setting.choose(venue)
+}
+
+/**
+ * Whether a CoW order can be offered on this device at all ([LightClient.datesFinalizedBlocks]), so
+ * that Swap can grey CoW out before anything is asked (docs/swaps.md, *The user's choice of venue*).
+ */
+class CowOfferedOnThisDevice(private val lightClient: LightClient) {
+    operator fun invoke(): Boolean = lightClient.datesFinalizedBlocks
 }

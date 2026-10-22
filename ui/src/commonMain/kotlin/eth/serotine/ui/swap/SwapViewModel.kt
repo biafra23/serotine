@@ -30,6 +30,7 @@ import eth.serotine.domain.usecase.ApprovalQuoting
 import eth.serotine.domain.usecase.COW_ORDER_VALIDITY_SECONDS
 import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.CowNotOffered
+import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.CowOrderPlacing
 import eth.serotine.domain.usecase.CowSwapQuote
 import eth.serotine.domain.usecase.CowSwapQuoting
@@ -152,6 +153,7 @@ class SwapViewModel(
     private val warmFeeHistory: WarmFeeHistory,
     observeSwapVenue: ObserveSwapVenue,
     private val chooseSwapVenue: ChooseSwapVenue,
+    cowOfferedOnThisDevice: CowOfferedOnThisDevice,
     private val quoteCowSwap: QuoteCowSwap,
     private val placeCowOrder: PlaceCowOrder,
     private val network: Network,
@@ -276,6 +278,9 @@ class SwapViewModel(
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(from)
 
+    // Whether CoW can be offered here at all: a fact of the device, read once.
+    private val cowHere = cowOfferedOnThisDevice()
+
     private val inputs = MutableStateFlow(Inputs(sell?.let(SwapPick::Token) ?: SwapPick.Native))
     private val step = MutableStateFlow<Step>(Step.Composing())
 
@@ -303,10 +308,17 @@ class SwapViewModel(
         SwapUiState.Loading(network.displayName),
     )
 
-    /** Sells the token at [contract], or the network's currency (null). */
+    /**
+     * Sells the token at [contract], or the network's currency (null). The venue shown stays as it
+     * is: one CoW was greyed out for comes back only at the user's tap.
+     */
     fun onSellChange(contract: String?) {
         val pick = SwapPick.of(contract) ?: return
-        change { it.copy(sell = pick, buy = it.buy.takeUnless { buy -> buy == pick }, amount = "") }
+        val shown = model.value?.venue
+        change {
+            val venue = if (pick == SwapPick.Native) SwapVenue.UNISWAP else it.venue ?: shown
+            it.copy(sell = pick, buy = it.buy.takeUnless { buy -> buy == pick }, amount = "", venue = venue)
+        }
     }
 
     /** Buys the token at [contract], or the network's currency (null). */
@@ -353,10 +365,21 @@ class SwapViewModel(
         }
     }
 
-    /** The same swap on Uniswap, after CoW could not quote it: the user's choice, never made for them. */
+    /**
+     * The same swap on Uniswap: after CoW could not quote it, or from CoW's review when by CoW's own
+     * estimate Uniswap gives more. The user's choice, never made for them.
+     */
     fun swapOnUniswap() {
-        val current = step.value as? Step.Composing ?: return
-        if (!current.uniswapInstead || current.quoting) return
+        when (val current = step.value) {
+            is Step.Composing -> if (!current.uniswapInstead || current.quoting) return
+            is Step.Reviewing -> {
+                val order = current.quoted as? Quoted.Cow ?: return
+                if (!current.idle || !order.quote.belowNet) return
+                job?.cancel()
+                step.value = Step.Composing()
+            }
+            else -> return
+        }
         onVenueChange(SwapVenue.UNISWAP)
         review(venue = SwapVenue.UNISWAP)
     }
@@ -615,8 +638,10 @@ class SwapViewModel(
         return when (sending) {
             is TransferSending.Sent -> if (approval) {
                 val resets = (review.quoted as Quoted.Approval).quote.resetsFirst
+                val then = if (review.request.venue == SwapVenue.COW) "the order" else "the swap"
                 Step.Composing(
-                    info = if (resets) RESET_SENT else APPROVAL_SENT,
+                    info = if (resets) RESET_SENT else "Your approval is on its way: once a block has it, Review " +
+                        "quotes $then.",
                     earlier = EarlierItem(sending.hash, "Open the approval", waiting = true),
                 )
             } else {
@@ -758,7 +783,7 @@ class SwapViewModel(
             earlier = EarlierItem(quoting.hash, "Open the approval", waiting = true),
         )
         // Short of the allowance on a second read, after an approval read it as enough.
-        is CowSwapQuoting.NeedsApproval -> Step.Composing(error = ALLOWANCE_MOVED)
+        is CowSwapQuoting.NeedsApproval -> Step.Composing(error = RELAYER_ALLOWANCE_MOVED)
         is CowSwapQuoting.EarlierMaybeSent -> Step.Composing(
             error = EARLIER_MAYBE_SENT,
             earlier = EarlierItem(quoting.hash, "Open the earlier transaction", waiting = false),
@@ -767,20 +792,19 @@ class SwapViewModel(
     }
 
     /**
-     * Whether the same swap may go to Uniswap after [quoting]: CoW could not take it, and nothing that
-     * holds for Uniswap too refused it. Never while an earlier order may still fill: the two could
-     * both swap.
+     * Whether the same swap is offered on Uniswap after [quoting]: CoW itself refused it or did not
+     * answer (docs/swaps.md, *The user's choice of venue*). Only those come after the record of
+     * orders was read, so no earlier order of the token may still fill: the two could both swap.
      */
-    private fun uniswapMayTake(quoting: CowSwapQuoting): Boolean = when (quoting) {
-        is CowSwapQuoting.CowRefused, is CowSwapQuoting.CowNoAnswer, is CowSwapQuoting.NoVenue -> true
-        is CowSwapQuoting.NotOffered -> quoting.why == CowNotOffered.SELLS_ETHER ||
-            quoting.why == CowNotOffered.NOT_FOLLOWED_YET
-        else -> false
-    }
+    private fun uniswapMayTake(quoting: CowSwapQuoting): Boolean =
+        quoting is CowSwapQuoting.CowRefused || quoting is CowSwapQuoting.CowNoAnswer
 
-    private fun earlierSwapText(request: Request) =
-        "An earlier swap of ${request.sell.symbol} is on its way and not in a block yet: this one waits for it, " +
-            "since both would count on one allowance."
+    private fun earlierSwapText(request: Request) = when (request.venue) {
+        SwapVenue.UNISWAP -> "An earlier swap of ${request.sell.symbol} is on its way and not in a block yet: " +
+            "this one waits for it, since both would count on one allowance."
+        SwapVenue.COW -> "An earlier swap of ${request.sell.symbol} is on its way and not in a block yet: the " +
+            "order's approval waits for it."
+    }
 
     /**
      * Applies [edit] to the compose step's inputs: only while composing, dropping a quote in flight
@@ -823,7 +847,11 @@ class SwapViewModel(
         val sell = options.sell
         val buy = options.buy
         // What the compose step can know: the rest of what keeps CoW from a swap, its quote says.
-        val cowUnavailable = if (sell?.asset == TransferAsset.Native) SELLS_ETHER else null
+        val cowUnavailable = when {
+            !cowHere -> NOT_ON_THIS_DEVICE
+            sell?.asset == TransferAsset.Native -> SELLS_ETHER
+            else -> null
+        }
         val chosen = inputs.venue ?: last
         return Model(
             swapper = swapper,
@@ -917,7 +945,11 @@ class SwapViewModel(
                 verifiedAt = verifiedAt(quote.balanceBlock),
             ),
             simulation = "The approval, run as a verified call from this account $ran, goes through. It moves " +
-                "nothing: the swap is its own transaction, quoted once a block has this one.",
+                "nothing: " + if (step.request.venue == SwapVenue.COW) {
+                    "the order is signed on its own, quoted once a block has this one."
+                } else {
+                    "the swap is its own transaction, quoted once a block has this one."
+                },
             unlock = step.unlock,
             refreshing = step.refreshing,
             signing = step.signing,
@@ -1037,7 +1069,8 @@ class SwapViewModel(
             uniswapNote = "Uniswap's verified quote$at$feeNote.",
             comparison = if (quote.belowNet) {
                 "By CoW's own estimate, Uniswap gives more. The order is signed at the floor below, and may well " +
-                    "not fill: then nothing is swapped, and the same swap can go to Uniswap."
+                    "not fill. Then nothing is swapped, but the ${sell.symbol} it sells stays held back until a " +
+                    "finalized block is past its validity, about 18 to 24 minutes from now."
             } else {
                 "By CoW's estimate, CoW gives about ${bought(quote.estimate - quote.uniswapNet)} more than Uniswap. " +
                     "Only the minimum below is signed."
@@ -1083,7 +1116,14 @@ class SwapViewModel(
             is CowPlacement.Refused -> "CoW refused the order" to
                 "CoW refused it (${placement.errorType}). It is signed all the same, so it counts as live until a " +
                 "finalized block is past $until. $held"
-            is CowPlacement.Unclear, CowPlacement.Attempted -> "CoW's answer did not come" to
+            is CowPlacement.Unclear -> if (placement.why == CowUnavailable.UNDECODABLE) {
+                "CoW's answer could not be read" to
+                    "CoW answered, but not in a way this version can check. The order may be with CoW, and may " +
+                    "fill until $until. $held"
+            } else {
+                "CoW's answer did not come" to "The order may be with CoW, and may fill until $until. $held"
+            }
+            CowPlacement.Attempted -> "CoW's answer did not come" to
                 "The order may be with CoW, and may fill until $until. $held"
         }
         return SwapUiState.OrderPlaced(network.displayName, title, message, record.uid.hex)
@@ -1154,6 +1194,7 @@ class SwapViewModel(
         CowSwapQuoting.NothingToSwap -> "There is nothing to swap: enter an amount above zero."
         CowSwapQuoting.NotASwap -> notASwapText(request.sell.symbol, request.buy.symbol)
         is CowSwapQuoting.NotOffered -> when (quoting.why) {
+            CowNotOffered.NOT_ON_THIS_DEVICE -> NOT_ON_THIS_DEVICE
             CowNotOffered.SELLS_ETHER -> SELLS_ETHER
             CowNotOffered.NO_ROUTE -> noRouteText(request.sell.symbol, request.buy.symbol) +
                 " Without a verified Uniswap quote no floor stands for a CoW order, so CoW is not offered either."
@@ -1252,13 +1293,16 @@ class SwapViewModel(
     }
 
     private companion object {
-        const val APPROVAL_SENT = "Your approval is on its way: once a block has it, Review quotes the swap."
         const val RESET_SENT = "Your approval of zero is on its way: once a block has it, Review asks for the " +
             "approval of the whole amount."
         const val APPROVAL_PENDING =
             "An approval of this token is on its way and not in a block yet: once a block has it, Review goes on."
         const val ALLOWANCE_MOVED =
             "The router's allowance changed while the swap was quoted: nothing was signed. Review again."
+        const val RELAYER_ALLOWANCE_MOVED = "CoW's vault relayer's allowance changed while the order was quoted: " +
+            "nothing was signed. Review again."
+        const val NOT_ON_THIS_DEVICE = "CoW Protocol is not offered on this device: its light client cannot date " +
+            "a finalized block yet, which proving an order's end needs. Swap on Uniswap."
         const val NO_LONGER_MET =
             "Run again just before signing, the swap no longer returned its minimum: it was quoted again. Check it."
         const val EARLIER_MAYBE_SENT = "An earlier transaction from this account may still be on its way: no peer " +

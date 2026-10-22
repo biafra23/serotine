@@ -456,9 +456,15 @@ The user decides which venue each swap uses (owner's direction,
     finalized head has passed that block;
   - selling native ETH, until CoW's ETH-flow contract is pinned (*Later on
     CoW*);
-  - a Safe, until its pre-signature is built (*Later on CoW*).
+  - a device whose light client cannot date a finalized block (iOS, until
+    Myotis's iOS module reads a block by number: *Proving an order's end*);
+  - a Safe, until its pre-signature is built (*Later on CoW*). A Safe's swap
+    is its own screen (24), which has no venue choice.
 
-  The choice says why.
+  What compose knows before anything is asked, ETH sold and the device,
+  greys CoW out on the choice, and a tap says why. The rest only a quote
+  can tell: after Review, the compose step says why, and the venue stays
+  the user's to change.
 - **CoW unavailable.** This covers the quote only: an error on the order's
   POST leaves the order live (*A signed order is live until it is proven
   dead*). When CoW's quote:
@@ -468,12 +474,16 @@ The user decides which venue each swap uses (owner's direction,
   - or is refused (no liquidity, an unsupported token, the account
     deny-listed),
 
-  the review says why, in the words of each case: "CoW did not answer" for
-  no answer or an HTTP error, "CoW gave an answer this version does not
-  understand" for one that cannot be decoded or checked (*How often CoW's
-  API changes*, point 3), and CoW's own refusal for a refusal, a deny-listed
-  account included. It offers the same swap on Uniswap, one tap away.
-  Nothing switches by itself.
+  the compose step says why after Review, in the words of each case: "CoW
+  did not answer" for no answer or an HTTP error, "CoW gave an answer this
+  version does not understand" for one that cannot be decoded or checked
+  (*How often CoW's API changes*, point 3), and CoW's own refusal for a
+  refusal, a deny-listed account included. It offers the same swap on
+  Uniswap, one tap away. Nothing switches by itself, and a venue CoW was
+  greyed out for stays as shown until the user taps CoW.
+  - These are the only cases that offer Uniswap: they come after the record
+    of orders was read, so no earlier order of the token may still fill. A
+    Uniswap swap of the same tokens beside such an order could swap twice.
 - **A posted order that does not fill.** Once its end is proven (*Proving an
   order's end*), the status offers the same swap on Uniswap. Taking it is the
   user's choice, never automatic.
@@ -638,9 +648,10 @@ So the proof is the account's own verified logs.
   no block by number (its block reads are internal), so the iOS node reports
   the finalized block without its timestamp, and CoW's quote answers as for
   a read not verified (`CowSwapQuoting.Unavailable`): no order is signed
-  that could not be dated. CoW is offered on iOS once the module exposes the
-  read; until then iOS signs nothing anyway, its key envelope waiting for
-  the iOS app (CLAUDE.md, *Trust*).
+  that could not be dated. So the iOS light client says it dates no
+  finalized block (`LightClient.datesFinalizedBlocks`), Swap greys CoW out
+  there, and CoW's quote refuses (`CowNotOffered.NOT_ON_THIS_DEVICE`). CoW is
+  offered on iOS once the module exposes the read.
 
   No read pinned to a past block is relied on. If one is ever used, a proof
   not anchored at the block asked for is no answer (CLAUDE.md, *Trust*:

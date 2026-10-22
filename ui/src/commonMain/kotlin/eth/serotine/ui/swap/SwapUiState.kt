@@ -119,7 +119,8 @@ sealed interface SwapUiState {
      * Screen 23 for an order on CoW (docs/swaps.md, *The user's choice of venue*): [sold] exact in
      * [sell]'s units; CoW's [estimate] of what it buys, not verified ([estimateNote]), beside the
      * verified Uniswap net ([uniswapNet], [uniswapNote]), and which gives more ([comparison];
-     * [uniswapGivesMore] by CoW's own estimate); the [minimum] the order signs and how it is set
+     * [uniswapGivesMore] by CoW's own estimate, when the same swap on Uniswap is offered, one tap
+     * away); the [minimum] the order signs and how it is set
      * ([minimumNote]); until when it may fill ([validUntil]); the contract that settles it
      * ([settlement]); the verified [balances]; [pending] what earlier transactions not mined yet may
      * still take; and what CoW learns of it ([disclosure]). An order costs no network fee here.

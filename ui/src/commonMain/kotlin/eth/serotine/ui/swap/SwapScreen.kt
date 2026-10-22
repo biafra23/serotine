@@ -280,6 +280,15 @@ fun SwapScreen(
                 }
                 is SwapUiState.CowReview -> ReviewColumn {
                     CowContent(state)
+                    if (state.uniswapGivesMore) {
+                        OutlinedButton(
+                            onClick = onSwapOnUniswap,
+                            enabled = state.idle,
+                            modifier = Modifier.testTag(SWAP_UNISWAP_INSTEAD_TAG),
+                        ) {
+                            Text("Swap on Uniswap instead")
+                        }
+                    }
                     ReviewFooter(
                         state,
                         "Sign and send to CoW",

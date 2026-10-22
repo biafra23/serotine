@@ -181,6 +181,9 @@ class CowSwapsTest {
         // A route whose fee takes all it returns.
         pool(UInt256.of("1000000000000000"))
         assertEquals(CowSwapQuoting.NotOffered(CowNotOffered.FEE_ABOVE_PROCEEDS), quoteUsdcForWeth())
+        // A device whose light client dates no finalized block: no order's end could be proven.
+        light.datesFinalizedBlocks = false
+        assertEquals(CowSwapQuoting.NotOffered(CowNotOffered.NOT_ON_THIS_DEVICE), quoteUsdcForWeth())
         assertTrue(cowApi.quotes.isEmpty())
     }
 
