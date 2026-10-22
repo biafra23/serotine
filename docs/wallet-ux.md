@@ -185,8 +185,10 @@ upgrades*).
      swap*).
    - The tabs Assets | Activity: Assets is what follows, Activity is 25,
      drawn in the tab, read only while the tab is shown.
-   - Sort: Value | Name. Under Value, assets without a price follow the
-     priced ones, by name; a stale price sorts by the value it shows.
+   - Sorted by value, highest first: assets without a price follow the
+     priced ones, by name; a stale price sorts by the value it shows. The
+     top bar's menu sorts by name instead ("Sort by name", then "Sort by
+     value" back), offered while the asset rows are shown.
    - One row per asset: icon, symbol, amount, fiat value or "no price". A
      tap opens Send (7) with the asset chosen; where Send cannot be done
      (as in 3) the row is drawn as ever and the tap says why, as the
@@ -292,9 +294,18 @@ upgrades*).
       and the finalized block it was resolved at, whatever the card says; a
       name that could not be verified offers Try again. At Add the name is resolved again: what is
       watched is the address it has then, and one that moved, or cannot be
-      verified again, is said and nothing is added. The account's name is
-      not filled from the ENS name (that waits for primary names, #67). The
-      zero address is refused: nobody holds its key.
+      verified again, is said and nothing is added. An account added by a
+      name and given none of the user's is named by it, and its name follows
+      that ENS name (`Account.ensName`, issue #67) until the user renames it:
+      the name field says so and shows the name. Wherever the name is shown
+      (Accounts rows, the account's header) it is resolved again, at once and
+      every 10 minutes (every 30 s until a first verified answer,
+      `ObserveEnsNames`); once a verified answer says it no longer points to
+      the account, or that it can no longer be verified to (its resolver
+      answers only off-chain), the row and header show the short address and
+      say why. A name with no verified answer right now stands as last
+      verified. Primary names (the reverse record, any account) are still to
+      come in #67. The zero address is refused: nobody holds its key.
 11. **Import recovery phrase**: today's seed screen, with the account's name,
     the wallet password (on the first key) and the biometric opt-in (still to
     come; until then it is turned on in Security, 21).
@@ -845,8 +856,10 @@ home screen, and iOS's widget (a WidgetKit extension) is still to come.
   many rounds back as heartbeats fit, so an hourly feed takes two calls, and
   the rounds read are kept in memory (a round, once written, never changes),
   so a search soon after reads few or none again.
-- **Refresh now.** A button beside the rate reads it at once, on any
-  network, metered included, since the user asked for it: one job, expedited
+- **Refresh now.** A small button beside the 24-hour change (the rate below
+  keeps the whole width; on a narrow widget the pair gives way first, then
+  the change, and the button stays) reads it at once, on any network, metered
+  included, since the user asked for it: one job, expedited
   where Android offers that (12 and later) and its quota allows, waking the
   engine for that read alone as the background refresh does, and joining a
   background read already under way rather than making a second. A spinner

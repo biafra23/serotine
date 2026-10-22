@@ -23,7 +23,9 @@ sealed interface AccountDetailUiState {
      * the screen shows one of its [segments] ([segment]): its Assets, its Activity, and a Safe's
      * Owners or Queue. [kindNote] says what it is
      * ("Safe", or "Not a recognised Safe" once its address no longer verifies as one) and
-     * [threshold] its verified threshold of its owners ("2/3"), for its blockie.
+     * [threshold] its verified threshold of its owners ("2/3"), for its blockie. [label] is the
+     * account's name, or its short address once the ENS name its name follows no longer points
+     * to it, which [nameNote] then says.
      */
     data class Ready(
         val label: String,
@@ -42,6 +44,7 @@ sealed interface AccountDetailUiState {
         val kindNote: String? = null,
         val threshold: String? = null,
         val queue: SafeQueue? = null,
+        val nameNote: String? = null,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
@@ -72,6 +75,18 @@ sealed interface AccountDetailUiState {
         /** Why Swap cannot be done from this account, and how to get there; null when it can. */
         val swapReason: String?
             get() = swapBlockedReason(kind, control)
+
+        /**
+         * Whether the screen shows the [assets]: on the Assets [segment], and on a Safe's Owners or
+         * Queue one only for an account that has none. The top bar's menu offers the other [sort] order while it does.
+         */
+        val showsAssets: Boolean
+            get() = when (segment) {
+                DetailSegment.ASSETS -> true
+                DetailSegment.ACTIVITY -> false
+                DetailSegment.OWNERS -> safe == null
+                DetailSegment.QUEUE -> queue == null
+            }
     }
 
     /** The account is not in the wallet (removed): the screen leaves. */
@@ -170,7 +185,7 @@ sealed interface SafeDetails {
  */
 data class OwnerRow(val address: String, val label: String?, val heldHere: Boolean)
 
-/** How the asset rows are ordered (docs/wallet-ux.md, screen 4: Sort: Value | Name). */
+/** How the asset rows are ordered (docs/wallet-ux.md, screen 4: Sort by value / by name). */
 enum class AssetSort {
     /** Highest value first; the assets without a price follow the priced ones, by name. */
     VALUE,

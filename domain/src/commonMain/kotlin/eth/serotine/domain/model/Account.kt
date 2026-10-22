@@ -31,11 +31,19 @@ sealed interface AccountCustody {
 data class Account(
     val address: Address,
     val kind: AccountKind,
-    /** The user-facing name, never blank. */
+    /** The user-facing name, never blank; while the account follows [ensName], that name. */
     val label: String,
     val custody: AccountCustody,
+    /**
+     * The ENS name the account's name follows (issue #67), or null: set when it was watched by
+     * that name and given no name of the user's, cleared once the user renames it. Whether the
+     * name still points to the account's address is checked again while it is shown
+     * (`ObserveEnsNames`): a name that no longer does is not shown as the account's.
+     */
+    val ensName: String? = null,
 ) {
     init {
         require(label.isNotBlank()) { "an account needs a label" }
+        require(ensName == null || label == ensName) { "an account that follows an ENS name is named by it" }
     }
 }

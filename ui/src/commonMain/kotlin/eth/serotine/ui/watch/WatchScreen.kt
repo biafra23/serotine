@@ -66,6 +66,9 @@ const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
 /** What the address field says while nothing else is to be said of it. */
 private const val ADDRESS_HINT = "0x and 40 hexadecimal digits, or an ENS name like name.eth"
 
+/** What the name field says while an empty name leaves the account named by the ENS name typed. */
+private const val NAME_FOLLOWS_ENS = "Leave empty to name it by its ENS name, for as long as the name points to it"
+
 /** Binds [WatchScreen] to its ViewModel; an added address ends the screen through [onAdded]. */
 @Composable
 fun WatchRoute(
@@ -153,9 +156,11 @@ fun WatchScreen(
                     modifier = Modifier.fillMaxWidth().focusRequester(nameField).testTag(WATCH_NAME_TAG),
                     enabled = !state.adding,
                     label = { Text("Name (optional)") },
+                    placeholder = state.nameDefault?.let { default -> { Text(default) } },
                     singleLine = true,
                     isError = state.nameError != null,
-                    supportingText = state.nameError?.let { error -> { Text(error) } },
+                    supportingText = (state.nameError ?: NAME_FOLLOWS_ENS.takeIf { state.followsEns })
+                        ?.let { text -> { Text(text) } },
                     keyboardOptions = KeyboardOptions.Default.done(),
                     keyboardActions = submitOnDone(state.canAdd, onAdd),
                 )

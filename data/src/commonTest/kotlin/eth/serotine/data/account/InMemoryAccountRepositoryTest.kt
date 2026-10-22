@@ -57,4 +57,16 @@ class InMemoryAccountRepositoryTest {
         assertEquals(AccountChange.NotFound, repository.rename(safe.address, "Treasury"))
         assertEquals(AccountChange.NotFound, repository.remove(safe.address))
     }
+
+    @Test
+    fun aRenameMakesTheNameTheUsers() = runTest {
+        val byName = Account(eoa.address, AccountKind.EOA, "daily.eth", AccountCustody.Watched, ensName = "daily.eth")
+        val repository = InMemoryAccountRepository(listOf(byName))
+
+        assertEquals(AccountChange.Changed, repository.rename(eoa.address, "Daily"))
+        assertEquals(
+            AccountList.Loaded(listOf(byName.copy(label = "Daily", ensName = null))),
+            repository.observeAccounts().first(),
+        )
+    }
 }

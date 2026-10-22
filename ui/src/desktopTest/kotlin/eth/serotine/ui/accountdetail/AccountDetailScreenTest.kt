@@ -111,7 +111,7 @@ class AccountDetailScreenTest {
     }
 
     @Test
-    fun eachRowHasItsValueAndTheRowsAreSortedByValueOrName() {
+    fun eachRowHasItsValue() {
         show(
             ready.copy(
                 assets = listOf(
@@ -124,8 +124,64 @@ class AccountDetailScreenTest {
         // The header's total and the ETH row's value.
         rule.onAllNodesWithText("$3,000.00", useUnmergedTree = true).assertCountEquals(2)
         rule.onNodeWithText("No price", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("Name").performClick()
-        assertEquals(listOf("sort NAME"), events)
+    }
+
+    @Test
+    fun theMenuSortsTheRowsTheOtherWay() {
+        var state by mutableStateOf(ready)
+        rule.setContent {
+            SerotineTheme {
+                AccountDetailScreen(
+                    state,
+                    lightClient = verifiedStripSample,
+                    onBack = {},
+                    onSend = {},
+                    onSwap = {},
+                    onReceive = {},
+                    onCopy = {},
+                    onRename = {},
+                    onRemove = {},
+                    onHideToken = { _, _ -> },
+                    onMessageShown = {},
+                    onSort = { order ->
+                        events += "sort $order"
+                        state = state.copy(sort = order)
+                    },
+                    onSegment = {},
+                    onOpenSafeTx = {},
+                    onImportRequest = {},
+                    activity = ActivityUiState.Loading,
+                    onOpenActivity = {},
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Sort by value").assertDoesNotExist()
+        rule.onNodeWithText("Sort by name").performClick()
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Sort by name").assertDoesNotExist()
+        rule.onNodeWithText("Sort by value").performClick()
+
+        assertEquals(listOf("sort NAME", "sort VALUE"), events)
+    }
+
+    @Test
+    fun aSafesOwnersOfferNoSort() {
+        show(ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.OWNERS))
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Rename").assertIsDisplayed()
+        rule.onNodeWithText("Sort by name").assertDoesNotExist()
+    }
+
+    @Test
+    fun theActivityOffersNoSort() {
+        show(ready.copy(segment = DetailSegment.ACTIVITY))
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Rename").assertIsDisplayed()
+        rule.onNodeWithText("Sort by name").assertDoesNotExist()
     }
 
     @Test

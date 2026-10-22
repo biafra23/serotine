@@ -38,7 +38,9 @@ class InMemoryAccountRepository(initial: List<Account> = emptyList()) : AccountR
     }
 
     override suspend fun rename(address: Address, label: String): AccountChange =
-        changeEntry(address) { current -> current.map { if (it.address == address) it.copy(label = label) else it } }
+        changeEntry(address) { current ->
+            current.map { if (it.address == address) it.copy(label = label, ensName = null) else it }
+        }
 
     override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
         changeEntry(address) { current ->

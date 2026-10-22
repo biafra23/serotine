@@ -166,8 +166,9 @@ fun AccountDetailRoute(
  * One account (docs/wallet-ux.md, screens 4 and 16) as a pure function of [state]: its blockie,
  * balance, address and control, Send (where it can send), Swap and Receive as buttons, and Copy,
  * Rename and Remove in the top bar's menu, so none of them depends on the long press of the
- * account list; under them its tabs, Assets | Activity and a Safe's Owners | Queue. [onSend]
- * opens Send with the token at a contract chosen, or the network's currency (null). The
+ * account list; while the asset rows are shown, the menu also sorts them the other way
+ * ([onSort]). Under the buttons are its tabs, Assets | Activity and a Safe's Owners | Queue.
+ * [onSend] opens Send with the token at a contract chosen, or the network's currency (null). The
  * Activity tab draws [activity], whose rows open their detail through [onOpenActivity]. A Safe's
  * Queue opens a transaction through [onOpenSafeTx] by its hash, and Import a request through
  * [onImportRequest].
@@ -236,8 +237,17 @@ fun AccountDetailScreen(
                         IconButton(onClick = { menu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
                         }
+                        // The order of the rows, offered while they are shown: the other order than the current one.
+                        val sort = if (!state.showsAssets) {
+                            null
+                        } else if (state.sort == AssetSort.VALUE) {
+                            MenuAction("Sort by name", SerotineIcons.Sort) { onSort(AssetSort.NAME) }
+                        } else {
+                            MenuAction("Sort by value", SerotineIcons.Sort) { onSort(AssetSort.VALUE) }
+                        }
                         ActionDropdown(
-                            actions = listOf(
+                            actions = listOfNotNull(
+                                sort,
                                 MenuAction("Copy address", SerotineIcons.ContentCopy) { copy(state.address) },
                                 MenuAction("Rename", Icons.Filled.Edit, onClick = onRename),
                                 MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove),
@@ -271,7 +281,6 @@ fun AccountDetailScreen(
                         scope.launch { snackbar.showSnackbar("Contract address copied") }
                     },
                     onHideToken = { asset -> asset.contract?.let { onHideToken(it, asset.symbol) } },
-                    onSort = onSort,
                     onSegment = onSegment,
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
@@ -296,7 +305,6 @@ private fun Details(
     onCopy: (String) -> Unit,
     onCopyContract: (String) -> Unit,
     onHideToken: (AssetRow) -> Unit,
-    onSort: (AssetSort) -> Unit,
     onSegment: (DetailSegment) -> Unit,
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
@@ -343,6 +351,14 @@ private fun Details(
                         ControlBadge(state.control)
                         state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                     }
+                    // Why the title is the address: the ENS name it was named by no longer points here.
+                    state.nameNote?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
                 }
             }
         }
@@ -368,17 +384,12 @@ private fun Details(
         }
         item { Actions(state, onSend, onSwap, onReceive, spaced) }
         item { SegmentChoice(state.segments, state.segment, state.queue, onSegment, spaced) }
-        val safe = state.safe
-        val queue = state.queue
+        // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
+            state.showsAssets -> item { Assets(state, onSend, onSwap, onCopyContract, onHideToken) }
             state.segment == DetailSegment.ACTIVITY -> activityItems(activity, onOpenActivity)
-            safe != null && state.segment == DetailSegment.OWNERS -> item { SafeOwners(safe) }
-            queue != null && state.segment == DetailSegment.QUEUE ->
-                item { SafeQueueList(queue, onOpenSafeTx, onImportRequest) }
-            else -> {
-                item { SortChoice(state.sort, onSort, spaced) }
-                item { Assets(state, onSend, onSwap, onCopyContract, onHideToken) }
-            }
+            state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe)) }
+            else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }
     }
 }
@@ -605,22 +616,6 @@ private fun SafeOwners(safe: SafeDetails) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-    }
-}
-
-/** Sort: Value | Name (docs/wallet-ux.md, screen 4). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SortChoice(sort: AssetSort, onSort: (AssetSort) -> Unit, modifier: Modifier) {
-    SingleChoiceSegmentedButtonRow(modifier) {
-        AssetSort.entries.forEachIndexed { index, order ->
-            SegmentedButton(
-                selected = sort == order,
-                onClick = { onSort(order) },
-                shape = SegmentedButtonDefaults.itemShape(index, AssetSort.entries.size),
-                label = { Text(if (order == AssetSort.VALUE) "Value" else "Name") },
-            )
         }
     }
 }

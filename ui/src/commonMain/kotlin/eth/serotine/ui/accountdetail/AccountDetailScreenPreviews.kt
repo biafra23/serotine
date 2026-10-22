@@ -524,6 +524,17 @@ private fun AccountDetailListUnavailablePreview() = AccountDetailPreview(
     AccountDetailUiState.Unavailable("Your account list cannot be read right now. Serotine keeps trying."),
 )
 
+@Preview
+@Composable
+private fun AccountDetailEnsNameMovedPreview() = AccountDetailPreview(
+    daily.copy(
+        label = "0xfB69…d359",
+        address = SAVINGS,
+        control = Control.WATCH_ONLY,
+        nameNote = "ENS name “savings-example.eth” no longer points to this address",
+    ),
+)
+
 /** Every preview above, which AccountDetailScreenPreviewsTest renders: a new preview goes in here too. */
 internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailAssetsPreview() },
@@ -542,6 +553,7 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailNotASafePreview() },
     { AccountDetailLoadingPreview() },
     { AccountDetailListUnavailablePreview() },
+    { AccountDetailEnsNameMovedPreview() },
     { AccountDetailActivityPreview() },
     { AccountDetailActivityDarkPreview() },
     { AccountDetailActivityEmptyPreview() },
