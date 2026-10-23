@@ -23,6 +23,7 @@ import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -46,6 +47,15 @@ class ImportMnemonicAccountTest {
 
     private fun keyed(address: Address, label: String) =
         Account(Network.SEPOLIA, address, AccountKind.EOA, label, AccountCustody.InKeyStore)
+
+    @Test
+    fun noNetworkIsRefusedBeforeAnythingIsStored() = runTest {
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+
+        assertFailsWith<IllegalArgumentException> { import(mnemonic, password, emptyList()) }
+        assertEquals(emptyList(), repository.accounts.value, "no account, and no key asked for")
+    }
 
     @Test
     fun addsTheDerivedAddressAsAnEoaNamedAfterItsPosition() = runTest {
