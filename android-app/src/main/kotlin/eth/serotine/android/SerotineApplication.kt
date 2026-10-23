@@ -83,6 +83,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -461,27 +463,34 @@ class SerotineApplication : Application() {
     private fun followRateForWidgets() {
         if (visible == 0 || rateFollowing?.isActive == true) return
         rateFollowing = scope.launch {
-            // Each network a widget shows, and only while it is on: one that is off reads nothing.
-            val on = networkSettings.observe().first()
-            for (network in RateWidget.networks(this@SerotineApplication).filter { it in on }) {
-                launch {
-                    try {
-                        FollowExchangeRate(
-                            displayCurrency,
-                            refreshRates.getValue(network),
-                            maxAgeSeconds = RATE_MAX_AGE_MINUTES * 60,
-                            checkEvery = RATE_CHECK_MINUTES.minutes,
-                            readTimeout = RATE_READ_TIMEOUT,
-                        ).invoke { drawWidgets() }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        System.err.println(
-                            "Serotine: following ${network.displayName}'s widget rate stopped: ${e::class.simpleName}",
-                        )
+            // Each network a widget shows, and only while it is on: one that is off reads nothing,
+            // and one turned on while the app is open is followed from then on.
+            networkSettings.observe().distinctUntilChanged().collectLatest { on ->
+                coroutineScope {
+                    for (network in RateWidget.networks(this@SerotineApplication).filter { it in on }) {
+                        launch { followRate(network) }
                     }
                 }
             }
+        }
+    }
+
+    /** Keeps [network]'s widget rate current while the app is open ([FollowExchangeRate]); a failure ends it alone. */
+    private suspend fun followRate(network: Network) {
+        try {
+            FollowExchangeRate(
+                displayCurrency,
+                refreshRates.getValue(network),
+                maxAgeSeconds = RATE_MAX_AGE_MINUTES * 60,
+                checkEvery = RATE_CHECK_MINUTES.minutes,
+                readTimeout = RATE_READ_TIMEOUT,
+            ).invoke { drawWidgets() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println(
+                "Serotine: following ${network.displayName}'s widget rate stopped: ${e::class.simpleName}",
+            )
         }
     }
 
@@ -632,7 +641,13 @@ class SerotineApplication : Application() {
         scope.launch(jobScheduling) {
             try {
                 drawWidgets()
-                if (!RateRefreshJob.refreshNow(app)) giveUpManualRefresh(R.string.rate_widget_not_started)
+                // Every network the widgets show is off: nothing to read, and the widgets say so.
+                val on = networkSettings.observe().first()
+                if (RateWidget.networks(app).none { it in on }) {
+                    giveUpManualRefresh(R.string.rate_widget_network_off)
+                } else if (!RateRefreshJob.refreshNow(app)) {
+                    giveUpManualRefresh(R.string.rate_widget_not_started)
+                }
             } finally {
                 done()
             }

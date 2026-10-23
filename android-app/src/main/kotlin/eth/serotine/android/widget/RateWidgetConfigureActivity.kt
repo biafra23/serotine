@@ -26,7 +26,8 @@ import kotlinx.coroutines.launch
  * are on and have accounts ([SerotineApplication.widgetNetworkChoices]). The choice is kept for
  * that widget alone ([RateWidgetNetworks]); another network means placing another widget.
  * Cancelled, or with nothing to choose, the widget is not placed. Exported, as the launcher, another
- * app, opens it; it acts only on a widget id of this app's own [RateWidget].
+ * app, opens it; it acts only on a widget id of this app's own [RateWidget] whose network is not
+ * chosen yet.
  */
 class RateWidgetConfigureActivity : ComponentActivity() {
 
@@ -37,7 +38,8 @@ class RateWidgetConfigureActivity : ComponentActivity() {
         val id = intent?.extras?.getInt(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
             ?: AppWidgetManager.INVALID_APPWIDGET_ID
         val provider = AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.provider
-        if (provider != ComponentName(this, RateWidget::class.java)) {
+        // Only a widget of this app's being placed: one placed keeps its network (another is another widget).
+        if (provider != ComponentName(this, RateWidget::class.java) || RateWidgetNetworks(this).chosen(id)) {
             finish()
             return
         }

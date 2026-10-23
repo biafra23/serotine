@@ -17,6 +17,9 @@ class RateWidgetNetworks(context: Context) {
     fun of(id: Int): Network =
         preferences.getLong(key(id), 0).takeIf { it != 0L }?.let(Network::ofChainId) ?: Network.SEPOLIA
 
+    /** Whether the widget [id] has its network recorded: chosen once, when it was placed. */
+    fun chosen(id: Int): Boolean = preferences.contains(key(id))
+
     /** Records that the widget [id] shows [network]; true once stored. */
     fun set(id: Int, network: Network): Boolean = preferences.edit().putLong(key(id), network.chainId).commit()
 

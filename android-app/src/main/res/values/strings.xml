@@ -14,6 +14,7 @@
     <string name="rate_widget_refresh">Refresh exchange rate</string>
     <string name="rate_widget_refreshing">Refreshing exchange rate</string>
     <string name="rate_widget_no_network">Exchange rate not refreshed: no network</string>
+    <string name="rate_widget_network_off">Exchange rate not refreshed: its network is off. Turn it on in Settings → Networks.</string>
     <string name="rate_widget_not_saved">The widget\'s network could not be saved. Try placing it again.</string>
     <string name="rate_widget_not_started">Exchange rate not refreshed: Android would not start the refresh</string>
     <string name="rate_widget_not_refreshed">Exchange rate not refreshed: the light client had no verified rate</string>
