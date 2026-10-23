@@ -22,8 +22,9 @@ import kotlinx.serialization.json.JsonElement
  * transfer's recipient, token and amount, the Safe transaction an approval or execution was
  * for, in the form a signing request travels in, the Safe a deployment created (its address,
  * owners, threshold, version and the name it is listed under), a token approval's token, spender
- * and amount, or a swap's router, the asset and amount it sells and the asset and minimum it buys,
- * and whether it is only maybe sent.
+ * and amount, a swap's router, the asset and amount it sells and the asset and minimum it buys,
+ * or a CoW order's cancellation on chain (its settlement contract and UID), and whether it is only
+ * maybe sent.
  * An entry that does not decode (a damaged one, or one of a kind this build does not know) is
  * passed over, as [eth.serotine.data.safe.FileSafeTxQueue] passes one over, and the rest are read;
  * the file it was in is then set aside once, whole, and what was read written in its place, so
@@ -32,10 +33,11 @@ import kotlinx.serialization.json.JsonElement
  * is [SentTransferList.Unreadable] (a quote then goes by the engine's nonce alone).
  *
  * Format 2 adds the Safe transactions, format 3 the Safe deployments, format 4 the transactions
- * maybe sent, format 5 the token approvals and the swaps, format 6 each one's network (its chain
- * id; one without was sent on Sepolia, the only network there was); a file of an earlier format
- * reads as it is and is written as 6 at its next change, which a build that reads only an earlier
- * one then leaves alone.
+ * maybe sent, format 5 the token approvals and the swaps, format 6 either each one's network (its
+ * chain id; one without was sent on Sepolia, the only network there was) or the CoW orders'
+ * cancellations on chain (two builds took 6 apart; a record reads alike either way), and format 7
+ * both. A file of an earlier format reads as it is and is written as 7 at its next change, which
+ * a build that reads only an earlier one then leaves alone.
  */
 class FileSentTransfers(
     path: String,
@@ -86,7 +88,7 @@ class FileSentTransfers(
     private class StoredFile(val version: Int, val transfers: List<JsonElement>)
 
     private companion object {
-        const val FORMAT_VERSION = 6
+        const val FORMAT_VERSION = 7
         val JSON = Json
     }
 }

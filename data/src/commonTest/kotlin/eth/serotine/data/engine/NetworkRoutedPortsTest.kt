@@ -97,6 +97,7 @@ class NetworkRoutedPortsTest {
             names = none.names,
             safeApprovals = none.safeApprovals,
             uniswap = none.uniswap,
+            cow = none.cow,
             logIndex = none.logIndex,
         )
     }

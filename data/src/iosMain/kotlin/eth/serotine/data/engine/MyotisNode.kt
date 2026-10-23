@@ -4,6 +4,7 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -21,6 +22,7 @@ import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.UniswapV3Chain
 import io.myotis.engine.ios.BeaconState
 import io.myotis.engine.ios.ChainHandle
@@ -102,10 +104,16 @@ class MyotisNode private constructor(
     /** Runs pause and resume one at a time, in the order asked: each blocks while it lasts. */
     private val control = Dispatchers.IO.limitedParallelism(1)
 
+    /** The engine's handle, unwrapped: what [activity] reads (in memory, so neither logged nor shared). */
+    private val handleChain = HandleChain()
+
     /** The engine's handle, each request written to [apiLog] when there is one, its status reads shared. */
-    private val chain: EngineChain = HandleChain().let { handle ->
+    private val chain: EngineChain = handleChain.let { handle ->
         SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
     }
+
+    /** Which accounts the verified blocks touched, so a proof stands until one did (Myotis #691). */
+    private val activity = AddressActivity(handleChain)
 
     /** The balances last verified, kept for after a restart; none kept without a path. */
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
@@ -117,6 +125,7 @@ class MyotisNode private constructor(
         Dispatchers.IO,
         POLL_INTERVAL,
         lastBalances,
+        activity,
     )
 
     /** What is at an address (an account, a delegated one, a Safe, a contract), verified here. */
@@ -140,6 +149,7 @@ class MyotisNode private constructor(
         Dispatchers.IO,
         POLL_INTERVAL,
         ChainlinkFeeds.of(network),
+        activity,
     )
 
     /** What the same feeds answered some time ago, from their round histories, as verified calls. */
@@ -152,10 +162,18 @@ class MyotisNode private constructor(
         Dispatchers.IO,
         POLL_INTERVAL,
         lastBalances,
+        activity,
+        gated = BuiltInTokens.of(network).mapTo(HashSet()) { it.address },
     )
 
-    /** This node's light client, for the user to watch. */
-    val lightClient: LightClient = EngineLightClient(network, chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL)
+    /**
+     * This node's light client, for the user to watch. It gives no finalized block's own time here:
+     * the iOS module reads no block by number yet, so no CoW order is offered on iOS.
+     */
+    val lightClient: LightClient =
+        object : LightClient by EngineLightClient(network, chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL) {
+            override val datesFinalizedBlocks: Boolean = false
+        }
 
     /** Network upgrades this build does not support, as peers report them to this node. */
     val networkUpgrades: NetworkUpgrades = EngineNetworkUpgrades(network, chain, Dispatchers.IO, POLL_INTERVAL)
@@ -171,6 +189,12 @@ class MyotisNode private constructor(
 
     /** Uniswap v3 on chain: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = VerifiedUniswapV3(chain, Dispatchers.IO, network)
+
+    /**
+     * CoW Protocol's settlement contracts on this node's network, proven by their code
+     * (docs/swaps.md, *CoW Protocol*).
+     */
+    val cow: CowChain = VerifiedCow(chain, Dispatchers.IO, network)
 
     /** A sent transaction's verified receipt and its block's finality. */
     val receipts: ReceiptTracker = EngineReceipts(network, chain, Dispatchers.IO, POLL_INTERVAL)
@@ -312,7 +336,7 @@ class MyotisNode private constructor(
         }
     }
 
-    private inner class HandleChain : EngineChain {
+    private inner class HandleChain : EngineChain, ActivityChain {
 
         // Each call a status read; SharedSnapshots shares one among the pollers.
         override fun snapshot(): EngineSnapshot = read()
@@ -360,6 +384,11 @@ class MyotisNode private constructor(
                 wsBoundPeriods = status.wsBoundPeriods,
                 upgrade = status.upgradeAdvisory?.toNetworkUpgrade(),
                 finalizedBlock = status.finalizedBlockNumber,
+                // No finalized timestamp on iOS: Myotis 0.1.18's iOS module reads no block by
+                // number (its block reads are internal), and the slot's time is no stand-in for the
+                // header's (docs/swaps.md, *Proving an order's end*). A CoW order is then not
+                // offered here, as it waits for a finalized block's own time.
+                finalizedHeader = null,
             )
         }
 
@@ -371,7 +400,11 @@ class MyotisNode private constructor(
             val result = handle()?.requestAccount(address.hex) ?: return null
             if (result.failReason != null || result.verifyMethod == null) return null
             // A proven absence is a proven zero.
-            return ProvenBalance(if (result.exists) result.balanceWei ?: return null else "0", result.blockNumber)
+            return ProvenBalance(
+                if (result.exists) result.balanceWei ?: return null else "0",
+                result.blockNumber,
+                result.blockHashHex?.lowercase(),
+            )
         }
 
         // The code hash comes with the account proof, labelled with its block; the code itself
@@ -449,6 +482,10 @@ class MyotisNode private constructor(
         override fun logIndexStatus(): String? = handle()?.logIndexStatusJson()
 
         override fun logs(filterJson: String): String? = handle()?.reads()?.getLogs(filterJson)
+
+        override fun setActivityWatch(configJson: String): Boolean = handle()?.setActivityWatch(configJson) ?: false
+
+        override fun addressActivity(afterBlock: Long): String? = handle()?.addressActivityJson(afterBlock)
 
         // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.
         override fun resolveName(name: String): NameAnswer {

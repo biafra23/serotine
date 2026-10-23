@@ -132,4 +132,28 @@ class TransferStatusScreenTest {
         rule.onNodeWithText("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB").assertIsDisplayed()
         rule.onNodeWithText("This device has no record of what was sent", substring = true).assertDoesNotExist()
     }
+
+    @Test
+    fun aCowOrdersCancellationNamesTheOrderAndItsSettlement() {
+        val order = "0x" + "4c".repeat(32) + "5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" + "6ad9e7f4"
+        show(
+            TransferStatusUiState.Shown(
+                network = "Sepolia",
+                hash = hash,
+                sent = null,
+                steps = listOf(StatusStep("Signed", StepState.DONE, "On this device")),
+                cancellation = CancellationSummary(
+                    "Cancellation of a CoW order on chain",
+                    order,
+                    "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+                    "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+                ),
+            ),
+        )
+
+        rule.onNodeWithText("Cancellation of a CoW order on chain").assertIsDisplayed()
+        rule.onNodeWithText(order).assertIsDisplayed()
+        rule.onNodeWithText("0x9008D19f58AAbD9eD0D60971565AA8510560ab41").assertIsDisplayed()
+        rule.onNodeWithText("This device has no record of what was sent", substring = true).assertDoesNotExist()
+    }
 }

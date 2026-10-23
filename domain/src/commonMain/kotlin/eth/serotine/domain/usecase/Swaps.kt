@@ -13,6 +13,9 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.swapsWith
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowOrderList
+import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
@@ -48,7 +51,8 @@ import kotlinx.coroutines.flow.first
  * - The balances are verified, each at its block: the native one as every quote has it
  *   ([nativeBefore], [pendingCost], [nativeAfterAtLeast]); the token sold, when it is one, before
  *   ([sellBefore], at [tokenBalanceBlock]), what this wallet's own transactions not mined yet
- *   still move of it ([pendingSell]) and after ([sellAfter]); the token bought, when it is one,
+ *   still move of it ([pendingSell]), what its CoW orders may still take of it ([heldByOrders])
+ *   and after ([sellAfter]); the token bought, when it is one,
  *   before ([buyBefore], at [buyBalanceBlock]).
  * - [netOfFees]: whether the route was chosen net of the fees (`RouteFinding.Found.netOfFees`).
  * - [spotOut] is what the route returns at its pools' spot prices, less their fees, and
@@ -83,6 +87,7 @@ data class SwapQuote internal constructor(
     val nativeAfterAtLeast: UInt256,
     val sellBefore: UInt256?,
     val pendingSell: UInt256?,
+    val heldByOrders: UInt256?,
     val sellAfter: UInt256?,
     val buyBefore: UInt256?,
     val balanceBlock: Long?,
@@ -141,7 +146,10 @@ const val SWAP_DEADLINE_SECONDS: Long = 10 * 60
  * whose approval is sent but not mined is [SwapQuoting.ApprovalPending]: the swap is quoted only
  * once the approval's receipt is in. One swap of a token is in flight at a time
  * ([SwapQuoting.EarlierSwapPending]): the allowance it counts on is its own. What this wallet's
- * own transactions not mined yet move of the token sold is not this swap's to sell. Every refusal
+ * own transactions not mined yet move of the token sold is not this swap's to sell, nor what its
+ * CoW orders may still take of it ([CowOrders], until a finalized block is past an order's
+ * `validTo`, or the settlement reads the order done at the head, [CowChain]); a record of orders
+ * that cannot be read sells nothing ([SwapQuoting.CowOrdersUnreadable]). Every refusal
  * that holds whatever the route is said before the route is quoted, and every one that holds
  * whatever the allowance before an approval is asked for. On [network] only. [clock] is in unix
  * seconds.
@@ -152,6 +160,8 @@ class QuoteSwap(
     private val nativeBalances: NativeBalances,
     private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
+    private val cowOrders: CowOrders,
+    private val cowChain: CowChain,
     private val lightClient: LightClient,
     private val network: Network,
     private val clock: () -> Long = ::epochSecondsNow,
@@ -183,6 +193,7 @@ class QuoteSwap(
         ).first() } }
         val head = async { lightClient.observeStatus(network).first() }
         val records = async { unminedOf(network, sentTransfers, inputs, from, clock) }
+        val orders = soldToken?.let { async { cowOrders.observe().first() } }
         val deployment = when (val venue = findRoute.venue(network)) {
             is VenueReading.Verified -> venue.deployment
             VenueReading.NotPinned -> return@cancellingReads SwapQuoting.NoVenue(contract = null)
@@ -213,8 +224,20 @@ class QuoteSwap(
             is Unmined.Read -> read.transfers
             is Unmined.Unavailable -> return@cancellingReads SwapQuoting.Unavailable(read.reason, QuoteFigure.NONCE)
         }
+        // What the account's CoW orders may still take of the token: not this swap's to sell, or
+        // the order and the swap could both spend it (docs/swaps.md, *A signed order is live until
+        // it is proven dead*). A record that cannot be read could hide one: nothing is sold then.
+        val held = when (val read = orders?.await()) {
+            null -> UInt256.ZERO
+            is CowOrderList.Loaded -> soldToken?.let {
+                val finalized = (head.await() as? LightClientStatus.Synced)?.finalized
+                read.orders.holding(network, from, it.address, finalized, cowChain)
+            } ?: return@cancellingReads SwapQuoting.InsufficientToken
+            CowOrderList.Unreadable -> return@cancellingReads SwapQuoting.CowOrdersUnreadable
+        }
         if (sellBefore != null && soldToken != null) {
             val moving = earlier.mapNotNull { it.tokenAmount(soldToken.address) }.sumOrNull()
+                ?.plusOrNull(held)
                 ?: return@cancellingReads SwapQuoting.InsufficientToken
             if ((sellBefore.minusOrNull(moving) ?: UInt256.ZERO) < amountIn) {
                 return@cancellingReads SwapQuoting.InsufficientToken
@@ -274,7 +297,7 @@ class QuoteSwap(
                 ?: return@cancellingReads SwapQuoting.InsufficientToken
         }
         val sellAvailable = sellBefore?.let { before ->
-            before.minusOrNull(pendingSell ?: UInt256.ZERO)?.takeIf { it >= amountIn }
+            before.minusOrNull(pendingSell ?: UInt256.ZERO)?.minusOrNull(held)?.takeIf { it >= amountIn }
                 ?: return@cancellingReads SwapQuoting.InsufficientToken
         }
         SwapQuoting.Quoted(
@@ -304,6 +327,7 @@ class QuoteSwap(
                 nativeAfterAtLeast = call.nativeAfterAtLeast,
                 sellBefore = sellBefore,
                 pendingSell = pendingSell,
+                heldByOrders = held.takeIf { soldToken != null },
                 sellAfter = sellAvailable?.let { it - amountIn },
                 buyBefore = buyBefore,
                 balanceBlock = call.balanceBlock,
@@ -498,6 +522,12 @@ sealed interface SwapQuoting {
 
     /** An earlier transaction from the sender, [hash], may still be on its way: retried, not replaced. */
     data class EarlierMaybeSent(val hash: String) : SwapQuoting
+
+    /**
+     * The record of the CoW orders signed here cannot be read: one may still fill, so no token is
+     * sold until it can be read.
+     */
+    data object CowOrdersUnreadable : SwapQuoting
 }
 
 /**

@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
@@ -28,6 +29,7 @@ import eth.serotine.ui.FakeBroadcaster
 import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemorySentTransfers
+import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -363,6 +365,33 @@ class TransferStatusViewModelTest {
     }
 
     @Test
+    fun aCowOrdersCancellationMaybeSentIsCalledOne() = runTest {
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val uid = CowOrderUid.of("0x" + "ab".repeat(32) + record.account.hex.removePrefix("0x") + "6ad9e7f4")
+        val cancellation = record.copy(
+            signed = SignedTransfer(byteArrayOf(2, 1, 9)),
+            action = SentAction.CowCancellation(settlement, uid),
+            maybeSent = true,
+        )
+        sent.transfers.value = listOf(cancellation)
+        val viewModel = viewModel(cancellation.hash)
+        runCurrent()
+
+        val notSent = assertNotNull(viewModel.shown.notSent)
+        assertTrue("No peer answered when this cancellation was broadcast" in notSent.message, notSent.message)
+        assertEquals(
+            CancellationSummary(
+                title = "Cancellation of a CoW order on chain",
+                order = uid.hex,
+                settlement = "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+                from = Eip55.format(record.account),
+            ),
+            viewModel.shown.cancellation,
+        )
+        assertNull(viewModel.shown.sent)
+    }
+
+    @Test
     fun aSwapShowsWhatItSoldAndTheLeastItBuysAndWhyItMayFail() = runTest {
         val router = Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e")
         val link = Token(Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789"), "LINK", "ChainLink", 18, "link")
@@ -446,7 +475,7 @@ class TransferStatusViewModelTest {
                 amount = "100 USDC",
                 symbol = "USDC",
                 icon = "usdc",
-                spenderLabel = "May be taken by the swap's router",
+                spenderLabel = "May be taken by the swap's spender",
                 spender = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
                 from = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
             ),

@@ -10,11 +10,17 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapVenue
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.Broadcast
+import eth.serotine.domain.repository.CowOrderRecord
+import eth.serotine.domain.repository.CowPlacement
+import eth.serotine.domain.repository.CowRefusal
+import eth.serotine.domain.repository.CowUnavailable
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentTransfer
@@ -22,9 +28,19 @@ import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.ApprovalQuoting
+import eth.serotine.domain.usecase.COW_ORDER_VALIDITY_SECONDS
+import eth.serotine.domain.usecase.ChooseSwapVenue
+import eth.serotine.domain.usecase.CowNotOffered
+import eth.serotine.domain.usecase.CowOfferedOnThisDevice
+import eth.serotine.domain.usecase.CowOrderPlacing
+import eth.serotine.domain.usecase.CowSwapQuote
+import eth.serotine.domain.usecase.CowSwapQuoting
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveSwapVenue
+import eth.serotine.domain.usecase.PlaceCowOrder
+import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteFigure
 import eth.serotine.domain.usecase.QuoteSwap
 import eth.serotine.domain.usecase.QuoteTokenApproval
@@ -91,14 +107,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The Swap screen's ViewModel (docs/swaps.md; screens 22 and 23): a Uniswap swap from [from] on
- * [network], composed — the asset sold ([sell], the token asked for, null for the network's
+ * The Swap screen's ViewModel (docs/swaps.md; screens 22 and 23): a swap from [from] on [network],
+ * composed — the venue, the asset sold ([sell], the token asked for, null for the network's
  * currency), the asset bought, the amount in the sold asset's units, the slippage tolerance and
- * the fee level — then quoted from verified state ([QuoteSwap]) for review and signed and
- * broadcast ([SendSwap]). A swap whose router may not take the amount yet first gets its approval
- * ([QuoteTokenApproval], [SendTokenApproval]), its own transaction: once it is sent, the compose
- * step says so, and Review quotes the swap once a block has it. One signed but not broadcast is
- * retried with its own bytes ([RebroadcastTransfer]), never signed anew.
+ * the fee level — then quoted for review and signed.
+ *
+ * - **The venue** is the user's to choose (*The user's choice of venue*): it starts at the one last
+ *   chosen ([ObserveSwapVenue]), Uniswap the first time, and a choice is kept for the next swap
+ *   ([ChooseSwapVenue]). CoW is greyed out where it is not offered, and a tap says why. When CoW
+ *   cannot quote a swap, the compose step offers the same swap on Uniswap: nothing switches by
+ *   itself.
+ * - **On Uniswap**, the swap is quoted from verified state ([QuoteSwap]) and signed and broadcast
+ *   ([SendSwap]).
+ * - **On CoW**, it is quoted ([QuoteCowSwap]: CoW's estimate beside the verified Uniswap net) and
+ *   its order signed and handed to CoW ([PlaceCowOrder]). CoW is asked only once the user chose
+ *   it and asked for the review (CLAUDE.md, *Data sources*).
+ * - A swap whose router, or CoW's vault relayer, may not take the amount yet first gets its approval
+ *   ([QuoteTokenApproval], [SendTokenApproval]), its own transaction: once it is sent, the compose
+ *   step says so, and Review quotes the swap once a block has it. One signed but not broadcast is
+ *   retried with its own bytes ([RebroadcastTransfer]), never signed anew.
  *
  * What is signed is the quote under review, and a quote is never signed stale, as on Send: it is
  * made when the review is entered, again on Refresh, when the screen is shown again after it was
@@ -111,7 +138,7 @@ import kotlinx.coroutines.withContext
  * the review's state while the field is shown, hands it to the signer in an [Unlock], and never
  * logs, saves or caches it; it is dropped once used, when the screen is not shown ([onHidden]) and
  * when the screen is gone ([onCleared]). [formatTime] dates the swap's deadline in the user's own
- * time zone.
+ * time zone. [fill], when given, is what the compose step opens with: the same swap again.
  */
 class SwapViewModel(
     private val account: AccountId,
@@ -125,15 +152,20 @@ class SwapViewModel(
     private val sendTokenApproval: SendTokenApproval,
     private val rebroadcastTransfer: RebroadcastTransfer,
     private val warmFeeHistory: WarmFeeHistory,
+    observeSwapVenue: ObserveSwapVenue,
+    private val chooseSwapVenue: ChooseSwapVenue,
+    cowOfferedOnThisDevice: CowOfferedOnThisDevice,
+    private val quoteCowSwap: QuoteCowSwap,
+    private val placeCowOrder: PlaceCowOrder,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val formatTime: (Long) -> String = ::formatDateTime,
+    fill: SwapFill? = null,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val from: Address = account.address
 
     /** The account's network: everything here is read and sent there. */
     private val network: Network = account.network
-
 
     init {
         // The compose step is open: the fee history is asked for now, ready by the review.
@@ -142,7 +174,8 @@ class SwapViewModel(
 
     /**
      * What the compose step has: the asset sold, the asset bought (null until chosen), the amount
-     * and the tolerance as typed, and the fee level.
+     * and the tolerance as typed, the fee level, and the venue chosen on this screen (null: the one
+     * last chosen).
      */
     private data class Inputs(
         val sell: SwapPick,
@@ -150,6 +183,7 @@ class SwapViewModel(
         val amount: String = "",
         val tolerance: String = SlippageTolerance.DEFAULT.percent,
         val fee: FeeLevel = FeeLevel.NORMAL,
+        val venue: SwapVenue? = null,
     )
 
     /** The account swapped from, or why nothing can be swapped from it. */
@@ -159,7 +193,10 @@ class SwapViewModel(
         data class Cannot(val message: String) : Swapper
     }
 
-    /** Everything the compose step is derived from. */
+    /**
+     * Everything the compose step is derived from. [venue] is the one the swap goes to: the one
+     * chosen, unless CoW is, and is not offered for it ([cowUnavailable] says why).
+     */
     private class Model(
         val swapper: Swapper,
         val currency: DisplayCurrency,
@@ -169,22 +206,30 @@ class SwapViewModel(
         val buy: AssetOption?,
         val tokensRead: Boolean,
         val inputs: Inputs,
+        val venue: SwapVenue,
+        val cowUnavailable: String?,
     )
 
-    /** A swap the compose step can have quoted, exactly as it has it. */
+    /** A swap the compose step can have quoted, exactly as it has it, on [venue]. */
     private data class Request(
         val inputs: Inputs,
         val sell: AssetOption,
         val buy: AssetOption,
         val amount: UInt256,
         val tolerance: SlippageTolerance,
+        val venue: SwapVenue,
     )
 
-    /** What a review signs: the approval first, or the swap itself. */
-    private sealed interface Quoted {
+    /** What a quote comes to: something to review ([Quoted]), or the compose step saying why not. */
+    private sealed interface Next
+
+    /** What a review signs: the approval first, the swap on Uniswap, or the CoW order. */
+    private sealed interface Quoted : Next {
         data class Approval(val quote: TokenApprovalQuote) : Quoted
 
         data class Swap(val quote: SwapQuote) : Quoted
+
+        data class Cow(val quote: CowSwapQuote) : Quoted
     }
 
     /**
@@ -201,13 +246,17 @@ class SwapViewModel(
         /**
          * Composing; [quoting] while a review is quoted, [error] why the last one was not, [info]
          * what to know (an approval sent), and [earlier] the transaction that holds the swap back.
+         * [uniswapInstead]: CoW could not quote the swap, and the same swap may go to Uniswap.
+         * [liveOrder]: the UID of an earlier CoW order of the token that may still fill.
          */
         data class Composing(
             val quoting: Boolean = false,
             val error: String? = null,
             val info: String? = null,
             val earlier: EarlierItem? = null,
-        ) : Step
+            val uniswapInstead: Boolean = false,
+            val liveOrder: String? = null,
+        ) : Step, Next
 
         /**
          * [quoted] of [request], made at [quotedAt], under review; [hidden] once the screen stopped
@@ -229,12 +278,25 @@ class SwapViewModel(
         }
 
         data class Sent(val hash: String) : Step
+
+        /** The CoW order [record] is signed and handed to CoW, as its placement says. */
+        data class Placed(val record: CowOrderRecord) : Step
     }
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(from)
 
-    private val inputs = MutableStateFlow(Inputs(sell?.let(SwapPick::Token) ?: SwapPick.Native))
+    // Whether CoW can be offered here at all: a fact of the device, read once.
+    private val cowHere = cowOfferedOnThisDevice()
+
+    private val inputs = MutableStateFlow(
+        Inputs(
+            sell = sell?.let(SwapPick::Token) ?: SwapPick.Native,
+            buy = fill?.let { it.buy?.let(SwapPick::Token) ?: SwapPick.Native },
+            amount = fill?.amount.orEmpty(),
+            venue = fill?.venue,
+        ),
+    )
     private val step = MutableStateFlow<Step>(Step.Composing())
 
     /** The quote, signature or broadcast in flight. */
@@ -247,8 +309,13 @@ class SwapViewModel(
     private var hiddenWhileQuoting = false
 
     private val model: StateFlow<Model?> =
-        combine(observeAccounts(), observeAccountValue(account), inputs) { list, value, inputs ->
-            modelOf(list, value, inputs)
+        combine(
+            observeAccounts(),
+            observeAccountValue(account),
+            inputs,
+            observeSwapVenue(),
+        ) { list, value, inputs, last ->
+            modelOf(list, value, inputs, last)
         }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -261,10 +328,17 @@ class SwapViewModel(
         SwapUiState.Loading(network.displayName),
     )
 
-    /** Sells the token at [contract], or the network's currency (null). */
+    /**
+     * Sells the token at [contract], or the network's currency (null). The venue shown stays as it
+     * is: one CoW was greyed out for comes back only at the user's tap.
+     */
     fun onSellChange(contract: String?) {
         val pick = SwapPick.of(contract) ?: return
-        change { it.copy(sell = pick, buy = it.buy.takeUnless { buy -> buy == pick }, amount = "") }
+        val shown = model.value?.venue
+        change {
+            val venue = if (pick == SwapPick.Native) SwapVenue.UNISWAP else it.venue ?: shown
+            it.copy(sell = pick, buy = it.buy.takeUnless { buy -> buy == pick }, amount = "", venue = venue)
+        }
     }
 
     /** Buys the token at [contract], or the network's currency (null). */
@@ -292,12 +366,55 @@ class SwapViewModel(
     /** Chooses the fee [level]. */
     fun onFeeChange(level: FeeLevel) = change { it.copy(fee = level) }
 
+    /**
+     * Swaps on [venue], kept as the one the next swap starts at. CoW while it is not offered for the
+     * swap is not chosen: the screen says why instead.
+     */
+    fun onVenueChange(venue: SwapVenue) {
+        val model = model.value ?: return
+        if (venue == SwapVenue.COW && model.cowUnavailable != null) return
+        change { it.copy(venue = venue) }
+        viewModelScope.launch {
+            try {
+                chooseSwapVenue(venue)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Not kept for the next swap: this one still goes where the user chose.
+            }
+        }
+    }
+
+    /**
+     * The same swap on Uniswap: after CoW could not quote it, or from CoW's review when by CoW's own
+     * estimate Uniswap gives more. The user's choice, never made for them.
+     */
+    fun swapOnUniswap() {
+        when (val current = step.value) {
+            is Step.Composing -> if (!current.uniswapInstead || current.quoting) return
+            is Step.Reviewing -> {
+                val order = current.quoted as? Quoted.Cow ?: return
+                if (!current.idle || !order.quote.belowNet) return
+                job?.cancel()
+                step.value = Step.Composing()
+            }
+            else -> return
+        }
+        onVenueChange(SwapVenue.UNISWAP)
+        review(venue = SwapVenue.UNISWAP)
+    }
+
     /** Quotes the swap as composed and shows it, or the approval it needs first, for review. */
-    fun review() {
+    fun review() = review(venue = null)
+
+    /** [review], on [venue] when it is given (chosen a moment ago), else on the model's. */
+    private fun review(venue: SwapVenue?) {
         val current = step.value as? Step.Composing ?: return
         if (current.quoting) return
         val model = model.value ?: return
-        val request = requestOf(model) ?: return
+        val request = requestOf(model)?.let { request ->
+            venue?.let { request.copy(inputs = request.inputs.copy(venue = it), venue = it) } ?: request
+        } ?: return
         val account = (model.swapper as? Swapper.From)?.account ?: return
         // A transaction only waiting for a block stays said while the quote runs, and after one
         // that failed short of finding it again (a read unavailable, the light client syncing).
@@ -392,6 +509,8 @@ class SwapViewModel(
         val prompt = when (val quoted = current.quoted) {
             is Quoted.Approval -> "Allow ${Eip55.format(quoted.quote.spender)} to take ${sold(quoted.quote.amount)}"
             is Quoted.Swap -> "Swap ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+            is Quoted.Cow ->
+                "Sign a CoW order: ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
         }
         sign(current, Unlock.WithBiometrics(prompt, notAfter))
     }
@@ -455,6 +574,11 @@ class SwapViewModel(
         job = viewModelScope.launch {
             var noLongerMet = false
             val sending = when (val quoted = review.quoted) {
+                // An order is placed, not broadcast: what follows is its own.
+                is Quoted.Cow -> {
+                    place(quoted.quote, unlock)
+                    return@launch
+                }
                 is Quoted.Approval -> safely { sendTokenApproval(quoted.quote, unlock) }
                 is Quoted.Swap -> when (val swapped = safely { sendSwap(quoted.quote, unlock) }) {
                     is SwapSending.Done -> swapped.sending
@@ -487,6 +611,44 @@ class SwapViewModel(
     }
 
     /**
+     * The CoW order of [quote] signed with [unlock] and handed to CoW ([PlaceCowOrder]): placed, it
+     * is said so; a quote that no longer stands is made again and shown; else the review says why
+     * nothing was sent.
+     */
+    private suspend fun place(quote: CowSwapQuote, unlock: Unlock) {
+        val placing = safely { placeCowOrder(quote, unlock) }
+        val requote = when (placing) {
+            is CowOrderPlacing.Placed -> {
+                step.update { latest -> if (latest is Step.Reviewing) Step.Placed(placing.record) else latest }
+                return
+            }
+            CowOrderPlacing.FloorRose -> FLOOR_ROSE
+            CowOrderPlacing.QuoteStale -> STALE_QUOTE
+            is CowOrderPlacing.NotSigned -> if (placing.signing == Signing.TimedOut) PROMPT_TIMED_OUT else null
+            else -> null
+        }
+        step.update { latest ->
+            if (latest !is Step.Reviewing) return@update latest
+            if (requote != null) return@update latest.copy(signing = false)
+            val error = when (placing) {
+                is CowOrderPlacing.NotSigned -> notSignedText(placing.signing, ORDER_FAILED)
+                is CowOrderPlacing.EarlierOrderLive -> earlierOrderText(latest.request)
+                CowOrderPlacing.OrdersUnreadable -> ORDERS_UNREADABLE
+                is CowOrderPlacing.FloorUnavailable -> "The Uniswap floor could not be quoted again just before " +
+                    "signing: nothing was signed. Try again."
+                CowOrderPlacing.NotRecorded -> "The order was signed, but this device could not record it, so it " +
+                    "was not sent: nothing can fill it. Try again."
+                else -> ORDER_FAILED
+            }
+            val biometrics = latest.unlock.biometrics &&
+                ((placing as? CowOrderPlacing.NotSigned)?.signing?.let(::biometricsStillOffered) ?: true)
+            latest.copy(signing = false, unlock = latest.unlock.copy(error = error, biometrics = biometrics))
+        }
+        if (requote != null) refresh(note = requote)
+        requoteIfHidden()
+    }
+
+    /**
      * Where [review] goes once its transaction's signature or broadcast came to [sending]: a swap
      * broadcast is sent; an approval broadcast is back at the compose step, which says so and
      * quotes the swap once a block has it; the rest stays in the review, saying why.
@@ -496,8 +658,10 @@ class SwapViewModel(
         return when (sending) {
             is TransferSending.Sent -> if (approval) {
                 val resets = (review.quoted as Quoted.Approval).quote.resetsFirst
+                val then = if (review.request.venue == SwapVenue.COW) "the order" else "the swap"
                 Step.Composing(
-                    info = if (resets) RESET_SENT else APPROVAL_SENT,
+                    info = if (resets) RESET_SENT else "Your approval is on its way: once a block has it, Review " +
+                        "quotes $then.",
                     earlier = EarlierItem(sending.hash, "Open the approval", waiting = true),
                 )
             } else {
@@ -524,53 +688,89 @@ class SwapViewModel(
     }
 
     /**
-     * The review of [request] quoted now, with [unlock] (a new one when null): the swap's, or the
-     * approval's it needs first; or the compose step saying why there is neither.
+     * The review of [request] quoted now, with [unlock] (a new one when null): the swap's or the
+     * order's, or the approval's it needs first; or the compose step saying why there is neither.
      */
     private suspend fun quoted(request: Request, unlock: UnlockStep?, sender: SendFrom): Step {
         val readFrom = timeSource.markNow()
-        val fee = request.inputs.fee
-        val swapping = askSwap(request, fee)
-        val quoted = when (swapping) {
-            is SwapQuoting.Quoted -> Quoted.Swap(swapping.quote)
-            is SwapQuoting.NeedsApproval -> when (
-                val approving = askApproval(swapping, request.amount, fee)
-            ) {
-                is ApprovalQuoting.Quoted -> Quoted.Approval(approving.quote)
-                // Allowed meanwhile (an approval mined since): the swap is quoted after all.
-                is ApprovalQuoting.AlreadyAllowed -> when (val again = askSwap(request, fee)) {
-                    is SwapQuoting.Quoted -> Quoted.Swap(again.quote)
-                    else -> return composing(again, request)
-                }
-                is ApprovalQuoting.ApprovalPending -> return Step.Composing(
-                    info = APPROVAL_PENDING,
-                    earlier = EarlierItem(approving.hash, "Open the approval", waiting = true),
-                )
-                is ApprovalQuoting.EarlierSwapPending -> return Step.Composing(
-                    info = earlierSwapText(request),
-                    earlier = EarlierItem(approving.hash, "Open the earlier swap", waiting = true),
-                )
-                is ApprovalQuoting.EarlierMaybeSent -> return Step.Composing(
-                    error = EARLIER_MAYBE_SENT,
-                    earlier = EarlierItem(approving.hash, "Open the earlier transaction", waiting = false),
-                )
-                else -> return Step.Composing(error = approvalRefusal(approving, request.sell))
-            }
-            else -> return composing(swapping, request)
+        val quoted = when (val next = quoteOf(request)) {
+            is Quoted -> next
+            is Step.Composing -> return next
         }
         return Step.Reviewing(request, quoted, readFrom, unlock ?: UnlockStep(biometrics = biometricsOffered()), sender)
     }
 
-    private suspend fun askSwap(request: Request, fee: FeeLevel): SwapQuoting = try {
-        quoteSwap(from, request.sell.asset, request.buy.asset, request.amount, request.tolerance, fee)
+    /** What [request] comes to on its venue: its quote, the approval it needs first, or why neither. */
+    private suspend fun quoteOf(request: Request): Next = when (request.venue) {
+        SwapVenue.UNISWAP -> when (val swapping = askSwap(request)) {
+            is SwapQuoting.Quoted -> Quoted.Swap(swapping.quote)
+            is SwapQuoting.NeedsApproval -> approvalFirst(swapping.token, swapping.spender, request) {
+                when (val again = askSwap(request)) {
+                    is SwapQuoting.Quoted -> Quoted.Swap(again.quote)
+                    else -> composing(again, request)
+                }
+            }
+            else -> composing(swapping, request)
+        }
+        // CoW is asked only here: the user chose it, and asked for the review.
+        SwapVenue.COW -> when (val ordering = askCow(request)) {
+            is CowSwapQuoting.Quoted -> Quoted.Cow(ordering.quote)
+            is CowSwapQuoting.NeedsApproval -> approvalFirst(ordering.token, ordering.spender, request) {
+                when (val again = askCow(request)) {
+                    is CowSwapQuoting.Quoted -> Quoted.Cow(again.quote)
+                    else -> cowComposing(again, request)
+                }
+            }
+            else -> cowComposing(ordering, request)
+        }
+    }
+
+    /**
+     * The approval of [spender] for [request]'s amount of [token], its own transaction first; or,
+     * allowed meanwhile (an approval mined since), the quote [allowed] makes after all; or why
+     * neither.
+     */
+    private suspend fun approvalFirst(
+        token: Token,
+        spender: Address,
+        request: Request,
+        allowed: suspend () -> Next,
+    ): Next = when (val approving = askApproval(token, spender, request.amount, request.inputs.fee)) {
+        is ApprovalQuoting.Quoted -> Quoted.Approval(approving.quote)
+        is ApprovalQuoting.AlreadyAllowed -> allowed()
+        is ApprovalQuoting.ApprovalPending -> Step.Composing(
+            info = APPROVAL_PENDING,
+            earlier = EarlierItem(approving.hash, "Open the approval", waiting = true),
+        )
+        is ApprovalQuoting.EarlierSwapPending -> Step.Composing(
+            info = earlierSwapText(request),
+            earlier = EarlierItem(approving.hash, "Open the earlier swap", waiting = true),
+        )
+        is ApprovalQuoting.EarlierMaybeSent -> Step.Composing(
+            error = EARLIER_MAYBE_SENT,
+            earlier = EarlierItem(approving.hash, "Open the earlier transaction", waiting = false),
+        )
+        else -> Step.Composing(error = approvalRefusal(approving, request.sell))
+    }
+
+    private suspend fun askSwap(request: Request): SwapQuoting = try {
+        quoteSwap(from, request.sell.asset, request.buy.asset, request.amount, request.tolerance, request.inputs.fee)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         SwapQuoting.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
     }
 
-    private suspend fun askApproval(needs: SwapQuoting.NeedsApproval, amount: UInt256, fee: FeeLevel) = try {
-        quoteTokenApproval(from, needs.token, needs.spender, amount, fee)
+    private suspend fun askCow(request: Request): CowSwapQuoting = try {
+        quoteCowSwap(from, request.sell.asset, request.buy.asset, request.amount, request.tolerance)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        CowSwapQuoting.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw; the backstop
+    }
+
+    private suspend fun askApproval(token: Token, spender: Address, amount: UInt256, fee: FeeLevel) = try {
+        quoteTokenApproval(from, token, spender, amount, fee)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -596,9 +796,39 @@ class SwapViewModel(
         else -> Step.Composing(error = swapRefusal(quoting, request))
     }
 
-    private fun earlierSwapText(request: Request) =
-        "An earlier swap of ${request.sell.symbol} is on its way and not in a block yet: this one waits for it, " +
-            "since both would count on one allowance."
+    /** The compose step saying why [quoting], not an order to review, came back from CoW's quote. */
+    private fun cowComposing(quoting: CowSwapQuoting, request: Request): Step.Composing = when (quoting) {
+        is CowSwapQuoting.ApprovalPending -> Step.Composing(
+            info = APPROVAL_PENDING,
+            earlier = EarlierItem(quoting.hash, "Open the approval", waiting = true),
+        )
+        // Short of the allowance on a second read, after an approval read it as enough.
+        is CowSwapQuoting.NeedsApproval -> Step.Composing(error = RELAYER_ALLOWANCE_MOVED)
+        is CowSwapQuoting.EarlierMaybeSent -> Step.Composing(
+            error = EARLIER_MAYBE_SENT,
+            earlier = EarlierItem(quoting.hash, "Open the earlier transaction", waiting = false),
+        )
+        else -> Step.Composing(
+            error = cowRefusal(quoting, request),
+            uniswapInstead = uniswapMayTake(quoting),
+            liveOrder = (quoting as? CowSwapQuoting.EarlierOrderLive)?.uid?.hex,
+        )
+    }
+
+    /**
+     * Whether the same swap is offered on Uniswap after [quoting]: CoW itself refused it or did not
+     * answer (docs/swaps.md, *The user's choice of venue*). Only those come after the record of
+     * orders was read, so no earlier order of the token may still fill: the two could both swap.
+     */
+    private fun uniswapMayTake(quoting: CowSwapQuoting): Boolean =
+        quoting is CowSwapQuoting.CowRefused || quoting is CowSwapQuoting.CowNoAnswer
+
+    private fun earlierSwapText(request: Request) = when (request.venue) {
+        SwapVenue.UNISWAP -> "An earlier swap of ${request.sell.symbol} is on its way and not in a block yet: " +
+            "this one waits for it, since both would count on one allowance."
+        SwapVenue.COW -> "An earlier swap of ${request.sell.symbol} is on its way and not in a block yet: the " +
+            "order's approval waits for it."
+    }
 
     /**
      * Applies [edit] to the compose step's inputs: only while composing, dropping a quote in flight
@@ -624,7 +854,7 @@ class SwapViewModel(
             }
         }
 
-    private fun modelOf(list: AccountList, value: AccountValue, inputs: Inputs): Model {
+    private fun modelOf(list: AccountList, value: AccountValue, inputs: Inputs, last: SwapVenue): Model {
         val swapper = when (list) {
             is AccountList.Unreadable -> Swapper.Cannot(LIST_UNAVAILABLE)
             is AccountList.Loaded -> {
@@ -640,6 +870,13 @@ class SwapViewModel(
         val options = swapOptions(value, inputs.sell, inputs.buy, network)
         val sell = options.sell
         val buy = options.buy
+        // What the compose step can know: the rest of what keeps CoW from a swap, its quote says.
+        val cowUnavailable = when {
+            !cowHere -> NOT_ON_THIS_DEVICE
+            sell?.asset == TransferAsset.Native -> SELLS_ETHER
+            else -> null
+        }
+        val chosen = inputs.venue ?: last
         return Model(
             swapper = swapper,
             currency = value.currency,
@@ -649,6 +886,8 @@ class SwapViewModel(
             buy = buy,
             tokensRead = value.tokensRead,
             inputs = inputs,
+            venue = if (chosen == SwapVenue.COW && cowUnavailable != null) SwapVenue.UNISWAP else chosen,
+            cowUnavailable = cowUnavailable,
         )
     }
 
@@ -656,6 +895,7 @@ class SwapViewModel(
         val network = network.displayName
         val composing = when (step) {
             is Step.Sent -> return SwapUiState.Sent(network, step.hash)
+            is Step.Placed -> return placed(step.record)
             is Step.Reviewing -> return review(step)
             is Step.Composing -> step
         }
@@ -685,12 +925,20 @@ class SwapViewModel(
             info = composing.info,
             canReview = !composing.quoting && requestOf(model) != null,
         )
-        return SwapUiState.Compose(form, inputs.fee, earlier = composing.earlier)
+        return SwapUiState.Compose(
+            form,
+            inputs.fee,
+            earlier = composing.earlier,
+            venue = VenueItem(model.venue, cowUnavailable = model.cowUnavailable),
+            uniswapInstead = composing.uniswapInstead && !composing.quoting,
+            liveOrder = composing.liveOrder,
+        )
     }
 
     private fun review(step: Step.Reviewing): SwapUiState = when (val quoted = step.quoted) {
         is Quoted.Approval -> approvalReview(step, quoted.quote)
         is Quoted.Swap -> swapReview(step, quoted.quote)
+        is Quoted.Cow -> cowReview(step, quoted.quote)
     }
 
     private fun approvalReview(step: Step.Reviewing, quote: TokenApprovalQuote): SwapUiState.ApprovalReview {
@@ -703,7 +951,10 @@ class SwapViewModel(
             token = sell.choice(),
             amount = exactAmount(quote.amount, sell.decimals, sell.symbol),
             allowance = exactAmount(quote.allowance, sell.decimals, sell.symbol),
-            spender = SpenderItem(ROUTER_NAME, Eip55.format(quote.spender)),
+            spender = SpenderItem(
+                if (step.request.venue == SwapVenue.COW) VAULT_RELAYER_NAME else ROUTER_NAME,
+                Eip55.format(quote.spender),
+            ),
             resetNote = if (quote.resetsFirst) {
                 "${sell.symbol} refuses to move one allowance to another, as the approval of the whole amount " +
                     "showed: this sets it to zero first, and the whole amount is approved once that is in a block."
@@ -719,7 +970,11 @@ class SwapViewModel(
                 verifiedAt = verifiedAt(quote.balanceBlock),
             ),
             simulation = "The approval, run as a verified call from this account $ran, goes through. It moves " +
-                "nothing: the swap is its own transaction, quoted once a block has this one.",
+                "nothing: " + if (step.request.venue == SwapVenue.COW) {
+                    "the order is signed on its own, quoted once a block has this one."
+                } else {
+                    "the swap is its own transaction, quoted once a block has this one."
+                },
             unlock = step.unlock,
             refreshing = step.refreshing,
             signing = step.signing,
@@ -815,16 +1070,106 @@ class SwapViewModel(
         )
     }
 
-    /** What this account's earlier transactions, not mined yet, may still take, when anything. */
+    /**
+     * Screen 23 for a CoW order (docs/swaps.md, *The user's choice of venue*): CoW's estimate, not
+     * verified, beside the verified Uniswap net, which gives more, and the minimum signed.
+     */
+    private fun cowReview(step: Step.Reviewing, quote: CowSwapQuote): SwapUiState.CowReview {
+        val sell = step.request.sell
+        val buy = step.request.buy
+        val bought = { units: UInt256 -> exactAmount(units, buy.decimals, buy.symbol) }
+        val at = quote.quoteBlock?.let { " at block ${grouped(it)}" }.orEmpty()
+        val feeNote = quote.uniswapFeeOut?.let { " less its expected network fee, about ${bought(it)}" }
+            ?: ": its network fee could not be had, so it is not taken off"
+        return SwapUiState.CowReview(
+            network = network.displayName,
+            from = step.sender,
+            sell = sell.choice(),
+            sold = exactAmount(quote.amountIn, sell.decimals, sell.symbol),
+            buy = buy.choice(),
+            estimate = "about " + bought(quote.estimate),
+            estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade: " +
+                exactAmount(quote.cowFee, sell.decimals, sell.symbol) + ". Not verified.",
+            uniswapNet = bought(quote.uniswapNet),
+            uniswapNote = "Uniswap's verified quote$at$feeNote.",
+            comparison = if (quote.belowNet) {
+                "By CoW's own estimate, Uniswap gives more. The order is signed at the floor below, and may well " +
+                    "not fill. Then nothing is swapped, but the ${sell.symbol} it sells stays held back until a " +
+                    "finalized block is past its validity, about 18 to 24 minutes from now."
+            } else {
+                "By CoW's estimate, CoW gives about ${bought(quote.estimate - quote.uniswapNet)} more than Uniswap. " +
+                    "Only the minimum below is signed."
+            },
+            uniswapGivesMore = quote.belowNet,
+            minimum = "at least " + bought(quote.minimumOut),
+            minimumNote = "CoW's estimate less the ${quote.tolerance} tolerance, never below the Uniswap net less it " +
+                "(${bought(quote.floor)}). A fill that buys less is refused by the settlement contract.",
+            validUntil = "Until ${formatTime(quote.order.validTo)}: the verified head's time and " +
+                "${COW_ORDER_VALIDITY_SECONDS / 60} minutes. It fills by then or not at all.",
+            settlement = SpenderItem(SETTLEMENT_NAME, Eip55.format(quote.deployment.settlement)),
+            balances = listOf(
+                BalanceChange(
+                    what = "${sell.symbol} balance",
+                    before = exactAmount(quote.sellBefore, sell.decimals, sell.symbol),
+                    after = exactAmount(quote.sellAfter, sell.decimals, sell.symbol) + " once it fills",
+                    verifiedAt = verifiedAt(quote.tokenBalanceBlock),
+                ),
+            ),
+            pending = quote.pendingSell.takeUnless { it.isZero }?.let {
+                "Earlier transactions from this account, not mined yet, may still take " +
+                    exactAmount(it, sell.decimals, sell.symbol) + ": the balance after counts it."
+            },
+            disclosure = "Sent to CoW's servers (api.cow.fi): this account's address, the pair, the amounts, the " +
+                "signed order and this device's IP address. Whether it fills, and what it bought, is read from " +
+                "the chain, never from CoW.",
+            unlock = step.unlock,
+            refreshing = step.refreshing,
+            signing = step.signing,
+        )
+    }
+
+    /** What became of the CoW order [record] when it was handed to CoW. */
+    private fun placed(record: CowOrderRecord): SwapUiState.OrderPlaced {
+        val until = formatTime(record.order.validTo)
+        val sold = record.sell as? TransferAsset.Erc20Token
+        val held = "The ${sold?.token?.symbol ?: "token"} it sells is held back from other sends and swaps until it " +
+            "fills or can no longer fill."
+        val (title, message) = when (val placement = record.placement) {
+            is CowPlacement.Accepted -> "Sent to CoW" to
+                "CoW took the order. It fills before $until or not at all; what it bought shows once the chain " +
+                "proves it. $held"
+            is CowPlacement.Refused -> "CoW refused the order" to
+                "CoW refused it (${placement.errorType}). It is signed all the same, so it counts as live until a " +
+                "finalized block is past $until. $held"
+            is CowPlacement.Unclear -> if (placement.why == CowUnavailable.UNDECODABLE) {
+                "CoW's answer could not be read" to
+                    "CoW answered, but not in a way this version can check. The order may be with CoW, and may " +
+                    "fill until $until. $held"
+            } else {
+                "CoW's answer did not come" to "The order may be with CoW, and may fill until $until. $held"
+            }
+            CowPlacement.Attempted -> "CoW's answer did not come" to
+                "The order may be with CoW, and may fill until $until. $held"
+        }
+        return SwapUiState.OrderPlaced(network.displayName, title, message, record.uid.hex)
+    }
+
+    /** What this account's earlier transactions, not mined yet, and its CoW orders may still take, when anything. */
     private fun pendingText(quote: SwapQuote, sell: AssetOption): String? {
         val native = network.nativeSymbol
         val parts = listOfNotNull(
             quote.pendingSell?.takeUnless { it.isZero }?.let { exactAmount(it, sell.decimals, sell.symbol) },
             quote.pendingCost.takeUnless { it.isZero }?.let { "up to " + exactAmount(it, NATIVE_DECIMALS, native) },
         )
-        if (parts.isEmpty()) return null
-        return "Earlier transactions from this account, not mined yet, may still take " +
-            "${parts.joinToString(" and ")}: the balance after counts it."
+        val held = quote.heldByOrders?.takeUnless { it.isZero }?.let { exactAmount(it, sell.decimals, sell.symbol) }
+        val sentences = listOfNotNull(
+            parts.takeIf { it.isNotEmpty() }?.let {
+                "Earlier transactions from this account, not mined yet, may still take ${it.joinToString(" and ")}."
+            },
+            held?.let { "This account's CoW orders that may still fill hold back $it." },
+        )
+        if (sentences.isEmpty()) return null
+        return sentences.joinToString(" ") + " The balance after counts it."
     }
 
     /** The compose step's swap, when it is complete: what a quote is asked for. */
@@ -834,7 +1179,7 @@ class SwapViewModel(
         val buy = model.buy ?: return null
         val amount = typedAmount(model.inputs.amount, sell).units ?: return null
         val tolerance = SlippageTolerance.parsePercent(model.inputs.tolerance.trim()) ?: return null
-        return Request(model.inputs, sell, buy, amount, tolerance)
+        return Request(model.inputs, sell, buy, amount, tolerance, model.venue)
     }
 
     private fun swapRefusal(quoting: SwapQuoting, request: Request): String = when (quoting) {
@@ -852,8 +1197,9 @@ class SwapViewModel(
         } else {
             "Not enough ${network.nativeSymbol} for the most the fee can be. Transactions not mined yet count too."
         }
-        SwapQuoting.InsufficientToken -> "This account holds less ${request.sell.symbol} than that, with what its " +
-            "transactions not mined yet still move."
+        SwapQuoting.InsufficientToken -> "This account holds less ${request.sell.symbol} than that, once what its " +
+            "transactions not mined yet and its CoW orders that may still fill can take is set aside."
+        SwapQuoting.CowOrdersUnreadable -> ORDERS_UNREADABLE
         is SwapQuoting.Infeasible -> "This swap cannot succeed: ${quoting.detail}"
         is SwapQuoting.Reverts -> {
             val at = quoting.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
@@ -864,6 +1210,63 @@ class SwapViewModel(
         SwapQuoting.Syncing -> "The light client is not synced yet: try again in a moment."
         is SwapQuoting.Unavailable -> unavailableText(quoting.reason, quoting.figure)
     }
+
+    /** Why CoW's quote of [request] came to [quoting], not an order, in its own words (docs/swaps.md). */
+    private fun cowRefusal(quoting: CowSwapQuoting, request: Request): String = when (quoting) {
+        is CowSwapQuoting.Quoted, is CowSwapQuoting.NeedsApproval, is CowSwapQuoting.ApprovalPending,
+        is CowSwapQuoting.EarlierMaybeSent,
+        -> error("not a refusal said as text")
+        CowSwapQuoting.NothingToSwap -> "There is nothing to swap: enter an amount above zero."
+        CowSwapQuoting.NotASwap -> notASwapText(request.sell.symbol, request.buy.symbol)
+        is CowSwapQuoting.NotOffered -> when (quoting.why) {
+            CowNotOffered.NOT_ON_THIS_DEVICE -> NOT_ON_THIS_DEVICE
+            CowNotOffered.SELLS_ETHER -> SELLS_ETHER
+            CowNotOffered.NO_ROUTE -> noRouteText(request.sell.symbol, request.buy.symbol) +
+                " Without a verified Uniswap quote no floor stands for a CoW order, so CoW is not offered either."
+            CowNotOffered.FEE_ABOVE_PROCEEDS -> "Uniswap's network fee for this swap is more than it returns, so no " +
+                "verified floor stands for a CoW order: swap more."
+            CowNotOffered.NOT_FOLLOWED_YET -> "This account's history is followed from a block that is not " +
+                "finalized yet, so a CoW order's end could not be proven. CoW is offered once it is, in about a " +
+                "quarter of an hour."
+        }
+        is CowSwapQuoting.NoFloorVenue -> noVenueText(quoting.contract, network) +
+            " Without it no verified floor stands for a CoW order."
+        CowSwapQuoting.HistoryUnreadable ->
+            "Where this account's history starts cannot be read, so a CoW order's end could not be proven. Try again."
+        is CowSwapQuoting.NoVenue -> when (val contract = quoting.contract) {
+            null -> "No CoW Protocol deployment is pinned for ${network.displayName}, so CoW is not offered."
+            else -> "CoW's contract at ${Eip55.format(contract)} is not what this wallet pins, so CoW is not offered."
+        }
+        is CowSwapQuoting.EarlierOrderLive -> earlierOrderText(request)
+        CowSwapQuoting.OrdersUnreadable -> ORDERS_UNREADABLE
+        CowSwapQuoting.TooSmall -> "The order's minimum rounds down to nothing: an order that may buy nothing is not " +
+            "signed. Swap more."
+        CowSwapQuoting.InsufficientToken -> "This account holds less ${request.sell.symbol} than that, once what " +
+            "its transactions not mined yet can take is set aside."
+        CowSwapQuoting.NotAToken -> NOT_A_TOKEN
+        CowSwapQuoting.Refused -> "The light client on this device cannot quote this swap."
+        CowSwapQuoting.Syncing -> "The light client is not synced yet: try again in a moment."
+        is CowSwapQuoting.Unavailable -> unavailableText(quoting.reason, quoting.figure)
+        is CowSwapQuoting.CowRefused -> when (quoting.why) {
+            CowRefusal.NO_LIQUIDITY -> "CoW found no liquidity for this swap"
+            CowRefusal.UNSUPPORTED_TOKEN ->
+                "CoW does not trade ${request.sell.symbol} or ${request.buy.symbol}, or not right now"
+            CowRefusal.TOO_SMALL -> "The amount does not cover CoW's fee"
+            CowRefusal.FORBIDDEN -> "CoW does not serve this account"
+            CowRefusal.FUNDS -> "By CoW's own check, the balance or the allowance does not cover the order"
+            CowRefusal.OTHER -> "CoW refused to quote this swap"
+        } + " (CoW's word: ${quoting.errorType})."
+        is CowSwapQuoting.CowNoAnswer -> when (quoting.why) {
+            CowUnavailable.UNDECODABLE ->
+                "CoW gave an answer this version does not understand: an update of Serotine brings CoW back."
+            CowUnavailable.NOT_PINNED -> "No CoW API is pinned for ${network.displayName}."
+            CowUnavailable.TIMEOUT, CowUnavailable.NO_CONNECTION, CowUnavailable.SERVER_ERROR -> "CoW did not answer."
+        }
+    }
+
+    private fun earlierOrderText(request: Request) =
+        "An earlier CoW order selling ${request.sell.symbol} may still fill: one order of a token at a time, since " +
+            "both would draw on one allowance. It is done once it fills or can no longer fill."
 
     private fun approvalRefusal(quoting: ApprovalQuoting, sell: AssetOption): String = when (quoting) {
         is ApprovalQuoting.Quoted, is ApprovalQuoting.AlreadyAllowed, is ApprovalQuoting.ApprovalPending,
@@ -916,13 +1319,16 @@ class SwapViewModel(
     }
 
     private companion object {
-        const val APPROVAL_SENT = "Your approval is on its way: once a block has it, Review quotes the swap."
         const val RESET_SENT = "Your approval of zero is on its way: once a block has it, Review asks for the " +
             "approval of the whole amount."
         const val APPROVAL_PENDING =
             "An approval of this token is on its way and not in a block yet: once a block has it, Review goes on."
         const val ALLOWANCE_MOVED =
             "The router's allowance changed while the swap was quoted: nothing was signed. Review again."
+        const val RELAYER_ALLOWANCE_MOVED = "CoW's vault relayer's allowance changed while the order was quoted: " +
+            "nothing was signed. Review again."
+        const val NOT_ON_THIS_DEVICE = "CoW Protocol is not offered on this device: its light client cannot date " +
+            "a finalized block yet, which proving an order's end needs. Swap on Uniswap."
         const val NO_LONGER_MET =
             "Run again just before signing, the swap no longer returned its minimum: it was quoted again. Check it."
         const val EARLIER_MAYBE_SENT = "An earlier transaction from this account may still be on its way: no peer " +
@@ -930,6 +1336,16 @@ class SwapViewModel(
             "sign a new one, which could pay twice."
         const val SWAP_FAILED =
             "Serotine could not finish this swap. Check the account's balances before you swap again."
+        const val ORDER_FAILED = "Serotine could not finish this order. If it reached CoW, it is held back until it " +
+            "fills or can no longer fill: check the account's balances before you swap again."
+        const val FLOOR_ROSE = "The verified Uniswap net rose above this order's floor since it was quoted: it was " +
+            "quoted again. Check it."
+        const val ORDERS_UNREADABLE = "The record of this device's CoW orders cannot be read: one may still fill, " +
+            "so no token is swapped until it can be read."
+        const val SELLS_ETHER = "CoW Protocol is offered for tokens sold: selling ETH would go through CoW's " +
+            "ETH-flow contract, which this wallet does not use yet. Sell WETH on CoW, or swap ETH on Uniswap."
+        const val VAULT_RELAYER_NAME = "CoW's vault relayer"
+        const val SETTLEMENT_NAME = "CoW's settlement contract"
         const val APPROVAL_FAILED = "Serotine could not finish this approval. Try again."
         const val LIST_UNAVAILABLE =
             "Your account list cannot be read right now, so nothing can be swapped. Serotine keeps trying."

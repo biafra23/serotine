@@ -143,6 +143,20 @@ class FindUniswapRouteTest {
     }
 
     @Test
+    fun aSingleRoutesFeeIsHadOnlyWhenAskedFor() = runTest {
+        pool(PoolKey.of(usdc, weth, FeeTier.LOW), 10, tag = 0x05)
+        quote(SwapRoute.direct(usdc, weth, FeeTier.LOW), amount, amountOut = 3_000_000_000_000_000L, gas = 100_000)
+
+        val plain = assertIs<RouteFinding.Found>(find(Network.SEPOLIA, usdcAsset, TransferAsset.Native, amount))
+        assertEquals(null, plain.feeOut, "one route ranks nothing: no fee is had for it")
+        // 100 000 gas at 10 gwei + 1 gwei: 1.1e15 wei, no conversion for ether bought.
+        val withFee = assertIs<RouteFinding.Found>(
+            find(Network.SEPOLIA, usdcAsset, TransferAsset.Native, amount, RouteRanking.NET_OF_FEES, withFee = true),
+        )
+        assertEquals(UInt256.of(1_100_000_000_000_000L), withFee.feeOut)
+    }
+
+    @Test
     fun withoutFeesTheRoutesAreRankedGrossAndTheFindingSaysSo() = runTest {
         pool(PoolKey.of(usdc, link, FeeTier.LOW), 10, tag = 0x05)
         pool(PoolKey.of(usdc, link, FeeTier.MEDIUM), 10, tag = 0x30)

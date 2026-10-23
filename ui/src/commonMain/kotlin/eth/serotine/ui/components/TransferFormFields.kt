@@ -144,17 +144,26 @@ internal fun AssetChoiceRow(
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect),
         leadingContent = { TokenIcon(asset.icon, asset.symbol) },
         headlineContent = { Text(asset.symbol) },
-        supportingContent = {
-            Column {
-                Text(asset.verifiedAt?.let { "${asset.balance} · verified at $it" } ?: asset.balance)
-                asset.warning?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
+        supportingContent = { Column { AssetBalanceLines(asset) } },
         // The row is the control; the radio button only shows which one is chosen.
         trailingContent = { RadioButton(selected = selected, onClick = null, enabled = enabled) },
     )
+}
+
+/**
+ * What every asset picker says under an asset's symbol: its verified balance and, if it has one,
+ * its warning. Send's rows and the swap menus share it, so they word the verification alike.
+ */
+@Composable
+internal fun AssetBalanceLines(asset: AssetChoice) {
+    Text(
+        asset.verifiedAt?.let { "${asset.balance} · verified at $it" } ?: asset.balance,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    asset.warning?.let {
+        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+    }
 }
 
 @Composable

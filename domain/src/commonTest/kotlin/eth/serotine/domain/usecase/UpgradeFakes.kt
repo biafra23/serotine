@@ -49,6 +49,7 @@ internal class FakeKnownUpgradeStore : KnownUpgradeStore {
 
 internal class FakeLightClient : LightClient {
     val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+    override var datesFinalizedBlocks: Boolean = true
     override fun observeStatus(network: Network): Flow<LightClientStatus> = status
 }
 

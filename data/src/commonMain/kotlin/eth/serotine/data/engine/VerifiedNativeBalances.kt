@@ -15,7 +15,9 @@ import kotlinx.coroutines.flow.map
 /**
  * [NativeBalances] over a verified light client: each balance proven by
  * [VerifiedChain.proveBalance] and labelled with the block its proof anchors to, polled,
- * cached and refused as [ProvenReads] describes; while no head can be read, the last proof,
+ * cached and refused as [ProvenReads] describes, and proven again only at a head that [activity]
+ * cannot vouch for: one whose blocks since the proof it did not all check for a change to the
+ * account itself; while no head can be read, the last proof,
  * made in this process or kept in [LastBalancesFile] from an earlier one, as
  * [BalanceReading.LastKnown]. The port never fails, and no answer from
  * anywhere else stands in.
@@ -27,6 +29,8 @@ class VerifiedNativeBalances internal constructor(
     pollInterval: Duration,
     /** Where the last balances are kept across restarts; null keeps them for this process only. */
     lastBalances: LastBalancesFile? = null,
+    /** What vouches for an unchanged account between heads; none: a proof at every head. */
+    activity: AddressActivity? = null,
 ) : NativeBalances {
 
     private val reads = ProvenReads<Address, Wei>(
@@ -40,9 +44,12 @@ class VerifiedNativeBalances internal constructor(
         )
             ?: KeptProofs.none(),
         offersLastKnownWhenStopped = true,
+        unchangedSince = { address, provenAt, provenHash, head ->
+            activity?.unchangedSince(address, AddressActivity.Kind.ACCOUNT, provenAt, provenHash, head) == true
+        },
     ) { verified, address ->
         verified.proveBalance(address)?.let { proven ->
-            Wei.parse(proven.wei)?.let { EngineReading.Proven(it, proven.blockNumber) }
+            Wei.parse(proven.wei)?.let { EngineReading.Proven(it, proven.blockNumber, proven.blockHash) }
         }
     }
 

@@ -37,13 +37,17 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrder
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.TransferAsset
@@ -58,6 +62,15 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
+import eth.serotine.domain.repository.CowApi
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowOrderEnd
+import eth.serotine.domain.repository.CowOrderLife
+import eth.serotine.domain.repository.CowOrderRecord
+import eth.serotine.domain.repository.CowPlacement
+import eth.serotine.domain.repository.CowQuoteReading
+import eth.serotine.domain.repository.CowUnavailable
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryStart
 import eth.serotine.domain.repository.IndexedLog
@@ -85,11 +98,13 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.UniswapV3Chain
+import eth.serotine.domain.repository.VenueChoice
 import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
@@ -115,6 +130,7 @@ import eth.serotine.ui.components.SEND_AMOUNT_TAG
 import eth.serotine.ui.components.SEND_RECIPIENT_TAG
 import eth.serotine.ui.components.SEND_REVIEW_TAG
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
+import eth.serotine.ui.coworder.COW_ORDER_UNISWAP_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_CONTINUE_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_DEPLOY_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_NAME_TAG
@@ -205,6 +221,7 @@ class AppNavigationTest {
     private val carol = Address.of("0x" + "33".repeat(20))
     private val broadcaster = FakeBroadcaster()
     private val history = MemoryTransactionHistory()
+    private val cowOrders = MemoryCowOrders()
     private val sentRecord = MemorySentTransfers()
     private val sentTransfers = HistoryRecordingSentTransfers(sentRecord, history)
     private val receipts = FakeReceipts()
@@ -293,6 +310,7 @@ class AppNavigationTest {
         displayCurrency = MemoryCurrencySetting(),
         addressKinds = addressKinds,
         lightClient = object : LightClient {
+            override val datesFinalizedBlocks = true
             override fun observeStatus(network: Network): Flow<LightClientStatus> = status
         },
         networkUpgrades = object : NetworkUpgrades {
@@ -321,6 +339,38 @@ class AppNavigationTest {
 
             override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
+        },
+        cowChain = object : CowChain {
+            override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned
+
+            override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
+                Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
+        },
+        cowApi = object : CowApi {
+            override suspend fun quote(
+                network: Network,
+                sellToken: Address,
+                buyToken: Address,
+                sellAmount: UInt256,
+                from: Address,
+            ): CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NOT_PINNED)
+
+            override suspend fun place(
+                network: Network,
+                order: CowOrder,
+                owner: Address,
+                signature: Signature,
+                uid: CowOrderUid,
+            ): CowPlacement = CowPlacement.Unclear(CowUnavailable.NOT_PINNED)
+
+            override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife =
+                CowOrderLife.Unavailable(CowUnavailable.NOT_PINNED)
+        },
+        cowOrders = cowOrders,
+        swapVenue = object : SwapVenueSetting {
+            override fun observe(): Flow<VenueChoice> = flowOf(VenueChoice.Chosen(null))
+
+            override suspend fun choose(venue: SwapVenue): Boolean = true
         },
         debugLog = debugLog,
         debugScreen = debugScreen,
@@ -430,7 +480,7 @@ class AppNavigationTest {
         // No tab bar either: the update screen is the only one.
         rule.onNodeWithText("Settings").assertDoesNotExist()
 
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(UPDATE_REQUIRED_TAG).assertDoesNotExist()
         rule.onNodeWithText("Network upgrade reported: update Serotine").assertIsDisplayed()
@@ -450,7 +500,7 @@ class AppNavigationTest {
         // The account and Settings are gone, and both tabs' stacks with them: back leaves the app.
         assertEquals(listOf("update-required"), screens())
 
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.waitUntil { rule.onAllNodesWithTag(ACCOUNTS_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(
             listOf("accounts"),
@@ -548,7 +598,7 @@ class AppNavigationTest {
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
         rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertIsDisplayed()
         rule.onNodeWithText("Verifying sync committees · 1 of 4 periods").assertIsDisplayed()
-        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null)
+        status.value = LightClientStatus.Synced(headBlock = 100, headTimestamp = null, finalized = null)
         rule.onNodeWithText("Verified at block 100").assertIsDisplayed()
 
         // An address and its QR code need nothing verified.
@@ -710,7 +760,8 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        assertEquals(listOf("accounts", "account/{chain}/{address}", "swap/{chain}/{address}?asset={asset}"), screens())
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}"
+        assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
@@ -773,6 +824,52 @@ class AppNavigationTest {
         )
         rule.onNodeWithText("Done").performScrollTo().performClick()
         rule.onNodeWithText("Status").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
+    }
+
+    @Test
+    fun aCowOrderInActivityOpensItsStatusAndTheSameSwapOnUniswapTakesItsPlace() {
+        accounts.value = listOf(daily)
+        val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc")
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val order = CowOrder(
+            usdc.address,
+            CowOrder.NATIVE_BUY_TOKEN,
+            daily.address,
+            UInt256.of(40_000_000),
+            UInt256.ONE,
+            1_800_000_300,
+        )
+        cowOrders.orders.value = listOf(
+            CowOrderRecord(
+                account = daily.address,
+                network = Network.SEPOLIA,
+                settlement = settlement,
+                order = order,
+                uid = order.uid(Network.SEPOLIA.chainId, settlement, daily.address),
+                signature = Signature("0".repeat(63) + "1", "0".repeat(63) + "1", 0),
+                sell = TransferAsset.Erc20Token(usdc),
+                buy = TransferAsset.Native,
+                signedAt = 1_800_000_000,
+                rangeStart = 9_412_000,
+                end = CowOrderEnd.Unfilled(9_412_200, cancelled = false),
+            ),
+        )
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Activity").performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("CoW order not filled: 40 USDC").performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(COW_ORDER_UNISWAP_TAG).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(listOf("accounts", "account/{chain}/{address}", "cow-order/{chain}/{uid}"), screens())
+
+        rule.onNodeWithTag(COW_ORDER_UNISWAP_TAG).performScrollTo().performClick()
+        rule.waitUntil { rule.onAllNodesWithText("Slippage tolerance").fetchSemanticsNodes().isNotEmpty() }
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}"
+        assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens(), "in the order's place")
+
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
     }

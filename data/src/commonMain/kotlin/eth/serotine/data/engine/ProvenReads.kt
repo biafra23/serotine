@@ -31,8 +31,11 @@ internal sealed interface EngineReading<out T> {
      */
     data class LastKnown<T>(val value: T, val blockNumber: Long, val asOf: Long?) : EngineReading<T>
 
-    /** [value], proven at [blockNumber]. */
-    data class Proven<T>(val value: T, val blockNumber: Long) : EngineReading<T>
+    /**
+     * [value], proven at [blockNumber], whose hash is [blockHash] when the engine proved it: what
+     * a proof kept across heads is checked against ([AddressActivity.unchangedSince]).
+     */
+    data class Proven<T>(val value: T, val blockNumber: Long, val blockHash: String? = null) : EngineReading<T>
 
     /** No verified answer, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : EngineReading<Nothing>
@@ -42,8 +45,8 @@ internal sealed interface EngineReading<out T> {
  * Verified readings of one fact per key — an address, or a holder and a token: what [prove]
  * proves — over a verified light client, shared by the engine adapters. Each subscriber
  * polls the engine's state every [pollInterval]; while the client can serve verified reads
- * the fact is proven again whenever the verified head has moved, and labelled with the block
- * its proof anchors to. Whenever reads cannot be verified (syncing, asleep, a stale head, no
+ * the fact is proven again whenever the verified head has moved — unless [unchangedSince] knows
+ * that nothing since its proof touched it — and labelled with the block its proof anchors to. Whenever reads cannot be verified (syncing, asleep, a stale head, no
  * peer serving proofs) the reading says so: [EngineReading.Syncing], or, once the fact was
  * proven, [EngineReading.LastKnown] with that last proof, dated by the verified head it was made
  * at — in this process, or [kept] from an earlier one — an older answer labelled as one, never
@@ -80,6 +83,22 @@ internal class ProvenReads<K, T>(
      * a fetch that can take several heads.
      */
     private val sharedForHeads: Long = 1,
+    /**
+     * Whether the proof of a key's fact made at block `provenAt`, of hash `provenHash` (null when
+     * the engine did not prove it), still stands at the verified head `head` without being made
+     * again ([AddressActivity.unchangedSince]): true only when nothing could have changed it in
+     * between. Never blocks on I/O. False by default: a proof stands as long as [keptForHeads]
+     * says. Either way the reading keeps the block of its proof.
+     */
+    private val unchangedSince: (key: K, provenAt: Long, provenHash: String?, head: Long) -> Boolean =
+        { _, _, _, _ -> false },
+    /**
+     * A kept proof's value as of a later verified head produced at `headTimestamp` (unix
+     * seconds; null when unknown), for a fact whose reading also depends on the head's time
+     * — a price's age. Asked only when [unchangedSince] vouched for the proof; null proves the
+     * fact again. The value as it is by default.
+     */
+    private val atHead: (key: K, value: T, headTimestamp: Long?) -> T? = { _, value, _ -> value },
     /**
      * Where the last proof of each key is kept beyond the process ([KeptProofs]), so that a
      * restart can say what was last verified before a head can be read; none by default.
@@ -152,6 +171,14 @@ internal class ProvenReads<K, T>(
         if (snapshot !is EngineSnapshot.Running) return syncing(key)
         if (snapshot.phase == Phase.STALE_ANCHOR) return EngineReading.Unavailable(ReadUnavailable.STALE_ANCHOR)
         val head = snapshot.readableHead ?: return syncing(key)
+        // Asked outside the lock: it reads the engine (in memory, but across JNA).
+        proofsLock.withLock { proofs[key] }?.let { kept ->
+            if (head >= kept.head && unchangedSince(key, kept.reading.blockNumber, kept.reading.blockHash, head)) {
+                atHead(key, kept.reading.value, snapshot.headTimestamp)?.let {
+                    return kept.reading.copy(value = it)
+                }
+            }
+        }
         while (true) {
             val pending = CompletableDeferred<EngineReading<T>?>()
             val running = proofsLock.withLock {

@@ -211,7 +211,8 @@ class ObserveSentToAddresses(private val history: TransactionHistory) {
         is SentAction.Transfer -> action.to
         is SentAction.SafeApproval -> action.request.recipient()
         is SentAction.SafeExecution -> action.request.recipient()
-        is SentAction.TokenApproval, is SentAction.Swap, is SentAction.SafeDeployment -> null
+        is SentAction.TokenApproval, is SentAction.Swap, is SentAction.SafeDeployment, is SentAction.CowCancellation ->
+            null
     }
 
     private fun SigningRequest.recipient(): Address? = when (val action = SafeTxAction.of(safe, tx)) {
@@ -226,7 +227,7 @@ fun HistoryEntry.concerns(id: AccountId): Boolean {
     if (transfer.accountId == id) return true
     if (transfer.network != id.network) return false
     return when (val action = transfer.action) {
-        is SentAction.Transfer, is SentAction.TokenApproval, is SentAction.Swap -> false
+        is SentAction.Transfer, is SentAction.TokenApproval, is SentAction.Swap, is SentAction.CowCancellation -> false
         is SentAction.SafeApproval -> action.request.safe == id.address
         is SentAction.SafeExecution -> action.request.safe == id.address
         is SentAction.SafeDeployment -> action.safe == id.address

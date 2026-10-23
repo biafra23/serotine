@@ -84,7 +84,7 @@ sealed interface Signing {
 /** Why [Unlock.WithBiometrics] cannot open an envelope. */
 enum class BiometricUnusable {
     /**
-     * The biometric path is off, or not on this platform at all (the desktop),
+     * The biometric path is off, or not on this platform at all (Windows and Linux),
      * or this account's key was stored without it.
      */
     OFF,

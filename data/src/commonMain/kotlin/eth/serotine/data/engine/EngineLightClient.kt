@@ -28,6 +28,10 @@ class EngineLightClient internal constructor(
     private val pollInterval: Duration,
 ) : LightClient {
 
+    // What the chain's snapshot reads: the JVM engine's finalized header (FinalizedHeaders). The
+    // iOS node, whose engine reads none yet, says otherwise.
+    override val datesFinalizedBlocks: Boolean = true
+
     override fun observeStatus(network: Network): Flow<LightClientStatus> {
         if (network != served) return flowOf(LightClientStatus.Unavailable)
         val chain = chain ?: return flowOf(LightClientStatus.Unavailable)
@@ -59,7 +63,11 @@ class EngineLightClient internal constructor(
             )
             snapshot.proofPeers == 0 ->
                 LightClientStatus.WaitingForProofPeers(snapshot.headBlock, snapshot.headTimestamp)
-            else -> LightClientStatus.Synced(snapshot.headBlock, snapshot.headTimestamp)
+            else -> LightClientStatus.Synced(
+                headBlock = snapshot.headBlock,
+                headTimestamp = snapshot.headTimestamp,
+                finalized = snapshot.finalizedHeader,
+            )
         }
     }
 }

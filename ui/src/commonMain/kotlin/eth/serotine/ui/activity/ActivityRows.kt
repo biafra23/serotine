@@ -8,6 +8,8 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.CowOrderEnd
+import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
@@ -225,12 +227,13 @@ internal class ActivityRows(
         // the account that sent it.
         val (title, other, detail) = when (val action = transfer.action) {
             is SentAction.Transfer -> Triple("Sent ${amount(action.amount, action.asset)}", action.to, "To")
-            // A zero approval takes the allowance back, before the whole amount is approved.
+            // A zero approval takes the allowance back, before the whole amount is approved. The spender
+            // is Uniswap's router or CoW's vault relayer, which the record does not tell apart.
             is SentAction.TokenApproval -> if (action.amount.isZero) {
-                Triple("Allowance reset for a swap", action.spender, "Router")
+                Triple("Allowance reset for a swap", action.spender, "Spender")
             } else {
                 val approved = amount(action.amount, TransferAsset.Erc20Token(action.token))
-                Triple("Approved $approved", action.spender, "Router")
+                Triple("Approved $approved", action.spender, "Spender")
             }
             is SentAction.Swap -> {
                 val (symbol, decimals) = shown(action.buy)
@@ -245,6 +248,7 @@ internal class ActivityRows(
             } else {
                 Triple("Deployed", transfer.account, "Paid by")
             }
+            is SentAction.CowCancellation -> Triple("Cancelled a CoW order on chain", action.settlement, "On CoW ·")
         }
         val (status, state) = statusOf(entry)
         return ActivityRow(
@@ -263,6 +267,46 @@ internal class ActivityRows(
     fun amount(units: UInt256, asset: TransferAsset): String {
         val (symbol, decimals) = shown(asset)
         return "${units.formatUnits(decimals)} $symbol"
+    }
+
+    /**
+     * A CoW order signed here as a row: what it sells and buys, and where it stands as the chain
+     * proves it (docs/swaps.md, *Proving an order's end*), dated when it was signed. A tap opens the
+     * order's status.
+     */
+    fun orderRow(order: CowOrderRecord): ActivityRow {
+        val sells = amount(order.order.sellAmount, order.sell)
+        val (title, status, state) = when (val end = order.end) {
+            null -> Triple(
+                "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}",
+                "May fill until ${formatTime(order.order.validTo)}",
+                ActivityState.WAITING,
+            )
+            is CowOrderEnd.Filled -> Triple(
+                "Swapped $sells for ${amount(end.trade.buyAmount, order.buy)} on CoW",
+                "Filled in block ${grouped(end.block)}",
+                ActivityState.DONE,
+            )
+            is CowOrderEnd.Unfilled -> {
+                val block = grouped(end.endBlock)
+                if (end.cancelled) {
+                    Triple("CoW order cancelled: $sells", "Cancelled in block $block", ActivityState.DONE)
+                } else {
+                    Triple("CoW order not filled: $sells", "Not filled by block $block", ActivityState.DONE)
+                }
+            }
+            CowOrderEnd.NotProvable -> Triple("CoW order: $sells", "Its end cannot be proven", ActivityState.UNKNOWN)
+        }
+        return ActivityRow(
+            key = order.uid.hex,
+            title = title,
+            detail = "On CoW · ${shortAddress(Eip55.format(order.settlement))}",
+            about = Eip55.format(order.settlement),
+            time = formatTime(order.signedAt),
+            status = status,
+            state = state,
+            opens = ActivityKey(order.uid.hex, cowOrder = true),
+        )
     }
 
     /** [asset]'s symbol as screens show it, and its decimals. */

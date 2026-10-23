@@ -15,7 +15,15 @@ import kotlinx.coroutines.flow.map
 /**
  * [TokenBalances] over a verified light client: the token contract's `balanceOf(holder)` run
  * as a verified call ([VerifiedChain.call]), polled, cached and refused as [ProvenReads]
- * describes. A call that reverts, or returns anything but one word, is a verified "not a
+ * describes, and — for the tokens in [gated] alone — called again only at a head that
+ * [activity] cannot vouch for: one whose blocks since the call it did not all check for a log
+ * naming the holder, as a transfer's does. That holds only for a plain ERC-20, whose balances
+ * move by a logged `Transfer` naming both sides, so only the network's built-in tokens are
+ * gated. A token a user adds by address is called at every head, as without [activity]: it may
+ * move balances with no log naming the holder (a rebasing token, an interest-bearing aToken, a
+ * streaming or vesting token, a reflection token, a `Transfer` with unindexed parties). Even a
+ * built-in token behind an upgradeable proxy could change through an upgrade; that one is
+ * accepted, and a kept balance is still re-proven at the holder's next transfer. A call that reverts, or returns anything but one word, is a verified "not a
  * token" ([TokenBalanceReading.NotAToken]); one the engine refuses for good is
  * [ReadUnavailable.REFUSED]; one it cannot answer right now is unproven. While no head can be
  * read, the last proof, made in this process or kept in [LastBalancesFile] from an earlier one,
@@ -28,6 +36,10 @@ class VerifiedTokenBalances internal constructor(
     pollInterval: Duration,
     /** Where the last balances are kept across restarts; null keeps them for this process only. */
     lastBalances: LastBalancesFile? = null,
+    /** What vouches for an unchanged balance between heads; none: a call at every head. */
+    activity: AddressActivity? = null,
+    /** The tokens whose balances [activity] may vouch for: the network's plain, built-in ones. */
+    gated: Set<Address> = emptySet(),
 ) : TokenBalances {
 
     /** One holder's balance of one token. */
@@ -44,13 +56,21 @@ class VerifiedTokenBalances internal constructor(
             parse = TokenUnits::parse,
         ) ?: KeptProofs.none(),
         offersLastKnownWhenStopped = true,
+        // A call whose block the engine did not name (UNKNOWN_BLOCK, negative) is never vouched for.
+        unchangedSince = { key, provenAt, provenHash, head ->
+            key.token in gated &&
+                activity?.unchangedSince(key.holder, AddressActivity.Kind.LOG, provenAt, provenHash, head) == true
+        },
+        // A kept "not a token" is asked again: only an amount stands between heads.
+        atHead = { _, value, _ -> value },
     ) { verified, key ->
         when (val outcome = verified.call(key.token, Abi.balanceOf(key.holder))) {
             is CallOutcome.Returned -> EngineReading.Proven(
                 Abi.uint256(outcome.hex)?.let(TokenUnits::parse),
                 outcome.blockNumber ?: UNKNOWN_BLOCK,
+                outcome.blockHash,
             )
-            is CallOutcome.Reverted -> EngineReading.Proven(null, outcome.blockNumber ?: UNKNOWN_BLOCK)
+            is CallOutcome.Reverted -> EngineReading.Proven(null, outcome.blockNumber ?: UNKNOWN_BLOCK, outcome.blockHash)
             CallOutcome.Refused -> EngineReading.Unavailable(ReadUnavailable.REFUSED)
             null -> null
         }

@@ -41,8 +41,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
@@ -52,6 +54,8 @@ import eth.serotine.ui.activitydetail.ActivityDetailRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.coworder.CowOrderRoute
+import eth.serotine.ui.coworder.SwapAgain
 import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
@@ -70,6 +74,7 @@ import eth.serotine.ui.safetx.SafeTxRoute
 import eth.serotine.ui.security.SecurityRoute
 import eth.serotine.ui.send.SendRoute
 import eth.serotine.ui.settings.SettingsRoute
+import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
@@ -449,20 +454,25 @@ private fun Destinations(
         // Swap, and then where the swap stands: the transaction's flow, over the bar too.
         composable(
             SWAP_ROUTE,
-            arguments = listOf(
-                navArgument(ASSET) {
+            arguments = listOf(ASSET, BUY, AMOUNT, VENUE).map { name ->
+                navArgument(name) {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
-                },
-            ),
+                }
+            },
         ) { entry ->
             val account = entry.account()
             val asked = entry.savedStateHandle.get<String>(ASSET)
             val asset = asked?.let(Address::parse)
+            val fill = swapFillOf(
+                entry.savedStateHandle.get<String>(BUY),
+                entry.savedStateHandle.get<String>(AMOUNT),
+                entry.savedStateHandle.get<String>(VENUE),
+            )
             if (account != null && (asked == null || asset != null)) {
                 SwapRoute(
-                    viewModel = viewModel { graph.swapViewModel(account, asset) },
+                    viewModel = viewModel { graph.swapViewModel(account, asset, fill) },
                     lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SWAP_ROUTE, inclusive = true) },
                     // Back from the status goes where Swap was opened from, not to a signed review.
@@ -475,9 +485,35 @@ private fun Destinations(
                     onOpenTransfer = { hash ->
                         navController.navigate(transferRoute(account.network, hash)) { launchSingleTop = true }
                     },
+                    // A CoW order's status, the one placed or an earlier one, over Swap.
+                    onOpenOrder = { uid -> navController.openCowOrder(account.network, uid) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SWAP_ROUTE, inclusive = true) }
+            }
+        }
+        // A CoW order signed here: where it stands, its cancellation on chain, the same swap again.
+        composable(COW_ORDER_ROUTE) { entry ->
+            val network = entry.network()
+            val uid = entry.savedStateHandle.get<String>(UID)?.lowercase()?.takeIf(ORDER_UID::matches)
+            val parsed = uid?.let(CowOrderUid::parse)
+            if (network != null && parsed != null) {
+                CowOrderRoute(
+                    viewModel = viewModel { graph.cowOrderViewModel(network, parsed) },
+                    lightClient = lightClient.item(network),
+                    onBack = { navController.popBackStack(COW_ORDER_ROUTE, inclusive = true) },
+                    // Back from the cancellation's status goes where the order was opened from.
+                    onCancelSent = { hash ->
+                        navController.navigate(transferRoute(network, hash)) {
+                            popUpTo(COW_ORDER_ROUTE) { inclusive = true }
+                        }
+                    },
+                    onOpenTransfer = { hash -> navController.openTransfer(network, hash) },
+                    // The same swap on Uniswap, in the order's place.
+                    onSwapAgain = { again -> navController.swapAgain(network, again) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(COW_ORDER_ROUTE, inclusive = true) }
             }
         }
         // A Safe's transactions: proposing one, importing one, and one of them; over the bar too,
@@ -669,8 +705,9 @@ private fun NavController.safeSwap(safe: AccountId, asset: String?, replacing: D
     navigate("${Destination.SAFE}/${safe.route}/${Destination.SWAP}" + if (query.isEmpty()) "" else "?$query")
 }
 
-/** Opens the detail of the row [key] of the Activity of the [account]. */
+/** Opens the detail of the row [key] of the Activity of the [account]; for a CoW order, its status. */
 private fun NavController.openActivityDetail(account: AccountId, key: ActivityKey) {
+    if (key.cowOrder) return openCowOrder(account.network, key.hash)
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     // (Not launchSingleTop: that would reuse the entry, and its key, for another one.)
     if (currentDestination?.route == ACTIVITY_DETAIL_ROUTE) return
@@ -691,6 +728,48 @@ private fun NavController.addToken(network: Network, contract: String) {
 /** The status of the transaction [hash] on [network], as a route carries it: the hash in lower case. */
 private fun transferRoute(network: Network, hash: String): String =
     "${Destination.TRANSFER}/${network.chainId}/${hash.lowercase()}"
+
+/**
+ * Opens the status of the CoW order [uid] (`0x` and 112 hex digits) signed on [network], as a route
+ * carries it: in lower case.
+ */
+private fun NavController.openCowOrder(network: Network, uid: String) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == COW_ORDER_ROUTE) return
+    val route = uid.lowercase().takeIf(ORDER_UID::matches) ?: return
+    navigate("${Destination.COW_ORDER}/${network.chainId}/$route")
+}
+
+/**
+ * Opens Swap with [again] filled in, on Uniswap, on [network], in place of the order's status, and of
+ * the Swap it was opened from if it was (whose order this was): back from it goes where that was
+ * opened from.
+ */
+private fun NavController.swapAgain(network: Network, again: SwapAgain) {
+    if (currentDestination?.route == SWAP_ROUTE) return
+    val from = AccountId(network, Address.parse(again.from) ?: return)
+    val sell = Address.parse(again.sell) ?: return
+    val buy = again.buy?.let { Address.parse(it)?.hex ?: return } ?: NATIVE_PICK
+    val amount = again.amount.takeIf(AMOUNT_TEXT::matches) ?: return
+    popBackStack(COW_ORDER_ROUTE, inclusive = true)
+    if (currentDestination?.route == SWAP_ROUTE) popBackStack()
+    navigate("${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE")
+}
+
+/**
+ * What Swap's route asks to be filled in: what it buys ([buy], a token's address or [NATIVE_PICK]),
+ * the [amount] as text and the [venue]; null when it asks for none, or not in a form this build reads.
+ */
+private fun swapFillOf(buy: String?, amount: String?, venue: String?): SwapFill? {
+    if (buy == null || amount == null || venue == null) return null
+    val token = if (buy == NATIVE_PICK) null else Address.parse(buy) ?: return null
+    val chosen = when (venue) {
+        UNISWAP_VENUE -> SwapVenue.UNISWAP
+        COW_VENUE -> SwapVenue.COW
+        else -> return null
+    }
+    return SwapFill(token, amount.takeIf(AMOUNT_TEXT::matches) ?: return null, chosen)
+}
 
 /** Opens the status of the transaction [hash] (`0x` and 64 hex digits) on [network]. */
 private fun NavController.openTransfer(network: Network, hash: String) {
@@ -813,6 +892,7 @@ private object Destination {
     const val PROPOSE = "propose"
     const val IMPORT = "import"
     const val UPDATE_REQUIRED = "update-required"
+    const val COW_ORDER = "cow-order"
 }
 
 /** The route argument every account destination carries beside [CHAIN], and Add token's contract. */
@@ -839,8 +919,31 @@ private const val IMPORTED = "imported"
 /** Send from an account, with a token chosen or not. */
 private const val SEND_ROUTE = "${Destination.SEND}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}"
 
-/** Swap from an account, selling a token or the network's currency. */
-private const val SWAP_ROUTE = "${Destination.SWAP}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}"
+/** Swap's optional route arguments, all three or none: what it buys, the amount as text, the venue. */
+private const val BUY = "buy"
+private const val AMOUNT = "amount"
+private const val VENUE = "venue"
+
+/** How Swap's route names the network's currency bought, and the two venues. */
+private const val NATIVE_PICK = "native"
+private const val UNISWAP_VENUE = "uniswap"
+private const val COW_VENUE = "cow"
+
+/** An amount as Swap's route carries it: digits, with a decimal point or not. */
+private val AMOUNT_TEXT = Regex("^[0-9]+(\\.[0-9]+)?$")
+
+/** Swap from an account, selling a token or the network's currency, filled in or not. */
+private const val SWAP_ROUTE =
+    "${Destination.SWAP}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}&$BUY={$BUY}&$AMOUNT={$AMOUNT}&$VENUE={$VENUE}"
+
+/** A CoW order's route argument: its UID. */
+private const val UID = "uid"
+
+/** Where a CoW order signed here stands, by its network and its UID. */
+private const val COW_ORDER_ROUTE = "${Destination.COW_ORDER}/{$CHAIN}/{$UID}"
+
+/** A CoW order's UID as a route carries it: `0x` and 112 lower-case hex digits. */
+private val ORDER_UID = Regex("^0x[0-9a-f]{112}$")
 
 /** The detail of a row of an account's Activity: a transaction by its hash, an event by its log too. */
 private const val ACTIVITY_DETAIL_ROUTE =

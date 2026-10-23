@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
@@ -166,6 +167,22 @@ class ActivityDetailViewModelTest {
         )
         assertEquals(sent.hash, shown.opensStatus)
         assertNull(shown.addToken)
+    }
+
+    @Test
+    fun aCowOrdersCancellationNamesTheOrderAndTheSettlement() = runTest {
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val uid = CowOrderUid.of("0x" + "ab".repeat(32) + alice.address.hex.removePrefix("0x") + "6ad9e7f4")
+        val cancellation = sent.copy(action = SentAction.CowCancellation(settlement, uid))
+        history.entries.value = listOf(HistoryEntry(cancellation, SentOutcome.Finalized(9_412_118, succeeded = true)))
+
+        val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(ActivityKey(cancellation.hash)).uiState.value)
+
+        assertEquals("Cancelled a CoW order on chain", shown.headline)
+        val fields = shown.fields.associate { it.label to it.value }
+        assertEquals(uid.hex, fields["CoW order"])
+        assertEquals(Eip55.format(settlement), fields["Settlement contract"])
+        assertEquals(DetailKind.HASH, shown.fields.single { it.label == "CoW order" }.kind)
     }
 
     @Test
