@@ -3,6 +3,7 @@ package eth.serotine.data.tokens
 import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PriceId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -32,9 +33,15 @@ class BuiltInTokensTest {
             listOf("USDC", "USDT", "DAI", "WETH", "WBTC", "LINK", "UNI", "EURC", "PYUSD", "GHO", "AAVE"),
             tokens.map { it.symbol },
         )
-        // Each priced on Ethereum by a feed pinned there, none by another network's.
-        val feeds = ChainlinkFeeds.of(Network.ETHEREUM).map { it.priceId }
-        tokens.forEach { assertTrue(it.priceId in feeds, "${it.symbol} has a feed on Ethereum") }
+        // Each priced on Ethereum by a feed pinned there, none by another network's, whose chain of
+        // quotes ends in USD there (WBTC's goes through BTC).
+        val quotes = ChainlinkFeeds.of(Network.ETHEREUM).associate { it.priceId to it.quote }
+        tokens.forEach { token ->
+            var id = token.priceId
+            val seen = mutableSetOf<PriceId?>()
+            while (id != null && id != PriceId.USD && seen.add(id)) id = quotes[id]
+            assertEquals(PriceId.USD, id, "${token.symbol}'s feeds on Ethereum reach USD")
+        }
     }
 
     @Test
