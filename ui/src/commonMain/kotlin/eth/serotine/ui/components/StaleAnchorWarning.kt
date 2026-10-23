@@ -61,8 +61,8 @@ data class StaleAnchorWarning(
                     "punished, so whoever gathers enough of them could show Serotine a made-up chain. That " +
                     "cannot reveal your keys or move your funds by itself, but balances, incoming payments " +
                     "and confirmations could be false. If you go on, check large amounts elsewhere before you " +
-                    "act on them. This lasts until Serotine is closed: if the checkpoint is still too old " +
-                    "then, it asks again.",
+                    "act on them. This holds while Serotine keeps running: when it starts again and the " +
+                    "checkpoint is still too old, it asks again.",
             )
         }
 

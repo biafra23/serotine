@@ -75,7 +75,9 @@ class AccountsViewModel(
 ) : ViewModel() {
 
     /** Each network's light client, in `Network` order. */
-    private val statuses = combine(Network.entries.map { observeLightClient(it).asItems(clock) }) { it.toList() }
+    private val statuses = combine(
+        Network.entries.map { observeLightClient(it).asItems(clock, decidedHere = true) },
+    ) { it.toList() }
 
     /** Each network's stale-checkpoint warning, in `Network` order: null while it is not refusing to sync. */
     private val staleAnchors = combine(

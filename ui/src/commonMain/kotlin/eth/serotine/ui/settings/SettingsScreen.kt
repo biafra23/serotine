@@ -19,6 +19,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -26,6 +29,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.LightClientHealthDot
+import eth.serotine.ui.components.StaleAnchorBanner
+import eth.serotine.ui.components.StaleAnchorDialog
+import eth.serotine.ui.components.StaleAnchorWarning
 
 /** Test tag of the app's version line, for UI tests. */
 const val SETTINGS_VERSION_TAG = "settings-version"
@@ -60,6 +66,7 @@ fun SettingsRoute(
         onNetworkChange = viewModel::switchNetwork,
         onConfirmTurnOff = viewModel::confirmTurnOff,
         onCancelTurnOff = viewModel::cancelTurnOff,
+        onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
     )
 }
 
@@ -85,7 +92,19 @@ fun SettingsScreen(
     onNetworkChange: (chainId: Long, on: Boolean) -> Unit = { _, _ -> },
     onConfirmTurnOff: () -> Unit = {},
     onCancelTurnOff: () -> Unit = {},
+    onSyncPastStaleAnchor: (chainId: Long) -> Unit = {},
 ) {
+    var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
+    asking?.let { warning ->
+        StaleAnchorDialog(
+            warning,
+            onConfirm = {
+                asking = null
+                onSyncPastStaleAnchor(warning.chainId)
+            },
+            onDismiss = { asking = null },
+        )
+    }
     state.turningOff?.let { asked ->
         AlertDialog(
             onDismissRequest = onCancelTurnOff,
@@ -136,6 +155,9 @@ fun SettingsScreen(
                             Text(network.line)
                             if (network.notSaved) {
                                 Text("The change could not be saved.", color = MaterialTheme.colorScheme.error)
+                            }
+                            network.staleAnchor?.let { warning ->
+                                StaleAnchorBanner(warning, MaterialTheme.colorScheme.error) { asking = warning }
                             }
                         }
                     },

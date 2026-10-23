@@ -584,6 +584,7 @@ class AppGraph(
             screenCaptureDebugSwitch,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
+            SyncPastStaleAnchor(lightClient, staleAnchorConsent),
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */

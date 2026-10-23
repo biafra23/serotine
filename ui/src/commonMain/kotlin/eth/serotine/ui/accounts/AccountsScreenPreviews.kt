@@ -483,8 +483,7 @@ private val staleAnchor = threeNetworks.copy(
         ethereum,
         gnosis.copy(
             status = LightClientItem(
-                "Not syncing: the last trusted checkpoint is 6 periods old, past the safe limit of 3 · " +
-                    "decide on Accounts",
+                "Not syncing: the last trusted checkpoint is 6 periods old, past the safe limit of 3",
                 null,
                 false,
                 NOT_VERIFIED,

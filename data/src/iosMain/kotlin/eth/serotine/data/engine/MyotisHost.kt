@@ -405,7 +405,15 @@ class MyotisHost private constructor(
          * switch to the state it is already in is not asked of the engine, which refuses it.
          * Control dispatcher.
          */
+        /**
+         * Whether the user let this network sync past a stale anchor in this run: armed again on
+         * each chain started later in the run, before its start (the engine's pre-consent), as the
+         * engine keeps it per chain. Control dispatcher.
+         */
+        private var staleAnchorConsented = false
+
         fun acceptStaleAnchor() {
+            staleAnchorConsented = true
             val handle = (state as? ChainState.Running)?.handle ?: return
             val accepted = try {
                 handle.acceptStaleAnchor()
@@ -463,6 +471,7 @@ class MyotisHost private constructor(
             return try {
                 val info = engine.availableNetworks().firstOrNull { it.name == handle.networkName }
                 val running = ChainState.Running(handle, info?.clGenesisTime ?: 0, info?.secondsPerSlot ?: 0)
+                if (staleAnchorConsented) handle.acceptStaleAnchor()
                 if (handle.start()) {
                     running
                 } else {

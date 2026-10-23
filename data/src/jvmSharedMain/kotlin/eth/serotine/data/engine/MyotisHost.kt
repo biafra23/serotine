@@ -404,7 +404,17 @@ class MyotisHost private constructor(
 
         fun resume() = switch("resume") { it.resume() }
 
-        fun acceptStaleAnchor() = switch("sync past its stale anchor") { it.acceptStaleAnchor() }
+        /**
+         * Whether the user let this network sync past a stale anchor in this run: armed again on
+         * each chain started later in the run, before its start (the engine's pre-consent), as the
+         * engine keeps it per chain. Control thread.
+         */
+        private var staleAnchorConsented = false
+
+        fun acceptStaleAnchor() {
+            staleAnchorConsented = true
+            switch("sync past its stale anchor") { it.acceptStaleAnchor() }
+        }
 
         // Caught here, not around the loop over the networks, so one failing does not leave the
         // others' networking as it was. Throwable: the calls cross JNA.
@@ -471,6 +481,7 @@ class MyotisHost private constructor(
             return try {
                 val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
                 val running = ChainState.Running(handle, ports, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
+                if (staleAnchorConsented) handle.acceptStaleAnchor()
                 if (handle.start()) {
                     running
                 } else {

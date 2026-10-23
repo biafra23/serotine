@@ -93,7 +93,7 @@ class LightClientItemTest {
         assertEquals(
             LightClientItem(
                 "Not syncing: the last trusted checkpoint is 20 periods old, past the safe limit of 13 · " +
-                    "decide on Accounts",
+                    "decide in Settings → Networks",
                 null,
                 false,
                 NOT_VERIFIED,
@@ -102,7 +102,7 @@ class LightClientItemTest {
         )
         assertEquals(
             LightClientItem(
-                "Not syncing: the last trusted checkpoint is 20 periods old · decide on Accounts",
+                "Not syncing: the last trusted checkpoint is 20 periods old · decide in Settings → Networks",
                 null,
                 false,
                 NOT_VERIFIED,
