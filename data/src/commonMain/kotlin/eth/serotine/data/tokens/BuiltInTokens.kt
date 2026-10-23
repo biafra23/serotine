@@ -26,15 +26,47 @@ import kotlinx.coroutines.flow.flowOf
  * USDC, LINK and UNI were checked on 2026-10-17 at Sepolia block 11,932,144, the rest on
  * 2026-10-22 at block 11,966,329 (USDC, LINK and UNI again with them), with verified calls
  * through the Myotis engine (`symbol()`, `decimals()`, `name()`, each as listed here).
+ *
+ * On Ethereum, the plan's candidates (docs/networks.md, *Values*; the owner's ruling of
+ * 2026-10-22 takes them): the issuers' own contracts of USDC, USDT, DAI, WBTC, LINK, UNI, EURC,
+ * PYUSD, GHO and AAVE, and WETH9, each priced by its own Chainlink feed (WETH by ether's, WBTC
+ * by WBTC / BTC). Read on 2026-10-23 at mainnet block 26,256,215 through two public nodes,
+ * which agreed, a debugging source only (CLAUDE.md, *Data sources*): `symbol()`, `name()` and
+ * `decimals()`, each as listed here. The app checks every entry against its contract through
+ * the light client at every run, and `MyotisHostEthereumTest` does so on the real chain.
  */
 object BuiltInTokens {
 
     /** The tokens built in for [network], in display order. */
     fun of(network: Network): List<Token> = when (network) {
-        // None built in until each is proven on mainnet (docs/networks.md, part 4).
-        Network.ETHEREUM -> emptyList()
+        Network.ETHEREUM -> ETHEREUM
         Network.SEPOLIA -> SEPOLIA
     }
+
+    private val ETHEREUM = listOf(
+        priced("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "USDC", "USD Coin", 6, "usdc"),
+        priced("0xdac17f958d2ee523a2206206994597c13d831ec7", "USDT", "Tether USD", 6, "usdt"),
+        priced("0x6b175474e89094c44da98b954eedeac495271d0f", "DAI", "Dai Stablecoin", 18, "dai"),
+        // WETH9, one ether locked in it for each token and paid out on withdraw, hence ether's price.
+        priced("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "WETH", "Wrapped Ether", 18, "weth", "ETH"),
+        priced("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599", "WBTC", "Wrapped BTC", 8, "wbtc"),
+        priced("0x514910771af9ca656af840dff83e8264ecf986ca", "LINK", "ChainLink Token", 18, "link"),
+        priced("0x1f9840a85d5af5bf1d1762f925bdaddc4201f984", "UNI", "Uniswap", 18, "uni"),
+        priced("0x1abaea1f7c830bd89acc67ec4af516284b1bc33c", "EURC", "Euro Coin", 6, "eurc"),
+        priced("0x6c3ea9036406852006290770bedfcaba0e23a0e8", "PYUSD", "PayPal USD", 6, "pyusd"),
+        priced("0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f", "GHO", "Gho Token", 18, "gho"),
+        priced("0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9", "AAVE", "Aave Token", 18, "aave"),
+    )
+
+    /** A token priced by the feed of [priceId], its own symbol's unless another is named. */
+    private fun priced(
+        address: String,
+        symbol: String,
+        name: String,
+        decimals: Int,
+        icon: String,
+        priceId: String = symbol,
+    ) = Token(Address.of(address), symbol, name, decimals, icon, PriceId(priceId))
 
     private val SEPOLIA = listOf(
         // Circle's USDC on Sepolia.

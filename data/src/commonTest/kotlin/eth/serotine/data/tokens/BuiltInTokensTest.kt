@@ -1,5 +1,6 @@
 package eth.serotine.data.tokens
 
+import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.domain.model.Network
 import kotlin.test.Test
@@ -22,10 +23,27 @@ class BuiltInTokensTest {
     }
 
     @Test
+    fun theEthereumListIsThePlansCandidatesEachWithAnIconAndAFeed() {
+        val tokens = BuiltInTokens.of(Network.ETHEREUM)
+
+        assertEquals(tokens.size, tokens.distinctBy { it.address }.size)
+        assertTrue(tokens.all { it.icon != null }, "a built-in token has a bundled icon (CLAUDE.md, Data sources)")
+        assertEquals(
+            listOf("USDC", "USDT", "DAI", "WETH", "WBTC", "LINK", "UNI", "EURC", "PYUSD", "GHO", "AAVE"),
+            tokens.map { it.symbol },
+        )
+        // Each priced on Ethereum by a feed pinned there, none by another network's.
+        val feeds = ChainlinkFeeds.of(Network.ETHEREUM).map { it.priceId }
+        tokens.forEach { assertTrue(it.priceId in feeds, "${it.symbol} has a feed on Ethereum") }
+    }
+
+    @Test
     fun theBuiltInWethIsTheWeth9TheSwapsPin() {
         // ETH against this token is a wrap only while the two addresses are one (docs/swaps.md).
-        val weth = BuiltInTokens.of(Network.SEPOLIA).single { it.symbol == "WETH" }
+        for (network in listOf(Network.ETHEREUM, Network.SEPOLIA)) {
+            val weth = BuiltInTokens.of(network).single { it.symbol == "WETH" }
 
-        assertEquals(UniswapDeployments.of(Network.SEPOLIA)?.deployment?.weth9, weth.address)
+            assertEquals(UniswapDeployments.of(network)?.deployment?.weth9, weth.address, network.displayName)
+        }
     }
 }
