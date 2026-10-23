@@ -2,6 +2,7 @@ package eth.serotine.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -156,14 +157,17 @@ fun SettingsScreen(
                             if (network.notSaved) {
                                 Text("The change could not be saved.", color = MaterialTheme.colorScheme.error)
                             }
-                            network.staleAnchor?.let { warning ->
-                                StaleAnchorBanner(warning, MaterialTheme.colorScheme.error) { asking = warning }
-                            }
                         }
                     },
                     // The row is the toggle: the switch only shows its state.
                     trailingContent = { Switch(checked = network.on, onCheckedChange = null) },
                 )
+                // Below the row, outside its toggle: a tap beside the button never turns the network off.
+                network.staleAnchor?.let { warning ->
+                    Box(Modifier.padding(start = 40.dp, end = 16.dp, bottom = 8.dp)) {
+                        StaleAnchorBanner(warning, MaterialTheme.colorScheme.error) { asking = warning }
+                    }
+                }
             }
             Text(
                 "A network that is off checks nothing; its accounts stay in your list.",

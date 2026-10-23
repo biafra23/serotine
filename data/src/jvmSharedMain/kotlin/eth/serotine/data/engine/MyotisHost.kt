@@ -419,7 +419,10 @@ class MyotisHost private constructor(
         // Caught here, not around the loop over the networks, so one failing does not leave the
         // others' networking as it was. Throwable: the calls cross JNA.
         private inline fun switch(what: String, call: (ChainHandle) -> Unit) {
-            val handle = (state as? ChainState.Running)?.handle ?: return
+            switch((state as? ChainState.Running)?.handle ?: return, what, call)
+        }
+
+        private inline fun switch(handle: ChainHandle, what: String, call: (ChainHandle) -> Unit) {
             try {
                 call(handle)
             } catch (e: Throwable) {
@@ -481,7 +484,8 @@ class MyotisHost private constructor(
             return try {
                 val info = engine.availableNetworks().firstOrNull { it.name() == engine.canonicalNetworkName(name) }
                 val running = ChainState.Running(handle, ports, info?.clGenesisTime() ?: 0, info?.secondsPerSlot() ?: 0)
-                if (staleAnchorConsented) handle.acceptStaleAnchor()
+                // Its own catch: one that throws leaves this chain to park and ask again, not the boot failed.
+                if (staleAnchorConsented) switch(handle, "sync past its stale anchor") { it.acceptStaleAnchor() }
                 if (handle.start()) {
                     running
                 } else {

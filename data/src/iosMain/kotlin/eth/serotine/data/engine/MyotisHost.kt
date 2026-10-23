@@ -414,7 +414,11 @@ class MyotisHost private constructor(
 
         fun acceptStaleAnchor() {
             staleAnchorConsented = true
-            val handle = (state as? ChainState.Running)?.handle ?: return
+            acceptStaleAnchor((state as? ChainState.Running)?.handle ?: return)
+        }
+
+        /** Arms [handle]'s consent, a failure logged: the chain then parks and asks again, never failed. */
+        private fun acceptStaleAnchor(handle: ChainHandle) {
             val accepted = try {
                 handle.acceptStaleAnchor()
             } catch (e: Throwable) {
@@ -471,7 +475,7 @@ class MyotisHost private constructor(
             return try {
                 val info = engine.availableNetworks().firstOrNull { it.name == handle.networkName }
                 val running = ChainState.Running(handle, info?.clGenesisTime ?: 0, info?.secondsPerSlot ?: 0)
-                if (staleAnchorConsented) handle.acceptStaleAnchor()
+                if (staleAnchorConsented) acceptStaleAnchor(handle)
                 if (handle.start()) {
                     running
                 } else {
