@@ -11,7 +11,9 @@ import eth.serotine.ui.activity.ActivityRow
 import eth.serotine.ui.activity.ActivityState
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.staleStripSample
 import eth.serotine.ui.components.verifiedStripSample
@@ -28,6 +30,8 @@ private const val SAVINGS = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
 private const val TREASURY = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
 
 private const val PRICES = "Prices: Chainlink feeds, read through the light client, testnet prices"
+
+private val sepolia = NetworkLabel(11_155_111, "Sepolia", testnet = true)
 
 private val ether = AssetRow(
     "ETH",
@@ -64,6 +68,7 @@ private val uniswap = AssetRow(
 private val daily = AccountDetailUiState.Ready(
     label = "Daily",
     address = DAILY,
+    network = sepolia,
     kind = AccountKind.EOA,
     control = Control.FULL_CONTROL,
     total = "$3,375.00",
@@ -75,6 +80,7 @@ private val daily = AccountDetailUiState.Ready(
 private val treasury = AccountDetailUiState.Ready(
     label = "Treasury",
     address = TREASURY,
+    network = sepolia,
     kind = AccountKind.SAFE,
     control = Control.CO_SIGNER,
     total = "$1,650.00",
@@ -570,6 +576,44 @@ private fun AccountDetailEnsNameMovedPreview() = AccountDetailPreview(
     ),
 )
 
+/** Docs/networks.md's N3: an account on Ethereum, real prices, no testnet note. */
+@Preview
+@Composable
+private fun AccountDetailEthereumPreview() = AccountDetailPreview(
+    daily.copy(
+        label = "Main",
+        network = NetworkLabel(1, "Ethereum", testnet = false),
+        total = "€9,612.30",
+        totalNote = null,
+        assets = listOf(
+            ether.copy(amount = "3.2041 ETH", verifiedAt = "block 23,618,402", value = "€9,612.30"),
+        ),
+        pricesNote = "Prices: Chainlink feeds, read through the light client",
+    ),
+)
+
+/** N19: an account on a network that is off; Send and Swap greyed out, Receive kept. */
+@Preview
+@Composable
+private fun AccountDetailNetworkOffPreview() = AccountDetailPreview(
+    daily.copy(
+        label = "Test",
+        total = "Off",
+        totalNote = null,
+        assets = listOf(
+            ether.copy(
+                amount = "0.84 ETH",
+                verified = false,
+                verifiedAt = null,
+                value = null,
+                lastKnown = "Last verified Oct 21, 2026, 6:02 PM · Sepolia is off",
+            ),
+        ),
+        networkOn = false,
+    ),
+    lightClient = LightClientItem("Turned off in this wallet", null, false, LightClientHealth.NOT_RUNNING),
+)
+
 /** Every preview above, which AccountDetailScreenPreviewsTest renders: a new preview goes in here too. */
 internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailAssetsPreview() },
@@ -600,4 +644,6 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailNarrowPreview() },
     { AccountDetailSafeQueueReadingPreview() },
     { AccountDetailCheckingDarkPreview() },
+    { AccountDetailEthereumPreview() },
+    { AccountDetailNetworkOffPreview() },
 )

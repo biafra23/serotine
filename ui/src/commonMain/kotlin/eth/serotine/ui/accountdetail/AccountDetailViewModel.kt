@@ -19,6 +19,7 @@ import eth.serotine.domain.usecase.DecodedSafeTx
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
@@ -26,6 +27,7 @@ import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.activity.AccountActivity
@@ -33,6 +35,7 @@ import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
@@ -42,6 +45,7 @@ import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.lastKnownNote
+import eth.serotine.ui.components.notTurnedOn
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
@@ -73,7 +77,8 @@ import kotlinx.coroutines.launch
  * ([hideToken], said through [messageShown]); what else the user does from the screen is
  * navigation (Send, Receive, Rename, Remove, a row of its Activity, a queued transaction, Import a
  * request) or the
- * clipboard, which the route handles.
+ * clipboard, which the route handles. Whether its network is on ([ObserveEnabledNetworks]) greys out
+ * Send and Swap, and [turnOnNetwork] turns it on (docs/networks.md, N19).
  */
 class AccountDetailViewModel(
     private val account: AccountId,
@@ -87,6 +92,8 @@ class AccountDetailViewModel(
     observeEnsNames: ObserveEnsNames,
     /** What its Activity tab lists. */
     activity: AccountActivity,
+    observeEnabledNetworks: ObserveEnabledNetworks,
+    private val setNetworkEnabled: SetNetworkEnabled,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -96,6 +103,9 @@ class AccountDetailViewModel(
     /** The account's network: everything here is read and sent there. */
     private val network: Network = account.network
 
+    /** Whether the account's network is on: until known, as if it were, as nothing is sent from here. */
+    private val networkOn =
+        observeEnabledNetworks().map { network in it }.distinctUntilChanged().onStart { emit(true) }
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
@@ -187,19 +197,21 @@ class AccountDetailViewModel(
             observeAccountValue(account),
             safe,
             queue,
-            combine(view, ensName, activityState, ::Triple),
-        ) { lookup, value, safe, queue, (view, ensName, activity) ->
+            combine(combine(view, ensName, ::Pair), activityState, networkOn, ::Triple),
+        ) { lookup, value, safe, queue, (named, activity, networkOn) ->
+            val (view, ensName) = named
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = accountName(lookup.account, display, ensName),
                     address = display,
+                    network = NetworkLabel.of(network),
                     kind = lookup.account.kind,
                     // A Safe's control is its verified owners'; until they are read, watch-only.
                     control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
                         ?: Control.of(lookup.account.kind, lookup.account.custody),
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
-                    assets = sorted(rows(value), view.sort),
+                    assets = sorted(rows(value, off = network.displayName.takeUnless { networkOn }), view.sort),
                     pendingAssets = value.tokens.count { awaitingFirst(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
@@ -218,6 +230,7 @@ class AccountDetailViewModel(
                     nameNote = ensNameNote(lookup.account, ensName),
                     // Not the last one read while another tab is shown: that tab's state says Loading.
                     activity = if (view.segment == DetailSegment.ACTIVITY) activity else ActivityUiState.Loading,
+                    networkOn = networkOn,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
@@ -228,6 +241,13 @@ class AccountDetailViewModel(
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
             initialValue = AccountDetailUiState.Loading,
         )
+
+    /** Turns the account's network on again: the way to Send and Swap on one that is off (N19). */
+    fun turnOnNetwork() {
+        viewModelScope.launch {
+            if (!setNetworkEnabled(network, on = true)) view.update { it.copy(message = notTurnedOn(network)) }
+        }
+    }
 
     /** Orders the rows by [order]. */
     fun sortBy(order: AssetSort) {
@@ -345,9 +365,10 @@ class AccountDetailViewModel(
      * The native row and a row per token held: a token whose verified balance is zero is not
      * held. Each row names the block its own amount was verified at: the readings are polled
      * one by one and need not share one. While no head can be read at, a row shows the
-     * amount last verified and says that it may have changed since.
+     * amount last verified and says that it may have changed since, or, on a network that is off
+     * ([off] names it), that it is off.
      */
-    private fun rows(value: AccountValue): List<Row> {
+    private fun rows(value: AccountValue, off: String?): List<Row> {
         val native = value.native
         val nativeRow = Row(
             AssetRow(
@@ -359,12 +380,12 @@ class AccountDetailViewModel(
                 verifiedAt = (native as? BalanceReading.Verified)?.let { block(it.blockNumber) },
                 value = valuationText(value.nativeValue, value.currency, network),
                 lastKnown = (native as? BalanceReading.LastKnown)
-                    ?.let { lastKnownNote(it.blockNumber, it.asOf, formatTime) },
+                    ?.let { lastKnownNote(it.blockNumber, it.asOf, off, formatTime) },
             ),
             value.nativeValue,
         )
         val tokenRows = value.tokens.mapNotNull { (holding, valuation) ->
-            val shown = shownBalance(holding.reading) ?: return@mapNotNull null
+            val shown = shownBalance(holding.reading, off) ?: return@mapNotNull null
             if (shown.units.isZero) return@mapNotNull null
             val token = holding.token
             val symbol = displaySymbol(token.symbol)
@@ -392,12 +413,12 @@ class AccountDetailViewModel(
      * The token amount a row shows for [reading], the block it was verified at, and, for one
      * last verified, what the row says of it; null when there is no amount to show.
      */
-    private fun shownBalance(reading: TokenBalanceReading?): ShownBalance? = when (reading) {
+    private fun shownBalance(reading: TokenBalanceReading?, off: String?): ShownBalance? = when (reading) {
         is TokenBalanceReading.Verified -> ShownBalance(reading.units, reading.blockNumber, lastKnown = null)
         is TokenBalanceReading.LastKnown -> ShownBalance(
             reading.units,
             reading.blockNumber,
-            lastKnownNote(reading.blockNumber, reading.asOf, formatTime),
+            lastKnownNote(reading.blockNumber, reading.asOf, off, formatTime),
         )
         else -> null
     }

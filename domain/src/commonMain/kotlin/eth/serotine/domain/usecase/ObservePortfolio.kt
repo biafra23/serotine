@@ -44,11 +44,16 @@ data class Portfolio(
      * the currency chosen before, makes it incomplete rather than adding a sum in another one.
      */
     val total: Total
-        get() {
-            val loaded = (accounts as? AccountList.Loaded)?.accounts.orEmpty()
-            return loaded.fold(Total.NONE) { sum, account ->
-                val value = values[account.id]
-                sum + if (value != null && value.currency == currency) value.total else Total.PENDING
-            }
+        get() = totalOf { true }
+
+    /** [total] of the accounts on [network] alone: a section of the Accounts screen (docs/networks.md, N1). */
+    fun totalOn(network: Network): Total = totalOf { it == network }
+
+    private fun totalOf(onNetwork: (Network) -> Boolean): Total {
+        val loaded = (accounts as? AccountList.Loaded)?.accounts.orEmpty()
+        return loaded.filter { onNetwork(it.network) }.fold(Total.NONE) { sum, account ->
+            val value = values[account.id]
+            sum + if (value != null && value.currency == currency) value.total else Total.PENDING
         }
+    }
 }

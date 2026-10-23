@@ -35,6 +35,7 @@ import eth.serotine.domain.repository.TransactionHistory
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.UserTokens
+import eth.serotine.domain.usecase.AddOnNetworks
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
@@ -59,6 +60,7 @@ import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveDebugLog
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
@@ -109,6 +111,7 @@ import eth.serotine.ui.accounts.AccountsViewModel
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activitydetail.ActivityDetailViewModel
+import eth.serotine.ui.addnetwork.AddOnNetworksViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
 import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeViewModel
@@ -254,6 +257,8 @@ class AppGraph(
             ObserveSafes(accounts, observeSafe()),
             ObserveEnsNames(accounts, names),
             ObserveLightClient(lightClient),
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
             observeUpgradeWarning(),
             soleNetwork,
         )
@@ -273,6 +278,8 @@ class AppGraph(
             SetTokenHidden(userTokens),
             ObserveEnsNames(accounts, names),
             accountActivity(),
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
         )
 
     /**
@@ -459,13 +466,29 @@ class AppGraph(
         soleNetwork,
     )
 
-    fun receiveViewModel(account: AccountId): ReceiveViewModel = ReceiveViewModel(account, ObserveAccount(accounts))
+    /** Add on another network (docs/networks.md, N6), for the EOA [account]. */
+    fun addOnNetworksViewModel(account: AccountId): AddOnNetworksViewModel =
+        AddOnNetworksViewModel(
+            account,
+            ObserveAccounts(accounts),
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
+            AddOnNetworks(accounts, walletChanges),
+        )
+
+    fun receiveViewModel(account: AccountId): ReceiveViewModel =
+        ReceiveViewModel(account, ObserveAccount(accounts), ObserveEnabledNetworks(networkSettings))
 
     fun renameAccountViewModel(account: AccountId): RenameAccountViewModel =
         RenameAccountViewModel(account, ObserveAccount(accounts), RenameAccount(accounts))
 
     fun removeAccountViewModel(account: AccountId): RemoveAccountViewModel =
-        RemoveAccountViewModel(account, ObserveAccount(accounts), RemoveAccount(accounts, keys, walletChanges))
+        RemoveAccountViewModel(
+            account,
+            ObserveAccount(accounts),
+            ObserveAccounts(accounts),
+            RemoveAccount(accounts, keys, walletChanges),
+        )
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(
         ObserveAddressKind(addressKinds),

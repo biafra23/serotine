@@ -7,6 +7,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.FakeAccounts
@@ -41,6 +42,7 @@ class RemoveAccountViewModelTest {
         RemoveAccountViewModel(
             AccountId(Network.SEPOLIA, address),
             ObserveAccount(accounts),
+            ObserveAccounts(accounts),
             RemoveAccount(accounts, keys, WalletChanges()),
         )
 
@@ -52,11 +54,11 @@ class RemoveAccountViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
 
         assertEquals(
-            RemoveAccountUiState.Confirm("Daily", Eip55.format(daily.address), keyed = true),
+            RemoveAccountUiState.Confirm("Daily", Eip55.format(daily.address), "Sepolia", keyed = true),
             viewModel(daily.address).uiState.value,
         )
         assertEquals(
-            RemoveAccountUiState.Confirm("Savings", Eip55.format(savings.address), keyed = false),
+            RemoveAccountUiState.Confirm("Savings", Eip55.format(savings.address), "Sepolia", keyed = false),
             viewModel(savings.address).uiState.value,
         )
         assertEquals(emptyList(), keys.deleted, "asking removes nothing")

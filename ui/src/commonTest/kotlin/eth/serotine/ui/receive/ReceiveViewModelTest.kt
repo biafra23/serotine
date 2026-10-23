@@ -7,7 +7,10 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.MemoryNetworkSettings
+import eth.serotine.ui.components.NetworkLabel
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,6 +41,7 @@ class ReceiveViewModelTest {
         AccountCustody.Watched,
     )
     private val accounts = FakeAccounts(eoa, safe)
+    private val networks = MemoryNetworkSettings()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -45,6 +49,7 @@ class ReceiveViewModelTest {
     private fun viewModel(address: Address) = ReceiveViewModel(
         AccountId(Network.SEPOLIA, address),
         ObserveAccount(accounts),
+        ObserveEnabledNetworks(networks),
     )
 
     @Test
@@ -58,9 +63,25 @@ class ReceiveViewModelTest {
             ReceiveUiState.Ready(
                 "Daily",
                 "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
+                NetworkLabel.of(Network.SEPOLIA),
                 "Only send Sepolia assets to this address",
             ),
             viewModel.uiState.value,
+            "no other-networks note on a testnet",
+        )
+    }
+
+    @Test
+    fun onANetworkThatIsOffReceiveStillWorksAndSaysWhenWhatArrivesIsShown() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = emptySet()
+        val viewModel = viewModel(eoa.address)
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        assertEquals(
+            "Sepolia is off in this wallet: what is sent here arrives, but is shown only once you turn it on.",
+            (viewModel.uiState.value as ReceiveUiState.Ready).networkOff,
         )
     }
 

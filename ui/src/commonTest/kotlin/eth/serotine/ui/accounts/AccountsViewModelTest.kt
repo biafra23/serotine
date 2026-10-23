@@ -29,6 +29,7 @@ import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
@@ -39,6 +40,7 @@ import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveUpgradeWarning
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
@@ -46,9 +48,11 @@ import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.MemoryCurrencySetting
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.shortAddress
@@ -57,6 +61,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +96,15 @@ class AccountsViewModelTest {
     }
     private val currency = MemoryCurrencySetting()
     private val names = FakeNames()
+    private val networks = MemoryNetworkSettings()
+
+    /** Sepolia's section with [accounts] under [status]. */
+    private fun sepolia(
+        status: LightClientItem,
+        accounts: List<AccountItem>,
+        total: String? = "Checking…",
+        totalNote: String? = "Testnet prices · still checking",
+    ) = NetworkSection(Network.SEPOLIA.chainId, "Sepolia", testnet = true, on = true, status, accounts, total, totalNote)
 
     private fun viewModel(): AccountsViewModel {
         val currencies = ObserveDisplayCurrencies(feeds, currency)
@@ -108,6 +122,8 @@ class AccountsViewModelTest {
             ObserveSafes(repository, ObserveSafe(kinds, repository)),
             ObserveEnsNames(repository, names),
             ObserveLightClient(lightClient),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
             ObserveUpgradeWarning(Network.SEPOLIA, upgrades, NoRecord, lightClient) { now },
             Network.SEPOLIA,
             clock = { now },
@@ -153,20 +169,19 @@ class AccountsViewModelTest {
         val viewModel = viewModel()
 
         // Nothing collects yet: WhileSubscribed has not started the upstream.
-        assertEquals(AccountsUiState.Loading("Sepolia", starting), viewModel.uiState.value)
+        assertEquals(AccountsUiState.Loading(), viewModel.uiState.value)
 
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
-        assertEquals(AccountsUiState.Ready("Sepolia", starting, emptyList()), viewModel.uiState.value)
+        assertEquals(AccountsUiState.Ready(emptyList()), viewModel.uiState.value)
 
         repository.accounts = listOf(treasury)
         runCurrent()
         assertEquals(
             AccountsUiState.Ready(
-                "Sepolia",
-                starting,
-                listOf(treasuryItem("Syncing…", verified = false)),
+                listOf(sepolia(starting, listOf(treasuryItem("Syncing…", verified = false)))),
                 total = "Checking…",
+                totalLabel = "Total · USD · Sepolia",
                 totalNote = "Testnet prices · still checking",
             ),
             viewModel.uiState.value,
@@ -257,8 +272,9 @@ class AccountsViewModelTest {
     }
 
     @Test
-    fun theStatusStripFollowsTheLightClient() = runTest {
+    fun eachSectionsStatusFollowsItsNetworksLightClient() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(daily)
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
 
@@ -267,22 +283,77 @@ class AccountsViewModelTest {
 
         assertEquals(
             LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true, NOT_VERIFIED),
-            viewModel.uiState.value.lightClient,
+            viewModel.sepoliaStatus,
         )
     }
 
     @Test
-    fun theStripDatesTheHeadBlockAndKeepsItCurrent() = runTest {
+    fun aSectionDatesTheHeadBlockAndKeepsItCurrent() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(daily)
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
         lightClient.status.value = LightClientStatus.Synced(headBlock = 11_923_074, headTimestamp = now - 3)
         runCurrent()
-        assertEquals("Verified at block 11,923,074 · 3 s ago", viewModel.uiState.value.lightClient.text)
+        assertEquals("Verified at block 11,923,074 · 3 s ago", viewModel.sepoliaStatus.text)
 
         now += 5
         advanceTimeBy(1_001)
-        assertEquals("Verified at block 11,923,074 · 8 s ago", viewModel.uiState.value.lightClient.text)
+        assertEquals("Verified at block 11,923,074 · 8 s ago", viewModel.sepoliaStatus.text)
+    }
+
+    private val AccountsViewModel.sepoliaStatus: LightClientItem
+        get() = (uiState.value as AccountsUiState.Ready).sections.single().status
+
+    @Test
+    fun aNetworkThatIsOffKeepsItsAccountsListedWithTheirLastBalanceOutOfEveryTotal() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(treasury, daily)
+        networks.on.value = emptySet()
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(treasury.address).value =
+            BalanceReading.LastKnown(Wei.of("2500000000000000000"), 9, asOf = 1_792_100_000)
+        balances.of(daily.address).value = BalanceReading.Unavailable(ReadUnavailable.NETWORK_OFF)
+        feeds.answer("ETH", 2_000.0)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
+        val section = ready.sections.single()
+        assertEquals(false, section.on)
+        assertEquals("Off", section.total)
+        assertEquals(
+            LightClientItem("Off in this wallet · nothing is checked", null, false, LightClientHealth.NOT_RUNNING),
+            section.status,
+        )
+        assertEquals(
+            listOf("2.5 ETH" to "Last verified <1792100000> · Sepolia is off", "Not checked" to "Sepolia is off"),
+            section.accounts.map { it.balance to it.balanceNote },
+        )
+        assertEquals(listOf(null, null), section.accounts.map { it.value })
+        assertNull(ready.total, "nothing on a network that is on to add up")
+        val row = section.accounts[1]
+        assertEquals(false, row.canSend)
+        assertEquals("Sepolia", row.networkOff)
+
+        // A setting that cannot be saved leaves it off, and says so once.
+        networks.failSaves = true
+        viewModel.turnOnNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(
+            "Sepolia could not be turned on: the setting cannot be saved right now. Try again, or in " +
+                "Settings → Networks.",
+            (viewModel.uiState.value as AccountsUiState.Ready).message,
+        )
+        viewModel.messageShown()
+        runCurrent()
+        assertEquals(null, (viewModel.uiState.value as AccountsUiState.Ready).message)
+
+        networks.failSaves = false
+        viewModel.turnOnNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(setOf(Network.SEPOLIA), networks.on.value)
+        assertEquals(true, (viewModel.uiState.value as AccountsUiState.Ready).sections.single().on)
     }
 
     @Test
@@ -309,8 +380,6 @@ class AccountsViewModelTest {
         runCurrent()
         assertEquals(
             AccountsUiState.ListUnavailable(
-                "Sepolia",
-                starting,
                 "Your account list was saved by a newer version of Serotine. Update the app to see it.",
             ),
             viewModel.uiState.value,

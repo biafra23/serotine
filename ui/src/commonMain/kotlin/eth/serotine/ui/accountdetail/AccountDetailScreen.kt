@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -75,10 +76,12 @@ import eth.serotine.ui.components.GhostLine
 import eth.serotine.ui.components.GhostRows
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
+import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.WithActionMenu
@@ -131,6 +134,7 @@ fun AccountDetailRoute(
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
+    onAddOnNetwork: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val strip by lightClient.item.collectAsStateWithLifecycle()
@@ -161,6 +165,8 @@ fun AccountDetailRoute(
         onImportRequest = onImportRequest,
         onOpenActivity = onOpenActivity,
         modifier = modifier,
+        onTurnOnNetwork = viewModel::turnOnNetwork,
+        onAddOnNetwork = onAddOnNetwork,
     )
 }
 
@@ -173,6 +179,9 @@ fun AccountDetailRoute(
  * [onSend] opens Send with the token at a contract chosen, or the network's currency (null). The
  * Activity tab's rows open their detail through [onOpenActivity]. A Safe's Queue opens a
  * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest].
+ * The account's network is named beside its control (docs/networks.md, N3 and N4); while it is off,
+ * Send and Swap say so and offer to turn it on through [onTurnOnNetwork] (N19). An externally owned
+ * account's menu adds it on another network through [onAddOnNetwork] (N5).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,6 +203,8 @@ fun AccountDetailScreen(
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
+    onTurnOnNetwork: () -> Unit = {},
+    onAddOnNetwork: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -212,13 +223,27 @@ fun AccountDetailScreen(
     // Send greyed out where it cannot be done: a tap says why (owner ruling, 2026-10-18, #55).
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
+    // On a network that is off, the way to an action is to turn the network on (N19).
+    val notice: (String, String) -> UnavailableNotice = { action, reason ->
+        val ready = state as? AccountDetailUiState.Ready
+        if (ready != null && !ready.networkOn) {
+            val network = ready.network.name
+            UnavailableNotice(
+                "$action needs $network",
+                reason,
+                listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
+            )
+        } else {
+            UnavailableNotice(action, reason)
+        }
+    }
     val send: (String?) -> Unit = { contract ->
         val reason = (state as? AccountDetailUiState.Ready)?.sendReason
-        if (reason == null) onSend(contract) else unavailable = UnavailableNotice("Send", reason)
+        if (reason == null) onSend(contract) else unavailable = notice("Send", reason)
     }
     val swap: (String?) -> Unit = { contract ->
         val reason = (state as? AccountDetailUiState.Ready)?.swapReason
-        if (reason == null) onSwap(contract) else unavailable = UnavailableNotice("Swap", reason)
+        if (reason == null) onSwap(contract) else unavailable = notice("Swap", reason)
     }
     Scaffold(
         modifier = modifier,
@@ -250,6 +275,25 @@ fun AccountDetailScreen(
                                 sort,
                                 MenuAction("Copy address", SerotineIcons.ContentCopy) { copy(state.address) },
                                 MenuAction("Rename", Icons.Filled.Edit, onClick = onRename),
+                                // An EOA's address is the same account on every chain (N5); from a
+                                // network that is off, greyed out with Turn on (N18).
+                                MenuAction(
+                                    "Add on another network…",
+                                    Icons.Filled.Add,
+                                    unavailable = !state.networkOn,
+                                ) {
+                                    if (state.networkOn) {
+                                        onAddOnNetwork()
+                                    } else {
+                                        val network = state.network.name
+                                        unavailable = UnavailableNotice(
+                                            "Add on another network",
+                                            "$network is off in this wallet. Turned on, ${state.label} can be " +
+                                                "added on another network from here.",
+                                            listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
+                                        )
+                                    }
+                                }.takeIf { state.kind == AccountKind.EOA },
                                 MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove),
                             ),
                             expanded = menu,
@@ -343,11 +387,21 @@ private fun Details(
                         )
                     }
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // The account's network beside its control (N3, N4): the same address on
+                        // another network is another account.
+                        NetworkMark(state.network, style = MaterialTheme.typography.labelMedium)
                         ControlBadge(state.control)
                         state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+                    }
+                    if (!state.networkOn) {
+                        Text(
+                            "${state.network.name} is off in this wallet: nothing is checked.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
                     }
                     // Why the title is the address: the ENS name it was named by no longer points here.
                     state.nameNote?.let {
