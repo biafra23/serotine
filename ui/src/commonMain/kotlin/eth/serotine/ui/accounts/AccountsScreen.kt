@@ -56,6 +56,8 @@ import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
+import eth.serotine.ui.components.addOnNetworkOffReason
+import eth.serotine.ui.components.networkOffNotice
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
@@ -341,11 +343,7 @@ private fun accountMenu(
     // On a network that is off, the way to Send is to turn it on (docs/networks.md, N19).
     val sendNotice = sendReason?.let { reason ->
         account.networkOff?.let { network ->
-            UnavailableNotice(
-                "Send needs $network",
-                reason,
-                listOf(UnavailableFix("Turn on $network") { onTurnOnNetwork(chainId) }),
-            )
+            networkOffNotice("Send needs $network", reason, network) { onTurnOnNetwork(chainId) }
         } ?: UnavailableNotice("Send", reason)
     }
     return listOfNotNull(
@@ -367,12 +365,9 @@ private fun accountMenu(
                 act(AccountAction.AddOnNetwork(chainId, address))
             } else {
                 onUnavailable(
-                    UnavailableNotice(
-                        "Add on another network",
-                        "$off is off in this wallet. Turned on, ${account.label} can be added on another network " +
-                            "from here.",
-                        listOf(UnavailableFix("Turn on $off") { onTurnOnNetwork(chainId) }),
-                    ),
+                    networkOffNotice("Add on another network", addOnNetworkOffReason(off, account.label), off) {
+                        onTurnOnNetwork(chainId)
+                    },
                 )
             }
         }.takeIf { account.kind == AccountKind.EOA },

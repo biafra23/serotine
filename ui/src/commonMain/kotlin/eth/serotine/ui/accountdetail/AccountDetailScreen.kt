@@ -81,10 +81,11 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
-import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.WithActionMenu
+import eth.serotine.ui.components.addOnNetworkOffReason
+import eth.serotine.ui.components.networkOffNotice
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.platform.rememberCopyText
@@ -229,11 +230,7 @@ fun AccountDetailScreen(
         val ready = state as? AccountDetailUiState.Ready
         if (ready != null && !ready.networkOn) {
             val network = ready.network.name
-            UnavailableNotice(
-                "$action needs $network",
-                reason,
-                listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
-            )
+            networkOffNotice("$action needs $network", reason, network, onTurnOnNetwork)
         } else {
             UnavailableNotice(action, reason)
         }
@@ -287,11 +284,11 @@ fun AccountDetailScreen(
                                         onAddOnNetwork()
                                     } else {
                                         val network = state.network.name
-                                        unavailable = UnavailableNotice(
+                                        unavailable = networkOffNotice(
                                             "Add on another network",
-                                            "$network is off in this wallet. Turned on, ${state.label} can be " +
-                                                "added on another network from here.",
-                                            listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
+                                            addOnNetworkOffReason(network, state.label),
+                                            network,
+                                            onTurnOnNetwork,
                                         )
                                     }
                                 }.takeIf { state.kind == AccountKind.EOA },
