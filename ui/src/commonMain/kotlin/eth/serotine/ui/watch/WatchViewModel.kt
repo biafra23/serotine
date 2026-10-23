@@ -132,19 +132,24 @@ class WatchViewModel(
 
     /**
      * The cards of the address the lookup found on each network that is on, with that address:
-     * uiState shows them only for the lookup's own.
+     * uiState shows them only for the lookup's own. A name resolved on a testnet's registry (no
+     * real network that resolves names being on) gives an address for the testnets alone: what
+     * anyone can register there is never watched on a network with real funds.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val detection: Flow<Pair<Address, List<Pair<Network, Detection>>>?> =
         combine(
-            lookup.map { ((it as? RecipientState.Done)?.result as? RecipientLookup.Found)?.address }
+            lookup.map { ((it as? RecipientState.Done)?.result as? RecipientLookup.Found) }
+                .map { found -> found?.let { it.address to (it.name != null) } }
                 .distinctUntilChanged(),
             on,
             ::Pair,
         )
             .distinctUntilChanged()
-            .flatMapLatest { (address, read) ->
-                val networks = read.orEmpty()
+            .flatMapLatest { (found, read) ->
+                val (address, named) = found ?: (null to false)
+                val fromTestnet = named && read?.let(::nameNetwork)?.testnet == true
+                val networks = read.orEmpty().filter { it.testnet || !fromTestnet }
                 when {
                     address == null || read == null -> flowOf(null)
                     networks.isEmpty() -> flowOf(address to emptyList())
@@ -351,13 +356,8 @@ class WatchViewModel(
             ?: return Outcome(error = "The account could not be saved. Nothing was added.")
         val added = mutableListOf<Network>()
         for (network in networks) {
-            // Where names are not resolved, the account is the address and follows no name: the
-            // name it was found by is its label, as the others' is while they follow it.
-            val result = if (network.ensNames) {
-                watchAddress(network, resolved.address, name, resolved.name)
-            } else {
-                watchAddress(network, resolved.address, name.ifEmpty { resolved.name.orEmpty() })
-            }
+            // Where names are not resolved, WatchAddress makes the name only the account's label.
+            val result = watchAddress(network, resolved.address, name, resolved.name)
             if (result is AddressWatch.Added) {
                 added += network
                 continue

@@ -420,6 +420,23 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun aNameResolvedOnSepoliaIsNeverWatchedOnGnosisChain() = runTest {
+        networks.on.value = setOf(Network.GNOSIS, Network.SEPOLIA)
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        // Sepolia's registry, which anyone can register on: its answer is for the testnet alone.
+        assertNull(viewModel.uiState.value.question)
+        assertEquals(NetworkLabel.of(Network.SEPOLIA), viewModel.uiState.value.cardNetwork)
+        viewModel.add()
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), accounts.accounts.value.drop(1).map { it.network })
+    }
+
+    @Test
     fun aNameGivenWithAnEnsNameIsTheUsers() = runTest {
         names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
         val viewModel = viewModel()

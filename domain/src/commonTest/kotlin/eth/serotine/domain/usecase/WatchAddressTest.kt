@@ -78,6 +78,17 @@ class WatchAddressTest {
     }
 
     @Test
+    fun onGnosisChainTheEnsNameIsOnlyTheLabelAndNotFollowed() = runTest {
+        val added = watch(Network.GNOSIS, address, "", ensName = "savings.eth") as AddressWatch.Added
+
+        assertEquals(
+            Account(Network.GNOSIS, address, AccountKind.EOA, "savings.eth", AccountCustody.Watched),
+            added.account,
+            "no Gnosis registry was asked (docs/networks.md, *Names*)",
+        )
+    }
+
+    @Test
     fun aNameGivenIsTheUsersEvenWithAnEnsName() = runTest {
         val added = watch(Network.SEPOLIA, address, "Savings", ensName = "savings.eth") as AddressWatch.Added
 

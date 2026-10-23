@@ -42,13 +42,15 @@ internal class PinnedUniswapV3(val deployment: UniswapV3Deployment, val codeHash
  * through two public nodes, which agreed, a debugging source only, as above: what is expected,
  * which the light client proves before any quote (`MyotisHostEthereumTest` does so on the real
  * chain). None of the four is a proxy.
+ *
+ * Gnosis Chain has none pinned: Swap is greyed out there until a venue is (owner ruling,
+ * 2026-10-22; docs/networks.md, open question 7).
  */
 internal object UniswapDeployments {
 
     /** The deployment pinned on [network], or null when none is. */
     fun of(network: Network): PinnedUniswapV3? = when (network) {
         Network.ETHEREUM -> ETHEREUM
-        // None pinned yet: Swap is greyed out there (docs/networks.md, open question 7).
         Network.GNOSIS -> null
         Network.SEPOLIA -> SEPOLIA
     }

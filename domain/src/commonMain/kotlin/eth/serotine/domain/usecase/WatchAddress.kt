@@ -69,13 +69,15 @@ class WatchAddress(
                 AddressKind.Eoa, is AddressKind.DelegatedEoa -> AccountKind.EOA
             }
         }
-        // A name too long for a row is no name to follow.
-        val follows = ensName?.takeIf { name.isEmpty() && it.length <= RenameAccount.MAX_LABEL_LENGTH }
+        // A name too long for a row is no name to follow. Where names are not resolved (Gnosis
+        // Chain), the account follows none: the name it was found by is only its label.
+        val fitting = ensName?.takeIf { it.length <= RenameAccount.MAX_LABEL_LENGTH }
+        val follows = fitting?.takeIf { name.isEmpty() && network.ensNames }
         val account = Account(
             network,
             address,
             kind,
-            follows ?: name.ifEmpty { nextFreeLabel(current) },
+            follows ?: name.ifEmpty { fitting ?: nextFreeLabel(current) },
             AccountCustody.Watched,
             ensName = follows,
         )
