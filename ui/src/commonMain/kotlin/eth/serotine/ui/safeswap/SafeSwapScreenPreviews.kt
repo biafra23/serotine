@@ -35,7 +35,8 @@ private const val POOL = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb"
 private val from = SendFrom("Treasury", TREASURY)
 private val ether = AssetChoice("ETH", "Ether", "eth", "2.5 ETH", verifiedAt = "block 8,412,307")
 private val usdc = AssetChoice("USDC", "USDC", "usdc", "250 USDC", contract = USDC, verifiedAt = "block 8,412,307")
-private val usdt = AssetChoice("USDT", "Tether USD", "usdt", "250 USDT", contract = USDT, verifiedAt = "block 8,412,307")
+private val usdt =
+    AssetChoice("USDT", "Tether USD", "usdt", "250 USDT", contract = USDT, verifiedAt = "block 8,412,307")
 
 private val form = SwapForm(
     network = "Sepolia",

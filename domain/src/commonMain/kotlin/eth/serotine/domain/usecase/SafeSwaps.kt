@@ -204,11 +204,12 @@ const val SAFE_SWAP_DEADLINE_SECONDS: Long = 24 * 60 * 60
  *   cannot run yet ([SafeSwapSimulation.AfterApproval]). For a token of USDT's kind the reset to
  *   zero is run, and the approval after it cannot run before the reset has: it is run when its
  *   execution is quoted. So is one whose reset is queued before it already (a reset whose
- *   approval was not signed), which is proposed alone, with no second reset. An engine that will not run a call from a contract's address leaves them
- *   not run. The runs are against the head, before anything queued: where an approval of the
- *   router queued before this one sets a non-zero allowance, such a token's approval passes here
- *   and reverts once that one has run. No funds move: the whole execution reverts, its quote says
- *   so before anyone pays, and the owners replace it at its nonce.
+ *   approval was not signed), which is proposed alone, with no second reset. An engine that
+ *   will not run a call from a contract's address leaves them not run. The runs are against the
+ *   head, before anything queued: where an approval of the router queued before this one sets a
+ *   non-zero allowance, such a token's approval passes here and reverts once that one has run. No
+ *   funds move: the whole execution reverts, its quote says so before anyone pays, and the owners
+ *   replace it at its nonce.
  *
  * What refuses it from the queue and the light client alone is said before the engine is asked
  * for a balance or a route. Nothing is saved: signing each ([SignSafeTx]) queues it. On [network]

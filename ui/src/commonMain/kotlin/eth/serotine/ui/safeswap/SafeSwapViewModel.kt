@@ -103,8 +103,9 @@ import kotlinx.coroutines.withContext
  * null for the network's currency), the asset bought, the amount in the sold asset's units and the
  * tolerance; no fee, which whoever executes it pays — then proposed from verified state
  * ([ProposeSafeSwap]: the router's approval, when it needs one, after the allowance set to zero
- * for a token that refuses one allowance for another, and the swap, at consecutive nonces, with the minimum and a 24-hour deadline fixed) for review, and signed, every one of its
- * Safe transactions, by an owner held here ([SignSafeTx]), which queues them.
+ * for a token that refuses one allowance for another, and the swap, at consecutive nonces,
+ * with the minimum and a 24-hour deadline fixed) for review, and signed, every one of its Safe
+ * transactions, by an owner held here ([SignSafeTx]), which queues them.
  *
  * With [replacing], the hash of a swap queued for the Safe, it proposes that swap again in its
  * place (Execute's offer for a minimum fallen behind the market, or a deadline passed): the pair
@@ -554,7 +555,11 @@ class SafeSwapViewModel(
                     val underUnlock = notSigned != null && index == 0
                     latest.copy(
                         signing = false,
-                        error = if (underUnlock) null else signedSoFar(review.proposal, index)?.let { "$it $why" } ?: why,
+                        error = if (underUnlock) {
+                            null
+                        } else {
+                            signedSoFar(review.proposal, index)?.let { "$it $why" } ?: why
+                        },
                         unlock = latest.unlock.copy(
                             error = why.takeIf { underUnlock },
                             biometrics = latest.unlock.biometrics &&
