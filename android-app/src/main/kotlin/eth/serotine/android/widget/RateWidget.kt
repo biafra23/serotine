@@ -47,6 +47,16 @@ class RateWidget : AppWidgetProvider() {
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         RateWidgetNetworks(context).forget(appWidgetIds)
+        // The networks the widgets left show are followed from here on, not the removed one's.
+        (context.applicationContext as SerotineApplication).rateWidgetsChanged()
+    }
+
+    override fun onRestored(context: Context, oldWidgetIds: IntArray, newWidgetIds: IntArray) {
+        // A launcher restored from a backup gives the widgets new ids: each keeps its network.
+        val networks = RateWidgetNetworks(context)
+        oldWidgetIds.zip(newWidgetIds).forEach { (old, new) -> networks.set(new, networks.of(old)) }
+        networks.forget(oldWidgetIds)
+        (context.applicationContext as SerotineApplication).rateWidgetsChanged()
     }
 
     override fun onEnabled(context: Context) {

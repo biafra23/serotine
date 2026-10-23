@@ -31,8 +31,7 @@ const val WIDGET_NETWORK_TAG = "widget-network-"
 /**
  * What the widget's configuration shows when a widget is placed (docs/networks.md, *The
  * widget*): the networks it may show the rate of ([choices]: those that are on and have
- * accounts, or every one that is on in a wallet without accounts), or why there is none
- * ([message]). A placed widget keeps its network; another one means placing a new widget.
+ * accounts, or, when none is, every one that is on), or why there is none ([message]). A placed widget keeps its network; another one means placing a new widget.
  */
 data class WidgetNetworkUiState(
     val choices: List<NetworkLabel>,
@@ -90,7 +89,9 @@ fun WidgetNetworkScreen(
 /**
  * The configuration's state from the networks that are [on] and those [withAccounts] (null: the
  * account list cannot be read), in `Network` order: the networks on with accounts; every one on
- * when the wallet has none (or its list cannot be read); with none on, the way to one.
+ * when none of those is (the wallet has no account, its list cannot be read, or its accounts'
+ * networks are all off), since a network that is on can show its rate all the same; with none
+ * on, the way to one.
  */
 fun widgetNetworkUiState(
     networks: List<NetworkLabel>,

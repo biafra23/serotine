@@ -264,14 +264,20 @@ class SerotineApplication : Application() {
      */
     fun rateWidgetConfigured(id: Int, network: Network): Boolean {
         if (!RateWidgetNetworks(this).set(id, network)) return false
-        scope.launch {
+        // On the scheduling lane, so a cancel asked for by a removal meanwhile never lands before it.
+        scope.launch(jobScheduling) {
             drawWidgets()
             RateRefreshJob.schedule(this@SerotineApplication, now = true)
         }
+        rateWidgetsChanged()
+        return true
+    }
+
+    /** The widgets placed, or their networks, changed: their rates are followed anew while the app is open. */
+    fun rateWidgetsChanged() {
         rateFollowing?.cancel()
         rateFollowing = null
         followRateForWidgets()
-        return true
     }
 
     val graph: AppGraph by lazy {
@@ -471,6 +477,9 @@ class SerotineApplication : Application() {
                         launch { followRate(network) }
                     }
                 }
+                // Every follower ended (each only on a failure): the following ends too, so the next
+                // start of an activity or a placed widget starts it again.
+                throw CancellationException("no widget rate is followed any more")
             }
         }
     }
@@ -600,6 +609,14 @@ class SerotineApplication : Application() {
                                 val hold = networkDemand.hold(network)
                                 try {
                                     withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRates.getValue(network)() } != null
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    // One network's failure ends its read alone; the others' still count.
+                                    val name = network.displayName
+                                    val kind = e::class.simpleName
+                                    System.err.println("Serotine: $name's widget rate was not read: $kind")
+                                    false
                                 } finally {
                                     hold.release()
                                 }

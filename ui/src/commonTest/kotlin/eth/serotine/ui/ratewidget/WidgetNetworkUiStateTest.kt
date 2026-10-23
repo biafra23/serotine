@@ -37,6 +37,15 @@ class WidgetNetworkUiStateTest {
     }
 
     @Test
+    fun accountsOnlyOnNetworksThatAreOffLeaveEveryNetworkThatIsOn() {
+        // Sepolia's accounts with Sepolia off: Ethereum, on, can still show its rate.
+        assertEquals(
+            WidgetNetworkUiState(listOf(ethereum)),
+            widgetNetworkUiState(networks, on = setOf(1), withAccounts = setOf(11_155_111)),
+        )
+    }
+
+    @Test
     fun withNoNetworkOnNothingIsOfferedAndItSaysWhy() {
         assertEquals(
             WidgetNetworkUiState(emptyList(), NO_NETWORK_ON),
