@@ -13,10 +13,19 @@ import kotlinx.serialization.json.intOrNull
  * [SigningRequestCodec] as compact JSON (docs/wallet-ux.md, *Co-signing a Safe transaction*),
  * for requests on [network]:
  *
+ * Version 1 format:
  * ```
  * {"v":1,"chainId":11155111,"safe":"0x…","tx":{"to":"0x…","value":"0","data":"0x…","operation":0,
  *  "safeTxGas":"0","baseGas":"0","gasPrice":"0","gasToken":"0x…","refundReceiver":"0x…","nonce":"4"},
  *  "signatures":[{"owner":"0x…","signature":"0x<r ‖ s ‖ v>"}]}
+ * ```
+ *
+ * Version 2 adds WebAuthn signatures for P-256 hardware-bound owners:
+ * ```
+ * {"v":2,"chainId":11155111,"safe":"0x…","tx":{"to":"0x…","value":"0","data":"0x…","operation":0,
+ *  "safeTxGas":"0","baseGas":"0","gasPrice":"0","gasToken":"0x…","refundReceiver":"0x…","nonce":"4"},
+ *  "signatures":[{"owner":"0x…","signature":"0x<r ‖ s ‖ v>"} ||
+ *                {"owner":"0x…","authenticatorData":"0x…","clientDataFields":"...","r":"...","s":"..."}]}
  * ```
  *
  * One line, no spaces, the keys in this order, the signatures in ascending owner order, every
@@ -24,7 +33,7 @@ import kotlinx.serialization.json.intOrNull
  * whitespace a share sheet may add around it, must be exactly what [encode] makes of the
  * request it decodes to, so each request has one text and no text carries anything beside its
  * fields (a second value of a key, a comment, a field this version does not know). `v` is read
- * first: any version but 1 is [SigningRequestDecoding.UnknownVersion]; a chain other than
+ * first: any version but 2 is [SigningRequestDecoding.UnknownVersion]; a chain other than
  * [network]'s, [SigningRequestDecoding.WrongChain]. Text longer than [MAX_LENGTH] is refused
  * before it is parsed.
  */
