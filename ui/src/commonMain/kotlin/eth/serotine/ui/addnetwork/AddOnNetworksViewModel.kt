@@ -57,7 +57,12 @@ class AddOnNetworksViewModel(
             val present = accounts.filter { it.address == account.address }.map { it.network }.toSet()
             AddOnNetworksUiState.Choose(
                 label = own.label,
-                choices = networkChoices(on.toSet(), form.chosen, Network.entries.filter { it !in present }),
+                choices = networkChoices(
+                    on.toSet(),
+                    form.chosen,
+                    Network.entries.filter { it !in present },
+                    withLines = false,
+                ),
                 adding = form.adding,
                 error = form.error,
             )
@@ -88,8 +93,10 @@ class AddOnNetworksViewModel(
         val networks = choose.choices.chosenNetworks()
         form.update { it.copy(adding = true, error = null) }
         viewModelScope.launch {
+            // The add first: an update's transform may run more than once, and must not add again.
+            val result = addOnNetworks(account, networks)
             form.update { form ->
-                when (val result = addOnNetworks(account, networks)) {
+                when (result) {
                     is NetworksAdd.Added -> form.copy(adding = false, done = true)
                     is NetworksAdd.NotSaved -> form.copy(
                         adding = false,

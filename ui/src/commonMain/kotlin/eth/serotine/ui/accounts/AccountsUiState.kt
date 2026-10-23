@@ -52,7 +52,8 @@ sealed interface AccountsUiState {
      * display currency ("$3,250.00", or "Checking…"; null with no accounts), over the networks
      * [totalLabel] names ("Total · EUR · Ethereum and Gnosis Chain"): the real networks that are on,
      * never a testnet beside them, or the testnet alone when it is all there is. [totalNote] says
-     * what it leaves out ("1 asset without a price · Sepolia not included").
+     * what it leaves out ("1 asset without a price · Sepolia not included"). [message] is said once,
+     * until the screen has ([AccountsViewModel.messageShown]): a network that could not be turned on.
      */
     data class Ready(
         val sections: List<NetworkSection>,
@@ -61,6 +62,7 @@ sealed interface AccountsUiState {
         val totalLabel: String? = null,
         val totalNote: String? = null,
         override val upgrade: UpgradeBannerItem? = null,
+        val message: String? = null,
     ) : AccountsUiState {
         init {
             require(accounts.distinctBy { it.chainId to it.address }.size == accounts.size) {

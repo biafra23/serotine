@@ -29,10 +29,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,6 +104,7 @@ fun AccountsRoute(
         },
         modifier = modifier,
         onTurnOnNetwork = viewModel::turnOnNetwork,
+        onMessageShown = viewModel::messageShown,
     )
 }
 
@@ -129,8 +132,18 @@ fun AccountsScreen(
     modifier: Modifier = Modifier,
     fabExpandedAtStart: Boolean = false,
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    onMessageShown: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
+    // Said once: a network that could not be turned on.
+    val message = (state as? AccountsUiState.Ready)?.message
+    val shown by rememberUpdatedState(onMessageShown)
+    LaunchedEffect(message) {
+        if (message != null) {
+            snackbar.showSnackbar(message)
+            shown()
+        }
+    }
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
     val scope = rememberCoroutineScope()

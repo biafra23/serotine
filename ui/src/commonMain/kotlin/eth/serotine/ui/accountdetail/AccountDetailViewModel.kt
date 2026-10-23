@@ -45,6 +45,7 @@ import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.lastKnownNote
+import eth.serotine.ui.components.notTurnedOn
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
@@ -243,7 +244,9 @@ class AccountDetailViewModel(
 
     /** Turns the account's network on again: the way to Send and Swap on one that is off (N19). */
     fun turnOnNetwork() {
-        viewModelScope.launch { setNetworkEnabled(network, on = true) }
+        viewModelScope.launch {
+            if (!setNetworkEnabled(network, on = true)) view.update { it.copy(message = notTurnedOn(network)) }
+        }
     }
 
     /** Orders the rows by [order]. */
@@ -362,9 +365,9 @@ class AccountDetailViewModel(
      * The native row and a row per token held: a token whose verified balance is zero is not
      * held. Each row names the block its own amount was verified at: the readings are polled
      * one by one and need not share one. While no head can be read at, a row shows the
-     * amount last verified and says that it may have changed since.
+     * amount last verified and says that it may have changed since, or, on a network that is off
+     * ([off] names it), that it is off.
      */
-    /** The asset rows of [value]; [off] names the account's network while it is off, which a last balance says. */
     private fun rows(value: AccountValue, off: String?): List<Row> {
         val native = value.native
         val nativeRow = Row(

@@ -16,7 +16,8 @@ import eth.serotine.ui.components.NetworkLabel
  * network says its own ([networks]); an address with no code on every one of them is offered on
  * all of them by [question] ("Watch it on Ethereum and Gnosis Chain?"), [choosing] once the user
  * asked to tick the networks instead. A Safe or another contract is offered only where it is.
- * [noNetwork] says that no network is on, so nothing can be checked. The networks that are off are
+ * [cardNetwork] is the network [detection] was read on, which Add adds it on. [noNetwork] says
+ * that no network is on, so nothing can be checked. The networks that are off are
  * listed greyed out ([offNetworks]), each with Turn on as the way to check the address there too.
  */
 data class WatchUiState(
@@ -37,6 +38,7 @@ data class WatchUiState(
     val choosing: Boolean = false,
     val noNetwork: String? = null,
     val offNetworks: List<NetworkLabel> = emptyList(),
+    val cardNetwork: NetworkLabel? = null,
 ) {
     /** Whether adding now would name the account by [nameDefault]: no name typed, and an add it can be. */
     val followsEns: Boolean

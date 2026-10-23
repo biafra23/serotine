@@ -44,6 +44,8 @@ internal fun networkChoices(
     on: Set<Network>,
     chosen: Set<Network>,
     networks: List<Network> = Network.entries,
+    /** Whether each says what an account there holds: N8 and N9 do, N6's short sheet does not. */
+    withLines: Boolean = true,
 ): List<NetworkChoice> = networks.map { network ->
     NetworkChoice(
         network.chainId,
@@ -51,7 +53,7 @@ internal fun networkChoices(
         network.testnet,
         on = network in on,
         chosen = network in chosen && network in on,
-        line = networkLine(network),
+        line = networkLine(network).takeIf { withLines },
     )
 }
 
