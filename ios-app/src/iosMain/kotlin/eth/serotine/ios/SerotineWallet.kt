@@ -3,7 +3,7 @@ package eth.serotine.ios
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.cow.FileCowOrders
 import eth.serotine.data.cow.HttpCowApi
-import eth.serotine.data.engine.MyotisNode
+import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.IosBiometricKey
@@ -26,6 +26,7 @@ import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
+import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
 import eth.serotine.domain.usecase.FollowUpgradeReports
@@ -111,22 +112,22 @@ class SerotineWallet {
     /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
     private val debugScreen = FileDebugScreen("$dataDir/debug-screen.json")
 
-    // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background;
-    // its state can be fetched again, so it stays out of backups. The balances last verified are
-    // kept beside it, to be shown as such after a restart. The adapters' diagnostics and the
+    // One engine, one light client per network that is on and needed: FollowNetworks starts with
+    // the wallet and runs for the life of the process (docs/networks.md, *The engine host*). The
+    // engine's state can be fetched again, so it stays out of backups. The balances last verified
+    // are kept beside it, to be shown as such after a restart. The adapters' diagnostics and the
     // engine's own log go to the device's log in a debug build only: NSLog, not println, whose
     // stdout reaches no one on a device unless Xcode launched the app. Each request asked of the
     // engine goes to the Debug tab's log ([debugLog]), in memory, in any build.
     @OptIn(ExperimentalNativeApi::class)
-    private val node: MyotisNode = run {
+    private val node: MyotisHost = run {
         val engineDir = "$dataDir/myotis"
         createDirectoryOutOfBackups(engineDir)
         // The line is NSLog's format, its `%` escaped, so nothing crosses NSLog's C varargs: with
         // NSLog("%@", line) the debug app died at launch on the simulator (#129's CI).
         val debugLog: ((String) -> Unit)? =
             if (Platform.isDebugBinary) { line -> NSLog(line.replace("%", "%%")) } else null
-        MyotisNode.start(
-            Network.SEPOLIA,
+        MyotisHost.start(
             engineDir,
             lastBalances = "$dataDir/last-balances.json",
             debugLog = debugLog,
@@ -145,8 +146,15 @@ class SerotineWallet {
     @OptIn(ExperimentalNativeApi::class)
     private val networkSettings =
         FileNetworkSettings("$dataDir/networks.json", defaultOn = { it.testnet == Platform.isDebugBinary })
-    private val notifier = IosUpgradeNotifier(Network.SEPOLIA)
-    private val upgradeNotices = UpgradeNotices(Network.SEPOLIA, knownUpgrades, notifier)
+    /** Each network's notifications, apart: held here, as the first one is the notification center's delegate. */
+    private val notifiers = Network.entries.associateWith(::IosUpgradeNotifier)
+
+    /** What the user hears about each network's upgrades outside the app, apart (docs/networks.md). */
+    private val upgradeNotices =
+        notifiers.mapValues { (network, notifier) -> UpgradeNotices(network, knownUpgrades, notifier) }
+
+    /** The screens' holds on a network with no account on it yet (Watch, Add token). */
+    private val networkDemand = NetworkDemand()
 
     // One instance each, which the graph and the background work share. Each account added is
     // noted where its history starts (issue #85): addresses with a block or a time, public data only.
@@ -206,7 +214,7 @@ class SerotineWallet {
             safeApprovals = node.safeApprovals,
             // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
             safeReleases = PinnedSafeReleases(),
-            // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
+            // Uniswap v3 on each network that has it pinned, its contracts proven by their code before any quote.
             uniswap = node.uniswap,
             // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
             // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*). Until
@@ -220,9 +228,7 @@ class SerotineWallet {
             debugScreen = debugScreen,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
             screenCaptureDebugSwitch = null,
-            // The iOS host keeps its one light client running (docs/networks.md: the iOS host
-            // follows networks on and off from part 4, when there is a second one): holds change nothing.
-            networkDemand = NetworkDemand(),
+            networkDemand = networkDemand,
             networkSettings = networkSettings,
         )
     }
@@ -245,8 +251,14 @@ class SerotineWallet {
         startForegroundWork()
         // The debug log records while the Debug tab is on, for the life of the process.
         scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
-        // Records each network's default the first time it is found unrecorded.
-        scope.launch { networkSettings.observe().first() }
+        // Each network's light client runs while it is on and needed (docs/networks.md, *The engine
+        // host*); following the setting also records each network's default. A failure ends it,
+        // never the wallet: the light clients keep their last state.
+        scope.launch {
+            reportingFailure("following the networks") {
+                FollowNetworks(networkSettings, accounts, networkDemand, node)()
+            }
+        }
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
             keepAwakeUntil("pause the engine", node.pause())
@@ -263,7 +275,8 @@ class SerotineWallet {
             val shutdown = scope.launch(Dispatchers.IO) { node.shutdown() }
             runBlocking { withTimeoutOrNull(TERMINATE_WAIT) { shutdown.join() } }
         }
-        notifier.askPermission()
+        // One permission for every network's notices: asked once, by one of them.
+        notifiers.values.first().askPermission()
         startupTime("wallet built")
     }
 
@@ -296,12 +309,14 @@ class SerotineWallet {
      */
     private fun startForegroundWork() {
         if (foregroundWork.isNotEmpty()) return
-        foregroundWork = listOf(
+        foregroundWork = upgradeNotices.map { (network, notices) ->
+            // Each network's upgrade reports, while its light client runs (one off or idle reports none).
             scope.launch {
-                reportingFailure(
-                    "upgrade notices",
-                ) { FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)() }
-            },
+                reportingFailure("upgrade notices of ${network.displayName}") {
+                    FollowUpgradeReports(network, node.networkUpgrades, notices)()
+                }
+            }
+        } + listOf(
             scope.launch {
                 // The Safes this wallet deployed are listed whatever screen is open, and again after a
                 // restart (docs/wallet-ux.md, screen 15).
@@ -321,26 +336,29 @@ class SerotineWallet {
                     FollowSentTransactions(transactionHistory, sentRecord, node.receipts, node.transactionInputs)()
                 }
             },
-            scope.launch {
-                // The engine's log index follows every account from where its history starts (issue #85).
-                reportingFailure("following the accounts' logs") {
-                    FollowAccountLogs(
-                        accounts,
-                        historyStarts,
-                        transactionHistory,
-                        node.lightClient,
-                        node.logIndex,
-                        Network.SEPOLIA,
-                    )()
-                }
-            },
-            scope.launch {
-                // Each CoW order's end is proven from the accounts' log-index entries (docs/swaps.md).
-                reportingFailure("proving the CoW orders' ends") {
-                    ProveCowOrderEnds(cowOrders, node.logIndex, node.lightClient, accounts, Network.SEPOLIA)()
-                }
-            },
-        )
+        ) + Network.entries.flatMap { network ->
+            listOf(
+                scope.launch {
+                    // Each network's log index follows its accounts from where each history starts (issue #85).
+                    reportingFailure("following the accounts' logs on ${network.displayName}") {
+                        FollowAccountLogs(
+                            accounts,
+                            historyStarts,
+                            transactionHistory,
+                            node.lightClient,
+                            node.logIndex,
+                            network,
+                        )()
+                    }
+                },
+                scope.launch {
+                    // Each CoW order's end is proven from its network's log-index entries (docs/swaps.md).
+                    reportingFailure("proving the CoW orders' ends on ${network.displayName}") {
+                        ProveCowOrderEnds(cowOrders, node.logIndex, node.lightClient, accounts, network)()
+                    }
+                },
+            )
+        }
     }
 
     /** Runs [work]; a failure ends it, said on the console with its kind only, never the wallet. */
