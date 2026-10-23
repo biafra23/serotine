@@ -298,11 +298,12 @@ private fun ReviewContent(state: SafeSwapUiState.Review, actions: SafeSwapAction
         Heading("Signed by")
         OwnerChoices(state.owners, state.owner, enabled = state.idle, onChoose = actions.onOwnerChange)
         Note(
-            if (state.transactions.size > 1) {
-                "Both are signed, one after the other, and queued on this device, from where they are shared " +
+            when (state.transactions.size) {
+                1 -> "Signed, it is queued on this device, from where it is shared with the other owners."
+                2 -> "Both are signed, one after the other, and queued on this device, from where they are shared " +
                     "with the other owners."
-            } else {
-                "Signed, it is queued on this device, from where it is shared with the other owners."
+                else -> "All three are signed, one after the other, and queued on this device, from where they " +
+                    "are shared with the other owners."
             },
         )
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -311,7 +312,11 @@ private fun ReviewContent(state: SafeSwapUiState.Review, actions: SafeSwapAction
             signing = state.signing,
             canSign = state.canSign,
             canSignWithBiometrics = state.canSignWithBiometrics,
-            signLabel = if (state.transactions.size > 1) "Sign both and queue" else "Sign and queue",
+            signLabel = when (state.transactions.size) {
+                1 -> "Sign and queue"
+                2 -> "Sign both and queue"
+                else -> "Sign all three and queue"
+            },
             signingLabel = when {
                 state.checking -> CHECKING_SAFE
                 state.progress != null -> "Signing ${state.progress.lowercase()}…"

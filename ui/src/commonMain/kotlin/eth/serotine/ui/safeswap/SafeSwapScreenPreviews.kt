@@ -170,25 +170,38 @@ private fun SafeSwapReviewSwapOnlyPreview() = SafeSwapPreview(
     ),
 )
 
+private fun usdtApproval(title: String) = approval.action.copy(
+    title = title,
+    addresses = listOf(ActionAddress("Spender", ROUTER), ActionAddress("Token contract", USDT)),
+    icon = "usdt",
+    symbol = "USDT",
+)
+
 @Preview
 @Composable
 private fun SafeSwapReviewResetFirstPreview() = SafeSwapPreview(
     review.copy(
         sell = usdt,
         sold = "100 USDT",
+        route = listOf(RouteStep("USDT → WETH", "0.05 %", POOL)),
         spender = SpenderItem("Uniswap's SwapRouter02", ROUTER),
         transactions = listOf(
             SafeSwapTransaction(
                 "Safe nonce 12",
-                approval.action.copy(title = "Allow a contract to take 0 USDT", icon = "usdt", symbol = "USDT"),
+                usdtApproval("Allow a contract to take 0 USDT"),
             ),
             SafeSwapTransaction(
                 "Safe nonce 13",
-                approval.action.copy(title = "Allow a contract to take 100 USDT", icon = "usdt", symbol = "USDT"),
+                usdtApproval("Allow a contract to take 100 USDT"),
             ),
             SafeSwapTransaction(
                 "Safe nonce 14",
-                swap.action.copy(title = "Swap 100 USDT for at least 0.04 ETH", icon = "usdt", symbol = "USDT"),
+                swap.action.copy(
+                    title = "Swap 100 USDT for at least 0.04 ETH",
+                    addresses = listOf(ActionAddress("Router", ROUTER), ActionAddress("Token sold", USDT)),
+                    icon = "usdt",
+                    symbol = "USDT",
+                ),
             ),
         ),
         approvalNote = "The router may take 5 USDT of the Safe's USDT, and USDT refuses to move one allowance to " +
