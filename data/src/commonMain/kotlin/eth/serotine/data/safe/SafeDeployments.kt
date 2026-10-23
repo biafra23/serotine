@@ -35,6 +35,15 @@ internal data class SafeSingleton(val version: String, val l2: Boolean, val modu
  * safe-global/safe-deployments (`src/assets/v1.4.1/safe_proxy_factory.json`, `0x50c3cdc4…`). It
  * is only what is expected: a deployment is quoted only when the factory's verified run returns
  * the address computed from it.
+ *
+ * Ethereum has the same canonical deployments at the same addresses, so the same table. Read on
+ * mainnet on 2026-10-23 at blocks 26,256,229 to 26,256,247 through two public nodes, which
+ * agreed, a debugging source only (CLAUDE.md, *Data sources*): each singleton's `VERSION()` as
+ * listed; each factory's proxy creation code, deployed by an `eth_call`, runs to the code whose
+ * hash is pinned below (1.3.0's factory and its eip155 twin alike), and 1.4.1's factory returns
+ * exactly [PROXY_CREATION_CODE_1_4_1] and has the code hash `0x50c3cdc4…` named above. The light
+ * client proves a Safe's proxy and singleton before it is one, and `MyotisHostEthereumTest` does
+ * so on the real chain.
  */
 internal object SafeDeployments {
 
@@ -50,14 +59,11 @@ internal object SafeDeployments {
 
     /** The deployments of [network]. */
     fun of(network: Network): Table = when (network) {
-        // None until each is proven on mainnet (docs/networks.md, part 4): no contract there is a Safe yet.
-        Network.ETHEREUM -> NONE
-        Network.SEPOLIA -> SEPOLIA
+        // The same canonical deployments, read on both chains.
+        Network.ETHEREUM, Network.SEPOLIA -> CANONICAL
     }
 
-    private val NONE = Table(proxyCodeHashes = emptySet(), singletons = emptyMap(), creation = null)
-
-    private val SEPOLIA = Table(
+    private val CANONICAL = Table(
         proxyCodeHashes = setOf(
             // 1.3.0, from GnosisSafeProxyFactory 0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2.
             "b89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",

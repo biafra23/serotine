@@ -23,23 +23,48 @@ data class PinnedFeed(
  * the light client). On Sepolia these are Chainlink's own Sepolia feeds, testnet feeds: the
  * prices they give are not market values.
  *
- * Proxies, decimals and heartbeats from Chainlink's feed directory
+ * Sepolia's proxies, decimals and heartbeats from Chainlink's feed directory
  * (`reference-data-directory.vercel.app/feeds-ethereum-testnet-sepolia.json`), read on
  * 2026-10-17. Each feed was read the same day with verified calls through the Myotis engine at
  * Sepolia blocks 11,932,880 to 11,932,883: `description()` named the pair and `decimals()`
  * answered as pinned.
+ *
+ * Ethereum's from the same directory (`feeds-mainnet.json`), read on 2026-10-23: one feed per
+ * built-in token and display currency that has one there, each X / USD but WBTC's, which is
+ * WBTC / BTC and goes through BTC / USD. Each was read the same day at mainnet blocks 26,256,203
+ * to 26,256,210 through two public nodes, which agreed, a debugging source only (CLAUDE.md,
+ * *Data sources*): `description()` named the pair and `decimals()` answered 8. The light client
+ * proves every answer it serves, and `MyotisHostEthereumTest` reads each feed through it.
  */
 object ChainlinkFeeds {
 
     /** The feeds pinned for [network]. */
     fun of(network: Network): List<PinnedFeed> = when (network) {
-        // None pinned until each is proven on mainnet (docs/networks.md, part 4): nothing is priced.
-        Network.ETHEREUM -> emptyList()
+        Network.ETHEREUM -> ETHEREUM
         Network.SEPOLIA -> SEPOLIA
     }
 
     private const val HOUR = 3_600L
     private const val DAY = 86_400L
+
+    private val ETHEREUM = listOf(
+        usd("ETH", "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419", HOUR),
+        usd("BTC", "0xf4030086522a5beea4988f8ca5b36dbc97bee88c", HOUR),
+        usd("USDC", "0x8fffffd4afb6115b954bd326cbe7b4ba576818f6", 82_800),
+        usd("USDT", "0x3e7d1eab13ad0104d2750b8863b489d65364e32d", DAY),
+        usd("DAI", "0xaed0c38402a5d19df6e4c03f4e2dced6e29c1ee9", HOUR),
+        usd("LINK", "0x2c1d072e956affc0d435cb7ac38ef18d24d9127c", HOUR),
+        usd("UNI", "0x553303d460ee0afb37edff9be42922d8ff63220e", HOUR),
+        usd("AAVE", "0x547a514d5e3769680ce22b2361c10ea13619e8a9", HOUR),
+        usd("EURC", "0x04f84020fdf10d9ee64d1dcc2986edf2f556da11", DAY),
+        usd("PYUSD", "0x8f1df6d7f2db73eece86a18b4381f4707b918fb1", DAY),
+        usd("GHO", "0x3f12643d3f6f874d39c2a4c9f2cd6f2dbac877fc", DAY),
+        PinnedFeed(PriceId("WBTC"), Address.of("0xfdfd9c85ad200c506cf9e21f1fd8dd01932fbb23"), PriceId("BTC"), 8, DAY),
+        usd("EUR", "0xb49f677943bc038e9857d61e7d053caa2c1734c1", DAY),
+        usd("GBP", "0x5c0ab2d9b5a7ed9f470386e82bb36a3613cdd4b5", DAY),
+        usd("CHF", "0x449d117117838ffa61263b61da6301aa2a88b13a", DAY),
+        usd("JPY", "0xbce206cae7f0ec07b545edde332a47c2f75bbeb3", DAY),
+    )
 
     private val SEPOLIA = listOf(
         usd("ETH", "0x694aa1769357215de4fac081bf1f309adc325306", HOUR),
