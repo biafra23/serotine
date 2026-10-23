@@ -233,6 +233,32 @@ class FileSentTransfersTest {
     }
 
     @Test
+    fun aSixthFormatRecordOfEitherBuildReadsAsItWasWritten() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val uid = "0x" + "ab".repeat(32) + alice.hex.removePrefix("0x") + "6ad9e7f4"
+        // Two builds took format 6 apart: main's for a CoW cancellation, with no chain (Sepolia, the
+        // only network there was), and feature/networks's for each record's chain.
+        val cancellation = """{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
+            """"cancellation":{"settlement":"${settlement.hex}","uid":"$uid"},"maxCost":"1","sentAt":1800000007}"""
+        val onChain = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","to":"${bob.hex}","amount":"1",""" +
+            """"maxCost":"1","sentAt":1800000008,"chain":11155111}"""
+        SystemFileSystem.sink(file).buffered().use {
+            it.writeString("""{"version":6,"transfers":[$cancellation,$onChain]}""")
+        }
+
+        val read = stored()
+        assertEquals(listOf(Network.SEPOLIA, Network.SEPOLIA), read.map { it.network })
+        assertEquals(
+            listOf(
+                SentAction.CowCancellation(settlement, CowOrderUid.of(uid)),
+                SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            ),
+            read.map { it.action },
+        )
+    }
+
+    @Test
     fun aRecordOfTheFifthFormatReadsAsItWasWritten() = runTest {
         SystemFileSystem.createDirectories(directory)
         val v5 = """{"version":5,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
