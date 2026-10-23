@@ -1,5 +1,6 @@
 package eth.serotine.ui.activity
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -11,11 +12,11 @@ import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
-import eth.serotine.domain.usecase.ObserveAccountCowOrders
-import eth.serotine.domain.usecase.ObserveAccountHistory
-import eth.serotine.domain.usecase.KnownToken
 import eth.serotine.domain.usecase.IndexedEvent
 import eth.serotine.domain.usecase.IndexedHistory
+import eth.serotine.domain.usecase.KnownToken
+import eth.serotine.domain.usecase.ObserveAccountCowOrders
+import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
@@ -52,20 +53,21 @@ class AccountActivity(
     private val observeKnownTokens: ObserveKnownTokens,
     private val observeSentTo: ObserveSentToAddresses,
     private val observeCowOrders: ObserveAccountCowOrders,
-    private val network: Network,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) {
 
-    /** The Activity of the account at [address], as it changes; nothing is read until it is collected. */
-    fun of(address: Address): Flow<ActivityUiState> = Listing(address).state
+    /** The Activity of the [account], as it changes; nothing is read until it is collected. */
+    fun of(account: AccountId): Flow<ActivityUiState> = Listing(account).state
 
-    /** One account's Activity: the [address] its rows and sources are of. */
-    private inner class Listing(private val address: Address) {
+    /** One account's Activity: the [account] its rows and sources are of. */
+    private inner class Listing(private val account: AccountId) {
 
-        private val rows = ActivityRows(address, network, formatTime)
+        private val address: Address = account.address
+
+        private val rows = ActivityRows(address, account.network, formatTime)
 
         private val sources = ActivitySources(
-            address,
+            account,
             observeAccounts,
             observeSafeHistory,
             observeTokenTransfers,
@@ -74,7 +76,7 @@ class AccountActivity(
         )
 
         val state: Flow<ActivityUiState> = combine(
-            combine(observeAccountHistory(address), observeCowOrders(address)) { history, orders -> history to orders },
+            combine(observeAccountHistory(account), observeCowOrders(account)) { history, orders -> history to orders },
             sources.parties,
             sources.safeHistory,
             sources.transfers,
@@ -132,8 +134,10 @@ class AccountActivity(
                 }
                 .map { rows.transferRow(it, parties, tokens.orEmpty()) to it }
             val events = (safeEvents + tokenEvents)
-                .sortedWith(compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
-                    .thenByDescending { it.second.logIndex })
+                .sortedWith(
+                    compareByDescending<Pair<ActivityRow, IndexedEvent>> { it.second.blockNumber }
+                    .thenByDescending { it.second.logIndex },
+                )
                 .map { (row, event) -> row to event.blockNumber }
             val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
             val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
@@ -141,7 +145,7 @@ class AccountActivity(
             val covered = listOfNotNull(
                 "Transactions sent from this device.",
                 onChainCoverage(parts, since),
-                if (safe == null) NOT_LISTED_YET else null,
+                if (safe == null) notListedYet(account.network) else null,
             )
             return ActivityUiState.Shown(
                 rows = merged(sent, events),
@@ -262,7 +266,10 @@ class AccountActivity(
     }
 
     private companion object {
-        const val NOT_LISTED_YET = "ETH it received, and transactions sent from it elsewhere, are not listed yet."
+        /** What an account's Activity does not list yet: the network's own currency it received, among others. */
+        fun notListedYet(network: Network) =
+            "${network.nativeSymbol} it received, and transactions sent from it elsewhere, are not listed yet."
+
         const val COVERAGE = "Transactions sent from this device. Transactions received, and those sent " +
             "from this account elsewhere, are not listed yet."
         const val UNREADABLE = "The history of your transactions cannot be read right now. Serotine keeps trying."

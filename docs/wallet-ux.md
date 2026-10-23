@@ -19,11 +19,14 @@ the text wins.
 
 ## Rules every screen follows
 
-- **Sepolia only, and named.** The app works on Sepolia alone (owner ruling,
-  2026-10-15), so there is no network picker; a plain label says "Sepolia" on
-  the screens that matter for it (Accounts, Receive, Send review, Settings). Every
-  table this page mentions (tokens, price feeds, Safe singletons) is keyed by
-  `Network`, so another network is a data addition once the owner allows it.
+- **Each account on its network, and named.** Ethereum and Gnosis Chain
+  beside Sepolia, one chain per account (owner ruling, 2026-10-22; it
+  replaces "Sepolia only" of 2026-10-15). There is no current network: a
+  screen takes its network from the account it shows and names it with the
+  network's mark, and the steps that add an account or create a Safe ask
+  for the network first. docs/networks.md is the plan this page follows for
+  networks, and its screens N1 to N20 add to the ones below. Every table this
+  page mentions (tokens, price feeds, Safe singletons) is kept per `Network`.
 - **Verified, or not available.** Every chain value comes from the embedded
   Myotis engine. When the engine cannot prove a value the screen says so
   ("not available", the light client's state); it never shows a guess, a
@@ -857,13 +860,21 @@ read through the light client. Applied:
 
 ## Home-screen widget
 
-An Android home-screen widget with one exchange rate: the network's native
+An Android home-screen widget with one exchange rate: its network's native
 currency in the display currency (screen 19), in USD where that is ETH
 itself, or none is chosen, or the network does not offer the one stored (as
 the screens have it) — "ETH · EUR", "€2,046.20" — with its change over
 the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
-"24h 0.00%" when it rounds to no move, and a line that dates it: "Verified
-Oct 21, 2:05 PM · may have changed since · testnet prices". A tap on the
+"24h 0.00%" when it rounds to no move, and a line that names its network and
+dates it: "Sepolia · Verified Oct 21, 2:05 PM · may have changed since ·
+testnet prices". Each widget shows one network, asked for when it is placed
+among the networks that are on and have accounts (every network that is on
+when none of those is), and kept; another network
+is another widget, and one placed before networks shows Sepolia. A widget of
+a network that is off keeps its last rate and says "Gnosis Chain is off" in
+place of "may have changed since", and nothing reads it until the network is
+on (docs/networks.md, *The widget*). A refresh reads only the networks the
+placed widgets show, each waking alone. A tap on the
 refresh button reads it now (below); a tap anywhere else opens the app. The desktop has no
 home screen, and iOS's widget (a WidgetKit extension) is still to come.
 

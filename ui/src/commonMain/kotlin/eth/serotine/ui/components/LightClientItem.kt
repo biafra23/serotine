@@ -1,6 +1,7 @@
 package eth.serotine.ui.components
 
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.ui.components.LightClientHealth.NOT_RUNNING
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.STALE
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
@@ -85,6 +86,9 @@ data class LightClientItem(
             )
             LightClientStatus.Unavailable ->
                 LightClientItem("No light client on this device", null, false, NOT_VERIFIED)
+            LightClientStatus.Off -> LightClientItem("Turned off in this wallet", null, false, NOT_RUNNING)
+            LightClientStatus.Idle ->
+                LightClientItem("Light client idle · it starts once an account needs it", null, false, NOT_RUNNING)
         }
 
         /** " · 8 s ago" for a block produced at [timestamp], or nothing when its time is unknown. */
@@ -119,18 +123,33 @@ enum class LightClientHealth {
 
     /** Red: no verified head yet (starting, bootstrapping, catching up), sync refused, or no light client. */
     NOT_VERIFIED,
+
+    /**
+     * Grey: the light client does not run, on purpose: its network is turned off in this wallet,
+     * or on with nothing needing it yet (docs/networks.md). Nothing is wrong.
+     */
+    NOT_RUNNING,
 }
 
 /**
  * These states as the strip shows them, dated by [clock] (unix seconds): re-dated every
  * second while one shows a head block's age, unchanged otherwise.
  */
+fun Flow<LightClientStatus>.asItems(clock: () -> Long): Flow<LightClientItem> =
+    redatedWhile { it.dated }.map { LightClientItem.from(it, clock()) }
+
+/** Whether this state's line shows a head block's age ("· 8 s ago"), which moves on every second. */
+internal val LightClientStatus.dated: Boolean
+    get() = this is LightClientStatus.Synced && headTimestamp != null ||
+        this is LightClientStatus.WaitingForProofPeers && headTimestamp != null
+
+/**
+ * Each value, emitted again every second while [dated] says it shows an age, so that age is
+ * re-dated on screen; once otherwise.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
-fun Flow<LightClientStatus>.asItems(clock: () -> Long): Flow<LightClientItem> = flatMapLatest { status ->
-    val dated = status is LightClientStatus.Synced && status.headTimestamp != null ||
-        status is LightClientStatus.WaitingForProofPeers && status.headTimestamp != null
-    val ticks = if (dated) everySecond else flowOf(Unit)
-    ticks.map { LightClientItem.from(status, clock()) }
+internal fun <T> Flow<T>.redatedWhile(dated: (T) -> Boolean): Flow<T> = flatMapLatest { value ->
+    if (dated(value)) everySecond.map { value } else flowOf(value)
 }
 
 /** Now, in unix seconds: the clock the screens date the head block against. */

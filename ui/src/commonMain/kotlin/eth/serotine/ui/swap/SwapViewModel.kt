@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
@@ -91,6 +92,8 @@ import eth.serotine.ui.components.toleranceError
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -102,8 +105,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
 /**
  * The Swap screen's ViewModel (docs/swaps.md; screens 22 and 23): a swap from [from] on [network],
@@ -140,7 +141,7 @@ import kotlin.time.TimeSource
  * time zone. [fill], when given, is what the compose step opens with: the same swap again.
  */
 class SwapViewModel(
-    private val from: Address,
+    private val account: AccountId,
     sell: Address?,
     observeAccounts: ObserveAccounts,
     observeAccountValue: ObserveAccountValue,
@@ -156,11 +157,15 @@ class SwapViewModel(
     cowOfferedOnThisDevice: CowOfferedOnThisDevice,
     private val quoteCowSwap: QuoteCowSwap,
     private val placeCowOrder: PlaceCowOrder,
-    private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val formatTime: (Long) -> String = ::formatDateTime,
     fill: SwapFill? = null,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val from: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
 
     init {
         // The compose step is open: the fee history is asked for now, ready by the review.
@@ -304,7 +309,12 @@ class SwapViewModel(
     private var hiddenWhileQuoting = false
 
     private val model: StateFlow<Model?> =
-        combine(observeAccounts(), observeAccountValue(from), inputs, observeSwapVenue()) { list, value, inputs, last ->
+        combine(
+            observeAccounts(),
+            observeAccountValue(account),
+            inputs,
+            observeSwapVenue(),
+        ) { list, value, inputs, last ->
             modelOf(list, value, inputs, last)
         }.stateIn(
             viewModelScope,
@@ -848,7 +858,7 @@ class SwapViewModel(
         val swapper = when (list) {
             is AccountList.Unreadable -> Swapper.Cannot(LIST_UNAVAILABLE)
             is AccountList.Loaded -> {
-                val account = list.accounts.firstOrNull { it.address == from }
+                val account = list.accounts.firstOrNull { it.id == this@SwapViewModel.account }
                 when {
                     account == null -> Swapper.Cannot(NOT_IN_WALLET)
                     account.kind == AccountKind.SAFE -> Swapper.Cannot(SAFE)
@@ -1276,6 +1286,7 @@ class SwapViewModel(
     private fun unavailableText(reason: ReadUnavailable, figure: QuoteFigure?) =
         when (reason) {
             ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so nothing can be swapped."
+            ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so nothing can be swapped."
             ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so nothing can be quoted."
             ReadUnavailable.UNPROVEN -> "${figureText(figure, "of the quote")} could not be verified this time: " +
                 "try again."
@@ -1290,7 +1301,7 @@ class SwapViewModel(
     private fun warmFees() {
         viewModelScope.launch {
             try {
-                warmFeeHistory()
+                warmFeeHistory(network)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

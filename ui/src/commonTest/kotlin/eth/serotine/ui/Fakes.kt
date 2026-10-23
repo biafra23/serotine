@@ -2,8 +2,10 @@ package eth.serotine.ui
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
@@ -37,27 +39,28 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
 
     override suspend fun add(account: Account): AccountAdd = when {
         failSaves -> AccountAdd.NotSaved
-        accounts.value.any { it.address == account.address } -> AccountAdd.AlreadyPresent
+        // The same address on the same network, as the port's contract says: on another, another account.
+        accounts.value.any { it.id == account.id } -> AccountAdd.AlreadyPresent
         else -> {
             accounts.value = accounts.value + account
             AccountAdd.Added
         }
     }
 
-    override suspend fun rename(address: Address, label: String): AccountChange =
-        change(address) { list ->
-            list.map { if (it.address == address) it.copy(label = label, ensName = null) else it }
+    override suspend fun rename(id: AccountId, label: String): AccountChange =
+        change(id) { list ->
+            list.map { if (it.id == id) it.copy(label = label, ensName = null) else it }
         }
 
-    override suspend fun setCustody(address: Address, custody: AccountCustody): AccountChange =
-        change(address) { list -> list.map { if (it.address == address) it.copy(custody = custody) else it } }
+    override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
+        change(id) { list -> list.map { if (it.id == id) it.copy(custody = custody) else it } }
 
-    override suspend fun remove(address: Address): AccountChange =
-        change(address) { list -> list.filterNot { it.address == address } }
+    override suspend fun remove(id: AccountId): AccountChange =
+        change(id) { list -> list.filterNot { it.id == id } }
 
-    private fun change(address: Address, edit: (List<Account>) -> List<Account>): AccountChange = when {
+    private fun change(id: AccountId, edit: (List<Account>) -> List<Account>): AccountChange = when {
         failSaves -> AccountChange.NotSaved
-        accounts.value.none { it.address == address } -> AccountChange.NotFound
+        accounts.value.none { it.id == id } -> AccountChange.NotFound
         else -> {
             accounts.value = edit(accounts.value)
             AccountChange.Changed
@@ -94,14 +97,14 @@ internal class FakeBalances : NativeBalances {
 
     fun of(address: Address) = readings.getOrPut(address) { MutableStateFlow(BalanceReading.Syncing) }
 
-    override fun observeBalance(address: Address): Flow<BalanceReading> = of(address)
+    override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> = of(address)
 }
 
 /** A [TokenCatalog] of [tokens], which a test may change. */
 internal class FakeTokenCatalog(vararg tokens: Token) : TokenCatalog {
     val tokens = MutableStateFlow(tokens.toList())
 
-    override fun observeTokens(): Flow<List<Token>> = this.tokens
+    override fun observeTokens(network: Network): Flow<List<Token>> = this.tokens
 }
 
 /** [TokenBalances] whose reading per holder and token a test sets; Syncing until then. */
@@ -111,5 +114,8 @@ internal class FakeTokenBalances : TokenBalances {
     fun of(holder: Address, token: Address) =
         readings.getOrPut(holder to token) { MutableStateFlow(TokenBalanceReading.Syncing) }
 
-    override fun observeBalance(holder: Address, token: Address): Flow<TokenBalanceReading> = of(holder, token)
+    override fun observeBalance(network: Network, holder: Address, token: Address): Flow<TokenBalanceReading> = of(
+        holder,
+        token,
+    )
 }

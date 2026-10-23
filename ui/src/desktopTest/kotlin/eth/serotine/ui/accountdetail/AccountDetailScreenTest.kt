@@ -46,6 +46,7 @@ import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
 import eth.serotine.ui.components.GHOST_ROW_TAG
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.verifiedStripSample
@@ -64,6 +65,7 @@ class AccountDetailScreenTest {
     private val ready = AccountDetailUiState.Ready(
         label = "Daily",
         address = "0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2",
+        network = NetworkLabel(11_155_111, "Sepolia", testnet = true),
         kind = AccountKind.EOA,
         control = Control.WATCH_ONLY,
         total = "$3,000.00",
@@ -97,8 +99,28 @@ class AccountDetailScreenTest {
                 onOpenSafeTx = { events += "open $it" },
                 onImportRequest = { events += "import" },
                 onOpenActivity = { events += "open activity $it" },
+                onTurnOnNetwork = { events += "turn on" },
             )
         }
+    }
+
+    @Test
+    fun namesTheAccountsNetworkBesideItsControl() {
+        show(ready)
+
+        rule.onNodeWithText("Sepolia · Testnet", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun onANetworkThatIsOffSendSaysWhyAndTurnsItOn() {
+        show(ready.copy(control = Control.FULL_CONTROL, networkOn = false))
+
+        rule.onNodeWithText("Sepolia is off in this wallet: nothing is checked.").assertIsDisplayed()
+        rule.onNodeWithText("Send").performClick()
+        rule.onNodeWithText("Send needs Sepolia").assertIsDisplayed()
+        rule.onNodeWithText("Turn on Sepolia").performClick()
+
+        assertEquals(listOf("turn on"), events)
     }
 
     @Test

@@ -3,6 +3,7 @@ package eth.serotine.ui.createsafe
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.NetworkChip
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.UnlockStep
 
@@ -24,9 +25,14 @@ sealed interface CreateSafeUiState {
 
     /**
      * No Safe can be created here, for the reason [message] gives: no account's key is held here to
-     * pay for the deployment, the account list cannot be read, or no Safe release is pinned.
+     * pay for the deployment, the account list cannot be read, or no Safe release is pinned. The
+     * [networks] offer another network where that is so.
      */
-    data class CannotCreate(override val network: String, val message: String) : CreateSafeUiState
+    data class CannotCreate(
+        override val network: String,
+        val message: String,
+        val networks: List<NetworkChip> = emptyList(),
+    ) : CreateSafeUiState
 
     /**
      * Screen 13, 1/3: the Safe's [name] as typed ([nameError] why it cannot be one), and its owners:
@@ -36,10 +42,12 @@ sealed interface CreateSafeUiState {
      * the field says under it — an error when [inputError], with [canRetryLookup] when asking again
      * may help; [canAdd] once it can be added. [deviceKeyNote] says why this device's hardware key
      * is not offered. [summary] counts the owners chosen ("2 owners"), [error] says why they cannot
-     * own a Safe, and [canContinue] when they can go on to the threshold.
+     * own a Safe, and [canContinue] when they can go on to the threshold. The [networks] come first:
+     * the network the Safe is created on (docs/networks.md, N12).
      */
     data class Owners(
         override val network: String,
+        val networks: List<NetworkChip> = emptyList(),
         val name: String,
         val accounts: List<OwnerChoice>,
         val typed: List<OwnerChoice>,
@@ -50,6 +58,7 @@ sealed interface CreateSafeUiState {
         val inputOwner: OwnerChoice? = null,
         val inputNote: String? = null,
         val inputError: Boolean = false,
+        val inputLabel: String = "Address or ENS name",
         val canRetryLookup: Boolean = false,
         val canAdd: Boolean = false,
         val error: String? = null,

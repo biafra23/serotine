@@ -2,6 +2,7 @@ package eth.serotine.ui.activitydetail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -54,7 +55,7 @@ import kotlinx.coroutines.flow.stateIn
  * added. No intents: Copy is the screen's own, Status and Add token are navigation.
  */
 class ActivityDetailViewModel(
-    private val address: Address,
+    private val account: AccountId,
     private val key: ActivityKey,
     observeAccountHistory: ObserveAccountHistory,
     observeAccounts: ObserveAccounts,
@@ -62,14 +63,19 @@ class ActivityDetailViewModel(
     observeTokenTransfers: ObserveTokenTransfers,
     observeKnownTokens: ObserveKnownTokens,
     observeSentTo: ObserveSentToAddresses,
-    network: Network,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val address: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
 
     private val rows = ActivityRows(address, network, formatTime)
 
     private val sources = ActivitySources(
-        address,
+        account,
         observeAccounts,
         observeSafeHistory,
         observeTokenTransfers,
@@ -79,7 +85,7 @@ class ActivityDetailViewModel(
 
     /** Only what the row is read from is followed: the history for a sent one, the log index for an event. */
     private val shown: Flow<ActivityDetailUiState> = if (key.logIndex == null) {
-        combine(observeAccountHistory(address), sources.parties, ::renderSent)
+        combine(observeAccountHistory(account), sources.parties, ::renderSent)
     } else {
         combine(sources.parties, sources.safeHistory, sources.transfers, sources.tokens, ::renderLogged)
     }

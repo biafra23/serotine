@@ -58,7 +58,7 @@ import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.unavailable
-import eth.serotine.ui.lightclient.LightClientViewModel
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of the button that cancels the order on chain, for UI tests. */
 const val COW_ORDER_CANCEL_TAG = "cow-order-cancel"
@@ -85,7 +85,7 @@ const val COW_ORDER_SIGN_TAG = "cow-order-sign"
 @Composable
 fun CowOrderRoute(
     viewModel: CowOrderViewModel,
-    lightClient: LightClientViewModel,
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onCancelSent: (hash: String) -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
@@ -93,7 +93,7 @@ fun CowOrderRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? CowOrderUiState.CancelSent)?.hash

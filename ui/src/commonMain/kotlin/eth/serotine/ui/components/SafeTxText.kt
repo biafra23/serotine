@@ -394,13 +394,20 @@ private fun callData(selector: String?, size: Int): String =
 
 private fun bytes(count: Int) = if (count == 1) "1 byte" else "${grouped(count.toLong())} bytes"
 
-/** [terms] as screens show them, before the warning that says what they can do. */
-internal fun gasTermsItem(terms: SafeTxGasTerms): GasTermsItem = GasTermsItem(
+/**
+ * [terms] as screens show them, a refund in [network]'s own currency, before the warning that
+ * says what they can do.
+ */
+internal fun gasTermsItem(terms: SafeTxGasTerms, network: Network): GasTermsItem = GasTermsItem(
     lines = listOf(
         "safeTxGas: ${grouped(terms.safeTxGas)}",
         "baseGas: ${grouped(terms.baseGas)}",
         "gasPrice: ${grouped(terms.gasPrice)}" + if (terms.gasToken == null) " wei" else " of the gas token's units",
-        if (terms.gasToken == null) "A refund is paid in ether" else "A refund is paid in the gas token",
+        if (terms.gasToken == null) {
+            "A refund is paid in ${network.nativeSymbol}"
+        } else {
+            "A refund is paid in the gas token"
+        },
         if (terms.receiver == null) "A refund goes to whoever executes it" else "A refund goes to the refund receiver",
     ),
     addresses = listOfNotNull(
@@ -426,8 +433,12 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
     SafeTxRefusal.Malformed -> "This text is not a Safe signing request."
     is SafeTxRefusal.UnknownVersion ->
         "A signing request of a newer version (${refusal.version}): update Serotine to read it."
-    is SafeTxRefusal.WrongChain ->
-        "A request for another network (chain id ${refusal.chainId}), not ${network.displayName}."
+    // The same address on another network is another Safe: both are named (docs/networks.md, N15).
+    is SafeTxRefusal.WrongChain -> Network.ofChainId(refusal.chainId)?.let { other ->
+        "This request is for the Safe at this address on ${other.displayName}. This account is the Safe on " +
+            "${network.displayName}: a different Safe, with its own owners and nonce. Watch the Safe on " +
+            "${other.displayName} to sign it there."
+    } ?: "A request for chain id ${refusal.chainId}, which is not a network this wallet supports."
     SafeTxRefusal.NotASafe -> "The address holds no Safe Serotine recognises, as its verified code and storage say."
     is SafeTxRefusal.OtherSafe ->
         "This request is for another Safe, ${Eip55.format(refusal.safe)}: import it from that Safe's own screen."
@@ -519,6 +530,7 @@ internal fun figureText(figure: QuoteFigure?, ofWhat: String): String = when (fi
 /** Why a verified figure could not be had right now, display-ready. */
 internal fun unavailableText(reason: ReadUnavailable): String = when (reason) {
     ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so nothing can be verified."
+    ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so nothing can be verified."
     ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so nothing can be verified."
     ReadUnavailable.UNPROVEN -> "A figure could not be verified this time: try again."
     ReadUnavailable.REFUSED -> "The light client on this device cannot read this."

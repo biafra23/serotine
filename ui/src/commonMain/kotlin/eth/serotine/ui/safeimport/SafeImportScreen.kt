@@ -42,9 +42,9 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.submitOnDone
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of the request's field, for UI tests. */
 const val IMPORT_REQUEST_FIELD_TAG = "import-request-field"
@@ -56,14 +56,15 @@ const val IMPORT_REQUEST_BUTTON_TAG = "import-request-button"
 @Composable
 fun SafeImportRoute(
     viewModel: SafeImportViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onImported: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: a paste reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     val imported = (state as? SafeImportUiState.Imported)?.hash
     val currentOnImported by rememberUpdatedState(onImported)
     LaunchedEffect(imported) {

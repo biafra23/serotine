@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
@@ -11,14 +12,26 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
+import eth.serotine.domain.usecase.HoldNetwork
+import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeNames
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkLabel
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,22 +45,25 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WatchViewModelTest {
 
+    private val networks = MemoryNetworkSettings()
+    private val demand = NetworkDemand()
+
     private val vitalik = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-    private val daily = Account(Address.of("0x" + "11".repeat(20)), AccountKind.EOA, "Daily", AccountCustody.InKeyStore)
+    private val daily = Account(
+        Network.SEPOLIA,
+        Address.of("0x" + "11".repeat(20)),
+        AccountKind.EOA,
+        "Daily",
+        AccountCustody.InKeyStore,
+    )
     private val accounts = FakeAccounts(daily)
     private val reading = MutableStateFlow<KindReading>(KindReading.Verified(AddressKind.Eoa, 9_412_118))
     private val kinds = object : AddressKinds {
-        override fun observeKind(address: Address): Flow<KindReading> = reading
+        override fun observeKind(network: Network, address: Address): Flow<KindReading> = reading
     }
     private val names = FakeNames()
 
@@ -61,6 +77,9 @@ class WatchViewModelTest {
             ObserveAccounts(accounts),
             WatchAddress(accounts, kinds),
             ResolveRecipient(names),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
+            HoldNetwork(demand),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -77,13 +96,14 @@ class WatchViewModelTest {
             Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),
             viewModel.uiState.value.detection,
         )
+        assertEquals(NetworkLabel.of(Network.SEPOLIA), viewModel.uiState.value.cardNetwork, "what Add adds it on")
         assertTrue(viewModel.uiState.value.canAdd)
 
         viewModel.add()
         runCurrent()
         assertTrue(viewModel.uiState.value.done)
         assertEquals(
-            Account(Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
+            Account(Network.SEPOLIA, Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
             accounts.accounts.value.last(),
         )
     }
@@ -139,13 +159,19 @@ class WatchViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         // The card shows an account; at Add the use case proves again, and cannot.
         val syncing = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
+            override fun observeKind(
+                network: Network,
+                address: Address,
+            ): Flow<KindReading> = MutableStateFlow(KindReading.Syncing)
         }
         val viewModel = WatchViewModel(
             ObserveAddressKind(kinds),
             ObserveAccounts(accounts),
             WatchAddress(accounts, syncing),
             ResolveRecipient(names),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
+            HoldNetwork(demand),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -204,7 +230,7 @@ class WatchViewModelTest {
     fun editsWhileAnAddRunsAreIgnored() = runTest {
         val slow = MutableStateFlow<KindReading?>(null)
         val gatedKinds = object : AddressKinds {
-            override fun observeKind(address: Address): Flow<KindReading> = slow.filterNotNull()
+            override fun observeKind(network: Network, address: Address): Flow<KindReading> = slow.filterNotNull()
         }
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel =
@@ -213,6 +239,9 @@ class WatchViewModelTest {
                 ObserveAccounts(accounts),
                 WatchAddress(accounts, gatedKinds),
                 ResolveRecipient(names),
+                ObserveEnabledNetworks(networks),
+                SetNetworkEnabled(networks),
+                HoldNetwork(demand),
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -332,6 +361,7 @@ class WatchViewModelTest {
         // Given no name, the account's name follows the ENS name it was added by.
         assertEquals(
             Account(
+                Network.SEPOLIA,
                 Address.of(vitalik),
                 AccountKind.EOA,
                 "vitalik.eth",
@@ -339,6 +369,93 @@ class WatchViewModelTest {
                 ensName = "vitalik.eth",
             ),
             accounts.accounts.value.last(),
+        )
+    }
+
+    @Test
+    fun onGnosisChainAloneANameIsRefusedAndNeverAsked() = runTest {
+        networks.on.value = setOf(Network.GNOSIS)
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals("Address", viewModel.uiState.value.addressLabel)
+        assertEquals(
+            "0x and 40 hexadecimal digits: names are not resolved on Gnosis Chain yet",
+            viewModel.uiState.value.addressHint,
+        )
+
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(
+            "Names are not resolved on Gnosis Chain yet: enter the address.",
+            viewModel.uiState.value.addressError,
+        )
+        assertTrue(names.asked.isEmpty(), "never resolved on another chain for it")
+        assertEquals(false, viewModel.uiState.value.canAdd)
+    }
+
+    @Test
+    fun aNameIsResolvedOnEthereumAndOnGnosisChainTheAccountIsTheAddressAlone() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.GNOSIS)
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        assertEquals("Address or ENS name", viewModel.uiState.value.addressLabel)
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(
+            "This address has no code. Watch it on Ethereum and Gnosis Chain?",
+            viewModel.uiState.value.question,
+        )
+
+        viewModel.add()
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.done)
+        val (onEthereum, onGnosis) = accounts.accounts.value.takeLast(2)
+        assertEquals(Network.ETHEREUM to "vitalik.eth", onEthereum.network to onEthereum.ensName)
+        assertEquals(Network.GNOSIS to null, onGnosis.network to onGnosis.ensName, "no Gnosis registry was asked")
+        assertEquals("vitalik.eth", onGnosis.label, "one name on every network")
+    }
+
+    @Test
+    fun aNameResolvedOnSepoliaIsNeverWatchedOnGnosisChain() = runTest {
+        networks.on.value = setOf(Network.GNOSIS, Network.SEPOLIA)
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        // Sepolia's registry, which anyone can register on: its answer is for the testnet alone.
+        assertNull(viewModel.uiState.value.question)
+        assertEquals(NetworkLabel.of(Network.SEPOLIA), viewModel.uiState.value.cardNetwork)
+        viewModel.add()
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), accounts.accounts.value.drop(1).map { it.network })
+    }
+
+    @Test
+    fun turningEthereumOnResolvesTheNameAgainThereBeforeGnosisChainIsOffered() = runTest {
+        networks.on.value = setOf(Network.GNOSIS, Network.SEPOLIA)
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), names.networks, "Sepolia's registry first")
+
+        viewModel.onTurnOnNetwork(Network.ETHEREUM.chainId)
+        runCurrent()
+        assertNull(viewModel.uiState.value.question, "the Sepolia answer is not offered on the real networks")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(listOf(Network.SEPOLIA, Network.ETHEREUM), names.networks, "asked again, on Ethereum")
+        assertEquals(
+            "This address has no code. Watch it on all three networks?",
+            viewModel.uiState.value.question,
         )
     }
 
@@ -354,7 +471,7 @@ class WatchViewModelTest {
         viewModel.add()
         runCurrent()
         assertEquals(
-            Account(Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
+            Account(Network.SEPOLIA, Address.of(vitalik), AccountKind.EOA, "Vitalik", AccountCustody.Watched),
             accounts.accounts.value.last(),
         )
     }
@@ -453,5 +570,37 @@ class WatchViewModelTest {
         runCurrent()
         assertNull(viewModel.uiState.value.addressError)
         assertTrue(viewModel.uiState.value.canAdd)
+    }
+
+    @Test
+    fun noNetworkOnChecksNothingAndSaysSo() = runTest {
+        networks.on.value = emptySet()
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+
+        assertEquals(
+            "No network is on in this wallet, so the address cannot be checked. Turn one on in Settings → Networks.",
+            viewModel.uiState.value.noNetwork,
+        )
+        assertEquals(null, viewModel.uiState.value.detection)
+        assertEquals(false, viewModel.uiState.value.canAdd)
+        assertEquals(
+            listOf(
+                NetworkLabel.of(Network.ETHEREUM),
+                NetworkLabel.of(Network.GNOSIS),
+                NetworkLabel.of(Network.SEPOLIA),
+            ),
+            viewModel.uiState.value.offNetworks,
+        )
+
+        viewModel.onTurnOnNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(setOf(Network.SEPOLIA), networks.on.value)
+        assertEquals(null, viewModel.uiState.value.noNetwork)
+        assertEquals(
+            listOf(NetworkLabel.of(Network.ETHEREUM), NetworkLabel.of(Network.GNOSIS)),
+            viewModel.uiState.value.offNetworks,
+        )
     }
 }

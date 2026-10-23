@@ -41,7 +41,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -59,11 +62,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkChips
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.UnderLightClientStrip
@@ -103,7 +108,7 @@ const val CREATE_SAFE_DEPLOY_TAG = "create-safe-deploy"
 
 /**
  * Binds [CreateSafeScreen] to its ViewModel. A deployment broadcast ends the screen through
- * [onSent] with its transaction hash; the screen stopping being shown becomes
+ * [onSent] with its network and its transaction hash; the screen stopping being shown becomes
  * [CreateSafeViewModel.onHidden] (the password goes) and being shown again
  * [CreateSafeViewModel.onShown] (the review is quoted anew).
  */
@@ -112,18 +117,20 @@ fun CreateSafeRoute(
     viewModel: CreateSafeViewModel,
     lightClient: LightClientViewModel,
     onBack: () -> Unit,
-    onSent: (hash: String) -> Unit,
+    onSent: (network: Network, hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
+    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? CreateSafeUiState.Sent)?.hash
     val currentOnSent by rememberUpdatedState(onSent)
     LaunchedEffect(sent) {
-        if (sent != null) currentOnSent(sent)
+        // The network the Safe was created on is the one the screen shows: the one chosen for it.
+        if (sent != null) currentOnSent(network, sent)
     }
     CreateSafeScreen(
         state = state,
@@ -145,6 +152,8 @@ fun CreateSafeRoute(
             onDeploy = viewModel::sign,
             onDeployWithBiometrics = viewModel::signWithBiometrics,
             onRetry = viewModel::retry,
+            onNetwork = viewModel::onNetwork,
+            onTurnOnNetwork = viewModel::onTurnOnNetwork,
         ),
         onBack = onBack,
         modifier = modifier,
@@ -155,7 +164,8 @@ fun CreateSafeRoute(
  * What the user can ask of [CreateSafeScreen]: name the Safe, choose, type, add and take out
  * owners, set the threshold, go on or back a step; on the review, choose the account that pays and
  * the fee, refresh the quote, type the password, deploy ([onDeploy], or [onDeployWithBiometrics])
- * and retry a broadcast.
+ * and retry a broadcast. First of all, the network to create it on ([onNetwork]; one that is off
+ * turned on through [onTurnOnNetwork]).
  */
 class CreateSafeActions(
     val onNameChange: (String) -> Unit = {},
@@ -174,6 +184,8 @@ class CreateSafeActions(
     val onDeploy: () -> Unit = {},
     val onDeployWithBiometrics: () -> Unit = {},
     val onRetry: () -> Unit = {},
+    val onNetwork: (chainId: Long) -> Unit = {},
+    val onTurnOnNetwork: (chainId: Long) -> Unit = {},
 )
 
 /**
@@ -247,11 +259,15 @@ fun CreateSafeScreen(
                     CircularProgressIndicator()
                     Text("Sent", Modifier.padding(top = 12.dp))
                 }
-                is CreateSafeUiState.CannotCreate -> Text(
-                    state.message,
-                    Modifier.align(Alignment.Center).padding(24.dp),
-                    textAlign = TextAlign.Center,
-                )
+                is CreateSafeUiState.CannotCreate -> Column(
+                    Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    if (state.networks.isNotEmpty()) {
+                        NetworkChips(state.networks, "Create a Safe on", actions.onNetwork, actions.onTurnOnNetwork)
+                    }
+                    Text(state.message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                }
                 is CreateSafeUiState.Owners -> OwnersContent(state, actions)
                 is CreateSafeUiState.Threshold -> ThresholdContent(state, actions)
                 is CreateSafeUiState.Review -> ReviewContent(state, actions)
@@ -266,6 +282,9 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (state.networks.isNotEmpty()) {
+            NetworkChips(state.networks, "Create a Safe on", actions.onNetwork, actions.onTurnOnNetwork)
+        }
         Heading("Name")
         OutlinedTextField(
             value = state.name,
@@ -331,7 +350,7 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
             value = state.input,
             onValueChange = actions.onInputChange,
             modifier = Modifier.fillMaxWidth().testTag(CREATE_SAFE_INPUT_TAG),
-            label = { Text("Address or ENS name") },
+            label = { Text(state.inputLabel) },
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             singleLine = true,
             // The blockie once the text is an address, typed or resolved.

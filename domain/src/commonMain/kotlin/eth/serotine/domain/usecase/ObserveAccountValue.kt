@@ -1,6 +1,6 @@
 package eth.serotine.domain.usecase
 
-import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
@@ -27,28 +27,31 @@ class ObserveAccountValue(
     private val observeTokenHoldings: ObserveTokenHoldings,
     private val observeUsdPrice: ObserveUsdPrice,
     private val observeDisplayCurrencies: ObserveDisplayCurrencies,
-    private val network: Network,
 ) {
-    operator fun invoke(holder: Address): Flow<AccountValue> {
-        val native = observeNativeBalance(holder).map<BalanceReading, BalanceReading?> { it }.onStart { emit(null) }
+    operator fun invoke(holder: AccountId): Flow<AccountValue> {
+        val network = holder.network
+        val address = holder.address
+        val native = observeNativeBalance(network, address).map<BalanceReading, BalanceReading?> { it }
+            .onStart { emit(null) }
         // Like the native balance, the holdings never hold the account back: none until they
         // come, which is not the same as none held.
-        val holdings = observeTokenHoldings(holder).map<TokenHoldings, TokenHoldings?> { it }.onStart { emit(null) }
+        val holdings = observeTokenHoldings(network, address).map<TokenHoldings, TokenHoldings?> { it }
+            .onStart { emit(null) }
         val currency = observeDisplayCurrencies().map { it.chosen }.distinctUntilChanged()
         return combine(native, holdings, currency) { balance, held, chosen -> Inputs(balance, held, chosen) }
-            .readEach(keys = ::priceIds, read = { observeUsdPrice(it) })
-            .map { (inputs, usd) -> valued(inputs, usd) }
+            .readEach(keys = { priceIds(network, it) }, read = { observeUsdPrice(network, it) })
+            .map { (inputs, usd) -> valued(network, inputs, usd) }
     }
 
     private class Inputs(val native: BalanceReading?, val holdings: TokenHoldings?, val currency: DisplayCurrency)
 
-    private fun priceIds(inputs: Inputs): Set<PriceId> = buildSet {
+    private fun priceIds(network: Network, inputs: Inputs): Set<PriceId> = buildSet {
         add(inputs.currency.priceId)
         add(network.nativePriceId)
         inputs.holdings?.holdings?.mapNotNullTo(this) { it.token.priceId }
     }
 
-    private fun valued(inputs: Inputs, usd: Map<PriceId, Price>): AccountValue {
+    private fun valued(network: Network, inputs: Inputs, usd: Map<PriceId, Price>): AccountValue {
         val rate = usd[inputs.currency.priceId] ?: Price.Checking
         // The currency's own rate missing is no fault of the assets': said once, as such.
         val noRate = rate is Price.NoPrice || rate is Price.Unavailable

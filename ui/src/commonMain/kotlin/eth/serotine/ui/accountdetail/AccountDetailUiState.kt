@@ -1,10 +1,13 @@
 package eth.serotine.ui.accountdetail
 
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.accounts.networkBlockedReason
+import eth.serotine.ui.accounts.networkOffReason
 import eth.serotine.ui.accounts.sendBlockedReason
 import eth.serotine.ui.accounts.swapBlockedReason
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.NetworkLabel
 
 /** Everything the account detail screen renders (docs/wallet-ux.md, screen 4). */
 sealed interface AccountDetailUiState {
@@ -29,11 +32,16 @@ sealed interface AccountDetailUiState {
      * [threshold] its verified threshold of its owners ("2/3"), for its blockie. [label] is the
      * account's name, or its short address once the ENS name its name follows no longer points
      * to it, which [nameNote] then says. [activity] is what its Activity tab lists while that tab
-     * is shown, and Loading on any other.
+     * is shown, and Loading on any other. [network] is the account's (docs/networks.md, N3 and
+     * N4), named beside its control; [networkOn] false while that network is off in this wallet
+     * (N19), when Send and Swap wait for it to be turned on; [networkBlocked] while this version can
+     * no longer follow that network and others still can, which greys out Send and Swap too;
+     * [swapVenue] false where no swap venue is pinned on it (Gnosis Chain), which greys out Swap.
      */
     data class Ready(
         val label: String,
         val address: String,
+        val network: NetworkLabel,
         val kind: AccountKind,
         val control: Control,
         val total: String,
@@ -51,6 +59,9 @@ sealed interface AccountDetailUiState {
         val queue: SafeQueue? = null,
         val nameNote: String? = null,
         val activity: ActivityUiState = ActivityUiState.Loading,
+        val networkOn: Boolean = true,
+        val networkBlocked: Boolean = false,
+        val swapVenue: Boolean = true,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
@@ -68,7 +79,11 @@ sealed interface AccountDetailUiState {
 
         /** Why Send cannot be done from this account, and how to get there; null when it can. */
         val sendReason: String?
-            get() = sendBlockedReason(kind, control)
+            get() = when {
+                !networkOn -> networkOffReason(network.name, label)
+                networkBlocked -> networkBlockedReason(network.name)
+                else -> sendBlockedReason(kind, control)
+            }
 
         /**
          * Whether Swap can be done from this account: greyed out when it cannot (watch-only, or a
@@ -80,7 +95,13 @@ sealed interface AccountDetailUiState {
 
         /** Why Swap cannot be done from this account, and how to get there; null when it can. */
         val swapReason: String?
-            get() = swapBlockedReason(kind, control)
+            get() = when {
+                !networkOn -> networkOffReason(network.name, label, "swapped")
+                networkBlocked -> networkBlockedReason(network.name, "swapped")
+                !swapVenue -> "No swap venue is pinned on ${network.name} yet, so nothing can be swapped from this " +
+                    "account. Send works as before."
+                else -> swapBlockedReason(kind, control)
+            }
 
         /**
          * Whether the screen shows the [assets]: on the Assets [segment], and on a Safe's Owners or

@@ -50,9 +50,9 @@ import eth.serotine.ui.components.Spender
 import eth.serotine.ui.components.SwapFormFields
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of the Review button, for UI tests. */
 const val SAFE_SWAP_REVIEW_TAG = "safe-swap-review"
@@ -78,14 +78,15 @@ const val SAFE_SWAP_SIGN_TAG = "safe-swap-sign"
 @Composable
 fun SafeSwapRoute(
     viewModel: SafeSwapViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onProposed: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val proposed = (state as? SafeSwapUiState.Proposed)?.hash
@@ -297,11 +298,12 @@ private fun ReviewContent(state: SafeSwapUiState.Review, actions: SafeSwapAction
         Heading("Signed by")
         OwnerChoices(state.owners, state.owner, enabled = state.idle, onChoose = actions.onOwnerChange)
         Note(
-            if (state.transactions.size > 1) {
-                "Both are signed, one after the other, and queued on this device, from where they are shared " +
+            when (state.transactions.size) {
+                1 -> "Signed, it is queued on this device, from where it is shared with the other owners."
+                2 -> "Both are signed, one after the other, and queued on this device, from where they are shared " +
                     "with the other owners."
-            } else {
-                "Signed, it is queued on this device, from where it is shared with the other owners."
+                else -> "All three are signed, one after the other, and queued on this device, from where they " +
+                    "are shared with the other owners."
             },
         )
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -310,7 +312,11 @@ private fun ReviewContent(state: SafeSwapUiState.Review, actions: SafeSwapAction
             signing = state.signing,
             canSign = state.canSign,
             canSignWithBiometrics = state.canSignWithBiometrics,
-            signLabel = if (state.transactions.size > 1) "Sign both and queue" else "Sign and queue",
+            signLabel = when (state.transactions.size) {
+                1 -> "Sign and queue"
+                2 -> "Sign both and queue"
+                else -> "Sign all three and queue"
+            },
             signingLabel = when {
                 state.checking -> CHECKING_SAFE
                 state.progress != null -> "Signing ${state.progress.lowercase()}…"

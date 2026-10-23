@@ -441,6 +441,7 @@ class CowOrderViewModel(
         CowCancellationQuoting.Syncing -> "The light client is not synced yet: try again in a moment."
         is CowCancellationQuoting.Unavailable -> when (quoting.reason) {
             ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so nothing can be cancelled."
+            ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so nothing can be cancelled."
             ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so nothing can be quoted."
             ReadUnavailable.UNPROVEN ->
                 "${figureText(quoting.figure, "of the cancellation")} could not be verified this time: try again."

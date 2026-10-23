@@ -33,7 +33,7 @@ class ExchangeRateTest {
     private val read = ReadExchangeRate(feeds, history)
     private val setting = MemoryCurrencySetting()
     private val last = MemoryLastRate()
-    private val currencies = ObserveDisplayCurrencies(feeds, setting)
+    private val currencies = ObserveDisplayCurrencies(feeds, setting, ListAccountRepository())
     private val refresh = RefreshExchangeRate(currencies, read, last, Network.SEPOLIA)
 
     /** A day back that has no round, which is a lasting answer: read once, no retries. */
@@ -49,7 +49,7 @@ class ExchangeRateTest {
         history.answers[ETH] = PastReading.Verified(2_200.0, updatedAt = 1, stale = false)
         history.answers[EUR] = PastReading.Verified(1.1, updatedAt = 1, stale = false)
 
-        val snapshot = (read(ETH, DisplayCurrency.EUR) as RateResult.Read).snapshot
+        val snapshot = (read(Network.SEPOLIA, ETH, DisplayCurrency.EUR) as RateResult.Read).snapshot
 
         assertEquals(2_000.0, snapshot.rate, 1e-9)
         assertEquals(2_000.0, snapshot.dayAgoRate!!, 1e-9)
@@ -66,7 +66,7 @@ class ExchangeRateTest {
         history.answers[LINK_ID] = PastReading.Verified(0.004, updatedAt = 1, stale = false)
         history.answers[ETH] = PastReading.Verified(2_500.0, updatedAt = 1, stale = false)
 
-        val snapshot = (read(LINK_ID, DisplayCurrency.USD) as RateResult.Read).snapshot
+        val snapshot = (read(Network.SEPOLIA, LINK_ID, DisplayCurrency.USD) as RateResult.Read).snapshot
 
         assertEquals(12.0, snapshot.rate, 1e-9)
         assertEquals(10.0, snapshot.dayAgoRate!!, 1e-9)
@@ -85,7 +85,7 @@ class ExchangeRateTest {
             PastReading.Syncing,
         )) {
             history.answers[EUR] = missing
-            val snapshot = (read(ETH, DisplayCurrency.EUR) as RateResult.Read).snapshot
+            val snapshot = (read(Network.SEPOLIA, ETH, DisplayCurrency.EUR) as RateResult.Read).snapshot
             assertEquals(2_000.0, snapshot.rate, 1e-9)
             assertNull(snapshot.dayAgoRate, "$missing")
             assertNull(snapshot.dayChangePercent)
@@ -97,7 +97,7 @@ class ExchangeRateTest {
         feeds.of(ETH).value = FeedReading.Unavailable(ReadUnavailable.UNPROVEN)
         history.queued[ETH] = ArrayDeque(listOf(PastReading.Unavailable(ReadUnavailable.UNPROVEN), PastReading.Syncing))
         history.answers[ETH] = PastReading.Verified(2_000.0, updatedAt = 1, stale = false)
-        val reading = async { read(ETH, DisplayCurrency.USD) }
+        val reading = async { read(Network.SEPOLIA, ETH, DisplayCurrency.USD) }
         runCurrent()
         assertFalse(reading.isCompleted)
 
@@ -111,7 +111,10 @@ class ExchangeRateTest {
     fun aLastingAnswerEndsTheReadAtOnce() = runTest {
         feeds.of(ETH).value = FeedReading.Unavailable(ReadUnavailable.NO_ENGINE)
 
-        assertEquals(RateResult.NotRead(Price.Unavailable(ReadUnavailable.NO_ENGINE)), read(ETH, DisplayCurrency.USD))
+        assertEquals(
+            RateResult.NotRead(Price.Unavailable(ReadUnavailable.NO_ENGINE)),
+            read(Network.SEPOLIA, ETH, DisplayCurrency.USD),
+        )
     }
 
     @Test
@@ -119,7 +122,10 @@ class ExchangeRateTest {
         feeds.of(ETH).value = FeedReading.NoPrice(NoPriceReason.DECIMALS_CHANGED)
         feeds.answer(EUR, 1.2)
 
-        assertEquals(RateResult.NotRead(Price.NoPrice(NoPriceReason.DECIMALS_CHANGED)), read(ETH, DisplayCurrency.EUR))
+        assertEquals(
+            RateResult.NotRead(Price.NoPrice(NoPriceReason.DECIMALS_CHANGED)),
+            read(Network.SEPOLIA, ETH, DisplayCurrency.EUR),
+        )
         assertTrue(history.asked.isEmpty())
     }
 
@@ -224,7 +230,7 @@ internal class FakeHistory : PriceHistory {
     val queued = mutableMapOf<PriceId, ArrayDeque<PastReading>>()
     val asked = mutableListOf<Pair<PriceId, Long>>()
 
-    override suspend fun before(priceId: PriceId, secondsBefore: Long): PastReading {
+    override suspend fun before(network: Network, priceId: PriceId, secondsBefore: Long): PastReading {
         asked += priceId to secondsBefore
         return queued[priceId]?.removeFirstOrNull() ?: answers[priceId] ?: PastReading.Syncing
     }
@@ -234,9 +240,9 @@ internal class FakeHistory : PriceHistory {
 internal class MemoryLastRate : LastExchangeRate {
     var kept: RateSnapshot? = null
 
-    override suspend fun load(): RateSnapshot? = kept
+    override suspend fun load(network: Network): RateSnapshot? = kept
 
-    override suspend fun save(snapshot: RateSnapshot): Boolean {
+    override suspend fun save(network: Network, snapshot: RateSnapshot): Boolean {
         kept = snapshot
         return true
     }
