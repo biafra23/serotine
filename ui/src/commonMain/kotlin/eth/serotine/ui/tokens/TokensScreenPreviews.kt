@@ -57,6 +57,7 @@ private val eurs = TokenItem(
 )
 
 private val ethereum = NetworkLabel(1, "Ethereum", testnet = false)
+private val gnosis = NetworkLabel(100, "Gnosis Chain", testnet = false)
 private val sepolia = NetworkLabel(11_155_111, "Sepolia", testnet = true)
 
 /** [items] as Sepolia's, the one section. */
@@ -156,6 +157,28 @@ private fun TokensBuiltInPreview() = TokensPreview(TokensUiState(onSepolia(built
 @Composable
 private fun TokensBuiltInRestPreview() = TokensPreview(TokensUiState(onSepolia(builtIn.drop(6))))
 
+/** Gnosis Chain's built-in tokens, its own icons among them (xDAI's kin on the DAI glyph, GNO, EURe). */
+@Preview
+@Composable
+private fun TokensGnosisPreview() = TokensPreview(
+    TokensUiState(
+        listOf(
+            TokenSection(
+                gnosis,
+                listOf(
+                    "WXDAI" to "Wrapped XDAI",
+                    "USDC.e" to "Bridged USDC (Gnosis)",
+                    "GNO" to "Gnosis Token on xDai",
+                    "EURe" to "Monerium EURe",
+                    "sDAI" to "Savings xDAI",
+                ).map { (symbol, name) ->
+                    usdc.copy(symbol = symbol, name = name, icon = symbol.lowercase().removeSuffix(".e"))
+                },
+            ),
+        ),
+    ),
+)
+
 /** Every preview above, which TokensScreenPreviewsTest renders: a new preview goes in here too. */
 internal val tokensScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TokensListPreview() },
@@ -164,4 +187,5 @@ internal val tokensScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TokensUnreadablePreview() },
     { TokensBuiltInPreview() },
     { TokensBuiltInRestPreview() },
+    { TokensGnosisPreview() },
 )

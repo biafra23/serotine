@@ -373,6 +373,53 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun onGnosisChainAloneANameIsRefusedAndNeverAsked() = runTest {
+        networks.on.value = setOf(Network.GNOSIS)
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals("Address", viewModel.uiState.value.addressLabel)
+        assertEquals(
+            "0x and 40 hexadecimal digits: names are not resolved on Gnosis Chain yet",
+            viewModel.uiState.value.addressHint,
+        )
+
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(
+            "Names are not resolved on Gnosis Chain yet: enter the address.",
+            viewModel.uiState.value.addressError,
+        )
+        assertTrue(names.asked.isEmpty(), "never resolved on another chain for it")
+        assertEquals(false, viewModel.uiState.value.canAdd)
+    }
+
+    @Test
+    fun aNameIsResolvedOnEthereumAndOnGnosisChainTheAccountIsTheAddressAlone() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.GNOSIS)
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        assertEquals("Address or ENS name", viewModel.uiState.value.addressLabel)
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(
+            "This address has no code. Watch it on Ethereum and Gnosis Chain?",
+            viewModel.uiState.value.question,
+        )
+
+        viewModel.add()
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.done)
+        val (onEthereum, onGnosis) = accounts.accounts.value.takeLast(2)
+        assertEquals(Network.ETHEREUM to "vitalik.eth", onEthereum.network to onEthereum.ensName)
+        assertEquals(Network.GNOSIS to null, onGnosis.network to onGnosis.ensName, "no Gnosis registry was asked")
+        assertEquals("vitalik.eth", onGnosis.label, "one name on every network")
+    }
+
+    @Test
     fun aNameGivenWithAnEnsNameIsTheUsers() = runTest {
         names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
         val viewModel = viewModel()
@@ -499,7 +546,11 @@ class WatchViewModelTest {
         assertEquals(null, viewModel.uiState.value.detection)
         assertEquals(false, viewModel.uiState.value.canAdd)
         assertEquals(
-            listOf(NetworkLabel.of(Network.ETHEREUM), NetworkLabel.of(Network.SEPOLIA)),
+            listOf(
+                NetworkLabel.of(Network.ETHEREUM),
+                NetworkLabel.of(Network.GNOSIS),
+                NetworkLabel.of(Network.SEPOLIA),
+            ),
             viewModel.uiState.value.offNetworks,
         )
 
@@ -507,6 +558,9 @@ class WatchViewModelTest {
         runCurrent()
         assertEquals(setOf(Network.SEPOLIA), networks.on.value)
         assertEquals(null, viewModel.uiState.value.noNetwork)
-        assertEquals(listOf(NetworkLabel.of(Network.ETHEREUM)), viewModel.uiState.value.offNetworks)
+        assertEquals(
+            listOf(NetworkLabel.of(Network.ETHEREUM), NetworkLabel.of(Network.GNOSIS)),
+            viewModel.uiState.value.offNetworks,
+        )
     }
 }

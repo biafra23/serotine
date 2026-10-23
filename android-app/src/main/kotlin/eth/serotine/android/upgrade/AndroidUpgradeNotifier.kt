@@ -92,6 +92,7 @@ private val Network.notificationId: Int
     get() = when (this) {
         Network.SEPOLIA -> 1
         Network.ETHEREUM -> 2
+        Network.GNOSIS -> 3
     }
 
 /** Each network's own alarm, fixed for good: Sepolia's the request code its alarm had before. */
@@ -99,4 +100,5 @@ private val Network.alarmRequestCode: Int
     get() = when (this) {
         Network.SEPOLIA -> 0
         Network.ETHEREUM -> 1
+        Network.GNOSIS -> 2
     }

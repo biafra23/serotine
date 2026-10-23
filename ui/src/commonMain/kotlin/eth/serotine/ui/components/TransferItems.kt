@@ -14,7 +14,9 @@ package eth.serotine.ui.components
  * in token units ([amountError] why it is no amount), with [amountHint] its value in the display
  * currency (display only) and [canMax] when the whole verified balance can be filled in.
  * [quoting] while the quote for the review is made, [error] why the last one was refused, and
- * [canReview] when it can be asked for.
+ * [canReview] when it can be asked for. [toLabel] and [toHint] are the recipient field's label
+ * and the line under it while nothing is said of what is typed: a name only on a network that
+ * resolves names.
  */
 data class TransferForm(
     val network: String,
@@ -35,6 +37,8 @@ data class TransferForm(
     val quoting: Boolean = false,
     val error: String? = null,
     val canReview: Boolean = false,
+    val toLabel: String = "Address or ENS name",
+    val toHint: String = "An address, an ENS name, or one of your accounts below",
 )
 
 /** The account sent from: its [label] and EIP-55 [address]. */

@@ -34,12 +34,24 @@ import kotlinx.coroutines.flow.flowOf
  * which agreed, a debugging source only (CLAUDE.md, *Data sources*): `symbol()`, `name()` and
  * `decimals()`, each as listed here. The app checks every entry against its contract through
  * the light client at every run, and `MyotisHostEthereumTest` does so on the real chain.
+ *
+ * On Gnosis Chain, the plan's candidates (the same ruling): WXDAI, both USDCs (the Omnibridge's
+ * `USDC` and the Circle-standard bridged `USDC.e`, two tokens, each under the symbol its contract
+ * gives), USDT, WETH, GNO, Monerium's EURe and sDAI. EURe is its current contract: Monerium's
+ * first one, `0xcB444e90…`, still answers `EURe` too, and is not listed. The bridged tokens are
+ * priced by their originals' feeds (USDC, USDT, ether), as WETH is by ether's, and WXDAI by xDAI's;
+ * EURe, an e-money euro, by EUR / USD; sDAI, a vault share worth more than one xDAI, has no feed and
+ * no price. Read on 2026-10-23 at Gnosis block 48,904,226 through two public Gnosis nodes, which
+ * agreed, a debugging source only: `symbol()`, `name()` and `decimals()`, each as listed here; the
+ * app checks every entry through the light client at every run, and `MyotisHostGnosisTest` does so
+ * on the real chain.
  */
 object BuiltInTokens {
 
     /** The tokens built in for [network], in display order. */
     fun of(network: Network): List<Token> = when (network) {
         Network.ETHEREUM -> ETHEREUM
+        Network.GNOSIS -> GNOSIS
         Network.SEPOLIA -> SEPOLIA
     }
 
@@ -56,6 +68,19 @@ object BuiltInTokens {
         priced("0x6c3ea9036406852006290770bedfcaba0e23a0e8", "PYUSD", "PayPal USD", 6, "pyusd"),
         priced("0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f", "GHO", "Gho Token", 18, "gho"),
         priced("0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9", "AAVE", "Aave Token", 18, "aave"),
+    )
+
+    private val GNOSIS = listOf(
+        // xDAI wrapped one for one, hence xDAI's price.
+        priced("0xe91d153e0b41518a2ce8dd3d7944fa863463a97d", "WXDAI", "Wrapped XDAI", 18, "wxdai", "XDAI"),
+        priced("0xddafbb505ad214d7b80b1f830fccc89b60fb7a83", "USDC", "USD//C on xDai", 6, "usdc"),
+        priced("0x2a22f9c3b484c3629090feed35f17ff8f88f76f0", "USDC.e", "Bridged USDC (Gnosis)", 6, "usdc", "USDC"),
+        priced("0x4ecaba5870353805a9f068101a40e0f32ed605c6", "USDT", "Tether USD on xDai", 6, "usdt"),
+        priced("0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1", "WETH", "Wrapped Ether on xDai", 18, "weth", "ETH"),
+        priced("0x9c58bacc331c9aa871afd802db6379a98e80cedb", "GNO", "Gnosis Token on xDai", 18, "gno"),
+        priced("0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430", "EURe", "Monerium EURe", 18, "eure", "EUR"),
+        // A share of xDAI saved in Spark's vault, worth more than one xDAI and rising: no feed, no price.
+        Token(Address.of("0xaf204776c7245bf4147c2612bf6e5972ee483701"), "sDAI", "Savings xDAI", 18, icon = "sdai"),
     )
 
     /** A token priced by the feed of [priceId], its own symbol's unless another is named. */

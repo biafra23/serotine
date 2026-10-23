@@ -48,6 +48,8 @@ internal object UniswapDeployments {
     /** The deployment pinned on [network], or null when none is. */
     fun of(network: Network): PinnedUniswapV3? = when (network) {
         Network.ETHEREUM -> ETHEREUM
+        // None pinned yet: Swap is greyed out there (docs/networks.md, open question 7).
+        Network.GNOSIS -> null
         Network.SEPOLIA -> SEPOLIA
     }
 

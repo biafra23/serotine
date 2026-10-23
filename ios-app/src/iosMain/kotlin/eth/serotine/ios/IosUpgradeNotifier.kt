@@ -112,7 +112,7 @@ class IosUpgradeNotifier(private val network: Network) : UpgradeNotifier {
     /** This network's notice: Sepolia keeps the identifier its notices had before there were networks. */
     private val noticeId: String = when (network) {
         Network.SEPOLIA -> NOTICE_ID
-        Network.ETHEREUM -> "$NOTICE_ID-${network.chainId}"
+        Network.ETHEREUM, Network.GNOSIS -> "$NOTICE_ID-${network.chainId}"
     }
 
     /** This network's reminder, kept apart as [noticeId] is. */

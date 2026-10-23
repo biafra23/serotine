@@ -68,7 +68,6 @@ const val WATCH_DETECTION_TAG = "watch-detection"
 const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
 
 /** What the address field says while nothing else is to be said of it. */
-private const val ADDRESS_HINT = "0x and 40 hexadecimal digits, or an ENS name like name.eth"
 
 /** What the name field says while an empty name leaves the account named by the ENS name typed. */
 private const val NAME_FOLLOWS_ENS = "Leave empty to name it by its ENS name, for as long as the name points to it"
@@ -152,11 +151,11 @@ fun WatchScreen(
                     onValueChange = onAddressChange,
                     modifier = Modifier.fillMaxWidth().testTag(WATCH_ADDRESS_TAG),
                     enabled = !state.adding,
-                    label = { Text("Address or ENS name") },
+                    label = { Text(state.addressLabel) },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                     singleLine = true,
                     isError = state.addressError != null,
-                    supportingText = { Text(state.addressError ?: state.addressNote ?: ADDRESS_HINT) },
+                    supportingText = { Text(state.addressError ?: state.addressNote ?: state.addressHint) },
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrectEnabled = false,

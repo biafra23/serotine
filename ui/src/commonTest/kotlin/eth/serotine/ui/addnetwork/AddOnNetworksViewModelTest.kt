@@ -57,26 +57,27 @@ class AddOnNetworksViewModelTest {
     @Test
     fun anAccountOnEveryNetworkHasNoneToChoose() = runTest {
         val onEthereum = main.copy(network = Network.ETHEREUM)
-        accounts.accounts.value += onEthereum
+        val onGnosis = main.copy(network = Network.GNOSIS)
+        accounts.accounts.value += listOf(onEthereum, onGnosis)
         val viewModel = viewModel(main)
 
         assertEquals(AddOnNetworksUiState.Choose("Main", emptyList()), viewModel.uiState.value)
         viewModel.add()
         runCurrent()
-        assertEquals(listOf(main, safe, onEthereum), accounts.accounts.value, "nothing added")
+        assertEquals(listOf(main, safe, onEthereum, onGnosis), accounts.accounts.value, "nothing added")
     }
 
     @Test
     fun anAccountIsAddedOnANetworkTurnedOnFromTheDialog() = runTest {
         val viewModel = viewModel(main)
         val ethereum = Network.ETHEREUM.chainId
-        val offered = (viewModel.uiState.value as AddOnNetworksUiState.Choose).choices.single()
+        val offered = (viewModel.uiState.value as AddOnNetworksUiState.Choose).choices.first()
         assertEquals(NetworkChoice(ethereum, "Ethereum", testnet = false, on = false), offered, "off, so not chosen")
 
         viewModel.turnOn(ethereum)
         runCurrent()
         assertEquals(setOf(Network.ETHEREUM, Network.SEPOLIA), networks.on.value)
-        val chosen = (viewModel.uiState.value as AddOnNetworksUiState.Choose).choices.single()
+        val chosen = (viewModel.uiState.value as AddOnNetworksUiState.Choose).choices.first()
         assertEquals(true, chosen.on && chosen.chosen, "turned on, and ticked")
         viewModel.add()
         runCurrent()

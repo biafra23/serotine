@@ -10,10 +10,13 @@ class NetworkTest {
         // The owner's ruling of 2026-10-22 (CLAUDE.md, *Data sources*): Ethereum and Gnosis Chain
         // beside Sepolia, as docs/networks.md's parts bring them. A network beyond these is a new
         // ruling first, not an edit to this test.
-        assertEquals(listOf(Network.ETHEREUM, Network.SEPOLIA), Network.entries)
+        assertEquals(listOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA), Network.entries)
         assertEquals(1L, Network.ETHEREUM.chainId)
+        assertEquals(100L, Network.GNOSIS.chainId)
         assertEquals(11_155_111L, Network.SEPOLIA.chainId)
         assertEquals(false, Network.ETHEREUM.testnet, "real funds")
+        assertEquals(false, Network.GNOSIS.testnet, "real funds")
+        assertEquals(false, Network.GNOSIS.ensNames, "no names on Gnosis Chain (docs/networks.md, *Names*)")
         assertEquals(true, Network.SEPOLIA.testnet)
         assertEquals(Network.ETHEREUM, Network.ofChainId(1))
     }

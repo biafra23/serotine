@@ -173,13 +173,13 @@ private fun RecipientField(form: TransferForm, onToChange: (String) -> Unit, amo
         onValueChange = onToChange,
         modifier = Modifier.fillMaxWidth().testTag(SEND_TO_TAG),
         enabled = !form.quoting,
-        label = { Text("Address or ENS name") },
+        label = { Text(form.toLabel) },
         textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
         singleLine = true,
         // The blockie once the text is an address, typed or resolved.
         leadingIcon = form.recipient?.let { recipient -> { Blockie(recipient.address, size = 24.dp) } },
         isError = form.toError,
-        supportingText = { Text(form.toNote ?: "An address, an ENS name, or one of your accounts below") },
+        supportingText = { Text(form.toNote ?: form.toHint) },
         keyboardOptions = KeyboardOptions(
             capitalization = KeyboardCapitalization.None,
             autoCorrectEnabled = false,

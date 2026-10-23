@@ -105,6 +105,7 @@ class SettingsViewModelTest {
         assertEquals(
             listOf(
                 NetworkRow(1, "Ethereum", on = false, "No account · Off", LightClientHealth.NOT_RUNNING),
+                NetworkRow(100, "Gnosis Chain", on = false, "No account · Off", LightClientHealth.NOT_RUNNING),
                 NetworkRow(
                     11_155_111,
                     "Sepolia",

@@ -125,6 +125,11 @@ class TransfersTest {
         assertEquals(RecipientLookup.Found(bob, "0xfoo.eth", 5), resolve(Network.SEPOLIA, "0xfoo.eth"))
         assertEquals(RecipientLookup.OffchainOnly, resolve(Network.SEPOLIA, "dark.eth"))
         assertEquals(listOf("0xfoo.eth", "dark.eth"), asked)
+
+        // Gnosis Chain has no names: refused there, never asked of a resolver (docs/networks.md, *Names*).
+        assertEquals(RecipientLookup.NoNamesOn(Network.GNOSIS), resolve(Network.GNOSIS, "0xfoo.eth"))
+        assertEquals(RecipientLookup.Found(Address.of(vector), null, null), resolve(Network.GNOSIS, vector))
+        assertEquals(listOf("0xfoo.eth", "dark.eth"), asked)
     }
 
     @Test

@@ -35,12 +35,21 @@ data class PinnedFeed(
  * to 26,256,210 through two public nodes, which agreed, a debugging source only (CLAUDE.md,
  * *Data sources*): `description()` named the pair and `decimals()` answered 8. The light client
  * proves every answer it serves, and `MyotisHostEthereumTest` reads each feed through it.
+ *
+ * Gnosis Chain's from the same directory (`feeds-xdai-mainnet.json`), read on 2026-10-23, each
+ * X / USD with a day's heartbeat. It has no xDAI / USD feed, so xDAI (and WXDAI) take DAI / USD's
+ * answer, the ruling's fallback (owner ruling, 2026-10-22; docs/networks.md, open question 3):
+ * xDAI is DAI bridged to Gnosis, redeemable one for one. It has no GBP feed. Each was read the
+ * same day at Gnosis block 48,904,243 through two public Gnosis nodes, which agreed, a debugging
+ * source only: `description()` named the pair and `decimals()` answered 8. The light client
+ * proves every answer it serves, and `MyotisHostGnosisTest` reads each feed through it.
  */
 object ChainlinkFeeds {
 
     /** The feeds pinned for [network]. */
     fun of(network: Network): List<PinnedFeed> = when (network) {
         Network.ETHEREUM -> ETHEREUM
+        Network.GNOSIS -> GNOSIS
         Network.SEPOLIA -> SEPOLIA
     }
 
@@ -64,6 +73,19 @@ object ChainlinkFeeds {
         usd("GBP", "0x5c0ab2d9b5a7ed9f470386e82bb36a3613cdd4b5", DAY),
         usd("CHF", "0x449d117117838ffa61263b61da6301aa2a88b13a", DAY),
         usd("JPY", "0xbce206cae7f0ec07b545edde332a47c2f75bbeb3", DAY),
+    )
+
+    private val GNOSIS = listOf(
+        // DAI / USD, for xDAI: Gnosis has no xDAI / USD feed.
+        usd("XDAI", "0x678df3415fc31947da4324ec63212874be5a82f8", DAY),
+        usd("ETH", "0xa767f745331d267c7751297d982b050c93985627", DAY),
+        usd("BTC", "0x6c1d7e76ef7304a40e8456ce883bc56d3dea3f7d", DAY),
+        usd("USDC", "0x26c31ac71010af62e6b486d1132e266d6298857d", DAY),
+        usd("USDT", "0x68811d7df835b1c33e6eeae8e7c141ef48d48cc7", DAY),
+        usd("GNO", "0x22441d81416430a54336ab28765abd31a792ad37", DAY),
+        usd("EUR", "0xab70bcb260073d036d1660201e9d5405f5829b7a", DAY),
+        usd("CHF", "0xfb00261af80adb1629d3869e377ae1eec7be659f", DAY),
+        usd("JPY", "0x2afb993c670c01e9da1550c58e8039c1d8b8a317", DAY),
     )
 
     private val SEPOLIA = listOf(

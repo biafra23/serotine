@@ -25,6 +25,8 @@ data class WatchUiState(
     val name: String = "",
     val addressError: String? = null,
     val addressNote: String? = null,
+    val addressLabel: String = "Address or ENS name",
+    val addressHint: String = "0x and 40 hexadecimal digits, or an ENS name like name.eth",
     val canRetryLookup: Boolean = false,
     val nameDefault: String? = null,
     val detection: Detection? = null,

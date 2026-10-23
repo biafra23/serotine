@@ -225,8 +225,23 @@ internal fun recipientNote(text: String, lookup: RecipientState?): Pair<String?,
         RecipientLookup.ZeroAddress -> ZERO_ADDRESS to true
         RecipientLookup.OffchainOnly -> OFFCHAIN to true
         RecipientLookup.NoAddress -> "This name has no address." to true
+        is RecipientLookup.NoNamesOn -> noNamesText(result.network) to true
         is RecipientLookup.Unavailable -> nameUnavailable(result.reason) to true
     }
+}
+
+/** Why a name typed on [network] is refused: names are not resolved there (docs/networks.md, *Names*). */
+internal fun noNamesText(network: Network): String =
+    "Names are not resolved on ${network.displayName} yet: enter the address."
+
+/** The label of a field that takes an address, and a name where [network] resolves names. */
+internal fun addressFieldLabel(network: Network): String = if (network.ensNames) "Address or ENS name" else "Address"
+
+/** What a recipient field says under it on [network] while nothing is typed. */
+internal fun recipientHint(network: Network): String = if (network.ensNames) {
+    "An address, an ENS name, or one of your accounts below"
+} else {
+    "An address, or one of your accounts below: names are not resolved on ${network.displayName} yet"
 }
 
 /** An amount typed, in an asset's smallest units, or why it is none (both null while still being typed). */

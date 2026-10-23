@@ -176,8 +176,15 @@ class AddTokenViewModelTest {
         runCurrent()
 
         val chips = viewModel.uiState.value.networks
-        assertEquals(listOf(NetworkLabel.of(Network.ETHEREUM), NetworkLabel.of(Network.SEPOLIA)), chips.map { it.network })
-        assertEquals(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true), chips[1], "the one on, chosen")
+        assertEquals(
+            listOf(
+                NetworkLabel.of(Network.ETHEREUM),
+                NetworkLabel.of(Network.GNOSIS),
+                NetworkLabel.of(Network.SEPOLIA),
+            ),
+            chips.map { it.network },
+        )
+        assertEquals(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true), chips[2], "the one on, chosen")
         assertEquals(true, chips[0].off && !chips[0].selected, "Ethereum is off: listed, greyed out")
         assertEquals(setOf(Network.SEPOLIA), demand.observe().first(), "read there, so held running")
     }

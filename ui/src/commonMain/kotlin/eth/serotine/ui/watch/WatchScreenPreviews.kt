@@ -125,6 +125,18 @@ private fun WatchInvalidAddressPreview() = WatchPreview(
     ),
 )
 
+// Gnosis Chain alone on: it resolves no names, so the field takes an address and refuses a name.
+@Preview
+@Composable
+private fun WatchGnosisNoNamesPreview() = WatchPreview(
+    WatchUiState(
+        address = "friend-example.eth",
+        addressError = "Names are not resolved on Gnosis Chain yet: enter the address.",
+        addressLabel = "Address",
+        addressHint = "0x and 40 hexadecimal digits: names are not resolved on Gnosis Chain yet",
+    ),
+)
+
 @Preview
 @Composable
 private fun WatchNameTooLongPreview() = WatchPreview(
@@ -277,6 +289,7 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchUnavailablePreview() },
     { WatchInvalidAddressPreview() },
     { WatchNameTooLongPreview() },
+    { WatchGnosisNoNamesPreview() },
     { WatchAddingPreview() },
     { WatchNotSavedPreview() },
     { WatchResolvingNamePreview() },

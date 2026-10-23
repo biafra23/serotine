@@ -44,6 +44,13 @@ internal data class SafeSingleton(val version: String, val l2: Boolean, val modu
  * exactly [PROXY_CREATION_CODE_1_4_1] and has the code hash `0x50c3cdc4…` named above. The light
  * client proves a Safe's proxy and singleton before it is one, and `MyotisHostEthereumTest` does
  * so on the real chain.
+ *
+ * Gnosis Chain has them too, read the same way on 2026-10-23 at Gnosis blocks 48,904,729 to
+ * 48,904,737 through two public Gnosis nodes, which agreed: the same `VERSION()`s and proxy
+ * runtime hashes, and 1.4.1's factory's code hash `0x50c3cdc4…` with 486 bytes of creation code.
+ * Only its [Table.creation] differs: Safe{Wallet} creates SafeL2 there, the 1.4.1 L2 singleton
+ * (owner ruling, 2026-10-22; docs/networks.md, open question 6), whose events let any indexer
+ * follow the Safe; `MyotisHostGnosisTest` proves the deployments through the light client.
  */
 internal object SafeDeployments {
 
@@ -59,11 +66,17 @@ internal object SafeDeployments {
 
     /** The deployments of [network]. */
     fun of(network: Network): Table = when (network) {
-        // The same canonical deployments, read on both chains.
+        // The same canonical deployments, read on each chain.
         Network.ETHEREUM, Network.SEPOLIA -> CANONICAL
+        Network.GNOSIS -> GNOSIS
     }
 
-    private val CANONICAL = Table(
+    private val CANONICAL = table(l2 = false)
+
+    private val GNOSIS = table(l2 = true)
+
+    /** The canonical deployments, a new Safe created from 1.4.1's L1 singleton or, with [l2], its L2 one. */
+    private fun table(l2: Boolean) = Table(
         proxyCodeHashes = setOf(
             // 1.3.0, from GnosisSafeProxyFactory 0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2.
             "b89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
@@ -77,20 +90,23 @@ internal object SafeDeployments {
             singleton("0x3e5c63644e683549055b9be8653de26e0b4cd36e", "1.3.0", l2 = true),
             singleton("0x69f4d1788e39c87893c980c06edf4b7f686e2938", "1.3.0", l2 = false),
             singleton("0xfb1bffc9d739b8d520daf37df666da4c687191ea", "1.3.0", l2 = true),
-            singleton("0x41675c099f32341bf84bfc5382af534df5c7461a", "1.4.1", l2 = false),
-            singleton("0x29fcb43b46531bca003ddc8fcb67ffe91900c762", "1.4.1", l2 = true),
+            singleton(SINGLETON_1_4_1, "1.4.1", l2 = false),
+            singleton(SINGLETON_L2_1_4_1, "1.4.1", l2 = true),
             singleton("0xff51a5898e281db6dfc7855790607438df2ca44b", "1.5.0", l2 = false, moduleGuard = true),
             singleton("0xedd160febbd92e350d4d398fb636302fccd67c7e", "1.5.0", l2 = true, moduleGuard = true),
         ),
         creation = SafeRelease(
             version = "1.4.1",
-            l2 = false,
-            singleton = Address.of("0x41675c099f32341bf84bfc5382af534df5c7461a"),
+            l2 = l2,
+            singleton = Address.of(if (l2) SINGLETON_L2_1_4_1 else SINGLETON_1_4_1),
             proxyFactory = Address.of("0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67"),
             proxyCreationCode = PROXY_CREATION_CODE_1_4_1.fromHex(),
             fallbackHandler = Address.ZERO,
         ),
     )
+
+    private const val SINGLETON_1_4_1 = "0x41675c099f32341bf84bfc5382af534df5c7461a"
+    private const val SINGLETON_L2_1_4_1 = "0x29fcb43b46531bca003ddc8fcb67ffe91900c762"
 
     private fun singleton(address: String, version: String, l2: Boolean, moduleGuard: Boolean = false) =
         Address.of(address) to SafeSingleton(version, l2, moduleGuard)

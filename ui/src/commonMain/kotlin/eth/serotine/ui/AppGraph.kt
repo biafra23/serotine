@@ -54,6 +54,7 @@ import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.FindUniswapRoute
+import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
@@ -299,6 +300,7 @@ class AppGraph(
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
+            HasSwapVenue(uniswap),
         )
 
     /**

@@ -47,6 +47,7 @@ import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.ZERO_ADDRESS
+import eth.serotine.ui.components.addressFieldLabel
 import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
@@ -58,6 +59,7 @@ import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.recipientHint
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
@@ -594,6 +596,8 @@ class SendViewModel(
         val amount = typedAmount(inputs.amount, selected)
         val form = TransferForm(
             network = network.displayName,
+            toLabel = addressFieldLabel(network),
+            toHint = recipientHint(network),
             from = sender,
             assets = model.options.map { it.choice() },
             asset = selected?.choice(),
