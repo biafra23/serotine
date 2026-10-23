@@ -35,7 +35,10 @@ class BuiltInTokensTest {
         )
         // Each priced on Ethereum by a feed pinned there, none by another network's, whose chain of
         // quotes ends in USD there (WBTC's goes through BTC).
-        val quotes = ChainlinkFeeds.of(Network.ETHEREUM).associate { it.priceId to it.quote }
+        val feeds = ChainlinkFeeds.of(Network.ETHEREUM)
+        // One feed per price id: a second would shadow the first, unseen (VerifiedPriceFeeds keys by it).
+        assertEquals(feeds.size, feeds.distinctBy { it.priceId }.size, "one Ethereum feed per price id")
+        val quotes = feeds.associate { it.priceId to it.quote }
         tokens.forEach { token ->
             var id = token.priceId
             val seen = mutableSetOf<PriceId?>()
