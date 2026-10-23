@@ -426,9 +426,7 @@ private fun AccountsOneNetworkCatchingUpPreview() = AccountsPreview(
  * its section in the error colour, its accounts' Send greyed out (docs/networks.md, *Upgrades and
  * the update screen*).
  */
-@Preview
-@Composable
-private fun AccountsNetworkBlockedPreview() = AccountsPreview(
+private val networkBlocked =
     threeNetworks.copy(
         sections = listOf(
             ethereum,
@@ -460,11 +458,18 @@ private fun AccountsNetworkBlockedPreview() = AccountsPreview(
                 urgent = true,
             ),
         ),
-    ),
-)
+    )
 
-private const val GNOSIS_BLOCKED =
-    "This version of Serotine can no longer follow Gnosis Chain: update the app to send from its accounts again."
+@Preview
+@Composable
+private fun AccountsNetworkBlockedPreview() = AccountsPreview(networkBlocked)
+
+@Preview
+@Composable
+private fun AccountsNetworkBlockedDarkPreview() = AccountsPreview(networkBlocked, darkTheme = true)
+
+private const val GNOSIS_BLOCKED = "This version of Serotine can no longer follow Gnosis Chain: nothing can be sent " +
+    "from its accounts until you update the app."
 
 /** A display currency Gnosis Chain and Sepolia have no rate for: each section says so, out of the total. */
 @Preview
@@ -569,4 +574,5 @@ internal val accountsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountsSendNeedsNetworkPreview() },
     { AccountsNetworkBlockedPreview() },
     { AccountsNoRateOnANetworkPreview() },
+    { AccountsNetworkBlockedDarkPreview() },
 )

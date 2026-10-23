@@ -218,10 +218,17 @@ class AccountDetailViewModelTest {
         runCurrent()
 
         val ready = viewModel.uiState.value as AccountDetailUiState.Ready
-        val reason = "This version of Serotine can no longer follow Sepolia: update the app to send from its " +
-            "accounts again."
-        assertEquals(reason, ready.sendReason)
-        assertEquals(reason, ready.swapReason)
+        assertEquals(true, ready.networkBlocked)
+        assertEquals(
+            "This version of Serotine can no longer follow Sepolia: nothing can be sent from its accounts until " +
+                "you update the app.",
+            ready.sendReason,
+        )
+        assertEquals(
+            "This version of Serotine can no longer follow Sepolia: nothing can be swapped from its accounts until " +
+                "you update the app.",
+            ready.swapReason,
+        )
     }
 
     @Test

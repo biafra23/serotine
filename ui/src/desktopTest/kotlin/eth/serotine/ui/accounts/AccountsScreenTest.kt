@@ -338,8 +338,8 @@ class AccountsScreenTest {
 
     @Test
     fun aNetworkBlockedAloneSaysSoInItsSectionAndGreysOutItsAccountsSend() {
-        val reason = "This version of Serotine can no longer follow Sepolia: update the app to send from its " +
-            "accounts again."
+        val reason = "This version of Serotine can no longer follow Sepolia: nothing can be sent from its accounts " +
+            "until you update the app."
         val state = ready(listOf(daily.copy(networkBlocked = reason))).let { ready ->
             ready.copy(sections = ready.sections.map { it.copy(blocked = reason) })
         }

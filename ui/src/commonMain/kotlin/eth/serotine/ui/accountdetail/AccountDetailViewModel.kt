@@ -34,7 +34,6 @@ import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
-import eth.serotine.ui.accounts.networkBlockedReason
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
@@ -112,13 +111,11 @@ class AccountDetailViewModel(
     private val networkOn =
         observeEnabledNetworks().map { network in it }.distinctUntilChanged().onStart { emit(true) }
 
-    /** Why nothing can be sent from the account while this version cannot follow its network; null while it can. */
+    /** Whether this version can no longer follow the account's network: until known, as if it could. */
     private val networkBlocked = observeUpgradeWarnings()
-        .map { warnings ->
-            networkBlockedReason(network.displayName).takeIf { warnings.of(network) is UpgradeWarning.UpdateRequired }
-        }
+        .map { warnings -> warnings.of(network) is UpgradeWarning.UpdateRequired }
         .distinctUntilChanged()
-        .onStart { emit(null) }
+        .onStart { emit(false) }
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
