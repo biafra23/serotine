@@ -133,13 +133,14 @@ internal sealed interface RecipientState {
 }
 
 /**
- * The recipient as [typed] (the text, trimmed, and how often the user asked to resolve it again),
- * resolved by [lookUp]: an address at once, a name once the typing paused, so that a name is not
- * resolved for every letter of it.
+ * The recipient as [typed] (the text, trimmed, and what asks to resolve it again when it changes:
+ * how often the user asked, and on Watch the network a name is resolved on), resolved by
+ * [lookUp]: an address at once, a name once the typing paused, so that a name is not resolved for
+ * every letter of it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun recipientStates(
-    typed: Flow<Pair<String, Int>>,
+    typed: Flow<Pair<String, Any?>>,
     lookUp: suspend (String) -> RecipientLookup,
 ): Flow<RecipientState> = typed
     .distinctUntilChanged()

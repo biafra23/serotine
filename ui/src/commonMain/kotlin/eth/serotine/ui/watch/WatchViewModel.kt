@@ -122,9 +122,17 @@ class WatchViewModel(
     private val typed = MutableStateFlow(Typed())
     private val outcome = MutableStateFlow(Outcome())
 
-    /** The typed text resolved: an address at once, a name once the typing paused. */
-    private val lookup: StateFlow<RecipientState> =
-        recipientStates(typed.map { it.address.trim() to it.lookupAttempt }, ::lookUp).stateIn(
+    /**
+     * The typed text resolved: an address at once, a name once the typing paused, and again when
+     * the network a name is resolved on changes (one turned on from this screen), so that an
+     * answer of a testnet's registry is never taken for that network's.
+     */
+    private val lookup: StateFlow<RecipientState> = recipientStates(
+        combine(typed, on.map { it?.let(::nameNetwork) }.distinctUntilChanged()) { typed, nameNetwork ->
+            typed.address.trim() to (typed.lookupAttempt to nameNetwork)
+        },
+        ::lookUp,
+    ).stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
             RecipientState.Empty,

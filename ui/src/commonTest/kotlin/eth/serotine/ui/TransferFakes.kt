@@ -199,8 +199,12 @@ internal class FakeNames : NameResolver {
     val names = mutableMapOf<String, NameResolution>()
     val asked = mutableListOf<String>()
 
+    /** The network of each name asked, in order. */
+    val networks = mutableListOf<Network>()
+
     override suspend fun resolve(network: Network, name: String): NameResolution {
         asked += name
+        networks += network
         return names[name] ?: NameResolution.NoAddress
     }
 }

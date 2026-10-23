@@ -437,6 +437,29 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun turningEthereumOnResolvesTheNameAgainThereBeforeGnosisChainIsOffered() = runTest {
+        networks.on.value = setOf(Network.GNOSIS, Network.SEPOLIA)
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), names.networks, "Sepolia's registry first")
+
+        viewModel.onTurnOnNetwork(Network.ETHEREUM.chainId)
+        runCurrent()
+        assertNull(viewModel.uiState.value.question, "the Sepolia answer is not offered on the real networks")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(listOf(Network.SEPOLIA, Network.ETHEREUM), names.networks, "asked again, on Ethereum")
+        assertEquals(
+            "This address has no code. Watch it on all three networks?",
+            viewModel.uiState.value.question,
+        )
+    }
+
+    @Test
     fun aNameGivenWithAnEnsNameIsTheUsers() = runTest {
         names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
         val viewModel = viewModel()
