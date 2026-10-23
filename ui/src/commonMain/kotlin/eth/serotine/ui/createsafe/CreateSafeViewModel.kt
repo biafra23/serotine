@@ -244,9 +244,9 @@ class CreateSafeViewModel(
     /** Whether the screen is shown now ([onShown], [onHidden]). */
     private var shown = false
 
-    /** The owner typed, resolved: an address at once, a name once the typing paused. */
+    /** The owner typed, resolved on the network chosen: an address at once, a name once the typing paused. */
     private val lookup: Flow<RecipientState> =
-        recipientStates(inputs.map { it.input.trim() to it.lookupAttempt }, ::lookUp)
+        recipientStates(inputs.map { it.input.trim() to it.lookupAttempt }) { text -> lookUp(network, text) }
 
     private val model: StateFlow<Model?> = combine(
         observeAccounts(),
@@ -286,15 +286,19 @@ class CreateSafeViewModel(
      */
     fun onNetwork(chainId: Long) {
         val chosen = Network.ofChainId(chainId) ?: return
-        if (step.value !is Step.Owners) return
+        // Before a review only: nothing is planned until then. The owners are looked at again.
+        if (step.value !is Step.Owners && step.value !is Step.Threshold) return
         picked.value = chosen
         inputs.update { it.copy(selected = null, threshold = null) }
+        step.value = Step.Owners()
     }
 
-    /** Turns the network of [chainId] on: the way to create a Safe on one that is off. */
+    /** Turns the network of [chainId] on, and chooses it: the way to create a Safe on one that is off. */
     fun onTurnOnNetwork(chainId: Long) {
         val chosen = Network.ofChainId(chainId) ?: return
-        viewModelScope.launch { setNetworkEnabled(chosen, on = true) }
+        viewModelScope.launch {
+            if (setNetworkEnabled(chosen, on = true)) onNetwork(chainId)
+        }
     }
 
     /** The Safe's name now reads [text]. */
@@ -561,7 +565,7 @@ class CreateSafeViewModel(
      */
     private suspend fun quote(asked: Step.Reviewing, note: String?) {
         for (owner in asked.named) {
-            val moved = movedName(owner) ?: continue
+            val moved = movedName(owner, asked.plan.network) ?: continue
             step.update { latest ->
                 if (latest is Step.Reviewing && latest.quoting && sameRequest(latest, asked)) {
                     Step.Owners(moved)
@@ -603,11 +607,14 @@ class CreateSafeViewModel(
         requoteIfHidden()
     }
 
-    /** Why [owner]'s name is no longer the address it was added as, or null when it still is. */
-    private suspend fun movedName(owner: Typed): String? {
+    /**
+     * Why [owner]'s name is no longer the address it was added as, resolved again on [network], the
+     * plan's, or null when it still is.
+     */
+    private suspend fun movedName(owner: Typed, network: Network): String? {
         val name = owner.name ?: return null
         val found = RecipientLookup.Found(owner.address, name, owner.resolvedAt)
-        val again = resolveAgain(found, ::lookUp) { _, unverifiable ->
+        val again = resolveAgain(found, { text -> lookUp(network, text) }) { _, unverifiable ->
             if (unverifiable) {
                 "“$name” could not be resolved with verified calls again just now, so no Safe is deployed " +
                     "with it as an owner: review it again in a moment."
@@ -977,7 +984,8 @@ class CreateSafeViewModel(
             "deployment. $would"
     }
 
-    private suspend fun lookUp(text: String): RecipientLookup = try {
+    /** [text] resolved on [network]: the one chosen on the owners' step, the plan's on a review. */
+    private suspend fun lookUp(network: Network, text: String): RecipientLookup = try {
         resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e

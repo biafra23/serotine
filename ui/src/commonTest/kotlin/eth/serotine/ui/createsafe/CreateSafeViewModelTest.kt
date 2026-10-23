@@ -239,6 +239,19 @@ class CreateSafeViewModelTest {
     }
 
     @Test
+    fun choosingTheNetworkOnTheThresholdStepGoesBackToTheOwners() = runTest {
+        val viewModel = viewModel()
+        viewModel.onContinue()
+        runCurrent()
+        viewModel.threshold
+
+        // Nothing is planned before the review: the network can still change, and the owners are looked at again.
+        viewModel.onNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(listOf(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true)), viewModel.owners.networks)
+    }
+
+    @Test
     fun theNetworkComesFirstAndOneThatIsOffIsTurnedOnFromThere() = runTest {
         networks.on.value = emptySet()
         val viewModel = viewModel()
