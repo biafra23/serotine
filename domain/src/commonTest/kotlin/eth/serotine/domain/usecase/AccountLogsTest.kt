@@ -100,6 +100,25 @@ class AccountLogsTest {
     }
 
     @Test
+    fun aNetworkStoppedAndStartedAgainIsAskedForEverythingAgain() = runTest {
+        accounts.accounts.value = listOf(alice)
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_000))
+        follow()
+        sync()
+        runCurrent()
+        assertEquals(1, index.asked.size)
+
+        // Idle, then running again: its chain is created anew, and may hold nothing of before.
+        sync(LightClientStatus.Idle)
+        runCurrent()
+        sync(head.copy(headBlock = 10_001))
+        runCurrent()
+
+        assertEquals(2, index.asked.size)
+        assertEquals(listOf(LogWatch(LogWatchKey.Mention(alice.address), 9_000)), index.asked.last().first)
+    }
+
+    @Test
     fun aSafeIsFollowedAsItsOwnEventsTooAndAnAccountWithoutANoteFromTheHead() = runTest {
         accounts.accounts.value = listOf(alice, vault)
         starts.starts.value = mapOf(vault.address to HistoryStart.Noted(HEAD_TIME))

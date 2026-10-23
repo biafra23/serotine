@@ -64,7 +64,9 @@ class HistoryNotingAccounts(
  *
  * What the engine took is not asked of it again while this runs; what it did not take is asked
  * again at the next change of the light client's state (a new head, about every slot). Each
- * start asks the engine again for all of it, which costs nothing for what it holds already.
+ * start asks the engine again for all of it, which costs nothing for what it holds already: so
+ * does a start of the network's light client after it was turned off or went idle, since its
+ * chain is then created anew (docs/networks.md, *The engine host*).
  */
 class FollowAccountLogs(
     private val accounts: AccountRepository,
@@ -88,6 +90,9 @@ class FollowAccountLogs(
 
     /** One look at the wallet: fixes what starts it can, then asks the engine for what it has not [taken] yet. */
     private suspend fun follow(round: Round, taken: Set<LogWatch>): Set<LogWatch> {
+        // A stopped light client's chain is unregistered, and a later start creates it anew:
+        // nothing is taken for granted of it then, and everything is asked again.
+        if (round.status == LightClientStatus.Off || round.status == LightClientStatus.Idle) return emptySet()
         // Only this network's accounts: its index, its starts, its light client (docs/networks.md).
         val listed = (round.accounts as? AccountList.Loaded)?.accounts?.filter { it.network == network } ?: return taken
         val allStarts = (round.starts as? HistoryStartList.Loaded)?.starts ?: return taken

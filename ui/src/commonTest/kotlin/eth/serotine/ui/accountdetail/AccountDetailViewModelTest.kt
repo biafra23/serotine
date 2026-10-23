@@ -173,6 +173,16 @@ class AccountDetailViewModelTest {
         )
         assertEquals(false, ready.canSwap)
 
+        networks.failSaves = true
+        viewModel.turnOnNetwork()
+        runCurrent()
+        assertEquals(
+            "Sepolia could not be turned on: the setting cannot be saved right now. Try again, or in " +
+                "Settings → Networks.",
+            (viewModel.uiState.value as AccountDetailUiState.Ready).message,
+        )
+
+        networks.failSaves = false
         viewModel.turnOnNetwork()
         runCurrent()
         assertEquals(setOf(Network.SEPOLIA), networks.on.value)

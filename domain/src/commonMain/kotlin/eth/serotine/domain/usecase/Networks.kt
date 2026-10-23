@@ -15,7 +15,6 @@ import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.TransactionHistory
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -98,7 +97,6 @@ class FollowNetworks(
     private val idleAfter: Duration = 30.seconds,
 ) {
     /** Runs until cancelled. */
-    @OptIn(ExperimentalCoroutinesApi::class)
     suspend operator fun invoke(): Unit = coroutineScope {
         val wanted = combine(settings.observe(), accounts.observeAccounts(), demand.observe()) { on, list, held ->
             Network.entries.associateWith { network ->
