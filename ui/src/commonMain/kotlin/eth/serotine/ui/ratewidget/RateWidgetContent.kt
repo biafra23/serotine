@@ -28,19 +28,27 @@ enum class Trend { UP, DOWN, FLAT, UNKNOWN }
 
 /**
  * [snapshot] as the widget shows it on [network], read at [readAt] (the host's own rendering of
- * [RateSnapshot.readAt] in the user's locale, "Oct 21, 14:05"); no rate kept yet says so. Being
- * a rate kept and shown later, it says it may have changed since it was verified; one whose
- * feeds were stale says how old its price is. On a testnet every rate says "testnet
+ * [RateSnapshot.readAt] in the user's locale, "Oct 21, 14:05"); no rate kept yet says so. The
+ * note names the widget's network first, each widget showing one (docs/networks.md, *The
+ * widget*). Being a rate kept and shown later, it says it may have changed since it was verified,
+ * or, while the network is not [on] in this wallet, that it is off (nothing reads it then); one
+ * whose feeds were stale says how old its price is. On a testnet every rate says "testnet
  * prices" (CLAUDE.md, *Data sources*).
  */
-fun rateWidgetContent(snapshot: RateSnapshot?, network: Network, readAt: String): RateWidgetContent {
+fun rateWidgetContent(
+    snapshot: RateSnapshot?,
+    network: Network,
+    readAt: String,
+    on: Boolean = true,
+): RateWidgetContent {
+    val off = "${network.displayName} is off".takeUnless { on }
     if (snapshot == null) {
         return RateWidgetContent(
             pair = network.nativeSymbol,
             rate = "—",
             change = null,
             trend = Trend.UNKNOWN,
-            note = "No verified rate yet",
+            note = listOfNotNull(network.displayName, off ?: "No verified rate yet").joinToString(" · "),
         )
     }
     val percent = snapshot.dayChangePercent
@@ -57,9 +65,10 @@ fun rateWidgetContent(snapshot: RateSnapshot?, network: Network, readAt: String)
             else -> Trend.FLAT
         },
         note = listOfNotNull(
+            network.displayName,
             "Verified $readAt",
             // Kept and shown later: an older answer, labelled as one (CLAUDE.md, *Trust*).
-            "may have changed since",
+            off ?: "may have changed since",
             "price ${age(snapshot.readAt - snapshot.updatedAt)} old".takeIf { snapshot.stale },
             "testnet prices".takeIf { network.testnet },
         ).joinToString(" · "),
