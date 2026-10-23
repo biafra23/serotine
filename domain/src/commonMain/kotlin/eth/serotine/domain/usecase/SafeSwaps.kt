@@ -373,8 +373,10 @@ class ProposeSafeSwap(
                         }
                         when (val zero = runApproval(safe, soldToken.address, router, UInt256.ZERO)) {
                             is ApprovalRun.Ran -> resetRun = zero.simulation
-                            is ApprovalRun.Refused ->
-                                return@cancellingReads SafeSwapProposing.ApprovalReverts(zero.blockNumber)
+                            is ApprovalRun.Refused -> return@cancellingReads SafeSwapProposing.ApprovalReverts(
+                                zero.blockNumber,
+                                toZero = true,
+                            )
                             is ApprovalRun.Unavailable ->
                                 return@cancellingReads SafeSwapProposing.Unavailable(zero.reason, QuoteFigure.RUN)
                         }
@@ -624,8 +626,12 @@ sealed interface SafeSwapProposing {
     /** Nothing is queued at the nonce to propose it in place of, or the Safe has passed it. */
     data object NothingToReplace : SafeSwapProposing
 
-    /** The approval reverts (or returns false), run from the Safe at [blockNumber]. */
-    data class ApprovalReverts(val blockNumber: Long?) : SafeSwapProposing
+    /**
+     * The approval reverts (or returns false), run from the Safe at [blockNumber]: the approval of
+     * the amount with the allowance on chain at zero, or, with [toZero], the reset to zero that a
+     * token refusing one allowance for another needs first.
+     */
+    data class ApprovalReverts(val blockNumber: Long?, val toZero: Boolean = false) : SafeSwapProposing
 
     /** The swap reverts, or returns less than its minimum, run from the Safe at [blockNumber]. */
     data class Reverts(val blockNumber: Long?) : SafeSwapProposing

@@ -334,7 +334,7 @@ class SafeSwapViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (current.signing && !current.checking) return
         job?.cancel()
-        // Stopped after the approval was queued: the form says so, as the review would have.
+        // Stopped after the approval (or the reset, or both) was queued: the form says so, as the review would have.
         step.value = Step.Composing(
             error = queuedLeft(current.proposal, current.signed).takeIf { current.signing && current.signed > 0 },
         )
@@ -591,8 +591,9 @@ class SafeSwapViewModel(
      */
     private fun signedSoFar(proposal: SafeSwapProposal, index: Int): String? = when {
         index == 0 -> null
-        proposal.reset != null && index == 1 -> RESET_QUEUED
-        else -> APPROVAL_QUEUED
+        proposal.reset == null -> APPROVAL_QUEUED
+        index == 1 -> RESET_QUEUED
+        else -> RESET_AND_APPROVAL_QUEUED
     }
 
     /** Why the transaction at [index] of [proposal] was not signed: the screen was left before it. */
@@ -600,8 +601,11 @@ class SafeSwapViewModel(
         if (proposal.reset != null && index == 1) LEFT_BEFORE_THE_APPROVAL else LEFT_BEFORE_THE_SWAP
 
     /** What the form says of [proposal] left with [signed] of its transactions queued. */
-    private fun queuedLeft(proposal: SafeSwapProposal, signed: Int): String =
-        if (proposal.reset != null && signed == 1) RESET_QUEUED_LEFT else APPROVAL_QUEUED_LEFT
+    private fun queuedLeft(proposal: SafeSwapProposal, signed: Int): String = when {
+        proposal.reset == null -> APPROVAL_QUEUED_LEFT
+        signed == 1 -> RESET_QUEUED_LEFT
+        else -> RESET_AND_APPROVAL_QUEUED_LEFT
+    }
 
     /**
      * The review of [request], proposed now, signed by [owner] (the first held when that is no
@@ -943,9 +947,17 @@ class SafeSwapViewModel(
                 "swap proposed again gets no approval of its own: reject this one, then propose the swap from the " +
                 "Safe's Swap, which proposes the approval with it."
             SafeSwapProposing.NothingToReplace -> REPLACED_GONE
-            is SafeSwapProposing.ApprovalReverts -> "$sell's contract refuses the approval, run as a verified call " +
-                "from the Safe" + (proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()) + ", even " +
-                "with its allowance at zero. Nothing was proposed."
+            is SafeSwapProposing.ApprovalReverts -> {
+                val at = proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
+                if (proposing.toZero) {
+                    "$sell's contract refuses the approval of the amount over the allowance the router has, and " +
+                        "refuses to set that allowance to zero too, each run as a verified call from the Safe$at. " +
+                        "Nothing was proposed."
+                } else {
+                    "$sell's contract refuses the approval, run as a verified call from the Safe$at with its " +
+                        "allowance at zero. Nothing was proposed."
+                }
+            }
             is SafeSwapProposing.Reverts -> "The swap reverts, or returns less than its minimum, run as a verified " +
                 "call from the Safe" + (proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()) +
                 ". Nothing was proposed."
@@ -995,6 +1007,10 @@ class SafeSwapViewModel(
         const val LEFT_BEFORE_THE_APPROVAL = "The screen was left before the approval was signed."
         const val RESET_QUEUED = "The allowance set to zero is signed and queued; the approval and the swap are " +
             "not. Refresh, and they are proposed after it:"
+        const val RESET_AND_APPROVAL_QUEUED = "The allowance set to zero and the approval are signed and queued; " +
+            "the swap is not. Refresh, and the swap is proposed after them:"
+        const val RESET_AND_APPROVAL_QUEUED_LEFT = "The allowance set to zero and the approval are signed and " +
+            "queued; the swap is not. Review again, and the swap is proposed after them."
         const val RESET_QUEUED_LEFT = "The allowance set to zero is signed and queued; the approval and the swap " +
             "are not. Review again, and they are proposed after it."
         const val QUEUE_UNREADABLE = "This device's queue cannot be read right now, so the swap to propose again " +

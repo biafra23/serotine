@@ -316,6 +316,37 @@ class SafeSwapViewModelTest {
     }
 
     @Test
+    fun aSwapStoppedAfterItsResetAndApprovalSaysBothAreQueued() = runTest {
+        allowance = UInt256.of(5_000_000)
+        world.inputs.runOf = { to, data ->
+            when {
+                to != world.usdc.address -> null
+                data.contentEquals(Erc20.approveData(router, UInt256.of(100_000_000))) -> Simulation.Reverted(100)
+                else -> null
+            }
+        }
+        // The key store signs the reset and the approval, then runs short of memory for the swap.
+        var calls = 0
+        val signer = object : Signer {
+            override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+                if (calls++ < 2) Signing.Signed(world.recovery.sign(account, digest)) else Signing.NotEnoughMemory
+        }
+        val viewModel = reviewed(signer)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(listOf(4L, 5L), world.queue.requests.value.map { it.nonce })
+        assertTrue(
+            viewModel.review.error.orEmpty().startsWith(
+                "The allowance set to zero and the approval are signed and queued; the swap is not.",
+            ),
+            viewModel.review.error,
+        )
+    }
+
+    @Test
     fun anAllowanceThatCoversTheAmountTakesTheSwapAlone() = runTest {
         allowance = UInt256.of(100_000_000)
         routerReturns(40_100_000_000_000_000)

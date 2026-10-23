@@ -422,7 +422,7 @@ class ProposeSafeSwapTest {
         allow(UInt256.ONE)
         inputs.answers[usdcToken.address to Erc20.approveData(router, twoUsdc).toHex()] = Simulation.Reverted(120)
         inputs.answers[usdcToken.address to Erc20.approveData(router, UInt256.ZERO).toHex()] = Simulation.Reverted(121)
-        assertEquals(SafeSwapProposing.ApprovalReverts(121), proposeUsdcForLink())
+        assertEquals(SafeSwapProposing.ApprovalReverts(121, toZero = true), proposeUsdcForLink())
 
         // With no allowance to set to zero, a refused approval is refused outright.
         allow(UInt256.ZERO)
