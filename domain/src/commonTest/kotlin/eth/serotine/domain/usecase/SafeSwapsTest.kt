@@ -59,7 +59,7 @@ class SafeSwapsTest {
         }
     }
     private val light = FakeLightClient().apply {
-        status.value = LightClientStatus.Synced(headBlock = 9, headTimestamp = deadline - 60)
+        status.value = LightClientStatus.Synced(headBlock = 9, headTimestamp = deadline - 60, finalized = null)
     }
     private val checkSwap = CheckSafeSwap(chain, light, Network.SEPOLIA)
 
@@ -114,7 +114,7 @@ class SafeSwapsTest {
     @Test
     fun aSwapPastItsDeadlineAtTheVerifiedHeadIsExpired() = runTest {
         chain.quote = quoted(4_210)
-        light.status.value = LightClientStatus.Synced(headBlock = 10, headTimestamp = deadline + 1)
+        light.status.value = LightClientStatus.Synced(headBlock = 10, headTimestamp = deadline + 1, finalized = null)
         assertEquals(true, assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
         // A verified head with no proof peers right now still has its time.
         light.status.value = LightClientStatus.WaitingForProofPeers(headBlock = 10, headTimestamp = deadline + 1)
@@ -127,9 +127,11 @@ class SafeSwapsTest {
     fun aSwapWhoseDeadlineFallsWithinASlotOfTheHeadIsExpiredAlready() = runTest {
         // The router takes a block at its deadline, and the next block is a slot after the head at the soonest.
         chain.quote = quoted(4_210)
-        light.status.value = LightClientStatus.Synced(headBlock = 10, headTimestamp = deadline - SLOT_SECONDS)
+        light.status.value =
+            LightClientStatus.Synced(headBlock = 10, headTimestamp = deadline - SLOT_SECONDS, finalized = null)
         assertEquals(false, assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
-        light.status.value = LightClientStatus.Synced(headBlock = 11, headTimestamp = deadline - SLOT_SECONDS + 1)
+        light.status.value =
+            LightClientStatus.Synced(headBlock = 11, headTimestamp = deadline - SLOT_SECONDS + 1, finalized = null)
         assertEquals(true, assertIs<SafeSwapCheck.SwapOnUniswap>(checkSwap(SafeTxAction.Swap(swap))).expired)
     }
 
@@ -146,6 +148,7 @@ class SafeSwapsTest {
     @Test
     fun aVerdictThatNeedsNoHeadIsGivenWhileTheLightClientSaysNothingYet() = runTest {
         val silent = object : LightClient {
+            override val datesFinalizedBlocks = true
             override fun observeStatus(network: Network): Flow<LightClientStatus> = flow { awaitCancellation() }
         }
         val checkSilently = CheckSafeSwap(chain, silent, Network.SEPOLIA)

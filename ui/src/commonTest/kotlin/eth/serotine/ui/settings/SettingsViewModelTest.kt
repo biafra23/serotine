@@ -54,6 +54,7 @@ class SettingsViewModelTest {
     private val usdc = Token(Address.of("0x" + "1c".repeat(20)), "USDC", "USDC", 6, "usdc")
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
     private val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(network: Network): Flow<LightClientStatus> = status
     }
     private val main = account("Main", 0x11)
@@ -98,7 +99,7 @@ class SettingsViewModelTest {
     fun namesEachNetworkItsAccountsAndLightClientAndTheVersion() = runTest {
         val viewModel = viewModel()
 
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         runCurrent()
 
         val state = viewModel.uiState.value
@@ -219,7 +220,7 @@ class SettingsViewModelTest {
             clock = { now },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         runCurrent()
         assertEquals("1 account · Verified at block 9,412,118 · 8 s ago", viewModel.sepolia.line)
 

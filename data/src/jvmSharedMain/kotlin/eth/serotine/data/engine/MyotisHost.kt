@@ -5,10 +5,12 @@ import eth.serotine.data.keys.toHex
 import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.data.safe.SafeDeployments
+import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientControl
 import eth.serotine.domain.repository.LightClientRun
@@ -53,7 +55,7 @@ import kotlin.time.Duration.Companion.seconds
  * screen needs it). A host's composition root creates it with [start] and hands its ports to the
  * AppGraph: [nativeBalances], [tokenBalances], [tokenMetadata], [priceFeeds], [addressKinds],
  * [lightClient], [networkUpgrades], and for sending [transactionInputs], [broadcaster],
- * [receipts] and [names], for a Safe's transactions [safeApprovals], for swaps [uniswap], for the
+ * [receipts] and [names], for a Safe's transactions [safeApprovals], for swaps [uniswap] and [cow], for the
  * accounts' histories [logIndex], for a home-screen widget's daily change [priceHistory]; each
  * port routes a call to the light client of the network it names ([NetworkRoutedPorts]). The host
  * owns it for the life of the process: [pause] and [resume] every running light client around
@@ -99,6 +101,9 @@ class MyotisHost private constructor(
     /** Where the engine's own log is drained into [debugLog] while the engine runs. */
     private val logScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Where each network's finalized block's header is read, off the status poll ([FinalizedTimes]). */
+    private val headerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** The balances last verified, kept for after a restart; none kept without a path. Shared by every network. */
     private val lastBalances = lastBalancesPath?.let { LastBalancesFile(it, Dispatchers.IO) }
 
@@ -142,6 +147,12 @@ class MyotisHost private constructor(
 
     /** Uniswap v3 on each network: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = routed.uniswap
+
+    /**
+     * CoW Protocol's settlement contracts on each network, proven by their code
+     * (docs/swaps.md, *CoW Protocol*).
+     */
+    val cow: CowChain = routed.cow
 
     /** A sent transaction's verified receipt and its block's finality. */
     val receipts: ReceiptTracker = routed.receipts
@@ -226,6 +237,7 @@ class MyotisHost private constructor(
         }
         shutDown = true
         logScope.cancel()
+        headerScope.cancel()
         // In a debug build, what the engine said while stopping, which the pump no longer drains.
         debugLog?.let { EngineLogPump(Myotis::drainLogs, it).drainNow() }
         control.shutdown()
@@ -286,14 +298,36 @@ class MyotisHost private constructor(
         @Volatile
         var state: ChainState = ChainState.Booting
 
+        /** The handle, unwrapped: what [activity] reads (in memory, so neither logged nor shared). */
+        private val handleChain = HandleChain()
+
         /** The handle, each request written to [apiLog] when there is one, its status reads shared. */
-        private val chain: EngineChain = HandleChain().let { handle ->
-            SharedSnapshots(apiLog?.let { LoggedChain(handle, it) } ?: handle, SNAPSHOT_REUSE)
+        private val chain: EngineChain = handleChain.let { handle ->
+            val logged = apiLog?.let { LoggedChain(handle, it) } ?: handle
+            SharedSnapshots(FinalizedHeaders(logged, FinalizedTimes(headerScope)), SNAPSHOT_REUSE)
         }
 
+        /** Which accounts the verified blocks touched, so a proof stands until one did (Myotis #691). */
+        private val activity = AddressActivity(handleChain)
+
         val ports = ChainPorts(
-            nativeBalances = VerifiedNativeBalances(network, chain, Dispatchers.IO, POLL_INTERVAL, lastBalances),
-            tokenBalances = VerifiedTokenBalances(network, chain, Dispatchers.IO, POLL_INTERVAL, lastBalances),
+            nativeBalances = VerifiedNativeBalances(
+                network,
+                chain,
+                Dispatchers.IO,
+                POLL_INTERVAL,
+                lastBalances,
+                activity,
+            ),
+            tokenBalances = VerifiedTokenBalances(
+                network,
+                chain,
+                Dispatchers.IO,
+                POLL_INTERVAL,
+                lastBalances,
+                activity,
+                gated = BuiltInTokens.of(network).mapTo(HashSet()) { it.address },
+            ),
             tokenMetadata = VerifiedTokenMetadata(network, chain, Dispatchers.IO, POLL_INTERVAL),
             addressKinds = VerifiedAddressKinds(
                 network,
@@ -305,7 +339,14 @@ class MyotisHost private constructor(
             ),
             lightClient = EngineLightClient(network, chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL),
             networkUpgrades = EngineNetworkUpgrades(network, chain, Dispatchers.IO, POLL_INTERVAL),
-            priceFeeds = VerifiedPriceFeeds(network, chain, Dispatchers.IO, POLL_INTERVAL, ChainlinkFeeds.of(network)),
+            priceFeeds = VerifiedPriceFeeds(
+                network,
+                chain,
+                Dispatchers.IO,
+                POLL_INTERVAL,
+                ChainlinkFeeds.of(network),
+                activity,
+            ),
             priceHistory = VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network)),
             transactionInputs = EngineTransactionInputs(network, chain, Dispatchers.IO),
             broadcaster = EngineBroadcaster(network, chain, Dispatchers.IO),
@@ -313,6 +354,7 @@ class MyotisHost private constructor(
             names = EngineNames(network, chain, Dispatchers.IO),
             safeApprovals = VerifiedSafeApprovals(network, chain, Dispatchers.IO),
             uniswap = VerifiedUniswapV3(chain, Dispatchers.IO, network),
+            cow = VerifiedCow(chain, Dispatchers.IO, network),
             logIndex = EngineLogIndex(network, chain, Dispatchers.IO, POLL_INTERVAL),
         )
 
@@ -431,7 +473,7 @@ class MyotisHost private constructor(
             }
         }
 
-        private inner class HandleChain : EngineChain {
+        private inner class HandleChain : EngineChain, ActivityChain {
 
             // Each call a status read; SharedSnapshots shares one among the pollers.
             override fun snapshot(): EngineSnapshot {
@@ -473,6 +515,8 @@ class MyotisHost private constructor(
                     wsBoundPeriods = status.wsBoundPeriods(),
                     upgrade = status.upgradeAdvisory()?.toNetworkUpgrade(),
                     finalizedBlock = status.finalizedBlockNumber(),
+                    // Filled by FinalizedHeaders, which reads the header through this chain.
+                    finalizedHeader = null,
                 )
             }
 
@@ -487,6 +531,7 @@ class MyotisHost private constructor(
                 return ProvenBalance(
                     if (result.exists()) result.balanceWei() ?: return null else "0",
                     result.blockNumber(),
+                    result.blockHashHex()?.lowercase(),
                 )
             }
 
@@ -544,6 +589,11 @@ class MyotisHost private constructor(
                 return word.toHex().padStart(WORD_HEX_DIGITS, '0').takeIf { it.length == WORD_HEX_DIGITS }
             }
 
+            override fun blockByNumber(number: Long): String? {
+                val handle = (state as? ChainState.Running)?.handle ?: return null
+                return handle.reads().getBlockByNumber("0x" + number.toString(16), false)
+            }
+
             // "pending": the verified count plus the sends this node made that are not mined yet,
             // so a second transfer right after a first does not reuse its nonce.
             override fun pendingNonce(address: Address): Long? {
@@ -598,6 +648,16 @@ class MyotisHost private constructor(
             override fun logs(filterJson: String): String? {
                 val handle = (state as? ChainState.Running)?.handle ?: return null
                 return handle.reads().getLogs(filterJson)
+            }
+
+            override fun setActivityWatch(configJson: String): Boolean {
+                val handle = (state as? ChainState.Running)?.handle ?: return false
+                return handle.setActivityWatch(configJson)
+            }
+
+            override fun addressActivity(afterBlock: Long): String? {
+                val handle = (state as? ChainState.Running)?.handle ?: return null
+                return handle.addressActivityJson(afterBlock)
             }
 
             // FINALIZED only: PEER_HEAD would be a peer's claim, and AUTO falls back to it.

@@ -165,6 +165,32 @@ private fun SwapBlock(swap: SwapSummary) {
     FromRow(swap.from, "From and paid to")
 }
 
+/** A CoW order's cancellation on chain: the order, the settlement contract and the account that sent it. */
+@Composable
+private fun CancellationBlock(cancellation: CancellationSummary) {
+    Text(cancellation.title, style = MaterialTheme.typography.titleMedium)
+    Column {
+        Text("CoW order", style = MaterialTheme.typography.labelMedium)
+        SelectionContainer {
+            Text(cancellation.order, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Blockie(cancellation.settlement, size = 32.dp)
+        Column {
+            Text("Settlement contract", style = MaterialTheme.typography.labelMedium)
+            SelectionContainer {
+                Text(
+                    cancellation.settlement,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+        }
+    }
+    FromRow(cancellation.from, "From")
+}
+
 @Composable
 private fun FromRow(from: String, label: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -243,7 +269,10 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetr
         }
         state.approval?.let { ApprovalBlock(it) }
         state.swap?.let { SwapBlock(it) }
-        if (sent == null && safeTx == null && deployment == null && state.approval == null && state.swap == null) {
+        state.cancellation?.let { CancellationBlock(it) }
+        if (sent == null && safeTx == null && deployment == null && state.approval == null && state.swap == null &&
+            state.cancellation == null
+        ) {
             Text(
                 "This device has no record of what was sent: only where the transaction stands is shown.",
                 style = MaterialTheme.typography.bodyMedium,

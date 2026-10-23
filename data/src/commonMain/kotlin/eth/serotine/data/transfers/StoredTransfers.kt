@@ -2,6 +2,7 @@ package eth.serotine.data.transfers
 
 import eth.serotine.data.safe.WireRequest
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
@@ -26,8 +27,8 @@ private const val EXECUTION = "execution"
  * Sepolia, the only one there was; one of a network this build does not know does not decode):
  * a transfer's [to], [token] (null: the native currency) and [amount], a
  * Safe transaction's approval or execution ([safe]), a Safe's deployment ([deployment]), a
- * token approval ([approval]) or a swap ([swap]) — exactly one of the five, else the file is
- * damaged.
+ * token approval ([approval]), a swap ([swap]) or a CoW order's cancellation on chain
+ * ([cancellation]) — exactly one of the six, else the file is damaged.
  */
 @Serializable
 internal class StoredTransfer(
@@ -41,6 +42,7 @@ internal class StoredTransfer(
     val deployment: StoredDeployment? = null,
     val approval: StoredApproval? = null,
     val swap: StoredSwap? = null,
+    val cancellation: StoredCowCancellation? = null,
     val maxCost: String,
     val sentAt: Long,
     val maybeSent: Boolean = false,
@@ -58,7 +60,7 @@ internal class StoredTransfer(
     )
 
     private fun action(): SentAction {
-        val kinds = listOfNotNull(deployment, safe, approval, swap)
+        val kinds = listOfNotNull(deployment, safe, approval, swap, cancellation)
         require(kinds.size <= 1) { "more than one kind of transaction" }
         val transferFields = to != null || token != null || amount != null
         require(kinds.isEmpty() || !transferFields) { "a transfer and another kind at once" }
@@ -66,6 +68,7 @@ internal class StoredTransfer(
         safe?.let { return it.toAction() }
         approval?.let { return it.toAction() }
         swap?.let { return it.toAction() }
+        cancellation?.let { return it.toAction() }
         return SentAction.Transfer(
             to = Address.of(requireNotNull(to) { "a transfer without a recipient" }),
             asset = token?.let { TransferAsset.Erc20Token(it.toToken()) } ?: TransferAsset.Native,
@@ -113,6 +116,12 @@ internal class StoredSwap(
         minimumOut = UInt256.of(minimumOut),
         weth = weth?.let(Address::of),
     )
+}
+
+/** A CoW order's cancellation on chain: the order [uid], at the settlement contract [settlement]. */
+@Serializable
+internal class StoredCowCancellation(val settlement: String, val uid: String) {
+    fun toAction() = SentAction.CowCancellation(Address.of(settlement), CowOrderUid.of(uid))
 }
 
 /** A Safe transaction's [kind] of call ([APPROVAL] or [EXECUTION]) and its [request]. */
@@ -177,7 +186,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.SafeApproval -> safeCall(APPROVAL, action.request)
             is SentAction.SafeExecution -> safeCall(EXECUTION, action.request)
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
-            is SentAction.Swap,
+            is SentAction.Swap, is SentAction.CowCancellation,
             -> null
         },
         approval = (action as? SentAction.TokenApproval)?.let {
@@ -192,6 +201,9 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
                 it.minimumOut.toDecimal(),
                 it.weth?.hex,
             )
+        },
+        cancellation = (action as? SentAction.CowCancellation)?.let {
+            StoredCowCancellation(it.settlement.hex, it.uid.hex)
         },
         deployment = (action as? SentAction.SafeDeployment)?.let {
             StoredDeployment(
@@ -214,13 +226,13 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
 private fun safeCall(kind: String, request: SigningRequest) = StoredSafeCall(kind, WireRequest.of(request))
 
 /** [token] as stored. */
-private fun stored(token: Token) = StoredToken(token.address.hex, token.symbol, token.name, token.decimals, token.icon)
+internal fun stored(token: Token) = StoredToken(token.address.hex, token.symbol, token.name, token.decimals, token.icon)
 
 /** The token this asset is, as stored; null for the native currency. */
-private fun TransferAsset.storedToken(): StoredToken? = (this as? TransferAsset.Erc20Token)?.token?.let(::stored)
+internal fun TransferAsset.storedToken(): StoredToken? = (this as? TransferAsset.Erc20Token)?.token?.let(::stored)
 
 /** The asset this stored token is: the native currency for none. */
-private fun StoredToken?.asset(): TransferAsset = this?.let { TransferAsset.Erc20Token(it.toToken()) }
+internal fun StoredToken?.asset(): TransferAsset = this?.let { TransferAsset.Erc20Token(it.toToken()) }
     ?: TransferAsset.Native
 
 private fun String.hexBytes(): ByteArray {

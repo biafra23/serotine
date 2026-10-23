@@ -2,6 +2,7 @@ package eth.serotine.data.transfers
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
@@ -203,6 +204,68 @@ class FileSentTransfersTest {
         record().record(etherSwap)
 
         assertEquals(listOf(approval, tokenSwap, etherSwap), stored())
+    }
+
+    @Test
+    fun aCowOrdersCancellationIsRecordedWithItsSettlementAndUid() = runTest {
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val uid = CowOrderUid.of("0x" + "ab".repeat(32) + alice.hex.removePrefix("0x") + "6ad9e7f4")
+        val cancellation = transfer(7).copy(action = SentAction.CowCancellation(settlement, uid))
+
+        record().record(cancellation)
+
+        assertEquals(listOf(cancellation), stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue(text.startsWith("""{"version":7,"""), "written as format 7: $text")
+    }
+
+    @Test
+    fun aCancellationAndAnotherKindAtOnceIsPassedOver() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val uid = "0x" + "ab".repeat(32) + alice.hex.removePrefix("0x") + "6ad9e7f4"
+        val cancellation = """"cancellation":{"settlement":"${bob.hex}","uid":"$uid"}"""
+        val swap = """"swap":{"router":"${bob.hex}","amountIn":"1","minimumOut":"1"}"""
+        val both = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff",$cancellation,""" +
+            """$swap,"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":6,"transfers":[$both]}""") }
+
+        assertEquals(emptyList(), stored())
+    }
+
+    @Test
+    fun aSixthFormatRecordOfEitherBuildReadsAsItWasWritten() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        val uid = "0x" + "ab".repeat(32) + alice.hex.removePrefix("0x") + "6ad9e7f4"
+        // Two builds took format 6 apart: main's for a CoW cancellation, with no chain (Sepolia, the
+        // only network there was), and feature/networks's for each record's chain.
+        val cancellation = """{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
+            """"cancellation":{"settlement":"${settlement.hex}","uid":"$uid"},"maxCost":"1","sentAt":1800000007}"""
+        val onChain = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","to":"${bob.hex}","amount":"1",""" +
+            """"maxCost":"1","sentAt":1800000008,"chain":11155111}"""
+        SystemFileSystem.sink(file).buffered().use {
+            it.writeString("""{"version":6,"transfers":[$cancellation,$onChain]}""")
+        }
+
+        val read = stored()
+        assertEquals(listOf(Network.SEPOLIA, Network.SEPOLIA), read.map { it.network })
+        assertEquals(
+            listOf(
+                SentAction.CowCancellation(settlement, CowOrderUid.of(uid)),
+                SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE),
+            ),
+            read.map { it.action },
+        )
+    }
+
+    @Test
+    fun aRecordOfTheFifthFormatReadsAsItWasWritten() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val v5 = """{"version":5,"transfers":[{"account":"${alice.hex}","nonce":7,"raw":"0207ff",""" +
+            """"to":"${bob.hex}","amount":"1","maxCost":"1","sentAt":1800000007}]}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString(v5) }
+
+        assertEquals(listOf(SentAction.Transfer(bob, TransferAsset.Native, UInt256.ONE)), stored().map { it.action })
     }
 
     @Test

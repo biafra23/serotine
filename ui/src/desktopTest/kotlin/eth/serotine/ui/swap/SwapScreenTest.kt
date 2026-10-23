@@ -1,5 +1,8 @@
 package eth.serotine.ui.swap
 
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -13,8 +16,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.ASSET_OPTION_TAG
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.RouteStep
@@ -25,6 +30,7 @@ import eth.serotine.ui.components.SWAP_TOLERANCE_TAG
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import eth.serotine.ui.components.SwapForm
+import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
@@ -81,10 +87,12 @@ class SwapScreenTest {
 
     private val events = mutableListOf<String>()
 
-    private fun show(state: SwapUiState) = rule.setContent {
+    private fun show(state: SwapUiState) = show(mutableStateOf(state))
+
+    private fun show(state: State<SwapUiState>) = rule.setContent {
         SerotineTheme {
             SwapScreen(
-                state = state,
+                state = state.value,
                 lightClient = verifiedStripSample,
                 onSellChange = { events += "sell $it" },
                 onBuyChange = { events += "buy $it" },
@@ -92,6 +100,8 @@ class SwapScreenTest {
                 onMax = { events += "max" },
                 onToleranceChange = { events += "tolerance $it" },
                 onFeeChange = { events += "fee $it" },
+                onVenueChange = { events += "venue $it" },
+                onSwapOnUniswap = { events += "uniswap instead" },
                 onReview = { events += "review" },
                 onEdit = { events += "edit" },
                 onRefresh = { events += "refresh" },
@@ -100,6 +110,7 @@ class SwapScreenTest {
                 onSignWithBiometrics = { events += "biometrics" },
                 onRetry = { events += "retry" },
                 onOpenTransfer = { events += "open $it" },
+                onOpenOrder = { events += "order $it" },
                 onBack = { events += "back" },
             )
         }
@@ -109,8 +120,10 @@ class SwapScreenTest {
     fun theComposeStepChoosesBothAssetsTheAmountAndTheTolerance() {
         show(compose)
 
-        rule.onAllNodesWithTag(SWAP_SELL_TAG)[0].performClick()
-        rule.onAllNodesWithTag(SWAP_BUY_TAG)[0].performClick()
+        rule.onNodeWithTag(SWAP_SELL_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG)[0].performClick()
+        rule.onNodeWithTag(SWAP_BUY_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG)[0].performClick()
         rule.onNodeWithTag(SWAP_AMOUNT_TAG).performTextInput("40")
         rule.onNodeWithTag(SWAP_TOLERANCE_TAG).performTextInput("1")
         rule.onNodeWithTag(SWAP_REVIEW_TAG).performScrollTo().assertIsNotEnabled()
@@ -118,6 +131,47 @@ class SwapScreenTest {
         // The fields are stateless here: each edit is of the state's text, typed at its start.
         assertEquals(listOf("sell null", "buy null", "amount 40"), events.take(3))
         assertEquals("tolerance 10.5", events.last())
+    }
+
+    @Test
+    fun eachAssetIsChosenFromAMenuThatShowsTheChosenOneAndClosesOnAChoice() {
+        show(compose)
+
+        rule.onNodeWithText("Choose the asset to buy").assertExists()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        rule.onNodeWithTag(SWAP_SELL_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(2)
+        rule.onNodeWithContentDescription("Chosen").assertExists()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG)[1].performClick()
+
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        assertEquals(listOf("sell $usdcContract"), events)
+    }
+
+    @Test
+    fun noAssetMenuOpensWhileTheReviewIsQuoted() {
+        show(compose.copy(form = compose.form.copy(quoting = true)))
+
+        rule.onNodeWithTag(SWAP_SELL_TAG).assertIsNotEnabled().performClick()
+        rule.onNodeWithTag(SWAP_BUY_TAG).assertIsNotEnabled().performClick()
+
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun aMenuOpenWhenTheReviewIsQuotedStaysClosedAfterwards() {
+        val state = mutableStateOf<SwapUiState>(compose)
+        show(state)
+
+        rule.onNodeWithTag(SWAP_SELL_TAG).performClick()
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(2)
+        state.value = compose.copy(form = compose.form.copy(quoting = true))
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        state.value = compose
+
+        rule.onAllNodesWithTag(ASSET_OPTION_TAG).assertCountEquals(0)
+        assertEquals(emptyList(), events)
     }
 
     @Test
@@ -156,6 +210,105 @@ class SwapScreenTest {
         rule.onNodeWithContentDescription("Back").performClick()
 
         assertEquals(listOf("sign", "edit"), events)
+    }
+
+    @Test
+    fun cowGreyedOutSaysWhyOnATapAndIsNotChosen() {
+        val why = "CoW Protocol is offered for tokens sold."
+        show(compose.copy(venue = VenueItem(SwapVenue.UNISWAP, cowUnavailable = why)))
+
+        rule.onNodeWithTag(SWAP_VENUE_COW_TAG).performClick()
+
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(why)
+        assertEquals(emptyList(), events, "not chosen")
+    }
+
+    @Test
+    fun cowOfferedIsChosenOnATap() {
+        show(compose)
+
+        rule.onNodeWithTag(SWAP_VENUE_COW_TAG).performClick()
+
+        assertEquals(listOf("venue COW"), events)
+    }
+
+    @Test
+    fun cowThatCouldNotQuoteOffersTheSameSwapOnUniswap() {
+        show(
+            compose.copy(
+                form = compose.form.copy(error = "CoW did not answer."),
+                venue = VenueItem(SwapVenue.COW),
+                uniswapInstead = true,
+            ),
+        )
+
+        rule.onNodeWithText("CoW did not answer.").performScrollTo()
+        rule.onNodeWithTag(SWAP_UNISWAP_INSTEAD_TAG).performScrollTo().performClick()
+
+        assertEquals(listOf("uniswap instead"), events)
+    }
+
+    @Test
+    fun cowsReviewMarksItsEstimateNotVerifiedAndSignsTheOrder() {
+        show(
+            SwapUiState.CowReview(
+                network = "Sepolia",
+                from = from,
+                sell = usdc,
+                sold = "40 USDC",
+                buy = ether,
+                estimate = "about 0.0161 ETH",
+                estimateNote = "CoW's own estimate. Not verified.",
+                uniswapNet = "0.0142 ETH",
+                uniswapNote = "Uniswap's verified quote at block 9,412,118.",
+                comparison = "By CoW's estimate, CoW gives about 0.0019 ETH more than Uniswap.",
+                uniswapGivesMore = false,
+                minimum = "at least 0.0160195 ETH",
+                minimumNote = "CoW's estimate less the 0.5 % tolerance.",
+                validUntil = "Until 14:27.",
+                settlement = SpenderItem("CoW's settlement contract", "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"),
+                balances = listOf(BalanceChange("USDC balance", "250 USDC", "210 USDC once it fills", "block 1")),
+                disclosure = "Sent to CoW's servers.",
+                unlock = UnlockStep(WalletPassword("made-up test password")),
+            ),
+        )
+
+        rule.onNodeWithText("Review order").assertExists()
+        rule.onNodeWithText("CoW's estimate, not verified").assertExists()
+        rule.onNodeWithTag(SWAP_MINIMUM_TAG).performScrollTo().assertTextEquals("at least 0.0160195 ETH")
+        rule.onNodeWithText("Sent to CoW's servers.").performScrollTo()
+        rule.onNodeWithText("Sign and send to CoW").assertExists()
+        rule.onNodeWithTag(SWAP_SIGN_TAG).performScrollTo().performClick()
+
+        assertEquals(listOf("sign"), events)
+    }
+
+    @Test
+    fun aPlacedOrderSaysHowCowAnsweredOpensItsStatusAndIsLeftWithDone() {
+        val uid = "0x" + "c0".repeat(56)
+        show(SwapUiState.OrderPlaced("Sepolia", "Sent to CoW", "CoW took the order.", uid))
+
+        rule.onNodeWithText("CoW took the order.").assertExists()
+        rule.onNodeWithTag(SWAP_OPEN_ORDER_TAG).performClick()
+        rule.onNodeWithTag(SWAP_DONE_TAG).performClick()
+
+        assertEquals(listOf("order $uid", "back"), events)
+    }
+
+    @Test
+    fun anEarlierLiveOrderOfTheTokenOpensItsStatus() {
+        val uid = "0x" + "c1".repeat(56)
+        show(
+            compose.copy(
+                form = compose.form.copy(error = "An earlier CoW order selling USDC may still fill."),
+                venue = VenueItem(SwapVenue.COW),
+                liveOrder = uid,
+            ),
+        )
+
+        rule.onNodeWithTag(SWAP_OPEN_ORDER_TAG).performScrollTo().performClick()
+
+        assertEquals(listOf("order $uid"), events)
     }
 
     @Test

@@ -60,7 +60,7 @@ class ProposeSafeSwapTest {
     private val chain = PoolChain()
     private val inputs = SafeRuns()
     private val light = FakeLightClient().apply {
-        status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime)
+        status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime, finalized = null)
     }
     private val propose = ProposeSafeSwap(
         world.observeSafe,
@@ -398,10 +398,10 @@ class ProposeSafeSwapTest {
         light.status.value = LightClientStatus.CatchingUp(done = 1, total = 2)
         assertEquals(SafeSwapProposing.Refused(SafeTxRefusal.Syncing), proposeUsdcForLink())
 
-        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = null)
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = null, finalized = null)
         assertEquals(SafeSwapProposing.Unavailable(ReadUnavailable.UNPROVEN, figure = null), proposeUsdcForLink())
 
-        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime, finalized = null)
         world.tokens = TokenBalanceReading.LastKnown(TokenUnits.of("5000000"), 100, headTime)
         assertEquals(SafeSwapProposing.Refused(SafeTxRefusal.Syncing), proposeUsdcForLink())
 

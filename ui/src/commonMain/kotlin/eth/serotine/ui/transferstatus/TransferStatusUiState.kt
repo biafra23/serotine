@@ -18,7 +18,8 @@ sealed interface TransferStatusUiState {
     /**
      * The transaction [hash]: what was sent ([sent] for a transfer, [safeTx] for a Safe
      * transaction's approval or execution, [deployment] for a Safe's deployment, [approval] for a
-     * token approval, [swap] for a swap; all null when this device has no record of it), its
+     * token approval, [swap] for a swap, [cancellation] for a CoW order's cancellation on chain; all
+     * null when this device has no record of it), its
      * [steps] in order, and [note], what to know about where it stands (a failure, or that it
      * cannot be verified right now), or null. [finished] once its
      * block is finalized. [notSent] while it is recorded as maybe sent (no peer answered its
@@ -36,6 +37,7 @@ sealed interface TransferStatusUiState {
         val deployment: DeploymentSummary? = null,
         val approval: ApprovalSummary? = null,
         val swap: SwapSummary? = null,
+        val cancellation: CancellationSummary? = null,
         val notSent: NotSentItem? = null,
         val retrying: Boolean = false,
     ) : TransferStatusUiState
@@ -114,6 +116,13 @@ data class SwapSummary(
     val from: String,
     val received: String? = null,
 )
+
+/**
+ * Which CoW order a cancellation on chain invalidates, from this device's record: [title]
+ * ("Cancellation of a CoW order on chain"), the [order]'s UID, the EIP-55 [settlement] contract it
+ * is invalidated at, and the EIP-55 [from], the account that signed the order and sent this.
+ */
+data class CancellationSummary(val title: String, val order: String, val settlement: String, val from: String)
 
 /** One step of a transfer: its [label] ("Included"), where it stands ([state]) and its [detail] (its block). */
 data class StatusStep(val label: String, val state: StepState, val detail: String?)

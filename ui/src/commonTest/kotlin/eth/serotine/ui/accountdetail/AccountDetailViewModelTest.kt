@@ -27,6 +27,7 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -53,6 +54,7 @@ import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeRecovery
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
+import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemoryNetworkSettings
@@ -97,6 +99,7 @@ class AccountDetailViewModelTest {
     )
     private val accounts = FakeAccounts(daily)
     private val history = MemoryTransactionHistory()
+    private val cowOrders = MemoryCowOrders()
     private val logIndex = FakeLogIndex()
     private val historyStarts = MemoryHistoryStarts()
     private val names = FakeNames()
@@ -148,6 +151,7 @@ class AccountDetailViewModelTest {
         ObserveTokenTransfers(logIndex, historyStarts),
         ObserveKnownTokens(catalog, userTokens, metadata),
         ObserveSentToAddresses(history),
+        ObserveAccountCowOrders(cowOrders),
     ) { "at $it" }
 
     @AfterTest

@@ -47,7 +47,7 @@ class LoggedChainTest {
         val (detail, line) = records()
         assertEquals(LogLevel.DEBUG, detail.level)
         assertEquals(
-            "requestAccount(address=${account.hex}) → ProvenBalance(wei=1000, blockNumber=9412118)",
+            "requestAccount(address=${account.hex}) → ProvenBalance(wei=1000, blockNumber=9412118, blockHash=null)",
             detail.message,
         )
         assertEquals("requestAccount: ok, 0 ms", line.message)
@@ -111,6 +111,20 @@ class LoggedChainTest {
     }
 
     @Test
+    fun aBlockReadIsLoggedByItsNumber() = runTest {
+        log.setLevel(LogLevel.DEBUG)
+        engine.base.blocks[11_968_920] = """{"number":"0xb6a198"}"""
+
+        chain.blockByNumber(11_968_920)
+        chain.blockByNumber(11_968_921)
+
+        val messages = records().map { it.message }
+        assertTrue("getBlockByNumber: ok, 0 ms" in messages, "$messages")
+        assertTrue("getBlockByNumber: failed, 0 ms" in messages, "$messages")
+        assertTrue(messages.any { it.startsWith("getBlockByNumber(block=0xb6a198, full=false) → ") }, "$messages")
+    }
+
+    @Test
     fun aStatusReadFailsOnlyWithoutAnEngine() = runTest {
         chain.snapshot()
         engine.base.snapshot = EngineSnapshot.Down
@@ -144,4 +158,6 @@ internal class FakeEngineChain(
         base.proveSlot(address, slot, holder)
 
     override fun storageAt(address: Address, slot: ByteArray): String? = base.storageAt(address, slot)
+
+    override fun blockByNumber(number: Long): String? = base.blockByNumber(number)
 }

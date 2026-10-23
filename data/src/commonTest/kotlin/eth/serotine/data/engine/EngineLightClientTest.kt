@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.FinalizedBlock
 import eth.serotine.domain.repository.LightClientStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -54,7 +55,33 @@ class EngineLightClientTest {
                 LightClientStatus.CatchingUp(done = 1, total = 4),
                 LightClientStatus.WaitingForHead(headAgeSeconds = null),
                 LightClientStatus.WaitingForProofPeers(headBlock = 11_922_744, headTimestamp = null),
-                LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = 1_792_100_000),
+                LightClientStatus.Synced(headBlock = 11_922_744, headTimestamp = 1_792_100_000, finalized = null),
+            ),
+            seen,
+        )
+        collecting.cancel()
+    }
+
+    @Test
+    fun aSyncedStatusCarriesTheFinalizedBlockWithItsOwnTimestamp() = runTest {
+        val seen = mutableListOf<LightClientStatus>()
+        val header = FinalizedBlock(40, 1_792_099_032)
+        chain.snapshot = running(head = 120, headTimestamp = 1_792_100_000, finalized = 40, finalizedHeader = header)
+        val collecting = launch { client().observeStatus(Network.SEPOLIA).collect { seen += it } }
+        runCurrent()
+        // A newer finalized block whose header is not had yet: the one had stands.
+        chain.snapshot = running(head = 121, headTimestamp = 1_792_100_012, finalized = 41, finalizedHeader = header)
+        advanceTimeBy(POLL)
+        runCurrent()
+        // None had at all: none.
+        chain.snapshot = running(head = 122, headTimestamp = 1_792_100_024, finalized = 41)
+        advanceTimeBy(POLL)
+        runCurrent()
+        assertEquals(
+            listOf<LightClientStatus>(
+                LightClientStatus.Synced(120, 1_792_100_000, header),
+                LightClientStatus.Synced(121, 1_792_100_012, header),
+                LightClientStatus.Synced(122, 1_792_100_024, finalized = null),
             ),
             seen,
         )
@@ -112,7 +139,7 @@ class EngineLightClientTest {
         advanceTimeBy(POLL)
         runCurrent()
 
-        assertEquals(listOf(LightClientStatus.Unavailable, LightClientStatus.Synced(5, null)), seen)
+        assertEquals(listOf(LightClientStatus.Unavailable, LightClientStatus.Synced(5, null, finalized = null)), seen)
         collecting.cancel()
     }
 
@@ -128,7 +155,7 @@ class EngineLightClientTest {
         advanceTimeBy(POLL)
         runCurrent()
 
-        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null)), seen)
+        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null, finalized = null)), seen)
         collecting.cancel()
     }
 
@@ -144,7 +171,11 @@ class EngineLightClientTest {
         advanceTimeBy(POLL)
         runCurrent()
 
-        assertEquals(listOf<LightClientStatus>(LightClientStatus.Synced(5, null)), seen, "the strip did not freeze")
+        assertEquals(
+            listOf<LightClientStatus>(LightClientStatus.Synced(5, null, finalized = null)),
+            seen,
+            "the strip did not freeze",
+        )
         collecting.cancel()
     }
 

@@ -42,8 +42,10 @@ class ObserveNetworkOverviewTest {
 
         override suspend fun setEnabled(network: Network, on: Boolean): Boolean = error("not used by this test")
     }
-    private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Synced(9, now - 8))
+    private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Synced(9, now - 8, finalized = null))
     private val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
+
         override fun observeStatus(network: Network): Flow<LightClientStatus> = status
     }
     private val history = MemoryTransactionHistory()
@@ -72,7 +74,7 @@ class ObserveNetworkOverviewTest {
         assertEquals(Network.SEPOLIA, sepolia.network)
         assertEquals(true, sepolia.on)
         assertEquals(listOf(main), sepolia.accounts)
-        assertEquals(LightClientStatus.Synced(9, now - 8), sepolia.status)
+        assertEquals(LightClientStatus.Synced(9, now - 8, finalized = null), sepolia.status)
         assertEquals(0, sepolia.unconfirmed)
         assertEquals(0, sepolia.unlistedSafes)
 

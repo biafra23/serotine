@@ -16,13 +16,15 @@ import io.myotis.engine.ios.UpgradePhase
 /**
  * A call result: OK and REVERTED are answers, REFUSED and INFEASIBLE (calldata alone
  * outran the engine's budget) permanent refusals, UNAVAILABLE no verified answer right now.
- * The block is the one the call ran against, -1 when the engine does not say.
+ * The block is the one the call ran against, -1 when the engine does not say, with its hash
+ * when the engine proved it.
  */
 internal fun callOutcome(result: CallResult): CallOutcome? {
     val block = result.blockNumber.takeIf { it >= 0 }
+    val hash = result.blockHashHex?.lowercase()
     return when (result.status) {
-        CallResult.Status.OK -> CallOutcome.Returned((result.data ?: ByteArray(0)).toHex(), block)
-        CallResult.Status.REVERTED -> CallOutcome.Reverted(block)
+        CallResult.Status.OK -> CallOutcome.Returned((result.data ?: ByteArray(0)).toHex(), block, hash)
+        CallResult.Status.REVERTED -> CallOutcome.Reverted(block, hash)
         CallResult.Status.REFUSED, CallResult.Status.INFEASIBLE -> CallOutcome.Refused
         CallResult.Status.UNAVAILABLE -> null
     }

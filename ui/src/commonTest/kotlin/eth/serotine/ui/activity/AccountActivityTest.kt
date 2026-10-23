@@ -5,14 +5,20 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrder
+import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.CowTrade
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTx
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.CowOrderEnd
+import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryStart
 import eth.serotine.domain.repository.IndexedLog
@@ -24,6 +30,7 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TokenSettings
+import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveKnownTokens
@@ -34,6 +41,7 @@ import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
+import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
@@ -74,6 +82,7 @@ class AccountActivityTest {
     private val bob = Address.of("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed")
     private val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc")
     private val history = MemoryTransactionHistory()
+    private val cowOrders = MemoryCowOrders()
     private val accounts = FakeAccounts(alice, treasury)
     private val starts = MemoryHistoryStarts()
     private val index = FakeLogIndex()
@@ -114,6 +123,7 @@ class AccountActivityTest {
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
             ObserveSentToAddresses(history),
+            ObserveAccountCowOrders(cowOrders),
         ) { "at $it" }
             .of(AccountId(Network.SEPOLIA, address))
             // Unconfined, so that what a test changes is listed before it reads the value.
@@ -241,7 +251,207 @@ class AccountActivityTest {
             rows.map { it.title },
         )
         assertEquals("On Uniswap · 0x3bFA…e48E", rows.first().detail)
-        assertEquals("Router 0x3bFA…e48E", rows.last().detail)
+        assertEquals("Spender 0x3bFA…e48E", rows.last().detail)
+    }
+
+    private val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+
+    /** A CoW order of Alice's selling 40 USDC for ETH, signed at [signedAt]. */
+    private fun order(signedAt: Long): CowOrderRecord {
+        val order = CowOrder(
+            usdc.address,
+            CowOrder.NATIVE_BUY_TOKEN,
+            alice.address,
+            UInt256.of(40_000_000),
+            UInt256.of("15900000000000000"),
+            signedAt + 300,
+        )
+        return CowOrderRecord(
+            account = alice.address,
+            network = Network.SEPOLIA,
+            settlement = settlement,
+            order = order,
+            uid = order.uid(Network.SEPOLIA.chainId, settlement, alice.address),
+            signature = Signature("0".repeat(63) + "1", "0".repeat(63) + "1", 0),
+            sell = TransferAsset.Erc20Token(usdc),
+            buy = TransferAsset.Native,
+            signedAt = signedAt,
+            rangeStart = 9_400_000,
+        )
+    }
+
+    @Test
+    fun theCowOrdersSignedHereAreListedByWhenEachWasSignedAndOpenTheirStatus() = runTest {
+        val live = order(350)
+        val unfilled = order(250).copy(end = CowOrderEnd.Unfilled(9_412_200, cancelled = false))
+        history.entries.value = listOf(HistoryEntry(native), HistoryEntry(token))
+        cowOrders.orders.value = listOf(unfilled, live)
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(
+            listOf(
+                "Sent 0.25 ETH",
+                "CoW order: 40 USDC for at least 0.0159 ETH",
+                "Sent 40.5 USDC",
+                "CoW order not filled: 40 USDC",
+            ),
+            rows.map { it.title },
+            "by when each was signed or sent",
+        )
+        val shown = rows[1]
+        assertEquals("May fill until at 650", shown.status)
+        assertEquals(ActivityState.WAITING, shown.state)
+        assertEquals("On CoW · 0x9008…ab41", shown.detail)
+        assertEquals(ActivityKey(live.uid.hex, cowOrder = true), shown.opens)
+        assertEquals("Not filled by block 9,412,200", rows[3].status)
+    }
+
+    @Test
+    fun anOrderNeverFilledGoesWhereItWasSignedAndAFillsSaleIsListedOnce() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val fillTx = "0x" + "f1".repeat(32)
+        val trade = CowTrade(
+            alice.address,
+            usdc.address,
+            CowOrder.NATIVE_BUY_TOKEN,
+            UInt256.of(40_000_000),
+            UInt256.of("16100000000000000"),
+            UInt256.ZERO,
+            order(320).uid,
+        )
+        val filled = order(320).copy(end = CowOrderEnd.Filled(trade, 9_401_005, fillTx))
+        // Proven long after it was signed, at a finalized block past newer transactions.
+        val unfilled = order(350).copy(end = CowOrderEnd.Unfilled(9_401_080, cancelled = false))
+        history.entries.value = listOf(
+            HistoryEntry(native, SentOutcome.Finalized(9_401_010, succeeded = true)),
+            HistoryEntry(token, SentOutcome.Finalized(9_401_000, succeeded = true)),
+        )
+        cowOrders.orders.value = listOf(filled, unfilled)
+        index.logs = listOf(
+            // The fill's sale, which its row says.
+            tokenLog(usdc.address, 9_401_005, alice.address, settlement, word("2625a00"), fillTx),
+            tokenLog(usdc.address, 9_401_050, bob, alice.address, word("f4240"), "0x" + "e1".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(
+            listOf(
+                "Received 1 USDC",
+                "Sent 0.25 ETH",
+                "CoW order not filled: 40 USDC",
+                "Swapped 40 USDC for 0.0161 ETH on CoW",
+                "Sent 40.5 USDC",
+            ),
+            rows.map { it.title },
+        )
+    }
+
+    @Test
+    fun aFillsPurchaseIsSaidByItsOrdersRowNotAsAReceiptFromAnUnfamiliarSender() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val dai = Token(Address.of("0x" + "da".repeat(20)), "DAI", "Dai", 18, "dai")
+        val fillTx = "0x" + "f3".repeat(32)
+        val bought = UInt256.of("39900000000000000000")
+        val record = order(320).let { base ->
+            val order = base.order.copy(buyToken = dai.address, buyAmount = UInt256.of("39000000000000000000"))
+            base.copy(
+                order = order,
+                uid = order.uid(Network.SEPOLIA.chainId, settlement, alice.address),
+                buy = TransferAsset.Erc20Token(dai),
+            )
+        }
+        cowOrders.orders.value = listOf(
+            record.copy(
+                end = CowOrderEnd.Filled(
+                    CowTrade(
+                        alice.address,
+                        usdc.address,
+                        dai.address,
+                        UInt256.of(40_000_000),
+                        bought,
+                        UInt256.ZERO,
+                        record.uid,
+                    ),
+                    9_401_005,
+                    fillTx,
+                ),
+            ),
+        )
+        index.logs = listOf(
+            tokenLog(usdc.address, 9_401_005, alice.address, settlement, word("2625a00"), fillTx, index = 0),
+            tokenLog(dai.address, 9_401_005, settlement, alice.address, word("229b94699ca160000"), fillTx, index = 1),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(listOf("Swapped 40 USDC for 39.9 DAI on CoW"), rows.map { it.title })
+    }
+
+    @Test
+    fun twoOrdersFilledInOneSettlementEachListTheirSaleOnce() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val dai = Token(Address.of("0x" + "da".repeat(20)), "DAI", "Dai", 18, "dai")
+        val fillTx = "0x" + "f2".repeat(32)
+        fun filled(record: CowOrderRecord) = record.copy(
+            end = CowOrderEnd.Filled(
+                CowTrade(
+                    alice.address,
+                    record.order.sellToken,
+                    CowOrder.NATIVE_BUY_TOKEN,
+                    record.order.sellAmount,
+                    UInt256.of("16100000000000000"),
+                    UInt256.ZERO,
+                    record.uid,
+                ),
+                9_401_005,
+                fillTx,
+            ),
+        )
+        val usdcOrder = filled(order(320))
+        val daiOrder = order(330).let { base ->
+            val order = base.order.copy(sellToken = dai.address, sellAmount = UInt256.of("40000000000000000000"))
+            base.copy(
+                order = order,
+                uid = order.uid(Network.SEPOLIA.chainId, settlement, alice.address),
+                sell = TransferAsset.Erc20Token(dai),
+            )
+        }.let(::filled)
+        cowOrders.orders.value = listOf(usdcOrder, daiOrder)
+        index.logs = listOf(
+            tokenLog(usdc.address, 9_401_005, alice.address, settlement, word("2625a00"), fillTx, index = 0),
+            tokenLog(dai.address, 9_401_005, alice.address, settlement, word("22b1c8c1227a00000"), fillTx, index = 1),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(
+            listOf("Swapped 40 DAI for 0.0161 ETH on CoW", "Swapped 40 USDC for 0.0161 ETH on CoW"),
+            rows.map { it.title },
+            "each sale said by its own order's row, neither listed again",
+        )
+    }
+
+    @Test
+    fun aCowOrdersCancellationOnChainSaysSoAndNamesTheSettlement() = runTest {
+        val uid = CowOrderUid.of("0x" + "ab".repeat(32) + alice.address.hex.removePrefix("0x") + "6ad9e7f4")
+        history.entries.value = listOf(HistoryEntry(sent(13, SentAction.CowCancellation(settlement, uid), 900)))
+
+        val row = assertIs<ActivityUiState.Shown>(activity().value).rows.single()
+
+        assertEquals("Cancelled a CoW order on chain", row.title)
+        assertEquals("On CoW · 0x9008…ab41", row.detail)
+        assertEquals("0x9008D19f58AAbD9eD0D60971565AA8510560ab41", row.about)
     }
 
     /** The treasury followed from block 9,400,000: its events indexed over [covered], its transfers [transfers]. */

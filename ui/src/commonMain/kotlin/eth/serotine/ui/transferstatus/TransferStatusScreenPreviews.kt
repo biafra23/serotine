@@ -272,7 +272,7 @@ private fun TransferStatusApprovalPreview() = TransferStatusPreview(
             amount = "100 USDC",
             symbol = "USDC",
             icon = "usdc",
-            spenderLabel = "May be taken by the swap's router",
+            spenderLabel = "May be taken by the swap's spender",
             spender = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
             from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
         ),
@@ -289,7 +289,7 @@ private fun TransferStatusAllowanceResetPreview() = TransferStatusPreview(
             amount = "0 USDT",
             symbol = "USDT",
             icon = null,
-            spenderLabel = "The swap's router may take none, until the whole amount is approved",
+            spenderLabel = "The swap's spender may take none, until the whole amount is approved",
             spender = "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
             from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
         ),
@@ -351,6 +351,20 @@ private fun TransferStatusNonceUsedPreview() = TransferStatusPreview(
 )
 
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
+@Preview
+@Composable
+private fun TransferStatusCowCancellationPreview() = TransferStatusPreview(
+    pending.copy(
+        sent = null,
+        cancellation = CancellationSummary(
+            title = "Cancellation of a CoW order on chain",
+            order = "0x" + "4c".repeat(32) + "5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" + "6ad9e7f4",
+            settlement = "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+            from = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        ),
+    ),
+)
+
 internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TransferStatusPendingPreview() },
     { TransferStatusPendingDarkPreview() },
@@ -376,4 +390,5 @@ internal val transferStatusScreenPreviews: List<@Composable () -> Unit> = listOf
     { TransferStatusSwapReceivedPreview() },
     { TransferStatusNonceUsedPreview() },
     { TransferStatusMaybeSentNonceUsedPreview() },
+    { TransferStatusCowCancellationPreview() },
 )

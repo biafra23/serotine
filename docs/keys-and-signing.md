@@ -267,7 +267,8 @@ its KDoc and returns it as a result the UI shows as state.
   - The key store's calls take turns, `describe()` included: the biometric
     key's check opens a Keystore operation, which must not compete with the one
     a pending prompt holds (StrongBox has few).
-  - The desktop has no biometric path yet, and its Security screen says so.
+  - Windows and Linux have no biometric path yet, and their Security screen
+    says so. A Mac with Touch ID has one, below.
 - **Biometric unlock on iOS** works the same way, with `IosBiometricKey` as
   `HW_bio`:
   - a P-256 key made inside the Secure Enclave under
@@ -288,6 +289,38 @@ its KDoc and returns it as a result the UI shows as state.
     where it is not offered, the Security screen says why and how to get it:
     no face or finger enrolled, no passcode, Face ID turned off for Serotine,
     or biometrics locked out until the passcode is entered.
+- **Biometric unlock on a Mac** with Touch ID works as on iOS, with
+  `MacBiometricKey` as `HW_bio`:
+  - the same key: P-256, made inside the Secure Enclave under
+    `[.privateKeyUsage, .biometryCurrentSet]` and
+    `WhenPasscodeSetThisDeviceOnly`, with no password fallback, kept only as
+    the enclave's handle in `biometric-key.json` beside the enrolled set's
+    fingerprint, and each DEK wrapped to it by ECIES as `<address>.bio`.
+    The calls are Security.framework's C API through JNA, as for
+    `MacSecureEnclaveSecret`; the key is not permanent, so it needs no
+    keychain entitlement, and the app signed or not makes it the same way;
+  - `sign(…, Unlock.WithBiometrics(reason))` has the enclave decrypt through
+    an `LAContext` that carries the reason (`MacLocalAuthentication`,
+    messages sent through the Objective-C runtime, since LocalAuthentication
+    has no C API): the system shows its Touch ID prompt for that use, and the
+    decryption waits for it. On macOS 15 the prompt's one way out is Cancel,
+    with no password button, and the signing screen then offers the wallet
+    password; the context still names "Use the password" as its fallback,
+    whose press, where macOS shows it, reads as a dismissal. A prompt that does
+    not pass fails the decryption with LocalAuthentication's error, at the
+    top of the error or underneath it, which reads as on iOS (Security's own
+    "cancelled by the user" reads as a dismissal too); a cancelled caller
+    invalidates the context, which dismisses the prompt;
+  - the handle carries no caller identity, as `MacSecureEnclaveSecret`'s does
+    not: another program running as the same user could use the key, but
+    only with the user's finger, in a prompt that names that program;
+  - it works whichever factor the password path stands on, the enclave or the
+    password alone;
+  - where it is not offered, the Security screen says why: no sensor it can
+    use (it says no more than that, whether the Mac has no Touch ID, its
+    Touch ID keyboard is not paired or not connected, or its lid is closed;
+    a Mac has no setting that turns Touch ID off for one app), no finger
+    enrolled, or Touch ID locked out until the login password is entered.
 
 - **Import.** `importMnemonic(mnemonic, password)` checks the restore
   screen's words against the BIP-39 English wordlist and their checksum. It
@@ -514,9 +547,8 @@ its KDoc and returns it as a result the UI shows as state.
   display that times out stops the screen, and that stop is a leaving
   (owner ruling, 2026-10-18, #39).
 - **Not yet.**
-  - Biometric unlock on a Mac's Secure Enclave (`.biometryCurrentSet`), and
-    the opt-in on the seed screens at the first key (Settings → Security is
-    where it is turned on today).
+  - The biometric opt-in on the seed screens at the first key (Settings →
+    Security is where it is turned on today).
   - Changing the wallet password, which re-wraps every envelope's DEK as one
     step a crash cannot leave half done.
   - A way back when no envelope opens any more (a lost Keystore key, a

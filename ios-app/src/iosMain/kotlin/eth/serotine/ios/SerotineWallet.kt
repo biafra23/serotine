@@ -1,6 +1,8 @@
 package eth.serotine.ios
 
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.cow.FileCowOrders
+import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.MyotisNode
 import eth.serotine.data.history.FileHistoryStarts
 import eth.serotine.data.keys.EnvelopeKeyStore
@@ -15,6 +17,7 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -30,6 +33,7 @@ import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.APP_VERSION
@@ -150,6 +154,9 @@ class SerotineWallet {
     // of them kept for good with how it ended (issue #85): each record goes into both.
     private val sentRecord = FileSentTransfers("$dataDir/sent-transfers.json")
     private val transactionHistory = FileTransactionHistory("$dataDir/transaction-history.json")
+
+    /** The CoW orders signed here, each live until its end is proven (docs/swaps.md): public data only. */
+    private val cowOrders = FileCowOrders("$dataDir/cow-orders.json")
     private val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
 
     internal val graph: AppGraph = run {
@@ -198,6 +205,14 @@ class SerotineWallet {
             safeReleases = PinnedSafeReleases(),
             // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
             uniswap = node.uniswap,
+            // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
+            // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*). Until
+            // Myotis's iOS module reads a block by number, no finalized block's own time is known here,
+            // so no CoW order is offered on iOS (docs/swaps.md, *Proving an order's end*).
+            cowChain = node.cow,
+            cowApi = HttpCowApi.create(),
+            cowOrders = cowOrders,
+            swapVenue = FileSwapVenue("$dataDir/swap-venue.json"),
             debugLog = debugLog,
             debugScreen = debugScreen,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
@@ -314,6 +329,12 @@ class SerotineWallet {
                         node.logIndex,
                         Network.SEPOLIA,
                     )()
+                }
+            },
+            scope.launch {
+                // Each CoW order's end is proven from the accounts' log-index entries (docs/swaps.md).
+                reportingFailure("proving the CoW orders' ends") {
+                    ProveCowOrderEnds(cowOrders, node.logIndex, node.lightClient, accounts, Network.SEPOLIA)()
                 }
             },
         )

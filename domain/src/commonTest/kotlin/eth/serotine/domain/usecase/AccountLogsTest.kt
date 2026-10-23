@@ -51,7 +51,7 @@ class AccountLogsTest {
     private val index = RecordingLogIndex()
 
     /** The verified head the tests sync to, and its time. */
-    private val head = LightClientStatus.Synced(headBlock = 10_000, headTimestamp = HEAD_TIME)
+    private val head = LightClientStatus.Synced(headBlock = 10_000, headTimestamp = HEAD_TIME, finalized = null)
 
     private fun TestScope.follow() {
         val follower = FollowAccountLogs(accounts, starts, history, lightClient, index, Network.SEPOLIA)

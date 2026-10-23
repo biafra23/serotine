@@ -195,6 +195,10 @@ class ActivityDetailViewModel(
                 fields += DetailField("Threshold", "${action.threshold} of ${rows.owners(action.owners.size.toLong())}")
                 fields += DetailField("Safe version", action.version)
             }
+            is SentAction.CowCancellation -> {
+                fields += DetailField("CoW order", action.uid.hex, DetailKind.HASH)
+                fields += addressOf("Settlement contract", action.settlement, names)
+            }
         }
         fields += DetailField("Transaction hash", transfer.hash, DetailKind.HASH)
         fields += DetailField("Nonce", transfer.nonce.toString())

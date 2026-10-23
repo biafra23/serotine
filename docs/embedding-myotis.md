@@ -83,6 +83,10 @@ consumer developed against an unreleased engine, Myotis's
   for no ports (its peer caches and snapshot live under its data directory)
   and answers a read on a paused or starting handle at once as unavailable.
   The log index (*History*) is twinned too, from Myotis 0.1.18 (its #687).
+  The iOS module reads no block by number in 0.1.18 (its block reads are
+  internal), so the iOS node gives the finalized block no timestamp, and no
+  CoW order is offered on iOS until it does (docs/swaps.md, *Proving an
+  order's end*).
 - **The engine's own log** is not printed by the engine: its tracing lines go
   into a ring in the library (4096 lines, the oldest dropped when full), which
   a host drains with `Myotis.drainLogs`. A debug build's `MyotisHost` (the iOS `MyotisNode` on iOS) drains
@@ -507,6 +511,29 @@ answered with an empty list.
     For an account not created here that is not so, so the adapter reads the
     entry's block from the status first and refuses such a range
     (`LogsReading.BeforeStart`) rather than let it read as complete.
+- **The finalized block and its time.** The light client's status carries
+  the finalized block (`StatusSnapshot.finalizedBlockNumber`) with its own
+  header's timestamp (`FinalizedTimes`): `VerifiedReads.getBlockByNumber` of
+  that block.
+  - It is read once per finalized block, only while the light client is
+    synced and not paused, and after a read that failed not again for 12 s,
+    as the status is polled every second.
+  - It is read in a scope of its own, never in the status poll, which must
+    not block; until the newest finalized block's header is had, the newest
+    one had stands, finalized too, only older.
+  - `FinalizedHeaders` reads it through the engine chain
+    (`VerifiedChain.blockByNumber`), so the Debug tab's log has it as
+    `getBlockByNumber`, as every other request.
+  - A header counts only when its `number` is the block asked for: the
+    engine has answered a read for a past block from its head before.
+
+  Not the finalized slot's time: the slot the engine pairs with
+  the block can be a later, empty one (docs/swaps.md, *Proving an order's
+  end*). A CoW order's end is proven at this block.
+- **`ProveCowOrderEnds`** (`:domain`, run by the hosts beside
+  `FollowAccountLogs`) reads each live CoW order's `Trade` and
+  `OrderInvalidated` from its account's `Mention` entry, up to the finalized
+  block (docs/swaps.md, *Proving an order's end*).
 - **`FollowAccountLogs`** (`:domain`, run by the hosts while the engine runs,
   never by `App`) keeps the index following the accounts:
   - Every account is a `Mention` entry, and a Safe an `Emitter` entry too,
@@ -617,5 +644,6 @@ user to update — before it, and, after it, nothing else.
   answer is trusted or shown as untrusted — recorded in CLAUDE.md under *Data
   sources* before the code lands. Prices, the token list and Safe
   co-signing are decided there (2026-10-16), each without an off-chain
-  service; the dApp connection protocol and CoW Protocol's order API
-  (docs/swaps.md) are still open.
+  service. CoW Protocol's order API is the first off-chain service allowed
+  (2026-10-22), for the swaps the user sends to CoW (docs/swaps.md). The dApp
+  connection protocol is still open.

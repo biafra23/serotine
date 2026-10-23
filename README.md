@@ -28,8 +28,8 @@ What the app does today:
   with the Argon2id-stretched wallet password AND, where the device has one,
   a secret of its secure hardware (the Android Keystore, the Secure Enclave
   of an iPhone or a Mac); Windows and Linux stand on the password alone for
-  now, and the app says so. Biometric unlock (Android, and Face ID or Touch
-  ID on iOS) is an opt-in, bound to a hardware key (docs/keys-and-signing.md).
+  now, and the app says so. Biometric unlock (Android, Face ID or Touch
+  ID on iOS, and Touch ID on a Mac) is an opt-in, bound to a hardware key (docs/keys-and-signing.md).
 - **Verified balances.** ETH and token balances, token metadata and prices are
   read through the embedded light client and labelled with the block they were
   proven at; while no fresh verified head exists, the last proven balance stays

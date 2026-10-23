@@ -182,6 +182,7 @@ class TransferStatusViewModel(
             deployment = transfer?.let { deploymentSummary(it, progress, failed, list) },
             approval = transfer?.let(::approvalSummary),
             swap = transfer?.let { swapSummary(it, status.received) },
+            cancellation = transfer?.let(::cancellationSummary),
             // A retry turned away keeps the record: what it came to stays on screen with Try again.
             notSent = if (maybeSent) {
                 retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
@@ -202,7 +203,10 @@ class TransferStatusViewModel(
     private fun mined(progress: TransactionProgress): Boolean =
         progress is TransactionProgress.Included || progress is TransactionProgress.Finalized
 
-    /** What [transfer] is called in a sentence: "transfer", "approval", "execution" or "deployment". */
+    /**
+     * What [transfer] is called in a sentence: "transfer", "approval", "execution", "deployment",
+     * "swap" or "cancellation".
+     */
     private fun whatOf(transfer: SentTransfer): String = when (transfer.action) {
         is SentAction.Transfer -> "transfer"
         is SentAction.SafeApproval -> "approval"
@@ -210,6 +214,7 @@ class TransferStatusViewModel(
         is SentAction.SafeDeployment -> "deployment"
         is SentAction.TokenApproval -> "approval"
         is SentAction.Swap -> "swap"
+        is SentAction.CowCancellation -> "cancellation"
     }
 
     private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
@@ -287,11 +292,22 @@ class TransferStatusViewModel(
             symbol = symbol,
             icon = icon,
             spenderLabel = if (reset) {
-                "The swap's router may take none, until the whole amount is approved"
+                "The swap's spender may take none, until the whole amount is approved"
             } else {
-                "May be taken by the swap's router"
+                "May be taken by the swap's spender"
             },
             spender = Eip55.format(approval.spender),
+            from = Eip55.format(transfer.account),
+        )
+    }
+
+    /** Which CoW order [transfer] invalidates, when it is that order's cancellation on chain. */
+    private fun cancellationSummary(transfer: SentTransfer): CancellationSummary? {
+        val cancellation = transfer.action as? SentAction.CowCancellation ?: return null
+        return CancellationSummary(
+            title = "Cancellation of a CoW order on chain",
+            order = cancellation.uid.hex,
+            settlement = Eip55.format(cancellation.settlement),
             from = Eip55.format(transfer.account),
         )
     }
@@ -339,7 +355,7 @@ class TransferStatusViewModel(
             is SentAction.SafeApproval -> "Approval of a Safe transaction" to action.request
             is SentAction.SafeExecution -> "Execution of a Safe transaction" to action.request
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
-            is SentAction.Swap,
+            is SentAction.Swap, is SentAction.CowCancellation,
             -> return null
         }
         return SafeTxSummary(

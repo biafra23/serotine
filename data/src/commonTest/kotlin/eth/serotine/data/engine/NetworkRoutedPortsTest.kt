@@ -7,9 +7,11 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.ApprovalReading
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.LogCoverageReading
 import eth.serotine.domain.repository.NameResolution
@@ -21,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -59,6 +62,22 @@ class NetworkRoutedPortsTest {
         )
         assertFalse(routed.logIndex.configure(network, emptyList(), emptyList()))
         assertEquals(LogCoverageReading.Unavailable, routed.logIndex.observeCoverage(network).first())
+        assertEquals(CowVenueReading.Unavailable(noEngine), routed.cow.venue(network))
+        assertEquals(Simulation.Unavailable(noEngine), routed.cow.call(network, address, ByteArray(0)))
+    }
+
+    @Test
+    fun finalizedBlocksAreDatedOnlyWhenEveryLightClientDatesThem() {
+        fun dating(dates: Boolean) = object : LightClient {
+            override val datesFinalizedBlocks = dates
+
+            override fun observeStatus(network: Network): Flow<LightClientStatus> = flowOf(LightClientStatus.Starting)
+        }
+        assertFalse(NetworkRoutedPorts(emptyMap()).lightClient.datesFinalizedBlocks, "no light client dates none")
+        val dated = NetworkRoutedPorts(mapOf(Network.SEPOLIA to ports(light = dating(true))))
+        assertTrue(dated.lightClient.datesFinalizedBlocks)
+        val undated = NetworkRoutedPorts(mapOf(Network.SEPOLIA to ports(light = dating(false))))
+        assertFalse(undated.lightClient.datesFinalizedBlocks)
     }
 
     @Test
@@ -79,15 +98,18 @@ class NetworkRoutedPortsTest {
         assertEquals(listOf(Network.SEPOLIA), asked)
     }
 
-    /** A network's ports with [native] as its balances and nothing else asked of the others. */
-    private fun ports(native: NativeBalances): ChainPorts {
+    /** A network's ports with [native] as its balances and [light] as its light client, nothing else asked. */
+    private fun ports(
+        native: NativeBalances = NetworkRoutedPorts(emptyMap()).nativeBalances,
+        light: LightClient = NetworkRoutedPorts(emptyMap()).lightClient,
+    ): ChainPorts {
         val none = NetworkRoutedPorts(emptyMap())
         return ChainPorts(
             nativeBalances = native,
             tokenBalances = none.tokenBalances,
             tokenMetadata = none.tokenMetadata,
             addressKinds = none.addressKinds,
-            lightClient = none.lightClient,
+            lightClient = light,
             networkUpgrades = none.networkUpgrades,
             priceFeeds = none.priceFeeds,
             priceHistory = none.priceHistory,
@@ -97,6 +119,7 @@ class NetworkRoutedPortsTest {
             names = none.names,
             safeApprovals = none.safeApprovals,
             uniswap = none.uniswap,
+            cow = none.cow,
             logIndex = none.logIndex,
         )
     }

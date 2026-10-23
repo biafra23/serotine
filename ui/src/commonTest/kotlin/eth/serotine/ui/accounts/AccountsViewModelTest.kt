@@ -293,7 +293,8 @@ class AccountsViewModelTest {
         repository.accounts = listOf(daily)
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
-        lightClient.status.value = LightClientStatus.Synced(headBlock = 11_923_074, headTimestamp = now - 3)
+        lightClient.status.value =
+            LightClientStatus.Synced(headBlock = 11_923_074, headTimestamp = now - 3, finalized = null)
         runCurrent()
         assertEquals("Verified at block 11,923,074 · 3 s ago", viewModel.sepoliaStatus.text)
 
@@ -593,6 +594,7 @@ class AccountsViewModelTest {
 
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+        override val datesFinalizedBlocks = true
         override fun observeStatus(network: Network): Flow<LightClientStatus> = status
     }
 

@@ -25,6 +25,7 @@ class LightClientViewModelTest {
 
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
     private val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(network: Network): Flow<LightClientStatus> = status
     }
 
@@ -49,7 +50,7 @@ class LightClientViewModelTest {
         runCurrent()
         assertEquals(LightClientHealth.STALE, viewModel.item(Network.SEPOLIA).value.health)
 
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         runCurrent()
         assertEquals("Verified at block 9,412,118 · 8 s ago", viewModel.item(Network.SEPOLIA).value.text)
         assertEquals(LightClientHealth.VERIFIED, viewModel.item(Network.SEPOLIA).value.health)
@@ -69,7 +70,7 @@ class LightClientViewModelTest {
         // The last item stays until the next screen's first answer replaces it.
         assertEquals("Verifying sync committees · 1 of 4 periods", viewModel.item(Network.SEPOLIA).value.text)
 
-        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992)
+        status.value = LightClientStatus.Synced(headBlock = 9_412_118, headTimestamp = 992, finalized = null)
         backgroundScope.launch { viewModel.item(Network.SEPOLIA).collect {} }
         runCurrent()
         assertEquals(1, status.subscriptionCount.value)

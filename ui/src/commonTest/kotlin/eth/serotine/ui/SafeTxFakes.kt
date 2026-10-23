@@ -218,9 +218,10 @@ internal class SafeWorld {
 
     /** The verified head, at [HEAD_TIME]. */
     val head = MutableStateFlow<LightClientStatus>(
-        LightClientStatus.Synced(headBlock = 100, headTimestamp = HEAD_TIME),
+        LightClientStatus.Synced(headBlock = 100, headTimestamp = HEAD_TIME, finalized = null),
     )
     val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
         override fun observeStatus(network: Network): Flow<LightClientStatus> = head
     }
 

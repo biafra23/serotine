@@ -4,6 +4,7 @@ import eth.serotine.data.engine.EngineSnapshot.Phase
 import eth.serotine.data.keys.toHex
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.repository.FinalizedBlock
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlin.time.AbstractLongTimeSource
 import kotlin.time.Duration
@@ -31,6 +32,7 @@ internal class FakeChain : VerifiedChain {
         }
     val proofs = mutableMapOf<Address, ProvenBalance>()
     val codes = mutableMapOf<Address, ProvenCode>()
+    val blocks = mutableMapOf<Long, String>()
     val proofRequests = mutableListOf<Address>()
     var failure: Throwable? = null
     var snapshots = 0
@@ -127,6 +129,11 @@ internal class FakeChain : VerifiedChain {
         spent += proofTakes
         return storage[address to slot.toHex()] ?: "0".repeat(64)
     }
+
+    override fun blockByNumber(number: Long): String? {
+        failure?.let { throw it }
+        return blocks[number]
+    }
 }
 
 /** A running engine's snapshot; by default synced, awake, fresh and with proof peers. */
@@ -143,6 +150,9 @@ internal fun running(
     headAgeMs: Long = 2_000,
     bound: Long = 13,
     upgrade: NetworkUpgrade? = null,
+    finalized: Long = 0,
+    finalizedHeader: FinalizedBlock? = null,
 ) = EngineSnapshot.Running(
     phase, paused, start, current, target, hunting, proofPeers, head, headTimestamp, headAgeMs, bound, upgrade,
+    finalized, finalizedHeader,
 )

@@ -14,6 +14,8 @@ import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
@@ -84,6 +86,10 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
     val lightClient: LightClient = object : LightClient {
         override fun observeStatus(network: Network): Flow<LightClientStatus> =
             of(network)?.lightClient?.observeStatus(network) ?: flowOf(LightClientStatus.Unavailable)
+
+        // A device property: every light client here dates finalized blocks, or none is offered.
+        override val datesFinalizedBlocks: Boolean =
+            byNetwork.isNotEmpty() && byNetwork.values.all { it.lightClient.datesFinalizedBlocks }
     }
 
     val networkUpgrades: NetworkUpgrades = object : NetworkUpgrades {
@@ -170,6 +176,14 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
             of(network)?.uniswap?.call(network, to, data) ?: Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
+    val cow: CowChain = object : CowChain {
+        override suspend fun venue(network: Network): CowVenueReading =
+            of(network)?.cow?.venue(network) ?: CowVenueReading.Unavailable(ReadUnavailable.NO_ENGINE)
+
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
+            of(network)?.cow?.call(network, to, data) ?: Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
+    }
+
     val logIndex: LogIndex = object : LogIndex {
         override suspend fun configure(network: Network, watch: List<LogWatch>, unwatch: List<LogWatchKey>): Boolean =
             of(network)?.logIndex?.configure(network, watch, unwatch) ?: false
@@ -198,5 +212,6 @@ class ChainPorts(
     val names: NameResolver,
     val safeApprovals: SafeApprovals,
     val uniswap: UniswapV3Chain,
+    val cow: CowChain,
     val logIndex: LogIndex,
 )

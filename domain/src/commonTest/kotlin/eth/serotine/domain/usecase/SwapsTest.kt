@@ -2,11 +2,13 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.AbiWords
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.QuoterV2
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SlippageTolerance
 import eth.serotine.domain.model.SwapRoute
@@ -21,6 +23,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.CowOrderRecord
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.FeeReading
@@ -65,12 +68,16 @@ class SwapsTest {
     private val tokens = FakeTokenBalances()
     private val sent = MemorySentTransfers()
     private val light = FakeLightClient()
+    private val cowOrders = MemoryCowOrders()
+    private val cowChain = FakeCowChain()
     private val quote = QuoteSwap(
         FindUniswapRoute(chain, inputs),
         inputs,
         native,
         tokens,
         sent,
+        cowOrders,
+        cowChain,
         light,
         Network.SEPOLIA,
         clock = { headTime },
@@ -80,7 +87,7 @@ class SwapsTest {
         native.of(account).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 120)
         tokens.of(account, usdcToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("500000000"), 120)
         tokens.of(account, linkToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("0"), 120)
-        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime)
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime, finalized = null)
     }
 
     private fun word(value: UInt256) = value.toBytes32().toHex()
@@ -130,6 +137,44 @@ class SwapsTest {
         assertEquals(UInt256.ZERO, quoted.buyBefore)
         assertEquals(SwapRoute.direct(usdcToken.address, linkToken.address, FeeTier.MEDIUM), quoted.route)
         assertEquals(null, quoted.priceImpact, "the pool's slot0 did not answer")
+    }
+
+    /** A CoW order of the account's selling [amount] of USDC, valid until [validTo]. */
+    private fun cowOrder(amount: UInt256, validTo: Long): CowOrderRecord {
+        val order = CowOrder(usdcToken.address, linkToken.address, account, amount, UInt256.ONE, validTo)
+        return CowOrderRecord(
+            account = account,
+            network = Network.SEPOLIA,
+            settlement = COW_SEPOLIA.settlement,
+            order = order,
+            uid = order.uid(Network.SEPOLIA.chainId, COW_SEPOLIA.settlement, account),
+            signature = Signature("0".repeat(63) + "1", "0".repeat(63) + "1", 0),
+            sell = usdc,
+            buy = link,
+            signedAt = validTo - 300,
+            rangeStart = 90,
+        )
+    }
+
+    @Test
+    fun whatALiveCowOrderMayStillTakeIsNotTheSwapsToSell() = runTest {
+        pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
+        allow(hundredUsdc)
+        inputs.routerReturns = returns(UInt256.of("4300000000000000000"))
+        // 500 USDC held, 450 of them by a live order: the 100 swapped would be one more than there is.
+        cowOrders.orders.value = listOf(cowOrder(UInt256.of(450_000_000), validTo = headTime + 200))
+        assertEquals(SwapQuoting.InsufficientToken, quoteUsdcForLink())
+
+        cowOrders.orders.value = listOf(cowOrder(UInt256.of(300_000_000), validTo = headTime + 200))
+        val quoted = assertIs<SwapQuoting.Quoted>(quoteUsdcForLink()).quote
+        assertEquals(UInt256.of(300_000_000), quoted.heldByOrders)
+        assertEquals(UInt256.of(100_000_000), quoted.sellAfter)
+    }
+
+    @Test
+    fun anUnreadableRecordOfOrdersSellsNoToken() = runTest {
+        cowOrders.unreadable = true
+        assertEquals(SwapQuoting.CowOrdersUnreadable, quoteUsdcForLink())
     }
 
     @Test
@@ -248,7 +293,7 @@ class SwapsTest {
         assertEquals(SwapQuoting.Syncing, quoteUsdcForLink())
 
         // A verified head whose time is not known names no figure: the swap was never run.
-        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = null)
+        light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = null, finalized = null)
         assertEquals(SwapQuoting.Unavailable(ReadUnavailable.UNPROVEN, figure = null), quoteUsdcForLink())
     }
 
