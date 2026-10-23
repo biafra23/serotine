@@ -17,20 +17,21 @@ import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DecodedSafeTx
 import eth.serotine.domain.usecase.EnsNameCheck
+import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
-import eth.serotine.domain.usecase.ObserveUpgradeWarnings
-import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
+import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
+import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
@@ -60,6 +61,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -98,6 +100,8 @@ class AccountDetailViewModel(
     private val setNetworkEnabled: SetNetworkEnabled,
     /** Whether this version can still follow the account's network; one blocked alone greys out Send and Swap. */
     observeUpgradeWarnings: ObserveUpgradeWarnings,
+    /** Whether Swap is offered on the account's network: greyed out where no venue is pinned. */
+    hasSwapVenue: HasSwapVenue,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -116,6 +120,9 @@ class AccountDetailViewModel(
         .map { warnings -> warnings.of(network) is UpgradeWarning.UpdateRequired }
         .distinctUntilChanged()
         .onStart { emit(false) }
+
+    /** Whether a swap venue is pinned on the account's network: until known, as if one were. */
+    private val swapVenue = flow { emit(hasSwapVenue(network)) }.onStart { emit(true) }.distinctUntilChanged()
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
@@ -210,11 +217,11 @@ class AccountDetailViewModel(
             combine(
                 combine(view, ensName, ::Pair),
                 activityState,
-                combine(networkOn, networkBlocked, ::Pair),
+                combine(networkOn, networkBlocked, swapVenue, ::Triple),
                 ::Triple,
             ),
         ) { lookup, value, safe, queue, (named, activity, networkState) ->
-            val (networkOn, networkBlocked) = networkState
+            val (networkOn, networkBlocked, swapVenue) = networkState
             val (view, ensName) = named
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
@@ -248,6 +255,7 @@ class AccountDetailViewModel(
                     activity = if (view.segment == DetailSegment.ACTIVITY) activity else ActivityUiState.Loading,
                     networkOn = networkOn,
                     networkBlocked = networkBlocked,
+                    swapVenue = swapVenue,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)

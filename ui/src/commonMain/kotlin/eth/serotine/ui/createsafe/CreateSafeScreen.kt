@@ -350,7 +350,7 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
             value = state.input,
             onValueChange = actions.onInputChange,
             modifier = Modifier.fillMaxWidth().testTag(CREATE_SAFE_INPUT_TAG),
-            label = { Text("Address or ENS name") },
+            label = { Text(state.inputLabel) },
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             singleLine = true,
             // The blockie once the text is an address, typed or resolved.

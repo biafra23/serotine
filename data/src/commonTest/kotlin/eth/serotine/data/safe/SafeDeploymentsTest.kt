@@ -9,7 +9,6 @@ import eth.serotine.domain.model.UInt256
 import org.kotlincrypto.hash.sha3.Keccak256
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -59,14 +58,15 @@ class SafeDeploymentsTest {
 
     @Test
     fun aNewSafeIsOneThatDetectionRecognises() {
-        // The L1 singleton on Ethereum and Sepolia alike (the owner's ruling of 2026-10-22).
+        // The L1 singleton on Ethereum and Sepolia, SafeL2 on Gnosis Chain (the owner's ruling of 2026-10-22).
         for (network in safeNetworks) {
             val table = SafeDeployments.of(network)
             val release = assertNotNull(PinnedSafeReleases().forCreation(network), network.displayName)
+            val l2 = network == Network.GNOSIS
 
             assertEquals("1.4.1", release.version)
-            assertFalse(release.l2)
-            assertEquals(SafeSingleton("1.4.1", l2 = false), table.singletons[release.singleton])
+            assertEquals(l2, release.l2, network.displayName)
+            assertEquals(SafeSingleton("1.4.1", l2 = l2), table.singletons[release.singleton])
             assertEquals(Address.of("0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67"), release.proxyFactory)
             assertEquals(Address.ZERO, release.fallbackHandler, "no fallback handler is pinned, so none is installed")
         }
@@ -106,5 +106,5 @@ class SafeDeploymentsTest {
     }
 
     /** The networks with Safe deployments pinned, each held to the same table on its own. */
-    private val safeNetworks = listOf(Network.ETHEREUM, Network.SEPOLIA)
+    private val safeNetworks = Network.entries
 }

@@ -335,7 +335,9 @@ class AppNavigationTest {
         safeApprovals = FakeApprovals(),
         safeReleases = FakeReleases(),
         uniswap = object : UniswapV3Chain {
-            override suspend fun venue(network: Network): VenueReading = VenueReading.NotPinned
+            // Pinned and unproven here: Swap is offered, and no quote is ever proven.
+            override suspend fun venue(network: Network): VenueReading =
+                VenueReading.Unavailable(ReadUnavailable.NO_ENGINE)
 
             override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
@@ -493,7 +495,7 @@ class AppNavigationTest {
         showApp()
         rule.onNodeWithText("Daily").performClick()
         rule.onNodeWithText("Settings").performClick()
-        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).performScrollTo().assertIsDisplayed()
 
         report.value = NetworkUpgrade(NetworkUpgrade.Phase.ACTIVE, activationTime = null, forkId = null, 4)
         rule.waitUntil { rule.onAllNodesWithTag(UPDATE_REQUIRED_TAG).fetchSemanticsNodes().isNotEmpty() }
@@ -533,7 +535,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Receive").assertIsDisplayed()
 
         rule.onNodeWithText("Settings").performClick()
-        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag(SETTINGS_NETWORK_TAG + Network.SEPOLIA.chainId).assertIsDisplayed()
 
         rule.onNodeWithText("Accounts").performClick()
@@ -609,7 +611,7 @@ class AppNavigationTest {
 
         // Settings says it in a row of its own instead.
         rule.onNodeWithText("Settings").performClick()
-        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertDoesNotExist()
     }
 
@@ -675,7 +677,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Not on this device yet", substring = true).assertIsDisplayed()
 
         rule.onNodeWithContentDescription("Back").performClick()
-        rule.onNodeWithTag(SETTINGS_VERSION_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).performScrollTo().assertIsDisplayed()
     }
 
     @Test

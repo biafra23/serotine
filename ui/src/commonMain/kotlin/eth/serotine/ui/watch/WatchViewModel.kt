@@ -29,6 +29,7 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
+import eth.serotine.ui.components.addressFieldLabel
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
@@ -78,8 +79,11 @@ class WatchViewModel(
     private val on: StateFlow<List<Network>?> =
         observeEnabledNetworks().stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** The network whose light client the strip shows: the first that is on (the one a name is resolved on). */
-    val stripNetwork: StateFlow<Network> = on.map { it?.firstOrNull() ?: Network.entries.first() }
+    /**
+     * The network whose light client the strip shows: the one a name is resolved on, the first
+     * that is on and resolves names, or the first that is on when none does.
+     */
+    val stripNetwork: StateFlow<Network> = on.map { it?.let(::nameNetwork) ?: Network.entries.first() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, Network.entries.first())
 
     /** A hold on each network that is on, released when it goes off or the screen is gone ([onCleared]). */
@@ -118,9 +122,17 @@ class WatchViewModel(
     private val typed = MutableStateFlow(Typed())
     private val outcome = MutableStateFlow(Outcome())
 
-    /** The typed text resolved: an address at once, a name once the typing paused. */
-    private val lookup: StateFlow<RecipientState> =
-        recipientStates(typed.map { it.address.trim() to it.lookupAttempt }, ::lookUp).stateIn(
+    /**
+     * The typed text resolved: an address at once, a name once the typing paused, and again when
+     * the network a name is resolved on changes (one turned on from this screen), so that an
+     * answer of a testnet's registry is never taken for that network's.
+     */
+    private val lookup: StateFlow<RecipientState> = recipientStates(
+        combine(typed, on.map { it?.let(::nameNetwork) }.distinctUntilChanged()) { typed, nameNetwork ->
+            typed.address.trim() to (typed.lookupAttempt to nameNetwork)
+        },
+        ::lookUp,
+    ).stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
             RecipientState.Empty,
@@ -128,19 +140,24 @@ class WatchViewModel(
 
     /**
      * The cards of the address the lookup found on each network that is on, with that address:
-     * uiState shows them only for the lookup's own.
+     * uiState shows them only for the lookup's own. A name resolved on a testnet's registry (no
+     * real network that resolves names being on) gives an address for the testnets alone: what
+     * anyone can register there is never watched on a network with real funds.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val detection: Flow<Pair<Address, List<Pair<Network, Detection>>>?> =
         combine(
-            lookup.map { ((it as? RecipientState.Done)?.result as? RecipientLookup.Found)?.address }
+            lookup.map { ((it as? RecipientState.Done)?.result as? RecipientLookup.Found) }
+                .map { found -> found?.let { it.address to (it.name != null) } }
                 .distinctUntilChanged(),
             on,
             ::Pair,
         )
             .distinctUntilChanged()
-            .flatMapLatest { (address, read) ->
-                val networks = read.orEmpty()
+            .flatMapLatest { (found, read) ->
+                val (address, named) = found ?: (null to false)
+                val fromTestnet = named && read?.let(::nameNetwork)?.testnet == true
+                val networks = read.orEmpty().filter { it.testnet || !fromTestnet }
                 when {
                     address == null || read == null -> flowOf(null)
                     networks.isEmpty() -> flowOf(address to emptyList())
@@ -189,6 +206,11 @@ class WatchViewModel(
             error = outcome.error,
             done = outcome.done,
             noNetwork = NO_NETWORK.takeIf { on?.isEmpty() == true },
+            // Names only where a network that is on resolves them; Gnosis Chain's alone takes addresses.
+            addressLabel = on?.let(::nameNetwork)?.let(::addressFieldLabel) ?: "Address or ENS name",
+            addressHint = on?.let(::nameNetwork)?.takeUnless { it.ensNames }?.let {
+                "0x and 40 hexadecimal digits: names are not resolved on ${it.displayName} yet"
+            } ?: "0x and 40 hexadecimal digits, or an ENS name like name.eth",
             offNetworks = on?.let { read -> Network.entries.filter { it !in read }.map(NetworkLabel::of) }.orEmpty(),
         ).withCards(
             // Only the cards of what is typed now: none while a new text is still being resolved,
@@ -342,6 +364,7 @@ class WatchViewModel(
             ?: return Outcome(error = "The account could not be saved. Nothing was added.")
         val added = mutableListOf<Network>()
         for (network in networks) {
+            // Where names are not resolved, WatchAddress makes the name only the account's label.
             val result = watchAddress(network, resolved.address, name, resolved.name)
             if (result is AddressWatch.Added) {
                 added += network
@@ -462,9 +485,12 @@ class WatchViewModel(
         }
     }
 
+    /** The network of [on] a name is resolved on: the first that resolves names, or else the first. */
+    private fun nameNetwork(on: List<Network>): Network? = on.firstOrNull { it.ensNames } ?: on.firstOrNull()
+
     private suspend fun lookUp(text: String): RecipientLookup = try {
-        // A name on the first network that is on; with none on, nothing can be resolved.
-        val network = on.value?.firstOrNull() ?: return RecipientLookup.Unavailable(ReadUnavailable.NETWORK_OFF)
+        // A name on the first network that is on and resolves names; with none on, nothing can be resolved.
+        val network = on.value?.let(::nameNetwork) ?: return RecipientLookup.Unavailable(ReadUnavailable.NETWORK_OFF)
         resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e

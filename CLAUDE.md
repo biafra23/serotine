@@ -786,9 +786,9 @@ discussion that produced this note.
 - **Ethereum and Gnosis Chain beside Sepolia, one chain per account** (owner
   ruling, 2026-10-22, accepting docs/networks.md; it replaces "Sepolia only",
   of 2026-10-15). The networks are the values of
-  `eth.serotine.domain.model.Network`: Sepolia (chain id 11155111) today, and
-  Ethereum (1) and Gnosis Chain (100) as the parts of `feature/networks` bring
-  them (docs/networks.md, *Delivery*). There is **no current network**: each
+  `eth.serotine.domain.model.Network`: Ethereum (chain id 1), Gnosis Chain
+  (100) and Sepolia (11155111), brought by the parts of `feature/networks`
+  (docs/networks.md, *Delivery*). There is **no current network**: each
   account belongs to one chain and is named by its network and address
   (`AccountId`); every chain port takes the network with each call, and a
   network no adapter serves is refused, never answered from another one. A

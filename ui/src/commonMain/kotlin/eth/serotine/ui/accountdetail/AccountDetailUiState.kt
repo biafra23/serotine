@@ -35,7 +35,8 @@ sealed interface AccountDetailUiState {
      * is shown, and Loading on any other. [network] is the account's (docs/networks.md, N3 and
      * N4), named beside its control; [networkOn] false while that network is off in this wallet
      * (N19), when Send and Swap wait for it to be turned on; [networkBlocked] while this version can
-     * no longer follow that network and others still can, which greys out Send and Swap too.
+     * no longer follow that network and others still can, which greys out Send and Swap too;
+     * [swapVenue] false where no swap venue is pinned on it (Gnosis Chain), which greys out Swap.
      */
     data class Ready(
         val label: String,
@@ -60,6 +61,7 @@ sealed interface AccountDetailUiState {
         val activity: ActivityUiState = ActivityUiState.Loading,
         val networkOn: Boolean = true,
         val networkBlocked: Boolean = false,
+        val swapVenue: Boolean = true,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
@@ -96,6 +98,8 @@ sealed interface AccountDetailUiState {
             get() = when {
                 !networkOn -> networkOffReason(network.name, label, "swapped")
                 networkBlocked -> networkBlockedReason(network.name, "swapped")
+                !swapVenue -> "No swap venue is pinned on ${network.name} yet, so nothing can be swapped from this " +
+                    "account. Send works as before."
                 else -> swapBlockedReason(kind, control)
             }
 

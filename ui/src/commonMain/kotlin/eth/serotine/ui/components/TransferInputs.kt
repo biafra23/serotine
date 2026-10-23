@@ -133,13 +133,14 @@ internal sealed interface RecipientState {
 }
 
 /**
- * The recipient as [typed] (the text, trimmed, and how often the user asked to resolve it again),
- * resolved by [lookUp]: an address at once, a name once the typing paused, so that a name is not
- * resolved for every letter of it.
+ * The recipient as [typed] (the text, trimmed, and what asks to resolve it again when it changes:
+ * how often the user asked, and on Watch the network a name is resolved on), resolved by
+ * [lookUp]: an address at once, a name once the typing paused, so that a name is not resolved for
+ * every letter of it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun recipientStates(
-    typed: Flow<Pair<String, Int>>,
+    typed: Flow<Pair<String, Any?>>,
     lookUp: suspend (String) -> RecipientLookup,
 ): Flow<RecipientState> = typed
     .distinctUntilChanged()
@@ -225,8 +226,23 @@ internal fun recipientNote(text: String, lookup: RecipientState?): Pair<String?,
         RecipientLookup.ZeroAddress -> ZERO_ADDRESS to true
         RecipientLookup.OffchainOnly -> OFFCHAIN to true
         RecipientLookup.NoAddress -> "This name has no address." to true
+        is RecipientLookup.NoNamesOn -> noNamesText(result.network) to true
         is RecipientLookup.Unavailable -> nameUnavailable(result.reason) to true
     }
+}
+
+/** Why a name typed on [network] is refused: names are not resolved there (docs/networks.md, *Names*). */
+internal fun noNamesText(network: Network): String =
+    "Names are not resolved on ${network.displayName} yet: enter the address."
+
+/** The label of a field that takes an address, and a name where [network] resolves names. */
+internal fun addressFieldLabel(network: Network): String = if (network.ensNames) "Address or ENS name" else "Address"
+
+/** What a recipient field says under it on [network] while nothing is typed. */
+internal fun recipientHint(network: Network): String = if (network.ensNames) {
+    "An address, an ENS name, or one of your accounts below"
+} else {
+    "An address, or one of your accounts below: names are not resolved on ${network.displayName} yet"
 }
 
 /** An amount typed, in an asset's smallest units, or why it is none (both null while still being typed). */

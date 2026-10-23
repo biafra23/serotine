@@ -46,9 +46,10 @@ class FileNetworkSettingsTest {
     @Test
     fun aNetworkTheFileDoesNotMentionGetsTheBuildsDefaultWhichIsRecorded() = runTest {
         // A release build's defaults: the real networks on, the testnet off.
-        assertEquals(setOf(Network.ETHEREUM), settings { !it.testnet }.observe().first())
+        assertEquals(setOf(Network.ETHEREUM, Network.GNOSIS), settings { !it.testnet }.observe().first())
         assertEquals(
-            """{"version":1,"networks":[{"chain":1,"on":true},{"chain":11155111,"on":false}]}""",
+            """{"version":1,"networks":[{"chain":1,"on":true},{"chain":100,"on":true},""" +
+                """{"chain":11155111,"on":false}]}""",
             text(),
         )
     }
@@ -58,9 +59,13 @@ class FileNetworkSettingsTest {
         // The file of a build that knew Sepolia alone, turned on there.
         write("""{"version":1,"networks":[{"chain":11155111,"on":true}]}""")
 
-        assertEquals(setOf(Network.ETHEREUM, Network.SEPOLIA), settings { !it.testnet }.observe().first())
         assertEquals(
-            """{"version":1,"networks":[{"chain":1,"on":true},{"chain":11155111,"on":true}]}""",
+            setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA),
+            settings { !it.testnet }.observe().first(),
+        )
+        assertEquals(
+            """{"version":1,"networks":[{"chain":1,"on":true},{"chain":100,"on":true},""" +
+                """{"chain":11155111,"on":true}]}""",
             text(),
         )
     }
@@ -69,17 +74,21 @@ class FileNetworkSettingsTest {
     fun theUsersChoiceStandsWhateverTheDefault() = runTest {
         assertTrue(settings().setEnabled(Network.SEPOLIA, on = false))
 
-        assertEquals(setOf(Network.ETHEREUM), settings { true }.observe().first(), "an update does not reset it")
+        assertEquals(
+            setOf(Network.ETHEREUM, Network.GNOSIS),
+            settings { true }.observe().first(),
+            "an update does not reset it",
+        )
         assertTrue(settings().setEnabled(Network.SEPOLIA, on = true))
-        assertEquals(setOf(Network.ETHEREUM, Network.SEPOLIA), settings { false }.observe().first())
+        assertEquals(setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA), settings { false }.observe().first())
     }
 
     @Test
     fun aRecordedNetworkKeepsItsSettingAndAnUnknownOneIsKeptAside() = runTest {
         write("""{"version":1,"networks":[{"chain":11155111,"on":false},{"chain":424242,"on":true}]}""")
 
-        // Ethereum unrecorded gets the default, Sepolia keeps its own choice.
-        assertEquals(setOf(Network.ETHEREUM), settings { true }.observe().first())
+        // Ethereum and Gnosis Chain unrecorded get the default, Sepolia keeps its own choice.
+        assertEquals(setOf(Network.ETHEREUM, Network.GNOSIS), settings { true }.observe().first())
         assertTrue(SystemFileSystem.list(directory).any { it.name.contains("damaged") }, "the unknown entry is kept")
     }
 
@@ -88,7 +97,7 @@ class FileNetworkSettingsTest {
         val newer = """{"version":2,"networks":[]}"""
         write(newer)
 
-        assertEquals(setOf(Network.ETHEREUM, Network.SEPOLIA), settings { true }.observe().first())
+        assertEquals(setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA), settings { true }.observe().first())
         assertEquals(newer, text())
     }
 }

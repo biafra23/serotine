@@ -24,7 +24,9 @@ import kotlinx.coroutines.flow.first
  * wallet on that network, watched or with its key, is refused and named. [label] is trimmed; empty, the
  * account's name follows [ensName], the ENS name the address was resolved from (issue #67), or,
  * with none or one longer than [RenameAccount.MAX_LABEL_LENGTH], is "Account N" as an import
- * names it. The caller resolves [ensName] to [address] just before; whether it still points
+ * names it. On a network that resolves no names ([Network.ensNames] false: Gnosis Chain), the
+ * account follows none: a fitting [ensName] is only its label, given once and never followed.
+ * The caller resolves [ensName] to [address] just before; whether it still points
  * there is checked again while it is shown ([ObserveEnsNames]).
  */
 class WatchAddress(
@@ -69,13 +71,15 @@ class WatchAddress(
                 AddressKind.Eoa, is AddressKind.DelegatedEoa -> AccountKind.EOA
             }
         }
-        // A name too long for a row is no name to follow.
-        val follows = ensName?.takeIf { name.isEmpty() && it.length <= RenameAccount.MAX_LABEL_LENGTH }
+        // A name too long for a row is no name to follow. Where names are not resolved (Gnosis
+        // Chain), the account follows none: the name it was found by is only its label.
+        val fitting = ensName?.takeIf { it.length <= RenameAccount.MAX_LABEL_LENGTH }
+        val follows = fitting?.takeIf { name.isEmpty() && network.ensNames }
         val account = Account(
             network,
             address,
             kind,
-            follows ?: name.ifEmpty { nextFreeLabel(current) },
+            follows ?: name.ifEmpty { fitting ?: nextFreeLabel(current) },
             AccountCustody.Watched,
             ensName = follows,
         )

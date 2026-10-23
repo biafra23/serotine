@@ -48,6 +48,26 @@ class BuiltInTokensTest {
     }
 
     @Test
+    fun theGnosisListIsThePlansCandidatesEachWithAnIconAndPricedOnGnosisChainButSDai() {
+        val tokens = BuiltInTokens.of(Network.GNOSIS)
+
+        assertEquals(tokens.size, tokens.distinctBy { it.address }.size)
+        assertTrue(tokens.all { it.icon != null }, "a built-in token has a bundled icon (CLAUDE.md, Data sources)")
+        assertEquals(
+            listOf("WXDAI", "USDC", "USDC.e", "USDT", "WETH", "GNO", "EURe", "sDAI"),
+            tokens.map { it.symbol },
+        )
+        val feeds = ChainlinkFeeds.of(Network.GNOSIS)
+        assertEquals(feeds.size, feeds.distinctBy { it.priceId }.size, "one Gnosis feed per price id")
+        val quotes = feeds.associate { it.priceId to it.quote }
+        // Each priced by a feed pinned on Gnosis Chain whose quote is USD; sDAI, a vault share, by none.
+        assertEquals(listOf("sDAI"), tokens.filter { it.priceId == null }.map { it.symbol })
+        tokens.mapNotNull { it.priceId }.forEach { assertEquals(PriceId.USD, quotes[it], "${it.id} on Gnosis Chain") }
+        // xDAI itself, by DAI / USD's answer pinned under its own id.
+        assertEquals(PriceId.USD, quotes[Network.GNOSIS.nativePriceId])
+    }
+
+    @Test
     fun theBuiltInWethIsTheWeth9TheSwapsPin() {
         // ETH against this token is a wrap only while the two addresses are one (docs/swaps.md).
         for (network in listOf(Network.ETHEREUM, Network.SEPOLIA)) {

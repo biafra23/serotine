@@ -47,8 +47,9 @@ import kotlinx.coroutines.withContext
 /**
  * The recipient of a transfer as the user typed it (docs/wallet-ux.md, screen 7): an address,
  * whose EIP-55 checksum must hold when it has one, or an ENS name, which [NameResolver] resolves
- * against finalized state only. This is the one use case that takes the typed text, so the
- * checksum is checked here for every screen that sends.
+ * against finalized state only, on a network that has names ([Network.ensNames]). This is the
+ * one use case that takes the typed text, so the checksum is checked here for every screen that
+ * sends.
  */
 class ResolveRecipient(private val names: NameResolver) {
 
@@ -62,6 +63,7 @@ class ResolveRecipient(private val names: NameResolver) {
         }
         // A name before the 0x test: "0xfoo.eth" is a name.
         if ('.' !in text) return RecipientLookup.NotAnAddress
+        if (!network.ensNames) return RecipientLookup.NoNamesOn(network)
         return when (val resolved = names.resolve(network, text)) {
             // ENS's zero address is a name with no address set, not a recipient.
             is NameResolution.Resolved -> if (resolved.address == Address.ZERO) {
@@ -100,6 +102,9 @@ sealed interface RecipientLookup {
 
     /** An ENS name without an address. */
     data object NoAddress : RecipientLookup
+
+    /** A name typed on [network], where names are not resolved ([Network.ensNames]): refused, never asked. */
+    data class NoNamesOn(val network: Network) : RecipientLookup
 
     /** The name could not be resolved verified right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : RecipientLookup

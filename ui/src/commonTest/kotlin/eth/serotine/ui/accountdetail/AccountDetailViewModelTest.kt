@@ -19,15 +19,19 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
-import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
+import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.repository.UniswapV3Chain
+import eth.serotine.domain.repository.VenueReading
+import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
@@ -56,6 +60,7 @@ import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeRecovery
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
+import eth.serotine.ui.FakeUpgradeReports
 import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryHistoryStarts
@@ -63,14 +68,13 @@ import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemorySafeTxQueue
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
-import eth.serotine.ui.FakeUpgradeReports
-import eth.serotine.ui.upgradeWarnings
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.upgradeWarnings
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -126,6 +130,16 @@ class AccountDetailViewModelTest {
         override fun observeKind(network: Network, address: Address): Flow<KindReading> = kind
     }
 
+    /** Uniswap as the account's network pins it: a venue unproven here, or none pinned ([venuePinned] false). */
+    private var venuePinned = true
+    private val uniswap = object : UniswapV3Chain {
+        override suspend fun venue(network: Network): VenueReading =
+            if (venuePinned) VenueReading.Unavailable(ReadUnavailable.NO_ENGINE) else VenueReading.NotPinned
+
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
+            error("not used by these tests")
+    }
+
     private fun viewModel(address: Address = daily.address) = AccountDetailViewModel(
         AccountId(Network.SEPOLIA, address),
         ObserveAccount(accounts),
@@ -144,6 +158,7 @@ class AccountDetailViewModelTest {
         ObserveEnabledNetworks(networks),
         SetNetworkEnabled(networks),
         upgradeWarnings(networks, accounts, upgradeReports, upgradeStatus),
+        HasSwapVenue(uniswap),
         formatTime = { "<$it>" },
     )
 
@@ -202,6 +217,24 @@ class AccountDetailViewModelTest {
         val on = viewModel.uiState.value as AccountDetailUiState.Ready
         assertEquals(true, on.networkOn)
         assertEquals(null, on.sendReason)
+    }
+
+    @Test
+    fun whereNoSwapVenueIsPinnedSwapIsGreyedOutAndSendIsNot() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        venuePinned = false
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(false, ready.canSwap)
+        assertEquals(
+            "No swap venue is pinned on Sepolia yet, so nothing can be swapped from this account. Send works as " +
+                "before.",
+            ready.swapReason,
+        )
+        assertEquals(true, ready.canSend)
     }
 
     @Test
@@ -829,6 +862,7 @@ class AccountDetailViewModelTest {
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
             upgradeWarnings(networks, accounts),
+            HasSwapVenue(uniswap),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
