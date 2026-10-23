@@ -81,14 +81,15 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
-import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.WithActionMenu
+import eth.serotine.ui.components.addOnNetworkOffReason
+import eth.serotine.ui.components.networkOffNotice
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.rememberCopyText
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** Test tag of the account's total, for UI tests. */
@@ -120,7 +121,8 @@ const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
 @Composable
 fun AccountDetailRoute(
     viewModel: AccountDetailViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onGone: () -> Unit,
     onSend: (contract: String?) -> Unit,
@@ -137,7 +139,7 @@ fun AccountDetailRoute(
     onAddOnNetwork: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     // A dialog destination over this one holds it at STARTED; it is RESUMED when in front.
     val inFront = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
@@ -228,11 +230,7 @@ fun AccountDetailScreen(
         val ready = state as? AccountDetailUiState.Ready
         if (ready != null && !ready.networkOn) {
             val network = ready.network.name
-            UnavailableNotice(
-                "$action needs $network",
-                reason,
-                listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
-            )
+            networkOffNotice("$action needs $network", reason, network, onTurnOnNetwork)
         } else {
             UnavailableNotice(action, reason)
         }
@@ -286,11 +284,11 @@ fun AccountDetailScreen(
                                         onAddOnNetwork()
                                     } else {
                                         val network = state.network.name
-                                        unavailable = UnavailableNotice(
+                                        unavailable = networkOffNotice(
                                             "Add on another network",
-                                            "$network is off in this wallet. Turned on, ${state.label} can be " +
-                                                "added on another network from here.",
-                                            listOf(UnavailableFix("Turn on $network", onTurnOnNetwork)),
+                                            addOnNetworkOffReason(network, state.label),
+                                            network,
+                                            onTurnOnNetwork,
                                         )
                                     }
                                 }.takeIf { state.kind == AccountKind.EOA },

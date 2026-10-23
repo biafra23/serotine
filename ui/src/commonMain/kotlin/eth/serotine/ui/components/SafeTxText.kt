@@ -426,8 +426,12 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
     SafeTxRefusal.Malformed -> "This text is not a Safe signing request."
     is SafeTxRefusal.UnknownVersion ->
         "A signing request of a newer version (${refusal.version}): update Serotine to read it."
-    is SafeTxRefusal.WrongChain ->
-        "A request for another network (chain id ${refusal.chainId}), not ${network.displayName}."
+    // The same address on another network is another Safe: both are named (docs/networks.md, N15).
+    is SafeTxRefusal.WrongChain -> Network.ofChainId(refusal.chainId)?.let { other ->
+        "This request is for the Safe at this address on ${other.displayName}. This account is the Safe on " +
+            "${network.displayName}: a different Safe, with its own owners and nonce. Watch the Safe on " +
+            "${other.displayName} to sign it there."
+    } ?: "A request for chain id ${refusal.chainId}, which is not a network this wallet supports."
     SafeTxRefusal.NotASafe -> "The address holds no Safe Serotine recognises, as its verified code and storage say."
     is SafeTxRefusal.OtherSafe ->
         "This request is for another Safe, ${Eip55.format(refusal.safe)}: import it from that Safe's own screen."

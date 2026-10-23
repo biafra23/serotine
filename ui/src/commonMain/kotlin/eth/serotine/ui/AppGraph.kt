@@ -240,11 +240,12 @@ class AppGraph(
     private val walletChanges = WalletChanges()
 
     /**
-     * The network of the screens no account names (Accounts' header and strip, Settings, Watch,
-     * Create and Import account, Create Safe, Tokens, Currency): the only one there is. A screen
-     * about an account takes its network from that account. The network steps
-     * (docs/networks.md, part 3) replace this before a second network is added, which
-     * [single] makes sure of.
+     * The network of what is still app-wide: the upgrade banner and the update screen, the display
+     * currencies (Accounts' and Settings'), and Settings → Tokens. A screen about an account takes
+     * its network from that account, and the screens that add one choose it (docs/networks.md, N8
+     * to N12, N17). Part 4, which adds the second network, makes these per network (the upgrade
+     * advisories, a currency any network with accounts can price, the tokens grouped by network)
+     * before Ethereum joins `Network`, which [single] makes sure of.
      */
     internal val soleNetwork: Network = Network.entries.single()
 
@@ -263,9 +264,8 @@ class AppGraph(
             soleNetwork,
         )
 
-    /** The light client's status strip of the screens that depend on it: one for the app, in the host's scope. */
-    fun lightClientViewModel(): LightClientViewModel =
-        LightClientViewModel(ObserveLightClient(lightClient), soleNetwork)
+    /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
+    fun lightClientViewModel(): LightClientViewModel = LightClientViewModel(ObserveLightClient(lightClient))
 
     fun accountDetailViewModel(account: AccountId): AccountDetailViewModel =
         AccountDetailViewModel(
@@ -458,12 +458,13 @@ class AppGraph(
         ObserveAccounts(accounts),
         DescribeKeyStore(keys),
         ResolveRecipient(names),
-        PlanSafe(safeReleases, soleNetwork),
-        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, soleNetwork),
+        PlanSafe(safeReleases),
+        QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers),
         DeploySafe(signer, broadcaster, sentTransfers),
         RebroadcastTransfer(broadcaster, sentTransfers, receipts),
         WarmFeeHistory(transactionInputs),
-        soleNetwork,
+        ObserveEnabledNetworks(networkSettings),
+        SetNetworkEnabled(networkSettings),
     )
 
     /** Add on another network (docs/networks.md, N6), for the EOA [account]. */
@@ -526,14 +527,16 @@ class AppGraph(
         TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens), soleNetwork)
 
     /** Add token by address (docs/wallet-ux.md, screen 20), its field starting with [address]. */
-    fun addTokenViewModel(address: String = ""): AddTokenViewModel =
+    fun addTokenViewModel(address: String = "", network: Network? = null): AddTokenViewModel =
         AddTokenViewModel(
             knownTokens(),
             ObserveTokenMetadata(tokenMetadata),
             AddToken(userTokens, tokenMetadata, knownTokens()),
-            soleNetwork,
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
             HoldNetwork(networkDemand),
             address,
+            network,
         )
 
     private fun knownTokens() = ObserveKnownTokens(tokenCatalog, userTokens, tokenMetadata)

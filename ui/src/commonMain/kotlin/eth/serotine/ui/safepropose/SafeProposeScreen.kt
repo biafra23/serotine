@@ -52,11 +52,11 @@ import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.TransferFormFields
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of the reviewed amount, for UI tests. */
 const val PROPOSE_AMOUNT_REVIEWED_TAG = "propose-amount-reviewed"
@@ -79,14 +79,15 @@ const val PROPOSE_DROP_UNSAVED_TAG = "propose-drop-unsaved"
 @Composable
 fun SafeProposeRoute(
     viewModel: SafeProposeViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onProposed: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val proposed = (state as? SafeProposeUiState.Proposed)?.hash

@@ -61,7 +61,7 @@ fun TokensRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.item(viewModel.network).collectAsStateWithLifecycle()
     TokensScreen(
         state,
         strip,

@@ -34,6 +34,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkChips
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.submitOnDone
@@ -55,18 +56,30 @@ fun AddTokenRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
+    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     val added by rememberUpdatedState(onAdded)
     LaunchedEffect(state.done) {
         if (state.done) added()
     }
-    AddTokenScreen(state, strip, viewModel::onAddressChange, viewModel::add, onBack, modifier)
+    AddTokenScreen(
+        state,
+        strip,
+        viewModel::onAddressChange,
+        viewModel::add,
+        onBack,
+        modifier,
+        onNetwork = viewModel::onNetwork,
+        onTurnOnNetwork = viewModel::onTurnOnNetwork,
+    )
 }
 
 /**
  * Add token (docs/wallet-ux.md, screen 20) as a pure function of [state]: the contract's
  * address, then what the contract says about itself, labelled as its claim, with the monogram
- * it will be drawn with; Add only for a contract that answers as a token.
+ * it will be drawn with; Add only for a contract that answers as a token. The network comes first
+ * (docs/networks.md, N17), chosen through [onNetwork], one that is off turned on through
+ * [onTurnOnNetwork].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,6 +90,8 @@ fun AddTokenScreen(
     onAdd: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onNetwork: (chainId: Long) -> Unit = {},
+    onTurnOnNetwork: (chainId: Long) -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier,
@@ -96,6 +111,9 @@ fun AddTokenScreen(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (state.networks.isNotEmpty()) {
+                    NetworkChips(state.networks, "Add a token on", onNetwork, onTurnOnNetwork)
+                }
                 OutlinedTextField(
                     value = state.address,
                     onValueChange = onAddressChange,

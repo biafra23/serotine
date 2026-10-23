@@ -41,8 +41,8 @@ import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.UnderLightClientStrip
-import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.platform.rememberCopyText
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of each field of the detail, for UI tests. */
 const val ACTIVITY_DETAIL_FIELD_TAG = "activity-detail-field"
@@ -55,14 +55,15 @@ const val ACTIVITY_DETAIL_FIELD_TAG = "activity-detail-field"
 @Composable
 fun ActivityDetailRoute(
     viewModel: ActivityDetailViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onStatus: (hash: String) -> Unit,
     onAddToken: (contract: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     ActivityDetailScreen(
         state,
         strip,
