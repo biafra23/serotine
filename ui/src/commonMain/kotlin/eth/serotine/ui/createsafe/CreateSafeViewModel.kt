@@ -64,6 +64,7 @@ import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.unavailableText
 import eth.serotine.ui.components.verifiedAt
+import kotlin.concurrent.Volatile
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
