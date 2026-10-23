@@ -240,6 +240,40 @@ class SafeSwapViewModelTest {
     }
 
     @Test
+    fun aTokenThatRefusesOneAllowanceForAnotherIsSetToZeroFirstInThreeSafeTransactions() = runTest {
+        allowance = UInt256.of(5_000_000)
+        // USDT's kind: the approval of the amount reverts over the allowance there is, one of zero goes through.
+        world.inputs.runOf = { to, data ->
+            when {
+                to != world.usdc.address -> null
+                data.contentEquals(Erc20.approveData(router, UInt256.ZERO)) -> Simulation.Succeeded("", 100)
+                data.contentEquals(Erc20.approveData(router, UInt256.of(100_000_000))) -> Simulation.Reverted(100)
+                else -> null
+            }
+        }
+        val viewModel = reviewed()
+
+        val review = viewModel.review
+        assertEquals(
+            listOf(
+                "Safe nonce 4" to "Allow a contract to take 0 USDC",
+                "Safe nonce 5" to "Allow a contract to take 100 USDC",
+                "Safe nonce 6" to "Swap 100 USDC for at least 0.039999 ETH",
+            ),
+            review.transactions.map { it.nonce to it.action.title },
+        )
+        assertTrue(review.approvalNote.orEmpty().contains("sets it to zero"), review.approvalNote)
+        assertTrue(review.simulation.startsWith("The allowance set to zero, run as a verified call"), review.simulation)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertIs<SafeSwapUiState.Proposed>(viewModel.uiState.value)
+        assertEquals(listOf(4L, 5L, 6L), world.queue.requests.value.map { it.nonce })
+    }
+
+    @Test
     fun anAllowanceThatCoversTheAmountTakesTheSwapAlone() = runTest {
         allowance = UInt256.of(100_000_000)
         routerReturns(40_100_000_000_000_000)

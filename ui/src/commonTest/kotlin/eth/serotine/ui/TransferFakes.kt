@@ -92,6 +92,9 @@ internal class FakeTransactionInputs : TransactionInputs {
     /** What a run of a contract answers instead of [simulation]: a token's allowance, a router's swap. */
     val runs = mutableMapOf<Address, Simulation>()
 
+    /** What a run of one call answers, before [runs]: null where [runs] or [simulation] answer it. */
+    var runOf: (to: Address, data: ByteArray) -> Simulation? = { _, _ -> null }
+
     /** Each transfer estimated: from, to and value. */
     val estimated = mutableListOf<Triple<Address, Address, UInt256>>()
 
@@ -130,7 +133,7 @@ internal class FakeTransactionInputs : TransactionInputs {
         data: ByteArray,
     ): Simulation {
         gate?.await()
-        return runs[to] ?: simulation
+        return runOf(to, data) ?: runs[to] ?: simulation
     }
 }
 

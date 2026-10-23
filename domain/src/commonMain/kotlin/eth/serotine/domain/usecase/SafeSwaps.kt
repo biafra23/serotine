@@ -185,7 +185,11 @@ const val SAFE_SWAP_DEADLINE_SECONDS: Long = 24 * 60 * 60
  *   any one of them may be the one that runs). One that falls short is approved for the exact
  *   amount (owner ruling, 2026-10-19, #69's decision 3) in its own Safe transaction at the Safe's
  *   next nonce, and the swap takes the nonce after it: two Safe transactions, since a MultiSend
- *   batch is a delegate call, refused until it is built.
+ *   batch is a delegate call, refused until it is built. A token that refuses one allowance for
+ *   another (USDT's kind: its approval of the amount reverts, or returns false, while the router's
+ *   allowance on chain is not zero, and its approval of zero goes through) gets a third: the
+ *   allowance set to zero first, at the next nonce, the approval of the amount at the one after
+ *   it, and the swap last (the owner's request, 2026-10-23).
  * - **The nonce.** The Safe's next one, as [ProposeSafeTx] takes it. Or, to propose a swap again
  *   with a fresh minimum ([replacing]), the nonce of one queued there that is the same swap (the
  *   pair, the amount and the router): only one transaction at a nonce ever runs, and one that
@@ -197,14 +201,13 @@ const val SAFE_SWAP_DEADLINE_SECONDS: Long = 24 * 60 * 60
  * - **The runs.** Each is run as a verified call from the Safe's address at the head: the
  *   approval, which must not revert nor return false; the swap, which must return at least its
  *   minimum, but only while the allowance on chain already covers it: one waiting for an approval
- *   cannot run yet ([SafeSwapSimulation.AfterApproval]). An engine that will not run a call from a
- *   contract's address leaves them not run. A token that refuses one allowance for another
- *   (USDT's kind: its approval reverts while one is set) is not proposed here: setting it to zero
- *   first would take a third Safe transaction. The runs are against the head, before anything
- *   queued: where an approval of the router queued before this one sets a non-zero allowance, such
- *   a token's approval passes here and reverts once that one has run. No funds move: the whole
- *   execution reverts, its quote says so before anyone pays, and the owners replace it at its
- *   nonce.
+ *   cannot run yet ([SafeSwapSimulation.AfterApproval]). For a token of USDT's kind the reset to
+ *   zero is run, and the approval after it cannot run before the reset has: it is run when its
+ *   execution is quoted. An engine that will not run a call from a contract's address leaves them
+ *   not run. The runs are against the head, before anything queued: where an approval of the
+ *   router queued before this one sets a non-zero allowance, such a token's approval passes here
+ *   and reverts once that one has run. No funds move: the whole execution reverts, its quote says
+ *   so before anyone pays, and the owners replace it at its nonce.
  *
  * What refuses it from the queue and the light client alone is said before the engine is asked
  * for a balance or a route. Nothing is saved: signing each ([SignSafeTx]) queues it. On [network]
@@ -329,6 +332,8 @@ class ProposeSafeSwap(
             SafeAllowance(onChain, queued)
         }
 
+        var reset: DecodedSafeTx? = null
+        var resetRun: SafeCallSimulation? = null
         var approval: DecodedSafeTx? = null
         var approvalRun: SafeCallSimulation? = null
         if (soldToken != null && allowance != null && allowance.queued < amountIn) {
@@ -336,22 +341,40 @@ class ProposeSafeSwap(
             if (pending.any { it.nonce == nonce + 1 }) {
                 return@cancellingReads SafeSwapProposing.NextNonceTaken(nonce + 1)
             }
-            val data = Erc20.approveData(router, amountIn)
-            approvalRun = when (val run = inputs.simulate(network, safe, soldToken.address, UInt256.ZERO, data)) {
-                // A token that returns false refused the approval as surely as one that reverts.
-                is Simulation.Succeeded -> if (Erc20.returnedFalse(run.returnHex)) {
-                    return@cancellingReads SafeSwapProposing.ApprovalReverts(run.blockNumber)
-                } else {
-                    SafeCallSimulation.Ran(run.blockNumber)
-                }
-                is Simulation.Reverted -> return@cancellingReads SafeSwapProposing.ApprovalReverts(run.blockNumber)
-                Simulation.Refused -> SafeCallSimulation.NotRun
-                is Simulation.Unavailable ->
-                    return@cancellingReads SafeSwapProposing.Unavailable(run.reason, QuoteFigure.RUN)
-            }
-            approval = DecodedSafeTx.of(
-                SigningRequest.of(network, safe, SafeTx.call(soldToken.address, UInt256.ZERO, data, nonce)),
+            fun requestOf(amount: UInt256, at: Long) = DecodedSafeTx.of(
+                SigningRequest.of(
+                    network,
+                    safe,
+                    SafeTx.call(soldToken.address, UInt256.ZERO, Erc20.approveData(router, amount), at),
+                ),
             )
+            when (val direct = runApproval(safe, soldToken.address, router, amountIn)) {
+                is ApprovalRun.Ran -> {
+                    approvalRun = direct.simulation
+                    approval = requestOf(amountIn, nonce)
+                }
+                is ApprovalRun.Unavailable ->
+                    return@cancellingReads SafeSwapProposing.Unavailable(direct.reason, QuoteFigure.RUN)
+                is ApprovalRun.Refused -> {
+                    // Refused while an allowance is set: a token of USDT's kind, if setting it to zero goes through.
+                    if (allowance.onChain.isZero) {
+                        return@cancellingReads SafeSwapProposing.ApprovalReverts(direct.blockNumber)
+                    }
+                    if (pending.any { it.nonce == nonce + 2 }) {
+                        return@cancellingReads SafeSwapProposing.NextNonceTaken(nonce + 2)
+                    }
+                    when (val zero = runApproval(safe, soldToken.address, router, UInt256.ZERO)) {
+                        is ApprovalRun.Ran -> resetRun = zero.simulation
+                        is ApprovalRun.Refused ->
+                            return@cancellingReads SafeSwapProposing.ApprovalReverts(zero.blockNumber)
+                        is ApprovalRun.Unavailable ->
+                            return@cancellingReads SafeSwapProposing.Unavailable(zero.reason, QuoteFigure.RUN)
+                    }
+                    reset = requestOf(UInt256.ZERO, nonce)
+                    // It cannot run before the reset has: it is run when its execution is quoted.
+                    approval = requestOf(amountIn, nonce + 1)
+                }
+            }
         }
         val call = SwapRouter02.swap(deployment, sell, buy, found.quote.route, amountIn, minimum, safe, deadline)
         val swapRun = if (allowance != null && allowance.onChain < amountIn) {
@@ -370,11 +393,12 @@ class ProposeSafeSwap(
                     return@cancellingReads SafeSwapProposing.Unavailable(run.reason, QuoteFigure.RUN)
             }
         }
-        val swapNonce = if (approval != null) nonce + 1 else nonce
+        val swapNonce = nonce + listOfNotNull(reset, approval).size
         queue.prune(AccountId(network, safe), safeNonce)
         SafeSwapProposing.Proposed(
             SafeSwapProposal(
                 safe = reading,
+                reset = reset,
                 approval = approval,
                 swap = DecodedSafeTx.of(
                     SigningRequest.of(network, safe, SafeTx.call(call.to, call.value, call.data, swapNonce)),
@@ -397,6 +421,7 @@ class ProposeSafeSwap(
                 queuedAmount = queuedAmount,
                 balanceAfter = available - amountIn,
                 balanceBlock = balanceBlock,
+                resetSimulation = resetRun,
                 approvalSimulation = approvalRun,
                 swapSimulation = swapRun,
                 replaces = replacing != null,
@@ -406,6 +431,27 @@ class ProposeSafeSwap(
 
     private fun insufficient(token: Token?) =
         if (token != null) SafeSwapProposing.InsufficientToken else SafeSwapProposing.InsufficientFunds
+
+    /** [token]'s `approve(router, amount)` run as a verified call from [safe] at the head. */
+    private suspend fun runApproval(safe: Address, token: Address, router: Address, amount: UInt256): ApprovalRun =
+        when (val run = inputs.simulate(network, safe, token, UInt256.ZERO, Erc20.approveData(router, amount))) {
+            // A token that returns false refused the approval as surely as one that reverts.
+            is Simulation.Succeeded -> if (Erc20.returnedFalse(run.returnHex)) {
+                ApprovalRun.Refused(run.blockNumber)
+            } else {
+                ApprovalRun.Ran(SafeCallSimulation.Ran(run.blockNumber))
+            }
+            is Simulation.Reverted -> ApprovalRun.Refused(run.blockNumber)
+            Simulation.Refused -> ApprovalRun.Ran(SafeCallSimulation.NotRun)
+            is Simulation.Unavailable -> ApprovalRun.Unavailable(run.reason)
+        }
+
+    /** How an approval ran from the Safe: as [simulation] says, refused by the token, or not verified now. */
+    private sealed interface ApprovalRun {
+        data class Ran(val simulation: SafeCallSimulation) : ApprovalRun
+        data class Refused(val blockNumber: Long?) : ApprovalRun
+        data class Unavailable(val reason: ReadUnavailable) : ApprovalRun
+    }
 
     /** The router's allowance [onChain] now, and as the approvals queued before the swap leave it ([queued]). */
     private data class SafeAllowance(val onChain: UInt256, val queued: UInt256)
@@ -454,8 +500,9 @@ private fun RouteFinding.asSafeSwapProposing(): SafeSwapProposing = when (this) 
 
 /**
  * A Safe's swap proposed for review (docs/swaps.md, *A Safe's swap*): the router's [approval] for
- * the exact amount when it needs one, at the Safe's next nonce, and the [swap] after it (or at
- * that nonce): exactly [amountIn] of [sell] for at least [minimumOut] of [buy], paid to the Safe,
+ * the exact amount when it needs one, at the Safe's next nonce (after the allowance's [reset] to
+ * zero, at that nonce, for a token that refuses one allowance for another), and the [swap] after
+ * it (or at that nonce): exactly [amountIn] of [sell] for at least [minimumOut] of [buy], paid to the Safe,
  * along [route] through [pools] and the [router], refused by it after [deadline] (unix seconds).
  *
  * - [quotedOut] is QuoterV2's verified quote of the route at [quoteBlock], [minimumOut] that less
@@ -465,7 +512,8 @@ private fun RouteFinding.asSafeSwapProposing(): SafeSwapProposing = when (this) 
  * - The Safe's verified state ([safe]), [queuedAhead] nonces queued before the first of them;
  *   its balance of the asset sold ([balanceBefore] at [balanceBlock]), what those queued before
  *   may move of it ([queuedAmount]) and what the swap leaves ([balanceAfter]).
- * - How each ran from the Safe: [approvalSimulation] (null: no approval), [swapSimulation].
+ * - How each ran from the Safe: [resetSimulation] (null: no reset), [approvalSimulation] (null: no
+ *   approval, or one after a reset, which cannot run before it has), [swapSimulation].
  * - [replaces] when it takes the nonce of a swap queued there, to be signed in its place.
  *
  * Only [ProposeSafeSwap] makes one.
@@ -473,6 +521,7 @@ private fun RouteFinding.asSafeSwapProposing(): SafeSwapProposing = when (this) 
 @ConsistentCopyVisibility
 data class SafeSwapProposal internal constructor(
     val safe: SafeReading.Verified,
+    val reset: DecodedSafeTx?,
     val approval: DecodedSafeTx?,
     val swap: DecodedSafeTx,
     val sell: TransferAsset,
@@ -493,6 +542,7 @@ data class SafeSwapProposal internal constructor(
     val queuedAmount: UInt256,
     val balanceAfter: UInt256,
     val balanceBlock: Long?,
+    val resetSimulation: SafeCallSimulation?,
     val approvalSimulation: SafeCallSimulation?,
     val swapSimulation: SafeSwapSimulation,
     val replaces: Boolean,
@@ -501,9 +551,9 @@ data class SafeSwapProposal internal constructor(
     val priceImpact: Int?
         get() = spotOut?.let { PriceImpact.basisPoints(it, quotedOut) }
 
-    /** The requests its owners sign, in nonce order: the approval, if any, then the swap. */
+    /** The requests its owners sign, in nonce order: the reset and the approval, if any, then the swap. */
     val requests: List<SigningRequest>
-        get() = listOfNotNull(approval?.request, swap.request)
+        get() = listOfNotNull(reset?.request, approval?.request, swap.request)
 }
 
 /** How a Safe's swap ran as a verified call from the Safe. */
@@ -552,7 +602,10 @@ sealed interface SafeSwapProposing {
     /** A swap of the token through the router is queued at [nonce], before this one: it runs or goes first. */
     data class EarlierSwapQueued(val nonce: Long) : SafeSwapProposing
 
-    /** The swap would take [nonce], after its approval, and a transaction is queued there already. */
+    /**
+     * A transaction of the proposal after its first (the swap after its approval, or the approval after
+     * its reset) would take [nonce], where a transaction is queued already.
+     */
     data class NextNonceTaken(val nonce: Long) : SafeSwapProposing
 
     /** Proposed again in place of a swap, it needs an approval first: the router may take only [allowance]. */

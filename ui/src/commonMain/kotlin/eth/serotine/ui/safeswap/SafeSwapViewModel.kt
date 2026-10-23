@@ -757,7 +757,7 @@ class SafeSwapViewModel(
         val labels = accounts.associate { it.address to it.label }
         val decoding = decodingTokens(step.request)
         val route = routeSteps(proposal.route, proposal.pools, sell, buy)
-        val transactions = listOfNotNull(proposal.approval, proposal.swap).map { tx ->
+        val transactions = listOfNotNull(proposal.reset, proposal.approval, proposal.swap).map { tx ->
             SafeSwapTransaction(
                 nonce = "Safe nonce ${tx.request.nonce}",
                 action = safeTxActionItem(tx.action, tx.request.nonce, decoding, network),
@@ -835,7 +835,11 @@ class SafeSwapViewModel(
     private fun approvalNote(proposal: SafeSwapProposal, sell: AssetOption): String? {
         val allowance = proposal.allowance ?: return null
         val now = exactAmount(allowance, sell.decimals, sell.symbol)
-        return if (proposal.approval != null) {
+        return if (proposal.reset != null) {
+            "The router may take $now of the Safe's ${sell.symbol}, and ${sell.symbol} refuses to move one allowance " +
+                "to another, as the approval of the whole amount showed: the first Safe transaction sets it to zero, " +
+                "the next approves exactly the amount sold, each its own."
+        } else if (proposal.approval != null) {
             "The router may take $now of the Safe's ${sell.symbol}: the approval before the swap lets it take " +
                 "exactly the amount sold, in its own Safe transaction."
         } else {
@@ -845,6 +849,13 @@ class SafeSwapViewModel(
     }
 
     private fun simulationText(proposal: SafeSwapProposal, buy: AssetOption): String {
+        val reset = when (val run = proposal.resetSimulation) {
+            is SafeCallSimulation.Ran -> "The allowance set to zero, run as a verified call from the Safe" +
+                (run.blockNumber?.let { " at block ${grouped(it)}" } ?: " at the head") + ", goes through; the " +
+                "approval after it cannot run before it has, and is run as a verified call when its execution is " +
+                "quoted. "
+            SafeCallSimulation.NotRun, null -> ""
+        }
         val approval = when (val run = proposal.approvalSimulation) {
             is SafeCallSimulation.Ran -> "The approval, run as a verified call from the Safe" +
                 (run.blockNumber?.let { " at block ${grouped(it)}" } ?: " at the head") + ", goes through. "
@@ -860,7 +871,7 @@ class SafeSwapViewModel(
                 "from the Safe's address. Its execution, the whole of it, is run as a verified call before anyone " +
                 "sends it."
         }
-        return approval + swap
+        return reset + approval + swap
     }
 
     private fun decodingTokens(request: Request): List<DecodingToken> =
@@ -896,8 +907,8 @@ class SafeSwapViewModel(
             is SafeSwapProposing.EarlierSwapQueued -> "A swap of $sell is queued at Safe nonce " +
                 "${proposing.nonce}, and counts on the router's allowance this one would set: execute or reject " +
                 "it first."
-            is SafeSwapProposing.NextNonceTaken -> "The approval would take the Safe's next nonce and the swap " +
-                "the one after it, Safe nonce ${proposing.nonce}, where a transaction is queued already: execute " +
+            is SafeSwapProposing.NextNonceTaken -> "The swap's Safe transactions would take the Safe's next " +
+                "nonces, Safe nonce ${proposing.nonce} among them, where a transaction is queued already: execute " +
                 "or reject what is queued first."
             is SafeSwapProposing.NeedsApproval -> "The router may take only " +
                 exactAmount(proposing.allowance, request.sell.decimals, sell) + " of the Safe's $sell now, and a " +
@@ -905,8 +916,8 @@ class SafeSwapViewModel(
                 "Safe's Swap, which proposes the approval with it."
             SafeSwapProposing.NothingToReplace -> REPLACED_GONE
             is SafeSwapProposing.ApprovalReverts -> "$sell's contract refuses the approval, run as a verified call " +
-                "from the Safe" + (proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()) + ". A " +
-                "token that must be set to zero first is not swapped from a Safe here. Nothing was proposed."
+                "from the Safe" + (proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()) + ", even " +
+                "with its allowance at zero. Nothing was proposed."
             is SafeSwapProposing.Reverts -> "The swap reverts, or returns less than its minimum, run as a verified " +
                 "call from the Safe" + (proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()) +
                 ". Nothing was proposed."
