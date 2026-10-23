@@ -23,6 +23,7 @@ import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -48,11 +49,20 @@ class ImportMnemonicAccountTest {
         Account(Network.SEPOLIA, address, AccountKind.EOA, label, AccountCustody.InKeyStore)
 
     @Test
+    fun noNetworkIsRefusedBeforeAnythingIsStored() = runTest {
+        val mnemonic = Mnemonic("first words")
+        keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
+
+        assertFailsWith<IllegalArgumentException> { import(mnemonic, password, emptyList()) }
+        assertEquals(emptyList(), repository.accounts.value, "no account, and no key asked for")
+    }
+
+    @Test
     fun addsTheDerivedAddressAsAnEoaNamedAfterItsPosition() = runTest {
         val mnemonic = Mnemonic("first words")
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
-        val result = import(mnemonic, password, Network.SEPOLIA)
+        val result = import(mnemonic, password, listOf(Network.SEPOLIA))
 
         val expected = Account(Network.SEPOLIA, first, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)
         assertEquals(MnemonicImport.Added(expected, KeyProtection.HARDWARE), result)
@@ -69,11 +79,11 @@ class ImportMnemonicAccountTest {
         val expected = Account(Network.SEPOLIA, first, AccountKind.EOA, "Account 1", AccountCustody.InKeyStore)
         assertEquals(
             MnemonicImport.Added(expected, KeyProtection.SOFTWARE_KEY_STORE, steppedDown = true),
-            import(mnemonic, password, Network.SEPOLIA),
+            import(mnemonic, password, listOf(Network.SEPOLIA)),
         )
         assertEquals(
             MnemonicImport.AlreadyAdded(expected, steppedDown = true),
-            import(mnemonic, password, Network.SEPOLIA),
+            import(mnemonic, password, listOf(Network.SEPOLIA)),
         )
     }
 
@@ -98,7 +108,7 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("second words")
         keys.results[mnemonic] = KeyImport.Stored(second, KeyProtection.HARDWARE)
 
-        val result = import(mnemonic, password, Network.SEPOLIA)
+        val result = import(mnemonic, password, listOf(Network.SEPOLIA))
 
         assertEquals(
             MnemonicImport.Added(keyed(second, "Account 4"), KeyProtection.HARDWARE),
@@ -114,7 +124,7 @@ class ImportMnemonicAccountTest {
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
         val held = watched.copy(custody = AccountCustody.InKeyStore)
-        assertEquals(MnemonicImport.KeyAdded(held), import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.KeyAdded(held), import(mnemonic, password, listOf(Network.SEPOLIA)))
         assertEquals(listOf(held), repository.accounts.value, "the same entry, its name kept")
     }
 
@@ -127,7 +137,7 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("first words")
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
-        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password, listOf(Network.SEPOLIA)))
     }
 
     @Test
@@ -141,7 +151,7 @@ class ImportMnemonicAccountTest {
 
         // Named from the list as it is now (empty), not as it was first read.
         val expected = MnemonicImport.Added(keyed(first, "Account 1"), KeyProtection.HARDWARE)
-        assertEquals(expected, import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(expected, import(mnemonic, password, listOf(Network.SEPOLIA)))
     }
 
     @Test
@@ -151,7 +161,7 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("first words again")
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
-        assertEquals(MnemonicImport.AlreadyAdded(existing), import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.AlreadyAdded(existing), import(mnemonic, password, listOf(Network.SEPOLIA)))
         assertEquals(listOf(existing), repository.accounts.value)
     }
 
@@ -162,7 +172,7 @@ class ImportMnemonicAccountTest {
         // The first add loses to another writer, whose entry is gone again by the re-read.
         repository.refuseNextAdd = true
 
-        val result = import(mnemonic, password, Network.SEPOLIA)
+        val result = import(mnemonic, password, listOf(Network.SEPOLIA))
 
         assertEquals(MnemonicImport.Added(keyed(first, "Account 1"), KeyProtection.HARDWARE), result)
     }
@@ -173,18 +183,18 @@ class ImportMnemonicAccountTest {
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
 
         repository.unreadable = true
-        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password, listOf(Network.SEPOLIA)))
 
         repository.unreadable = false
         repository.failSaves = true
-        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.ListNotSaved, import(mnemonic, password, listOf(Network.SEPOLIA)))
         assertEquals(emptyList(), repository.accounts.value)
 
         // The key is stored, so the same words again finish the job.
         repository.failSaves = false
         assertEquals(
             MnemonicImport.Added(keyed(first, "Account 1"), KeyProtection.HARDWARE),
-            import(mnemonic, password, Network.SEPOLIA),
+            import(mnemonic, password, listOf(Network.SEPOLIA)),
         )
     }
 
@@ -194,7 +204,7 @@ class ImportMnemonicAccountTest {
         keys.results[mnemonic] = KeyImport.Stored(first, KeyProtection.HARDWARE)
         keys.delayMillis = 1_000 // Argon2id takes a while
 
-        val caller = launch { import(mnemonic, password, Network.SEPOLIA) }
+        val caller = launch { import(mnemonic, password, listOf(Network.SEPOLIA)) }
         advanceTimeBy(500)
         caller.cancel() // the screen is left mid-import
         advanceUntilIdle()
@@ -211,7 +221,10 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("first words")
         keys.results[mnemonic] = KeyImport.PasswordTooShort
 
-        assertEquals(MnemonicImport.PasswordTooShort, import(mnemonic, WalletPassword("short"), Network.SEPOLIA))
+        assertEquals(
+            MnemonicImport.PasswordTooShort,
+            import(mnemonic, WalletPassword("short"), listOf(Network.SEPOLIA)),
+        )
         assertEquals(emptyList(), repository.accounts.value)
     }
 
@@ -220,10 +233,10 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("first words")
 
         keys.results[mnemonic] = KeyImport.WrongPassword
-        assertEquals(MnemonicImport.WrongPassword, import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.WrongPassword, import(mnemonic, password, listOf(Network.SEPOLIA)))
 
         keys.results[mnemonic] = KeyImport.NotSaved
-        assertEquals(MnemonicImport.KeyNotSaved, import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.KeyNotSaved, import(mnemonic, password, listOf(Network.SEPOLIA)))
         assertEquals(emptyList(), repository.accounts.value, "no account without its stored key")
     }
 
@@ -232,7 +245,10 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("not a mnemonic")
         keys.results[mnemonic] = KeyImport.Invalid(MnemonicProblem.Checksum)
 
-        assertEquals(MnemonicImport.Invalid(MnemonicProblem.Checksum), import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(
+            MnemonicImport.Invalid(MnemonicProblem.Checksum),
+            import(mnemonic, password, listOf(Network.SEPOLIA)),
+        )
         assertEquals(emptyList(), repository.accounts.value)
     }
 
@@ -241,7 +257,7 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("any words")
         for (step in MemoryStep.entries) {
             keys.results[mnemonic] = KeyImport.NotEnoughMemory(step)
-            assertEquals(MnemonicImport.NotEnoughMemory(step), import(mnemonic, password, Network.SEPOLIA))
+            assertEquals(MnemonicImport.NotEnoughMemory(step), import(mnemonic, password, listOf(Network.SEPOLIA)))
         }
         assertEquals(emptyList(), repository.accounts.value)
     }
@@ -251,7 +267,7 @@ class ImportMnemonicAccountTest {
         val mnemonic = Mnemonic("any words")
         keys.results[mnemonic] = KeyImport.Unavailable
 
-        assertEquals(MnemonicImport.Unavailable, import(mnemonic, password, Network.SEPOLIA))
+        assertEquals(MnemonicImport.Unavailable, import(mnemonic, password, listOf(Network.SEPOLIA)))
         assertEquals(emptyList(), repository.accounts.value)
     }
 

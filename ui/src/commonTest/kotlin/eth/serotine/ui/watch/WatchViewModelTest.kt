@@ -16,12 +16,16 @@ import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeNames
+import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkLabel
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,6 +48,9 @@ import kotlinx.coroutines.test.setMain
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WatchViewModelTest {
+
+    private val networks = MemoryNetworkSettings()
+    private val demand = NetworkDemand()
 
     private val vitalik = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
     private val daily = Account(
@@ -70,8 +77,9 @@ class WatchViewModelTest {
             ObserveAccounts(accounts),
             WatchAddress(accounts, kinds),
             ResolveRecipient(names),
-            Network.SEPOLIA,
-            HoldNetwork(NetworkDemand()),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
+            HoldNetwork(demand),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -88,6 +96,7 @@ class WatchViewModelTest {
             Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),
             viewModel.uiState.value.detection,
         )
+        assertEquals(NetworkLabel.of(Network.SEPOLIA), viewModel.uiState.value.cardNetwork, "what Add adds it on")
         assertTrue(viewModel.uiState.value.canAdd)
 
         viewModel.add()
@@ -160,8 +169,9 @@ class WatchViewModelTest {
             ObserveAccounts(accounts),
             WatchAddress(accounts, syncing),
             ResolveRecipient(names),
-            Network.SEPOLIA,
-            HoldNetwork(NetworkDemand()),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
+            HoldNetwork(demand),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -229,8 +239,9 @@ class WatchViewModelTest {
                 ObserveAccounts(accounts),
                 WatchAddress(accounts, gatedKinds),
                 ResolveRecipient(names),
-                Network.SEPOLIA,
-                HoldNetwork(NetworkDemand()),
+                ObserveEnabledNetworks(networks),
+                SetNetworkEnabled(networks),
+                HoldNetwork(demand),
             )
         backgroundScope.launch { viewModel.uiState.collect {} }
         viewModel.onAddressChange(vitalik)
@@ -472,5 +483,27 @@ class WatchViewModelTest {
         runCurrent()
         assertNull(viewModel.uiState.value.addressError)
         assertTrue(viewModel.uiState.value.canAdd)
+    }
+
+    @Test
+    fun noNetworkOnChecksNothingAndSaysSo() = runTest {
+        networks.on.value = emptySet()
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+
+        assertEquals(
+            "No network is on in this wallet, so the address cannot be checked. Turn one on in Settings → Networks.",
+            viewModel.uiState.value.noNetwork,
+        )
+        assertEquals(null, viewModel.uiState.value.detection)
+        assertEquals(false, viewModel.uiState.value.canAdd)
+        assertEquals(listOf(NetworkLabel.of(Network.SEPOLIA)), viewModel.uiState.value.offNetworks)
+
+        viewModel.onTurnOnNetwork(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(setOf(Network.SEPOLIA), networks.on.value)
+        assertEquals(null, viewModel.uiState.value.noNetwork)
+        assertEquals(emptyList(), viewModel.uiState.value.offNetworks)
     }
 }

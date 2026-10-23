@@ -108,6 +108,7 @@ import eth.serotine.ui.activitydetail.ACTIVITY_DETAIL_FIELD_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
+import eth.serotine.ui.components.NETWORK_CHOICE_TAG
 import eth.serotine.ui.components.SAFE_TX_QR_TAG
 import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
@@ -404,7 +405,9 @@ class AppNavigationTest {
         // The first import sets the wallet password.
         rule.onNodeWithTag(MNEMONIC_PASSWORD_TAG).performTextInput("correct horse")
         rule.onNodeWithTag(MNEMONIC_REPEAT_TAG).performTextInput("correct horse")
-        rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).performClick()
+        // Which networks: none is ticked until the user ticks one (docs/networks.md, N9).
+        rule.onNodeWithTag(NETWORK_CHOICE_TAG + Network.SEPOLIA.chainId).performScrollTo().performClick()
+        rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithText("Account 1").fetchSemanticsNodes().isNotEmpty() }
 
         rule.onNodeWithText("Full control").assertIsDisplayed()

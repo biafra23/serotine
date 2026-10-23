@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
@@ -43,6 +45,8 @@ import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NETWORK_CHOICE_TAG
+import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.next
@@ -93,13 +97,20 @@ fun WatchRoute(
         onBack,
         modifier,
         onRetryLookup = viewModel::onRetryLookup,
+        onChooseNetworks = viewModel::onChooseNetworks,
+        onNetworkToggle = viewModel::onNetworkToggle,
+        onTurnOnNetwork = viewModel::onTurnOnNetwork,
     )
 }
 
 /**
  * Watch address (docs/wallet-ux.md, screen 10) as a pure function of [state]: the address or
  * ENS name and a name, the detection card built from verified code, and Add, enabled only for
- * a verified account. [onRetryLookup] resolves a name again that could not be verified.
+ * a verified account. [onRetryLookup] resolves a name again that could not be verified. With two or
+ * more networks on, a card per network (docs/networks.md, N10 and N11): an address with no code on
+ * all of them is offered on all of them, with [onChooseNetworks] to tick them instead
+ * ([onNetworkToggle]); a Safe only where it is one, ticked. A network that is off is listed greyed
+ * out, turned on through [onTurnOnNetwork].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,6 +123,9 @@ fun WatchScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRetryLookup: () -> Unit = {},
+    onChooseNetworks: () -> Unit = {},
+    onNetworkToggle: (chainId: Long) -> Unit = {},
+    onTurnOnNetwork: (chainId: Long) -> Unit = {},
 ) {
     val nameField = remember { FocusRequester() }
     Scaffold(
@@ -164,10 +178,50 @@ fun WatchScreen(
                     keyboardOptions = KeyboardOptions.Default.done(),
                     keyboardActions = submitOnDone(state.canAdd, onAdd),
                 )
+                state.noNetwork?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 state.detection?.let { DetectionCard(it) }
+                // With two or more networks on: what each says, ticked where the user chooses (N10, N11).
+                val ticking = state.question == null || state.choosing
+                state.networks.forEach { row ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (ticking && row.offered) {
+                                Checkbox(
+                                    checked = row.chosen,
+                                    onCheckedChange = { onNetworkToggle(row.network.chainId) },
+                                    enabled = !state.adding,
+                                    modifier = Modifier.testTag(NETWORK_CHOICE_TAG + row.network.chainId),
+                                )
+                            }
+                            NetworkMark(row.network)
+                        }
+                        DetectionCard(row.detection)
+                    }
+                }
+                // A network that is off: not checked, and one more to choose once turned on.
+                state.offNetworks.forEach { network ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        NetworkMark(network, Modifier.weight(1f).alpha(0.6f))
+                        Text(
+                            "Off in this wallet",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(onClick = { onTurnOnNetwork(network.chainId) }, enabled = !state.adding) {
+                            Text("Turn on")
+                        }
+                    }
+                }
+                state.question?.takeIf { !state.choosing }
+                    ?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Button(onClick = onAdd, enabled = state.canAdd, modifier = Modifier.align(Alignment.End)) {
-                    Text("Add")
+                Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.question != null && !state.choosing) {
+                        TextButton(onClick = onChooseNetworks, enabled = !state.adding) { Text("Choose networks") }
+                    }
+                    Button(onClick = onAdd, enabled = state.canAdd) {
+                        Text(if (state.question != null && !state.choosing) "Add on all" else "Add")
+                    }
                 }
             }
         }

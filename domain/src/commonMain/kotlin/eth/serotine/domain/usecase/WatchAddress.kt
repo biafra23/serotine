@@ -31,6 +31,21 @@ class WatchAddress(
     private val accounts: AccountRepository,
     private val kinds: AddressKinds,
 ) {
+    /**
+     * The name to watch an address under on several networks, all alike: [label] trimmed when the
+     * user gave one, empty when the accounts follow [ensName] (as [invoke] decides), otherwise one
+     * "Account N" taken once from the list as it is now; null when the list cannot be read.
+     */
+    suspend fun sharedName(label: String, ensName: String?): String? {
+        val name = label.trim()
+        if (name.isNotEmpty()) return name
+        if (ensName != null && ensName.length <= RenameAccount.MAX_LABEL_LENGTH) return ""
+        return when (val list = accounts.observeAccounts().first()) {
+            is AccountList.Unreadable -> null
+            is AccountList.Loaded -> nextFreeLabel(list.accounts)
+        }
+    }
+
     suspend operator fun invoke(
         network: Network,
         address: Address,

@@ -3,6 +3,7 @@ package eth.serotine.ui.watch
 import androidx.compose.runtime.Composable
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -191,6 +192,78 @@ private fun WatchNameResolvedNoNamePreview() = WatchPreview(
     ),
 )
 
+private val ethereum = NetworkLabel(1, "Ethereum", testnet = false)
+private val gnosis = NetworkLabel(100, "Gnosis Chain", testnet = false)
+private val sepolia = NetworkLabel(11_155_111, "Sepolia", testnet = true)
+
+/** Docs/networks.md's N10: an address with no code on both networks that are on; Sepolia off. */
+private val everyNetwork = WatchUiState(
+    address = SAVINGS,
+    name = "Savings",
+    networks = listOf(
+        WatchNetwork(ethereum, Detection.Account(SAVINGS, "Checked at block 23,618,402", null), true, true),
+        WatchNetwork(gnosis, Detection.Account(SAVINGS, "Checked at block 42,907,115", null), true, true),
+    ),
+    question = "This address has no code. Watch it on Ethereum and Gnosis Chain?",
+    offNetworks = listOf(sepolia),
+)
+
+@Preview
+@Composable
+private fun WatchEveryNetworkPreview() = WatchPreview(everyNetwork)
+
+/** N10 after Choose networks: the rows as check boxes. */
+@Preview
+@Composable
+private fun WatchChooseNetworksPreview() = WatchPreview(
+    everyNetwork.copy(
+        choosing = true,
+        networks = everyNetwork.networks.mapIndexed { i, row -> if (i == 1) row.copy(chosen = false) else row },
+    ),
+)
+
+/** N11: a Safe on Ethereum, nothing at the address on Gnosis Chain: offered on Ethereum only. */
+@Preview
+@Composable
+private fun WatchSafeOnOneNetworkPreview() = WatchPreview(
+    WatchUiState(
+        address = TREASURY,
+        name = "Treasury",
+        networks = listOf(
+            WatchNetwork(
+                ethereum,
+                Detection.Safe(
+                    address = TREASURY,
+                    title = "Safe 1.4.1",
+                    signers = "2 of 3 owners",
+                    owners = listOf("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", SAVINGS),
+                    modules = emptyList(),
+                    guard = null,
+                    checkedAt = "Checked at block 23,618,402",
+                    control = Control.CO_SIGNER,
+                    threshold = "2/3",
+                ),
+                offered = true,
+                chosen = true,
+            ),
+            WatchNetwork(gnosis, Detection.Account(TREASURY, "Checked at block 42,907,115", null), false),
+        ),
+        offNetworks = listOf(sepolia),
+    ),
+)
+
+/** No network on: nothing can be checked. */
+@Preview
+@Composable
+private fun WatchNoNetworkPreview() = WatchPreview(
+    WatchUiState(
+        address = SAVINGS,
+        noNetwork = "No network is on in this wallet, so the address cannot be checked. Turn one on in Settings → " +
+            "Networks.",
+        offNetworks = listOf(ethereum, gnosis, sepolia),
+    ),
+)
+
 /** Every preview above, which WatchScreenPreviewsTest renders: a new preview goes in here too. */
 internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchEmptyPreview() },
@@ -211,4 +284,8 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchNameMovedPreview() },
     { WatchNameUnavailablePreview() },
     { WatchNameResolvedNoNamePreview() },
+    { WatchEveryNetworkPreview() },
+    { WatchChooseNetworksPreview() },
+    { WatchSafeOnOneNetworkPreview() },
+    { WatchNoNetworkPreview() },
 )

@@ -1,5 +1,7 @@
 package eth.serotine.ui.addnetwork
 
+import eth.serotine.ui.components.NetworkChoice
+
 /** Everything the Add on another network dialog renders (docs/networks.md, N6). */
 sealed interface AddOnNetworksUiState {
 
@@ -31,16 +33,3 @@ sealed interface AddOnNetworksUiState {
     /** Nothing can be added, for the reason [message] gives, display-ready. */
     data class Unavailable(val message: String) : AddOnNetworksUiState
 }
-
-/**
- * One network the account could be added on: its [name], whether it is a [testnet] and whether
- * it is [on] in this wallet (one that is off is greyed out, with Turn on as the way to choose
- * it), and whether it is [chosen]. [chainId] names it to the intents.
- */
-data class NetworkChoice(
-    val chainId: Long,
-    val name: String,
-    val testnet: Boolean,
-    val on: Boolean,
-    val chosen: Boolean = false,
-)

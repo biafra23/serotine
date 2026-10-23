@@ -51,6 +51,16 @@ class WatchAddressTest {
     }
 
     @Test
+    fun oneNameServesEveryNetworkAnAddressIsWatchedOn() = runTest {
+        assertEquals("Savings", watch.sharedName("  Savings ", ensName = "savings.eth"), "the user's")
+        assertEquals("", watch.sharedName("", ensName = "savings.eth"), "each follows the ENS name")
+        assertEquals("Account 2", watch.sharedName("", ensName = null), "one taken once")
+
+        repository.unreadable = true
+        assertEquals(null, watch.sharedName("", ensName = null))
+    }
+
+    @Test
     fun withoutANameItsNameFollowsTheEnsNameItWasResolvedFrom() = runTest {
         val added = watch(Network.SEPOLIA, address, "  ", ensName = "savings.eth") as AddressWatch.Added
 

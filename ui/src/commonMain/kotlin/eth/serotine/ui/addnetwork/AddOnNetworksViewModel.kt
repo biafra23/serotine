@@ -11,6 +11,8 @@ import eth.serotine.domain.usecase.NetworksAdd
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.SetNetworkEnabled
+import eth.serotine.ui.components.chosenNetworks
+import eth.serotine.ui.components.networkChoices
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -55,15 +57,12 @@ class AddOnNetworksViewModel(
             val present = accounts.filter { it.address == account.address }.map { it.network }.toSet()
             AddOnNetworksUiState.Choose(
                 label = own.label,
-                choices = Network.entries.filter { it !in present }.map { network ->
-                    NetworkChoice(
-                        network.chainId,
-                        network.displayName,
-                        network.testnet,
-                        on = network in on,
-                        chosen = network in form.chosen && network in on,
-                    )
-                },
+                choices = networkChoices(
+                    on.toSet(),
+                    form.chosen,
+                    Network.entries.filter { it !in present },
+                    withLines = false,
+                ),
                 adding = form.adding,
                 error = form.error,
             )
@@ -91,7 +90,7 @@ class AddOnNetworksViewModel(
     fun add() {
         val choose = uiState.value as? AddOnNetworksUiState.Choose ?: return
         if (!choose.canAdd) return
-        val networks = choose.choices.filter { it.chosen && it.on }.mapNotNull { Network.ofChainId(it.chainId) }
+        val networks = choose.choices.chosenNetworks()
         form.update { it.copy(adding = true, error = null) }
         viewModelScope.launch {
             // The add first: an update's transform may run more than once, and must not add again.

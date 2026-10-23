@@ -6,6 +6,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import eth.serotine.ui.components.NETWORK_CHOICE_TAG
+import eth.serotine.ui.components.NetworkChoice
 import eth.serotine.ui.theme.SerotineTheme
 import kotlin.test.assertEquals
 import org.junit.Rule
@@ -44,8 +46,8 @@ class AddOnNetworksDialogTest {
         )
 
         rule.onNodeWithText("Add").assertIsNotEnabled()
-        rule.onNodeWithTag(ADD_ON_NETWORK_TAG + 100).performClick()
-        rule.onNodeWithTag(ADD_ON_NETWORK_TAG + 11_155_111).assertIsNotEnabled()
+        rule.onNodeWithTag(NETWORK_CHOICE_TAG + 100).performClick()
+        rule.onNodeWithTag(NETWORK_CHOICE_TAG + 11_155_111).assertIsNotEnabled()
         rule.onNodeWithText("Turn on").performClick()
 
         assertEquals(listOf("toggle 100", "turn on 11155111"), events)
