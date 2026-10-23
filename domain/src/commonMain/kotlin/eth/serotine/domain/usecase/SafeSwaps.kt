@@ -203,7 +203,8 @@ const val SAFE_SWAP_DEADLINE_SECONDS: Long = 24 * 60 * 60
  *   minimum, but only while the allowance on chain already covers it: one waiting for an approval
  *   cannot run yet ([SafeSwapSimulation.AfterApproval]). For a token of USDT's kind the reset to
  *   zero is run, and the approval after it cannot run before the reset has: it is run when its
- *   execution is quoted. An engine that will not run a call from a contract's address leaves them
+ *   execution is quoted. So is one whose reset is queued before it already (a reset whose
+ *   approval was not signed), which is proposed alone, with no second reset. An engine that will not run a call from a contract's address leaves them
  *   not run. The runs are against the head, before anything queued: where an approval of the
  *   router queued before this one sets a non-zero allowance, such a token's approval passes here
  *   and reverts once that one has run. No funds move: the whole execution reverts, its quote says
@@ -360,19 +361,26 @@ class ProposeSafeSwap(
                     if (allowance.onChain.isZero) {
                         return@cancellingReads SafeSwapProposing.ApprovalReverts(direct.blockNumber)
                     }
-                    if (pending.any { it.nonce == nonce + 2 }) {
-                        return@cancellingReads SafeSwapProposing.NextNonceTaken(nonce + 2)
+                    if (allowance.queued.isZero) {
+                        // Set to zero by a transaction queued before it already (a reset whose approval
+                        // was not signed): the approval goes after that one, and is run when its
+                        // execution is quoted.
+                        approval = requestOf(amountIn, nonce)
+                    } else {
+                        if (pending.any { it.nonce == nonce + 2 }) {
+                            return@cancellingReads SafeSwapProposing.NextNonceTaken(nonce + 2)
+                        }
+                        when (val zero = runApproval(safe, soldToken.address, router, UInt256.ZERO)) {
+                            is ApprovalRun.Ran -> resetRun = zero.simulation
+                            is ApprovalRun.Refused ->
+                                return@cancellingReads SafeSwapProposing.ApprovalReverts(zero.blockNumber)
+                            is ApprovalRun.Unavailable ->
+                                return@cancellingReads SafeSwapProposing.Unavailable(zero.reason, QuoteFigure.RUN)
+                        }
+                        reset = requestOf(UInt256.ZERO, nonce)
+                        // It cannot run before the reset has: it is run when its execution is quoted.
+                        approval = requestOf(amountIn, nonce + 1)
                     }
-                    when (val zero = runApproval(safe, soldToken.address, router, UInt256.ZERO)) {
-                        is ApprovalRun.Ran -> resetRun = zero.simulation
-                        is ApprovalRun.Refused ->
-                            return@cancellingReads SafeSwapProposing.ApprovalReverts(zero.blockNumber)
-                        is ApprovalRun.Unavailable ->
-                            return@cancellingReads SafeSwapProposing.Unavailable(zero.reason, QuoteFigure.RUN)
-                    }
-                    reset = requestOf(UInt256.ZERO, nonce)
-                    // It cannot run before the reset has: it is run when its execution is quoted.
-                    approval = requestOf(amountIn, nonce + 1)
                 }
             }
         }
@@ -513,7 +521,8 @@ private fun RouteFinding.asSafeSwapProposing(): SafeSwapProposing = when (this) 
  *   its balance of the asset sold ([balanceBefore] at [balanceBlock]), what those queued before
  *   may move of it ([queuedAmount]) and what the swap leaves ([balanceAfter]).
  * - How each ran from the Safe: [resetSimulation] (null: no reset), [approvalSimulation] (null: no
- *   approval, or one after a reset, which cannot run before it has), [swapSimulation].
+ *   approval, or one after a reset, proposed with it or queued before, which it cannot run
+ *   before), [swapSimulation].
  * - [replaces] when it takes the nonce of a swap queued there, to be signed in its place.
  *
  * Only [ProposeSafeSwap] makes one.

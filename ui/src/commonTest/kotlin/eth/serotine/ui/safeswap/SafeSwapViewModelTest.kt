@@ -274,6 +274,48 @@ class SafeSwapViewModelTest {
     }
 
     @Test
+    fun aSwapStoppedAfterItsResetSaysTheResetIsQueuedAndRefreshProposesTheRestAfterIt() = runTest {
+        allowance = UInt256.of(5_000_000)
+        world.inputs.runOf = { to, data ->
+            when {
+                to != world.usdc.address -> null
+                data.contentEquals(Erc20.approveData(router, UInt256.of(100_000_000))) -> Simulation.Reverted(100)
+                else -> null
+            }
+        }
+        // The key store signs the reset, then runs short of memory for the approval.
+        var calls = 0
+        val signer = object : Signer {
+            override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+                if (calls++ == 0) Signing.Signed(world.recovery.sign(account, digest)) else Signing.NotEnoughMemory
+        }
+        val viewModel = reviewed(signer)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(listOf(4L), world.queue.requests.value.map { it.nonce }, "the reset alone is queued")
+        assertEquals(
+            "The allowance set to zero is signed and queued; the approval and the swap are not. Refresh, and they " +
+                "are proposed after it: Not enough free memory to open the key: close other apps and try again. " +
+                "Nothing was signed.",
+            viewModel.review.error,
+        )
+        viewModel.refresh()
+        runCurrent()
+        assertEquals(
+            listOf(
+                "Safe nonce 5" to "Allow a contract to take 100 USDC",
+                "Safe nonce 6" to "Swap 100 USDC for at least 0.039999 ETH",
+            ),
+            viewModel.review.transactions.map { it.nonce to it.action.title },
+            "no second reset",
+        )
+        assertTrue(viewModel.review.simulation.startsWith("The approval cannot run before the allowance set to zero"))
+    }
+
+    @Test
     fun anAllowanceThatCoversTheAmountTakesTheSwapAlone() = runTest {
         allowance = UInt256.of(100_000_000)
         routerReturns(40_100_000_000_000_000)

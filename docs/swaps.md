@@ -148,7 +148,9 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
     returns false) over a non-zero allowance on chain, `approve(0)` is run
     instead, and only if that goes through are the three proposed. The
     approval after it cannot run before the reset has, so like the swap it
-    is run when its execution is quoted. A token that refuses the approval
+    is run when its execution is quoted. A reset signed and queued whose
+    approval was not is not proposed again: the approval goes after it,
+    and the swap last. A token that refuses the approval
     with its allowance at zero, or `approve(0)` itself, is not swapped from
     a Safe: nothing is proposed.
 - **What is held back.** What the transactions queued before the swap may

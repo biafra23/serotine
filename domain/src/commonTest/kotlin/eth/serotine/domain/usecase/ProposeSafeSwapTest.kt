@@ -400,6 +400,23 @@ class ProposeSafeSwapTest {
     }
 
     @Test
+    fun aResetQueuedAlreadyIsNotProposedAgain() = runTest {
+        pool(usdcToken.address, linkToken.address)
+        allow(UInt256.ONE)
+        inputs.answers[usdcToken.address to Erc20.approveData(router, twoUsdc).toHex()] = Simulation.Reverted(120)
+        // A reset signed and queued at 4, its approval not: proposed again, the approval goes after it.
+        world.queue.save(world.request(approval(4, UInt256.ZERO)))
+
+        val proposal = assertIs<SafeSwapProposing.Proposed>(proposeUsdcForLink()).proposal
+
+        assertEquals(null, proposal.reset)
+        assertEquals(SafeTxAction.TokenApproval(usdcToken.address, router, twoUsdc), proposal.approval?.action)
+        assertEquals(listOf(5L, 6L), proposal.requests.map { it.nonce }, "the approval, the swap")
+        assertEquals(null, proposal.approvalSimulation, "it cannot run before the queued reset has")
+        assertEquals(SafeSwapSimulation.AfterApproval, proposal.swapSimulation)
+    }
+
+    @Test
     fun anApprovalTheTokenRefusesEvenFromZeroIsNotProposed() = runTest {
         pool(usdcToken.address, linkToken.address)
         allow(UInt256.ONE)
