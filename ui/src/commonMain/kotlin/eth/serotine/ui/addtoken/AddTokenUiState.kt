@@ -1,11 +1,15 @@
 package eth.serotine.ui.addtoken
 
+import eth.serotine.ui.components.NetworkChip
+
 /**
  * Everything Add token renders (docs/wallet-ux.md, screen 20): the typed [address], why it
  * cannot be read ([addressError]), what the contract says about itself ([card], null until the
- * text is an address), and how adding went.
+ * text is an address), and how adding went. The network comes first ([networks]: docs/networks.md,
+ * N17): the contract is read on the one chosen, and the token added there.
  */
 data class AddTokenUiState(
+    val networks: List<NetworkChip> = emptyList(),
     val address: String = "",
     val addressError: String? = null,
     val card: TokenCard? = null,

@@ -3,6 +3,7 @@ package eth.serotine.ui.accountdetail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -16,22 +17,28 @@ import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DecodedSafeTx
 import eth.serotine.domain.usecase.EnsNameCheck
+import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
+import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
+import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
@@ -41,6 +48,7 @@ import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.lastKnownNote
+import eth.serotine.ui.components.notTurnedOn
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
@@ -53,6 +61,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -72,24 +81,48 @@ import kotlinx.coroutines.launch
  * ([hideToken], said through [messageShown]); what else the user does from the screen is
  * navigation (Send, Receive, Rename, Remove, a row of its Activity, a queued transaction, Import a
  * request) or the
- * clipboard, which the route handles.
+ * clipboard, which the route handles. Whether its network is on ([ObserveEnabledNetworks]) greys out
+ * Send and Swap, and [turnOnNetwork] turns it on (docs/networks.md, N19).
  */
 class AccountDetailViewModel(
-    address: Address,
+    private val account: AccountId,
     observeAccount: ObserveAccount,
     observeAccountValue: ObserveAccountValue,
     observeSafe: ObserveSafe,
     observeSafeTxQueue: ObserveSafeTxQueue,
     observeKnownTokens: ObserveKnownTokens,
     private val setTokenHidden: SetTokenHidden,
-    private val network: Network,
     /** Whether the ENS name the account's name follows still points to it. */
     observeEnsNames: ObserveEnsNames,
     /** What its Activity tab lists. */
     activity: AccountActivity,
+    observeEnabledNetworks: ObserveEnabledNetworks,
+    private val setNetworkEnabled: SetNetworkEnabled,
+    /** Whether this version can still follow the account's network; one blocked alone greys out Send and Swap. */
+    observeUpgradeWarnings: ObserveUpgradeWarnings,
+    /** Whether Swap is offered on the account's network: greyed out where no venue is pinned. */
+    hasSwapVenue: HasSwapVenue,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val address: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
+    /** Whether the account's network is on: until known, as if it were, as nothing is sent from here. */
+    private val networkOn =
+        observeEnabledNetworks().map { network in it }.distinctUntilChanged().onStart { emit(true) }
+
+    /** Whether this version can no longer follow the account's network: until known, as if it could. */
+    private val networkBlocked = observeUpgradeWarnings()
+        .map { warnings -> warnings.of(network) is UpgradeWarning.UpdateRequired }
+        .distinctUntilChanged()
+        .onStart { emit(false) }
+
+    /** Whether a swap venue is pinned on the account's network: until known, as if one were. */
+    private val swapVenue = flow { emit(hasSwapVenue(network)) }.onStart { emit(true) }.distinctUntilChanged()
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
@@ -104,7 +137,7 @@ class AccountDetailViewModel(
     private val view = MutableStateFlow(View())
 
     // Collected once, by both the Safe's reading and the state.
-    private val lookup = observeAccount(address)
+    private val lookup = observeAccount(account)
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), replay = 1)
 
     private val isSafe = lookup.map { (it as? AccountLookup.Found)?.account?.kind == AccountKind.SAFE }
@@ -115,7 +148,7 @@ class AccountDetailViewModel(
     private val safe = isSafe.flatMapLatest { isSafe ->
         // Never holding the screen back: a Safe's read takes a dozen proofs.
         if (isSafe) {
-            observeSafe(address).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
+            observeSafe(account).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
         } else {
             flowOf(null)
         }
@@ -129,7 +162,11 @@ class AccountDetailViewModel(
             if (name == null) {
                 flowOf(null)
             } else {
-                observeEnsNames.check(address, name).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
+                observeEnsNames.check(
+                    network,
+                    address,
+                    name,
+                ).map<EnsNameCheck, EnsNameCheck?> { it }.onStart { emit(null) }
             }
         }
 
@@ -137,7 +174,7 @@ class AccountDetailViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val queue = isSafe.flatMapLatest { isSafe ->
         if (isSafe) {
-            combine(observeSafeTxQueue(address), observeKnownTokens()) { reading, tokens ->
+            combine(observeSafeTxQueue(address), observeKnownTokens(network)) { reading, tokens ->
                 QueueView.Read(reading, tokens.forDecoding())
             }.onStart<QueueView> { emit(QueueView.Checking) }
         } else {
@@ -149,7 +186,7 @@ class AccountDetailViewModel(
      * The account's Activity, read while its tab is shown and for 5 s after, as the screen's own
      * state is: back on the tab within that, it is there at once, and not read again.
      */
-    private val sharedActivity = activity.of(address).stateIn(
+    private val sharedActivity = activity.of(account).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         ActivityUiState.Loading,
@@ -174,22 +211,30 @@ class AccountDetailViewModel(
     val uiState: StateFlow<AccountDetailUiState> =
         combine(
             lookup,
-            observeAccountValue(address),
+            observeAccountValue(account),
             safe,
             queue,
-            combine(view, ensName, activityState, ::Triple),
-        ) { lookup, value, safe, queue, (view, ensName, activity) ->
+            combine(
+                combine(view, ensName, ::Pair),
+                activityState,
+                combine(networkOn, networkBlocked, swapVenue, ::Triple),
+                ::Triple,
+            ),
+        ) { lookup, value, safe, queue, (named, activity, networkState) ->
+            val (networkOn, networkBlocked, swapVenue) = networkState
+            val (view, ensName) = named
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = accountName(lookup.account, display, ensName),
                     address = display,
+                    network = NetworkLabel.of(network),
                     kind = lookup.account.kind,
                     // A Safe's control is its verified owners'; until they are read, watch-only.
                     control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
                         ?: Control.of(lookup.account.kind, lookup.account.custody),
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
-                    assets = sorted(rows(value), view.sort),
+                    assets = sorted(rows(value, off = network.displayName.takeUnless { networkOn }), view.sort),
                     pendingAssets = value.tokens.count { awaitingFirst(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
@@ -208,6 +253,9 @@ class AccountDetailViewModel(
                     nameNote = ensNameNote(lookup.account, ensName),
                     // Not the last one read while another tab is shown: that tab's state says Loading.
                     activity = if (view.segment == DetailSegment.ACTIVITY) activity else ActivityUiState.Loading,
+                    networkOn = networkOn,
+                    networkBlocked = networkBlocked,
+                    swapVenue = swapVenue,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
@@ -218,6 +266,13 @@ class AccountDetailViewModel(
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
             initialValue = AccountDetailUiState.Loading,
         )
+
+    /** Turns the account's network on again: the way to Send and Swap on one that is off (N19). */
+    fun turnOnNetwork() {
+        viewModelScope.launch {
+            if (!setNetworkEnabled(network, on = true)) view.update { it.copy(message = notTurnedOn(network)) }
+        }
+    }
 
     /** Orders the rows by [order]. */
     fun sortBy(order: AssetSort) {
@@ -236,7 +291,7 @@ class AccountDetailViewModel(
     fun hideToken(contract: String, symbol: String) {
         val token = Address.parse(contract) ?: return
         viewModelScope.launch {
-            val said = when (setTokenHidden(token, hidden = true)) {
+            val said = when (setTokenHidden(network, token, hidden = true)) {
                 TokenChange.Changed, TokenChange.AlreadyPresent -> "$symbol hidden. Settings → Tokens shows it again."
                 TokenChange.NotFound, TokenChange.NotSaved ->
                     "$symbol could not be hidden: the token settings cannot be saved right now."
@@ -322,6 +377,8 @@ class AccountDetailViewModel(
         is SafeReading.Unavailable -> SafeDetails.Unavailable(
             when (reading.reason) {
                 ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so the owners cannot be read."
+                ReadUnavailable.NETWORK_OFF ->
+                    "The network's light client is not running, so the owners cannot be read."
                 ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the owners cannot be read."
                 ReadUnavailable.UNPROVEN -> "The Safe's storage could not be verified this time. Serotine keeps trying."
                 ReadUnavailable.REFUSED -> "The light client on this device cannot read this Safe's storage."
@@ -333,9 +390,10 @@ class AccountDetailViewModel(
      * The native row and a row per token held: a token whose verified balance is zero is not
      * held. Each row names the block its own amount was verified at: the readings are polled
      * one by one and need not share one. While no head can be read at, a row shows the
-     * amount last verified and says that it may have changed since.
+     * amount last verified and says that it may have changed since, or, on a network that is off
+     * ([off] names it), that it is off.
      */
-    private fun rows(value: AccountValue): List<Row> {
+    private fun rows(value: AccountValue, off: String?): List<Row> {
         val native = value.native
         val nativeRow = Row(
             AssetRow(
@@ -347,12 +405,12 @@ class AccountDetailViewModel(
                 verifiedAt = (native as? BalanceReading.Verified)?.let { block(it.blockNumber) },
                 value = valuationText(value.nativeValue, value.currency, network),
                 lastKnown = (native as? BalanceReading.LastKnown)
-                    ?.let { lastKnownNote(it.blockNumber, it.asOf, formatTime) },
+                    ?.let { lastKnownNote(it.blockNumber, it.asOf, off, formatTime) },
             ),
             value.nativeValue,
         )
         val tokenRows = value.tokens.mapNotNull { (holding, valuation) ->
-            val shown = shownBalance(holding.reading) ?: return@mapNotNull null
+            val shown = shownBalance(holding.reading, off) ?: return@mapNotNull null
             if (shown.units.isZero) return@mapNotNull null
             val token = holding.token
             val symbol = displaySymbol(token.symbol)
@@ -380,12 +438,12 @@ class AccountDetailViewModel(
      * The token amount a row shows for [reading], the block it was verified at, and, for one
      * last verified, what the row says of it; null when there is no amount to show.
      */
-    private fun shownBalance(reading: TokenBalanceReading?): ShownBalance? = when (reading) {
+    private fun shownBalance(reading: TokenBalanceReading?, off: String?): ShownBalance? = when (reading) {
         is TokenBalanceReading.Verified -> ShownBalance(reading.units, reading.blockNumber, lastKnown = null)
         is TokenBalanceReading.LastKnown -> ShownBalance(
             reading.units,
             reading.blockNumber,
-            lastKnownNote(reading.blockNumber, reading.asOf, formatTime),
+            lastKnownNote(reading.blockNumber, reading.asOf, off, formatTime),
         )
         else -> null
     }

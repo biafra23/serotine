@@ -1,8 +1,7 @@
 package eth.serotine.ui.tokens
 
 import androidx.compose.runtime.Composable
-import eth.serotine.ui.components.LightClientItem
-import eth.serotine.ui.components.verifiedStripSample
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -57,7 +56,20 @@ private val eurs = TokenItem(
     hidden = false,
 )
 
-private val known = TokensUiState(listOf(usdc, link, uni, eurs))
+private val ethereum = NetworkLabel(1, "Ethereum", testnet = false)
+private val gnosis = NetworkLabel(100, "Gnosis Chain", testnet = false)
+private val sepolia = NetworkLabel(11_155_111, "Sepolia", testnet = true)
+
+/** [items] as Sepolia's, the one section. */
+private fun onSepolia(items: List<TokenItem>) = listOf(TokenSection(sepolia, items))
+
+/** Made up: each network's tokens under its mark, Ethereum's first. */
+private val known = TokensUiState(
+    listOf(
+        TokenSection(ethereum, listOf(usdc, link.copy(hidden = true))),
+        TokenSection(sepolia, listOf(usdc, link, uni, eurs)),
+    ),
+)
 
 /** Every built-in token with its bundled icon, at the address of its row in [usdc]. */
 private val builtIn = listOf(
@@ -75,20 +87,15 @@ private val builtIn = listOf(
 ).map { (symbol, name) -> usdc.copy(symbol = symbol, name = name, icon = symbol.lowercase()) }
 
 @Composable
-private fun TokensPreview(
-    state: TokensUiState,
-    darkTheme: Boolean = false,
-    lightClient: LightClientItem = verifiedStripSample,
-) {
+private fun TokensPreview(state: TokensUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
         TokensScreen(
             state = state,
-            lightClient = lightClient,
             onBack = {},
             onAddToken = {},
             onCopy = {},
-            onSetHidden = { _, _ -> },
-            onRemove = {},
+            onSetHidden = { _, _, _ -> },
+            onRemove = { _, _ -> },
         )
     }
 }
@@ -105,24 +112,26 @@ private fun TokensListDarkPreview() = TokensPreview(known, darkTheme = true)
 @Composable
 private fun TokensChecksPreview() = TokensPreview(
     TokensUiState(
-        listOf(
-            usdc,
-            link.copy(status = "Built in · checking its contract…"),
-            uni.copy(
-                status = "Not shown: its contract does not answer as a token",
-                problem = true,
-                hidden = false,
-            ),
-            TokenItem(
-                "USDC",
-                "USD Coin",
-                "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
-                null,
-                builtIn = false,
-                status = "Added: as its contract describes itself",
-                problem = false,
-                hidden = false,
-                warning = "Not the built-in USDC: another contract",
+        onSepolia(
+            listOf(
+                usdc,
+                link.copy(status = "Built in · checking its contract…"),
+                uni.copy(
+                    status = "Not shown: its contract does not answer as a token",
+                    problem = true,
+                    hidden = false,
+                ),
+                TokenItem(
+                    "USDC",
+                    "USD Coin",
+                    "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+                    null,
+                    builtIn = false,
+                    status = "Added: as its contract describes itself",
+                    problem = false,
+                    hidden = false,
+                    warning = "Not the built-in USDC: another contract",
+                ),
             ),
         ),
     ),
@@ -132,7 +141,7 @@ private fun TokensChecksPreview() = TokensPreview(
 @Composable
 private fun TokensUnreadablePreview() = TokensPreview(
     TokensUiState(
-        listOf(usdc, link, uni.copy(hidden = false)),
+        onSepolia(listOf(usdc, link, uni.copy(hidden = false))),
         notice = "Your token settings cannot be read right now, so nothing can be added, hidden or removed. " +
             "Serotine keeps trying.",
         canChange = false,
@@ -142,11 +151,33 @@ private fun TokensUnreadablePreview() = TokensPreview(
 // The built-in list in two halves, a phone's height each: every bundled icon is drawn.
 @Preview
 @Composable
-private fun TokensBuiltInPreview() = TokensPreview(TokensUiState(builtIn.take(6)))
+private fun TokensBuiltInPreview() = TokensPreview(TokensUiState(onSepolia(builtIn.take(6))))
 
 @Preview
 @Composable
-private fun TokensBuiltInRestPreview() = TokensPreview(TokensUiState(builtIn.drop(6)))
+private fun TokensBuiltInRestPreview() = TokensPreview(TokensUiState(onSepolia(builtIn.drop(6))))
+
+/** Gnosis Chain's built-in tokens, its own icons among them (xDAI's kin on the DAI glyph, GNO, EURe). */
+@Preview
+@Composable
+private fun TokensGnosisPreview() = TokensPreview(
+    TokensUiState(
+        listOf(
+            TokenSection(
+                gnosis,
+                listOf(
+                    "WXDAI" to "Wrapped XDAI",
+                    "USDC.e" to "Bridged USDC (Gnosis)",
+                    "GNO" to "Gnosis Token on xDai",
+                    "EURe" to "Monerium EURe",
+                    "sDAI" to "Savings xDAI",
+                ).map { (symbol, name) ->
+                    usdc.copy(symbol = symbol, name = name, icon = symbol.lowercase().removeSuffix(".e"))
+                },
+            ),
+        ),
+    ),
+)
 
 /** Every preview above, which TokensScreenPreviewsTest renders: a new preview goes in here too. */
 internal val tokensScreenPreviews: List<@Composable () -> Unit> = listOf(
@@ -156,4 +187,5 @@ internal val tokensScreenPreviews: List<@Composable () -> Unit> = listOf(
     { TokensUnreadablePreview() },
     { TokensBuiltInPreview() },
     { TokensBuiltInRestPreview() },
+    { TokensGnosisPreview() },
 )

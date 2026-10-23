@@ -1,16 +1,22 @@
 package eth.serotine.ui.tokens
 
+import eth.serotine.ui.components.NetworkLabel
+
 /**
  * Everything Settings → Tokens renders (docs/wallet-ux.md, screens 18 and 20): every token the
- * wallet knows; [notice], why the settings cannot be changed right now, what the last change
- * could not do, or that damaged settings were set aside; and whether they can be changed at
- * all ([canChange]: not while they cannot be read, when every change would be refused).
+ * wallet knows, grouped by network ([sections], each network with any; docs/networks.md,
+ * *Values*); [notice], why the settings cannot be changed right now, what the last change could
+ * not do, or that damaged settings were set aside; and whether they can be changed at all
+ * ([canChange]: not while they cannot be read, when every change would be refused).
  */
 data class TokensUiState(
-    val items: List<TokenItem> = emptyList(),
+    val sections: List<TokenSection> = emptyList(),
     val notice: String? = null,
     val canChange: Boolean = true,
 )
+
+/** The tokens known on one [network], in its display order. */
+data class TokenSection(val network: NetworkLabel, val items: List<TokenItem>)
 
 /**
  * One known token: its [symbol], [name], EIP-55 contract [address] and icon key ([icon]; null:

@@ -3,6 +3,7 @@ package eth.serotine.ui.safepropose
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
@@ -49,6 +50,7 @@ import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.ZERO_ADDRESS
+import eth.serotine.ui.components.addressFieldLabel
 import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
@@ -57,6 +59,7 @@ import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.recipientHint
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
@@ -67,6 +70,8 @@ import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.shareItem
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -82,8 +87,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
 /**
  * The ViewModel of Send for a Safe (docs/wallet-ux.md, screens 7 and 16): a transfer from the Safe
@@ -106,7 +109,7 @@ import kotlin.time.TimeSource
  * the screen is gone.
  */
 class SafeProposeViewModel(
-    private val safe: Address,
+    private val account: AccountId,
     asset: Address?,
     observeAccounts: ObserveAccounts,
     observeAccountValue: ObserveAccountValue,
@@ -116,9 +119,14 @@ class SafeProposeViewModel(
     private val proposeSafeTx: ProposeSafeTx,
     private val signSafeTx: SignSafeTx,
     private val encodeSigningRequest: EncodeSigningRequest,
-    private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val safe: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
 
     /** What the form has: the token chosen (null: the network's currency), the recipient and amount as typed. */
     private data class Inputs(
@@ -215,8 +223,8 @@ class SafeProposeViewModel(
 
     private val model: StateFlow<Model?> = combine(
         observeAccounts(),
-        observeSafe(safe),
-        observeAccountValue(safe),
+        observeSafe(account),
+        observeAccountValue(account),
         inputs,
         lookup,
     ) { list, reading, value, inputs, lookup ->
@@ -591,7 +599,8 @@ class SafeProposeViewModel(
         inputs: Inputs,
         lookup: RecipientState,
     ): Model {
-        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        // The Safe's network's accounts only: the same address on another network is another account.
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
         val sender = when (list) {
             is AccountList.Unreadable -> Sender.Cannot(LIST_UNAVAILABLE)
             is AccountList.Loaded -> {
@@ -656,6 +665,8 @@ class SafeProposeViewModel(
         val amount = typedAmount(inputs.amount, selected)
         return TransferForm(
             network = network.displayName,
+            toLabel = addressFieldLabel(network),
+            toHint = recipientHint(network),
             from = from,
             assets = model.options.map { it.choice() },
             asset = selected?.choice(),
@@ -779,7 +790,7 @@ class SafeProposeViewModel(
 
     /** What [text] names, resolved ([ResolveRecipient]); never throws. */
     private suspend fun lookUp(text: String): RecipientLookup = try {
-        resolveRecipient(recipientText(text))
+        resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {

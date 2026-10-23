@@ -1,5 +1,6 @@
 package eth.serotine.ui.safeswap
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Erc20
@@ -42,12 +43,18 @@ import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.ui.DAY
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.HEAD_TIME
 import eth.serotine.ui.MemoryCurrencySetting
-import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.SafeWorld
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.SendFrom
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -58,12 +65,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
-import kotlin.time.TestTimeSource
 
 /** [SafeSwapViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -100,7 +101,7 @@ class SafeSwapViewModelTest {
     private val uniswap = object : UniswapV3Chain {
         override suspend fun venue(network: Network): VenueReading = VenueReading.Verified(world.uniswapDeployment)
 
-        override suspend fun call(to: Address, data: ByteArray): Simulation {
+        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
             val hex = data.hex()
             val listed = PoolKey.of(world.usdc.address, weth, FeeTier.LOW)
             return when {
@@ -112,7 +113,7 @@ class SafeSwapViewModelTest {
                 }
                 to == pool && hex == UniswapV3Pool.liquidity().hex() ->
                     Simulation.Succeeded(UInt256.of(1_000).toBytes32().hex(), 100)
-                else -> world.uniswap.call(to, data)
+                else -> world.uniswap.call(Network.SEPOLIA, to, data)
             }
         }
     }
@@ -127,7 +128,7 @@ class SafeSwapViewModelTest {
     ): SafeSwapViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = SafeSwapViewModel(
-            world.safe,
+            AccountId(Network.SEPOLIA, world.safe),
             asset,
             replacing,
             ObserveAccounts(world.accounts),
@@ -135,8 +136,7 @@ class SafeSwapViewModelTest {
                 ObserveNativeBalance(world.balances),
                 ObserveTokenHoldings(world.knownTokens, world.tokenBalances),
                 ObserveUsdPrice(feeds),
-                ObserveDisplayCurrencies(feeds, MemoryCurrencySetting()),
-                Network.SEPOLIA,
+                ObserveDisplayCurrencies(feeds, MemoryCurrencySetting(), world.accounts),
             ),
             world.observeSafe,
             ObserveSafeTxQueue(world.queue, world.observeSafe, world.recovery, Network.SEPOLIA),
@@ -153,7 +153,6 @@ class SafeSwapViewModelTest {
                 Network.SEPOLIA,
             ),
             SignSafeTx(signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
-            Network.SEPOLIA,
             clock,
             formatTime = { "at $it" },
         )
@@ -238,6 +237,113 @@ class SafeSwapViewModelTest {
         assertTrue(queued.all { it.signers == listOf(world.alice.address) }, "each signed by the owner held here")
         assertEquals("0x" + queued[1].hash.hex, proposed.hash, "the swap's screen opens")
         assertEquals(listOf("made-up test password", "made-up test password"), world.signer.passwords)
+    }
+
+    @Test
+    fun aTokenThatRefusesOneAllowanceForAnotherIsSetToZeroFirstInThreeSafeTransactions() = runTest {
+        allowance = UInt256.of(5_000_000)
+        // USDT's kind: the approval of the amount reverts over the allowance there is, one of zero goes through.
+        world.inputs.runOf = { to, data ->
+            when {
+                to != world.usdc.address -> null
+                data.contentEquals(Erc20.approveData(router, UInt256.ZERO)) -> Simulation.Succeeded("", 100)
+                data.contentEquals(Erc20.approveData(router, UInt256.of(100_000_000))) -> Simulation.Reverted(100)
+                else -> null
+            }
+        }
+        val viewModel = reviewed()
+
+        val review = viewModel.review
+        assertEquals(
+            listOf(
+                "Safe nonce 4" to "Allow a contract to take 0 USDC",
+                "Safe nonce 5" to "Allow a contract to take 100 USDC",
+                "Safe nonce 6" to "Swap 100 USDC for at least 0.039999 ETH",
+            ),
+            review.transactions.map { it.nonce to it.action.title },
+        )
+        assertTrue(review.approvalNote.orEmpty().contains("sets it to zero"), review.approvalNote)
+        assertTrue(review.simulation.startsWith("The allowance set to zero, run as a verified call"), review.simulation)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertIs<SafeSwapUiState.Proposed>(viewModel.uiState.value)
+        assertEquals(listOf(4L, 5L, 6L), world.queue.requests.value.map { it.nonce })
+    }
+
+    @Test
+    fun aSwapStoppedAfterItsResetSaysTheResetIsQueuedAndRefreshProposesTheRestAfterIt() = runTest {
+        allowance = UInt256.of(5_000_000)
+        world.inputs.runOf = { to, data ->
+            when {
+                to != world.usdc.address -> null
+                data.contentEquals(Erc20.approveData(router, UInt256.of(100_000_000))) -> Simulation.Reverted(100)
+                else -> null
+            }
+        }
+        // The key store signs the reset, then runs short of memory for the approval.
+        var calls = 0
+        val signer = object : Signer {
+            override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+                if (calls++ == 0) Signing.Signed(world.recovery.sign(account, digest)) else Signing.NotEnoughMemory
+        }
+        val viewModel = reviewed(signer)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(listOf(4L), world.queue.requests.value.map { it.nonce }, "the reset alone is queued")
+        assertEquals(
+            "The allowance set to zero is signed and queued; the approval and the swap are not. Refresh, and they " +
+                "are proposed after it: Not enough free memory to open the key: close other apps and try again. " +
+                "Nothing was signed.",
+            viewModel.review.error,
+        )
+        viewModel.refresh()
+        runCurrent()
+        assertEquals(
+            listOf(
+                "Safe nonce 5" to "Allow a contract to take 100 USDC",
+                "Safe nonce 6" to "Swap 100 USDC for at least 0.039999 ETH",
+            ),
+            viewModel.review.transactions.map { it.nonce to it.action.title },
+            "no second reset",
+        )
+        assertTrue(viewModel.review.simulation.startsWith("The approval cannot run before the allowance set to zero"))
+    }
+
+    @Test
+    fun aSwapStoppedAfterItsResetAndApprovalSaysBothAreQueued() = runTest {
+        allowance = UInt256.of(5_000_000)
+        world.inputs.runOf = { to, data ->
+            when {
+                to != world.usdc.address -> null
+                data.contentEquals(Erc20.approveData(router, UInt256.of(100_000_000))) -> Simulation.Reverted(100)
+                else -> null
+            }
+        }
+        // The key store signs the reset and the approval, then runs short of memory for the swap.
+        var calls = 0
+        val signer = object : Signer {
+            override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+                if (calls++ < 2) Signing.Signed(world.recovery.sign(account, digest)) else Signing.NotEnoughMemory
+        }
+        val viewModel = reviewed(signer)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(listOf(4L, 5L), world.queue.requests.value.map { it.nonce })
+        assertTrue(
+            viewModel.review.error.orEmpty().startsWith(
+                "The allowance set to zero and the approval are signed and queued; the swap is not.",
+            ),
+            viewModel.review.error,
+        )
     }
 
     @Test

@@ -172,7 +172,10 @@ class SafeTxTextTest {
 
     @Test
     fun gasTermsAreListedWithTheAddressesTheyPay() {
-        val terms = gasTermsItem(SafeTxGasTerms(UInt256.of(50_000), UInt256.ZERO, UInt256.of(1), module, friend))
+        val terms = gasTermsItem(
+            SafeTxGasTerms(UInt256.of(50_000), UInt256.ZERO, UInt256.of(1), module, friend),
+            Network.SEPOLIA,
+        )
 
         assertEquals(
             listOf(
@@ -194,8 +197,9 @@ class SafeTxTextTest {
             safeTxRefusalText(SafeTxRefusal.NotNext(4), Network.SEPOLIA),
         )
         assertEquals(
-            "A request for another network (chain id 1), not Sepolia.",
-            safeTxRefusalText(SafeTxRefusal.WrongChain(1), Network.SEPOLIA),
+            // Chain 10, OP Mainnet, is no network of this wallet's.
+            "A request for chain id 10, which is not a network this wallet supports.",
+            safeTxRefusalText(SafeTxRefusal.WrongChain(10), Network.SEPOLIA),
         )
         assertEquals(
             "It reverts, run as a verified call at block 9,412,118. Nothing was signed.",

@@ -2,6 +2,7 @@ package eth.serotine.data.engine
 
 import eth.serotine.data.prices.PinnedFeed
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.NoPriceReason
@@ -36,6 +37,7 @@ import kotlin.time.Duration
  * [FUTURE_SKEW_SECONDS] after that head is what no feed answers.
  */
 class VerifiedPriceFeeds internal constructor(
+    private val served: Network,
     chain: VerifiedChain?,
     dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
@@ -56,7 +58,10 @@ class VerifiedPriceFeeds internal constructor(
 
     private class Noted(val aggregator: Address, val block: Long, val hash: String)
 
-    override val quotes: Map<PriceId, PriceId> = feeds.associate { it.priceId to it.quote }
+    private val servedQuotes: Map<PriceId, PriceId> = feeds.associate { it.priceId to it.quote }
+
+    /** [served]'s feeds' quotes; none for a network this adapter does not serve: no price crosses networks. */
+    override fun quotes(network: Network): Map<PriceId, PriceId> = if (network == served) servedQuotes else emptyMap()
 
     private val reads = ProvenReads<PriceId, FeedReading>(
         chain,
@@ -131,7 +136,8 @@ class VerifiedPriceFeeds internal constructor(
         return value.copy(ageSeconds = age, stale = age > pinned.getValue(id).heartbeatSeconds + STALE_GRACE_SECONDS)
     }
 
-    override fun observe(priceId: PriceId): Flow<FeedReading> {
+    override fun observe(network: Network, priceId: PriceId): Flow<FeedReading> {
+        if (network != served) return flowOf(FeedReading.Unavailable(ReadUnavailable.NO_ENGINE))
         if (priceId !in pinned) return flowOf(FeedReading.NoPrice(NoPriceReason.NO_FEED))
         return reads.observe(priceId).map { reading ->
             when (reading) {

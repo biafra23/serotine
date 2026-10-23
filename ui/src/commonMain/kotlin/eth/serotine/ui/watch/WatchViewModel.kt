@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading
@@ -11,18 +12,24 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.AddressWatch
+import eth.serotine.domain.usecase.HoldNetwork
+import eth.serotine.domain.usecase.NetworkHold
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.RecipientLookup
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.domain.usecase.control
 import eth.serotine.domain.usecase.ownersHeld
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
+import eth.serotine.ui.components.addressFieldLabel
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
@@ -51,13 +58,51 @@ import kotlinx.coroutines.launch
  * [WatchAddress], which checks again before it adds. A name is resolved again at Add: what is
  * watched is the address it has then, and one that moved is said, not added (issue #71). Added
  * by a name and given none of the user's, the account's name follows that ENS name (issue #67).
+ *
+ * The address is checked on every network that is on ([ObserveEnabledNetworks]), each held
+ * running while the screen is open ([HoldNetwork]): with one, as one card; with more, a row each,
+ * and an address with no code on all of them offered on all of them, or on those ticked
+ * (docs/networks.md, N10 and N11). A name is resolved on the first network that is on.
  */
 class WatchViewModel(
     observeAddressKind: ObserveAddressKind,
     observeAccounts: ObserveAccounts,
     private val watchAddress: WatchAddress,
     private val resolveRecipient: ResolveRecipient,
+    observeEnabledNetworks: ObserveEnabledNetworks,
+    private val setNetworkEnabled: SetNetworkEnabled,
+    /** Keeps each network that is on running while this screen is open, with no account on it yet. */
+    private val holdNetwork: HoldNetwork,
 ) : ViewModel() {
+
+    /** The networks on in this wallet, in `Network` order; null until read, so none is said to be off before. */
+    private val on: StateFlow<List<Network>?> =
+        observeEnabledNetworks().stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * The network whose light client the strip shows: the one a name is resolved on, the first
+     * that is on and resolves names, or the first that is on when none does.
+     */
+    val stripNetwork: StateFlow<Network> = on.map { it?.let(::nameNetwork) ?: Network.entries.first() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, Network.entries.first())
+
+    /** A hold on each network that is on, released when it goes off or the screen is gone ([onCleared]). */
+    private val holds = mutableMapOf<Network, NetworkHold>()
+
+    init {
+        viewModelScope.launch {
+            on.collect { read ->
+                val networks = read ?: return@collect
+                (holds.keys - networks.toSet()).forEach { holds.remove(it)?.release() }
+                networks.filter { it !in holds }.forEach { holds[it] = holdNetwork(it) }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        holds.values.forEach { it.release() }
+        holds.clear()
+    }
 
     /** What is typed, and how often the user asked to resolve the name again ([lookupAttempt]). */
     private data class Typed(val address: String = "", val name: String = "", val lookupAttempt: Int = 0)
@@ -69,35 +114,79 @@ class WatchViewModel(
         val done: Boolean = false,
     )
 
+    /** The networks ticked (null: those offered, until the user ticks one), and whether they are being chosen. */
+    private data class Choice(val chosen: Set<Network>? = null, val choosing: Boolean = false)
+
+    private val choice = MutableStateFlow(Choice())
+
     private val typed = MutableStateFlow(Typed())
     private val outcome = MutableStateFlow(Outcome())
 
-    /** The typed text resolved: an address at once, a name once the typing paused. */
-    private val lookup: StateFlow<RecipientState> =
-        recipientStates(typed.map { it.address.trim() to it.lookupAttempt }, ::lookUp).stateIn(
+    /**
+     * The typed text resolved: an address at once, a name once the typing paused, and again when
+     * the network a name is resolved on changes (one turned on from this screen), so that an
+     * answer of a testnet's registry is never taken for that network's.
+     */
+    private val lookup: StateFlow<RecipientState> = recipientStates(
+        combine(typed, on.map { it?.let(::nameNetwork) }.distinctUntilChanged()) { typed, nameNetwork ->
+            typed.address.trim() to (typed.lookupAttempt to nameNetwork)
+        },
+        ::lookUp,
+    ).stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
             RecipientState.Empty,
         )
 
-    /** The card of the address the lookup found, with that address: uiState shows it only for the lookup's own. */
+    /**
+     * The cards of the address the lookup found on each network that is on, with that address:
+     * uiState shows them only for the lookup's own. A name resolved on a testnet's registry (no
+     * real network that resolves names being on) gives an address for the testnets alone: what
+     * anyone can register there is never watched on a network with real funds.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val detection: Flow<Pair<Address, Detection>?> =
-        lookup.map { ((it as? RecipientState.Done)?.result as? RecipientLookup.Found)?.address }
+    private val detection: Flow<Pair<Address, List<Pair<Network, Detection>>>?> =
+        combine(
+            lookup.map { ((it as? RecipientState.Done)?.result as? RecipientLookup.Found) }
+                .map { found -> found?.let { it.address to (it.name != null) } }
+                .distinctUntilChanged(),
+            on,
+            ::Pair,
+        )
             .distinctUntilChanged()
-            .flatMapLatest { address ->
-                when (address) {
-                    null -> flowOf(null)
+            .flatMapLatest { (found, read) ->
+                val (address, named) = found ?: (null to false)
+                val fromTestnet = named && read?.let(::nameNetwork)?.testnet == true
+                val networks = read.orEmpty().filter { it.testnet || !fromTestnet }
+                when {
+                    address == null || read == null -> flowOf(null)
+                    networks.isEmpty() -> flowOf(address to emptyList())
                     // The one list says whether the address is in the wallet already, and, for a Safe,
                     // which of its owners' keys are held here.
                     else -> combine(
                         observeAccounts(),
-                        observeAddressKind(address).map<KindReading, KindReading?> { it }.onStart { emit(null) },
-                    ) { list, reading -> address to detectionOf(address, list, reading) }
+                        combine(
+                            networks.map { network ->
+                                observeAddressKind(network, address)
+                                    .map<KindReading, KindReading?> { it }
+                                    .onStart { emit(null) }
+                            },
+                        ) { it.toList() },
+                    ) { list, readings ->
+                        address to networks.zip(readings) { network, reading ->
+                            network to detectionOf(network, address, list, reading)
+                        }
+                    }
                 }
             }
 
-    val uiState: StateFlow<WatchUiState> = combine(typed, lookup, detection, outcome) { typed, lookup, card, outcome ->
+    val uiState: StateFlow<WatchUiState> = combine(
+        combine(typed, choice, ::Pair),
+        lookup,
+        detection,
+        outcome,
+        on,
+    ) { (typed, choice), lookup, cards, outcome, on ->
         val text = typed.address.trim()
         // The lookup of what is typed now; one of an earlier text is no answer about it.
         val current = lookup.takeIf { it.text == text }
@@ -112,13 +201,22 @@ class WatchViewModel(
             canRetryLookup = result is RecipientLookup.Unavailable,
             // The name an empty field leaves the account with: the ENS name, when it is one to follow.
             nameDefault = found?.name?.takeIf { it.length <= RenameAccount.MAX_LABEL_LENGTH },
-            // Only the card of what is typed now: none while a new text is still being resolved, nor
-            // one of the address before for a moment after the text changed.
-            detection = card?.takeIf { (address, _) -> address == found?.address }?.second,
             adding = outcome.adding,
             nameError = outcome.nameError,
             error = outcome.error,
             done = outcome.done,
+            noNetwork = NO_NETWORK.takeIf { on?.isEmpty() == true },
+            // Names only where a network that is on resolves them; Gnosis Chain's alone takes addresses.
+            addressLabel = on?.let(::nameNetwork)?.let(::addressFieldLabel) ?: "Address or ENS name",
+            addressHint = on?.let(::nameNetwork)?.takeUnless { it.ensNames }?.let {
+                "0x and 40 hexadecimal digits: names are not resolved on ${it.displayName} yet"
+            } ?: "0x and 40 hexadecimal digits, or an ENS name like name.eth",
+            offNetworks = on?.let { read -> Network.entries.filter { it !in read }.map(NetworkLabel::of) }.orEmpty(),
+        ).withCards(
+            // Only the cards of what is typed now: none while a new text is still being resolved,
+            // nor those of the address before for a moment after the text changed.
+            cards?.takeIf { (address, _) -> address == found?.address }?.second,
+            choice,
         )
     }.stateIn(
         viewModelScope,
@@ -128,10 +226,81 @@ class WatchViewModel(
         WatchUiState(),
     )
 
+    /**
+     * The cards of each network ([cards]): the one network's as [WatchUiState.detection], or, with
+     * more, a row each, with the all-networks question for an address with no code on every one.
+     */
+    private fun WatchUiState.withCards(cards: List<Pair<Network, Detection>>?, choice: Choice): WatchUiState {
+        if (cards == null) return this
+        if (cards.size == 1) {
+            val (network, card) = cards.single()
+            return copy(detection = card, cardNetwork = NetworkLabel.of(network))
+        }
+        // A Safe exists only where it was deployed: where it is one, it is offered there alone (N11).
+        val safeSomewhere = cards.any { (_, card) -> card is Detection.Safe }
+        val offered = cards.filter { (_, card) -> if (safeSomewhere) card is Detection.Safe else card.addable }
+            .map { it.first }
+            .toSet()
+        val chosen = choice.chosen ?: offered
+        val everyAccount = cards.isNotEmpty() && cards.all { (_, card) -> card is Detection.Account }
+        // A delegated account (EIP-7702) has code: its delegation designation.
+        val delegated = cards.any { (_, card) -> (card as? Detection.Account)?.delegate != null }
+        return copy(
+            networks = cards.map { (network, card) ->
+                WatchNetwork(
+                    NetworkLabel.of(network),
+                    card,
+                    offered = network in offered,
+                    chosen = network in chosen && network in offered,
+                )
+            },
+            question = if (everyAccount) {
+                val what = if (delegated) "is an account a key controls" else "has no code"
+                "This address $what. Watch it on ${networkNames(cards.map { it.first })}?"
+            } else {
+                null
+            },
+            choosing = choice.choosing,
+        )
+    }
+
+    /** "Ethereum and Gnosis Chain", or "all three networks". */
+    private fun networkNames(networks: List<Network>): String = when (networks.size) {
+        3 -> "all three networks"
+        else -> networks.map { it.displayName }.let { names ->
+            if (names.size <= 1) names.joinToString() else names.dropLast(1).joinToString() + " and " + names.last()
+        }
+    }
+
+    /** Turns the network of [chainId] on: the address is then checked there too. */
+    fun onTurnOnNetwork(chainId: Long) {
+        val network = Network.ofChainId(chainId) ?: return
+        viewModelScope.launch { setNetworkEnabled(network, on = true) }
+    }
+
+    /** Shows the networks as check boxes instead of the all-networks question (N10). */
+    fun onChooseNetworks() {
+        if (outcome.value.adding || outcome.value.done) return
+        choice.update { it.copy(choosing = true) }
+    }
+
+    /** Ticks the network of [chainId], or unticks it. */
+    fun onNetworkToggle(chainId: Long) {
+        val network = Network.ofChainId(chainId) ?: return
+        if (outcome.value.adding || outcome.value.done) return
+        val offered = uiState.value.networks.filter { it.offered }
+            .mapNotNull { Network.ofChainId(it.network.chainId) }
+        choice.update { current ->
+            val chosen = current.chosen ?: offered.toSet()
+            current.copy(chosen = if (network in chosen) chosen - network else chosen + network)
+        }
+    }
+
     /** The address field changed; ignored while an add runs, whose result is about what was typed then. */
     fun onAddressChange(text: String) {
         if (outcome.value.adding || outcome.value.done) return
         typed.update { it.copy(address = text) }
+        choice.value = Choice()
         outcome.value = Outcome()
     }
 
@@ -157,7 +326,18 @@ class WatchViewModel(
         val found = foundInput() ?: return
         // outcome first: it is set synchronously below, while uiState follows it a step later,
         // so a second tap before that must still find the add running.
-        if (outcome.value.adding || outcome.value.done || !uiState.value.canAdd) return
+        val state = uiState.value
+        if (outcome.value.adding || outcome.value.done || !state.canAdd) return
+        // The networks to add it on: the one on; or all offered, as the question asks; or those ticked.
+        val networks = when {
+            // The network the card was read on, never one that is on by now instead.
+            state.networks.isEmpty() -> listOfNotNull(state.cardNetwork?.let { Network.ofChainId(it.chainId) })
+            state.question != null && !state.choosing -> state.networks.filter { it.offered }
+                .mapNotNull { Network.ofChainId(it.network.chainId) }
+            else -> state.networks.filter { it.offered && it.chosen }
+                .mapNotNull { Network.ofChainId(it.network.chainId) }
+        }
+        if (networks.isEmpty()) return
         outcome.value = Outcome(adding = true)
         viewModelScope.launch {
             val resolved = when (val again = resolveAgain(found, ::lookUp, ::nameChanged)) {
@@ -169,22 +349,56 @@ class WatchViewModel(
                     return@launch
                 }
             }
-            outcome.value = when (val result = watchAddress(resolved.address, typed.value.name, resolved.name)) {
-                is AddressWatch.Added -> Outcome(done = true)
-                is AddressWatch.AlreadyInWallet ->
-                    Outcome(error = "Already in your wallet as “${result.account.label}”.")
-                AddressWatch.Contract -> Outcome(error = CONTRACT)
-                is AddressWatch.NotVerified ->
-                    Outcome(error = "The address cannot be checked right now. Nothing was added.")
-                AddressWatch.NameTooLong ->
-                    Outcome(nameError = "Use at most ${RenameAccount.MAX_LABEL_LENGTH} characters")
-                AddressWatch.NotSaved -> Outcome(error = "The account could not be saved. Nothing was added.")
-            }
+            outcome.value = watchOn(networks, resolved)
         }
     }
 
-    private fun detectionOf(address: Address, list: AccountList, reading: KindReading?): Detection {
-        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+    /**
+     * Watches [resolved] on each of [networks], stopping at the first that cannot be added, whose
+     * reason is said, with the networks it was added on before it.
+     */
+    private suspend fun watchOn(networks: List<Network>, resolved: RecipientLookup.Found): Outcome {
+        // One name on every network, as an import gives (docs/networks.md, N6 and N8): the user's,
+        // the ENS name followed, or one "Account N" taken once.
+        val name = watchAddress.sharedName(typed.value.name, resolved.name)
+            ?: return Outcome(error = "The account could not be saved. Nothing was added.")
+        val added = mutableListOf<Network>()
+        for (network in networks) {
+            // Where names are not resolved, WatchAddress makes the name only the account's label.
+            val result = watchAddress(network, resolved.address, name, resolved.name)
+            if (result is AddressWatch.Added) {
+                added += network
+                continue
+            }
+            if (result == AddressWatch.NameTooLong) {
+                return Outcome(nameError = "Use at most ${RenameAccount.MAX_LABEL_LENGTH} characters")
+            }
+            val why = when (result) {
+                is AddressWatch.AlreadyInWallet -> "Already in your wallet as “${result.account.label}”."
+                AddressWatch.Contract -> CONTRACT
+                is AddressWatch.NotVerified -> "The address cannot be checked right now."
+                else -> "The account could not be saved."
+            }
+            return Outcome(
+                error = if (added.isEmpty()) {
+                    // In the wallet already says itself that nothing changed.
+                    if (result is AddressWatch.AlreadyInWallet) why else "$why Nothing was added."
+                } else {
+                    "Added on ${added.joinToString { it.displayName }}, but not on ${network.displayName}: $why"
+                },
+            )
+        }
+        return Outcome(done = true)
+    }
+
+    private fun detectionOf(
+        network: Network,
+        address: Address,
+        list: AccountList,
+        reading: KindReading?,
+    ): Detection {
+        // In the wallet on this network: the same address on another network is another account.
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
         return detectionOf(address, list, accounts.firstOrNull { it.address == address }, reading, accounts)
     }
 
@@ -205,6 +419,8 @@ class WatchViewModel(
             when (reading.reason) {
                 ReadUnavailable.NO_ENGINE ->
                     "There is no light client on this device, so the address cannot be checked."
+                ReadUnavailable.NETWORK_OFF ->
+                    "The network's light client is not running, so the address cannot be checked."
                 ReadUnavailable.STALE_ANCHOR ->
                     "The light client refuses to sync, so the address cannot be checked."
                 // Not the code's fault alone: for a Safe, its code may be proven and its storage
@@ -269,8 +485,13 @@ class WatchViewModel(
         }
     }
 
+    /** The network of [on] a name is resolved on: the first that resolves names, or else the first. */
+    private fun nameNetwork(on: List<Network>): Network? = on.firstOrNull { it.ensNames } ?: on.firstOrNull()
+
     private suspend fun lookUp(text: String): RecipientLookup = try {
-        resolveRecipient(recipientText(text))
+        // A name on the first network that is on and resolves names; with none on, nothing can be resolved.
+        val network = on.value?.let(::nameNetwork) ?: return RecipientLookup.Unavailable(ReadUnavailable.NETWORK_OFF)
+        resolveRecipient(network, recipientText(text))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -287,6 +508,8 @@ class WatchViewModel(
 
     private companion object {
         const val ZERO_ADDRESS = "The zero address: nobody holds its key, so there is no account to watch."
+        const val NO_NETWORK = "No network is on in this wallet, so the address cannot be checked. Turn one on in " +
+            "Settings → Networks."
         const val CONTRACT =
             "This address holds a contract that is not a recognised Safe. Serotine watches accounts and Safes."
     }

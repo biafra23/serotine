@@ -1,16 +1,17 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.NoPriceReason
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReadUnavailable
+import kotlin.math.max
+import kotlin.math.min
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * The USD price of one unit of a price id (docs/wallet-ux.md, *Prices*: every price goes
@@ -21,15 +22,18 @@ import kotlin.math.min
  */
 class ObserveUsdPrice(private val feeds: PriceFeeds) {
 
-    operator fun invoke(priceId: PriceId): Flow<Price> = usd(priceId, path = emptySet())
+    operator fun invoke(network: Network, priceId: PriceId): Flow<Price> = usd(network, priceId, path = emptySet())
 
-    private fun usd(id: PriceId, path: Set<PriceId>): Flow<Price> {
+    private fun usd(network: Network, id: PriceId, path: Set<PriceId>): Flow<Price> {
         if (id == PriceId.USD) return flowOf(Price.ONE)
-        val quote = feeds.quotes[id] ?: return flowOf(Price.NoPrice(NoPriceReason.NO_FEED))
+        val quote = feeds.quotes(network)[id] ?: return flowOf(Price.NoPrice(NoPriceReason.NO_FEED))
         // A table whose quotes go round in a circle never reaches USD: no price, not no end.
         if (quote == id || quote in path) return flowOf(Price.NoPrice(NoPriceReason.NO_FEED))
-        val own = feeds.observe(id).map { it.asPrice() }
-        return if (quote == PriceId.USD) own else combine(own, usd(quote, path + id)) { price, rate -> price * rate }
+        val own = feeds.observe(network, id).map { it.asPrice() }
+        return if (quote == PriceId.USD) own else combine(
+            own,
+            usd(network, quote, path + id),
+        ) { price, rate -> price * rate }
     }
 
     private fun FeedReading.asPrice(): Price = when (this) {

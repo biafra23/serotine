@@ -22,7 +22,13 @@ class RateWidgetContentTest {
     @Test
     fun aRiseIsGreenWithAPlusAndTheRateIsDatedAsTestnetPrices() {
         assertEquals(
-            RateWidgetContent("ETH · EUR", "€2,046.20", "24h +2.31%", Trend.UP, "Verified 14:05 · may have changed since · testnet prices"),
+            RateWidgetContent(
+                "ETH · EUR",
+                "€2,046.20",
+                "24h +2.31%",
+                Trend.UP,
+                "Sepolia · Verified 14:05 · may have changed since · testnet prices",
+            ),
             rateWidgetContent(snapshot, Network.SEPOLIA, "14:05"),
         )
     }
@@ -52,14 +58,27 @@ class RateWidgetContentTest {
 
         val content = rateWidgetContent(stale, Network.SEPOLIA, "14:05")
 
-        assertEquals("Verified 14:05 · may have changed since · price 2 h old · testnet prices", content.note)
+        assertEquals(
+            "Sepolia · Verified 14:05 · may have changed since · price 2 h old · testnet prices",
+            content.note,
+        )
     }
 
     @Test
     fun noRateKeptYetSaysSo() {
         assertEquals(
-            RateWidgetContent("ETH", "—", null, Trend.UNKNOWN, "No verified rate yet"),
+            RateWidgetContent("ETH", "—", null, Trend.UNKNOWN, "Sepolia · No verified rate yet"),
             rateWidgetContent(null, Network.SEPOLIA, ""),
         )
+    }
+
+    @Test
+    fun aWidgetOfANetworkThatIsOffKeepsItsLastRateAndSaysSo() {
+        assertEquals(
+            "Ethereum · Verified 14:05 · Ethereum is off",
+            rateWidgetContent(snapshot, Network.ETHEREUM, "14:05", on = false).note,
+        )
+        assertEquals("€2,046.20", rateWidgetContent(snapshot, Network.ETHEREUM, "14:05", on = false).rate)
+        assertEquals("Ethereum · Ethereum is off", rateWidgetContent(null, Network.ETHEREUM, "", on = false).note)
     }
 }

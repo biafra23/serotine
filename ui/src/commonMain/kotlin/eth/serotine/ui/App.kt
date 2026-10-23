@@ -39,10 +39,13 @@ import androidx.navigation.compose.dialog
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
+import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
 import eth.serotine.ui.accounts.AccountsRoute
@@ -257,22 +260,24 @@ private fun Destinations(
                     onAdded = { navController.leave(Destination.WATCH) },
                 )
             }
-            withAddress(Destination.ACCOUNT, navController) { address ->
+            withAccount(Destination.ACCOUNT, navController) { account ->
+                val chainId = account.network.chainId
                 AccountDetailRoute(
-                    viewModel = viewModel { graph.accountDetailViewModel(address) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.accountDetailViewModel(account) },
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.leave(Destination.ACCOUNT) },
                     onGone = { navController.leave(Destination.ACCOUNT) },
-                    onSend = { contract -> navController.send(address.hex, contract) },
-                    onPropose = { contract -> navController.propose(address.hex, contract) },
-                    onSwap = { contract -> navController.swap(address.hex, contract) },
-                    onSafeSwap = { contract -> navController.safeSwap(address, contract) },
-                    onReceive = { navController.open(AccountAction.Receive(address.hex)) },
-                    onRename = { navController.open(AccountAction.Rename(address.hex)) },
-                    onRemove = { navController.open(AccountAction.Remove(address.hex)) },
-                    onOpenSafeTx = { hash -> navController.openSafeTx(address, hash) },
-                    onImportRequest = { navController.importRequest(address) },
-                    onOpenActivity = { key -> navController.openActivityDetail(address, key) },
+                    onSend = { contract -> navController.send(account, contract) },
+                    onPropose = { contract -> navController.propose(account, contract) },
+                    onSwap = { contract -> navController.swap(account, contract) },
+                    onSafeSwap = { contract -> navController.safeSwap(account, contract) },
+                    onReceive = { navController.open(AccountAction.Receive(chainId, account.address.hex)) },
+                    onRename = { navController.open(AccountAction.Rename(chainId, account.address.hex)) },
+                    onRemove = { navController.open(AccountAction.Remove(chainId, account.address.hex)) },
+                    onAddOnNetwork = { navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex)) },
+                    onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
+                    onImportRequest = { navController.importRequest(account) },
+                    onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                 )
             }
             composable(
@@ -285,51 +290,58 @@ private fun Destinations(
                     },
                 ),
             ) { entry ->
-                val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+                val account = entry.account()
                 val hash = entry.savedStateHandle.get<String>(HASH)?.lowercase()?.takeIf(TRANSACTION_HASH::matches)
                 val log = entry.savedStateHandle.get<String>(LOG)
                 val logIndex = log?.toIntOrNull()?.takeIf { it >= 0 }
-                if (address != null && hash != null && (log == null || logIndex != null)) {
+                if (account != null && hash != null && (log == null || logIndex != null)) {
                     ActivityDetailRoute(
-                        viewModel = viewModel { graph.activityDetailViewModel(address, ActivityKey(hash, logIndex)) },
-                        lightClient = lightClient,
+                        viewModel = viewModel { graph.activityDetailViewModel(account, ActivityKey(hash, logIndex)) },
+                        lightClient = lightClient.item(account.network),
                         onBack = { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) },
-                        onStatus = { sent -> navController.openTransfer(sent) },
-                        onAddToken = { contract -> navController.addToken(contract) },
+                        onStatus = { sent -> navController.openTransfer(account.network, sent) },
+                        onAddToken = { contract -> navController.addToken(account.network, contract) },
                     )
                 } else {
                     LaunchedEffect(Unit) { navController.popBackStack(ACTIVITY_DETAIL_ROUTE, inclusive = true) }
                 }
             }
-            // Add token from an Activity detail: in this tab, its field filled in with the contract. A
-            // name of its own, so that leaving Settings' Add token never finds this one (leave() tries
-            // the /{address} form of a pattern first).
-            withAddress(Destination.ACTIVITY_ADD_TOKEN, navController) { contract ->
+            // Add token from an Activity detail: in this tab, its field filled in with the contract, on the
+            // Activity's account's network, which the route carries as an account's does. A name of its
+            // own, so that leaving Settings' Add token never finds this one (leave() tries the
+            // /{chain}/{address} form of a pattern first).
+            withAccount(Destination.ACTIVITY_ADD_TOKEN, navController) { contract ->
                 AddTokenRoute(
-                    viewModel { graph.addTokenViewModel(Eip55.format(contract)) },
+                    viewModel { graph.addTokenViewModel(Eip55.format(contract.address), contract.network) },
                     lightClient,
                     onBack = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
                     onAdded = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
                 )
             }
-            withAddress(Destination.RECEIVE, navController) { address ->
+            withAccount(Destination.RECEIVE, navController) { account ->
                 ReceiveRoute(
-                    viewModel = viewModel { graph.receiveViewModel(address) },
+                    viewModel = viewModel { graph.receiveViewModel(account) },
                     onBack = { navController.leave(Destination.RECEIVE) },
                     onGone = { navController.leave(Destination.RECEIVE) },
                 )
             }
             // In the Accounts graph, so the bar stays while they are open over its screens.
-            dialogWithAddress(Destination.RENAME, navController) { address ->
+            dialogWithAccount(Destination.RENAME, navController) { account ->
                 RenameAccountRoute(
-                    viewModel = viewModel { graph.renameAccountViewModel(address) },
+                    viewModel = viewModel { graph.renameAccountViewModel(account) },
                     onClose = { navController.leave(Destination.RENAME) },
                 )
             }
-            dialogWithAddress(Destination.REMOVE, navController) { address ->
+            dialogWithAccount(Destination.REMOVE, navController) { account ->
                 RemoveAccountRoute(
-                    viewModel = viewModel { graph.removeAccountViewModel(address) },
+                    viewModel = viewModel { graph.removeAccountViewModel(account) },
                     onClose = { navController.leave(Destination.REMOVE) },
+                )
+            }
+            dialogWithAccount(Destination.ADD_ON_NETWORK, navController) { account ->
+                AddOnNetworksRoute(
+                    viewModel = viewModel { graph.addOnNetworksViewModel(account) },
+                    onClose = { navController.leave(Destination.ADD_ON_NETWORK) },
                 )
             }
         }
@@ -358,7 +370,6 @@ private fun Destinations(
             composable(Destination.TOKENS) {
                 TokensRoute(
                     viewModel { graph.tokensViewModel() },
-                    lightClient,
                     onBack = { navController.leave(Destination.TOKENS) },
                     onAddToken = { navController.navigate(Destination.ADD_TOKEN) { launchSingleTop = true } },
                 )
@@ -391,8 +402,8 @@ private fun Destinations(
                 viewModel = viewModel { graph.createSafeViewModel() },
                 lightClient = lightClient,
                 onBack = { navController.leave(Destination.CREATE_SAFE) },
-                onSent = { hash ->
-                    navController.navigate("${Destination.TRANSFER}/$hash") {
+                onSent = { network, hash ->
+                    navController.navigate(transferRoute(network, hash)) {
                         popUpTo(Destination.CREATE_SAFE) { inclusive = true }
                     }
                 },
@@ -416,23 +427,23 @@ private fun Destinations(
                 },
             ),
         ) { entry ->
-            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val account = entry.account()
             val asked = entry.savedStateHandle.get<String>(ASSET)
             val asset = asked?.let(Address::parse)
-            if (address != null && (asked == null || asset != null)) {
+            if (account != null && (asked == null || asset != null)) {
                 SendRoute(
-                    viewModel = viewModel { graph.sendViewModel(address, asset) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.sendViewModel(account, asset) },
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SEND_ROUTE, inclusive = true) },
                     // Back from the status goes where Send was opened from, not to a signed review.
                     onSent = { hash ->
-                        navController.navigate("${Destination.TRANSFER}/$hash") {
+                        navController.navigate(transferRoute(account.network, hash)) {
                             popUpTo(SEND_ROUTE) { inclusive = true }
                         }
                     },
                     // An earlier transaction that may still be on its way: its status, over Send.
                     onOpenTransfer = { hash ->
-                        navController.navigate("${Destination.TRANSFER}/$hash") { launchSingleTop = true }
+                        navController.navigate(transferRoute(account.network, hash)) { launchSingleTop = true }
                     },
                 )
             } else {
@@ -450,7 +461,7 @@ private fun Destinations(
                 }
             },
         ) { entry ->
-            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val account = entry.account()
             val asked = entry.savedStateHandle.get<String>(ASSET)
             val asset = asked?.let(Address::parse)
             val fill = swapFillOf(
@@ -458,23 +469,23 @@ private fun Destinations(
                 entry.savedStateHandle.get<String>(AMOUNT),
                 entry.savedStateHandle.get<String>(VENUE),
             )
-            if (address != null && (asked == null || asset != null)) {
+            if (account != null && (asked == null || asset != null)) {
                 SwapRoute(
-                    viewModel = viewModel { graph.swapViewModel(address, asset, fill) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.swapViewModel(account, asset, fill) },
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SWAP_ROUTE, inclusive = true) },
                     // Back from the status goes where Swap was opened from, not to a signed review.
                     onSent = { hash ->
-                        navController.navigate("${Destination.TRANSFER}/$hash") {
+                        navController.navigate(transferRoute(account.network, hash)) {
                             popUpTo(SWAP_ROUTE) { inclusive = true }
                         }
                     },
                     // The approval, an earlier swap, or one that may still be on its way: its status, over Swap.
                     onOpenTransfer = { hash ->
-                        navController.navigate("${Destination.TRANSFER}/$hash") { launchSingleTop = true }
+                        navController.navigate(transferRoute(account.network, hash)) { launchSingleTop = true }
                     },
                     // A CoW order's status, the one placed or an earlier one, over Swap.
-                    onOpenOrder = { uid -> navController.openCowOrder(uid) },
+                    onOpenOrder = { uid -> navController.openCowOrder(account.network, uid) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SWAP_ROUTE, inclusive = true) }
@@ -482,22 +493,23 @@ private fun Destinations(
         }
         // A CoW order signed here: where it stands, its cancellation on chain, the same swap again.
         composable(COW_ORDER_ROUTE) { entry ->
+            val network = entry.network()
             val uid = entry.savedStateHandle.get<String>(UID)?.lowercase()?.takeIf(ORDER_UID::matches)
             val parsed = uid?.let(CowOrderUid::parse)
-            if (parsed != null) {
+            if (network != null && parsed != null) {
                 CowOrderRoute(
-                    viewModel = viewModel { graph.cowOrderViewModel(parsed) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.cowOrderViewModel(network, parsed) },
+                    lightClient = lightClient.item(network),
                     onBack = { navController.popBackStack(COW_ORDER_ROUTE, inclusive = true) },
                     // Back from the cancellation's status goes where the order was opened from.
                     onCancelSent = { hash ->
-                        navController.navigate("${Destination.TRANSFER}/$hash") {
+                        navController.navigate(transferRoute(network, hash)) {
                             popUpTo(COW_ORDER_ROUTE) { inclusive = true }
                         }
                     },
-                    onOpenTransfer = { hash -> navController.openTransfer(hash) },
+                    onOpenTransfer = { hash -> navController.openTransfer(network, hash) },
                     // The same swap on Uniswap, in the order's place.
-                    onSwapAgain = { again -> navController.swapAgain(again) },
+                    onSwapAgain = { again -> navController.swapAgain(network, again) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(COW_ORDER_ROUTE, inclusive = true) }
@@ -515,16 +527,16 @@ private fun Destinations(
                 },
             ),
         ) { entry ->
-            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val account = entry.account()
             val asked = entry.savedStateHandle.get<String>(ASSET)
             val asset = asked?.let(Address::parse)
-            if (address != null && (asked == null || asset != null)) {
+            if (account != null && (asked == null || asset != null)) {
                 SafeProposeRoute(
-                    viewModel = viewModel { graph.safeProposeViewModel(address, asset) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.safeProposeViewModel(account, asset) },
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_PROPOSE_ROUTE, inclusive = true) },
                     // Signed and queued: the transaction's screen, and back from it to where Send was opened.
-                    onProposed = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_PROPOSE_ROUTE) },
+                    onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_PROPOSE_ROUTE) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_PROPOSE_ROUTE, inclusive = true) }
@@ -545,33 +557,33 @@ private fun Destinations(
                 },
             ),
         ) { entry ->
-            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val account = entry.account()
             val asked = entry.savedStateHandle.get<String>(ASSET)
             val asset = asked?.let(Address::parse)
             val replaced = entry.savedStateHandle.get<String>(REPLACING)
             val replacing = replaced?.lowercase()?.takeIf(TRANSACTION_HASH::matches)?.let(Digest::parse)
-            if (address != null && (asked == null || asset != null) && (replaced == null || replacing != null)) {
+            if (account != null && (asked == null || asset != null) && (replaced == null || replacing != null)) {
                 SafeSwapRoute(
-                    viewModel = viewModel { graph.safeSwapViewModel(address, asset, replacing) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.safeSwapViewModel(account, asset, replacing) },
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) },
                     // Signed and queued: the swap's screen, and back from it to where Swap was opened.
-                    onProposed = { hash -> navController.openSafeTx(address, hash, replacing = SAFE_SWAP_ROUTE) },
+                    onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_SWAP_ROUTE) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) }
             }
         }
         composable(SAFE_IMPORT_ROUTE) { entry ->
-            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
-            if (address != null) {
+            val account = entry.account()
+            if (account != null) {
                 SafeImportRoute(
-                    viewModel = viewModel { graph.safeImportViewModel(address) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.safeImportViewModel(account) },
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_IMPORT_ROUTE, inclusive = true) },
                     // Checked and queued: the transaction's screen, which says where it went.
                     onImported = { hash ->
-                        navController.openSafeTx(address, hash, replacing = SAFE_IMPORT_ROUTE, imported = true)
+                        navController.openSafeTx(account, hash, replacing = SAFE_IMPORT_ROUTE, imported = true)
                     },
                 )
             } else {
@@ -579,37 +591,38 @@ private fun Destinations(
             }
         }
         composable(SAFE_TX_ROUTE) { entry ->
-            val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
+            val account = entry.account()
             val hash = entry.savedStateHandle.get<String>(HASH)?.lowercase()?.takeIf(TRANSACTION_HASH::matches)
                 ?.let(Digest::parse)
-            if (address != null && hash != null) {
+            if (account != null && hash != null) {
                 SafeTxRoute(
                     // Said once, by the ViewModel this entry makes first: not again after a restore.
                     viewModel = viewModel {
                         val imported = entry.savedStateHandle.remove<Boolean>(IMPORTED) == true
-                        graph.safeTxViewModel(address, hash, imported)
+                        graph.safeTxViewModel(account, hash, imported)
                     },
-                    lightClient = lightClient,
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) },
                     // Back from the status goes where the transaction was opened from, not to a signed review.
                     onSent = { sent ->
-                        navController.navigate("${Destination.TRANSFER}/$sent") {
+                        navController.navigate(transferRoute(account.network, sent)) {
                             popUpTo(SAFE_TX_ROUTE) { inclusive = true }
                         }
                     },
                     // Over this one: once the new swap is signed, its own screen takes Swap's place.
-                    onProposeAgain = { navController.safeSwap(address, asset = null, replacing = hash) },
+                    onProposeAgain = { navController.safeSwap(account, asset = null, replacing = hash) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_TX_ROUTE, inclusive = true) }
             }
         }
         composable(TRANSFER_ROUTE) { entry ->
+            val network = entry.network()
             val hash = entry.savedStateHandle.get<String>(HASH)?.lowercase()?.takeIf(TRANSACTION_HASH::matches)
-            if (hash != null) {
+            if (network != null && hash != null) {
                 TransferStatusRoute(
-                    viewModel = viewModel { graph.transferStatusViewModel(hash) },
-                    lightClient = lightClient,
+                    viewModel = viewModel { graph.transferStatusViewModel(network, hash) },
+                    lightClient = lightClient.item(network),
                     onDone = { navController.popBackStack(TRANSFER_ROUTE, inclusive = true) },
                 )
             } else {
@@ -625,114 +638,121 @@ private fun Destinations(
 
 /** Opens what [action] asks for; Copy is the screen's own, done on the clipboard. */
 private fun NavController.open(action: AccountAction) {
+    val network = Network.ofChainId(action.chainId) ?: return
+    // The route carries the address in lower case: an identifier, never display text.
+    val account = AccountId(network, Address.parse(action.address) ?: return)
     val route = when (action) {
-        is AccountAction.Send -> return send(action.address, asset = null)
-        is AccountAction.Propose -> return propose(action.address, asset = null)
+        is AccountAction.Send -> return send(account, asset = null)
+        is AccountAction.Propose -> return propose(account, asset = null)
         is AccountAction.Open -> Destination.ACCOUNT
         is AccountAction.Receive -> Destination.RECEIVE
         is AccountAction.Rename -> Destination.RENAME
         is AccountAction.Remove -> Destination.REMOVE
+        is AccountAction.AddOnNetwork -> Destination.ADD_ON_NETWORK
         is AccountAction.Copy -> return
     }
     // A second tap while the first one's screen is opening: one screen, the first one asked
-    // for. (Not launchSingleTop: that would reuse the entry, and its address, for another one.)
-    if (currentDestination?.route == "$route/{$ADDRESS}") return
-    // The route carries the address in lower case: an identifier, never display text.
-    val address = Address.parse(action.address) ?: return
-    navigate("$route/${address.hex}")
+    // for. (Not launchSingleTop: that would reuse the entry, and its account, for another one.)
+    if (currentDestination?.route == "$route/{$CHAIN}/{$ADDRESS}") return
+    navigate("$route/${account.route}")
 }
 
 /**
- * Opens Send from the account at [address], with the token at [asset] chosen (null: the
- * network's currency). The route carries both in lower case: identifiers, never display text.
+ * Opens Send from the [account], with the token at [asset] chosen (null: the network's currency).
+ * The route carries both in lower case: identifiers, never display text.
  */
-private fun NavController.send(address: String, asset: String?) {
+private fun NavController.send(account: AccountId, asset: String?) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     if (currentDestination?.route == SEND_ROUTE) return
-    val from = Address.parse(address) ?: return
     val token = asset?.let { Address.parse(it) ?: return }
-    navigate("${Destination.SEND}/${from.hex}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
+    navigate("${Destination.SEND}/${account.route}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
 }
 
 /**
- * Opens Swap from the account at [address], selling the token at [asset] (null: the network's
- * currency); both in lower case, as identifiers.
+ * Opens Swap from the [account], selling the token at [asset] (null: the network's currency); both
+ * in lower case, as identifiers.
  */
-private fun NavController.swap(address: String, asset: String?) {
+private fun NavController.swap(account: AccountId, asset: String?) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     if (currentDestination?.route == SWAP_ROUTE) return
-    val from = Address.parse(address) ?: return
     val token = asset?.let { Address.parse(it) ?: return }
-    navigate("${Destination.SWAP}/${from.hex}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
+    navigate("${Destination.SWAP}/${account.route}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
 }
 
 /**
- * Opens Send from the Safe at [address] — the proposal of a Safe transaction — with the token at
- * [asset] chosen (null: the network's currency); both in lower case, as identifiers.
+ * Opens Send from the Safe [safe] — the proposal of a Safe transaction — with the token at [asset]
+ * chosen (null: the network's currency); both in lower case, as identifiers.
  */
-private fun NavController.propose(address: String, asset: String?) {
+private fun NavController.propose(safe: AccountId, asset: String?) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     if (currentDestination?.route == SAFE_PROPOSE_ROUTE) return
-    val safe = Address.parse(address) ?: return
     val token = asset?.let { Address.parse(it) ?: return }
-    navigate("${Destination.SAFE}/${safe.hex}/${Destination.PROPOSE}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.PROPOSE}" + (token?.let { "?$ASSET=${it.hex}" } ?: ""))
 }
 
 /**
- * Opens Swap from the Safe at [safe] — the proposal of its Safe transactions — selling the token at
+ * Opens Swap from the Safe [safe] — the proposal of its Safe transactions — selling the token at
  * [asset] (null: the network's currency; one that is no address opens nothing); or, with
  * [replacing], the swap queued under that hash proposed again in its place.
  */
-private fun NavController.safeSwap(safe: Address, asset: String?, replacing: Digest? = null) {
+private fun NavController.safeSwap(safe: AccountId, asset: String?, replacing: Digest? = null) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     if (currentDestination?.route == SAFE_SWAP_ROUTE) return
     val token = asset?.let { Address.parse(it) ?: return }
     val query = listOfNotNull(token?.let { "$ASSET=${it.hex}" }, replacing?.let { "$REPLACING=0x${it.hex}" })
         .joinToString("&")
-    navigate("${Destination.SAFE}/${safe.hex}/${Destination.SWAP}" + if (query.isEmpty()) "" else "?$query")
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.SWAP}" + if (query.isEmpty()) "" else "?$query")
 }
 
-/** Opens the detail of the row [key] of the Activity of the account at [address]; for a CoW order, its status. */
-private fun NavController.openActivityDetail(address: Address, key: ActivityKey) {
-    if (key.cowOrder) return openCowOrder(key.hash)
+/** Opens the detail of the row [key] of the Activity of the [account]; for a CoW order, its status. */
+private fun NavController.openActivityDetail(account: AccountId, key: ActivityKey) {
+    if (key.cowOrder) return openCowOrder(account.network, key.hash)
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     // (Not launchSingleTop: that would reuse the entry, and its key, for another one.)
     if (currentDestination?.route == ACTIVITY_DETAIL_ROUTE) return
     val hash = key.hash.lowercase().takeIf(TRANSACTION_HASH::matches) ?: return
     navigate(
-        "${Destination.ACTIVITY}/${address.hex}/${Destination.ACTIVITY_DETAIL}/$hash" +
+        "${Destination.ACTIVITY}/${account.route}/${Destination.ACTIVITY_DETAIL}/$hash" +
             (key.logIndex?.let { "?$LOG=$it" } ?: ""),
     )
 }
 
 /** Opens Add token by address over the Accounts tab, with the [contract] (an address) filled in. */
-private fun NavController.addToken(contract: String) {
-    if (currentDestination?.route == "${Destination.ACTIVITY_ADD_TOKEN}/{$ADDRESS}") return
+private fun NavController.addToken(network: Network, contract: String) {
+    if (currentDestination?.route == "${Destination.ACTIVITY_ADD_TOKEN}/{$CHAIN}/{$ADDRESS}") return
     val address = Address.parse(contract) ?: return
-    navigate("${Destination.ACTIVITY_ADD_TOKEN}/${address.hex}")
+    navigate("${Destination.ACTIVITY_ADD_TOKEN}/${network.chainId}/${address.hex}")
 }
 
-/** Opens the status of the CoW order [uid] (`0x` and 112 hex digits), as a route carries it: in lower case. */
-private fun NavController.openCowOrder(uid: String) {
+/** The status of the transaction [hash] on [network], as a route carries it: the hash in lower case. */
+private fun transferRoute(network: Network, hash: String): String =
+    "${Destination.TRANSFER}/${network.chainId}/${hash.lowercase()}"
+
+/**
+ * Opens the status of the CoW order [uid] (`0x` and 112 hex digits) signed on [network], as a route
+ * carries it: in lower case.
+ */
+private fun NavController.openCowOrder(network: Network, uid: String) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     if (currentDestination?.route == COW_ORDER_ROUTE) return
     val route = uid.lowercase().takeIf(ORDER_UID::matches) ?: return
-    navigate("${Destination.COW_ORDER}/$route")
+    navigate("${Destination.COW_ORDER}/${network.chainId}/$route")
 }
 
 /**
- * Opens Swap with [again] filled in, on Uniswap, in place of the order's status, and of the Swap it
- * was opened from if it was (whose order this was): back from it goes where that was opened from.
+ * Opens Swap with [again] filled in, on Uniswap, on [network], in place of the order's status, and of
+ * the Swap it was opened from if it was (whose order this was): back from it goes where that was
+ * opened from.
  */
-private fun NavController.swapAgain(again: SwapAgain) {
+private fun NavController.swapAgain(network: Network, again: SwapAgain) {
     if (currentDestination?.route == SWAP_ROUTE) return
-    val from = Address.parse(again.from) ?: return
+    val from = AccountId(network, Address.parse(again.from) ?: return)
     val sell = Address.parse(again.sell) ?: return
     val buy = again.buy?.let { Address.parse(it)?.hex ?: return } ?: NATIVE_PICK
     val amount = again.amount.takeIf(AMOUNT_TEXT::matches) ?: return
     popBackStack(COW_ORDER_ROUTE, inclusive = true)
     if (currentDestination?.route == SWAP_ROUTE) popBackStack()
-    navigate("${Destination.SWAP}/${from.hex}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE")
+    navigate("${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE")
 }
 
 /**
@@ -750,35 +770,35 @@ private fun swapFillOf(buy: String?, amount: String?, venue: String?): SwapFill?
     return SwapFill(token, amount.takeIf(AMOUNT_TEXT::matches) ?: return null, chosen)
 }
 
-/** Opens the status of the transaction [hash] (`0x` and 64 hex digits), as a route carries it: in lower case. */
-private fun NavController.openTransfer(hash: String) {
+/** Opens the status of the transaction [hash] (`0x` and 64 hex digits) on [network]. */
+private fun NavController.openTransfer(network: Network, hash: String) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     // (Not launchSingleTop: that would reuse the entry, and its hash, for another one.)
     if (currentDestination?.route == TRANSFER_ROUTE) return
-    val route = hash.lowercase().takeIf(TRANSACTION_HASH::matches) ?: return
-    navigate("${Destination.TRANSFER}/$route")
+    val checked = hash.lowercase().takeIf(TRANSACTION_HASH::matches) ?: return
+    navigate(transferRoute(network, checked))
 }
 
-/** Opens Import a request for the Safe at [safe]. */
-private fun NavController.importRequest(safe: Address) {
+/** Opens Import a request for the Safe [safe]. */
+private fun NavController.importRequest(safe: AccountId) {
     if (currentDestination?.route == SAFE_IMPORT_ROUTE) return
-    navigate("${Destination.SAFE}/${safe.hex}/${Destination.IMPORT}")
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.IMPORT}")
 }
 
 /**
- * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe at [safe]; in place of the
+ * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe [safe]; in place of the
  * destination [replacing] when set (the proposal or import that led to it), so back from it returns
  * to where that was opened from. [imported] when an import has just queued it: the screen says so.
  */
 private fun NavController.openSafeTx(
-    safe: Address,
+    safe: AccountId,
     hash: String,
     replacing: String? = null,
     imported: Boolean = false,
 ) {
     if (replacing == null && currentDestination?.route == SAFE_TX_ROUTE) return
     val digest = Digest.parse(hash) ?: return
-    navigate("${Destination.SAFE}/${safe.hex}/${Destination.SAFE_TX}/0x${digest.hex}") {
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.SAFE_TX}/0x${digest.hex}") {
         if (replacing != null) popUpTo(replacing) { inclusive = true }
     }
     // The entry just opened, before it is first drawn: its ViewModel takes the flag when it is made.
@@ -791,37 +811,53 @@ private fun NavController.openSafeTx(
  * what is still there.
  */
 private fun NavController.leave(pattern: String) {
+    if (popBackStack("$pattern/{$CHAIN}/{$ADDRESS}", inclusive = true)) return
     if (!popBackStack("$pattern/{$ADDRESS}", inclusive = true)) popBackStack(pattern, inclusive = true)
 }
 
-/** A screen of one account, at `pattern/{address}`; a route without a valid address leaves at once. */
-private fun NavGraphBuilder.withAddress(
-    pattern: String,
-    navController: NavController,
-    content: @Composable (Address) -> Unit,
-) {
-    composable("$pattern/{$ADDRESS}") { entry -> WithAddress(entry, pattern, navController, content) }
+/** An account as a route carries it, `chainId/address`: identifiers, the address in lower case. */
+private val AccountId.route: String
+    get() = "${network.chainId}/${address.hex}"
+
+/** The network this entry's route names by its chain id, or null when it names none Serotine knows. */
+private fun NavBackStackEntry.network(): Network? =
+    savedStateHandle.get<String>(CHAIN)?.toLongOrNull()?.let(Network::ofChainId)
+
+/** The account this entry's route names (`{chain}/{address}`), or null when it names none. */
+private fun NavBackStackEntry.account(): AccountId? {
+    val network = network() ?: return null
+    val address = savedStateHandle.get<String>(ADDRESS)?.let(Address::parse) ?: return null
+    return AccountId(network, address)
 }
 
-/** As [withAddress], for a dialog over the screen below it. */
-private fun NavGraphBuilder.dialogWithAddress(
+/** A screen of one account, at `pattern/{chain}/{address}`; a route without a valid account leaves at once. */
+private fun NavGraphBuilder.withAccount(
     pattern: String,
     navController: NavController,
-    content: @Composable (Address) -> Unit,
+    content: @Composable (AccountId) -> Unit,
 ) {
-    dialog("$pattern/{$ADDRESS}") { entry -> WithAddress(entry, pattern, navController, content) }
+    composable("$pattern/{$CHAIN}/{$ADDRESS}") { entry -> WithAccount(entry, pattern, navController, content) }
+}
+
+/** As [withAccount], for a dialog over the screen below it. */
+private fun NavGraphBuilder.dialogWithAccount(
+    pattern: String,
+    navController: NavController,
+    content: @Composable (AccountId) -> Unit,
+) {
+    dialog("$pattern/{$CHAIN}/{$ADDRESS}") { entry -> WithAccount(entry, pattern, navController, content) }
 }
 
 @Composable
-private fun WithAddress(
+private fun WithAccount(
     entry: NavBackStackEntry,
     pattern: String,
     navController: NavController,
-    content: @Composable (Address) -> Unit,
+    content: @Composable (AccountId) -> Unit,
 ) {
-    val address = entry.savedStateHandle.get<String>(ADDRESS)?.let(Address::parse)
-    if (address != null) {
-        content(address)
+    val account = entry.account()
+    if (account != null) {
+        content(account)
     } else {
         LaunchedEffect(Unit) { navController.leave(pattern) }
     }
@@ -836,6 +872,7 @@ private object Destination {
     const val WATCH = "watch"
     const val RENAME = "rename"
     const val REMOVE = "remove"
+    const val ADD_ON_NETWORK = "add-on-network"
     const val SETTINGS = "settings"
     const val DEBUG = "debug"
     const val CURRENCY = "currency"
@@ -857,8 +894,11 @@ private object Destination {
     const val COW_ORDER = "cow-order"
 }
 
-/** The route argument every account destination carries. */
+/** The route argument every account destination carries beside [CHAIN], and Add token's contract. */
 private const val ADDRESS = "address"
+
+/** The route argument naming an account's network, or a transfer's, by its chain id. */
+private const val CHAIN = "chain"
 
 /** Send's and Swap's optional route argument: the contract of the token chosen (sold, for a swap). */
 private const val ASSET = "asset"
@@ -876,7 +916,7 @@ private const val REPLACING = "replacing"
 private const val IMPORTED = "imported"
 
 /** Send from an account, with a token chosen or not. */
-private const val SEND_ROUTE = "${Destination.SEND}/{$ADDRESS}?$ASSET={$ASSET}"
+private const val SEND_ROUTE = "${Destination.SEND}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}"
 
 /** Swap's optional route arguments, all three or none: what it buys, the amount as text, the venue. */
 private const val BUY = "buy"
@@ -893,36 +933,37 @@ private val AMOUNT_TEXT = Regex("^[0-9]+(\\.[0-9]+)?$")
 
 /** Swap from an account, selling a token or the network's currency, filled in or not. */
 private const val SWAP_ROUTE =
-    "${Destination.SWAP}/{$ADDRESS}?$ASSET={$ASSET}&$BUY={$BUY}&$AMOUNT={$AMOUNT}&$VENUE={$VENUE}"
+    "${Destination.SWAP}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}&$BUY={$BUY}&$AMOUNT={$AMOUNT}&$VENUE={$VENUE}"
 
 /** A CoW order's route argument: its UID. */
 private const val UID = "uid"
 
-/** Where a CoW order signed here stands, by its UID. */
-private const val COW_ORDER_ROUTE = "${Destination.COW_ORDER}/{$UID}"
+/** Where a CoW order signed here stands, by its network and its UID. */
+private const val COW_ORDER_ROUTE = "${Destination.COW_ORDER}/{$CHAIN}/{$UID}"
 
 /** A CoW order's UID as a route carries it: `0x` and 112 lower-case hex digits. */
 private val ORDER_UID = Regex("^0x[0-9a-f]{112}$")
 
 /** The detail of a row of an account's Activity: a transaction by its hash, an event by its log too. */
 private const val ACTIVITY_DETAIL_ROUTE =
-    "${Destination.ACTIVITY}/{$ADDRESS}/${Destination.ACTIVITY_DETAIL}/{$HASH}?$LOG={$LOG}"
+    "${Destination.ACTIVITY}/{$CHAIN}/{$ADDRESS}/${Destination.ACTIVITY_DETAIL}/{$HASH}?$LOG={$LOG}"
 
-/** Where a transfer stands, by its hash. */
-private const val TRANSFER_ROUTE = "${Destination.TRANSFER}/{$HASH}"
+/** Where a transfer stands, by its network and its hash. */
+private const val TRANSFER_ROUTE = "${Destination.TRANSFER}/{$CHAIN}/{$HASH}"
 
 /** A Safe's transaction, by the Safe and the transaction's hash. */
-private const val SAFE_TX_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.SAFE_TX}/{$HASH}"
+private const val SAFE_TX_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SAFE_TX}/{$HASH}"
 
 /** Send from a Safe: a Safe transaction proposed, with a token chosen or not. */
-private const val SAFE_PROPOSE_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.PROPOSE}?$ASSET={$ASSET}"
+private const val SAFE_PROPOSE_ROUTE =
+    "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.PROPOSE}?$ASSET={$ASSET}"
 
 /** Swap from a Safe: its Safe transactions proposed, selling a token or not, or a queued swap again. */
 private const val SAFE_SWAP_ROUTE =
-    "${Destination.SAFE}/{$ADDRESS}/${Destination.SWAP}?$ASSET={$ASSET}&$REPLACING={$REPLACING}"
+    "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SWAP}?$ASSET={$ASSET}&$REPLACING={$REPLACING}"
 
 /** Import a signing request for a Safe. */
-private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$ADDRESS}/${Destination.IMPORT}"
+private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.IMPORT}"
 
 /** A transaction hash (a Safe transaction's too) as a route carries it: `0x` and 64 lower-case hex digits. */
 private val TRANSACTION_HASH = Regex("^0x[0-9a-f]{64}$")

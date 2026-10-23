@@ -3,6 +3,7 @@ package eth.serotine.ui.safeswap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
@@ -77,6 +78,8 @@ import eth.serotine.ui.components.toleranceError
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -93,17 +96,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
 /**
  * The ViewModel of Swap for a Safe (docs/swaps.md, *A Safe's swap*): a Uniswap swap from the Safe
  * at [safe] on [network], composed in Swap's form — the asset sold ([asset], the token asked for,
  * null for the network's currency), the asset bought, the amount in the sold asset's units and the
  * tolerance; no fee, which whoever executes it pays — then proposed from verified state
- * ([ProposeSafeSwap]: the router's approval, when it needs one, and the swap, at consecutive
- * nonces, with the minimum and a 24-hour deadline fixed) for review, and signed, every one of its
- * Safe transactions, by an owner held here ([SignSafeTx]), which queues them.
+ * ([ProposeSafeSwap]: the router's approval, when it needs one, after the allowance set to zero
+ * for a token that refuses one allowance for another, and the swap, at consecutive nonces,
+ * with the minimum and a 24-hour deadline fixed) for review, and signed, every one of its Safe
+ * transactions, by an owner held here ([SignSafeTx]), which queues them.
  *
  * With [replacing], the hash of a swap queued for the Safe, it proposes that swap again in its
  * place (Execute's offer for a minimum fallen behind the market, or a deadline passed): the pair
@@ -112,8 +114,9 @@ import kotlin.time.TimeSource
  * What is signed is the proposal under review, and a proposal is never signed stale: it is made
  * when the review is entered, again on Refresh, when the screen is shown again after it was not,
  * and when it is older than [QUOTE_MAX_AGE] at the tap that would sign it ([timeSource] tells).
- * Nothing is queued until it is signed, so a proposal given up takes no nonce. One whose approval
- * was signed and its swap not keeps the approval queued: proposed again, the swap goes after it.
+ * Nothing is queued until it is signed, so a proposal given up takes no nonce. One signed in part
+ * keeps what was signed queued (the approval, or the reset to zero, or both): proposed again, the
+ * rest goes after it.
  * A price never reaches it.
  *
  * One of the ViewModels the [WalletPassword] passes through (CLAUDE.md, *Trust*): it holds it in the
@@ -123,7 +126,7 @@ import kotlin.time.TimeSource
  * time zone.
  */
 class SafeSwapViewModel(
-    private val safe: Address,
+    private val account: AccountId,
     asset: Address?,
     private val replacing: Digest?,
     observeAccounts: ObserveAccounts,
@@ -133,10 +136,15 @@ class SafeSwapViewModel(
     private val describeKeyStore: DescribeKeyStore,
     private val proposeSafeSwap: ProposeSafeSwap,
     private val signSafeTx: SignSafeTx,
-    private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val safe: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
 
     /**
      * What the form has: the asset sold, the asset bought (null until chosen), the amount and the
@@ -256,8 +264,8 @@ class SafeSwapViewModel(
 
     private val model: StateFlow<Model?> = combine(
         observeAccounts(),
-        observeSafe(safe),
-        observeAccountValue(safe),
+        observeSafe(account),
+        observeAccountValue(account),
         inputs,
         replaced,
     ) { list, reading, value, inputs, replaced ->
@@ -326,8 +334,10 @@ class SafeSwapViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (current.signing && !current.checking) return
         job?.cancel()
-        // Stopped after the approval was queued: the form says so, as the review would have.
-        step.value = Step.Composing(error = APPROVAL_QUEUED_LEFT.takeIf { current.signing && current.signed > 0 })
+        // Stopped after the approval (or the reset, or both) was queued: the form says so, as the review would have.
+        step.value = Step.Composing(
+            error = queuedLeft(current.proposal, current.signed).takeIf { current.signing && current.signed > 0 },
+        )
     }
 
     /** Signs as the owner at [address] (EIP-55) instead. */
@@ -487,7 +497,7 @@ class SafeSwapViewModel(
                 val left = (step.value as? Step.Reviewing)?.hidden == true
                 if (index > 0 && left) {
                     step.update { if (it is Step.Reviewing) it.copy(signing = false, checking = false) else it }
-                    stopAt(index, LEFT_BEFORE_THE_SWAP)
+                    stopAt(index, leftBefore(review.proposal, index))
                     return@launch
                 }
                 val unlock = unlockFor(index)
@@ -545,7 +555,11 @@ class SafeSwapViewModel(
                     val underUnlock = notSigned != null && index == 0
                     latest.copy(
                         signing = false,
-                        error = if (underUnlock) null else signedSoFar(index)?.let { "$it $why" } ?: why,
+                        error = if (underUnlock) {
+                            null
+                        } else {
+                            signedSoFar(review.proposal, index)?.let { "$it $why" } ?: why
+                        },
                         unlock = latest.unlock.copy(
                             error = why.takeIf { underUnlock },
                             biometrics = latest.unlock.biometrics &&
@@ -567,14 +581,31 @@ class SafeSwapViewModel(
 
     /** The review signed up to (not including) [index], stopped for [why]. */
     private fun stopAt(index: Int, why: String) = step.update { latest ->
-        if (latest is Step.Reviewing) latest.copy(error = signedSoFar(index)?.let { "$it $why" } ?: why) else latest
+        if (latest !is Step.Reviewing) return@update latest
+        latest.copy(error = signedSoFar(latest.proposal, index)?.let { "$it $why" } ?: why)
     }
 
     /**
-     * What is signed and queued before the transaction at [index], when anything is: only ever the
-     * approval, the first of two.
+     * What of [proposal] is signed and queued before the transaction at [index], when anything is:
+     * the approval, or the allowance's reset to zero alone, or the reset and the approval.
      */
-    private fun signedSoFar(index: Int): String? = if (index == 0) null else APPROVAL_QUEUED
+    private fun signedSoFar(proposal: SafeSwapProposal, index: Int): String? = when {
+        index == 0 -> null
+        proposal.reset == null -> APPROVAL_QUEUED
+        index == 1 -> RESET_QUEUED
+        else -> RESET_AND_APPROVAL_QUEUED
+    }
+
+    /** Why the transaction at [index] of [proposal] was not signed: the screen was left before it. */
+    private fun leftBefore(proposal: SafeSwapProposal, index: Int): String =
+        if (proposal.reset != null && index == 1) LEFT_BEFORE_THE_APPROVAL else LEFT_BEFORE_THE_SWAP
+
+    /** What the form says of [proposal] left with [signed] of its transactions queued. */
+    private fun queuedLeft(proposal: SafeSwapProposal, signed: Int): String = when {
+        proposal.reset == null -> APPROVAL_QUEUED_LEFT
+        signed == 1 -> RESET_QUEUED_LEFT
+        else -> RESET_AND_APPROVAL_QUEUED_LEFT
+    }
 
     /**
      * The review of [request], proposed now, signed by [owner] (the first held when that is no
@@ -639,7 +670,8 @@ class SafeSwapViewModel(
         typed: Inputs,
         replaced: Replaced?,
     ): Model {
-        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        // The Safe's network's accounts only: the same address on another network is another account.
+        val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
         val sender = when (list) {
             is AccountList.Unreadable -> Sender.Cannot(LIST_UNAVAILABLE)
             is AccountList.Loaded -> {
@@ -750,7 +782,7 @@ class SafeSwapViewModel(
         val labels = accounts.associate { it.address to it.label }
         val decoding = decodingTokens(step.request)
         val route = routeSteps(proposal.route, proposal.pools, sell, buy)
-        val transactions = listOfNotNull(proposal.approval, proposal.swap).map { tx ->
+        val transactions = listOfNotNull(proposal.reset, proposal.approval, proposal.swap).map { tx ->
             SafeSwapTransaction(
                 nonce = "Safe nonce ${tx.request.nonce}",
                 action = safeTxActionItem(tx.action, tx.request.nonce, decoding, network),
@@ -828,7 +860,11 @@ class SafeSwapViewModel(
     private fun approvalNote(proposal: SafeSwapProposal, sell: AssetOption): String? {
         val allowance = proposal.allowance ?: return null
         val now = exactAmount(allowance, sell.decimals, sell.symbol)
-        return if (proposal.approval != null) {
+        return if (proposal.reset != null) {
+            "The router may take $now of the Safe's ${sell.symbol}, and ${sell.symbol} refuses to move one allowance " +
+                "to another, as the approval of the whole amount showed: the first Safe transaction sets it to zero, " +
+                "the next approves exactly the amount sold, each its own."
+        } else if (proposal.approval != null) {
             "The router may take $now of the Safe's ${sell.symbol}: the approval before the swap lets it take " +
                 "exactly the amount sold, in its own Safe transaction."
         } else {
@@ -838,10 +874,24 @@ class SafeSwapViewModel(
     }
 
     private fun simulationText(proposal: SafeSwapProposal, buy: AssetOption): String {
+        val reset = when (val run = proposal.resetSimulation) {
+            is SafeCallSimulation.Ran -> "The allowance set to zero, run as a verified call from the Safe" +
+                (run.blockNumber?.let { " at block ${grouped(it)}" } ?: " at the head") + ", goes through; the " +
+                "approval after it cannot run before it has, and is run as a verified call when its execution is " +
+                "quoted. "
+            SafeCallSimulation.NotRun, null -> ""
+        }
         val approval = when (val run = proposal.approvalSimulation) {
             is SafeCallSimulation.Ran -> "The approval, run as a verified call from the Safe" +
                 (run.blockNumber?.let { " at block ${grouped(it)}" } ?: " at the head") + ", goes through. "
-            SafeCallSimulation.NotRun, null -> ""
+            SafeCallSimulation.NotRun -> ""
+            // Proposed with its reset, said above; or after one queued before it.
+            null -> if (proposal.approval != null && proposal.reset == null) {
+                "The approval cannot run before the allowance set to zero, queued before it, has: it is run as " +
+                    "a verified call when its execution is quoted. "
+            } else {
+                ""
+            }
         }
         val swap = when (val run = proposal.swapSimulation) {
             is SafeSwapSimulation.Ran -> "The swap, run as a verified call from the Safe" +
@@ -853,7 +903,7 @@ class SafeSwapViewModel(
                 "from the Safe's address. Its execution, the whole of it, is run as a verified call before anyone " +
                 "sends it."
         }
-        return approval + swap
+        return reset + approval + swap
     }
 
     private fun decodingTokens(request: Request): List<DecodingToken> =
@@ -889,23 +939,32 @@ class SafeSwapViewModel(
             is SafeSwapProposing.EarlierSwapQueued -> "A swap of $sell is queued at Safe nonce " +
                 "${proposing.nonce}, and counts on the router's allowance this one would set: execute or reject " +
                 "it first."
-            is SafeSwapProposing.NextNonceTaken -> "The approval would take the Safe's next nonce and the swap " +
-                "the one after it, Safe nonce ${proposing.nonce}, where a transaction is queued already: execute " +
+            is SafeSwapProposing.NextNonceTaken -> "The swap's Safe transactions would take the Safe's next " +
+                "nonces, Safe nonce ${proposing.nonce} among them, where a transaction is queued already: execute " +
                 "or reject what is queued first."
             is SafeSwapProposing.NeedsApproval -> "The router may take only " +
                 exactAmount(proposing.allowance, request.sell.decimals, sell) + " of the Safe's $sell now, and a " +
                 "swap proposed again gets no approval of its own: reject this one, then propose the swap from the " +
                 "Safe's Swap, which proposes the approval with it."
             SafeSwapProposing.NothingToReplace -> REPLACED_GONE
-            is SafeSwapProposing.ApprovalReverts -> "$sell's contract refuses the approval, run as a verified call " +
-                "from the Safe" + (proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()) + ". A " +
-                "token that must be set to zero first is not swapped from a Safe here. Nothing was proposed."
+            is SafeSwapProposing.ApprovalReverts -> {
+                val at = proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
+                if (proposing.toZero) {
+                    "$sell's contract refuses the approval of the amount over the allowance the router has, and " +
+                        "refuses to set that allowance to zero too, each run as a verified call from the Safe$at. " +
+                        "Nothing was proposed."
+                } else {
+                    "$sell's contract refuses the approval, run as a verified call from the Safe$at with its " +
+                        "allowance at zero. Nothing was proposed."
+                }
+            }
             is SafeSwapProposing.Reverts -> "The swap reverts, or returns less than its minimum, run as a verified " +
                 "call from the Safe" + (proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()) +
                 ". Nothing was proposed."
             is SafeSwapProposing.Refused -> safeTxRefusalText(proposing.refusal, network)
             is SafeSwapProposing.Unavailable -> when (proposing.reason) {
                 ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so nothing can be swapped."
+                ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so nothing can be swapped."
                 ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so nothing can be proposed."
                 ReadUnavailable.UNPROVEN ->
                     "${figureText(proposing.figure, "of the proposal")} could not be verified this time: try again."
@@ -945,6 +1004,15 @@ class SafeSwapViewModel(
         const val REPLACED_GONE = "The swap to propose again is no longer in this device's queue, or the Safe has " +
             "passed its nonce: there is nothing to put in its place."
         const val LEFT_BEFORE_THE_SWAP = "The screen was left before the swap was signed."
+        const val LEFT_BEFORE_THE_APPROVAL = "The screen was left before the approval was signed."
+        const val RESET_QUEUED = "The allowance set to zero is signed and queued; the approval and the swap are " +
+            "not. Refresh, and they are proposed after it:"
+        const val RESET_AND_APPROVAL_QUEUED = "The allowance set to zero and the approval are signed and queued; " +
+            "the swap is not. Refresh, and the swap is proposed after them:"
+        const val RESET_AND_APPROVAL_QUEUED_LEFT = "The allowance set to zero and the approval are signed and " +
+            "queued; the swap is not. Review again, and the swap is proposed after them."
+        const val RESET_QUEUED_LEFT = "The allowance set to zero is signed and queued; the approval and the swap " +
+            "are not. Review again, and they are proposed after it."
         const val QUEUE_UNREADABLE = "This device's queue cannot be read right now, so the swap to propose again " +
             "cannot be found. Serotine keeps trying."
         const val APPROVAL_QUEUED_LEFT = "The approval is signed and queued; the swap is not. Review again, and " +

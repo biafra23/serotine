@@ -2,6 +2,7 @@ package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
@@ -42,12 +43,15 @@ import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryHistoryStarts
-import eth.serotine.ui.MemoryUserTokens
-import eth.serotine.ui.topicOf
 import eth.serotine.ui.MemoryTransactionHistory
+import eth.serotine.ui.MemoryUserTokens
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
 import eth.serotine.ui.components.GUARD_SET_WARNING
 import eth.serotine.ui.components.MODULE_DISABLED_WARNING
+import eth.serotine.ui.topicOf
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -57,20 +61,19 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountActivityTest {
 
     private val alice = Account(
+        Network.SEPOLIA,
         Address.of("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
         AccountKind.EOA,
         "Alice",
         AccountCustody.InKeyStore,
     )
     private val treasury = Account(
+        Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
         AccountKind.SAFE,
         "Treasury",
@@ -86,6 +89,7 @@ class AccountActivityTest {
     private val userTokens = MemoryUserTokens()
 
     private fun sent(nonce: Long, action: SentAction, sentAt: Long, maybeSent: Boolean = false) = SentTransfer(
+        network = Network.SEPOLIA,
         account = alice.address,
         nonce = nonce,
         signed = SignedTransfer(byteArrayOf(2, nonce.toByte())),
@@ -119,10 +123,9 @@ class AccountActivityTest {
             ObserveTokenTransfers(index, starts),
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
             ObserveSentToAddresses(history),
-            ObserveAccountCowOrders(cowOrders, Network.SEPOLIA),
-            Network.SEPOLIA,
+            ObserveAccountCowOrders(cowOrders),
         ) { "at $it" }
-            .of(address)
+            .of(AccountId(Network.SEPOLIA, address))
             // Unconfined, so that what a test changes is listed before it reads the value.
             .stateIn(
                 backgroundScope + UnconfinedTestDispatcher(testScheduler),

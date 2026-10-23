@@ -67,7 +67,12 @@ class TransferStatusViewModel(
     private var latest: SentTransferStatus? = null
 
     val uiState: StateFlow<TransferStatusUiState> =
-        combine(observeSentTransfer(hash).onEach { latest = it }, observeAccounts(), retrying, ::render).stateIn(
+        combine(
+            observeSentTransfer(network, hash).onEach { latest = it },
+            observeAccounts(),
+            retrying,
+            ::render,
+        ).stateIn(
             viewModelScope,
             // Back after the timeout, no old step stands as current.
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -233,7 +238,8 @@ class TransferStatusViewModel(
             ""
         }
         // The name it has in the wallet now, or the one it was to be listed under.
-        val label = (list as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == deployment.safe }?.label
+        val label = (list as? AccountList.Loaded)?.accounts
+            ?.firstOrNull { it.network == network && it.address == deployment.safe }?.label
             ?: deployment.label
         val mined = progress is TransactionProgress.Included || progress is TransactionProgress.Finalized
         val (text, listingFailed) = when (deployment.listed) {
@@ -363,6 +369,7 @@ class TransferStatusViewModel(
     private fun unavailable(reason: ReadUnavailable): String = "Where it stands cannot be verified right now: " +
         when (reason) {
             ReadUnavailable.NO_ENGINE -> "there is no light client on this device."
+            ReadUnavailable.NETWORK_OFF -> "the network's light client is not running."
             ReadUnavailable.STALE_ANCHOR -> "the light client refuses to sync."
             ReadUnavailable.UNPROVEN -> "its receipt could not be verified this time. Serotine keeps checking."
             ReadUnavailable.REFUSED -> "the light client on this device cannot read receipts."

@@ -1,13 +1,16 @@
 package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.ReadUnavailable
+import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlin.time.Duration
 
 /**
  * [NativeBalances] over a verified light client: each balance proven by
@@ -20,6 +23,7 @@ import kotlin.time.Duration
  * anywhere else stands in.
  */
 class VerifiedNativeBalances internal constructor(
+    private val served: Network,
     chain: VerifiedChain?,
     dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
@@ -33,8 +37,13 @@ class VerifiedNativeBalances internal constructor(
         chain,
         dispatcher,
         pollInterval,
-        kept = lastBalances?.kept<Address, Wei>(id = { "native:${it.hex}" }, units = { it.decimal }, parse = Wei::parse)
+        kept = lastBalances?.kept<Address, Wei>(
+            id = { "${served.chainId}:native:${it.hex}" },
+            units = { it.decimal },
+            parse = Wei::parse,
+        )
             ?: KeptProofs.none(),
+        offersLastKnownWhenStopped = true,
         unchangedSince = { address, provenAt, provenHash, head ->
             activity?.unchangedSince(address, AddressActivity.Kind.ACCOUNT, provenAt, provenHash, head) == true
         },
@@ -44,12 +53,15 @@ class VerifiedNativeBalances internal constructor(
         }
     }
 
-    override fun observeBalance(address: Address): Flow<BalanceReading> = reads.observe(address).map { reading ->
+    override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> {
+        if (network != served) return flowOf(BalanceReading.Unavailable(ReadUnavailable.NO_ENGINE))
+        return reads.observe(address).map { reading ->
         when (reading) {
             EngineReading.Syncing -> BalanceReading.Syncing
             is EngineReading.Proven -> BalanceReading.Verified(reading.value, reading.blockNumber)
             is EngineReading.LastKnown -> BalanceReading.LastKnown(reading.value, reading.blockNumber, reading.asOf)
             is EngineReading.Unavailable -> BalanceReading.Unavailable(reading.reason)
         }
+    }
     }
 }

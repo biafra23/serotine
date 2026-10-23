@@ -72,8 +72,8 @@ import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.unavailable
-import eth.serotine.ui.lightclient.LightClientViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of the Review button, for UI tests. */
 const val SWAP_REVIEW_TAG = "swap-review"
@@ -116,7 +116,8 @@ const val SWAP_DONE_TAG = "swap-done"
 @Composable
 fun SwapRoute(
     viewModel: SwapViewModel,
-    lightClient: LightClientViewModel,
+    /** The strip of the network this screen is about: its account's. */
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onSent: (hash: String) -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
@@ -125,7 +126,7 @@ fun SwapRoute(
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.item.collectAsStateWithLifecycle()
+    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? SwapUiState.Sent)?.hash

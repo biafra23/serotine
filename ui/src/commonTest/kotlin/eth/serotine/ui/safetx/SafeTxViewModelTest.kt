@@ -1,5 +1,6 @@
 package eth.serotine.ui.safetx
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Mnemonic
@@ -53,6 +54,16 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.SafeSwapItem
 import eth.serotine.ui.components.ShareItem
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -65,16 +76,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 
 /** [SafeTxViewModel] over fake ports, through the real use cases. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -113,7 +114,7 @@ class SafeTxViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { 1_800_000_000L }
         val viewModel = SafeTxViewModel(
-            world.safe,
+            AccountId(Network.SEPOLIA, world.safe),
             request.hash,
             ObserveAccounts(world.accounts),
             ObserveSafeTxQueue(world.queue, world.observeSafe, world.recovery, Network.SEPOLIA),
@@ -147,7 +148,6 @@ class SafeTxViewModelTest {
             RemoveQueuedSafeTx(world.queue),
             WarmFeeHistory(world.inputs),
             CheckSafeSwap(world.uniswap, world.lightClient, Network.SEPOLIA),
-            Network.SEPOLIA,
             clock,
             imported,
             formatTime = { "at $it" },
@@ -1019,7 +1019,7 @@ class SafeTxViewModelTest {
     fun aTokenThatOnlyTakesABuiltInSymbolIsSaidToBeAnotherContractUpToThePrompt() = runTest {
         biometrics = BiometricUnlock.On
         val impostor = Token(Address.of("0x" + "cd".repeat(20)), "USDC", "Not USD Coin", 6, icon = null)
-        world.userTokens.add(impostor)
+        world.userTokens.add(Network.SEPOLIA, impostor)
         val transfer = SafeTx.call(
             impostor.address,
             UInt256.ZERO,

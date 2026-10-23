@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
@@ -76,6 +77,8 @@ import eth.serotine.ui.components.shareItem
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -99,8 +102,6 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
 /**
  * The Safe transaction screen's ViewModel (docs/wallet-ux.md, screen 17): the transaction [hash]
@@ -129,7 +130,7 @@ import kotlin.time.TimeSource
  * it; it is dropped once used, when the screen is not shown ([onHidden]) and when it is gone.
  */
 class SafeTxViewModel(
-    private val safe: Address,
+    private val account: AccountId,
     private val hash: Digest,
     observeAccounts: ObserveAccounts,
     observeSafeTxQueue: ObserveSafeTxQueue,
@@ -146,13 +147,18 @@ class SafeTxViewModel(
     private val removeQueuedSafeTx: RemoveQueuedSafeTx,
     private val warmFeeHistory: WarmFeeHistory,
     private val checkSafeSwap: CheckSafeSwap,
-    private val network: Network,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     /** Whether the screen was opened by the import that just queued the transaction: its overview says so first. */
     imported: Boolean = false,
     /** Dates a swap's deadline in the user's own time zone. */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
+    /** The account this screen is about: its address, on its network. */
+    private val safe: Address = account.address
+
+    /** The account's network: everything here is read and sent there. */
+    private val network: Network = account.network
+
 
     init {
         // Approve and Execute quote a transaction: the fee history is asked for now, ready by then.
@@ -337,11 +343,19 @@ class SafeTxViewModel(
     }
 
     private val accounts: Flow<List<Account>> = observeAccounts()
-        .map { (it as? AccountList.Loaded)?.accounts.orEmpty() }
+        // The Safe's network's accounts: what pays for an approval or an execution there, and what names
+        // its owners; an owner whose key is held on another network still signs ([ObserveSafe]).
+        .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network } }
 
     /** What the screen shows and acts on, or why there is no transaction to act on ([Queued]). */
     private val context: StateFlow<Source?> =
-        combine(queued, request, owners, accounts, observeKnownTokens()) { queued, request, owners, accounts, tokens ->
+        combine(
+            queued,
+            request,
+            owners,
+            accounts,
+            observeKnownTokens(network),
+        ) { queued, request, owners, accounts, tokens ->
             if (queued !is Queued.Found || request == null) return@combine queued
             val held = accounts.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
             Context(
@@ -1025,7 +1039,7 @@ class SafeTxViewModel(
                 hash = hashText,
                 owners = ownersItem(shown),
                 swap = swap,
-                gasTerms = tx.gasTerms?.let(::gasTermsItem),
+                gasTerms = tx.gasTerms?.let { gasTermsItem(it, this.network) },
                 // What the transaction alone says, or what it would do to the Safe as it stands now.
                 refusal = (tx.refusal ?: read?.refusal)
                     ?.let { safeTxRefusalText(it, this.network) },
@@ -1210,7 +1224,7 @@ class SafeTxViewModel(
     private fun warmFees() {
         viewModelScope.launch {
             try {
-                warmFeeHistory()
+                warmFeeHistory(network)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
