@@ -2,6 +2,8 @@ package eth.serotine.android.widget
 
 import android.content.Context
 import eth.serotine.domain.model.Network
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Which network each placed exchange-rate widget shows (docs/networks.md, *The widget*), by its
@@ -20,8 +22,19 @@ class RateWidgetNetworks(context: Context) {
     /** Whether the widget [id] has its network recorded: chosen once, when it was placed. */
     fun chosen(id: Int): Boolean = preferences.contains(key(id))
 
-    /** Records that the widget [id] shows [network]; true once stored. */
-    fun set(id: Int, network: Network): Boolean = preferences.edit().putLong(key(id), network.chainId).commit()
+    /** Records that the widget [id] shows [network]; true once stored. Written off the main thread. */
+    suspend fun set(id: Int, network: Network): Boolean = withContext(Dispatchers.IO) {
+        preferences.edit().putLong(key(id), network.chainId).commit()
+    }
+
+    /** The widgets [oldIds] given the new ids [newIds] (a restore), each keeping its network. */
+    fun moved(oldIds: IntArray, newIds: IntArray) {
+        val shown = oldIds.map(::of)
+        preferences.edit().apply {
+            oldIds.forEach { remove(key(it)) }
+            newIds.zip(shown).forEach { (id, network) -> putLong(key(id), network.chainId) }
+        }.apply()
+    }
 
     /** Forgets the widgets [ids], removed from the home screen. */
     fun forget(ids: IntArray) {

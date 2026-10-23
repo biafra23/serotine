@@ -58,13 +58,22 @@ class RateWidgetConfigureActivity : ComponentActivity() {
         }
     }
 
+    /** Whether a choice is being stored: a second tap meanwhile does nothing. */
+    private var choosing = false
+
     private fun choose(app: SerotineApplication, id: Int, chainId: Long) {
         val network = Network.ofChainId(chainId) ?: return
-        if (!app.rateWidgetConfigured(id, network)) {
-            Toast.makeText(this, R.string.rate_widget_not_saved, Toast.LENGTH_LONG).show()
-            return
+        if (choosing) return
+        choosing = true
+        lifecycleScope.launch {
+            if (!app.rateWidgetConfigured(id, network)) {
+                choosing = false
+                Toast.makeText(this@RateWidgetConfigureActivity, R.string.rate_widget_not_saved, Toast.LENGTH_LONG)
+                    .show()
+                return@launch
+            }
+            setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
+            finish()
         }
-        setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
-        finish()
     }
 }

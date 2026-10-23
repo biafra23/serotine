@@ -53,9 +53,7 @@ class RateWidget : AppWidgetProvider() {
 
     override fun onRestored(context: Context, oldWidgetIds: IntArray, newWidgetIds: IntArray) {
         // A launcher restored from a backup gives the widgets new ids: each keeps its network.
-        val networks = RateWidgetNetworks(context)
-        oldWidgetIds.zip(newWidgetIds).forEach { (old, new) -> networks.set(new, networks.of(old)) }
-        networks.forget(oldWidgetIds)
+        RateWidgetNetworks(context).moved(oldWidgetIds, newWidgetIds)
         (context.applicationContext as SerotineApplication).rateWidgetsChanged()
     }
 

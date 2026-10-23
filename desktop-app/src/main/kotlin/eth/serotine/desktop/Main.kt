@@ -134,7 +134,7 @@ private fun openWallet(dataDir: File) {
     excludeFromBackups(keys)
     // Before the window: on a Mac with no wallet yet this asks the Secure Enclave once.
     val hardware = desktopHardwareSecret(keys.path)
-    // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the
+    // A light client per network that is on and needed (CLAUDE.md, *Data sources*). The engine boots in the
     // background; without its host library (useBundledEngineLibrary), balances say so. The adapters'
     // diagnostics and the engine's own log go to stderr only in a development run
     // (`:desktop-app:run` sets the property; no installer does): the desktop's debug build.
@@ -324,7 +324,7 @@ private fun openWallet(dataDir: File) {
                 safeApprovals = node.safeApprovals,
                 // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
                 safeReleases = PinnedSafeReleases(),
-                // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
+                // Uniswap v3 on each network that has it pinned, its contracts proven by their code before any quote.
                 uniswap = node.uniswap,
                 // CoW Protocol: its pinned contracts proven by their code, and its order API, an
                 // off-chain service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).

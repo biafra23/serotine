@@ -82,6 +82,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -108,7 +109,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 class SerotineApplication : Application() {
 
-    // Sepolia only, for now (CLAUDE.md, *Data sources*). The engine boots in the background
+    // A light client per network that is on and needed (CLAUDE.md, *Data sources*). The engine boots in the background
     // and keeps its state under the app's private files; on an ABI the engine library does
     // not ship (it has arm64-v8a and x86_64), balances say so. The balances last verified are
     // kept with the other files (none of which leave the device), to be shown as such after a
@@ -260,9 +261,10 @@ class SerotineApplication : Application() {
 
     /**
      * The widget [id] was placed showing [network]: recorded, drawn, its rate read soon, and
-     * followed while the app is open. False when the choice could not be stored. Main thread.
+     * followed while the app is open. False when the choice could not be stored. Called on the
+     * main thread; the choice is written off it.
      */
-    fun rateWidgetConfigured(id: Int, network: Network): Boolean {
+    suspend fun rateWidgetConfigured(id: Int, network: Network): Boolean {
         if (!RateWidgetNetworks(this).set(id, network)) return false
         // On the scheduling lane, so a cancel asked for by a removal meanwhile never lands before it.
         scope.launch(jobScheduling) {
@@ -324,7 +326,7 @@ class SerotineApplication : Application() {
             safeApprovals = node.safeApprovals,
             // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
             safeReleases = PinnedSafeReleases(),
-            // Uniswap v3 on Sepolia, its pinned contracts proven by their code before any quote.
+            // Uniswap v3 on each network that has it pinned, its contracts proven by their code before any quote.
             uniswap = node.uniswap,
             // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
             // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
@@ -469,17 +471,19 @@ class SerotineApplication : Application() {
     private fun followRateForWidgets() {
         if (visible == 0 || rateFollowing?.isActive == true) return
         rateFollowing = scope.launch {
+            val following = this
             // Each network a widget shows, and only while it is on: one that is off reads nothing,
-            // and one turned on while the app is open is followed from then on.
+            // and one turned on while the app is open is followed from then on. With none on, it
+            // waits for the next change of the settings.
             networkSettings.observe().distinctUntilChanged().collectLatest { on ->
+                val followed = RateWidget.networks(this@SerotineApplication).filter { it in on }
+                if (followed.isEmpty()) return@collectLatest
                 coroutineScope {
-                    for (network in RateWidget.networks(this@SerotineApplication).filter { it in on }) {
-                        launch { followRate(network) }
-                    }
+                    for (network in followed) launch { followRate(network) }
                 }
-                // Every follower ended (each only on a failure): the following ends too, so the next
-                // start of an activity or a placed widget starts it again.
-                throw CancellationException("no widget rate is followed any more")
+                // Every follower ended (each only on a failure): the following itself ends, not this
+                // round alone, so the next start of an activity or a placed widget starts it again.
+                following.cancel()
             }
         }
     }
