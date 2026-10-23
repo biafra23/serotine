@@ -390,12 +390,19 @@ class MyotisHost private constructor(
             running?.let { stopEngineChain(it) }
         }
 
-        fun pause() {
-            (state as? ChainState.Running)?.handle?.pause()
-        }
+        fun pause() = switch("pause") { it.pause() }
 
-        fun resume() {
-            (state as? ChainState.Running)?.handle?.resume()
+        fun resume() = switch("resume") { it.resume() }
+
+        // Caught here, not around the loop over the networks, so one failing does not leave the
+        // others' networking as it was. Throwable: the calls cross JNA.
+        private inline fun switch(what: String, call: (ChainHandle) -> Unit) {
+            val handle = (state as? ChainState.Running)?.handle ?: return
+            try {
+                call(handle)
+            } catch (e: Throwable) {
+                System.err.println("Serotine: ${network.displayName}'s light client did not $what: $e")
+            }
         }
 
         private fun stopEngineChain(running: ChainState.Running) {

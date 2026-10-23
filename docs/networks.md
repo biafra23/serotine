@@ -255,7 +255,7 @@ are unchanged.
 
 ## The engine host
 
-- **One engine, one handle per network.** `MyotisNode` today is one engine
+- **One engine, one handle per network.** `MyotisNode` was one engine
   hosting one chain. It splits into the process's `MyotisHost` (the engine,
   its ports, pause and resume, the log pump) and a `ChainNode` per network
   (the handle, `ProvenReads`, the adapters of that chain). The ports'

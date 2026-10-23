@@ -78,22 +78,23 @@ consumer developed against an unreleased engine, Myotis's
   (`eth.myotis:myotis-engine-ios`, at the engine's version): its typed API
   carries `io.myotis.api`'s names and meanings, and each target's cinterop
   klib carries the engine's static library. `:data`'s iosMain has the iOS
-  `MyotisNode`, the JVM one's twin over that API, wired to the same
-  `TransactingChain` seam and the same common adapters. The engine there asks
+  `MyotisHost`, the JVM one's twin over that API: one engine, a `ChainNode` per
+  network wired to the same `TransactingChain` seam and the same common
+  adapters, routed by `NetworkRoutedPorts`. The engine there asks
   for no ports (its peer caches and snapshot live under its data directory)
   and answers a read on a paused or starting handle at once as unavailable.
   The log index (*History*) is twinned too, from Myotis 0.1.18 (its #687).
   The iOS module reads no block by number in 0.1.18 (its block reads are
-  internal), so the iOS node gives the finalized block no timestamp, and no
+  internal), so the iOS host gives the finalized block no timestamp, and no
   CoW order is offered on iOS until it does (docs/swaps.md, *Proving an
   order's end*).
 - **The engine's own log** is not printed by the engine: its tracing lines go
   into a ring in the library (4096 lines, the oldest dropped when full), which
-  a host drains with `Myotis.drainLogs`. A debug build's `MyotisHost` (the iOS `MyotisNode` on iOS) drains
+  a host drains with `Myotis.drainLogs`. A debug build's `MyotisHost` (on each platform) drains
   it every second while the engine runs (`EngineLogPump`) into the same
   `debugLog` the adapters write to, each line marked `Myotis:` (logcat in the
   debug app, stderr in `:desktop-app:run`, NSLog in the iOS debug build, so a
-  device's log has it without Xcode attached; the iOS node's own reports,
+  device's log has it without Xcode attached; the iOS host's own reports,
   why there is no light client among them, go there too, in every build). A
   release build leaves it undrained; a failed start still reports its last
   40 lines.
@@ -118,9 +119,9 @@ consumer developed against an unreleased engine, Myotis's
   30 s after nothing holds the engine any more (a visible activity, the daily
   network-upgrade check) and resumes them with the next hold;
   `AndroidDnsServers` supplies the active network's resolvers. The iOS
-  `MyotisNode` still hosts its one network and keeps it running: it follows
-  networks on and off from part 4 of docs/networks.md, when there is a second
-  one to host.
+  `MyotisHost` follows networks on and off the same way (`FollowNetworks`),
+  pauses every running light client when the app goes to the background and
+  resumes them when it comes back.
 - **Readiness, as Myotis reads it.** The adapters read `ChainHandle.status()`,
   a snapshot that never blocks, the way Myotis's own readiness ladder does:
   `SYNCING` is the checkpoint bootstrap; `CATCHING_UP` walks sync-committee
