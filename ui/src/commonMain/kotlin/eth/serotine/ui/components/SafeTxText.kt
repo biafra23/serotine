@@ -404,7 +404,7 @@ internal fun gasTermsItem(terms: SafeTxGasTerms, network: Network): GasTermsItem
         "baseGas: ${grouped(terms.baseGas)}",
         "gasPrice: ${grouped(terms.gasPrice)}" + if (terms.gasToken == null) " wei" else " of the gas token's units",
         if (terms.gasToken == null) {
-            "A refund is paid in ${network.nativeName}"
+            "A refund is paid in ${network.nativeSymbol}"
         } else {
             "A refund is paid in the gas token"
         },
