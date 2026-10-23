@@ -57,7 +57,12 @@ class AddOnNetworksViewModel(
             val present = accounts.filter { it.address == account.address }.map { it.network }.toSet()
             AddOnNetworksUiState.Choose(
                 label = own.label,
-                choices = networkChoices(on.toSet(), form.chosen, Network.entries.filter { it !in present }),
+                choices = networkChoices(
+                    on.toSet(),
+                    form.chosen,
+                    Network.entries.filter { it !in present },
+                    withLines = false,
+                ),
                 adding = form.adding,
                 error = form.error,
             )

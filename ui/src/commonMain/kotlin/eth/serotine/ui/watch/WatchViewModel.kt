@@ -206,7 +206,10 @@ class WatchViewModel(
      */
     private fun WatchUiState.withCards(cards: List<Pair<Network, Detection>>?, choice: Choice): WatchUiState {
         if (cards == null) return this
-        if (cards.size == 1) return copy(detection = cards.single().second)
+        if (cards.size == 1) {
+            val (network, card) = cards.single()
+            return copy(detection = card, cardNetwork = NetworkLabel.of(network))
+        }
         // A Safe exists only where it was deployed: where it is one, it is offered there alone (N11).
         val safeSomewhere = cards.any { (_, card) -> card is Detection.Safe }
         val offered = cards.filter { (_, card) -> if (safeSomewhere) card is Detection.Safe else card.addable }
@@ -214,6 +217,8 @@ class WatchViewModel(
             .toSet()
         val chosen = choice.chosen ?: offered
         val everyAccount = cards.isNotEmpty() && cards.all { (_, card) -> card is Detection.Account }
+        // A delegated account (EIP-7702) has code: its delegation designation.
+        val delegated = cards.any { (_, card) -> (card as? Detection.Account)?.delegate != null }
         return copy(
             networks = cards.map { (network, card) ->
                 WatchNetwork(
@@ -224,7 +229,8 @@ class WatchViewModel(
                 )
             },
             question = if (everyAccount) {
-                "This address has no code. Watch it on ${networkNames(cards.map { it.first })}?"
+                val what = if (delegated) "is an account a key controls" else "has no code"
+                "This address $what. Watch it on ${networkNames(cards.map { it.first })}?"
             } else {
                 null
             },
@@ -298,7 +304,8 @@ class WatchViewModel(
         if (outcome.value.adding || outcome.value.done || !state.canAdd) return
         // The networks to add it on: the one on; or all offered, as the question asks; or those ticked.
         val networks = when {
-            state.networks.isEmpty() -> on.value.orEmpty().take(1)
+            // The network the card was read on, never one that is on by now instead.
+            state.networks.isEmpty() -> listOfNotNull(state.cardNetwork?.let { Network.ofChainId(it.chainId) })
             state.question != null && !state.choosing -> state.networks.filter { it.offered }
                 .mapNotNull { Network.ofChainId(it.network.chainId) }
             else -> state.networks.filter { it.offered && it.chosen }
@@ -325,9 +332,13 @@ class WatchViewModel(
      * reason is said, with the networks it was added on before it.
      */
     private suspend fun watchOn(networks: List<Network>, resolved: RecipientLookup.Found): Outcome {
+        // One name on every network, as an import gives (docs/networks.md, N6 and N8): the user's,
+        // the ENS name followed, or one "Account N" taken once.
+        val name = watchAddress.sharedName(typed.value.name, resolved.name)
+            ?: return Outcome(error = "The account could not be saved. Nothing was added.")
         val added = mutableListOf<Network>()
         for (network in networks) {
-            val result = watchAddress(network, resolved.address, typed.value.name, resolved.name)
+            val result = watchAddress(network, resolved.address, name, resolved.name)
             if (result is AddressWatch.Added) {
                 added += network
                 continue

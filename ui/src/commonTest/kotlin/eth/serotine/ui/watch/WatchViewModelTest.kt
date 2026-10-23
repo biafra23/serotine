@@ -96,6 +96,7 @@ class WatchViewModelTest {
             Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),
             viewModel.uiState.value.detection,
         )
+        assertEquals(NetworkLabel.of(Network.SEPOLIA), viewModel.uiState.value.cardNetwork, "what Add adds it on")
         assertTrue(viewModel.uiState.value.canAdd)
 
         viewModel.add()
