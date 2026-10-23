@@ -85,7 +85,9 @@ class ProveCowOrderEnds(
             finalized,
             held,
             logIndex.observeCoverage(network),
-        ) { orders, final, addresses, _ -> Triple(orders, final, addresses) }.collectLatest { (orders, final, addresses) ->
+        ) { orders, final, addresses, _ ->
+            Triple(orders, final, addresses)
+        }.collectLatest { (orders, final, addresses) ->
             val live = (orders as? CowOrderList.Loaded)?.orders.orEmpty().filter { it.live && it.network == network }
             for (order in live) {
                 val removed = addresses != null && order.account !in addresses

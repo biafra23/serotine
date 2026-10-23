@@ -478,7 +478,7 @@ class AppGraph(
      */
     fun cowOrderViewModel(network: Network, uid: CowOrderUid): CowOrderViewModel = CowOrderViewModel(
         uid,
-        ObserveCowOrder(cowOrders),
+        ObserveCowOrder(cowOrders, network),
         ObserveCowOrderLife(cowApi, network),
         ObserveAccounts(accounts),
         DescribeKeyStore(keys),

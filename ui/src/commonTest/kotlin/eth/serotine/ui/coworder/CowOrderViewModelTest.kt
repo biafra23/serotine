@@ -132,7 +132,7 @@ class CowOrderViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = CowOrderViewModel(
             record.uid,
-            ObserveCowOrder(orders),
+            ObserveCowOrder(orders, Network.SEPOLIA),
             ObserveCowOrderLife(cowApi, Network.SEPOLIA),
             ObserveAccounts(accounts),
             DescribeKeyStore(FakeKeys()),

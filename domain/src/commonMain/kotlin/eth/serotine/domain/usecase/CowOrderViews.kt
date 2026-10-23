@@ -18,14 +18,16 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * One CoW order signed on this device, by its UID, as the record of orders has it, its end once
- * proven from the chain (docs/swaps.md, *Proving an order's end*): what its status screen shows.
+ * One CoW order signed on this device on [network], by its UID, as the record of orders has it, its
+ * end once proven from the chain (docs/swaps.md, *Proving an order's end*): what its status screen
+ * shows. An order of another network is not this one (docs/networks.md: never answered from another).
  */
-class ObserveCowOrder(private val cowOrders: CowOrders) {
+class ObserveCowOrder(private val cowOrders: CowOrders, private val network: Network) {
     operator fun invoke(uid: CowOrderUid): Flow<CowOrderReading> = cowOrders.observe().map { list ->
         when (list) {
-            is CowOrderList.Loaded -> list.orders.firstOrNull { it.uid == uid }?.let(CowOrderReading::Found)
-                ?: CowOrderReading.NotHere
+            is CowOrderList.Loaded ->
+                list.orders.firstOrNull { it.uid == uid && it.network == network }?.let(CowOrderReading::Found)
+                    ?: CowOrderReading.NotHere
             CowOrderList.Unreadable -> CowOrderReading.Unreadable
         }
     }.distinctUntilChanged()

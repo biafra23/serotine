@@ -52,7 +52,7 @@ class CowOrderViewsTest {
 
     @Test
     fun anOrderIsReadByItsUidWithItsEndAsProven() = runTest {
-        val observe = ObserveCowOrder(orders)
+        val observe = ObserveCowOrder(orders, Network.SEPOLIA)
         assertEquals(CowOrderReading.Found(second), observe(second.uid).first())
         val ended = second.copy(end = CowOrderEnd.Unfilled(120, cancelled = false))
         orders.orders.value = listOf(first, ended)
