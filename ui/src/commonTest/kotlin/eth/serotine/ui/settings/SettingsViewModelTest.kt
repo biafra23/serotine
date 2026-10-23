@@ -80,8 +80,7 @@ class SettingsViewModelTest {
             ObserveNetworkOverview(networks, accounts, lightClient, MemoryTransactionHistory(), clock = { 1_000 }),
             SetNetworkEnabled(networks),
             ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata()),
-            ObserveDisplayCurrencies(FakeFeeds(), currency),
-            Network.SEPOLIA,
+            ObserveDisplayCurrencies(FakeFeeds(), currency, accounts),
             screenCapture,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
@@ -105,6 +104,7 @@ class SettingsViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(
             listOf(
+                NetworkRow(1, "Ethereum", on = false, "No account · Off", LightClientHealth.NOT_RUNNING),
                 NetworkRow(
                     11_155_111,
                     "Sepolia",
@@ -212,8 +212,7 @@ class SettingsViewModelTest {
             ObserveNetworkOverview(networks, accounts, lightClient, MemoryTransactionHistory(), clock = { now }),
             SetNetworkEnabled(networks),
             ObserveKnownTokens(ListCatalog(usdc), MemoryUserTokens(), FakeMetadata()),
-            ObserveDisplayCurrencies(FakeFeeds(), currency),
-            Network.SEPOLIA,
+            ObserveDisplayCurrencies(FakeFeeds(), currency, accounts),
             null,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),

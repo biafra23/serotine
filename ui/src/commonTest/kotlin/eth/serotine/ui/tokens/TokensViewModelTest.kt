@@ -42,7 +42,6 @@ class TokensViewModelTest {
             ObserveKnownTokens(ListCatalog(usdc), userTokens, metadata),
             SetTokenHidden(userTokens),
             RemoveToken(userTokens),
-            Network.SEPOLIA,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel
@@ -55,7 +54,7 @@ class TokensViewModelTest {
         metadata.of(usdc.address).value = MetadataReading.Verified("USDC", "USDC", 6, 11_932_144)
         runCurrent()
 
-        val (builtIn, added) = viewModel.uiState.value.items
+        val (builtIn, added) = viewModel.uiState.value.sepolia
         assertEquals("Built in · checked against its contract at block 11,932,144", builtIn.status)
         assertEquals("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", builtIn.address)
         assertEquals("Added: as its contract describes itself", added.status)
@@ -63,7 +62,7 @@ class TokensViewModelTest {
 
         metadata.of(usdc.address).value = MetadataReading.Verified("USDC", "USDC", 18, 11_932_150)
         runCurrent()
-        val contradicted = viewModel.uiState.value.items.first()
+        val contradicted = viewModel.uiState.value.sepolia.first()
         assertEquals("Not shown: its contract says USDC with 18 decimals", contradicted.status)
         assertEquals(true, contradicted.problem)
     }
@@ -73,20 +72,20 @@ class TokensViewModelTest {
         userTokens.add(Network.SEPOLIA, fake)
         val viewModel = viewModel()
 
-        viewModel.setHidden("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", true)
+        viewModel.setHidden(SEPOLIA, "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", true)
         runCurrent()
-        assertEquals(true, viewModel.uiState.value.items.first().hidden)
+        assertEquals(true, viewModel.uiState.value.sepolia.first().hidden)
 
-        viewModel.remove(fake.address.hex)
+        viewModel.remove(SEPOLIA, fake.address.hex)
         runCurrent()
-        assertEquals(1, viewModel.uiState.value.items.size)
+        assertEquals(1, viewModel.uiState.value.sepolia.size)
     }
 
     @Test
     fun settingsThatCannotBeReadOrSavedAreSaid() = runTest {
         val viewModel = viewModel()
         userTokens.failSaves = true
-        viewModel.setHidden(usdc.address.hex, true)
+        viewModel.setHidden(SEPOLIA, usdc.address.hex, true)
         runCurrent()
         assertEquals("The change could not be saved. Nothing has changed.", viewModel.uiState.value.notice)
 
@@ -114,7 +113,32 @@ class TokensViewModelTest {
 
         assertEquals(
             "Built in · its contract cannot be checked on this device",
-            viewModel.uiState.value.items[0].status,
+            viewModel.uiState.value.sepolia[0].status,
         )
     }
+
+    @Test
+    fun eachNetworkIsASectionOfItsOwnAndAChangeIsMadeOnIt() = runTest {
+        // An added token on Ethereum at the very address of Sepolia's built-in USDC: another token.
+        userTokens.add(Network.ETHEREUM, fake.copy(address = usdc.address))
+        val viewModel = viewModel()
+        runCurrent()
+
+        val sections = viewModel.uiState.value.sections
+        assertEquals(listOf("Ethereum", "Sepolia"), sections.map { it.network.name }, "Ethereum's first")
+        assertEquals(listOf(false), sections[0].items.map { it.builtIn })
+
+        viewModel.setHidden(Network.ETHEREUM.chainId, usdc.address.hex, true)
+        runCurrent()
+        assertEquals(true, viewModel.uiState.value.sections[0].items.single().hidden, "hidden on Ethereum")
+        assertEquals(false, viewModel.uiState.value.sepolia.single().hidden, "Sepolia's USDC untouched")
+    }
+
+    private companion object {
+        val SEPOLIA = Network.SEPOLIA.chainId
+    }
 }
+
+/** Sepolia's tokens, the section the tests above read. */
+private val TokensUiState.sepolia: List<TokenItem>
+    get() = sections.single { it.network.chainId == Network.SEPOLIA.chainId }.items

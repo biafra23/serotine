@@ -41,10 +41,15 @@ class FollowNetworksTest {
     private val demand = NetworkDemand()
 
     /** What each network was told, in order. */
-    private val told = mutableListOf<LightClientRun>()
+    private val toldEach = mutableMapOf<Network, MutableList<LightClientRun>>()
+
+    /** What Sepolia, the network of [daily], was told. */
+    private val told: List<LightClientRun>
+        get() = toldEach[Network.SEPOLIA].orEmpty()
+
     private val control = object : LightClientControl {
         override fun set(network: Network, run: LightClientRun) {
-            told += run
+            toldEach.getOrPut(network) { mutableListOf() } += run
         }
     }
 
@@ -97,6 +102,22 @@ class FollowNetworksTest {
         on.value = setOf(Network.SEPOLIA)
         runCurrent()
         assertEquals(listOf(LightClientRun.RUN, LightClientRun.OFF, LightClientRun.RUN), told)
+    }
+
+    @Test
+    fun eachNetworkIsToldApart() = runTest {
+        accounts.add(daily)
+        follow()
+        assertEquals<List<LightClientRun>?>(listOf(LightClientRun.OFF), toldEach[Network.ETHEREUM], "Ethereum is off")
+
+        on.value = setOf(Network.ETHEREUM, Network.SEPOLIA)
+        runCurrent()
+        assertEquals<List<LightClientRun>?>(
+            listOf(LightClientRun.OFF, LightClientRun.IDLE),
+            toldEach[Network.ETHEREUM],
+            "on, no account",
+        )
+        assertEquals(listOf(LightClientRun.RUN), told, "Sepolia's is untouched")
     }
 
     @Test

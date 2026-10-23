@@ -22,7 +22,8 @@ object PinnedFallbackHandlers {
 
     /** The CompatibilityFallbackHandler pinned on [network]. */
     fun compatibility(network: Network): Address = when (network) {
-        Network.SEPOLIA -> COMPATIBILITY_1_4_1
+        // Ethereum's is proven on mainnet with its Safe deployments (docs/networks.md, part 4).
+        Network.ETHEREUM, Network.SEPOLIA -> COMPATIBILITY_1_4_1
     }
 
     /** Whether a Safe on [network] may be given [handler] (null: none) by a transaction signed here. */

@@ -40,6 +40,8 @@ internal object UniswapDeployments {
 
     /** The deployment pinned on [network], or null when none is. */
     fun of(network: Network): PinnedUniswapV3? = when (network) {
+        // None until its contracts are proven on mainnet (docs/networks.md, part 4): Swap is greyed out.
+        Network.ETHEREUM -> null
         Network.SEPOLIA -> SEPOLIA
     }
 

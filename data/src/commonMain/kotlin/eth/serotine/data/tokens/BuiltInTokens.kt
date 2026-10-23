@@ -31,6 +31,8 @@ object BuiltInTokens {
 
     /** The tokens built in for [network], in display order. */
     fun of(network: Network): List<Token> = when (network) {
+        // None built in until each is proven on mainnet (docs/networks.md, part 4).
+        Network.ETHEREUM -> emptyList()
         Network.SEPOLIA -> SEPOLIA
     }
 

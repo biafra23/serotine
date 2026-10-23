@@ -87,7 +87,7 @@ import eth.serotine.domain.usecase.ObserveSwapVenue
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveTokenTransfers
-import eth.serotine.domain.usecase.ObserveUpgradeWarning
+import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.PlaceCowOrder
 import eth.serotine.domain.usecase.PlanSafe
@@ -267,18 +267,9 @@ class AppGraph(
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
 
-    /**
-     * The network of what is still app-wide: the upgrade banner and the update screen, the display
-     * currencies (Accounts' and Settings'), and Settings → Tokens. A screen about an account takes
-     * its network from that account, and the screens that add one choose it (docs/networks.md, N8
-     * to N12, N17). Part 4, which adds the second network, makes these per network (the upgrade
-     * advisories, a currency any network with accounts can price, the tokens grouped by network)
-     * before Ethereum joins `Network`, which [single] makes sure of.
-     */
-    internal val soleNetwork: Network = Network.entries.single()
-
-    private fun observeUpgradeWarning() =
-        ObserveUpgradeWarning(soleNetwork, networkUpgrades, knownUpgrades, lightClient)
+    /** Every network's upgrade warning, and whether the update screen replaces the app (docs/networks.md). */
+    private fun observeUpgradeWarnings() =
+        ObserveUpgradeWarnings(networkUpgrades, knownUpgrades, lightClient, networkSettings, accounts)
 
     fun accountsViewModel(): AccountsViewModel =
         AccountsViewModel(
@@ -288,8 +279,7 @@ class AppGraph(
             ObserveLightClient(lightClient),
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
-            observeUpgradeWarning(),
-            soleNetwork,
+            observeUpgradeWarnings(),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -308,6 +298,7 @@ class AppGraph(
             accountActivity(),
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
+            observeUpgradeWarnings(),
         )
 
     /**
@@ -583,7 +574,6 @@ class AppGraph(
             SetNetworkEnabled(networkSettings),
             knownTokens(),
             displayCurrencies(),
-            soleNetwork,
             screenCaptureDebugSwitch,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
@@ -597,10 +587,10 @@ class AppGraph(
         DebugViewModel(ObserveDebugLog(debugLog), SetDebugLogLevel(debugLog), ClearDebugLog(debugLog))
 
     fun currencyViewModel(): CurrencyViewModel =
-        CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency), soleNetwork)
+        CurrencyViewModel(displayCurrencies(), SetDisplayCurrency(priceFeeds, displayCurrency, accounts))
 
     fun tokensViewModel(): TokensViewModel =
-        TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens), soleNetwork)
+        TokensViewModel(knownTokens(), SetTokenHidden(userTokens), RemoveToken(userTokens))
 
     /** Add token by address (docs/wallet-ux.md, screen 20), its field starting with [address]. */
     fun addTokenViewModel(address: String = "", network: Network? = null): AddTokenViewModel =
@@ -617,7 +607,7 @@ class AppGraph(
 
     private fun knownTokens() = ObserveKnownTokens(tokenCatalog, userTokens, tokenMetadata)
 
-    private fun displayCurrencies() = ObserveDisplayCurrencies(priceFeeds, displayCurrency)
+    private fun displayCurrencies() = ObserveDisplayCurrencies(priceFeeds, displayCurrency, accounts)
 
     private fun accountValue() = ObserveAccountValue(
         ObserveNativeBalance(nativeBalances),
@@ -635,7 +625,7 @@ class AppGraph(
     )
 
     fun updateRequiredViewModel(): UpdateRequiredViewModel =
-        UpdateRequiredViewModel(observeUpgradeWarning(), soleNetwork)
+        UpdateRequiredViewModel(observeUpgradeWarnings())
 
     fun securityViewModel(): SecurityViewModel =
         SecurityViewModel(DescribeKeyStore(keys), EnableBiometricUnlock(keys), DisableBiometricUnlock(keys))

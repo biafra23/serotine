@@ -33,7 +33,7 @@ class ExchangeRateTest {
     private val read = ReadExchangeRate(feeds, history)
     private val setting = MemoryCurrencySetting()
     private val last = MemoryLastRate()
-    private val currencies = ObserveDisplayCurrencies(feeds, setting)
+    private val currencies = ObserveDisplayCurrencies(feeds, setting, ListAccountRepository())
     private val refresh = RefreshExchangeRate(currencies, read, last, Network.SEPOLIA)
 
     /** A day back that has no round, which is a lasting answer: read once, no retries. */

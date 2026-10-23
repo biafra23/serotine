@@ -38,7 +38,7 @@ import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
-import eth.serotine.domain.usecase.ObserveUpgradeWarning
+import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.UpgradeWarning
@@ -107,7 +107,7 @@ class AccountsViewModelTest {
     ) = NetworkSection(Network.SEPOLIA.chainId, "Sepolia", testnet = true, on = true, status, accounts, total, totalNote)
 
     private fun viewModel(): AccountsViewModel {
-        val currencies = ObserveDisplayCurrencies(feeds, currency)
+        val currencies = ObserveDisplayCurrencies(feeds, currency, repository)
         val value = ObserveAccountValue(
             ObserveNativeBalance(balances),
             ObserveTokenHoldings(
@@ -124,8 +124,7 @@ class AccountsViewModelTest {
             ObserveLightClient(lightClient),
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
-            ObserveUpgradeWarning(Network.SEPOLIA, upgrades, NoRecord, lightClient) { now },
-            Network.SEPOLIA,
+            ObserveUpgradeWarnings(upgrades, NoRecord, lightClient, networks, repository) { now },
             clock = { now },
             formatTime = { "<$it>" },
         )
@@ -430,17 +429,21 @@ class AccountsViewModelTest {
         val viewModel = viewModel()
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
-        assertEquals(null, viewModel.uiState.value.upgrade)
+        assertEquals(emptyList(), viewModel.uiState.value.upgrades)
 
         val ahead = NetworkUpgrade(NetworkUpgrade.Phase.SCHEDULED, now + 86_400, "0x6c1d9423", 5)
         upgrades.report.value = ahead
         runCurrent()
 
         assertEquals(
-            UpgradeBannerItem.from(UpgradeWarning.Ahead(ahead), Network.SEPOLIA) { "<$it>" },
-            viewModel.uiState.value.upgrade,
+            listOfNotNull(UpgradeBannerItem.from(UpgradeWarning.Ahead(ahead), Network.SEPOLIA) { "<$it>" }),
+            viewModel.uiState.value.upgrades,
+            "Sepolia's banner alone: Ethereum's peers report nothing",
         )
-        assertEquals("Network upgrade ahead: update Serotine", viewModel.uiState.value.upgrade?.title)
+        assertEquals(
+            "Network upgrade ahead on Sepolia: update Serotine",
+            viewModel.uiState.value.upgrades.single().title,
+        )
     }
 
     @Test
@@ -454,7 +457,7 @@ class AccountsViewModelTest {
 
         val state = viewModel.uiState.value
         assertIs<AccountsUiState.ListUnavailable>(state)
-        assertEquals("Network upgrade ahead: update Serotine", state.upgrade?.title)
+        assertEquals("Network upgrade ahead on Sepolia: update Serotine", state.upgrades.single().title)
     }
 
     @Test
@@ -582,9 +585,11 @@ class AccountsViewModelTest {
             error("not used by this test")
     }
 
+    /** Sepolia's peers report [report]; every other network's, nothing. */
     private class FakeNetworkUpgrades : NetworkUpgrades {
         val report = MutableStateFlow<NetworkUpgrade?>(null)
-        override fun observeUpgrade(network: Network): Flow<NetworkUpgrade?> = report
+        override fun observeUpgrade(network: Network): Flow<NetworkUpgrade?> =
+            if (network == Network.SEPOLIA) report else flowOf(null)
     }
 
     private object NoRecord : KnownUpgradeStore {

@@ -168,9 +168,12 @@ private fun openWallet(dataDir: File) {
     // The CoW orders signed here, each live until its end is proven (docs/swaps.md): public data only.
     val cowOrders = FileCowOrders(dataDir.resolve("cow-orders.json").path)
     val sentTransfers = HistoryRecordingSentTransfers(sentRecord, transactionHistory)
-    // Which networks are on (docs/networks.md, *Networks on and off*): Sepolia, the only one, in
-    // every run until Ethereum and Gnosis Chain come with their own build defaults.
-    val networkSettings = FileNetworkSettings(dataDir.resolve("networks.json").path, defaultOn = { true })
+    // Which networks are on (docs/networks.md, *Networks on and off*). A network the file does not
+    // mention yet gets this build's default: an installed app turns on the real networks and leaves
+    // Sepolia off, a development run (its debug build, the property's) turns on Sepolia alone.
+    val development = System.getProperty(DEBUG_LOG_PROPERTY) == "true"
+    val networkSettings =
+        FileNetworkSettings(dataDir.resolve("networks.json").path, defaultOn = { it.testnet == development })
     // The screens' holds on a network with no account on it yet (Watch, Add token).
     val networkDemand = NetworkDemand()
     application(exitProcessOnExit = false) {

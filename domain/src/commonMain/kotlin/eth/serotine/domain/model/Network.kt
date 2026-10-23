@@ -5,10 +5,9 @@ package eth.serotine.domain.model
  * currency's [nativeSymbol] (the chain registry's), [nativeName], [nativeIcon] (the key of its
  * bundled icon) and [nativePriceId], the price id of its feed; [testnet] when its prices are
  * a testnet's, which have no market value (docs/wallet-ux.md, *Prices*); [secondsPerSlot], the
- * length of its beacon slot, at most one block each. For now that is
- * Sepolia and nothing else (owner ruling, 2026-10-15; CLAUDE.md, *Data sources*): every
- * chain read and every transaction targets [SEPOLIA], and adding a network, mainnet
- * included, is the owner's decision.
+ * length of its beacon slot, at most one block each. Ethereum and Gnosis Chain beside Sepolia,
+ * one chain per account (owner ruling, 2026-10-22; CLAUDE.md, *Data sources*;
+ * docs/networks.md), in the order the screens list them; adding another is the owner's decision.
  */
 enum class Network(
     val chainId: Long,
@@ -20,6 +19,18 @@ enum class Network(
     val testnet: Boolean,
     val secondsPerSlot: Long,
 ) {
+    /** Ethereum itself, mainnet: real funds; its native currency is ether. */
+    ETHEREUM(
+        chainId = 1,
+        displayName = "Ethereum",
+        nativeSymbol = "ETH",
+        nativeName = "Ether",
+        nativeIcon = "eth",
+        nativePriceId = PriceId("ETH"),
+        testnet = false,
+        secondsPerSlot = 12,
+    ),
+
     /** Ethereum's long-lived public testnet; its native currency is (Sepolia) ether. */
     SEPOLIA(
         chainId = 11_155_111,

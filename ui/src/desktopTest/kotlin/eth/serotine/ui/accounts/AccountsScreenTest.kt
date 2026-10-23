@@ -67,7 +67,7 @@ class AccountsScreenTest {
         notice: String? = null,
         total: String? = null,
         totalNote: String? = null,
-        upgrade: UpgradeBannerItem? = null,
+        upgrades: List<UpgradeBannerItem> = emptyList(),
         on: Boolean = true,
     ) = AccountsUiState.Ready(
         listOfNotNull(
@@ -77,7 +77,7 @@ class AccountsScreenTest {
         notice,
         total,
         totalNote = totalNote,
-        upgrade = upgrade,
+        upgrades = upgrades,
     )
 
     private fun show(state: AccountsUiState) =
@@ -322,18 +322,32 @@ class AccountsScreenTest {
     @Test
     fun anUpgradeBannerIsShownUnderTheStripWithTheWayToTheUpdate() {
         val banner = UpgradeBannerItem(
-            "Network upgrade ahead: update Serotine",
+            "Network upgrade ahead on Sepolia: update Serotine",
             "Peers announce a Sepolia network upgrade on Nov 6, 2026 that this version does not support.",
             "Reported by peers in 5 networks, not verified · fork id 0x6c1d9423",
             urgent = false,
         )
-        show(ready(emptyList(), upgrade = banner))
+        show(ready(emptyList(), upgrades = listOf(banner)))
 
         rule.onNodeWithTag(UPGRADE_BANNER_TAG).assertIsDisplayed()
         rule.onNodeWithText(banner.text).assertIsDisplayed()
         rule.onNodeWithText(banner.details).assertIsDisplayed()
         rule.onNodeWithText("Get the update").assertIsDisplayed()
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+    }
+
+    @Test
+    fun aNetworkBlockedAloneSaysSoInItsSectionAndGreysOutItsAccountsSend() {
+        val reason = "This version of Serotine can no longer follow Sepolia: nothing can be sent from its accounts " +
+            "until you update the app."
+        val state = ready(listOf(daily.copy(networkBlocked = reason))).let { ready ->
+            ready.copy(sections = ready.sections.map { it.copy(blocked = reason) })
+        }
+        show(state)
+
+        rule.onNodeWithText(reason).assertIsDisplayed()
+        assertEquals(false, state.sections.single().accounts.single().canSend)
+        assertEquals(reason, state.sections.single().accounts.single().sendReason)
     }
 
     @Test

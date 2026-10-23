@@ -33,6 +33,8 @@ object ChainlinkFeeds {
 
     /** The feeds pinned for [network]. */
     fun of(network: Network): List<PinnedFeed> = when (network) {
+        // None pinned until each is proven on mainnet (docs/networks.md, part 4): nothing is priced.
+        Network.ETHEREUM -> emptyList()
         Network.SEPOLIA -> SEPOLIA
     }
 

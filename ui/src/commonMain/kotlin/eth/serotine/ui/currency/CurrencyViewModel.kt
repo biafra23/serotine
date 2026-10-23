@@ -3,7 +3,6 @@ package eth.serotine.ui.currency
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.DisplayCurrency
-import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.SetDisplayCurrency
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,12 +12,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** The display currency screen's ViewModel: the currencies offered, and choosing one ([choose]). */
+/**
+ * The display currency screen's ViewModel: the currencies offered, one choice for the whole wallet
+ * (those any network with accounts can price; docs/networks.md, *Values*), and choosing one
+ * ([choose]).
+ */
 class CurrencyViewModel(
     observeDisplayCurrencies: ObserveDisplayCurrencies,
     private val setDisplayCurrency: SetDisplayCurrency,
-    /** The network this screen works on: the only one until the network steps (docs/networks.md, part 3). */
-    private val network: Network,
 ) : ViewModel() {
 
     private class Outcome(val error: String? = null, val done: Boolean = false)
@@ -26,7 +27,7 @@ class CurrencyViewModel(
     private val outcome = MutableStateFlow(Outcome())
 
     val uiState: StateFlow<CurrencyUiState> = combine(
-        observeDisplayCurrencies(network),
+        observeDisplayCurrencies(),
         outcome,
     ) { currencies, outcome ->
         CurrencyUiState(
@@ -47,10 +48,7 @@ class CurrencyViewModel(
         val currency = DisplayCurrency.entries.firstOrNull { it.code == code } ?: return
         if (outcome.value.done) return
         viewModelScope.launch {
-            outcome.value = if (setDisplayCurrency(
-                    network,
-                    currency,
-                )) Outcome(done = true) else Outcome(error = NOT_SAVED)
+            outcome.value = if (setDisplayCurrency(currency)) Outcome(done = true) else Outcome(error = NOT_SAVED)
         }
     }
 

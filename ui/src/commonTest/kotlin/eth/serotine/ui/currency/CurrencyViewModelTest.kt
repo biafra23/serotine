@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.CurrencyChoice
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.SetDisplayCurrency
+import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.MemoryCurrencySetting
 import kotlin.test.AfterTest
@@ -34,9 +35,8 @@ class CurrencyViewModelTest {
     private fun TestScope.viewModel(): CurrencyViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = CurrencyViewModel(
-            ObserveDisplayCurrencies(feeds, setting),
-            SetDisplayCurrency(feeds, setting),
-            Network.SEPOLIA,
+            ObserveDisplayCurrencies(feeds, setting, FakeAccounts()),
+            SetDisplayCurrency(feeds, setting, FakeAccounts()),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel

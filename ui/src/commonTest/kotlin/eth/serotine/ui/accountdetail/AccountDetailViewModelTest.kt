@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.SafeOperation
@@ -18,6 +19,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
@@ -61,6 +63,8 @@ import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemorySafeTxQueue
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.FakeUpgradeReports
+import eth.serotine.ui.upgradeWarnings
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
@@ -129,7 +133,7 @@ class AccountDetailViewModelTest {
             ObserveNativeBalance(balances),
             ObserveTokenHoldings(ObserveKnownTokens(catalog, userTokens, metadata), tokenBalances),
             ObserveUsdPrice(feeds),
-            ObserveDisplayCurrencies(feeds, currency),
+            ObserveDisplayCurrencies(feeds, currency, accounts),
         ),
         ObserveSafe(kinds, accounts),
         ObserveSafeTxQueue(queue, ObserveSafe(kinds, accounts), recovery, Network.SEPOLIA),
@@ -139,8 +143,13 @@ class AccountDetailViewModelTest {
         activity(),
         ObserveEnabledNetworks(networks),
         SetNetworkEnabled(networks),
+        upgradeWarnings(networks, accounts, upgradeReports, upgradeStatus),
         formatTime = { "<$it>" },
     )
+
+    private val upgradeReports = FakeUpgradeReports()
+    private val upgradeStatus =
+        MutableStateFlow<LightClientStatus>(LightClientStatus.Synced(9, null, finalized = null))
 
     private val networks = MemoryNetworkSettings()
 
@@ -193,6 +202,33 @@ class AccountDetailViewModelTest {
         val on = viewModel.uiState.value as AccountDetailUiState.Ready
         assertEquals(true, on.networkOn)
         assertEquals(null, on.sendReason)
+    }
+
+    @Test
+    fun onANetworkThisVersionCanNoLongerFollowSendAndSwapAreGreyedOut() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        // Ethereum still followed, so no update screen: Sepolia's accounts say it themselves.
+        networks.on.value = setOf(Network.ETHEREUM, Network.SEPOLIA)
+        accounts.accounts.value += daily.copy(network = Network.ETHEREUM)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        upgradeReports.reports.getValue(Network.SEPOLIA).value =
+            NetworkUpgrade(NetworkUpgrade.Phase.ACTIVE, 1_791_294_816, "0x6c1d9423", 5)
+        upgradeStatus.value = LightClientStatus.CatchingUp(1, 3)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(true, ready.networkBlocked)
+        assertEquals(
+            "This version of Serotine can no longer follow Sepolia: nothing can be sent from its accounts until " +
+                "you update the app.",
+            ready.sendReason,
+        )
+        assertEquals(
+            "This version of Serotine can no longer follow Sepolia: nothing can be swapped from its accounts until " +
+                "you update the app.",
+            ready.swapReason,
+        )
     }
 
     @Test
@@ -782,7 +818,7 @@ class AccountDetailViewModelTest {
                 ObserveNativeBalance(balances),
                 ObserveTokenHoldings(ObserveKnownTokens(catalog, userTokens, metadata), tokenBalances),
                 ObserveUsdPrice(feeds),
-                ObserveDisplayCurrencies(feeds, currency),
+                ObserveDisplayCurrencies(feeds, currency, accounts),
             ),
             ObserveSafe(slow, accounts),
             ObserveSafeTxQueue(queue, ObserveSafe(slow, accounts), recovery, Network.SEPOLIA),
@@ -792,6 +828,7 @@ class AccountDetailViewModelTest {
             activity(),
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
+            upgradeWarnings(networks, accounts),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

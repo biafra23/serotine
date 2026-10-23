@@ -38,7 +38,7 @@ class RefreshExchangeRate(
 
     /** The currency the rate is shown in. */
     private suspend fun quote(): DisplayCurrency {
-        val chosen = currencies(network).first().chosen
+        val chosen = currencies.on(network).first()
         return chosen.takeIf { it.priceId != network.nativePriceId } ?: DisplayCurrency.USD
     }
 }

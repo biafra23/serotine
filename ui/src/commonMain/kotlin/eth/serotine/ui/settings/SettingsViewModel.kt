@@ -32,15 +32,14 @@ import kotlinx.coroutines.launch
  * switches and light clients (docs/networks.md, N16 and N20), the Debug tab's switch and the
  * version; and, in a debug build, the switch that allows screen recordings of the protected
  * screens. Turning a network on asks nothing; turning off one with accounts asks first, and one
- * without turns off at once. The tokens and the currency are [network]'s, the only one there is
- * until the network steps.
+ * without turns off at once. The tokens are every network's, counted together; the currency is
+ * the wallet's one.
  */
 class SettingsViewModel(
     private val observeNetworkOverview: ObserveNetworkOverview,
     private val setNetworkEnabled: SetNetworkEnabled,
     observeKnownTokens: ObserveKnownTokens,
     observeDisplayCurrencies: ObserveDisplayCurrencies,
-    network: Network,
     /** The debug build's screen-capture switch; null in a release build, which offers none. */
     private val screenCapture: ScreenCaptureDebugSwitch?,
     observeDebugScreen: ObserveDebugScreen,
@@ -67,16 +66,17 @@ class SettingsViewModel(
                 turningOff,
                 ::Triple,
             ),
-            observeKnownTokens(network),
-            observeDisplayCurrencies(network),
+            combine(Network.entries.map { observeKnownTokens(it) }) { it.toList() },
+            observeDisplayCurrencies(),
             screenCapture?.allowed ?: flowOf(null),
             combine(observeDebugScreen(), debugScreenNotSaved, ::Pair),
         ) { (networks, notSaved, confirming), known, currencies, captureAllowed, (debugScreen, debugNotSaved) ->
-            val builtIn = known.tokens.count { it.origin == TokenOrigin.BUILT_IN }
-            val added = if (known.settingsUnavailable) {
+            val tokens = known.flatMap { it.tokens }
+            val builtIn = tokens.count { it.origin == TokenOrigin.BUILT_IN }
+            val added = if (known.any { it.settingsUnavailable }) {
                 "added ones cannot be read"
             } else {
-                "${known.tokens.size - builtIn} added"
+                "${tokens.size - builtIn} added"
             }
             val currency = currencies.chosen.code + when {
                 currencies.unreadable -> " (your choice cannot be read)"

@@ -28,8 +28,8 @@ import eth.serotine.ui.update.UpgradeBannerItem
  * N1): [Ready] has a section per network with accounts, each with its own light client.
  */
 sealed interface AccountsUiState {
-    /** A network upgrade this version does not support, for the banner at the top; null when none. */
-    val upgrade: UpgradeBannerItem?
+    /** Each network's upgrade this version does not support, a banner each at the top; none when none. */
+    val upgrades: List<UpgradeBannerItem>
 
     /**
      * Why Create Safe cannot be done now, display-ready, or null when it can: offered either way,
@@ -39,7 +39,7 @@ sealed interface AccountsUiState {
     val createSafeReason: String?
 
     /** The account stream has not emitted yet. */
-    data class Loading(override val upgrade: UpgradeBannerItem? = null) : AccountsUiState {
+    data class Loading(override val upgrades: List<UpgradeBannerItem> = emptyList()) : AccountsUiState {
         /** The accounts are not read yet: which of them could pay is not known. */
         override val createSafeReason: String
             get() = CREATE_SAFE_CHECKING
@@ -61,7 +61,7 @@ sealed interface AccountsUiState {
         val total: String? = null,
         val totalLabel: String? = null,
         val totalNote: String? = null,
-        override val upgrade: UpgradeBannerItem? = null,
+        override val upgrades: List<UpgradeBannerItem> = emptyList(),
         val message: String? = null,
     ) : AccountsUiState {
         init {
@@ -94,7 +94,7 @@ sealed interface AccountsUiState {
      */
     data class ListUnavailable(
         val message: String,
-        override val upgrade: UpgradeBannerItem? = null,
+        override val upgrades: List<UpgradeBannerItem> = emptyList(),
     ) : AccountsUiState {
         /** Nothing can be added while the list cannot be read: [message] says why. */
         override val createSafeReason: String
@@ -108,7 +108,9 @@ sealed interface AccountsUiState {
  * section's status line ([status]; "Off in this wallet · nothing is checked" when it is off), its
  * [total] in the display currency ("€1,446.30", "Off"; null while nothing is valued) with what
  * that leaves out ([totalNote], "testnet prices"), and its [accounts]. [chainId] names the
- * network to the screen's actions.
+ * network to the screen's actions. [blocked] says that this version can no longer follow the
+ * network while others still can (docs/networks.md, *Upgrades and the update screen*): the
+ * section is drawn in the error colour, with the way to the update.
  */
 data class NetworkSection(
     val chainId: Long,
@@ -119,6 +121,7 @@ data class NetworkSection(
     val accounts: List<AccountItem>,
     val total: String? = null,
     val totalNote: String? = null,
+    val blocked: String? = null,
 )
 
 /**
@@ -135,7 +138,8 @@ data class NetworkSection(
  * name, or its short address once the ENS name its name follows no longer points to it, which
  * [nameNote] then says. [networkOff] names the account's network while it is off in this wallet
  * (docs/networks.md, N18): its balance is then the one last verified, or "Not checked", with no
- * value, and Send waits for the network to be turned on.
+ * value, and Send waits for the network to be turned on. [networkBlocked] says that this version can
+ * no longer follow the account's network, which greys out its Send.
  */
 data class AccountItem(
     val label: String,
@@ -152,6 +156,7 @@ data class AccountItem(
     val kindNote: String? = null,
     val nameNote: String? = null,
     val networkOff: String? = null,
+    val networkBlocked: String? = null,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -168,7 +173,9 @@ data class AccountItem(
 
     /** Why Send cannot be done from this account, and how to get there; null when it can. */
     val sendReason: String?
-        get() = networkOff?.let { networkOffReason(it, label) } ?: sendBlockedReason(kind, control)
+        get() = networkOff?.let { networkOffReason(it, label) }
+            ?: networkBlocked
+            ?: sendBlockedReason(kind, control)
 
     companion object {
         /**
@@ -267,6 +274,14 @@ sealed interface AccountAction {
 internal fun networkOffReason(network: String, account: String, done: String = "sent"): String =
     "$network is off in this wallet, so its balances are not checked and nothing can be $done from $account. " +
         "Turned on, it checks them again first."
+
+/**
+ * Why nothing can be [done] ("sent", "swapped") from [network]'s accounts while this version can no
+ * longer follow it, others still followed (docs/networks.md, *Upgrades and the update screen*).
+ */
+internal fun networkBlockedReason(network: String, done: String = "sent"): String =
+    "This version of Serotine can no longer follow $network: nothing can be $done from its accounts until " +
+        "you update the app."
 
 /** What Create Safe says while the account list is still being read. */
 internal const val CREATE_SAFE_CHECKING = "Checking which accounts can pay…"

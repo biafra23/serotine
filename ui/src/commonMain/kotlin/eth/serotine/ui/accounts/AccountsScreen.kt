@@ -191,7 +191,7 @@ fun AccountsScreen(
         topBar = { TopAppBar(title = { Text("Accounts") }) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            state.upgrade?.let { UpgradeBanner(it) }
+            state.upgrades.forEach { UpgradeBanner(it) }
             (state as? AccountsUiState.Ready)?.let { ready ->
                 ready.total?.let { PortfolioTotal(it, ready.totalLabel, ready.totalNote) }
             }
@@ -309,9 +309,13 @@ private const val DIMMED = 0.6f
  */
 @Composable
 private fun SectionHeader(section: NetworkSection) {
+    val colors = MaterialTheme.colorScheme
+    // On the error container, its own content colour; on the usual surface, the muted one.
+    val secondary = if (section.blocked != null) colors.onErrorContainer else colors.onSurfaceVariant
     Column(
         Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            // A network this version can no longer follow is drawn in the error colour.
+            .background(if (section.blocked != null) colors.errorContainer else colors.surfaceContainerLow)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .semantics(mergeDescendants = true) { heading() }
             .testTag(ACCOUNTS_SECTION_TAG + section.chainId),
@@ -330,11 +334,19 @@ private fun SectionHeader(section: NetworkSection) {
                 section.status.text,
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = secondary,
             )
         }
         section.totalNote?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(it, style = MaterialTheme.typography.labelSmall, color = secondary)
+        }
+        section.blocked?.let {
+            Text(
+                it,
+                Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }

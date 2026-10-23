@@ -176,7 +176,7 @@ class SendViewModelTest {
                     tokenBalances,
                 ),
                 ObserveUsdPrice(feeds),
-                ObserveDisplayCurrencies(feeds, currency),
+                ObserveDisplayCurrencies(feeds, currency, accounts),
             ),
             DescribeKeyStore(keys),
             ResolveRecipient(names),
