@@ -202,7 +202,9 @@ class MyotisHost private constructor(
     /**
      * Stops every light client and the engine; idempotent. A start in progress finishes first,
      * waited for up to [SHUTDOWN_WAIT], so a process that exits right after does not cut it off
-     * mid-start. Blocks: never call it on the main thread, where iOS's watchdog ends an app that
+     * mid-start. The wait bounds only the queue: once the stop runs, it runs to the end, its
+     * engine calls not interruptible, and a stop still queued when the wait ends never runs (the
+     * JVM host's runs once the start ends), the process ending with the engine as it is. Blocks: never call it on the main thread, where iOS's watchdog ends an app that
      * blocks; the host calls it off the main thread when the app is terminated while running. An
      * app killed while suspended runs no code at all, so on iOS this is best effort: the engine
      * has to come back from an abrupt end anyway.
@@ -396,7 +398,15 @@ class MyotisHost private constructor(
             val handle = (state as? ChainState.Running)?.handle ?: return
             val wanted = pauseWanted
             if (networkingPaused == wanted) return
-            if (if (wanted) handle.pause() else handle.resume()) {
+            val switched = try {
+                if (wanted) handle.pause() else handle.resume()
+            } catch (e: Throwable) {
+                // Caught here, not around the loop over the networks, so one failing does not
+                // leave the others' networking as it was.
+                log("Serotine: ${network.displayName}'s light client could not be switched: $e")
+                return
+            }
+            if (switched) {
                 networkingPaused = wanted
             } else {
                 log("Serotine: ${network.displayName}'s light client did not ${if (wanted) "pause" else "resume"}")
