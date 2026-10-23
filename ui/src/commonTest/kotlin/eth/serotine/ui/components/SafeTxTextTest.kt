@@ -194,9 +194,9 @@ class SafeTxTextTest {
             safeTxRefusalText(SafeTxRefusal.NotNext(4), Network.SEPOLIA),
         )
         assertEquals(
-            // Chain 1 is no network of this wallet's until part 4 of docs/networks.md adds Ethereum.
-            "A request for chain id 1, which is not a network this wallet supports.",
-            safeTxRefusalText(SafeTxRefusal.WrongChain(1), Network.SEPOLIA),
+            // Chain 10, OP Mainnet, is no network of this wallet's.
+            "A request for chain id 10, which is not a network this wallet supports.",
+            safeTxRefusalText(SafeTxRefusal.WrongChain(10), Network.SEPOLIA),
         )
         assertEquals(
             "It reverts, run as a verified call at block 9,412,118. Nothing was signed.",

@@ -69,7 +69,7 @@ class ObserveNetworkOverviewTest {
 
     @Test
     fun aNetworkIsShownWithItsSwitchAccountsAndLightClient() = runTest {
-        val sepolia = overview()().first().single()
+        val sepolia = overview()().first().single { it.network == Network.SEPOLIA }
 
         assertEquals(Network.SEPOLIA, sepolia.network)
         assertEquals(true, sepolia.on)
@@ -79,13 +79,13 @@ class ObserveNetworkOverviewTest {
         assertEquals(0, sepolia.unlistedSafes)
 
         on.value = emptySet()
-        assertEquals(false, overview()().first().single().on)
+        assertEquals(false, overview()().first().single { it.network == Network.SEPOLIA }.on)
     }
 
     @Test
     fun anUnreadableAccountListIsNoAccountCount() = runTest {
         accounts.unreadable = true
-        assertNull(overview()().first().single().accounts)
+        assertNull(overview()().first().single { it.network == Network.SEPOLIA }.accounts)
     }
 
     @Test
@@ -103,7 +103,7 @@ class ObserveNetworkOverviewTest {
             ),
         )
 
-        val sepolia = overview()().first().single()
+        val sepolia = overview()().first().single { it.network == Network.SEPOLIA }
 
         assertEquals(1, sepolia.unconfirmed, "one no longer followed, one included")
         assertEquals(1, sepolia.unlistedSafes, "one listed, one no longer followed")

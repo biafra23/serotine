@@ -191,7 +191,7 @@ fun AccountsScreen(
         topBar = { TopAppBar(title = { Text("Accounts") }) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            state.upgrade?.let { UpgradeBanner(it) }
+            state.upgrades.forEach { UpgradeBanner(it) }
             (state as? AccountsUiState.Ready)?.let { ready ->
                 ready.total?.let { PortfolioTotal(it, ready.totalLabel, ready.totalNote) }
             }
@@ -309,9 +309,11 @@ private const val DIMMED = 0.6f
  */
 @Composable
 private fun SectionHeader(section: NetworkSection) {
+    val colors = MaterialTheme.colorScheme
     Column(
         Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            // A network this version can no longer follow is drawn in the error colour.
+            .background(if (section.blocked != null) colors.errorContainer else colors.surfaceContainerLow)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .semantics(mergeDescendants = true) { heading() }
             .testTag(ACCOUNTS_SECTION_TAG + section.chainId),
@@ -335,6 +337,14 @@ private fun SectionHeader(section: NetworkSection) {
         }
         section.totalNote?.let {
             Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        section.blocked?.let {
+            Text(
+                it,
+                Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }

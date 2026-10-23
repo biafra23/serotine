@@ -32,7 +32,8 @@ class PricesTest {
         mapOf(ETH to PriceId.USD, LINK_ID to ETH, EUR to PriceId.USD, PriceId("USDC") to PriceId.USD),
     )
     private val setting = MemoryCurrencySetting()
-    private val currencies = ObserveDisplayCurrencies(feeds, setting)
+    private val wallet = ListAccountRepository()
+    private val currencies = ObserveDisplayCurrencies(feeds, setting, wallet)
     private val usd = ObserveUsdPrice(feeds)
 
     @Test
@@ -69,21 +70,49 @@ class PricesTest {
 
     @Test
     fun onlyCurrenciesWithAFeedAreOfferedAndAnotherCannotBeChosen() = runTest {
-        val offered = currencies(Network.SEPOLIA).first()
+        val offered = currencies().first()
         assertEquals(listOf(DisplayCurrency.USD, DisplayCurrency.EUR, DisplayCurrency.ETH), offered.offered)
         assertEquals(DisplayCurrency.USD, offered.chosen)
 
-        val set = SetDisplayCurrency(feeds, setting)
-        assertFalse(set(Network.SEPOLIA, DisplayCurrency.JPY), "JPY has no feed here")
-        assertTrue(set(Network.SEPOLIA, DisplayCurrency.EUR))
-        assertEquals(DisplayCurrency.EUR, currencies(Network.SEPOLIA).first().chosen)
+        val set = SetDisplayCurrency(feeds, setting, wallet)
+        assertFalse(set(DisplayCurrency.JPY), "JPY has no feed here")
+        assertTrue(set(DisplayCurrency.EUR))
+        assertEquals(DisplayCurrency.EUR, currencies().first().chosen)
     }
 
     @Test
-    fun aStoredChoiceTheNetworkNoLongerOffersIsUsd() = runTest {
+    fun aStoredChoiceNoNetworkOffersAnyMoreIsUsd() = runTest {
         setting.choice.value = CurrencyChoice.Chosen(DisplayCurrency.GBP)
 
-        assertEquals(DisplayCurrency.USD, currencies(Network.SEPOLIA).first().chosen)
+        assertEquals(DisplayCurrency.USD, currencies().first().chosen)
+    }
+
+    @Test
+    fun aCurrencyIsOfferedWhenANetworkWithAccountsPricesItAndTheOthersAreNamed() = runTest {
+        // Ethereum prices EUR and JPY, Sepolia EUR alone.
+        val split = FakeFeeds(
+            mapOf(EUR to PriceId.USD),
+            byNetwork = mapOf(Network.ETHEREUM to mapOf(EUR to PriceId.USD, PriceId("JPY") to PriceId.USD)),
+        )
+        val both = ListAccountRepository(
+            Account(Network.ETHEREUM, holder, AccountKind.EOA, "Main", AccountCustody.Watched),
+            Account(Network.SEPOLIA, holder, AccountKind.EOA, "Test", AccountCustody.Watched),
+        )
+        val observe = ObserveDisplayCurrencies(split, setting, both)
+        assertEquals(listOf(DisplayCurrency.USD, DisplayCurrency.EUR, DisplayCurrency.JPY), observe().first().offered)
+
+        assertTrue(SetDisplayCurrency(split, setting, both)(DisplayCurrency.JPY), "Ethereum prices JPY")
+        val chosen = observe().first()
+        assertEquals(DisplayCurrency.JPY, chosen.chosen)
+        assertEquals(setOf(Network.SEPOLIA), chosen.unpricedOn, "Sepolia has no JPY rate")
+        // A figure of Sepolia's alone, a widget's, falls back to USD there.
+        assertEquals(DisplayCurrency.USD, observe.on(Network.SEPOLIA).first())
+        assertEquals(DisplayCurrency.JPY, observe.on(Network.ETHEREUM).first())
+
+        // With the Ethereum account gone, no network with accounts prices JPY: USD again.
+        both.accounts.value = both.accounts.value.filter { it.network == Network.SEPOLIA }
+        assertEquals(DisplayCurrency.USD, observe().first().chosen)
+        assertFalse(SetDisplayCurrency(split, setting, both)(DisplayCurrency.JPY))
     }
 
     // --- An account's value and the portfolio.
@@ -230,9 +259,7 @@ class PricesTest {
         )
         val portfolio = ObservePortfolio(ObserveAccounts(accounts), accountValue, currencies)
 
-        val read = portfolio(
-            Network.SEPOLIA,
-        ).first { it.total.complete && it.values[holder.onSepolia]?.tokens?.size == 2 }
+        val read = portfolio().first { it.total.complete && it.values[holder.onSepolia]?.tokens?.size == 2 }
 
         assertEquals(Total(3_250.0, valued = 2, leftOut = 1), read.total)
     }

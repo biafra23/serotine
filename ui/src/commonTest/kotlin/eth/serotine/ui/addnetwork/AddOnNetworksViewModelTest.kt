@@ -12,6 +12,7 @@ import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.MemoryNetworkSettings
+import eth.serotine.ui.components.NetworkChoice
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,10 +26,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
-/**
- * [AddOnNetworksViewModel] with Sepolia the only network there is yet: an account on it has no other
- * network to be added on, until parts 4 and 5 of docs/networks.md bring Ethereum and Gnosis Chain.
- */
+/** [AddOnNetworksViewModel]: an EOA added on the networks it is not on yet, one that is off turned on first. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AddOnNetworksViewModelTest {
 
@@ -58,12 +56,31 @@ class AddOnNetworksViewModelTest {
 
     @Test
     fun anAccountOnEveryNetworkHasNoneToChoose() = runTest {
+        val onEthereum = main.copy(network = Network.ETHEREUM)
+        accounts.accounts.value += onEthereum
         val viewModel = viewModel(main)
 
         assertEquals(AddOnNetworksUiState.Choose("Main", emptyList()), viewModel.uiState.value)
         viewModel.add()
         runCurrent()
-        assertEquals(listOf(main, safe), accounts.accounts.value, "nothing added")
+        assertEquals(listOf(main, safe, onEthereum), accounts.accounts.value, "nothing added")
+    }
+
+    @Test
+    fun anAccountIsAddedOnANetworkTurnedOnFromTheDialog() = runTest {
+        val viewModel = viewModel(main)
+        val ethereum = Network.ETHEREUM.chainId
+        val offered = (viewModel.uiState.value as AddOnNetworksUiState.Choose).choices.single()
+        assertEquals(NetworkChoice(ethereum, "Ethereum", testnet = false, on = false), offered, "off, so not chosen")
+
+        viewModel.turnOn(ethereum)
+        runCurrent()
+        assertEquals(setOf(Network.ETHEREUM, Network.SEPOLIA), networks.on.value)
+        val chosen = (viewModel.uiState.value as AddOnNetworksUiState.Choose).choices.single()
+        assertEquals(true, chosen.on && chosen.chosen, "turned on, and ticked")
+        viewModel.add()
+        runCurrent()
+        assertEquals(listOf(main, safe, main.copy(network = Network.ETHEREUM)), accounts.accounts.value)
     }
 
     @Test

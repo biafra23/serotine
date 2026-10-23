@@ -208,7 +208,7 @@ class SwapViewModelTest {
                     tokenBalances,
                 ),
                 ObserveUsdPrice(FakeFeeds()),
-                ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting()),
+                ObserveDisplayCurrencies(FakeFeeds(), MemoryCurrencySetting(), accounts),
             ),
             DescribeKeyStore(keys),
             QuoteSwap(

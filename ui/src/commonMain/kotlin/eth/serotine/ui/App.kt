@@ -370,7 +370,6 @@ private fun Destinations(
             composable(Destination.TOKENS) {
                 TokensRoute(
                     viewModel { graph.tokensViewModel() },
-                    lightClient,
                     onBack = { navController.leave(Destination.TOKENS) },
                     onAddToken = { navController.navigate(Destination.ADD_TOKEN) { launchSingleTop = true } },
                 )
@@ -403,8 +402,8 @@ private fun Destinations(
                 viewModel = viewModel { graph.createSafeViewModel() },
                 lightClient = lightClient,
                 onBack = { navController.leave(Destination.CREATE_SAFE) },
-                onSent = { hash ->
-                    navController.navigate(transferRoute(graph.soleNetwork, hash)) {
+                onSent = { network, hash ->
+                    navController.navigate(transferRoute(network, hash)) {
                         popUpTo(Destination.CREATE_SAFE) { inclusive = true }
                     }
                 },

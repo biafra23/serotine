@@ -50,8 +50,12 @@ internal object SafeDeployments {
 
     /** The deployments of [network]. */
     fun of(network: Network): Table = when (network) {
+        // None until each is proven on mainnet (docs/networks.md, part 4): no contract there is a Safe yet.
+        Network.ETHEREUM -> NONE
         Network.SEPOLIA -> SEPOLIA
     }
+
+    private val NONE = Table(proxyCodeHashes = emptySet(), singletons = emptyMap(), creation = null)
 
     private val SEPOLIA = Table(
         proxyCodeHashes = setOf(

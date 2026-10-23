@@ -136,7 +136,7 @@ class SafeSwapViewModelTest {
                 ObserveNativeBalance(world.balances),
                 ObserveTokenHoldings(world.knownTokens, world.tokenBalances),
                 ObserveUsdPrice(feeds),
-                ObserveDisplayCurrencies(feeds, MemoryCurrencySetting()),
+                ObserveDisplayCurrencies(feeds, MemoryCurrencySetting(), world.accounts),
             ),
             world.observeSafe,
             ObserveSafeTxQueue(world.queue, world.observeSafe, world.recovery, Network.SEPOLIA),

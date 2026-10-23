@@ -128,10 +128,8 @@ class CreateSafeViewModel(
     @Volatile
     private var network: Network = Network.entries.first()
 
-    init {
-        // The owners step is open: the fee history is asked for now, ready by the review.
-        warmFees()
-    }
+    /** The network whose fee history was last asked for; null until the model first settles one. */
+    private var warmed: Network? = null
 
     /** An owner typed and added: its [address], and the ENS [name] it was resolved from at [resolvedAt]. */
     private data class Typed(val address: Address, val name: String?, val resolvedAt: Long?)
@@ -257,9 +255,11 @@ class CreateSafeViewModel(
     ) { list, inputs, lookup, enabled, picked ->
         val on = enabled.toSet()
         val chosen = picked ?: defaultNetwork(list, on)
-        // A network chosen anew: its fee history is asked for, as for the first at the start.
-        if (chosen != network) {
-            network = chosen
+        network = chosen
+        // The network settled, at the screen's opening or chosen anew: its fee history is asked for
+        // now, ready by the review; once per network, not for the default it was before the accounts.
+        if (chosen != warmed) {
+            warmed = chosen
             warmFees()
         }
         Model(list, inputs, lookup, chosen, on)

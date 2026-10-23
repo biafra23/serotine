@@ -101,7 +101,7 @@ class SafeProposeViewModelTest {
                 ObserveNativeBalance(world.balances),
                 ObserveTokenHoldings(world.knownTokens, world.tokenBalances),
                 ObserveUsdPrice(feeds),
-                ObserveDisplayCurrencies(feeds, MemoryCurrencySetting()),
+                ObserveDisplayCurrencies(feeds, MemoryCurrencySetting(), world.accounts),
             ),
             world.observeSafe,
             DescribeKeyStore(keys),

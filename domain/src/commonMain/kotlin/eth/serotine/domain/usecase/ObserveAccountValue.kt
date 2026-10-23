@@ -37,7 +37,7 @@ class ObserveAccountValue(
         // come, which is not the same as none held.
         val holdings = observeTokenHoldings(network, address).map<TokenHoldings, TokenHoldings?> { it }
             .onStart { emit(null) }
-        val currency = observeDisplayCurrencies(network).map { it.chosen }.distinctUntilChanged()
+        val currency = observeDisplayCurrencies().map { it.chosen }.distinctUntilChanged()
         return combine(native, holdings, currency) { balance, held, chosen -> Inputs(balance, held, chosen) }
             .readEach(keys = { priceIds(network, it) }, read = { observeUsdPrice(network, it) })
             .map { (inputs, usd) -> valued(network, inputs, usd) }

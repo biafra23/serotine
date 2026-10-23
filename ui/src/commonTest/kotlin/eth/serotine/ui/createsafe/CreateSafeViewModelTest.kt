@@ -248,7 +248,10 @@ class CreateSafeViewModelTest {
         // Nothing is planned before the review: the network can still change, and the owners are looked at again.
         viewModel.onNetwork(Network.SEPOLIA.chainId)
         runCurrent()
-        assertEquals(listOf(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true)), viewModel.owners.networks)
+        assertEquals(
+            listOf(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true)),
+            viewModel.owners.networks.filter { it.selected },
+        )
     }
 
     @Test
@@ -256,25 +259,24 @@ class CreateSafeViewModelTest {
         networks.on.value = emptySet()
         val viewModel = viewModel()
 
+        // With none on, the first network stands chosen, greyed out with its reason, as every other is.
         val off = assertIs<CreateSafeUiState.CannotCreate>(viewModel.uiState.value)
-        assertEquals("Sepolia is off in this wallet. Turn it on to create a Safe there.", off.message)
+        assertEquals("Ethereum is off in this wallet. Turn it on to create a Safe there.", off.message)
         assertEquals(
-            listOf(
-                NetworkChip(
-                    NetworkLabel.of(Network.SEPOLIA),
-                    selected = true,
-                    reason = "Sepolia is off in this wallet. Turn it on to create a Safe there.",
-                    off = true,
-                ),
+            NetworkChip(
+                NetworkLabel.of(Network.SEPOLIA),
+                selected = false,
+                reason = "Sepolia is off in this wallet. Turn it on to create a Safe there.",
+                off = true,
             ),
-            off.networks,
+            off.networks.single { it.network.chainId == Network.SEPOLIA.chainId },
         )
 
         viewModel.onTurnOnNetwork(Network.SEPOLIA.chainId)
         runCurrent()
         assertEquals(
             listOf(NetworkChip(NetworkLabel.of(Network.SEPOLIA), selected = true)),
-            viewModel.owners.networks,
+            viewModel.owners.networks.filter { it.selected },
         )
     }
 

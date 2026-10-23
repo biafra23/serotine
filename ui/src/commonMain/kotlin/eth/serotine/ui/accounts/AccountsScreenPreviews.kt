@@ -246,12 +246,15 @@ private const val UPGRADE_DETAILS = "Reported by peers in 5 networks, not verifi
 @Composable
 private fun AccountsUpgradeAheadPreview() = AccountsPreview(
     withAccounts.copy(
-        upgrade = UpgradeBannerItem(
-            "Network upgrade ahead: update Serotine",
-            "Peers announce a Sepolia network upgrade on Nov 6, 2026, 3:00 PM that this version of Serotine " +
-                "does not support. Update the app before it activates, or Serotine stops verifying at the upgrade.",
-            UPGRADE_DETAILS,
-            urgent = false,
+        upgrades = listOf(
+            UpgradeBannerItem(
+                "Network upgrade ahead on Sepolia: update Serotine",
+                "Peers announce a Sepolia network upgrade on Nov 6, 2026, 3:00 PM that this version of Serotine " +
+                    "does not support. Update the app before it activates, or Serotine stops verifying at the " +
+                    "upgrade.",
+                UPGRADE_DETAILS,
+                urgent = false,
+            ),
         ),
     ),
 )
@@ -260,12 +263,14 @@ private fun AccountsUpgradeAheadPreview() = AccountsPreview(
 @Composable
 private fun AccountsUpgradeActivatedDarkPreview() = AccountsPreview(
     withAccounts.copy(
-        upgrade = UpgradeBannerItem(
-            "Network upgrade reported: update Serotine",
-            "Peers report that Sepolia upgraded on Nov 6, 2026, 3:00 PM to rules this version of Serotine does " +
-                "not support. Update the app to keep using your wallet.",
-            UPGRADE_DETAILS,
-            urgent = false,
+        upgrades = listOf(
+            UpgradeBannerItem(
+                "Network upgrade reported on Sepolia: update Serotine",
+                "Peers report that Sepolia upgraded on Nov 6, 2026, 3:00 PM to rules this version of Serotine " +
+                    "does not support. Update the app to keep using your wallet.",
+                UPGRADE_DETAILS,
+                urgent = false,
+            ),
         ),
     ),
     darkTheme = true,
@@ -416,6 +421,77 @@ private fun AccountsOneNetworkCatchingUpPreview() = AccountsPreview(
     ),
 )
 
+/**
+ * A network this version can no longer follow while the others still can: its banner, urgent, and
+ * its section in the error colour, its accounts' Send greyed out (docs/networks.md, *Upgrades and
+ * the update screen*).
+ */
+@Preview
+@Composable
+private fun AccountsNetworkBlockedPreview() = AccountsPreview(
+    threeNetworks.copy(
+        sections = listOf(
+            ethereum,
+            gnosis.copy(
+                status = LightClientItem("Catching up · 2 of 3 periods", 2f / 3, true, NOT_VERIFIED),
+                accounts = gnosis.accounts.map {
+                    it.copy(
+                        balanceVerified = false,
+                        balanceNote = "Last verified Nov 6, 2026, 2:58 PM · may have changed since",
+                        value = null,
+                        networkBlocked = GNOSIS_BLOCKED,
+                    )
+                },
+                total = "Checking…",
+                totalNote = "1 not verified",
+                blocked = GNOSIS_BLOCKED,
+            ),
+            threeNetworks.sections[2],
+        ),
+        total = "€12,840.10",
+        totalNote = "1 not verified · Sepolia not included",
+        upgrades = listOf(
+            UpgradeBannerItem(
+                "Update required to follow Gnosis Chain",
+                "Peers report that Gnosis Chain upgraded on Nov 6, 2026, 3:00 PM to rules this version of " +
+                    "Serotine does not support, and its light client is not verifying the chain. Update the app " +
+                    "to keep using your wallet.",
+                UPGRADE_DETAILS,
+                urgent = true,
+            ),
+        ),
+    ),
+)
+
+private const val GNOSIS_BLOCKED =
+    "This version of Serotine can no longer follow Gnosis Chain: update the app to send from its accounts again."
+
+/** A display currency Gnosis Chain and Sepolia have no rate for: each section says so, out of the total. */
+@Preview
+@Composable
+private fun AccountsNoRateOnANetworkPreview() = AccountsPreview(
+    threeNetworks.copy(
+        sections = listOf(
+            ethereum.copy(total = "CHF 11,912.40"),
+            gnosis.copy(
+                accounts = gnosis.accounts.map { it.copy(value = "No CHF rate") },
+                total = "No CHF rate",
+                totalNote = "No CHF rate on Gnosis Chain · not in the total",
+            ),
+            threeNetworks.sections[2].let { sepolia ->
+                sepolia.copy(
+                    accounts = sepolia.accounts.map { it.copy(value = "No CHF rate") },
+                    total = "No CHF rate",
+                    totalNote = "No CHF rate on Sepolia · not in the total",
+                )
+            },
+        ),
+        total = "CHF 11,912.40",
+        totalLabel = "Total · CHF · Ethereum",
+        totalNote = "Sepolia not included · Gnosis Chain has no CHF rate",
+    ),
+)
+
 /** N18: Sepolia off, its account dimmed with its last verified balance, out of every total. */
 private val sepoliaOff = threeNetworks.copy(
     sections = listOf(
@@ -491,4 +567,6 @@ internal val accountsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountsNetworkOffPreview() },
     { AccountsNetworkOffDarkPreview() },
     { AccountsSendNeedsNetworkPreview() },
+    { AccountsNetworkBlockedPreview() },
+    { AccountsNoRateOnANetworkPreview() },
 )

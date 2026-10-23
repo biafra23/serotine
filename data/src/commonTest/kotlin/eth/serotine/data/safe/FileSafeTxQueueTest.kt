@@ -112,7 +112,7 @@ class FileSafeTxQueueTest {
         val codec = JsonSigningRequestCodec()
         val kept = request(5).withSignatures(listOf(byA, byB))
         // A request for a chain the app does not know is no request it keeps; the next one stays.
-        val elsewhere = codec.encode(request(4)).replace("11155111", "1")
+        val elsewhere = codec.encode(request(4)).replace("11155111", "10")
         SystemFileSystem.sink(file).buffered().use {
             it.writeString("""{"version":1,"requests":[$elsewhere,${codec.encode(kept)}]}""")
         }
@@ -125,7 +125,7 @@ class FileSafeTxQueueTest {
         SystemFileSystem.createDirectories(directory)
         val codec = JsonSigningRequestCodec()
         val kept = request(5).withSignatures(listOf(byA, byB))
-        val elsewhere = codec.encode(request(4)).replace("11155111", "1")
+        val elsewhere = codec.encode(request(4)).replace("11155111", "10")
         val text = """{"version":1,"requests":[$elsewhere,${codec.encode(kept)}]}"""
         SystemFileSystem.sink(file).buffered().use { it.writeString(text) }
 

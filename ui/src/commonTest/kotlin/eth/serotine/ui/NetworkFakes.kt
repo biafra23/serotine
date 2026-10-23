@@ -5,8 +5,11 @@ import eth.serotine.domain.repository.NetworkSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
-/** A [NetworkSettings] in memory, every network on unless a test sets [on]; [failSaves] makes it fail. */
-internal class MemoryNetworkSettings(initial: Set<Network> = Network.entries.toSet()) : NetworkSettings {
+/**
+ * A [NetworkSettings] in memory, Sepolia alone on (a debug build's default, what the tests' accounts
+ * are on) unless a test sets [on]; [failSaves] makes it fail.
+ */
+internal class MemoryNetworkSettings(initial: Set<Network> = setOf(Network.SEPOLIA)) : NetworkSettings {
     val on = MutableStateFlow(initial)
     var failSaves = false
 

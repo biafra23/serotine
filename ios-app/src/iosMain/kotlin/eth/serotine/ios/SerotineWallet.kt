@@ -138,10 +138,13 @@ class SerotineWallet {
     private val knownUpgrades = FileKnownUpgradeStore("$dataDir/upgrade.json", APP_VERSION)
 
     /**
-     * Which networks are on (docs/networks.md, *Networks on and off*): Sepolia, the only one, in
-     * every build until Ethereum and Gnosis Chain come with their own build defaults.
+     * Which networks are on (docs/networks.md, *Networks on and off*). A network the file does not
+     * mention yet gets this build's default: the release binary turns on the real networks and
+     * leaves Sepolia off, the debug binary turns on Sepolia alone.
      */
-    private val networkSettings = FileNetworkSettings("$dataDir/networks.json", defaultOn = { true })
+    @OptIn(ExperimentalNativeApi::class)
+    private val networkSettings =
+        FileNetworkSettings("$dataDir/networks.json", defaultOn = { it.testnet == Platform.isDebugBinary })
     private val notifier = IosUpgradeNotifier(Network.SEPOLIA)
     private val upgradeNotices = UpgradeNotices(Network.SEPOLIA, knownUpgrades, notifier)
 

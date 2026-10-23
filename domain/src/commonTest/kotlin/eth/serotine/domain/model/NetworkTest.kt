@@ -6,10 +6,15 @@ import kotlin.test.assertEquals
 class NetworkTest {
 
     @Test
-    fun sepoliaIsTheOnlyNetwork() {
-        // The owner's ruling of 2026-10-15 (CLAUDE.md, *Data sources*). A second entry here
-        // is a new ruling first, not an edit to this test.
-        assertEquals(listOf(Network.SEPOLIA), Network.entries)
+    fun theNetworksAreTheRuledOnesInTheOrderTheScreensListThem() {
+        // The owner's ruling of 2026-10-22 (CLAUDE.md, *Data sources*): Ethereum and Gnosis Chain
+        // beside Sepolia, as docs/networks.md's parts bring them. A network beyond these is a new
+        // ruling first, not an edit to this test.
+        assertEquals(listOf(Network.ETHEREUM, Network.SEPOLIA), Network.entries)
+        assertEquals(1L, Network.ETHEREUM.chainId)
         assertEquals(11_155_111L, Network.SEPOLIA.chainId)
+        assertEquals(false, Network.ETHEREUM.testnet, "real funds")
+        assertEquals(true, Network.SEPOLIA.testnet)
+        assertEquals(Network.ETHEREUM, Network.ofChainId(1))
     }
 }

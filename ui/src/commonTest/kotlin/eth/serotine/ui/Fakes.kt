@@ -39,7 +39,8 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
 
     override suspend fun add(account: Account): AccountAdd = when {
         failSaves -> AccountAdd.NotSaved
-        accounts.value.any { it.address == account.address } -> AccountAdd.AlreadyPresent
+        // The same address on the same network, as the port's contract says: on another, another account.
+        accounts.value.any { it.id == account.id } -> AccountAdd.AlreadyPresent
         else -> {
             accounts.value = accounts.value + account
             AccountAdd.Added

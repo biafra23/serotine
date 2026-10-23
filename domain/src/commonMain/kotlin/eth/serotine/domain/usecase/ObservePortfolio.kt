@@ -18,26 +18,28 @@ class ObservePortfolio(
     private val observeAccountValue: ObserveAccountValue,
     private val observeDisplayCurrencies: ObserveDisplayCurrencies,
 ) {
-    /** Totalled in the display currency as [network] offers it: the network whose header shows the total. */
-    operator fun invoke(network: Network): Flow<Portfolio> {
+    /** Totalled in the display currency, one for the wallet ([ObserveDisplayCurrencies]). */
+    operator fun invoke(): Flow<Portfolio> {
         val values = observeAccounts().readEach(
             keys = { list -> (list as? AccountList.Loaded)?.accounts?.mapTo(LinkedHashSet()) { it.id }.orEmpty() },
             read = { id -> observeAccountValue(id) },
         )
-        return combine(values, observeDisplayCurrencies(network).map { it.chosen }) { (accounts, read), currency ->
-            Portfolio(accounts, read, currency)
+        return combine(values, observeDisplayCurrencies()) { (accounts, read), currencies ->
+            Portfolio(accounts, read, currencies.chosen, currencies.unpricedOn)
         }
     }
 }
 
 /**
  * The [accounts] as stored, what each is worth ([values], none for an account until its first
- * reading), and the [currency] the [total] is in.
+ * reading), the [currency] the [total] is in, and the networks with accounts that cannot price
+ * it ([unpricedOn]), whose accounts have no value in it.
  */
 data class Portfolio(
     val accounts: AccountList,
     val values: Map<AccountId, AccountValue>,
     val currency: DisplayCurrency,
+    val unpricedOn: Set<Network> = emptySet(),
 ) {
     /**
      * The sum of the accounts' totals in [currency]. An account not read yet, or still valued in

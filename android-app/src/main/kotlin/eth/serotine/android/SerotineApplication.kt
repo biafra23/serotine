@@ -153,17 +153,20 @@ class SerotineApplication : Application() {
     private val knownUpgrades by lazy { FileKnownUpgradeStore(filesDir.resolve("upgrade.json").path, APP_VERSION) }
 
     /**
-     * Which networks are on (docs/networks.md, *Networks on and off*), beside the other settings:
-     * Sepolia, the only one, in both apps until Ethereum and Gnosis Chain come with their own
-     * build defaults.
+     * Which networks are on (docs/networks.md, *Networks on and off*), beside the other settings.
+     * A network the file does not mention yet gets this app's default: the release app turns on
+     * the real networks and leaves Sepolia off, the debug app turns on Sepolia alone.
      */
     private val networkSettings by lazy {
-        FileNetworkSettings(filesDir.resolve("networks.json").path, defaultOn = { true })
+        FileNetworkSettings(filesDir.resolve("networks.json").path, defaultOn = { it.testnet == debuggable })
     }
 
-    /** What the user hears about an upgrade outside the app. Needs no engine, so a reminder never starts one. */
+    /**
+     * What the user hears about each network's upgrades outside the app, apart (docs/networks.md,
+     * *Upgrades and the update screen*). Needs no engine, so a reminder never starts one.
+     */
     private val upgradeNotices by lazy {
-        UpgradeNotices(Network.SEPOLIA, knownUpgrades, AndroidUpgradeNotifier(this, Network.SEPOLIA))
+        Network.entries.associateWith { UpgradeNotices(it, knownUpgrades, AndroidUpgradeNotifier(this, it)) }
     }
 
     /**
@@ -220,7 +223,7 @@ class SerotineApplication : Application() {
     /** Reads the widget's rate, and the one of a day before, through the engine, and keeps it in [lastRate]. */
     private val refreshRate by lazy {
         RefreshExchangeRate(
-            ObserveDisplayCurrencies(node.priceFeeds, displayCurrency),
+            ObserveDisplayCurrencies(node.priceFeeds, displayCurrency, accounts),
             ReadExchangeRate(node.priceFeeds, node.priceHistory),
             lastRate,
             Network.SEPOLIA,
@@ -381,7 +384,12 @@ class SerotineApplication : Application() {
         handler.removeCallbacks(stopAppWork)
         // Not active: never started, stopped by the last stopAppWork, or ended with an engine that is down.
         if (following?.isActive != true) {
-            following = scope.launch { FollowUpgradeReports(Network.SEPOLIA, node.networkUpgrades, upgradeNotices)() }
+            // Each network's reports into its own notices; a network that is off or idle reports none.
+            following = scope.launch {
+                upgradeNotices.forEach { (network, notices) ->
+                    launch { FollowUpgradeReports(network, node.networkUpgrades, notices)() }
+                }
+            }
         }
         if (deployments?.isActive != true) deployments = scope.launch { followSafeDeployments() }
         if (sentTransactions?.isActive != true) sentTransactions = scope.launch { followSentTransactions() }
@@ -730,7 +738,7 @@ class SerotineApplication : Application() {
      */
     fun whenUpgradeCheckWanted(then: (Boolean) -> Unit) {
         scope.launch {
-            val wanted = !upgradeNotices.allSaid()
+            val wanted = upgradeNotices.values.any { !it.allSaid() }
             handler.post { then(wanted) }
         }
     }
@@ -739,7 +747,7 @@ class SerotineApplication : Application() {
     fun remindOfUpgrades(done: () -> Unit) {
         scope.launch {
             try {
-                upgradeNotices.remind()
+                upgradeNotices.values.forEach { it.remind() }
             } finally {
                 done()
             }

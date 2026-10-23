@@ -17,8 +17,9 @@ import eth.serotine.domain.repository.UpgradeNotifier
 import eth.serotine.ui.update.UpgradeNotificationText
 
 /**
- * [UpgradeNotifier] on Android: a notification on the "Network upgrades" channel, which
- * opens the app, and an inexact alarm ([AlarmManager.setAndAllowWhileIdle], no exact-alarm
+ * [UpgradeNotifier] on Android, for [network]'s upgrades: a notification on the "Network
+ * upgrades" channel, one per network (a newer notice of the same network replaces the one
+ * before), which opens the app, and an inexact alarm, one per network, ([AlarmManager.setAndAllowWhileIdle], no exact-alarm
  * permission) that wakes [UpgradeReminderReceiver] for the next reminder, the app running or
  * not. Alarms do not survive a reboot or an update; the receiver arms the next one again
  * then. Without the notification permission (Android 13 and later), a notice is dropped: the
@@ -55,7 +56,7 @@ class AndroidUpgradeNotifier(private val context: Context, private val network: 
             .build()
         try {
             // One notification id: a newer notice replaces the one before.
-            manager.notify(NOTIFICATION_ID, notification)
+            manager.notify(NOTIFICATION_ID_BASE + network.ordinal, notification)
         } catch (e: SecurityException) {
             // The permission was revoked in between: the app's screens still say it.
         }
@@ -65,7 +66,8 @@ class AndroidUpgradeNotifier(private val context: Context, private val network: 
         val alarms = context.getSystemService(AlarmManager::class.java) ?: return
         val remind = PendingIntent.getBroadcast(
             context,
-            0,
+            // One alarm per network: each network's next reminder is armed apart.
+            network.ordinal,
             Intent(context, UpgradeReminderReceiver::class.java).setAction(UpgradeReminderReceiver.ACTION_REMIND),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -78,6 +80,7 @@ class AndroidUpgradeNotifier(private val context: Context, private val network: 
 
     private companion object {
         const val CHANNEL_ID = "network-upgrades"
-        const val NOTIFICATION_ID = 1
+        /** The first network's notification id; each network's is this plus its position. */
+        const val NOTIFICATION_ID_BASE = 1
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.usecase.EnsNameCheck
@@ -12,11 +13,13 @@ import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafes
-import eth.serotine.domain.usecase.ObserveUpgradeWarning
+import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.Portfolio
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.Total
+import eth.serotine.domain.usecase.UpgradeWarning
+import eth.serotine.domain.usecase.UpgradeWarnings
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
@@ -41,9 +44,11 @@ import kotlinx.coroutines.launch
  * The Accounts screen's ViewModel: turns the domain's portfolio — the accounts, what each
  * holds and what it is worth ([ObservePortfolio]), whether the ENS name an account's name
  * follows still points to it ([ObserveEnsNames]) — each network's light client and whether it
- * is on, and any network upgrade this version does not support into [AccountsUiState]: a section
- * per network with accounts (docs/networks.md, N1, N2 and N18). The display currency and the
- * upgrade banner are still [network]'s, the only one until the network steps. It holds no
+ * is on, and each network's upgrade this version does not support into [AccountsUiState]: a
+ * section per network with accounts (docs/networks.md, N1, N2 and N18), a banner per network with
+ * an upgrade, and a network blocked alone said in its own section, its accounts' Send greyed out
+ * (*Upgrades and the update screen*). A network that cannot price the display currency says so
+ * in its section and stays out of the total (*Values*). It holds no
  * platform reference and exposes state only through [uiState]; what the user does with an
  * account is navigation, which the screen's route turns into the destination of the screen or
  * dialog that does it, except turning a network on again ([turnOnNetwork]).
@@ -55,8 +60,7 @@ class AccountsViewModel(
     observeLightClient: ObserveLightClient,
     observeEnabledNetworks: ObserveEnabledNetworks,
     private val setNetworkEnabled: SetNetworkEnabled,
-    observeUpgradeWarning: ObserveUpgradeWarning,
-    private val network: Network,
+    observeUpgradeWarnings: ObserveUpgradeWarnings,
     /** Now, in unix seconds: what the sections date their head blocks against. */
     private val clock: () -> Long = ::epochSecondsNow,
     /** How the banner dates an upgrade, and a row a balance last verified (unix seconds). */
@@ -66,10 +70,8 @@ class AccountsViewModel(
     /** Each network's light client, in `Network` order. */
     private val statuses = combine(Network.entries.map { observeLightClient(it).asItems(clock) }) { it.toList() }
 
-    /** The upgrade banner, none until the first warning: Accounts never waits for it. */
-    private val upgrade = observeUpgradeWarning()
-        .map { UpgradeBannerItem.from(it, network, formatTime) }
-        .onStart { emit(null) }
+    /** Each network's upgrade warning, none until the first: Accounts never waits for them. */
+    private val upgrades = observeUpgradeWarnings().onStart { emit(UpgradeWarnings(emptyMap(), emptySet())) }
 
     // The checksums once per account, not on every balance reading.
     private val checksums = mutableMapOf<Address, String>()
@@ -81,13 +83,13 @@ class AccountsViewModel(
     private val message = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<AccountsUiState> = combine(
-        observePortfolio(network),
+        observePortfolio(),
         combine(observeSafes(), ensNames, ::Pair),
         combine(statuses, observeEnabledNetworks(), ::Pair),
-        upgrade,
+        upgrades,
         message,
-    ) { portfolio, (safes, ensNames), (lightClients, on), upgrade, message ->
-        stateOf(portfolio, safes, ensNames, lightClients, on.toSet(), upgrade).let { state ->
+    ) { portfolio, (safes, ensNames), (lightClients, on), upgrades, message ->
+        stateOf(portfolio, safes, ensNames, lightClients, on.toSet(), upgrades).let { state ->
             if (state is AccountsUiState.Ready) state.copy(message = message) else state
         }
     }
@@ -120,9 +122,10 @@ class AccountsViewModel(
         ensNames: Map<AccountId, EnsNameCheck>,
         lightClients: List<LightClientItem>,
         on: Set<Network>,
-        upgrade: UpgradeBannerItem?,
-    ): AccountsUiState =
-        when (val list = portfolio.accounts) {
+        warnings: UpgradeWarnings,
+    ): AccountsUiState {
+        val upgrade = Network.entries.mapNotNull { UpgradeBannerItem.from(warnings.of(it), it, formatTime) }
+        return when (val list = portfolio.accounts) {
             is AccountList.Unreadable -> AccountsUiState.ListUnavailable(
                 when (list.reason) {
                     AccountList.Reason.NEWER_FORMAT -> NEWER_FORMAT
@@ -136,6 +139,11 @@ class AccountsViewModel(
                     val accounts = list.accounts.filter { it.network == network }
                     if (accounts.isEmpty()) return@mapIndexedNotNull null
                     val isOn = network in on
+                    // A network this version can no longer follow, while others still can (the update
+                    // screen is for when none can): said in its section, its accounts' Send greyed out.
+                    val blocked = (warnings.of(network) as? UpgradeWarning.UpdateRequired)
+                        ?.let { blockedReason(network) }
+                        ?.takeIf { isOn }
                     // A row from the start, "Checking…" until its first reading: an account just
                     // added, or a screen just back, never waits for every proof.
                     val items = accounts.map { account ->
@@ -152,7 +160,7 @@ class AccountsViewModel(
                             formatTime,
                             ensNames[account.id],
                             networkOn = isOn,
-                        )
+                        ).let { item -> if (blocked != null) item.copy(networkBlocked = blocked) else item }
                     }
                     val total = portfolio.totalOn(network)
                     NetworkSection(
@@ -163,13 +171,15 @@ class AccountsViewModel(
                         status = if (isOn) lightClients[i] else OFF,
                         accounts = items,
                         total = if (isOn) totalText(total, currency) else "Off",
-                        totalNote = if (isOn) totalNote(total, network, currency).ifEmpty { null } else null,
+                        totalNote = sectionNote(total, network, currency, portfolio).takeIf { isOn }?.ifEmpty { null },
+                        blocked = blocked,
                     )
                 }
                 // The top total adds the real networks that are on; a testnet only when the wallet has
                 // no account on a real network at all, on or off (docs/networks.md, N1).
                 val held = Network.entries.filter { network -> list.accounts.any { it.network == network } }
-                val counted = held.filterNot { it.testnet }.ifEmpty { held }.filter { it in on }
+                val counted = held.filterNot { it.testnet }.ifEmpty { held }
+                    .filter { it in on && it !in portfolio.unpricedOn }
                 val total = counted.fold(Total.NONE) { sum, network -> sum + portfolio.totalOn(network) }
                 // A testnet left out of the total, said so; one that is off says it in its own section.
                 val leftOut = sections.filter { it.testnet && it.on && counted.none { n -> n.testnet } }.map { it.name }
@@ -180,15 +190,34 @@ class AccountsViewModel(
                     totalLabel = counted.takeIf { it.isNotEmpty() }
                         ?.let { "Total · ${currency.code} · ${spokenList(it.map { n -> n.displayName })}" },
                     totalNote = counted.firstOrNull()?.let { first ->
-                        (listOf(totalNote(total, first, currency)) + leftOut.map { "$it not included" })
+                        val unpriced = held.filter { it in on && it in portfolio.unpricedOn }
+                            .map { "${it.displayName} has no ${currency.code} rate" }
+                        (listOf(totalNote(total, first, currency)) + leftOut.map { "$it not included" } + unpriced)
                             .filter { it.isNotEmpty() }
                             .joinToString(" · ")
                             .ifEmpty { null }
                     },
-                    upgrade = upgrade,
+                    upgrades = upgrade,
                 )
             }
         }
+    }
+
+    /**
+     * What a network's section says under its total: [totalNote]'s, or that [network] cannot price
+     * the display currency, which leaves its accounts out of the total (docs/networks.md, *Values*).
+     */
+    private fun sectionNote(total: Total, network: Network, currency: DisplayCurrency, portfolio: Portfolio): String =
+        if (network in portfolio.unpricedOn) {
+            "No ${currency.code} rate on ${network.displayName} · not in the total"
+        } else {
+            totalNote(total, network, currency)
+        }
+
+    /** Why a network this version can no longer follow greys out its accounts' Send. */
+    private fun blockedReason(network: Network): String =
+        "This version of Serotine can no longer follow ${network.displayName}: update the app to send from " +
+            "its accounts again."
 
     private companion object {
         /** A network's status line while it is off in this wallet (N18). */

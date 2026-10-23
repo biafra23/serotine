@@ -18,8 +18,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 
 /** [PriceFeeds] with the feeds of [quotes], each answering what a test sets; Syncing until then. */
-internal class FakeFeeds(val quotesTable: Map<PriceId, PriceId>) : PriceFeeds {
-    override fun quotes(network: Network): Map<PriceId, PriceId> = quotesTable
+internal class FakeFeeds(
+    val quotesTable: Map<PriceId, PriceId>,
+    /** A network's own table where it has one; [quotesTable] for every other. */
+    private val byNetwork: Map<Network, Map<PriceId, PriceId>> = emptyMap(),
+) : PriceFeeds {
+    override fun quotes(network: Network): Map<PriceId, PriceId> = byNetwork[network] ?: quotesTable
 
     private val readings = mutableMapOf<PriceId, MutableStateFlow<FeedReading>>()
 

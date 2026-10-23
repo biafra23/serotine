@@ -498,12 +498,15 @@ class WatchViewModelTest {
         )
         assertEquals(null, viewModel.uiState.value.detection)
         assertEquals(false, viewModel.uiState.value.canAdd)
-        assertEquals(listOf(NetworkLabel.of(Network.SEPOLIA)), viewModel.uiState.value.offNetworks)
+        assertEquals(
+            listOf(NetworkLabel.of(Network.ETHEREUM), NetworkLabel.of(Network.SEPOLIA)),
+            viewModel.uiState.value.offNetworks,
+        )
 
         viewModel.onTurnOnNetwork(Network.SEPOLIA.chainId)
         runCurrent()
         assertEquals(setOf(Network.SEPOLIA), networks.on.value)
         assertEquals(null, viewModel.uiState.value.noNetwork)
-        assertEquals(emptyList(), viewModel.uiState.value.offNetworks)
+        assertEquals(listOf(NetworkLabel.of(Network.ETHEREUM)), viewModel.uiState.value.offNetworks)
     }
 }

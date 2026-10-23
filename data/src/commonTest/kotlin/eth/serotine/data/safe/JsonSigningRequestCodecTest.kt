@@ -97,8 +97,9 @@ class JsonSigningRequestCodecTest {
         assertEquals(SigningRequestDecoding.UnknownVersion(2), decoded(text.replace("\"v\":1", "\"v\":2")))
         assertEquals(SigningRequestDecoding.UnknownVersion(2), decoded("{\"v\":2,\"anything\":true}"))
         assertEquals(
-            SigningRequestDecoding.UnknownChain(1),
-            decoded(text.replace("\"chainId\":11155111", "\"chainId\":1")),
+            // Chain 10, OP Mainnet: no network of this wallet's.
+            SigningRequestDecoding.UnknownChain(10),
+            decoded(text.replace("\"chainId\":11155111", "\"chainId\":10")),
         )
     }
 

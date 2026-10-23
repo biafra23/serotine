@@ -497,11 +497,23 @@ releasable. The parts, in order:
    and screen tests use made-up Ethereum and Gnosis states, and the network
    steps are tested against a fake two-network catalog. The screenshots
    artifact shows them.
-4. **Ethereum.** `Network.ETHEREUM`; its Chainlink feeds, built-in tokens
-   and icons, Safe deployments and fallback handler, Uniswap v3 and
-   Multicall3 pins, each proven on mainnet by the PR, with the values read
-   stated; the ENS root. A real-network test like `MyotisHostSepoliaTest`.
-   From here a release build starts with Ethereum on and Sepolia off.
+4. **Ethereum**, in four parts:
+   - **4a, Ethereum joins.** `Network.ETHEREUM` with nothing pinned yet (no
+     feeds, tokens, Safe deployments or swap venue), and what a second
+     network makes per network: the upgrade warnings (a banner per network,
+     a network blocked alone said in its own section, the update screen
+     only when every network followed is blocked), the display currency
+     (one for the wallet, offered when a network with accounts prices it),
+     Settings → Tokens grouped by network, each host's upgrade notices per
+     network, and the build defaults. From here a release build starts with
+     Ethereum on and Sepolia off.
+   - **4b, the widget's network** (*The widget*).
+   - **4c, Ethereum's pins**: its Chainlink feeds, built-in tokens and icons,
+     Safe deployments and fallback handler, Uniswap v3 and Multicall3 pins,
+     each proven on mainnet by the PR, with the values read stated; the ENS
+     root. A real-network test like `MyotisHostSepoliaTest`.
+   - **4d, the iOS host** split into a `ChainNode` per network, as the JVM
+     one was in part 2.
 5. **Gnosis Chain.** `Network.GNOSIS`; the xDAI icon and price, its feeds,
    tokens, Safe deployments (L2), fallback handler, and what open questions 2
    and 7 decide for names and swaps. A release build's defaults gain Gnosis

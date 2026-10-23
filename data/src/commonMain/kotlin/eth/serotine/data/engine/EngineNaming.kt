@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Network
 
 /** The engine's name for this network, as `MyotisEngine.availableNetworks()` lists it. */
 internal fun Network.engineName(): String = when (this) {
+    Network.ETHEREUM -> "mainnet"
     Network.SEPOLIA -> "sepolia"
 }
 

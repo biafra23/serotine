@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
@@ -107,7 +108,7 @@ const val CREATE_SAFE_DEPLOY_TAG = "create-safe-deploy"
 
 /**
  * Binds [CreateSafeScreen] to its ViewModel. A deployment broadcast ends the screen through
- * [onSent] with its transaction hash; the screen stopping being shown becomes
+ * [onSent] with its network and its transaction hash; the screen stopping being shown becomes
  * [CreateSafeViewModel.onHidden] (the password goes) and being shown again
  * [CreateSafeViewModel.onShown] (the review is quoted anew).
  */
@@ -116,7 +117,7 @@ fun CreateSafeRoute(
     viewModel: CreateSafeViewModel,
     lightClient: LightClientViewModel,
     onBack: () -> Unit,
-    onSent: (hash: String) -> Unit,
+    onSent: (network: Network, hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
@@ -128,7 +129,8 @@ fun CreateSafeRoute(
     val sent = (state as? CreateSafeUiState.Sent)?.hash
     val currentOnSent by rememberUpdatedState(onSent)
     LaunchedEffect(sent) {
-        if (sent != null) currentOnSent(sent)
+        // The network the Safe was created on is the one the screen shows: the one chosen for it.
+        if (sent != null) currentOnSent(network, sent)
     }
     CreateSafeScreen(
         state = state,
