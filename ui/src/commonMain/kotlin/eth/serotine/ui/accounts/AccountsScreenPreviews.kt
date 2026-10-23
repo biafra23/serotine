@@ -8,12 +8,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientHealth.NOT_RUNNING
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.STALE
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.StaleAnchorDialog
+import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
@@ -471,6 +474,46 @@ private fun AccountsNetworkBlockedDarkPreview() = AccountsPreview(networkBlocked
 private const val GNOSIS_BLOCKED = "This version of Serotine can no longer follow Gnosis Chain: nothing can be sent " +
     "from its accounts until you update the app."
 
+/**
+ * Gnosis Chain's light client refusing a checkpoint past its weak-subjectivity window, the
+ * section warning with its "Catch up anyway…" (owner's request, 2026-10-24).
+ */
+private val staleAnchor = threeNetworks.copy(
+    sections = listOf(
+        ethereum,
+        gnosis.copy(
+            status = LightClientItem(
+                "Not syncing: the last trusted checkpoint is 6 periods old, past the safe limit of 3 · " +
+                    "decide on Accounts",
+                null,
+                false,
+                NOT_VERIFIED,
+            ),
+            accounts = gnosis.accounts.map {
+                it.copy(balance = "Sync refused", balanceVerified = false, value = null)
+            },
+            total = null,
+            staleAnchor = StaleAnchorWarning.of(Network.GNOSIS, LightClientStatus.StaleAnchor(6, 3)),
+        ),
+        threeNetworks.sections[2],
+    ),
+)
+
+@Preview
+@Composable
+private fun AccountsStaleAnchorPreview() = AccountsPreview(staleAnchor)
+
+@Preview
+@Composable
+private fun AccountsStaleAnchorDarkPreview() = AccountsPreview(staleAnchor, darkTheme = true)
+
+/** What "Catch up anyway…" asks before the light client may sync past the stale checkpoint. */
+@Preview
+@Composable
+private fun AccountsStaleAnchorDialogPreview() = SerotineTheme {
+    StaleAnchorDialog(StaleAnchorWarning.of(Network.GNOSIS, LightClientStatus.StaleAnchor(6, 3)), {}, {})
+}
+
 /** A display currency Gnosis Chain and Sepolia have no rate for: each section says so, out of the total. */
 @Preview
 @Composable
@@ -575,4 +618,7 @@ internal val accountsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountsNetworkBlockedPreview() },
     { AccountsNoRateOnANetworkPreview() },
     { AccountsNetworkBlockedDarkPreview() },
+    { AccountsStaleAnchorPreview() },
+    { AccountsStaleAnchorDarkPreview() },
+    { AccountsStaleAnchorDialogPreview() },
 )

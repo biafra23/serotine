@@ -78,8 +78,9 @@ data class LightClientItem(
             LightClientStatus.Sleeping ->
                 LightClientItem("Light client asleep while the app is in the background", null, false, STALE)
             is LightClientStatus.StaleAnchor -> LightClientItem(
-                "Sync refused: the trust anchor is ${status.anchorAgePeriods} periods old" +
-                    if (status.boundPeriods > 0) ", past the limit of ${status.boundPeriods}" else "",
+                "Not syncing: the last trusted checkpoint is ${status.anchorAgePeriods} periods old" +
+                    (if (status.boundPeriods > 0) ", past the safe limit of ${status.boundPeriods}" else "") +
+                    " · decide on Accounts",
                 null,
                 false,
                 NOT_VERIFIED,

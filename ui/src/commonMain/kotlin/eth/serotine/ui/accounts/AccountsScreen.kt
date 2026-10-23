@@ -54,6 +54,9 @@ import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.SpeedDialAction
 import eth.serotine.ui.components.SpeedDialFab
+import eth.serotine.ui.components.StaleAnchorBanner
+import eth.serotine.ui.components.StaleAnchorDialog
+import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
@@ -104,6 +107,7 @@ fun AccountsRoute(
         },
         modifier = modifier,
         onTurnOnNetwork = viewModel::turnOnNetwork,
+        onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
         onMessageShown = viewModel::messageShown,
     )
 }
@@ -118,7 +122,9 @@ fun AccountsRoute(
  * greyed out with its reason where it cannot be done (owner ruling, 2026-10-18, #55). The accounts
  * are in a section per network (docs/networks.md, N1), each headed by its network, its light client
  * and its total; on a network that is off, Send's reason offers to turn it on ([onTurnOnNetwork],
- * N18). [fabExpandedAtStart] opens the button's fan from the start (a preview).
+ * N18). A network whose light client refuses a stale checkpoint warns in its section, and its
+ * "Catch up anyway…" asks first, then [onSyncPastStaleAnchor] (owner's request, 2026-10-24).
+ * [fabExpandedAtStart] opens the button's fan from the start (a preview).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -132,6 +138,7 @@ fun AccountsScreen(
     modifier: Modifier = Modifier,
     fabExpandedAtStart: Boolean = false,
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    onSyncPastStaleAnchor: (chainId: Long) -> Unit = {},
     onMessageShown: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -146,6 +153,17 @@ fun AccountsScreen(
     }
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
+    var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
+    asking?.let { warning ->
+        StaleAnchorDialog(
+            warning,
+            onConfirm = {
+                asking = null
+                onSyncPastStaleAnchor(warning.chainId)
+            },
+            onDismiss = { asking = null },
+        )
+    }
     val scope = rememberCoroutineScope()
     val act: (AccountAction) -> Unit = { action ->
         onAccountAction(action)
@@ -204,7 +222,7 @@ fun AccountsScreen(
                 )
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                Rows(state, act, onTurnOnNetwork) { unavailable = it }
+                Rows(state, act, onTurnOnNetwork, onCatchUp = { asking = it }) { unavailable = it }
             }
         }
     }
@@ -232,6 +250,7 @@ private fun BoxScope.Rows(
     state: AccountsUiState,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
+    onCatchUp: (StaleAnchorWarning) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ) {
     when (state) {
@@ -247,7 +266,7 @@ private fun BoxScope.Rows(
             if (state.accounts.isEmpty()) {
                 NoAccounts(Modifier.align(Alignment.Center))
             } else {
-                AccountList(state.sections, onAccountAction, onTurnOnNetwork, onUnavailable)
+                AccountList(state.sections, onAccountAction, onTurnOnNetwork, onCatchUp, onUnavailable)
             }
     }
 }
@@ -278,12 +297,13 @@ private fun AccountList(
     sections: List<NetworkSection>,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
+    onCatchUp: (StaleAnchorWarning) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier.fillMaxSize().testTag(ACCOUNTS_LIST_TAG)) {
         sections.forEach { section ->
-            item(key = "section/${section.chainId}") { SectionHeader(section) }
+            item(key = "section/${section.chainId}") { SectionHeader(section, onCatchUp) }
             items(section.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
                 WithActionMenu(
                     actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
@@ -305,17 +325,20 @@ private const val DIMMED = 0.6f
 
 /**
  * A network's section header (docs/networks.md, N1): its mark and total, and below them its light
- * client's line, which is the section's status strip, with what the total leaves out.
+ * client's line, which is the section's status strip, with what the total leaves out, and a stale
+ * checkpoint's warning with its "Catch up anyway…" ([onCatchUp]).
  */
 @Composable
-private fun SectionHeader(section: NetworkSection) {
+private fun SectionHeader(section: NetworkSection, onCatchUp: (StaleAnchorWarning) -> Unit) {
     val colors = MaterialTheme.colorScheme
+    val alarmed = section.blocked != null || section.staleAnchor != null
     // On the error container, its own content colour; on the usual surface, the muted one.
-    val secondary = if (section.blocked != null) colors.onErrorContainer else colors.onSurfaceVariant
+    val secondary = if (alarmed) colors.onErrorContainer else colors.onSurfaceVariant
     Column(
         Modifier.fillMaxWidth()
-            // A network this version can no longer follow is drawn in the error colour.
-            .background(if (section.blocked != null) colors.errorContainer else colors.surfaceContainerLow)
+            // A network this version can no longer follow, or that refuses a stale checkpoint, is
+            // drawn in the error colour.
+            .background(if (alarmed) colors.errorContainer else colors.surfaceContainerLow)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .semantics(mergeDescendants = true) { heading() }
             .testTag(ACCOUNTS_SECTION_TAG + section.chainId),
@@ -347,6 +370,9 @@ private fun SectionHeader(section: NetworkSection) {
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
+        }
+        section.staleAnchor?.let { warning ->
+            StaleAnchorBanner(warning, colors.onErrorContainer) { onCatchUp(warning) }
         }
     }
 }

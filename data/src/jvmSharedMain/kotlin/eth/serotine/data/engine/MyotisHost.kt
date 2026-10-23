@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
@@ -36,17 +37,17 @@ import io.myotis.api.ports.DnsServers
 import io.myotis.api.ports.EnginePorts
 import io.myotis.engine.Myotis
 import io.myotis.engine.ports.DefaultEnginePorts
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * The embedded Myotis engine of this process (docs/embedding-myotis.md; docs/networks.md, *The
@@ -74,7 +75,7 @@ class MyotisHost private constructor(
     lastBalancesPath: String?,
     private val debugLog: ((String) -> Unit)?,
     private val apiLog: LogSink?,
-) : LightClientControl {
+) : LightClientControl, StaleAnchorConsent {
 
     /** The engine of this process: none until a first start, [Absent] when its library does not run here. */
     private sealed interface EngineState {
@@ -173,6 +174,15 @@ class MyotisHost private constructor(
                 LightClientRun.OFF -> node.stop(off = true)
             }
         }
+    }
+
+    /**
+     * Lets [network]'s light client sync past its stale anchor for this run (the engine's
+     * `acceptStaleAnchor`, which is never persisted). Returns at once.
+     */
+    override fun syncPastStaleAnchor(network: Network) {
+        val node = nodes[network] ?: return
+        onControlThread { node.acceptStaleAnchor() }
     }
 
     /**
@@ -393,6 +403,8 @@ class MyotisHost private constructor(
         fun pause() = switch("pause") { it.pause() }
 
         fun resume() = switch("resume") { it.resume() }
+
+        fun acceptStaleAnchor() = switch("sync past its stale anchor") { it.acceptStaleAnchor() }
 
         // Caught here, not around the loop over the networks, so one failing does not leave the
         // others' networking as it was. Throwable: the calls cross JNA.

@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionInputs
@@ -33,6 +34,9 @@ import io.myotis.engine.ios.EnsRoot
 import io.myotis.engine.ios.LifecycleState
 import io.myotis.engine.ios.Myotis
 import io.myotis.engine.ios.MyotisEngine
+import kotlin.concurrent.Volatile
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,9 +50,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSLog
-import kotlin.concurrent.Volatile
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The embedded Myotis engine of this process on iOS (docs/embedding-myotis.md; docs/networks.md,
@@ -75,7 +76,7 @@ class MyotisHost private constructor(
     lastBalancesPath: String?,
     private val debugLog: ((String) -> Unit)?,
     private val apiLog: LogSink?,
-) : LightClientControl {
+) : LightClientControl, StaleAnchorConsent {
 
     /** The engine of this process: none until a first start, [Absent] when it cannot be created here. */
     private sealed interface EngineState {
@@ -173,6 +174,15 @@ class MyotisHost private constructor(
     }
 
     /**
+     * Lets [network]'s light client sync past its stale anchor for this run (the engine's
+     * `acceptStaleAnchor`, which is never persisted). Returns at once.
+     */
+    override fun syncPastStaleAnchor(network: Network) {
+        val node = nodes[network] ?: return
+        onControl { node.acceptStaleAnchor() }
+    }
+
+    /**
      * Turns every running light client's networking off, keeping its state, for while the app is in
      * the background. Returns at once with the job the pause runs in, so the host can keep the app
      * awake until it has finished. One started meanwhile starts paused.
@@ -204,10 +214,11 @@ class MyotisHost private constructor(
      * waited for up to [SHUTDOWN_WAIT], so a process that exits right after does not cut it off
      * mid-start. The wait bounds only the queue: once the stop runs, it runs to the end, its
      * engine calls not interruptible, and a stop still queued when the wait ends never runs (the
-     * JVM host's runs once the start ends), the process ending with the engine as it is. Blocks: never call it on the main thread, where iOS's watchdog ends an app that
-     * blocks; the host calls it off the main thread when the app is terminated while running. An
-     * app killed while suspended runs no code at all, so on iOS this is best effort: the engine
-     * has to come back from an abrupt end anyway.
+     * JVM host's runs once the start ends), the process ending with the engine as it is. Blocks:
+     * never call it on the main thread, where iOS's watchdog ends an app that blocks; the host
+     * calls it off the main thread when the app is terminated while running. An app killed while
+     * suspended runs no code at all, so on iOS this is best effort: the engine has to come back
+     * from an abrupt end anyway.
      */
     fun shutdown() {
         if (shutDown) return
@@ -394,6 +405,17 @@ class MyotisHost private constructor(
          * switch to the state it is already in is not asked of the engine, which refuses it.
          * Control dispatcher.
          */
+        fun acceptStaleAnchor() {
+            val handle = (state as? ChainState.Running)?.handle ?: return
+            val accepted = try {
+                handle.acceptStaleAnchor()
+            } catch (e: Throwable) {
+                log("Serotine: ${network.displayName}'s light client could not sync past its stale anchor: $e")
+                return
+            }
+            if (!accepted) log("Serotine: ${network.displayName}'s light client did not take the stale anchor")
+        }
+
         fun followPauseWanted() {
             val handle = (state as? ChainState.Running)?.handle ?: return
             val wanted = pauseWanted

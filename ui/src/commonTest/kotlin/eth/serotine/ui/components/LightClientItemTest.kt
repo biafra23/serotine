@@ -92,7 +92,8 @@ class LightClientItemTest {
         )
         assertEquals(
             LightClientItem(
-                "Sync refused: the trust anchor is 20 periods old, past the limit of 13",
+                "Not syncing: the last trusted checkpoint is 20 periods old, past the safe limit of 13 · " +
+                    "decide on Accounts",
                 null,
                 false,
                 NOT_VERIFIED,
@@ -100,7 +101,12 @@ class LightClientItemTest {
             item(LightClientStatus.StaleAnchor(anchorAgePeriods = 20, boundPeriods = 13)),
         )
         assertEquals(
-            LightClientItem("Sync refused: the trust anchor is 20 periods old", null, false, NOT_VERIFIED),
+            LightClientItem(
+                "Not syncing: the last trusted checkpoint is 20 periods old · decide on Accounts",
+                null,
+                false,
+                NOT_VERIFIED,
+            ),
             item(LightClientStatus.StaleAnchor(anchorAgePeriods = 20, boundPeriods = 0)),
         )
         assertEquals(

@@ -307,6 +307,7 @@ class SerotineApplication : Application() {
             displayCurrency = displayCurrency,
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
+            staleAnchorConsent = node,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
             transactionInputs = node.transactionInputs,

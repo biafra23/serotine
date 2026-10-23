@@ -306,6 +306,7 @@ private fun openWallet(dataDir: File) {
                 displayCurrency = FileDisplayCurrency(dataDir.resolve("display-currency.json").path),
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
+                staleAnchorConsent = node,
                 networkUpgrades = node.networkUpgrades,
                 knownUpgrades = knownUpgrades,
                 transactionInputs = node.transactionInputs,

@@ -26,6 +26,7 @@ import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
+import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -41,6 +42,7 @@ import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.SetNetworkEnabled
+import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeMetadata
@@ -61,7 +63,9 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +90,14 @@ class AccountsViewModelTest {
     private val repository = FakeAccountRepository()
     private val balances = FakeBalances()
     private val lightClient = FakeLightClient()
+
+    /** The networks the user let catch up from a stale checkpoint. */
+    private val consented = mutableListOf<Network>()
+    private val consent = object : StaleAnchorConsent {
+        override fun syncPastStaleAnchor(network: Network) {
+            consented += network
+        }
+    }
     private val upgrades = FakeNetworkUpgrades()
     private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
     private var now = 1_792_100_000L
@@ -125,6 +137,7 @@ class AccountsViewModelTest {
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
             ObserveUpgradeWarnings(upgrades, NoRecord, lightClient, networks, repository) { now },
+            SyncPastStaleAnchor(lightClient, consent),
             clock = { now },
             formatTime = { "<$it>" },
         )
@@ -287,6 +300,38 @@ class AccountsViewModelTest {
     }
 
     @Test
+    fun aLightClientRefusingAStaleCheckpointIsWarnedOfAndCaughtUpOnlyOnTheUsersWord() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(daily)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+
+        lightClient.status.value = LightClientStatus.StaleAnchor(anchorAgePeriods = 6, boundPeriods = 3)
+        runCurrent()
+
+        val warning = assertNotNull(viewModel.sepoliaSection.staleAnchor)
+        assertEquals(
+            "Serotine's last trusted checkpoint for Sepolia is about 7 days old, older than the 3 days it can " +
+                "safely catch up from on its own. Nothing on Sepolia is verified until you decide.",
+            warning.banner,
+        )
+        assertEquals("Catch up with Sepolia anyway?", warning.title)
+        assertTrue(warning.body.contains("cannot reveal your keys or move your funds by itself"), warning.body)
+        assertTrue(consented.isEmpty(), "never without the user")
+
+        viewModel.syncPastStaleAnchor(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), consented)
+
+        lightClient.status.value = LightClientStatus.CatchingUp(done = 1, total = 6)
+        runCurrent()
+        assertNull(viewModel.sepoliaSection.staleAnchor, "the warning goes once it catches up")
+        viewModel.syncPastStaleAnchor(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), consented, "nothing asked of a light client that is not refusing")
+    }
+
+    @Test
     fun aSectionDatesTheHeadBlockAndKeepsItCurrent() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         repository.accounts = listOf(daily)
@@ -303,7 +348,10 @@ class AccountsViewModelTest {
     }
 
     private val AccountsViewModel.sepoliaStatus: LightClientItem
-        get() = (uiState.value as AccountsUiState.Ready).sections.single().status
+        get() = sepoliaSection.status
+
+    private val AccountsViewModel.sepoliaSection: NetworkSection
+        get() = (uiState.value as AccountsUiState.Ready).sections.single()
 
     @Test
     fun aNetworkThatIsOffKeepsItsAccountsListedWithTheirLastBalanceOutOfEveryTotal() = runTest {
