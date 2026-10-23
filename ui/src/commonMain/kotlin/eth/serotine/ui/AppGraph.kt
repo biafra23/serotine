@@ -298,6 +298,7 @@ class AppGraph(
             accountActivity(),
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
+            observeUpgradeWarnings(),
         )
 
     /**

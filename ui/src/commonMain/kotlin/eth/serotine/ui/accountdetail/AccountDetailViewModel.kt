@@ -20,6 +20,8 @@ import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
+import eth.serotine.domain.usecase.ObserveUpgradeWarnings
+import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
@@ -32,6 +34,7 @@ import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
+import eth.serotine.ui.accounts.networkBlockedReason
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
@@ -94,6 +97,8 @@ class AccountDetailViewModel(
     activity: AccountActivity,
     observeEnabledNetworks: ObserveEnabledNetworks,
     private val setNetworkEnabled: SetNetworkEnabled,
+    /** Whether this version can still follow the account's network; one blocked alone greys out Send and Swap. */
+    observeUpgradeWarnings: ObserveUpgradeWarnings,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -106,6 +111,14 @@ class AccountDetailViewModel(
     /** Whether the account's network is on: until known, as if it were, as nothing is sent from here. */
     private val networkOn =
         observeEnabledNetworks().map { network in it }.distinctUntilChanged().onStart { emit(true) }
+
+    /** Why nothing can be sent from the account while this version cannot follow its network; null while it can. */
+    private val networkBlocked = observeUpgradeWarnings()
+        .map { warnings ->
+            networkBlockedReason(network.displayName).takeIf { warnings.of(network) is UpgradeWarning.UpdateRequired }
+        }
+        .distinctUntilChanged()
+        .onStart { emit(null) }
 
     // The checksum once, not on every balance reading.
     private val display = Eip55.format(address)
@@ -197,8 +210,14 @@ class AccountDetailViewModel(
             observeAccountValue(account),
             safe,
             queue,
-            combine(combine(view, ensName, ::Pair), activityState, networkOn, ::Triple),
-        ) { lookup, value, safe, queue, (named, activity, networkOn) ->
+            combine(
+                combine(view, ensName, ::Pair),
+                activityState,
+                combine(networkOn, networkBlocked, ::Pair),
+                ::Triple,
+            ),
+        ) { lookup, value, safe, queue, (named, activity, networkState) ->
+            val (networkOn, networkBlocked) = networkState
             val (view, ensName) = named
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
@@ -231,6 +250,7 @@ class AccountDetailViewModel(
                     // Not the last one read while another tab is shown: that tab's state says Loading.
                     activity = if (view.segment == DetailSegment.ACTIVITY) activity else ActivityUiState.Loading,
                     networkOn = networkOn,
+                    networkBlocked = networkBlocked,
                 )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)

@@ -275,6 +275,13 @@ internal fun networkOffReason(network: String, account: String, done: String = "
     "$network is off in this wallet, so its balances are not checked and nothing can be $done from $account. " +
         "Turned on, it checks them again first."
 
+/**
+ * Why [network]'s accounts can send nothing while this version can no longer follow it, others
+ * still followed (docs/networks.md, *Upgrades and the update screen*).
+ */
+internal fun networkBlockedReason(network: String): String =
+    "This version of Serotine can no longer follow $network: update the app to send from its accounts again."
+
 /** What Create Safe says while the account list is still being read. */
 internal const val CREATE_SAFE_CHECKING = "Checking which accounts can pay…"
 

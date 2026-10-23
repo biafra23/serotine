@@ -124,7 +124,9 @@ class AccountsViewModel(
         on: Set<Network>,
         warnings: UpgradeWarnings,
     ): AccountsUiState {
-        val upgrade = Network.entries.mapNotNull { UpgradeBannerItem.from(warnings.of(it), it, formatTime) }
+        // A network that is off shows no banner, even with an upgrade recorded (docs/networks.md).
+        val upgrade = Network.entries.filter { it in on }
+            .mapNotNull { UpgradeBannerItem.from(warnings.of(it), it, formatTime) }
         return when (val list = portfolio.accounts) {
             is AccountList.Unreadable -> AccountsUiState.ListUnavailable(
                 when (list.reason) {
@@ -142,7 +144,7 @@ class AccountsViewModel(
                     // A network this version can no longer follow, while others still can (the update
                     // screen is for when none can): said in its section, its accounts' Send greyed out.
                     val blocked = (warnings.of(network) as? UpgradeWarning.UpdateRequired)
-                        ?.let { blockedReason(network) }
+                        ?.let { networkBlockedReason(network.displayName) }
                         ?.takeIf { isOn }
                     // A row from the start, "Checking…" until its first reading: an account just
                     // added, or a screen just back, never waits for every proof.
@@ -213,11 +215,6 @@ class AccountsViewModel(
         } else {
             totalNote(total, network, currency)
         }
-
-    /** Why a network this version can no longer follow greys out its accounts' Send. */
-    private fun blockedReason(network: Network): String =
-        "This version of Serotine can no longer follow ${network.displayName}: update the app to send from " +
-            "its accounts again."
 
     private companion object {
         /** A network's status line while it is off in this wallet (N18). */

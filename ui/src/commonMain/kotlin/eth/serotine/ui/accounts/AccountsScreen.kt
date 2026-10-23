@@ -310,6 +310,8 @@ private const val DIMMED = 0.6f
 @Composable
 private fun SectionHeader(section: NetworkSection) {
     val colors = MaterialTheme.colorScheme
+    // On the error container, its own content colour; on the usual surface, the muted one.
+    val secondary = if (section.blocked != null) colors.onErrorContainer else colors.onSurfaceVariant
     Column(
         Modifier.fillMaxWidth()
             // A network this version can no longer follow is drawn in the error colour.
@@ -332,11 +334,11 @@ private fun SectionHeader(section: NetworkSection) {
                 section.status.text,
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = secondary,
             )
         }
         section.totalNote?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(it, style = MaterialTheme.typography.labelSmall, color = secondary)
         }
         section.blocked?.let {
             Text(

@@ -33,7 +33,8 @@ sealed interface AccountDetailUiState {
      * to it, which [nameNote] then says. [activity] is what its Activity tab lists while that tab
      * is shown, and Loading on any other. [network] is the account's (docs/networks.md, N3 and
      * N4), named beside its control; [networkOn] false while that network is off in this wallet
-     * (N19), when Send and Swap wait for it to be turned on.
+     * (N19), when Send and Swap wait for it to be turned on; [networkBlocked] says that this version
+     * can no longer follow that network while others still can, which greys out Send and Swap too.
      */
     data class Ready(
         val label: String,
@@ -57,6 +58,7 @@ sealed interface AccountDetailUiState {
         val nameNote: String? = null,
         val activity: ActivityUiState = ActivityUiState.Loading,
         val networkOn: Boolean = true,
+        val networkBlocked: String? = null,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
@@ -74,7 +76,10 @@ sealed interface AccountDetailUiState {
 
         /** Why Send cannot be done from this account, and how to get there; null when it can. */
         val sendReason: String?
-            get() = if (networkOn) sendBlockedReason(kind, control) else networkOffReason(network.name, label)
+            get() = when {
+                !networkOn -> networkOffReason(network.name, label)
+                else -> networkBlocked ?: sendBlockedReason(kind, control)
+            }
 
         /**
          * Whether Swap can be done from this account: greyed out when it cannot (watch-only, or a
@@ -86,10 +91,9 @@ sealed interface AccountDetailUiState {
 
         /** Why Swap cannot be done from this account, and how to get there; null when it can. */
         val swapReason: String?
-            get() = if (networkOn) {
-                swapBlockedReason(kind, control)
-            } else {
-                networkOffReason(network.name, label, "swapped")
+            get() = when {
+                !networkOn -> networkOffReason(network.name, label, "swapped")
+                else -> networkBlocked ?: swapBlockedReason(kind, control)
             }
 
         /**
