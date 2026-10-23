@@ -1039,7 +1039,7 @@ class SafeTxViewModel(
                 hash = hashText,
                 owners = ownersItem(shown),
                 swap = swap,
-                gasTerms = tx.gasTerms?.let(::gasTermsItem),
+                gasTerms = tx.gasTerms?.let { gasTermsItem(it, this.network) },
                 // What the transaction alone says, or what it would do to the Safe as it stands now.
                 refusal = (tx.refusal ?: read?.refusal)
                     ?.let { safeTxRefusalText(it, this.network) },

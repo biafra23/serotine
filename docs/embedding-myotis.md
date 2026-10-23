@@ -50,7 +50,9 @@ consumer developed against an unreleased engine, Myotis's
   ports (`io.myotis.engine.ports`, `Myotis.defaultPorts`) are part of its
   public surface and may be used.
 - **The composition roots own the engine's lifecycle.** One engine per process,
-  hosting Sepolia and no other network for now (CLAUDE.md, *Data sources*),
+  hosting a light client per network that is on and has accounts or a
+  screen asking for it (Ethereum, Gnosis Chain, Sepolia; CLAUDE.md, *Data
+  sources*; docs/networks.md, *The engine host*),
   created where the `AppGraph` is built, with the engine's state directory
   under the app's private files (Android: `filesDir/myotis`; desktop: the
   app's data directory). Each host supplies its platform's ports (on Android,

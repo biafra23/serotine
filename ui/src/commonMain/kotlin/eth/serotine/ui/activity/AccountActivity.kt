@@ -2,6 +2,7 @@ package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
@@ -144,7 +145,7 @@ class AccountActivity(
             val covered = listOfNotNull(
                 "Transactions sent from this device.",
                 onChainCoverage(parts, since),
-                if (safe == null) NOT_LISTED_YET else null,
+                if (safe == null) notListedYet(account.network) else null,
             )
             return ActivityUiState.Shown(
                 rows = merged(sent, events),
@@ -265,7 +266,10 @@ class AccountActivity(
     }
 
     private companion object {
-        const val NOT_LISTED_YET = "ETH it received, and transactions sent from it elsewhere, are not listed yet."
+        /** What an account's Activity does not list yet: the network's own currency it received, among others. */
+        fun notListedYet(network: Network) =
+            "${network.nativeSymbol} it received, and transactions sent from it elsewhere, are not listed yet."
+
         const val COVERAGE = "Transactions sent from this device. Transactions received, and those sent " +
             "from this account elsewhere, are not listed yet."
         const val UNREADABLE = "The history of your transactions cannot be read right now. Serotine keeps trying."

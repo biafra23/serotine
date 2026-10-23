@@ -19,11 +19,14 @@ the text wins.
 
 ## Rules every screen follows
 
-- **Sepolia only, and named.** The app works on Sepolia alone (owner ruling,
-  2026-10-15), so there is no network picker; a plain label says "Sepolia" on
-  the screens that matter for it (Accounts, Receive, Send review, Settings). Every
-  table this page mentions (tokens, price feeds, Safe singletons) is keyed by
-  `Network`, so another network is a data addition once the owner allows it.
+- **Each account on its network, and named.** Ethereum and Gnosis Chain
+  beside Sepolia, one chain per account (owner ruling, 2026-10-22; it
+  replaces "Sepolia only" of 2026-10-15). There is no current network: a
+  screen takes its network from the account it shows and names it with the
+  network's mark, and the steps that add an account or create a Safe ask
+  for the network first. docs/networks.md is the plan this page follows for
+  networks, and its screens N1 to N20 add to the ones below. Every table this
+  page mentions (tokens, price feeds, Safe singletons) is kept per `Network`.
 - **Verified, or not available.** Every chain value comes from the embedded
   Myotis engine. When the engine cannot prove a value the screen says so
   ("not available", the light client's state); it never shows a guess, a

@@ -172,7 +172,10 @@ class SafeTxTextTest {
 
     @Test
     fun gasTermsAreListedWithTheAddressesTheyPay() {
-        val terms = gasTermsItem(SafeTxGasTerms(UInt256.of(50_000), UInt256.ZERO, UInt256.of(1), module, friend))
+        val terms = gasTermsItem(
+            SafeTxGasTerms(UInt256.of(50_000), UInt256.ZERO, UInt256.of(1), module, friend),
+            Network.SEPOLIA,
+        )
 
         assertEquals(
             listOf(

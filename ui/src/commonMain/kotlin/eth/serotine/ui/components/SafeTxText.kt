@@ -394,13 +394,20 @@ private fun callData(selector: String?, size: Int): String =
 
 private fun bytes(count: Int) = if (count == 1) "1 byte" else "${grouped(count.toLong())} bytes"
 
-/** [terms] as screens show them, before the warning that says what they can do. */
-internal fun gasTermsItem(terms: SafeTxGasTerms): GasTermsItem = GasTermsItem(
+/**
+ * [terms] as screens show them, a refund in [network]'s own currency, before the warning that
+ * says what they can do.
+ */
+internal fun gasTermsItem(terms: SafeTxGasTerms, network: Network): GasTermsItem = GasTermsItem(
     lines = listOf(
         "safeTxGas: ${grouped(terms.safeTxGas)}",
         "baseGas: ${grouped(terms.baseGas)}",
         "gasPrice: ${grouped(terms.gasPrice)}" + if (terms.gasToken == null) " wei" else " of the gas token's units",
-        if (terms.gasToken == null) "A refund is paid in ether" else "A refund is paid in the gas token",
+        if (terms.gasToken == null) {
+            "A refund is paid in ${network.nativeName}"
+        } else {
+            "A refund is paid in the gas token"
+        },
         if (terms.receiver == null) "A refund goes to whoever executes it" else "A refund goes to the refund receiver",
     ),
     addresses = listOfNotNull(
