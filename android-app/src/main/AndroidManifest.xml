@@ -61,6 +61,18 @@
                 android:resource="@xml/rate_widget_info" />
         </receiver>
 
+        <!-- The widget's configuration: which network's rate a widget being placed shows. Exported,
+             as the launcher opens it; it acts only on a widget id of this app's own RateWidget. -->
+        <activity
+            android:name=".widget.RateWidgetConfigureActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/rate_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- The widget's refresh while the app is closed: on an unmetered network only. -->
         <service
             android:name=".widget.RateRefreshJob"
