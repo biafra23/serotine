@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -74,15 +75,18 @@ class AccountsViewModel(
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
-    /** Each network's light client, in `Network` order. */
-    private val statuses = combine(
-        Network.entries.map { observeLightClient(it).asItems(clock, decidedHere = true) },
-    ) { it.toList() }
+    /** Each network's light client status, in `Network` order: one subscription each, shared by the two flows below. */
+    private val clientStatuses = Network.entries.map { network ->
+        observeLightClient(network).shareIn(viewModelScope, SharingStarted.WhileSubscribed(SHARE_TIMEOUT_MS), 1)
+    }
+
+    /** Each network's light client as its section's strip, in `Network` order. */
+    private val statuses = combine(clientStatuses.map { it.asItems(clock, decidedHere = true) }) { it.toList() }
 
     /** Each network's stale-checkpoint warning, in `Network` order: null while it is not refusing to sync. */
     private val staleAnchors = combine(
-        Network.entries.map { network ->
-            observeLightClient(network)
+        Network.entries.zip(clientStatuses) { network, statusOf ->
+            statusOf
                 .map { status ->
                     (status as? LightClientStatus.StaleAnchor)?.let { StaleAnchorWarning.of(network, it) }
                 }
@@ -248,6 +252,9 @@ class AccountsViewModel(
         }
 
     private companion object {
+        /** How long a network's shared status outlives its last subscriber: across a configuration change. */
+        const val SHARE_TIMEOUT_MS = 5_000L
+
         /** A network's status line while it is off in this wallet (N18). */
         val OFF =
             LightClientItem("Off in this wallet · nothing is checked", null, false, LightClientHealth.NOT_RUNNING)

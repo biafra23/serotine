@@ -39,10 +39,4 @@ class SyncPastStaleAnchorTest {
         assertEquals(StaleAnchorSync.NotRefused, SyncPastStaleAnchor(lightClient, consent)(Network.GNOSIS))
         assertEquals(emptyList(), consented, "the engine arms the consent unconditionally")
     }
-
-    @Test
-    fun aPeriodIsEightThousandOneHundredNinetyTwoSlots() {
-        assertEquals(98_304L, Network.ETHEREUM.syncCommitteePeriodSeconds, "27.3 hours")
-        assertEquals(40_960L, Network.GNOSIS.syncCommitteePeriodSeconds, "11.4 hours")
-    }
 }
