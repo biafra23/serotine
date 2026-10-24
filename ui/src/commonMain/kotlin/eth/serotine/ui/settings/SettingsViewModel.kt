@@ -3,6 +3,7 @@ package eth.serotine.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.NetworkOverview
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -10,10 +11,12 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetNetworkEnabled
+import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.TokenOrigin
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.dated
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.redatedWhile
@@ -44,6 +47,7 @@ class SettingsViewModel(
     private val screenCapture: ScreenCaptureDebugSwitch?,
     observeDebugScreen: ObserveDebugScreen,
     private val setDebugScreen: SetDebugScreen,
+    private val syncPastStaleAnchor: SyncPastStaleAnchor,
     /** Now, in unix seconds: what the light clients' lines date the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
@@ -109,7 +113,7 @@ class SettingsViewModel(
             accounts.size == 1 -> "1 account"
             else -> "${accounts.size} accounts"
         }
-        val item = LightClientItem.from(overview.status, clock())
+        val item = LightClientItem.from(overview.status, clock(), decidedHere = true)
         return NetworkRow(
             chainId = overview.network.chainId,
             name = overview.network.displayName,
@@ -118,7 +122,19 @@ class SettingsViewModel(
             health = if (overview.on) item.health else LightClientHealth.NOT_RUNNING,
             testnet = overview.network.testnet,
             notSaved = notSaved,
+            staleAnchor = (overview.status as? LightClientStatus.StaleAnchor)
+                ?.takeIf { overview.on }
+                ?.let { StaleAnchorWarning.of(overview.network, it) },
         )
+    }
+
+    /**
+     * Lets the light client of [chainId]'s network catch up from its stale checkpoint anyway, for
+     * this run of the app: what the user confirmed in its row's dialog.
+     */
+    fun syncPastStaleAnchor(chainId: Long) {
+        val network = Network.ofChainId(chainId) ?: return
+        viewModelScope.launch { syncPastStaleAnchor(network) }
     }
 
     /**

@@ -1,6 +1,7 @@
 package eth.serotine.ui.settings
 
 import eth.serotine.ui.components.LightClientHealth
+import eth.serotine.ui.components.StaleAnchorWarning
 
 /**
  * Everything the Settings screen renders (docs/wallet-ux.md, screen 18; docs/networks.md, N16),
@@ -31,6 +32,9 @@ data class SettingsUiState(
  * and how its light client stands ([line]: "2 accounts · Verified at block 8,412,307 · 8 s ago",
  * "1 account · Off"), the light client's [health] for the dot, and [notSaved] when the last switch
  * of it could not be saved. [chainId] names the network to the switch; [testnet] marks Sepolia.
+ * [staleAnchor] warns that its light client refuses a checkpoint past the weak-subjectivity
+ * window, with the way to catch up anyway (owner's request, 2026-10-24), whether or not it has
+ * accounts: a screen's hold (Watch, Add token) runs it too.
  */
 data class NetworkRow(
     val chainId: Long,
@@ -40,6 +44,7 @@ data class NetworkRow(
     val health: LightClientHealth,
     val testnet: Boolean = false,
     val notSaved: Boolean = false,
+    val staleAnchor: StaleAnchorWarning? = null,
 )
 
 /**

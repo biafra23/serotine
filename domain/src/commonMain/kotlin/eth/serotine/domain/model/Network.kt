@@ -66,7 +66,17 @@ enum class Network(
     ),
     ;
 
+    /**
+     * How long one sync-committee period lasts, the unit the light client's weak-subjectivity
+     * bound is counted in: 8,192 slots on each network (256 epochs of 32 slots on Ethereum and
+     * Sepolia, 512 of 16 on Gnosis Chain), so about 27.3 hours, or 11.4 on Gnosis Chain.
+     */
+    val syncCommitteePeriodSeconds: Long
+        get() = SLOTS_PER_SYNC_COMMITTEE_PERIOD * secondsPerSlot
+
     companion object {
+        private const val SLOTS_PER_SYNC_COMMITTEE_PERIOD = 8_192L
+
         /** The network whose EIP-155 chain id is [chainId], or null for one Serotine does not work on. */
         fun ofChainId(chainId: Long): Network? = entries.firstOrNull { it.chainId == chainId }
     }
