@@ -39,7 +39,8 @@ class MacBiometricKeyTest {
 
     /** For the tests that make a key: a finger enrolled, the sensor reachable, the enclave usable. */
     private fun assumeTouchId() {
-        assumeTrue("Touch ID is not offered here (${key.unavailable()})", key.unavailable() == null)
+        val unavailable = key.unavailable()
+        assumeTrue("Touch ID is not offered here ($unavailable)", unavailable == null)
         assumeTrue("no usable Secure Enclave here", MacSecureEnclaveSecret.usable())
     }
 

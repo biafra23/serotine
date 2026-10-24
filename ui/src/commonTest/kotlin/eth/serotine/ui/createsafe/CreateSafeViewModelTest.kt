@@ -24,6 +24,7 @@ import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NameResolution
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
@@ -149,6 +150,8 @@ class CreateSafeViewModelTest {
         override suspend fun disableBiometrics(): BiometricChange = error("not used by these tests")
 
         override suspend fun delete(address: Address): KeyDeletion = error("not used by these tests")
+
+        override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
     }
 
     @AfterTest

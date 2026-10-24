@@ -18,7 +18,9 @@ import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
@@ -89,6 +91,8 @@ internal class FakeKeys : KeyStore {
         deleted += address
         return if (failDeletes) KeyDeletion.Failed else KeyDeletion.Deleted
     }
+
+    override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
 }
 
 /** [NativeBalances] whose reading per address a test sets; Syncing until then. */

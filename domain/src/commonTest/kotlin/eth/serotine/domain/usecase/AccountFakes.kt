@@ -16,6 +16,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -97,4 +98,6 @@ internal class RecordingKeyStore(stored: List<Address>) : KeyStore {
             else -> KeyDeletion.NotFound
         }
     }
+
+    override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
 }

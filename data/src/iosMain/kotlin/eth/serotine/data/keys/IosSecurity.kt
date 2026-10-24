@@ -92,6 +92,30 @@ internal object IosSecurity {
         createEnclaveKey(kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecAccessControlPrivateKeyUsage)
 
     /**
+     * A new P-256 key inside the Secure Enclave for [newHardwareP256Key] (docs/P256_IMPLEMENTATION_PLAN.md,
+     * Phase 2): `[.privateKeyUsage]` under `WhenUnlockedThisDeviceOnly`. The public key's x and y
+     * coordinates are returned as 32-byte arrays each; the key itself is not stored anywhere.
+     */
+    fun generateP256PublicKeyPair(): Pair<ByteArray, ByteArray> = owning {
+        val privateAttributes = own(dictionary(kSecAttrIsPermanent to kCFBooleanFalse))
+        val bits = own(number(256))
+        val parameters = own(
+            dictionary(
+                kSecAttrKeyType to kSecAttrKeyTypeECSECPrimeRandom,
+                kSecAttrKeySizeInBits to bits,
+                kSecAttrTokenID to kSecAttrTokenIDSecureEnclave,
+                kSecPrivateKeyAttrs to privateAttributes,
+            ),
+        )
+        val key = call("SecKeyCreateRandomKey") { error -> SecKeyCreateRandomKey(parameters, error) }
+        try {
+            publicKeyCoordinates(key)
+        } finally {
+            release(key)
+        }
+    }
+
+    /**
      * A new P-256 key inside the Secure Enclave for the envelope's biometric path (`HW_bio`, rule 3
      * of docs/keys-and-signing.md): `[.privateKeyUsage, .biometryCurrentSet]` under
      * `WhenPasscodeSetThisDeviceOnly`, so every use of its private half needs a biometric of the
@@ -275,5 +299,42 @@ internal object IosSecurity {
         val length = CFDataGetLength(data)
         if (length == 0L) return
         CFDataGetBytePtr(data)?.let { memset(it, 0, length.convert()) }
+    }
+
+    /**
+     * The x and y coordinates of the public key for P-256 [key], as 32-byte arrays each. The key
+     * must be a P-256 private key from the Secure Enclave; its public half is extracted to get
+     * the coordinates.
+     */
+    fun publicKeyCoordinates(key: SecKeyRef): Pair<ByteArray, ByteArray> = owning {
+        val publicKey = own(checkNotNull(SecKeyCopyPublicKey(key)) { "SecKeyCopyPublicKey failed" })
+        val attributes = own(checkNotNull(SecKeyCopyAttributes(publicKey)) { "SecKeyCopyAttributes failed" })
+
+        // For P-256 public keys stored in the Secure Enclave, we can access the raw EC point
+        // through the key's attributes. The kSecAttrKeyData attribute contains the uncompressed
+        // point format: 0x04 || x || y (65 bytes total for P-256)
+        val tokenObjectIdRef: CFStringRef = checkNotNull(CFStringCreateWithCString(
+            null, "kSecAttrKeyData", kCFStringEncodingUTF8
+        )) { "CFStringCreateWithDataSource" }
+
+        try {
+            val keyDataValue = CFDictionaryGetValue(attributes, tokenObjectIdRef)
+            check(keyDataValue != null) { "public key has no kSecAttrKeyData attribute" }
+            check(CFGetTypeID(keyDataValue) == CFDataGetTypeID()) {
+                "kSecAttrKeyData should be a CFData"
+            }
+
+            val keyDataBytes = bytesOf(keyDataValue.reinterpret())
+            // Check first byte is 0x04 (uncompressed point format)
+            check(keyDataBytes.size == 65 && keyDataBytes[0].toInt() and 0xFF == 0x04) {
+                "P-256 uncompressed point should be 65 bytes starting with 0x04, got ${keyDataBytes.size}"
+            }
+
+            val x = keyDataBytes.copyOfRange(1, 33)
+            val y = keyDataBytes.copyOfRange(33, 65)
+            return@owning x to y
+        } finally {
+            CFRelease(tokenObjectIdRef)
+        }
     }
 }

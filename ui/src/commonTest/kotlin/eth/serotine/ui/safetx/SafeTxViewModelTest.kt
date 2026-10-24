@@ -25,13 +25,15 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
-import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.MemoryStep
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionProgress
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
 import eth.serotine.domain.usecase.CheckSafeSwap
@@ -98,6 +100,8 @@ class SafeTxViewModelTest {
         override suspend fun disableBiometrics(): BiometricChange = error("not used by these tests")
 
         override suspend fun delete(address: Address): KeyDeletion = error("not used by these tests")
+
+        override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
     }
 
     /** What `execTransaction` returns when the Safe's call succeeded. */

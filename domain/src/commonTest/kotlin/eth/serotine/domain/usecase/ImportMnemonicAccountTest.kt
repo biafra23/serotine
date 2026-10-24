@@ -20,6 +20,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.MemoryStep
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -293,6 +294,8 @@ class ImportMnemonicAccountTest {
         }
 
         override suspend fun delete(address: Address): KeyDeletion = error("not used by this test")
+
+        override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
     }
 
     private class FakeAccountRepository : AccountRepository {
