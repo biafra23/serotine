@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
@@ -17,12 +18,14 @@ import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.Portfolio
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SetNetworkEnabled
+import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.Total
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.UpgradeWarnings
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.notTurnedOn
@@ -35,8 +38,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -51,7 +56,9 @@ import kotlinx.coroutines.launch
  * in its section and stays out of the total (*Values*). It holds no
  * platform reference and exposes state only through [uiState]; what the user does with an
  * account is navigation, which the screen's route turns into the destination of the screen or
- * dialog that does it, except turning a network on again ([turnOnNetwork]).
+ * dialog that does it, except turning a network on again ([turnOnNetwork]) and letting a light
+ * client parked on a stale checkpoint catch up anyway ([syncPastStaleAnchor]; owner's request,
+ * 2026-10-24), which its section warns of ([NetworkSection.staleAnchor]).
  */
 class AccountsViewModel(
     observePortfolio: ObservePortfolio,
@@ -61,14 +68,31 @@ class AccountsViewModel(
     observeEnabledNetworks: ObserveEnabledNetworks,
     private val setNetworkEnabled: SetNetworkEnabled,
     observeUpgradeWarnings: ObserveUpgradeWarnings,
+    private val syncPastStaleAnchor: SyncPastStaleAnchor,
     /** Now, in unix seconds: what the sections date their head blocks against. */
     private val clock: () -> Long = ::epochSecondsNow,
     /** How the banner dates an upgrade, and a row a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
-    /** Each network's light client, in `Network` order. */
-    private val statuses = combine(Network.entries.map { observeLightClient(it).asItems(clock) }) { it.toList() }
+    /** Each network's light client status, in `Network` order: one subscription each, shared by the two flows below. */
+    private val clientStatuses = Network.entries.map { network ->
+        observeLightClient(network).shareIn(viewModelScope, SharingStarted.WhileSubscribed(SHARE_TIMEOUT_MS), 1)
+    }
+
+    /** Each network's light client as its section's strip, in `Network` order. */
+    private val statuses = combine(clientStatuses.map { it.asItems(clock, decidedHere = true) }) { it.toList() }
+
+    /** Each network's stale-checkpoint warning, in `Network` order: null while it is not refusing to sync. */
+    private val staleAnchors = combine(
+        Network.entries.zip(clientStatuses) { network, statusOf ->
+            statusOf
+                .map { status ->
+                    (status as? LightClientStatus.StaleAnchor)?.let { StaleAnchorWarning.of(network, it) }
+                }
+                .distinctUntilChanged()
+        },
+    ) { it.toList() }
 
     /** Each network's upgrade warning, none until the first: Accounts never waits for them. */
     private val upgrades = observeUpgradeWarnings().onStart { emit(UpgradeWarnings(emptyMap(), emptySet())) }
@@ -85,11 +109,11 @@ class AccountsViewModel(
     val uiState: StateFlow<AccountsUiState> = combine(
         observePortfolio(),
         combine(observeSafes(), ensNames, ::Pair),
-        combine(statuses, observeEnabledNetworks(), ::Pair),
+        combine(statuses, staleAnchors, observeEnabledNetworks(), ::Triple),
         upgrades,
         message,
-    ) { portfolio, (safes, ensNames), (lightClients, on), upgrades, message ->
-        stateOf(portfolio, safes, ensNames, lightClients, on.toSet(), upgrades).let { state ->
+    ) { portfolio, (safes, ensNames), (lightClients, staleAnchors, on), upgrades, message ->
+        stateOf(portfolio, safes, ensNames, lightClients, staleAnchors, on.toSet(), upgrades).let { state ->
             if (state is AccountsUiState.Ready) state.copy(message = message) else state
         }
     }
@@ -111,6 +135,15 @@ class AccountsViewModel(
         }
     }
 
+    /**
+     * Lets the light client of [chainId]'s network catch up from its stale checkpoint anyway, for
+     * this run of the app: what the user confirmed in its section's dialog.
+     */
+    fun syncPastStaleAnchor(chainId: Long) {
+        val network = Network.ofChainId(chainId) ?: return
+        viewModelScope.launch { syncPastStaleAnchor(network) }
+    }
+
     /** The screen has said [AccountsUiState.Ready.message]. */
     fun messageShown() {
         message.value = null
@@ -121,6 +154,7 @@ class AccountsViewModel(
         safes: Map<AccountId, SafeReading>,
         ensNames: Map<AccountId, EnsNameCheck>,
         lightClients: List<LightClientItem>,
+        staleAnchors: List<StaleAnchorWarning?>,
         on: Set<Network>,
         warnings: UpgradeWarnings,
     ): AccountsUiState {
@@ -175,6 +209,7 @@ class AccountsViewModel(
                         total = if (isOn) totalText(total, currency) else "Off",
                         totalNote = sectionNote(total, network, currency, portfolio).takeIf { isOn }?.ifEmpty { null },
                         blocked = blocked,
+                        staleAnchor = staleAnchors[i].takeIf { isOn },
                     )
                 }
                 // The top total adds the real networks that are on; a testnet only when the wallet has
@@ -217,6 +252,9 @@ class AccountsViewModel(
         }
 
     private companion object {
+        /** How long a network's shared status outlives its last subscriber: across a configuration change. */
+        const val SHARE_TIMEOUT_MS = 5_000L
+
         /** A network's status line while it is off in this wallet (N18). */
         val OFF =
             LightClientItem("Off in this wallet · nothing is checked", null, false, LightClientHealth.NOT_RUNNING)

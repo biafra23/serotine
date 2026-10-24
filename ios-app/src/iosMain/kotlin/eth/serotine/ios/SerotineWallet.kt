@@ -196,6 +196,7 @@ class SerotineWallet {
             displayCurrency = FileDisplayCurrency("$dataDir/display-currency.json"),
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
+            staleAnchorConsent = node,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
             transactionInputs = node.transactionInputs,

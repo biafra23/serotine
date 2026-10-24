@@ -658,6 +658,17 @@ discussion that produced this note.
   restart) stays on screen, dated and marked as possibly changed since, left
   out of totals and never acted on (owner's request, 2026-10-19;
   docs/wallet-ux.md).
+- **Past the weak-subjectivity window only on the user's word** (owner's
+  request, 2026-10-24). A light client whose last trusted checkpoint is
+  older than its network's weak-subjectivity bound (3 sync-committee
+  periods: about 3.4 days on Ethereum and Sepolia, 34 hours on Gnosis
+  Chain) refuses to sync. Accounts warns of it in that network's section,
+  in plain words: what catching up has to trust, and what a forged chain
+  could and could not do. Only the user's confirmation lets it catch up
+  (the engine's `acceptStaleAnchor`), per network and for that run of the
+  app alone: never automatically and never stored, so a restart that still
+  finds the checkpoint too old asks again. The bound itself is never raised
+  (`setWsBoundPeriods` is not called).
 - **A Safe's fallback handler is set only to a pinned one** (owner ruling,
   2026-10-18, #63). A Safe transaction that sets a fallback handler other
   than the pinned canonical CompatibilityFallbackHandler 1.4.1 of its

@@ -2,6 +2,7 @@ package eth.serotine.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,6 +20,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -26,6 +30,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.LightClientHealthDot
+import eth.serotine.ui.components.StaleAnchorBanner
+import eth.serotine.ui.components.StaleAnchorDialog
+import eth.serotine.ui.components.StaleAnchorWarning
 
 /** Test tag of the app's version line, for UI tests. */
 const val SETTINGS_VERSION_TAG = "settings-version"
@@ -60,6 +67,7 @@ fun SettingsRoute(
         onNetworkChange = viewModel::switchNetwork,
         onConfirmTurnOff = viewModel::confirmTurnOff,
         onCancelTurnOff = viewModel::cancelTurnOff,
+        onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
     )
 }
 
@@ -85,7 +93,19 @@ fun SettingsScreen(
     onNetworkChange: (chainId: Long, on: Boolean) -> Unit = { _, _ -> },
     onConfirmTurnOff: () -> Unit = {},
     onCancelTurnOff: () -> Unit = {},
+    onSyncPastStaleAnchor: (chainId: Long) -> Unit = {},
 ) {
+    var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
+    asking?.let { warning ->
+        StaleAnchorDialog(
+            warning,
+            onConfirm = {
+                asking = null
+                onSyncPastStaleAnchor(warning.chainId)
+            },
+            onDismiss = { asking = null },
+        )
+    }
     state.turningOff?.let { asked ->
         AlertDialog(
             onDismissRequest = onCancelTurnOff,
@@ -142,6 +162,12 @@ fun SettingsScreen(
                     // The row is the toggle: the switch only shows its state.
                     trailingContent = { Switch(checked = network.on, onCheckedChange = null) },
                 )
+                // Below the row, outside its toggle: a tap beside the button never turns the network off.
+                network.staleAnchor?.let { warning ->
+                    Box(Modifier.padding(start = 40.dp, end = 16.dp, bottom = 8.dp)) {
+                        StaleAnchorBanner(warning, MaterialTheme.colorScheme.error) { asking = warning }
+                    }
+                }
             }
             Text(
                 "A network that is off checks nothing; its accounts stay in your list.",

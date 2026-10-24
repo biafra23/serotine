@@ -1,10 +1,13 @@
 package eth.serotine.ui.settings
 
 import androidx.compose.runtime.Composable
+import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.ui.components.LightClientHealth.NOT_RUNNING
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.STALE
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
+import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -159,6 +162,24 @@ private fun SettingsTurnOffPreview() = SettingsPreview(
     ),
 )
 
+/** Gnosis Chain refusing a checkpoint past its weak-subjectivity window, with "Catch up anyway…" (2026-10-24). */
+@Preview
+@Composable
+private fun SettingsStaleAnchorPreview() = SettingsPreview(
+    synced.copy(
+        networks = listOf(
+            ethereum,
+            gnosis.copy(
+                line = "No account · Not syncing: the last trusted checkpoint is 6 periods old, past the safe " +
+                    "limit of 3",
+                health = NOT_VERIFIED,
+                staleAnchor = StaleAnchorWarning.of(Network.GNOSIS, LightClientStatus.StaleAnchor(6, 3)),
+            ),
+            sepoliaOff,
+        ),
+    ),
+)
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsSyncedPreview() },
@@ -174,4 +195,5 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsIdlePreview() },
     { SettingsNetworkNotSavedPreview() },
     { SettingsTurnOffPreview() },
+    { SettingsStaleAnchorPreview() },
 )

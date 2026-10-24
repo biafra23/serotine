@@ -20,4 +20,11 @@ class NetworkTest {
         assertEquals(true, Network.SEPOLIA.testnet)
         assertEquals(Network.ETHEREUM, Network.ofChainId(1))
     }
+
+    @Test
+    fun aSyncCommitteePeriodIsEightThousandOneHundredNinetyTwoSlots() {
+        assertEquals(98_304L, Network.ETHEREUM.syncCommitteePeriodSeconds, "27.3 hours")
+        assertEquals(98_304L, Network.SEPOLIA.syncCommitteePeriodSeconds)
+        assertEquals(40_960L, Network.GNOSIS.syncCommitteePeriodSeconds, "11.4 hours")
+    }
 }

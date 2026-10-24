@@ -32,6 +32,7 @@ import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SigningRequestCodec
+import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
@@ -119,6 +120,7 @@ import eth.serotine.domain.usecase.SetDisplayCurrency
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.SignSafeTx
+import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
@@ -188,6 +190,8 @@ class AppGraph(
     private val addressKinds: AddressKinds,
     /** That light client's own state. */
     private val lightClient: LightClient,
+    /** The user's consent to a light client catching up from a stale checkpoint, for this run. */
+    private val staleAnchorConsent: StaleAnchorConsent,
     /** Network upgrades this version does not support, as peers report them to that light client. */
     private val networkUpgrades: NetworkUpgrades,
     /**
@@ -281,6 +285,7 @@ class AppGraph(
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
+            SyncPastStaleAnchor(lightClient, staleAnchorConsent),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -579,6 +584,7 @@ class AppGraph(
             screenCaptureDebugSwitch,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
+            SyncPastStaleAnchor(lightClient, staleAnchorConsent),
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
