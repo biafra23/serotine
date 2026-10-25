@@ -4,16 +4,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,6 +28,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -31,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,10 +48,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.NetworkChecklist
 import eth.serotine.ui.components.PasswordStep
+import eth.serotine.ui.components.QrCode
+import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
@@ -51,6 +62,7 @@ import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.OnStopUnlessConfigurationChange
 import eth.serotine.ui.platform.protectFromScreenCapture
+import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the phrase's words, for UI tests. */
@@ -100,9 +112,9 @@ fun CreateAccountRoute(
     // The ViewModel's init block handles EOA (initialAccountType == null), but for
     // HardwareP256 we need to explicitly call initiateCreation().
     LaunchedEffect(Unit) { viewModel.initiateCreation() }
-    // A note to read first keeps the screen until the user is done with it.
+    // A note or P-256 address to show first keeps the screen until the user is done with it.
     val created = state as? CreateAccountUiState.Created
-    if (created != null && created.note == null) {
+    if (created != null && created.note == null && created.p256Address == null) {
         LaunchedEffect(Unit) { onCreated() }
     }
 }
@@ -161,10 +173,10 @@ fun CreateAccountScreen(
                 is CreateAccountUiState.Securing ->
                     SecuringContent(state, onPasswordChange, onRepeatChange, onCreate, onNetworkToggle, onTurnOnNetwork)
                 is CreateAccountUiState.Created -> {
-                    Text("${state.label} created")
-                    state.note?.let { note ->
-                        Text(note, style = MaterialTheme.typography.bodyMedium)
-                        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                    if (state.p256Address != null) {
+                        P256AddressContent(state.label, state.p256Address, onBack, onDone)
+                    } else {
+                        EoaCreatedContent(state.label, state.note, onDone)
                     }
                 }
                 CreateAccountUiState.NotListed -> Text(
@@ -351,5 +363,87 @@ private fun SecuringContent(
         } else {
             Text("Create account")
         }
+    }
+}
+
+/**
+ * Shows a P-256 address that was generated, with QR code and Copy button.
+ * The user can add this address as an owner to their Safe{Wallet}.
+ */
+@Composable
+private fun P256AddressContent(label: String, address: String, onBack: () -> Unit, onDone: () -> Unit) {
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            TopAppBar(
+                title = { Text(label) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Add this address as an owner to your Safe{Wallet}", style = MaterialTheme.typography.bodyMedium)
+
+            QrCode(
+                address,
+                description = "QR code of the P-256 address",
+                modifier = Modifier.widthIn(max = 280.dp).fillMaxWidth(),
+            )
+            SelectionContainer {
+                Text(
+                    address,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.tertiaryContainer) {
+                Text(
+                    "P-256 hardware address",
+                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val copyText = rememberCopyText()
+                OutlinedButton(onClick = { copyText(address) }) {
+                    Icon(SerotineIcons.ContentCopy, contentDescription = null, Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Copy")
+                }
+            }
+            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+                Text("Done")
+            }
+        }
+    }
+}
+
+/**
+ * Shows a regular EOA account was created with a note (key protected at lighter cost).
+ */
+@Composable
+private fun EoaCreatedContent(label: String, note: String?, onDone: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("$label created")
+        note?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium)
+        }
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
     }
 }

@@ -13,8 +13,8 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
-import eth.serotine.domain.usecase.NewHardwareP256Account
-import eth.serotine.domain.usecase.NewHardwareP256AccountResult
+import eth.serotine.domain.usecase.NewHardwareP256Address
+import eth.serotine.domain.usecase.NewHardwareP256AddressResult
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.SetNetworkEnabled
@@ -54,6 +54,7 @@ class CreateAccountViewModel(
     private val keyStore: eth.serotine.domain.repository.KeyStore,
     private val accountRepository: eth.serotine.domain.repository.AccountRepository,
     private val walletChanges: eth.serotine.domain.usecase.WalletChanges,
+    private val newHardwareP256Address: NewHardwareP256Address,
     private val random: Random = Random.Default,
     initialAccountType: AccountType? = null,
 ) : ViewModel() {
@@ -168,9 +169,10 @@ class CreateAccountViewModel(
     }
 
     /**
-     * Start creating a P-256 hardware account instead of an EOA.
-     * This generates a new P-256 key in the device's Secure Enclave/StrongBox and creates
-     * a Safe contract with that key as owner.
+     * Start creating a P-256 hardware key address instead of an EOA.
+     * This generates a new P-256 key in the device's Secure Enclave/StrongBox and shows
+     * the derived Ethereum address. The user can then add this address as an owner to
+     * their existing Safe{Wallet}.
      */
     fun startHardwareAccount() {
         if (making?.isActive == true) return
@@ -180,26 +182,18 @@ class CreateAccountViewModel(
         state.value = CreateAccountUiState.Preparing
         making = viewModelScope.launch {
             val result = try {
-                NewHardwareP256Account(
-                    keys = keyStore,
-                    accounts = accountRepository,
-                    changes = walletChanges,
-                )(Network.SEPOLIA) // Default to Sepolia for now
+                newHardwareP256Address()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                println("NewHardwareP256Account exception: ${e.javaClass.simpleName}: ${e.message}")
-                NewHardwareP256AccountResult.KeyGenerationFailed
+                println("NewHardwareP256Address exception: ${e.javaClass.simpleName}: ${e.message}")
+                NewHardwareP256AddressResult.KeyGenerationFailed
             }
             state.value = when (result) {
-                is NewHardwareP256AccountResult.Created -> created(result.account.label, steppedDown = false)
-                is NewHardwareP256AccountResult.KeyGenerationFailed ->
+                is NewHardwareP256AddressResult.Created -> createdP256(result.address.hex)
+                is NewHardwareP256AddressResult.KeyGenerationFailed ->
                     CreateAccountUiState.Restart(
                         "The hardware key could not be generated on this device. P-256 support may not be available."
-                    )
-                is NewHardwareP256AccountResult.NotImplemented ->
-                    CreateAccountUiState.Restart(
-                        "Creating a Safe with a hardware owner is not yet implemented. This requires the WebAuthn signer proxy to be deployed first."
                     )
             }
         }
@@ -357,6 +351,13 @@ class CreateAccountViewModel(
     /** [label] created, with the note that its key was protected at a lighter cost when [steppedDown]. */
     private fun created(label: String, steppedDown: Boolean) =
         CreateAccountUiState.Created(label, STEPPED_DOWN_TEXT.takeIf { steppedDown })
+
+    /**
+     * The P-256 address was generated successfully. Shows the address with a QR code
+     * so the user can add it as an owner to their Safe.
+     */
+    private fun createdP256(address: String) =
+        CreateAccountUiState.Created("P-256 hardware address", p256Address = address)
 
     /** How an attempt that finished after the screen was left went, said without its phrase. */
     private fun outcomeWithoutPhrase(result: MnemonicImport): CreateAccountUiState = when (result) {

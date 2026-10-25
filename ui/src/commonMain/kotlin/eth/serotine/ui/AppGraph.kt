@@ -48,6 +48,7 @@ import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
 import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DeploySafe
+import eth.serotine.domain.usecase.NewHardwareP256Address
 import eth.serotine.domain.usecase.NewHardwareP256Account
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
@@ -640,6 +641,7 @@ class AppGraph(
             keys,
             accounts,
             walletChanges,
+            newHardwareP256Address(),
             initialAccountType = CreateAccountViewModel.AccountType.HardwareP256,
         )
         return viewModel
@@ -647,6 +649,9 @@ class AppGraph(
 
     fun newHardwareP256Account(): NewHardwareP256Account =
         NewHardwareP256Account(keys, accounts, walletChanges)
+
+    fun newHardwareP256Address(): NewHardwareP256Address =
+        NewHardwareP256Address(keys)
 
     fun updateRequiredViewModel(): UpdateRequiredViewModel =
         UpdateRequiredViewModel(observeUpgradeWarnings())
