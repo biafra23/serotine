@@ -153,24 +153,46 @@ private fun extractP256Coordinates(encoded: ByteArray): Pair<ByteArray, ByteArra
 private fun decodeDerPublicKey(derEncoded: ByteArray): Pair<ByteArray, ByteArray> {
     var offset = 0
 
+    // Helper to read DER length (supports both short and long form)
+    fun readLength(): Int {
+        val firstByte = derEncoded[offset++].toInt() and 0xFF
+        return if (firstByte < 0x80) {
+            // Short form: single byte
+            firstByte
+        } else if (firstByte == 0x80) {
+            error("Indefinite length is not supported in DER")
+        } else {
+            // Long form: first byte indicates number of length bytes
+            val numLengthBytes = firstByte and 0x7F
+            check(numLengthBytes <= 4) { "DER length too large" }
+            var length = 0
+            for (i in 0 until numLengthBytes) {
+                length = (length shl 8) or (derEncoded[offset++].toInt() and 0xFF)
+            }
+            length
+        }
+    }
+
     // Skip SEQUENCE header
     check(derEncoded[offset].toInt() and 0xFF == 0x30) { "Expected SEQUENCE tag" }
-    offset++ // skip length byte (assume single-byte form for these sizes)
+    offset++
+    val sequenceLength = readLength()
+    val sequenceEnd = offset + sequenceLength
 
     // Skip AlgorithmIdentifier sequence (OID for EC + parameters)
     check(derEncoded[offset].toInt() and 0xFF == 0x30) { "Expected AlgorithmIdentifier SEQUENCE" }
     offset++
-    val algoLength = derEncoded[offset++].toInt() and 0xFF
+    val algoLength = readLength()
     offset += algoLength
 
     // Skip BIT STRING header
     check(derEncoded[offset].toInt() and 0xFF == 0x03) { "Expected BIT STRING tag" }
     offset++
-    val bitStringLength = derEncoded[offset++].toInt() and 0xFF
+    val bitStringLength = readLength()
 
     // Now at the actual public key bytes: 0x04 || x || y
-    check(offset + 65 <= derEncoded.size) {
-        "DER key too short, expected at least 65 payload bytes"
+    check(bitStringLength >= 65) {
+        "BIT STRING too short, expected at least 65 bytes, got $bitStringLength"
     }
     check(derEncoded[offset].toInt() and 0xFF == 0x04) {
         "Expected uncompressed point marker in BIT STRING"
