@@ -260,7 +260,7 @@ private fun Destinations(
                     onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
                     onCreateSafe = { navController.navigate(Destination.CREATE_SAFE) { launchSingleTop = true } },
                     onCreateHardwareP256 = {
-                        hardwareP256ViewModel.startHardwareAccount()
+                        navController.navigate(Destination.CREATE_HARDWARE_P256) { launchSingleTop = true }
                     },
                     onAccountAction = { action -> navController.open(action) },
                 )
@@ -420,6 +420,15 @@ private fun Destinations(
                         popUpTo(Destination.CREATE_SAFE) { inclusive = true }
                     }
                 },
+            )
+        }
+        // A P-256 hardware account's creation: creates a new key in the device's Secure Enclave/StrongBox.
+        composable(Destination.CREATE_HARDWARE_P256) {
+            val viewModel = viewModel { graph.createHardwareP256AccountViewModel() }
+            CreateAccountRoute(
+                viewModel = viewModel,
+                onBack = { navController.leave(Destination.CREATE_HARDWARE_P256) },
+                onCreated = { navController.leave(Destination.CREATE_HARDWARE_P256) },
             )
         }
         composable(Destination.MNEMONIC_IMPORT) {
@@ -895,6 +904,7 @@ private object Destination {
     const val ACTIVITY_ADD_TOKEN = "activity-add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
     const val CREATE_ACCOUNT = "create-account"
+    const val CREATE_HARDWARE_P256 = "create-hardware-p256"
     const val CREATE_SAFE = "create-safe"
     const val SEND = "send"
     const val SWAP = "swap"

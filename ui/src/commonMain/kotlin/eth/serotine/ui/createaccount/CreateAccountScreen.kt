@@ -96,6 +96,10 @@ fun CreateAccountRoute(
         onNetworkToggle = viewModel::onNetworkToggle,
         onTurnOnNetwork = viewModel::onTurnOnNetwork,
     )
+    // Start the appropriate account creation flow when the screen is first composed.
+    // The ViewModel's init block handles EOA (initialAccountType == null), but for
+    // HardwareP256 we need to explicitly call initiateCreation().
+    LaunchedEffect(Unit) { viewModel.initiateCreation() }
     // A note to read first keeps the screen until the user is done with it.
     val created = state as? CreateAccountUiState.Created
     if (created != null && created.note == null) {

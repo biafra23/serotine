@@ -45,17 +45,6 @@ import kotlinx.coroutines.launch
  * logs, saves or caches them, and drops them as soon as the screen is not shown ([onHidden],
  * [onCleared]). [random] picks the words to check; which ones is no secret.
  */
-private sealed interface AccountType {
-    /** A standard EOA account created from a BIP-39 recovery phrase. */
-    data object Eoa : AccountType
-
-    /**
-     * A Safe{Wallet} account owned by a P-256 hardware-bound key via WebAuthn.
-     * The key is generated in the device's Secure Enclave/StrongBox.
-     */
-    data object HardwareP256 : AccountType
-}
-
 class CreateAccountViewModel(
     private val newRecoveryPhrase: NewRecoveryPhrase,
     private val importMnemonicAccount: ImportMnemonicAccount,
@@ -66,7 +55,22 @@ class CreateAccountViewModel(
     private val accountRepository: eth.serotine.domain.repository.AccountRepository,
     private val walletChanges: eth.serotine.domain.usecase.WalletChanges,
     private val random: Random = Random.Default,
+    initialAccountType: AccountType? = null,
 ) : ViewModel() {
+
+    /**
+     * The type of account being created.
+     */
+    public sealed interface AccountType {
+        /** A standard EOA account created from a BIP-39 recovery phrase. */
+        data object Eoa : AccountType
+
+        /**
+         * A Safe{Wallet} account owned by a P-256 hardware-bound key via WebAuthn.
+         * The key is generated in the device's Secure Enclave/StrongBox.
+         */
+        data object HardwareP256 : AccountType
+    }
 
     private val state = MutableStateFlow<CreateAccountUiState>(CreateAccountUiState.Preparing)
 
@@ -80,19 +84,34 @@ class CreateAccountViewModel(
     private var shown = true
 
     /** The type of account being created. */
-    private var accountType: AccountType = AccountType.Eoa
+    private var accountType: AccountType = initialAccountType ?: AccountType.Eoa
 
     private var making: Job? = null
 
     val uiState: StateFlow<CreateAccountUiState> = state.asStateFlow()
 
     init {
-        startOver()
+        // Only start EOA creation if no specific type was requested
+        if (initialAccountType == null) {
+            startOver()
+        }
         viewModelScope.launch {
             observeEnabledNetworks().collect { networks ->
                 on = networks.toSet()
                 refreshNetworks()
             }
+        }
+    }
+
+    /**
+     * Start creating an account based on the configured [accountType].
+     * This should be called when the screen is first displayed to begin
+     * the appropriate flow (EOA or HardwareP256).
+     */
+    fun initiateCreation() {
+        when (accountType) {
+            AccountType.Eoa -> startOver()
+            AccountType.HardwareP256 -> startHardwareAccount()
         }
     }
 
@@ -348,7 +367,7 @@ class CreateAccountViewModel(
         )
     }
 
-    private companion object {
+    companion object {
         const val CHECKED_WORDS = 3
         const val HIDDEN = "The phrase was cleared when the screen was left, before it was stored, and it will " +
             "never be used. Cross out every word of it you wrote down, then start again with a new phrase."

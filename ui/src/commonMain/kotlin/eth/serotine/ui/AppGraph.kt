@@ -640,6 +640,7 @@ class AppGraph(
             keys,
             accounts,
             walletChanges,
+            initialAccountType = CreateAccountViewModel.AccountType.HardwareP256,
         )
         return viewModel
     }
