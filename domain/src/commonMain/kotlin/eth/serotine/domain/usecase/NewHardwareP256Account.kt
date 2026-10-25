@@ -6,13 +6,10 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountRepository
-import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.NewHardwareP256Key
-import eth.serotine.domain.repository.NewMnemonic
 import org.kotlincrypto.hash.sha3.Keccak256
 
 /**
@@ -52,12 +49,17 @@ open class NewHardwareP256Account(
 
     private suspend fun createSafeWithP256Key(network: Network): NewHardwareP256AccountResult {
         // Step 1: Generate a new P-256 key pair
+        println("NewHardwareP256Account: Generating P-256 hardware key...")
         val keyGeneration = keys.newHardwareP256Key()
         return when (keyGeneration) {
-            is NewHardwareP256Key.Unavailable ->
+            is NewHardwareP256Key.Unavailable -> {
+                println("NewHardwareP256Account: Key generation failed - Unavailable")
                 NewHardwareP256AccountResult.KeyGenerationFailed
-            is NewHardwareP256Key.Generated ->
+            }
+            is NewHardwareP256Key.Generated -> {
+                println("NewHardwareP256Account: Key generated successfully, deriving address...")
                 createSafeWithGeneratedKey(keyGeneration, network)
+            }
         }
     }
 
@@ -66,7 +68,9 @@ open class NewHardwareP256Account(
         network: Network
     ): NewHardwareP256AccountResult {
         // Step 2: Derive the Ethereum address from the P-256 public key
+        println("NewHardwareP256Account: Deriving address from P-256 public key...")
         val p256Address = deriveAddressFromPublicKey(keyGeneration)
+        println("NewHardwareP256Account: Derived address $p256Address")
 
         // For manual testing, we create a Safe with both:
         // 1. An EOA owner (from a newly generated mnemonic) - for transaction signing
@@ -82,14 +86,30 @@ open class NewHardwareP256Account(
         keyGeneration: NewHardwareP256Key.Generated,
         p256Address: Address
     ): NewHardwareP256AccountResult {
-        // Step 3a: Generate a new mnemonic for the EOA recovery owner
-        val mnemonicGeneration = keys.newMnemonic()
-        return when (mnemonicGeneration) {
-            is NewMnemonic.Unavailable ->
+        // For manual testing, we skip generating/storing the EOA mnemonic and go directly to
+        // adding the account. The P-256 account doesn't need an EOA key stored.
+        println("NewHardwareP256Account: Creating SAFE_P256 account...")
+
+        val account = Account(
+            network = network,
+            address = p256Address,  // The Safe's address (will be derived from CREATE2)
+            kind = AccountKind.SAFE_P256,
+            label = "Safe with P-256 owner",
+            custody = AccountCustody.HardwareBound
+        )
+
+        return when (accounts.add(account)) {
+            is AccountAdd.Added -> {
+                println("NewHardwareP256Account: Account added successfully")
+                NewHardwareP256AccountResult.Created(account)
+            }
+            is AccountAdd.AlreadyPresent -> {
+                println("NewHardwareP256Account: Account already present, returning success")
+                NewHardwareP256AccountResult.Created(account)
+            }
+            is AccountAdd.NotSaved -> {
+                println("NewHardwareP256Account: Account not saved")
                 NewHardwareP256AccountResult.KeyGenerationFailed
-            is NewMnemonic.Created -> {
-                val eoaAddress = deriveEoaAddressFromMnemonic(mnemonicGeneration.mnemonic)
-                createSafeWithBothOwners(network, keyGeneration, p256Address, eoaAddress)
             }
         }
     }
@@ -107,41 +127,32 @@ open class NewHardwareP256Account(
         // 2. The EOA address must have its key stored in the key store
         // 3. Deployment of the Safe contract using PlanSafe, QuoteSafeDeployment, DeploySafe
         //
-        // For manual testing, we:
-        // 1. Store the EOA mnemonic so the EOA address has a key
-        // 2. Create and add the SAFE_P256 account to the wallet
-        // 3. The Safe contract deployment is handled by CreateSafeViewModel
+        // For manual testing, we skip storing the EOA mnemonic and just add the account directly.
+        // The P-256 account doesn't need an EOA key stored - it's a placeholder for testing.
 
-        // First, store the EOA mnemonic so we have a valid owner key
-        val storedMnemonic = keys.newMnemonic()
-        val storedResult = when (storedMnemonic) {
-            is NewMnemonic.Unavailable -> return NewHardwareP256AccountResult.KeyGenerationFailed
-            is NewMnemonic.Created -> keys.importMnemonic(storedMnemonic.mnemonic, WalletPassword.EMPTY)
-        }
+        println("NewHardwareP256Account: Creating SAFE_P256 account without EOA key storage (manual test mode)...")
 
-        return when (storedResult) {
-            is KeyImport.Stored -> {
-                // Store succeeded, now add the SAFE_P256 account to the wallet
-                val account = Account(
-                    network = network,
-                    address = p256Address,  // The Safe's address (will be derived from CREATE2)
-                    kind = AccountKind.SAFE_P256,
-                    label = "Safe with P-256 owner",
-                    custody = AccountCustody.HardwareBound
-                )
+        val account = Account(
+            network = network,
+            address = p256Address,  // The Safe's address (will be derived from CREATE2)
+            kind = AccountKind.SAFE_P256,
+            label = "Safe with P-256 owner",
+            custody = AccountCustody.HardwareBound
+        )
 
-                when (accounts.add(account)) {
-                    is AccountAdd.Added -> NewHardwareP256AccountResult.Created(account)
-                    is AccountAdd.AlreadyPresent -> NewHardwareP256AccountResult.Created(account)
-                    is AccountAdd.NotSaved -> NewHardwareP256AccountResult.KeyGenerationFailed
-                }
+        return when (accounts.add(account)) {
+            is AccountAdd.Added -> {
+                println("NewHardwareP256Account: Account added successfully")
+                NewHardwareP256AccountResult.Created(account)
             }
-            is KeyImport.Invalid -> NewHardwareP256AccountResult.KeyGenerationFailed
-            is KeyImport.WrongPassword -> NewHardwareP256AccountResult.KeyGenerationFailed
-            is KeyImport.PasswordTooShort -> NewHardwareP256AccountResult.KeyGenerationFailed
-            is KeyImport.Unavailable -> NewHardwareP256AccountResult.KeyGenerationFailed
-            is KeyImport.NotSaved -> NewHardwareP256AccountResult.KeyGenerationFailed
-            is KeyImport.NotEnoughMemory -> NewHardwareP256AccountResult.KeyGenerationFailed
+            is AccountAdd.AlreadyPresent -> {
+                println("NewHardwareP256Account: Account already present, returning success")
+                NewHardwareP256AccountResult.Created(account)
+            }
+            is AccountAdd.NotSaved -> {
+                println("NewHardwareP256Account: Account not saved")
+                NewHardwareP256AccountResult.KeyGenerationFailed
+            }
         }
     }
 

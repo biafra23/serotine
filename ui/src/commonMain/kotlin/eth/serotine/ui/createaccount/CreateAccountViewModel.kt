@@ -188,6 +188,7 @@ class CreateAccountViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                println("NewHardwareP256Account exception: ${e.javaClass.simpleName}: ${e.message}")
                 NewHardwareP256AccountResult.KeyGenerationFailed
             }
             state.value = when (result) {
