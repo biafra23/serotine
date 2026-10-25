@@ -60,6 +60,9 @@ class CreateAccountViewModelTest {
             DescribeKeyStore(keys),
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
+            keys,
+            accounts,
+            WalletChanges(),
             Random(7),
         )
     }

@@ -17,7 +17,10 @@ sealed interface CreateAccountUiState {
     /** The key adapter is making the phrase. */
     data object Preparing : CreateAccountUiState
 
-    /** The new [phrase], to be written down: shown on this screen alone, until it is stored. */
+    /**
+     * The new [phrase], to be written down: shown on this screen alone, until it is stored.
+     * This is for EOA accounts created from a recovery phrase.
+     */
     data class Showing(val phrase: Mnemonic) : CreateAccountUiState {
         /** The words, numbered on screen in this order. */
         val words: List<String> = phrase.words

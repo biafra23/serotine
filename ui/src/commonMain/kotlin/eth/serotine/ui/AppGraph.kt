@@ -48,6 +48,7 @@ import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
 import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DeploySafe
+import eth.serotine.domain.usecase.NewHardwareP256Account
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
 import eth.serotine.domain.usecase.EnableBiometricUnlock
@@ -624,7 +625,13 @@ class AppGraph(
         DescribeKeyStore(keys),
         ObserveEnabledNetworks(networkSettings),
         SetNetworkEnabled(networkSettings),
+        keys,
+        accounts,
+        walletChanges,
     )
+
+    fun newHardwareP256Account(): NewHardwareP256Account =
+        NewHardwareP256Account(keys, accounts, walletChanges)
 
     fun updateRequiredViewModel(): UpdateRequiredViewModel =
         UpdateRequiredViewModel(observeUpgradeWarnings())
