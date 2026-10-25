@@ -171,7 +171,16 @@ fun CreateAccountScreen(
                 )
                 is CreateAccountUiState.Restart -> {
                     Text(state.message)
-                    Button(onClick = onStartOver, modifier = Modifier.fillMaxWidth()) { Text("New phrase") }
+                    Column(Modifier.padding(top = 16.dp)) {
+                        Button(
+                            onClick = { onStartOver() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("New phrase") }
+                        OutlinedButton(
+                            onClick = onBack,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) { Text("Back to accounts") }
+                    }
                 }
                 CreateAccountUiState.Unavailable -> Text(
                     "The key store does not work on this device, so no account can be created here.",
