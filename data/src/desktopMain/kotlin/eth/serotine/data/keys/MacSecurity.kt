@@ -60,6 +60,7 @@ internal class MacSecurity private constructor() {
         ): Pointer?
         fun SecKeyCreateRandomKey(parameters: Pointer, error: PointerByReference): Pointer?
         fun SecKeyCopyAttributes(key: Pointer): Pointer?
+        fun SecKeyCopyExternalRepresentation(key: Pointer, error: PointerByReference): Pointer?
         fun SecKeyCreateWithData(keyData: Pointer, attributes: Pointer, error: PointerByReference): Pointer?
         fun SecKeyCopyPublicKey(key: Pointer): Pointer?
         fun SecKeyCreateEncryptedData(
@@ -365,29 +366,33 @@ internal class MacSecurity private constructor() {
      * The key must be a P-256 private key from the Secure Enclave; its public half is
      * extracted to get the coordinates.
      *
-     * On macOS, we use SecKeyCopyAttributes on the public key to get its attributes,
-     * then parse the DER-encoded subjectPublicKeyInfo from the kSecAttrKeyData attribute.
+     * On macOS, we use SecKeyCopyExternalRepresentation which returns the DER-encoded
+     * SubjectPublicKeyInfo for EC keys. We parse this to extract the x and y coordinates.
      */
     private fun publicKeyCoordinates(key: Pointer): Pair<ByteArray, ByteArray> = owning { own ->
         val publicKey = own(checkNotNull(sec.SecKeyCopyPublicKey(key)) { "SecKeyCopyPublicKey failed" })
-        val attributes = own(checkNotNull(sec.SecKeyCopyAttributes(publicKey)) { "SecKeyCopyAttributes failed" })
 
-        // Get the kSecAttrKeyData attribute which contains the DER-encoded SubjectPublicKeyInfo
-        val keyDataRef = checkNotNull(cf.CFStringCreateWithCString(null, "kSecAttrKeyData", UTF8)) {
-            "CFStringCreateWithCString for kSecAttrKeyData failed"
+        // Use SecKeyCopyExternalRepresentation to get the public key's raw bytes
+        val error = PointerByReference()
+        val externalRep = sec.SecKeyCopyExternalRepresentation(publicKey, error)
+        check(externalRep != null) {
+            val cfError = error.value ?: error("SecKeyCopyExternalRepresentation failed with no error")
+            try {
+                throw SecurityCallFailed("SecKeyCopyExternalRepresentation", chainOf(cfError))
+            } finally {
+                cf.CFRelease(cfError)
+            }
         }
 
         try {
-            val keyDataValue = checkNotNull(cf.CFDictionaryGetValue(attributes, keyDataRef)) {
-                "public key has no kSecAttrKeyData attribute"
-            }
-            check(cf.CFGetTypeID(keyDataValue) == cf.CFDataGetTypeID()) {
-                "kSecAttrKeyData should be a CFData"
+            // externalRep is a CFData containing the DER-encoded SubjectPublicKeyInfo
+            check(cf.CFGetTypeID(externalRep) == cf.CFDataGetTypeID()) {
+                "external representation should be a CFData"
             }
 
-            val keyDataBytes = bytesOf(keyDataValue)
+            val keyDataBytes = bytesOf(externalRep)
 
-            // For P-256, the kSecAttrKeyData contains a DER-encoded SubjectPublicKeyInfo
+            // For P-256, the external representation is a DER-encoded SubjectPublicKeyInfo
             // which is a SEQUENCE containing AlgorithmIdentifier and BIT STRING
             // The BIT STRING contains: 0x04 || x || y (uncompressed point)
 
@@ -439,7 +444,7 @@ internal class MacSecurity private constructor() {
             val y = keyDataBytes.copyOfRange(dataOffset + 33, dataOffset + 65)
             return@owning x to y
         } finally {
-            cf.CFRelease(keyDataRef)
+            cf.CFRelease(externalRep)
         }
     }
 
