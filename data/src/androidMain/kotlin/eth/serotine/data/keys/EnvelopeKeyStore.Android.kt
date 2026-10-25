@@ -119,19 +119,65 @@ private fun isKeyInSecureHardware(privateKey: java.security.PrivateKey): Boolean
 }
 
 /**
- * P-256 public key encoding is ANSI X.963 uncompressed format: 0x04 || x || y
- * where x and y are each 32 bytes for P-256.
+ * Extract P-256 public key coordinates from various encoding formats.
+ * Android's KeyFactory.encoded may return DER-encoded keys or raw points.
  */
 private fun extractP256Coordinates(encoded: ByteArray): Pair<ByteArray, ByteArray> {
-    check(encoded.isNotEmpty() && encoded[0].toInt() and 0xFF == 0x04) {
-        "P-256 public key should start with 0x04 (uncompressed), got 0x${encoded[0].toInt().and(0xFF).toString(16)}"
-    }
-    check(encoded.size == 65) {
-        "P-256 uncompressed public key should be 65 bytes, got ${encoded.size}"
+    // Check for uncompressed point format first (0x04 || x || y)
+    if (encoded.isNotEmpty() && encoded[0].toInt() and 0xFF == 0x04) {
+        check(encoded.size == 65) {
+            "P-256 uncompressed public key should be 65 bytes, got ${encoded.size}"
+        }
+        val x = encoded.copyOfRange(1, 33)
+        val y = encoded.copyOfRange(33, 65)
+        return x to y
     }
 
-    val x = encoded.copyOfRange(1, 33)
-    val y = encoded.copyOfRange(33, 65)
+    // Handle DER-encoded format (0x30 ... SEQUENCE)
+    if (encoded.isNotEmpty() && encoded[0].toInt() and 0xFF == 0x30) {
+        return decodeDerPublicKey(encoded)
+    }
+
+    error("P-256 public key has unknown encoding, first byte: 0x${encoded.first().toInt().and(0xFF).toString(16)}")
+}
+
+/**
+ * Decode a DER-encoded P-256 public key and extract x,y coordinates.
+ * DER format for EC public keys is:
+ * SEQUENCE {
+ *   algorithm AlgorithmIdentifier,
+ *   subjectPublicKey BIT STRING
+ * }
+ * The BIT STRING contains: 0x04 || x || y (uncompressed point)
+ */
+private fun decodeDerPublicKey(derEncoded: ByteArray): Pair<ByteArray, ByteArray> {
+    var offset = 0
+
+    // Skip SEQUENCE header
+    check(derEncoded[offset].toInt() and 0xFF == 0x30) { "Expected SEQUENCE tag" }
+    offset++ // skip length byte (assume single-byte form for these sizes)
+
+    // Skip AlgorithmIdentifier sequence (OID for EC + parameters)
+    check(derEncoded[offset].toInt() and 0xFF == 0x30) { "Expected AlgorithmIdentifier SEQUENCE" }
+    offset++
+    val algoLength = derEncoded[offset++].toInt() and 0xFF
+    offset += algoLength
+
+    // Skip BIT STRING header
+    check(derEncoded[offset].toInt() and 0xFF == 0x03) { "Expected BIT STRING tag" }
+    offset++
+    val bitStringLength = derEncoded[offset++].toInt() and 0xFF
+
+    // Now at the actual public key bytes: 0x04 || x || y
+    check(offset + 65 <= derEncoded.size) {
+        "DER key too short, expected at least 65 payload bytes"
+    }
+    check(derEncoded[offset].toInt() and 0xFF == 0x04) {
+        "Expected uncompressed point marker in BIT STRING"
+    }
+
+    val x = derEncoded.copyOfRange(offset + 1, offset + 33)
+    val y = derEncoded.copyOfRange(offset + 33, offset + 65)
     return x to y
 }
 
