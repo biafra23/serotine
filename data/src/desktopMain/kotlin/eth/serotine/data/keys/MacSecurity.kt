@@ -152,6 +152,30 @@ internal class MacSecurity private constructor() {
         call("SecKeyCreateRandomKey") { error -> sec.SecKeyCreateRandomKey(parameters, error) }
     }
 
+    /**
+     * A new P-256 key inside the Secure Enclave for [newHardwareP256Key]:
+     * returns the public key's x and y coordinates as 32-byte arrays each.
+     * The key itself is not stored anywhere; only its coordinates are returned.
+     */
+    fun generateP256PublicKeyPair(): Pair<ByteArray, ByteArray> = owning { own ->
+        val privateAttributes = own(dictionary(isPermanent to falseValue))
+        val bits = own(number(256))
+        val parameters = own(
+            dictionary(
+                keyType to ecKeyType,
+                keySizeInBits to bits,
+                tokenId to secureEnclave,
+                privateKeyAttributes to privateAttributes,
+            ),
+        )
+        val key = call("SecKeyCreateRandomKey") { error -> sec.SecKeyCreateRandomKey(parameters, error) }
+        try {
+            publicKeyCoordinates(key)
+        } finally {
+            release(key)
+        }
+    }
+
     /** The enclave's encrypted handle to [key]: useless anywhere but in this Mac's Secure Enclave. */
     fun tokenObjectIdOf(key: Pointer): ByteArray {
         val attributes = checkNotNull(sec.SecKeyCopyAttributes(key)) { "SecKeyCopyAttributes failed" }
@@ -325,6 +349,43 @@ internal class MacSecurity private constructor() {
      */
     private fun zero(data: Pointer) {
         cf.CFDataGetBytePtr(data)?.clear(cf.CFDataGetLength(data))
+    }
+
+    /**
+     * The x and y coordinates of the public key for P-256 [key], as 32-byte arrays each.
+     * The key must be a P-256 private key from the Secure Enclave; its public half is
+     * extracted to get the coordinates.
+     */
+    private fun publicKeyCoordinates(key: Pointer): Pair<ByteArray, ByteArray> = owning { own ->
+        val publicKey = own(checkNotNull(sec.SecKeyCopyPublicKey(key)) { "SecKeyCopyPublicKey failed" })
+        val attributes = own(checkNotNull(sec.SecKeyCopyAttributes(publicKey)) { "SecKeyCopyAttributes failed" })
+
+        // For P-256 public keys stored in the Secure Enclave, we can access the raw EC point
+        // through the key's attributes. The kSecAttrKeyData attribute contains the uncompressed
+        // point format: 0x04 || x || y (65 bytes total for P-256)
+        val tokenObjectIdRef = cf.CFStringCreateWithCString(null, "kSecAttrKeyData", UTF8)
+            ?: error("CFStringCreateWithCString failed")
+
+        try {
+            val keyDataValue = checkNotNull(cf.CFDictionaryGetValue(attributes, tokenObjectIdRef)) {
+                "public key has no kSecAttrKeyData attribute"
+            }
+            check(cf.CFGetTypeID(keyDataValue) == cf.CFDataGetTypeID()) {
+                "kSecAttrKeyData should be a CFData"
+            }
+
+            val keyDataBytes = bytesOf(keyDataValue)
+            // Check first byte is 0x04 (uncompressed point format)
+            check(keyDataBytes.size == 65 && keyDataBytes[0].toInt() and 0xFF == 0x04) {
+                "P-256 uncompressed point should be 65 bytes starting with 0x04, got ${keyDataBytes.size}"
+            }
+
+            val x = keyDataBytes.copyOfRange(1, 33)
+            val y = keyDataBytes.copyOfRange(33, 65)
+            return@owning x to y
+        } finally {
+            cf.CFRelease(tokenObjectIdRef)
+        }
     }
 
     companion object {
