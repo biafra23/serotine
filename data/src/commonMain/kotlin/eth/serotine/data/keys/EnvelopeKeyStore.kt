@@ -175,6 +175,7 @@ class EnvelopeKeyStore internal constructor(
             throw e
         } catch (e: Throwable) {
             report("a new P-256 hardware key could not be generated (${e::class.simpleName})")
+            e.printStackTrace()
             NewHardwareP256Key.Unavailable
         }
     }

@@ -39,6 +39,7 @@ import androidx.navigation.compose.dialog
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
@@ -402,7 +403,10 @@ private fun Destinations(
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
-        composable(Destination.CREATE_ACCOUNT) {
+        composable(
+            route = Destination.CREATE_ACCOUNT,
+            deepLinks = listOf(navDeepLink { uriPattern = "serotine://create-account" }),
+        ) {
             CreateAccountRoute(
                 viewModel = viewModel { graph.createAccountViewModel() },
                 onBack = { navController.leave(Destination.CREATE_ACCOUNT) },
@@ -423,7 +427,10 @@ private fun Destinations(
             )
         }
         // A P-256 hardware account's creation: creates a new key in the device's Secure Enclave/StrongBox.
-        composable(Destination.CREATE_HARDWARE_P256) {
+        composable(
+            route = Destination.CREATE_HARDWARE_P256,
+            deepLinks = listOf(navDeepLink { uriPattern = "serotine://create-hardware-p256" }),
+        ) {
             val viewModel = viewModel { graph.createHardwareP256AccountViewModel() }
             CreateAccountRoute(
                 viewModel = viewModel,
