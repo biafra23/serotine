@@ -23,8 +23,7 @@ open class NewHardwareP256Address(
      *
      * @return The outcome, either the generated address or failure reason
      */
-    suspend operator fun invoke(): NewHardwareP256AddressResult =
-        changes.serialized { generateAddress() }
+    suspend operator fun invoke(): NewHardwareP256AddressResult = generateAddress()
 
     private suspend fun generateAddress(): NewHardwareP256AddressResult {
         println("NewHardwareP256Address: Generating P-256 hardware key...")
