@@ -157,34 +157,17 @@ internal class MacSecurity private constructor() {
      * returns the public key's x and y coordinates as 32-byte arrays each.
      * The key itself is not stored anywhere; only its coordinates are returned.
      *
-     * On macOS, we create a temporary permanent key that we can query for its
-     * public key data, then delete it from the keychain immediately after.
+     * On macOS, we create a temporary key in the Secure Enclave with
+     * kSecAttrIsPermanent=false, then use SecKeyCopyAttributes to get the
+     * public key's attributes including kSecAttrKeyData which contains the
+     * DER-encoded SubjectPublicKeyInfo from which we extract the coordinates.
      */
     fun generateP256PublicKeyPair(): Pair<ByteArray, ByteArray> = owning { own ->
-        // Create access control allowing any use of this temporary key
-        val access = own(
-            call("SecAccessControlCreateWithFlags") { error ->
-                sec.SecAccessControlCreateWithFlags(
-                    null,
-                    whenPasscodeSetThisDeviceOnly,
-                    PRIVATE_KEY_USAGE,
-                    error,
-                )
-            },
-        )
-
-        // We need to create a temporary key that we can query for its public key data.
-        // The approach is to:
-        // 1. Create a permanent key in the Secure Enclave
-        // 2. Get its public key and extract coordinates
-        // 3. Delete it from the keychain
-        //
-        // However, since we don't have SecKeyCopyExternalRepresentation available,
-        // we use a different approach: create the key with a specific token ID that
-        // allows us to access the raw bytes via its attributes.
-
         val bits = own(number(256))
-        val privateKeyAttrs = own(dictionary(isPermanent to falseValue, accessControl to access))
+
+        // Create a temporary key (isPermanent=false) in the Secure Enclave
+        // The key exists only in memory and is not written to the keychain
+        val privateKeyAttrs = own(dictionary(isPermanent to falseValue))
 
         val parameters = own(
             dictionary(
