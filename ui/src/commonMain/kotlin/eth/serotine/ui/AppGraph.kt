@@ -630,6 +630,20 @@ class AppGraph(
         walletChanges,
     )
 
+    fun createHardwareP256AccountViewModel(): CreateAccountViewModel {
+        val viewModel = CreateAccountViewModel(
+            NewRecoveryPhrase(keys),
+            ImportMnemonicAccount(keys, accounts, walletChanges),
+            DescribeKeyStore(keys),
+            ObserveEnabledNetworks(networkSettings),
+            SetNetworkEnabled(networkSettings),
+            keys,
+            accounts,
+            walletChanges,
+        )
+        return viewModel
+    }
+
     fun newHardwareP256Account(): NewHardwareP256Account =
         NewHardwareP256Account(keys, accounts, walletChanges)
 

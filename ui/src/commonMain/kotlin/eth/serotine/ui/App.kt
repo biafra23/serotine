@@ -45,6 +45,14 @@ import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
+import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.usecase.NewRecoveryPhrase
+import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
+import eth.serotine.domain.usecase.SetNetworkEnabled
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
@@ -57,6 +65,7 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.coworder.CowOrderRoute
 import eth.serotine.ui.coworder.SwapAgain
 import eth.serotine.ui.createaccount.CreateAccountRoute
+import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.debug.DebugRoute
@@ -243,12 +252,16 @@ private fun Destinations(
     NavHost(navController, startDestination = Tab.ACCOUNTS.graph, modifier = modifier) {
         navigation(startDestination = Destination.ACCOUNTS, route = Tab.ACCOUNTS.graph) {
             composable(Destination.ACCOUNTS) {
+                val hardwareP256ViewModel = viewModel { graph.createHardwareP256AccountViewModel() }
                 AccountsRoute(
                     viewModel = viewModel { graph.accountsViewModel() },
                     onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
                     onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
                     onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
                     onCreateSafe = { navController.navigate(Destination.CREATE_SAFE) { launchSingleTop = true } },
+                    onCreateHardwareP256 = {
+                        hardwareP256ViewModel.startHardwareAccount()
+                    },
                     onAccountAction = { action -> navController.open(action) },
                 )
             }

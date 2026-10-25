@@ -88,6 +88,7 @@ fun AccountsRoute(
     onImportPhrase: () -> Unit,
     onCreateAccount: () -> Unit,
     onCreateSafe: () -> Unit,
+    onCreateHardwareP256: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -99,6 +100,7 @@ fun AccountsRoute(
         onImportPhrase = onImportPhrase,
         onCreateAccount = onCreateAccount,
         onCreateSafe = onCreateSafe,
+        onCreateHardwareP256 = onCreateHardwareP256,
         onAccountAction = { action ->
             if (action is AccountAction.Copy) copy(action.address) else onAccountAction(action)
         },
@@ -128,6 +130,7 @@ fun AccountsScreen(
     onImportPhrase: () -> Unit,
     onCreateAccount: () -> Unit,
     onCreateSafe: () -> Unit,
+    onCreateHardwareP256: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
     fabExpandedAtStart: Boolean = false,
@@ -174,6 +177,17 @@ fun AccountsScreen(
                         SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress),
                         SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onClick = onImportPhrase),
                         SpeedDialAction("Create account", Icons.Filled.Add, onClick = onCreateAccount),
+                        SpeedDialAction(
+                            "Hardware P-256 account",
+                            SerotineIcons.HardwareP256,
+                            unavailable = state !is AccountsUiState.Ready
+                        ) {
+                            if (state is AccountsUiState.Ready) {
+                                onCreateHardwareP256()
+                            } else {
+                                unavailable = UnavailableNotice("Create hardware account", createSafeReason ?: "No accounts yet")
+                            }
+                        },
                         SpeedDialAction("Create Safe", Icons.Filled.Lock, unavailable = createSafeReason != null) {
                             if (createSafeReason == null) {
                                 onCreateSafe()
