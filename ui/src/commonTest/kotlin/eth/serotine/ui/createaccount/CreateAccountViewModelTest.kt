@@ -63,6 +63,7 @@ class CreateAccountViewModelTest {
             keys,
             accounts,
             WalletChanges(),
+            eth.serotine.domain.usecase.NewHardwareP256Address(keys),
             Random(7),
         )
     }

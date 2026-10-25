@@ -148,11 +148,12 @@ fun CreateAccountScreen(
 ) {
     val captureBlocked = protectFromScreenCapture()
     if (state is CreateAccountUiState.Showing || state is CreateAccountUiState.Checking) KeepScreenOn()
+    val p256Address = (state as? CreateAccountUiState.Created)?.p256Address
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Create account") },
+                title = { Text(p256Address?.let { "P-256 hardware address" } ?: "Create account") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -162,7 +163,8 @@ fun CreateAccountScreen(
         },
     ) { padding ->
         Column(
-            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             when (state) {
@@ -370,62 +372,46 @@ private fun SecuringContent(
  * Shows a P-256 address that was generated, with QR code and Copy button.
  * The user can add this address as an owner to their Safe{Wallet}.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun P256AddressContent(label: String, address: String, onBack: () -> Unit, onDone: () -> Unit) {
-    val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbar) },
-        topBar = {
-            TopAppBar(
-                title = { Text(label) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("Add this address as an owner to your Safe{Wallet}", style = MaterialTheme.typography.bodyMedium)
+    Column(
+        Modifier.padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("Add this address as an owner to your Safe{Wallet}", style = MaterialTheme.typography.bodyMedium)
 
-            QrCode(
+        QrCode(
+            address,
+            description = "QR code of the P-256 address",
+            modifier = Modifier.widthIn(max = 280.dp).fillMaxWidth(),
+        )
+        SelectionContainer {
+            Text(
                 address,
-                description = "QR code of the P-256 address",
-                modifier = Modifier.widthIn(max = 280.dp).fillMaxWidth(),
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.Center,
             )
-            SelectionContainer {
-                Text(
-                    address,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = FontFamily.Monospace,
-                    textAlign = TextAlign.Center,
-                )
+        }
+        Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.tertiaryContainer) {
+            Text(
+                "P-256 hardware address",
+                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val copyText = rememberCopyText()
+            OutlinedButton(onClick = { copyText(address) }) {
+                Icon(SerotineIcons.ContentCopy, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Copy")
             }
-            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.tertiaryContainer) {
-                Text(
-                    "P-256 hardware address",
-                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val copyText = rememberCopyText()
-                OutlinedButton(onClick = { copyText(address) }) {
-                    Icon(SerotineIcons.ContentCopy, contentDescription = null, Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Copy")
-                }
-            }
-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
-                Text("Done")
-            }
+        }
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("Done")
         }
     }
 }
@@ -436,7 +422,7 @@ private fun P256AddressContent(label: String, address: String, onBack: () -> Uni
 @Composable
 private fun EoaCreatedContent(label: String, note: String?, onDone: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        Modifier.padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {

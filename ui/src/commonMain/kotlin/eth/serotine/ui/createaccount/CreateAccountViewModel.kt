@@ -183,10 +183,8 @@ class CreateAccountViewModel(
         making = viewModelScope.launch {
             val result = try {
                 newHardwareP256Address()
-            } catch (e: CancellationException) {
-                throw e
             } catch (e: Exception) {
-                println("NewHardwareP256Address exception: ${e.javaClass.simpleName}: ${e.message}")
+                println("NewHardwareP256Address exception: ${e.message}")
                 NewHardwareP256AddressResult.KeyGenerationFailed
             }
             state.value = when (result) {

@@ -629,6 +629,7 @@ class AppGraph(
         keys,
         accounts,
         walletChanges,
+        newHardwareP256Address(),
     )
 
     fun createHardwareP256AccountViewModel(): CreateAccountViewModel {
