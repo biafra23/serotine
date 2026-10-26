@@ -48,6 +48,21 @@ class RateWidgetChoicesTest {
     }
 
     @Test
+    fun aNativeCurrencyWithNoFeedIsGreyedOutFirstNotLeftOut() = runTest {
+        val noNative = object : FeedTable {
+            override fun quotes(network: Network): Map<PriceId, PriceId> = mapOf(LINK_ID to PriceId.USD)
+        }
+
+        val bases = RateWidgetChoices(ListCatalog(token("LINK", LINK_ID, 1), token("UNI", null, 2)), noNative)
+            .bases(Network.SEPOLIA)
+
+        assertEquals(
+            listOf(RateBase(LINK_ID, listOf("LINK")), RateBase(null, listOf("ETH")), RateBase(null, listOf("UNI"))),
+            bases,
+        )
+    }
+
+    @Test
     fun aBaseMayBeShownInEveryCurrencyButItselfPricedInUsdAndThosePinnedThere() {
         val choices = RateWidgetChoices(ListCatalog(), table)
 

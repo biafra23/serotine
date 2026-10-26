@@ -20,13 +20,16 @@ class RateWidgetChoices(private val catalog: TokenCatalog, private val feeds: Fe
      * priced by, in the list's order and each once, with the names of what it prices (the native
      * currency's, then the tokens' symbols); then each built-in token with no feed pinned there, by
      * its symbol and with no price id, which has no rate and is offered greyed out (CLAUDE.md,
-     * *Conventions*). The tokens the user adds have no price and are none.
+     * *Conventions*), the native currency first among them where it has no feed either. The tokens
+     * the user adds have no price and are none.
      */
     suspend fun bases(network: Network): List<RateBase> {
         val pinned = feeds.quotes(network)
         val names = LinkedHashMap<PriceId, MutableList<String>>()
         names.getOrPut(network.nativePriceId) { mutableListOf() } += network.nativeName
+        // The native currency's row stays too where no feed prices it, greyed out as a token's.
         val unpriced = mutableListOf<RateBase>()
+        if (network.nativePriceId !in pinned) unpriced += RateBase(null, listOf(network.nativeSymbol))
         for (token in catalog.observeTokens(network).first()) {
             val id = token.priceId?.takeIf { it in pinned }
             if (id == null) {
