@@ -3,6 +3,7 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
+import eth.serotine.domain.model.RatePair
 import eth.serotine.domain.model.RateSnapshot
 import eth.serotine.domain.repository.CurrencyChoice
 import eth.serotine.domain.repository.FeedReading
@@ -34,7 +35,7 @@ class ExchangeRateTest {
     private val setting = MemoryCurrencySetting()
     private val last = MemoryLastRate()
     private val currencies = ObserveDisplayCurrencies(feeds, setting, ListAccountRepository())
-    private val refresh = RefreshExchangeRate(currencies, read, last, Network.SEPOLIA)
+    private val refresh = RefreshExchangeRate(currencies, read, last, RatePair.native(Network.SEPOLIA))
 
     /** A day back that has no round, which is a lasting answer: read once, no retries. */
     private fun noDayBack() {
@@ -153,6 +154,38 @@ class ExchangeRateTest {
     }
 
     @Test
+    fun aPairWithItsOwnCurrencyIsShownInItWhateverTheDisplayCurrency() = runTest {
+        feeds.answer(LINK_ID, 0.005)
+        feeds.answer(ETH, 2_400.0)
+        feeds.answer(EUR, 1.2)
+        val pair = RatePair(Network.SEPOLIA, LINK_ID, DisplayCurrency.EUR)
+        val link = RefreshExchangeRate(currencies, read, last, pair)
+        setting.choose(DisplayCurrency.USD)
+
+        val snapshot = link()!!
+
+        assertEquals(LINK_ID, snapshot.base)
+        assertEquals(DisplayCurrency.EUR, snapshot.quote)
+        assertEquals(10.0, snapshot.rate, 1e-9)
+        assertEquals(pair, last.pair)
+        setting.choose(DisplayCurrency.GBP)
+        assertFalse(link.isDue(nowSeconds = 1_060, maxAgeSeconds = 600)) // the display currency is not its
+    }
+
+    @Test
+    fun aTokenThatFollowsTheDisplayCurrencyIsShownInIt() = runTest {
+        feeds.answer(LINK_ID, 0.005)
+        feeds.answer(ETH, 2_400.0)
+        feeds.answer(EUR, 1.2)
+        setting.choose(DisplayCurrency.EUR)
+
+        val snapshot = RefreshExchangeRate(currencies, read, last, RatePair(Network.SEPOLIA, LINK_ID, null))()!!
+
+        assertEquals(DisplayCurrency.EUR, snapshot.quote)
+        assertEquals(10.0, snapshot.rate, 1e-9)
+    }
+
+    @Test
     fun aReadWithoutARateKeepsTheLastOne() = runTest {
         feeds.answer(ETH, 2_400.0)
         val kept = refresh()!!
@@ -236,14 +269,16 @@ internal class FakeHistory : PriceHistory {
     }
 }
 
-/** [LastExchangeRate] in memory. */
+/** [LastExchangeRate] in memory: the last rate saved, of [pair], whatever pair is loaded. */
 internal class MemoryLastRate : LastExchangeRate {
     var kept: RateSnapshot? = null
+    var pair: RatePair? = null
 
-    override suspend fun load(network: Network): RateSnapshot? = kept
+    override suspend fun load(pair: RatePair): RateSnapshot? = kept
 
-    override suspend fun save(network: Network, snapshot: RateSnapshot): Boolean {
+    override suspend fun save(pair: RatePair, snapshot: RateSnapshot): Boolean {
         kept = snapshot
+        this.pair = pair
         return true
     }
 }

@@ -17,7 +17,7 @@ import eth.serotine.android.upgrade.AndroidUpgradeNotifier
 import eth.serotine.android.upgrade.UpgradeCheckJob
 import eth.serotine.android.widget.RateRefreshJob
 import eth.serotine.android.widget.RateWidget
-import eth.serotine.android.widget.RateWidgetNetworks
+import eth.serotine.android.widget.RateWidgetPairs
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.cow.FileCowOrders
 import eth.serotine.data.cow.HttpCowApi
@@ -31,6 +31,7 @@ import eth.serotine.data.keys.PasswordOnlyTier
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.networks.FileNetworkSettings
+import eth.serotine.data.prices.PinnedFeedTable
 import eth.serotine.data.rates.FileLastExchangeRate
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
@@ -44,6 +45,8 @@ import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PriceId
+import eth.serotine.domain.model.RatePair
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
@@ -59,6 +62,7 @@ import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.ReadExchangeRate
+import eth.serotine.domain.usecase.RateWidgetChoices
 import eth.serotine.domain.usecase.RefreshExchangeRate
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -66,8 +70,10 @@ import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.AppGraph
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
-import eth.serotine.ui.ratewidget.WidgetNetworkUiState
+import eth.serotine.ui.ratewidget.WidgetPairUiState
+import eth.serotine.ui.ratewidget.widgetBaseUiState
 import eth.serotine.ui.ratewidget.widgetNetworkUiState
+import eth.serotine.ui.ratewidget.widgetQuoteUiState
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -228,28 +234,53 @@ class SerotineApplication : Application() {
      */
     private val lastRate by lazy { FileLastExchangeRate(filesDir.resolve("last-exchange-rate.json").path) }
 
-    /**
-     * Reads a network's widget rate, and the one of a day before, through the engine, and keeps it
-     * in [lastRate]: one per network, each widget showing one (docs/networks.md, *The widget*).
-     */
-    private val refreshRates by lazy {
-        val currencies = ObserveDisplayCurrencies(node.priceFeeds, displayCurrency, accounts)
-        val read = ReadExchangeRate(node.priceFeeds, node.priceHistory)
-        Network.entries.associateWith { RefreshExchangeRate(currencies, read, lastRate, it) }
+    /** What a widget's rate is read with through the engine: the display currency, and the reads. */
+    private val rateReads by lazy {
+        ObserveDisplayCurrencies(node.priceFeeds, displayCurrency, accounts) to
+            ReadExchangeRate(node.priceFeeds, node.priceHistory)
     }
 
     /**
-     * Draws every placed widget from the rates kept for their networks, saying so where a network
+     * Reads [pair]'s widget rate, and the one of a day before, through the engine, and keeps it in
+     * [lastRate]: one per pair, each widget showing one (docs/wallet-ux.md, *Home-screen widget*).
+     */
+    private fun refreshRate(pair: RatePair): RefreshExchangeRate {
+        val (currencies, read) = rateReads
+        return RefreshExchangeRate(currencies, read, lastRate, pair)
+    }
+
+    /**
+     * What a widget being placed may show, from the pinned tables alone: choosing starts no
+     * engine (docs/wallet-ux.md, *Home-screen widget*).
+     */
+    private val widgetChoices by lazy { RateWidgetChoices(tokenCatalog, PinnedFeedTable()) }
+
+    /** The built-in token list, which the screens and the widget's configuration share. */
+    private val tokenCatalog by lazy { BuiltInTokenCatalog() }
+
+    /**
+     * Draws every placed widget from the rates kept for their pairs, saying so where a network
      * is off, without the engine; [refreshing] as [RateWidget.draw] takes it.
      */
     private suspend fun drawWidgets(refreshing: Boolean? = null) {
-        val networks = RateWidget.networks(this)
-        val rates = networks.associateWith { lastRate.load(it) }
+        val pairs = RateWidget.pairs(this)
+        val rates = pairs.associateWith { lastRate.load(it) }
         RateWidget.draw(this, rates, networkSettings.observe().first(), refreshing)
     }
 
-    /** The networks a widget being placed may show, for its configuration (docs/networks.md, *The widget*). */
-    suspend fun widgetNetworkChoices(): WidgetNetworkUiState {
+    /**
+     * The step of a widget's configuration with [network] and [base] chosen so far (null: not
+     * yet): the networks it may show (docs/networks.md, *The widget*), then what its rate may be
+     * of on [network], then the currencies [base] may be shown in.
+     */
+    suspend fun widgetPairStep(network: Network?, base: PriceId?): WidgetPairUiState = when {
+        network == null -> widgetNetworkChoices()
+        base == null -> widgetBaseUiState(network, widgetChoices.bases(network))
+        else -> widgetQuoteUiState(network, base.id, widgetChoices.quotes(network, base))
+    }
+
+    /** The networks a widget being placed may show. */
+    private suspend fun widgetNetworkChoices(): WidgetPairUiState.Networks {
         val on = networkSettings.observe().first()
         val listed = accounts.observeAccounts().first() as? AccountList.Loaded
         return widgetNetworkUiState(
@@ -260,12 +291,12 @@ class SerotineApplication : Application() {
     }
 
     /**
-     * The widget [id] was placed showing [network]: recorded, drawn, its rate read soon, and
+     * The widget [id] was placed showing [pair]: recorded, drawn, its rate read soon, and
      * followed while the app is open. False when the choice could not be stored. Called on the
      * main thread; the choice is written off it.
      */
-    suspend fun rateWidgetConfigured(id: Int, network: Network): Boolean {
-        if (!RateWidgetNetworks(this).set(id, network)) return false
+    suspend fun rateWidgetConfigured(id: Int, pair: RatePair): Boolean {
+        if (!RateWidgetPairs(this).set(id, pair)) return false
         // On the scheduling lane, so a cancel asked for by a removal meanwhile never lands before it.
         scope.launch(jobScheduling) {
             drawWidgets()
@@ -275,7 +306,7 @@ class SerotineApplication : Application() {
         return true
     }
 
-    /** The widgets placed, or their networks, changed: their rates are followed anew while the app is open. */
+    /** The widgets placed, or their pairs, changed: their rates are followed anew while the app is open. */
     fun rateWidgetsChanged() {
         rateFollowing?.cancel()
         rateFollowing = null
@@ -299,7 +330,7 @@ class SerotineApplication : Application() {
             accounts = accounts,
             keys = keyStore,
             nativeBalances = node.nativeBalances,
-            tokenCatalog = BuiltInTokenCatalog(),
+            tokenCatalog = tokenCatalog,
             tokenBalances = node.tokenBalances,
             tokenMetadata = node.tokenMetadata,
             userTokens = FileUserTokens(filesDir.resolve("tokens.json").path),
@@ -473,14 +504,14 @@ class SerotineApplication : Application() {
         if (visible == 0 || rateFollowing?.isActive == true) return
         rateFollowing = scope.launch {
             val following = this
-            // Each network a widget shows, and only while it is on: one that is off reads nothing,
-            // and one turned on while the app is open is followed from then on. With none on, it
-            // waits for the next change of the settings.
+            // Each pair a widget shows, and only while its network is on: one that is off reads
+            // nothing, and one turned on while the app is open is followed from then on. With none
+            // on, it waits for the next change of the settings.
             networkSettings.observe().distinctUntilChanged().collectLatest { on ->
-                val followed = RateWidget.networks(this@SerotineApplication).filter { it in on }
+                val followed = RateWidget.pairs(this@SerotineApplication).filter { it.network in on }
                 if (followed.isEmpty()) return@collectLatest
                 coroutineScope {
-                    for (network in followed) launch { followRate(network) }
+                    for (pair in followed) launch { followRate(pair) }
                 }
                 // Every follower ended (each only on a failure): the following itself ends, not this
                 // round alone, so the next start of an activity or a placed widget starts it again.
@@ -489,12 +520,12 @@ class SerotineApplication : Application() {
         }
     }
 
-    /** Keeps [network]'s widget rate current while the app is open ([FollowExchangeRate]); a failure ends it alone. */
-    private suspend fun followRate(network: Network) {
+    /** Keeps [pair]'s widget rate current while the app is open ([FollowExchangeRate]); a failure ends it alone. */
+    private suspend fun followRate(pair: RatePair) {
         try {
             FollowExchangeRate(
                 displayCurrency,
-                refreshRates.getValue(network),
+                refreshRate(pair),
                 maxAgeSeconds = RATE_MAX_AGE_MINUTES * 60,
                 checkEvery = RATE_CHECK_MINUTES.minutes,
                 readTimeout = RATE_READ_TIMEOUT,
@@ -503,7 +534,7 @@ class SerotineApplication : Application() {
             throw e
         } catch (e: Exception) {
             System.err.println(
-                "Serotine: following ${network.displayName}'s widget rate stopped: ${e::class.simpleName}",
+                "Serotine: following a ${pair.network.displayName} widget's rate stopped: ${e::class.simpleName}",
             )
         }
     }
@@ -596,9 +627,9 @@ class SerotineApplication : Application() {
 
     /**
      * The widgets' read: the one in progress, or a new one given [RATE_READ_TIMEOUT], waited for
-     * at most [timeout]; whether any network's rate was read in that time. It reads, at once, the
-     * rate of each network a placed widget shows and that is on, waking that network alone (a
-     * network that is off reads nothing; its widget says so). The last waiter to stop gives it
+     * at most [timeout]; whether any pair's rate was read in that time. It reads, at once, the
+     * rate of each pair a placed widget shows whose network is on, waking those networks alone (a
+     * network that is off reads nothing; its widgets say so). The last waiter to stop gives it
      * up, so no read outlives everyone who asked for it.
      */
     private suspend fun joinRead(timeout: Duration): Boolean {
@@ -607,21 +638,15 @@ class SerotineApplication : Application() {
                 ?: SharedRead(
                     scope.async {
                         val on = networkSettings.observe().first()
-                        val networks = RateWidget.networks(this@SerotineApplication).filter { it in on }
-                        networks.map { network ->
+                        val byNetwork = RateWidget.pairs(this@SerotineApplication)
+                            .filter { it.network in on }
+                            .groupBy { it.network }
+                        byNetwork.map { (network, pairs) ->
                             async {
-                                // The widget's network runs for as long as this read does, with no account on it too.
+                                // The widgets' network runs for as long as this read does, with no account on it too.
                                 val hold = networkDemand.hold(network)
                                 try {
-                                    withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRates.getValue(network)() } != null
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    // One network's failure ends its read alone; the others' still count.
-                                    val name = network.displayName
-                                    val kind = e::class.simpleName
-                                    System.err.println("Serotine: $name's widget rate was not read: $kind")
-                                    false
+                                    pairs.map { pair -> async { readWidgetRate(pair) } }.awaitAll().any { it }
                                 } finally {
                                     hold.release()
                                 }
@@ -640,6 +665,21 @@ class SerotineApplication : Application() {
                 readLock.withLock { if (--shared.waiting == 0) shared.read.cancel() }
             }
         }
+    }
+
+    /**
+     * Reads [pair]'s widget rate once, given [RATE_READ_TIMEOUT]; whether it was read. A failure
+     * ends this read alone.
+     */
+    private suspend fun readWidgetRate(pair: RatePair): Boolean = try {
+        withTimeoutOrNull(RATE_READ_TIMEOUT) { refreshRate(pair)() } != null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // The others' reads still count.
+        val name = pair.network.displayName
+        System.err.println("Serotine: a $name widget's rate was not read: ${e::class.simpleName}")
+        false
     }
 
     /**
@@ -665,7 +705,7 @@ class SerotineApplication : Application() {
                 drawWidgets()
                 // Every network the widgets show is off: nothing to read, and the widgets say so.
                 val on = networkSettings.observe().first()
-                if (RateWidget.networks(app).none { it in on }) {
+                if (RateWidget.pairs(app).none { it.network in on }) {
                     giveUpManualRefresh(R.string.rate_widget_network_off)
                 } else if (!RateRefreshJob.refreshNow(app)) {
                     giveUpManualRefresh(R.string.rate_widget_not_started)

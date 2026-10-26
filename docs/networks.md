@@ -473,7 +473,11 @@ that are on and have accounts. A Sepolia widget keeps "testnet prices"; an Ether
 ETH at mainnet's rate, a Gnosis one xDAI at its rate. Each refresh wakes only
 that network. A widget placed before the update has no network in its state
 and is migrated as Sepolia, still marked "testnet prices". Choosing another
-network means placing a new widget.
+network means placing a new widget. Since issue #178 the configuration also
+asks for the price and the currency (docs/wallet-ux.md, *Home-screen
+widget*), and `last-exchange-rate.json` keeps one entry per pair (format 3):
+a network's entry from before is its native pair, following the display
+currency.
 
 ## Delivery: a multi-PR plan through `feature/networks`
 

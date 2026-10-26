@@ -1,6 +1,6 @@
 package eth.serotine.ui.ratewidget
 
-import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.RatePair
 import eth.serotine.domain.model.RateSnapshot
 import eth.serotine.ui.components.age
 import eth.serotine.ui.components.formatFiat
@@ -27,9 +27,10 @@ data class RateWidgetContent(
 enum class Trend { UP, DOWN, FLAT, UNKNOWN }
 
 /**
- * [snapshot] as the widget shows it on [network], read at [readAt] (the host's own rendering of
- * [RateSnapshot.readAt] in the user's locale, "Oct 21, 14:05"); no rate kept yet says so. The
- * note names the widget's network first, each widget showing one (docs/networks.md, *The
+ * [snapshot] as the widget of [pair] shows it, read at [readAt] (the host's own rendering of
+ * [RateSnapshot.readAt] in the user's locale, "Oct 21, 14:05"); no rate kept yet says so, under
+ * the pair as far as it is chosen ("LINK · EUR"; "ETH" where it follows the display currency).
+ * The note names the widget's network first, each widget showing one (docs/networks.md, *The
  * widget*). Being a rate kept and shown later, it says it may have changed since it was verified,
  * or, while the network is not [on] in this wallet, that it is off (nothing reads it then); one
  * whose feeds were stale says how old its price is. On a testnet every rate says "testnet
@@ -37,14 +38,15 @@ enum class Trend { UP, DOWN, FLAT, UNKNOWN }
  */
 fun rateWidgetContent(
     snapshot: RateSnapshot?,
-    network: Network,
+    pair: RatePair,
     readAt: String,
     on: Boolean = true,
 ): RateWidgetContent {
+    val network = pair.network
     val off = "${network.displayName} is off".takeUnless { on }
     if (snapshot == null) {
         return RateWidgetContent(
-            pair = network.nativeSymbol,
+            pair = listOfNotNull(pair.base.id, pair.quote?.code).joinToString(" · "),
             rate = "—",
             change = null,
             trend = Trend.UNKNOWN,

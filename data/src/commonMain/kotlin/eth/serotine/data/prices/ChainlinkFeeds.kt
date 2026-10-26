@@ -3,6 +3,7 @@ package eth.serotine.data.prices
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
+import eth.serotine.domain.repository.FeedTable
 
 /**
  * A Chainlink feed pinned for [priceId]: its proxy [address], the price id its answer is
@@ -101,4 +102,10 @@ object ChainlinkFeeds {
     /** An X / USD feed answering with 8 decimals, as every one pinned here does. */
     private fun usd(id: String, address: String, heartbeatSeconds: Long) =
         PinnedFeed(PriceId(id), Address.of(address), PriceId.USD, decimals = 8, heartbeatSeconds)
+}
+
+/** [FeedTable] of [ChainlinkFeeds]: which prices are pinned where, read from the table alone, no engine. */
+class PinnedFeedTable : FeedTable {
+    override fun quotes(network: Network): Map<PriceId, PriceId> =
+        ChainlinkFeeds.of(network).associate { it.priceId to it.quote }
 }

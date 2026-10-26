@@ -860,21 +860,34 @@ read through the light client. Applied:
 
 ## Home-screen widget
 
-An Android home-screen widget with one exchange rate: its network's native
-currency in the display currency (screen 19), in USD where that is ETH
-itself, or none is chosen, or the network does not offer the one stored (as
-the screens have it) — "ETH · EUR", "€2,046.20" — with its change over
+An Android home-screen widget with one exchange rate, a pair chosen when it
+is placed (issue #178) in three steps:
+
+1. **The network**, among the networks that are on and have accounts (every
+   network that is on when none of those is).
+2. **The price**: the network's native currency first, then each price its
+   built-in tokens are priced by, each once and named with what it prices
+   ("ETH — Ether · WETH", "USDC — USDC · USDC.e" on Gnosis Chain, "EUR —
+   EURe"). Only a price with a feed pinned on that network is offered: a
+   token with no price, an added one included, has no rate.
+3. **The currency**: the display currency first, which the widget then
+   follows as the screens have it (screen 19; USD where that is the price
+   itself, none is chosen, or the network does not offer the one stored),
+   then USD and each display currency with a feed pinned on that network,
+   but the price itself.
+
+Choosing reads only the pinned tables, so it starts no light client. The
+widget shows the pair — "LINK · EUR", "€12.50" — with its change over
 the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
 "24h 0.00%" when it rounds to no move, and a line that names its network and
 dates it: "Sepolia · Verified Oct 21, 2:05 PM · may have changed since ·
-testnet prices". Each widget shows one network, asked for when it is placed
-among the networks that are on and have accounts (every network that is on
-when none of those is), and kept; another network
-is another widget, and one placed before networks shows Sepolia. A widget of
+testnet prices". The choice is kept; another pair is another widget. One
+placed before pairs shows its network's native currency in the display
+currency, and one placed before networks shows Sepolia's. A widget of
 a network that is off keeps its last rate and says "Gnosis Chain is off" in
 place of "may have changed since", and nothing reads it until the network is
-on (docs/networks.md, *The widget*). A refresh reads only the networks the
-placed widgets show, each waking alone. A tap on the
+on (docs/networks.md, *The widget*). A refresh reads only the pairs the
+placed widgets show, each network waking alone. A tap on the
 refresh button reads it now (below); a tap anywhere else opens the app. The desktop has no
 home screen, and iOS's widget (a WidgetKit extension) is still to come.
 
@@ -887,7 +900,8 @@ home screen, and iOS's widget (a WidgetKit extension) is still to come.
   fresh round on the path (a stale or unproven feed, an aggregator that took
   over since) shows "24h —", never a change against something else. The
   widget shows the last rate read, from a file of its own
-  (`last-exchange-rate.json`: a price and its times, public data only), with
+  (`last-exchange-rate.json`: a price and its times per pair, public data
+  only), with
   the date and time it was verified and marked as possibly changed since,
   as the one older answer CLAUDE.md's *Trust* allows is (a balance; a kept
   rate is not on that list, so this is for the owner to rule on); a stale
