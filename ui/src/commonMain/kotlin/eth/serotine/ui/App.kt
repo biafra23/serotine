@@ -60,6 +60,7 @@ import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.debug.DebugRoute
+import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
@@ -116,6 +117,8 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
         // Whether the bar has a Debug tab: the app's tabs, so scoped to the host too.
         val debugTab = viewModel { graph.debugTabViewModel() }
         val debugShown by debugTab.shown.collectAsStateWithLifecycle()
+        // The Debug screen's filter outlives its destination, which a tab switch pops: scoped to the host too.
+        val debug = viewModel { graph.debugViewModel() }
         val tabs = Tab.entries.filter { it != Tab.DEBUG || debugShown == true }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
@@ -167,6 +170,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
                         update,
                         lightClient,
                         debugShown,
+                        debug,
                         Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
                     )
                 }
@@ -214,6 +218,7 @@ private fun Destinations(
     update: UpdateRequiredViewModel,
     lightClient: LightClientViewModel,
     debugShown: Boolean?,
+    debug: DebugViewModel,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -385,7 +390,7 @@ private fun Destinations(
         }
         navigation(startDestination = Destination.DEBUG, route = Tab.DEBUG.graph) {
             composable(Destination.DEBUG) {
-                DebugRoute(viewModel { graph.debugViewModel() })
+                DebugRoute(debug)
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
