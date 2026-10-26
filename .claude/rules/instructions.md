@@ -2,9 +2,7 @@
 description: "How to change these instructions and the docs: what is the owner's, how rulings are kept, where a new rule or skill goes, the Myotis sibling, the heading pointers."
 paths:
   - "CLAUDE.md"
-  - "QWEN.md"
   - ".claude/**/*"
-  - ".qwen/**/*"
   - "docs/**/*"
 ---
 
@@ -36,9 +34,9 @@ Loaded when you edit CLAUDE.md, a file under `.claude/`, or a doc.
 - `.claude/rules/<area>.md` holds the full text of one area's rules. Its
   frontmatter `paths:` lists the globs, relative to the repository root, that
   load it. A rule without `paths:` is always loaded, so every rule here has
-  one. `paths` is the only frontmatter key Claude Code reads; Qwen Code reads
-  `description` too. If the YAML does not parse, the rule loads
-  unconditionally.
+  one. `paths` is the only frontmatter key Claude Code reads; the
+  `description` is for the human reader. If the YAML does not parse, the rule
+  loads unconditionally.
 - `.claude/skills/<name>/SKILL.md` holds one task's procedure or one role's
   briefing. Frontmatter: `name`, and a `description` that says what it does
   and when to use it, since the model picks the skill from that text. Keep a
@@ -46,9 +44,6 @@ Loaded when you edit CLAUDE.md, a file under `.claude/`, or a doc.
 - A new rule goes in the file of its area, with one line in CLAUDE.md if
   every session must know it. A new procedure goes in a skill. Both quote
   the ruling that made them.
-- `QWEN.md`, `.qwen/rules` and `.qwen/skills` are a thin mirror for Qwen Code:
-  an import and two symlinks. Change nothing there. Change the files under
-  `.claude/`.
 
 ## The docs
 

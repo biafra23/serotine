@@ -52,9 +52,8 @@ touched; `/pr` comes at step 3 of the Workflow. A reviewer starts with
 sure `architecture.md` and `trust.md` have loaded**; a rule loads on a Read,
 Write or Edit of a matching file, not on a grep. If your tool does not load
 rules or skills by itself, read the files named above for your task before
-you start. **Other agents:** Qwen Code reads `QWEN.md`, which imports this file,
-and finds the same rules and skills through `.qwen/rules` and `.qwen/skills`
-(symlinks). Any other agent: read this file, then the files it names.
+you start. **Agents other than Claude Code:** read this file, then the files
+it names for your task.
 
 ## Build & Run
 
