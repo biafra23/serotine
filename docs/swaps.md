@@ -7,8 +7,9 @@ design. Its Uniswap plan is built, its eight parts merged through
 `feature/swaps-cow`. Issue #69 tracks both. A swap PR is held
 to this page together with docs/wallet-ux.md (the screens and their rules),
 docs/embedding-myotis.md (what the engine reads and sends) and
-docs/keys-and-signing.md (what is signed). Where this page and CLAUDE.md
-disagree, CLAUDE.md wins and this page is fixed.
+docs/keys-and-signing.md (what is signed). Where this page and the rules
+under `.claude/` (their short form in CLAUDE.md) disagree, the rules win and
+this page is fixed.
 
 ## The owner's direction (2026-10-18, and 2026-10-22)
 

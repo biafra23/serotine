@@ -32,8 +32,8 @@ or edited. A skill (`.claude/skills/<name>/SKILL.md`) loads on demand:
 | `platform.md` | every `.kt` and `.kts` file, `gradle/` | Kotlin conventions; Platform & language direction; the minSdk 29 JDK-API budget |
 | `ui.md` | `ui/`, the screen docs | the greyed-out rule, previews, how a screen is laid out |
 | `hosts.md` | `android-app/`, `desktop-app/`, `ios-app/` | composition roots, the two Android apps, signing |
-| `trust.md` | the code modules, the root build files, `docs/` | Trust: verification, the Safe refusals, key material, how keys are held |
-| `data-sources.md` | the code modules, the root build files, `docs/` | Data sources: networks, prices, tokens, Safe co-signing, history, swaps, CoW |
+| `trust.md` | `domain/`, `data/`, `ui/`, the hosts, the root build files, `docs/` | Trust: verification, the Safe refusals, key material, how keys are held |
+| `data-sources.md` | `domain/`, `data/`, `ui/`, the hosts, the root build files, `docs/` | Data sources: networks, prices, tokens, Safe co-signing, history, swaps, CoW |
 | `github-workflows.md` | `.github/`, `scripts/` | the invariants of the workflows; how fork PRs are reviewed |
 | `instructions.md` | this file, `.claude/`, `docs/` | how to change these instructions |
 
