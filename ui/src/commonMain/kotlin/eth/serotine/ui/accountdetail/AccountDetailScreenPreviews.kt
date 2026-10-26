@@ -435,6 +435,11 @@ private fun AccountDetailSafeOwnersPreview() = AccountDetailPreview(treasury.cop
 
 @Preview
 @Composable
+private fun AccountDetailSafeOwnersNetworkOffPreview() =
+    AccountDetailPreview(treasury.copy(segment = DetailSegment.OWNERS, networkOn = false))
+
+@Preview
+@Composable
 private fun AccountDetailSafeQueuePreview() = AccountDetailPreview(treasury.copy(segment = DetailSegment.QUEUE))
 
 @Preview
@@ -657,4 +662,5 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailCheckingDarkPreview() },
     { AccountDetailEthereumPreview() },
     { AccountDetailNetworkOffPreview() },
+    { AccountDetailSafeOwnersNetworkOffPreview() },
 )

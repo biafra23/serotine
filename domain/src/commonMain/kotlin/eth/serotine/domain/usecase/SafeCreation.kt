@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeCreation
 import eth.serotine.domain.model.SafeRelease
+import eth.serotine.domain.model.SafeSettingsCalls
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
@@ -159,7 +160,7 @@ class PlanSafe(
     private fun ownerListRefusal(owners: List<PlannedOwner>): SafePlanRefusal? {
         if (owners.isEmpty()) return SafePlanRefusal.NoOwners
         if (owners.size > MAX_OWNERS) return SafePlanRefusal.TooManyOwners(MAX_OWNERS)
-        owners.firstOrNull { it.address == Address.ZERO || it.address == SENTINEL }?.let {
+        owners.firstOrNull { it.address == Address.ZERO || it.address == SafeSettingsCalls.SENTINEL }?.let {
             return SafePlanRefusal.ReservedAddress(it.address)
         }
         val seen = HashSet<Address>()
@@ -178,9 +179,6 @@ class PlanSafe(
     companion object {
         /** The most owners a Safe created here has. */
         const val MAX_OWNERS = 20
-
-        /** The sentinel the Safe's owner and module lists are linked from (`SENTINEL_OWNERS`). */
-        private val SENTINEL = Address.of("0x" + "0".repeat(39) + "1")
     }
 }
 

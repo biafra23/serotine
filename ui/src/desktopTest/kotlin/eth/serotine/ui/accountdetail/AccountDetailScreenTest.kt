@@ -28,6 +28,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
@@ -100,6 +101,7 @@ class AccountDetailScreenTest {
                 onImportRequest = { events += "import" },
                 onOpenActivity = { events += "open activity $it" },
                 onTurnOnNetwork = { events += "turn on" },
+                onSafeSettings = { events += "safe settings" },
             )
         }
     }
@@ -587,6 +589,22 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Modules: each can move this Safe's funds without the owners' signatures.").assertExists()
         rule.onNodeWithText("Assets").performClick()
         assertEquals(listOf("segment ASSETS"), events)
+    }
+
+    @Test
+    fun aSafesOwnersOpenItsSettingsAndOnANetworkThatIsOffSayWhyNot() {
+        val safe = ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.OWNERS)
+        var state by mutableStateOf<AccountDetailUiState>(safe)
+        rule.setContent { Screen(state, verifiedStripSample) }
+
+        rule.onNodeWithTag(ACCOUNT_SAFE_SETTINGS_TAG).performScrollTo().performClick()
+        assertEquals(listOf("safe settings"), events)
+
+        state = safe.copy(networkOn = false)
+        rule.onNodeWithTag(ACCOUNT_SAFE_SETTINGS_TAG).performScrollTo().performClick()
+        rule.onNodeWithText("Safe settings needs Sepolia").assertIsDisplayed()
+        rule.onNodeWithText("Turn on Sepolia").performClick()
+        assertEquals(listOf("safe settings", "turn on"), events)
     }
 
     @Test

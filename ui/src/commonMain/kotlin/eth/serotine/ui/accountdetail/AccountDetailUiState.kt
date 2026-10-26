@@ -104,6 +104,19 @@ sealed interface AccountDetailUiState {
             }
 
         /**
+         * Why a Safe's settings (docs/wallet-ux.md, screen 28) cannot be opened, and how to get
+         * there: its network is off, and nothing of it is read (N19); null when they can. Safe
+         * settings is greyed out meanwhile, and a tap on it says this (owner ruling, 2026-10-18, #55).
+         */
+        val safeSettingsReason: String?
+            get() = if (networkOn) {
+                null
+            } else {
+                "${network.name} is off in this wallet, so $label's settings are not read and none of them can be " +
+                    "changed. Turned on, it reads them again first."
+            }
+
+        /**
          * Whether the screen shows the [assets]: on the Assets [segment], and on a Safe's Owners or
          * Queue one only for an account that has none. The top bar's menu offers the other [sort] order while it does.
          */
