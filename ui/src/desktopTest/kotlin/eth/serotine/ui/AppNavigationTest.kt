@@ -563,6 +563,13 @@ class AppNavigationTest {
         rule.onNodeWithText("Debug").performClick()
         rule.onNodeWithText("Myotis · requestAccount: ok, 34 ms").assertIsDisplayed()
 
+        // The filter typed outlives a tab switch, which pops the Debug screen.
+        rule.onNodeWithText("Filter").performTextInput("request")
+        rule.onNodeWithText("Accounts").performClick()
+        rule.onNodeWithText("Debug").performClick()
+        rule.onNodeWithText("request").assertIsDisplayed()
+        rule.onNodeWithText("Filter").performTextClearance()
+
         // Debug took Settings' place over the Accounts tab: back leaves it for the account.
         rule.runOnIdle { navController.single().popBackStack() }
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()

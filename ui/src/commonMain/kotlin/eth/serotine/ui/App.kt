@@ -226,7 +226,7 @@ private fun Destinations(
     // In the NavHost's own composition, so the graph it navigates is set by the time this runs.
     LaunchedEffect(updateRequired) {
         if (updateRequired) {
-            // The whole back stack goes: every other screen's ViewModel is cleared, the seed
+            // The whole back stack goes: every screen's ViewModel but the Debug tab's is cleared, the seed
             // screen's words with it, and back leaves the app instead of reaching a screen.
             navController.navigate(Destination.UPDATE_REQUIRED) {
                 popUpTo(navController.graph.id) { inclusive = true }
@@ -237,10 +237,14 @@ private fun Destinations(
             }
         }
     }
-    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts. Not
-    // before the setting is read (null), so a Debug screen the system restored stays.
+    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts, and
+    // the filter typed goes with the log it was for. Not before the setting is read (null), so a
+    // Debug screen the system restored stays.
     LaunchedEffect(debugShown) {
-        if (debugShown == false) navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
+        if (debugShown == false) {
+            navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
+            debug.setFilter("")
+        }
     }
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is
