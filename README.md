@@ -106,7 +106,8 @@ The dependency rule, the MVVM contract and how to add a feature:
 [docs/architecture.md](docs/architecture.md). How keys are held, what the
 user chooses between, and what a hardware key can and cannot guarantee:
 [docs/keys-and-signing.md](docs/keys-and-signing.md). The rules every change
-goes through (review, PR, CI, release): [CLAUDE.md](CLAUDE.md). The screens
+goes through (review, PR, CI, release): [CLAUDE.md](CLAUDE.md), the short
+form, with the full text under [`.claude/`](.claude/). The screens
 and the rules they follow: [docs/wallet-ux.md](docs/wallet-ux.md); swaps:
 [docs/swaps.md](docs/swaps.md); the light client inside the app:
 [docs/embedding-myotis.md](docs/embedding-myotis.md).
