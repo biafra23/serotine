@@ -850,13 +850,16 @@ class SafeSettingsViewModel(
         }
         val removed = form.subject?.takeIf { it in reading.ownersHeld } ?: return null
         val added = (change as? SafeSettingsChange.OwnerSwapped)?.new
-        val heldAfter = reading.ownersHeld - removed + listOfNotNull(added?.takeIf { it in keys })
-        return if (heldAfter.isEmpty()) {
-            "Its key is the only one of this Safe's owners on this device: once the change runs, this device can " +
-                "no longer sign for the Safe, which becomes watch-only here."
-        } else {
-            "Its key is on this device: once the change runs, this device signs for the Safe with its other " +
-                "owners held here only."
+        val others = reading.ownersHeld - removed
+        return when {
+            added != null && added in keys ->
+                "Its key is on this device, and so is the new owner's: once the change runs, this device signs " +
+                    "for the Safe as the new owner" + (if (others.isEmpty()) "." else " and its other owners held here.")
+            others.isEmpty() ->
+                "Its key is the only one of this Safe's owners on this device: once the change runs, this device " +
+                    "can no longer sign for the Safe, which becomes watch-only here."
+            else -> "Its key is on this device: once the change runs, this device signs for the Safe with its " +
+                "other owners held here only."
         }
     }
 

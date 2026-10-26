@@ -417,7 +417,9 @@ upgrades*).
 16. **Safe detail**: as 4, with the tabs Assets | Activity | Owners |
     Queue (n). The owners are shown with blockies, a "this device" mark
     on the ones held here, and the threshold; the modules and guard
-    follow them. Safe settings, above them, opens 28.
+    follow them. Safe settings, above them, opens 28; it is greyed out
+    while the Safe's network is off (a tap offers Turn on) or this version
+    can no longer follow it, as Send is.
     - Queue lists this device's pending transactions in nonce order, from
       the Safe's verified nonce on: one whose nonce the Safe has passed is
       gone (`ObserveSafeTxQueue`), and the file drops it at the next

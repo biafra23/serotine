@@ -605,6 +605,14 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Safe settings needs Sepolia").assertIsDisplayed()
         rule.onNodeWithText("Turn on Sepolia").performClick()
         assertEquals(listOf("safe settings", "turn on"), events)
+
+        state = safe.copy(networkBlocked = true)
+        rule.onNodeWithTag(ACCOUNT_SAFE_SETTINGS_TAG).performScrollTo().performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "This version of Serotine can no longer follow Sepolia: nothing can be changed from its accounts until " +
+                "you update the app.",
+        )
+        assertEquals(listOf("safe settings", "turn on"), events)
     }
 
     @Test

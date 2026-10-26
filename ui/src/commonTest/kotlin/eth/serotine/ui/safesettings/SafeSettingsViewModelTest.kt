@@ -213,7 +213,11 @@ class SafeSettingsViewModelTest {
 
         // Replaced by another key held here: this device still signs.
         viewModel.onPickAccount(dave)
-        assertTrue(viewModel.form.warning!!.startsWith("Its key is on this device"), viewModel.form.warning)
+        assertEquals(
+            "Its key is on this device, and so is the new owner's: once the change runs, this device signs for the " +
+                "Safe as the new owner.",
+            viewModel.form.warning,
+        )
 
         viewModel.review()
         runCurrent()
