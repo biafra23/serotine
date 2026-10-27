@@ -499,7 +499,9 @@ class AccountDetailViewModel(
          * on its way (starting, catching up) or the network is off.
          */
         private fun cantCheck(off: String?, now: Long): UnreachableNetwork? {
-            if (off != null) return null
+            // A network this version can no longer follow says so on its greyed-out actions: an update
+            // is the way out, not the app trying again.
+            if (off != null || (built.state as? AccountDetailUiState.Ready)?.networkBlocked == true) return null
             val client = LightClientItem.from(status, now)
             val stuck = client.health == LightClientHealth.STALE ||
                 (client.health == LightClientHealth.NOT_VERIFIED && !client.working)
@@ -511,11 +513,13 @@ class AccountDetailViewModel(
                 built.fromBefore -> "Its amounts may have changed since they were last confirmed."
                 else -> "Its amounts can't be read yet."
             }
-            return UnreachableNetwork(
-                network.chainId,
-                "Can't check ${network.displayName} right now",
-                "$said Sending from it waits until it can be checked. The app keeps trying.",
-            )
+            // A stale checkpoint waits for the user's word (owner's request, 2026-10-24), never a retry.
+            val after = if (status is LightClientStatus.StaleAnchor) {
+                "Sending from it waits until you decide in Settings → Networks."
+            } else {
+                "Sending from it waits until it can be checked. The app keeps trying."
+            }
+            return UnreachableNetwork(network.chainId, "Can't check ${network.displayName} right now", "$said $after")
         }
     }
 
