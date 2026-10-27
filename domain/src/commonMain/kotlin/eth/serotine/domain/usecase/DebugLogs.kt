@@ -37,8 +37,9 @@ class ObserveDebugTab(
 /**
  * Keeps the debug log to the Debug tab ([ObserveDebugTab]), for as long as it runs: the work no
  * screen owns, which a host runs for the life of its process. While the tab is shown the log
- * records; while it is not (its switch off, or simple mode) it records nothing, holds nothing and is back at [LogLevel.INFO], so neither the work of
- * recording nor what a debugging session recorded in detail stays behind a tab no longer shown.
+ * records; while it is not (its switch off, or simple mode) it records nothing, holds nothing
+ * and is back at [LogLevel.INFO], so neither the work of recording nor what a debugging session
+ * recorded in detail stays behind a tab no longer shown.
  * Runs until cancelled.
  */
 class FollowDebugScreen(

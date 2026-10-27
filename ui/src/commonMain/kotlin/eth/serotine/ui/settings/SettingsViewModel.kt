@@ -36,8 +36,8 @@ import kotlinx.coroutines.launch
 /**
  * The Settings screen's ViewModel: the display currency, the known tokens, the networks with their
  * switches and light clients (docs/networks.md, N16 and N20), Detailed view's switch
- * (docs/simple-ui.md), the Debug tab's switch and the version; and, in a debug build, the switch that allows screen recordings of the protected
- * screens. Turning a network on asks nothing; turning off one with accounts asks first, and one
+ * (docs/simple-ui.md), the Debug tab's switch (in Detailed view only) and the version; and, in a
+ * debug build, the switch that allows screen recordings of the protected screens. Turning a network on asks nothing; turning off one with accounts asks first, and one
  * without turns off at once. The tokens are every network's, counted together; the currency is
  * the wallet's one.
  */
@@ -107,7 +107,8 @@ class SettingsViewModel(
                 tokens = "$builtIn built in · $added",
                 currency = currency,
                 screenCaptureAllowed = captureAllowed,
-                debugScreen = switches.debugScreen,
+                // The Debug tab is Detailed view's alone: simple mode offers no switch for it.
+                debugScreen = switches.debugScreen.takeIf { switches.mode == InterfaceMode.DETAILED },
                 debugScreenNotSaved = switches.debugScreenNotSaved,
                 detailedView = switches.mode == InterfaceMode.DETAILED,
                 detailedViewNotSaved = switches.detailedViewNotSaved,

@@ -341,25 +341,37 @@ class SettingsViewModelTest {
 
     @Test
     fun theDebugTabsSwitchTurnsItOnAndOffAndSaysWhenThatCouldNotBeSaved() = runTest {
+        interfaceMode.mode.value = InterfaceMode.DETAILED
         val viewModel = viewModel()
-        assertFalse(viewModel.uiState.value.debugScreen)
+        assertEquals(false, viewModel.uiState.value.debugScreen)
 
         viewModel.showDebugScreen(true)
         runCurrent()
-        assertTrue(viewModel.uiState.value.debugScreen)
+        assertEquals(true, viewModel.uiState.value.debugScreen)
         assertFalse(viewModel.uiState.value.debugScreenNotSaved)
 
         debugScreen.failSaves = true
         viewModel.showDebugScreen(false)
         runCurrent()
-        assertTrue(viewModel.uiState.value.debugScreen)
+        assertEquals(true, viewModel.uiState.value.debugScreen)
         assertTrue(viewModel.uiState.value.debugScreenNotSaved)
 
         debugScreen.failSaves = false
         viewModel.showDebugScreen(false)
         runCurrent()
-        assertFalse(viewModel.uiState.value.debugScreen)
+        assertEquals(false, viewModel.uiState.value.debugScreen)
         assertFalse(viewModel.uiState.value.debugScreenNotSaved)
+    }
+
+    @Test
+    fun simpleModeOffersNoDebugTabSwitchAndKeepsItsValueForDetailedView() = runTest {
+        debugScreen.enabled.value = true
+        val viewModel = viewModel()
+        assertNull(viewModel.uiState.value.debugScreen, "simple mode, as in every build")
+
+        viewModel.showDetailedView(true)
+        runCurrent()
+        assertEquals(true, viewModel.uiState.value.debugScreen)
     }
 
     @Test

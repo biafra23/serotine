@@ -39,7 +39,7 @@ class SettingsScreenTest {
 
     private fun show(
         screenCaptureAllowed: Boolean? = null,
-        debugScreen: Boolean = false,
+        debugScreen: Boolean? = null,
         detailedView: Boolean = false,
         networks: List<NetworkRow> = listOf(sepolia),
         turningOff: TurnOffConfirmation? = null,
@@ -172,7 +172,7 @@ class SettingsScreenTest {
 
     @Test
     fun theDebugTabsRowTurnsItOnAndOff() {
-        show(detailedView = true)
+        show(debugScreen = false, detailedView = true)
 
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().assertIsOff().performClick()
         assertEquals(listOf(true), debugScreenChanges)
@@ -195,8 +195,8 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun theDebugTabsRowIsDetailedViewsAlone() {
-        show(debugScreen = true)
+    fun theDebugTabsRowIsAbsentWhereTheStateOffersNone() {
+        show(debugScreen = null)
 
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).assertDoesNotExist()
     }

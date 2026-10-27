@@ -43,7 +43,6 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
-import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.ui.addnetwork.AddOnNetworksRoute
@@ -106,11 +105,12 @@ fun App(graph: AppGraph) = App(graph, rememberNavController())
 internal fun App(graph: AppGraph, navController: NavHostController) {
     // The view every Route draws its screen in: the app's, so scoped to the host.
     val interfaceMode = viewModel { graph.interfaceModeViewModel() }
-    val mode by interfaceMode.mode.collectAsStateWithLifecycle()
+    // Nothing is drawn until the choice is read (a file read, quick), so no screen is drawn in one
+    // view and then again in the other: nothing acts on a guess.
+    val mode = interfaceMode.mode.collectAsStateWithLifecycle().value ?: return
     CompositionLocalProvider(
         LocalScreenCaptureDebugSwitch provides graph.screenCaptureDebugSwitch,
-        // Simple mode until the choice is read: it is the default, and a file read is quick.
-        LocalInterfaceMode provides (mode ?: InterfaceMode.SIMPLE),
+        LocalInterfaceMode provides mode,
     ) {
         AppContent(graph, navController)
     }

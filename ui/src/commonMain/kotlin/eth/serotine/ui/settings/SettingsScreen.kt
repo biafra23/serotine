@@ -79,8 +79,8 @@ fun SettingsRoute(
  * The Settings tab as a pure function of [state]; the display currency opens through
  * [onCurrency], Tokens through [onTokens], and Security (the wallet password, biometric unlock)
  * through [onSecurity]. A switch draws the screens in Detailed view through
- * [onDetailedViewChange] (docs/simple-ui.md, T1), and, only while that is on, another shows the
- * Debug tab through [onDebugScreenChange]. In a debug
+ * [onDetailedViewChange] (docs/simple-ui.md, T1), and, where the state offers it (Detailed view),
+ * another shows the Debug tab through [onDebugScreenChange]. In a debug
  * build, a switch allows screen recordings of the protected screens through [onScreenCaptureChange].
  * Each network's switch turns it on or off through [onNetworkChange] (its chain id, and whether
  * on); the confirmation before a network with accounts is turned off answers through
@@ -199,11 +199,10 @@ fun SettingsScreen(
                 // The row is the toggle: the switch only shows its state.
                 trailingContent = { Switch(checked = state.detailedView, onCheckedChange = null) },
             )
-            // The Debug tab is Detailed view's alone (docs/simple-ui.md).
-            if (state.detailedView) {
+            state.debugScreen?.let { debugScreen ->
                 ListItem(
                     modifier = Modifier
-                        .toggleable(value = state.debugScreen, role = Role.Switch, onValueChange = onDebugScreenChange)
+                        .toggleable(value = debugScreen, role = Role.Switch, onValueChange = onDebugScreenChange)
                         .testTag(SETTINGS_DEBUG_SCREEN_TAG),
                     headlineContent = { Text("Debug tab") },
                     supportingContent = {
@@ -218,7 +217,7 @@ fun SettingsScreen(
                         }
                     },
                     // The row is the toggle: the switch only shows its state.
-                    trailingContent = { Switch(checked = state.debugScreen, onCheckedChange = null) },
+                    trailingContent = { Switch(checked = debugScreen, onCheckedChange = null) },
                 )
             }
             state.screenCaptureAllowed?.let { allowed ->

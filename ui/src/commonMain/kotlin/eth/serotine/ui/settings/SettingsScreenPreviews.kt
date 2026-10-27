@@ -124,12 +124,12 @@ private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(detailedV
 @Preview
 @Composable
 private fun SettingsDebugScreenNotSavedPreview() =
-    SettingsPreview(synced.copy(detailedView = true, debugScreenNotSaved = true))
+    SettingsPreview(synced.copy(detailedView = true, debugScreen = false, debugScreenNotSaved = true))
 
 /** Detailed view turned on (docs/simple-ui.md, T1): the Debug tab's switch appears under it. */
 @Preview
 @Composable
-private fun SettingsDetailedViewPreview() = SettingsPreview(synced.copy(detailedView = true))
+private fun SettingsDetailedViewPreview() = SettingsPreview(synced.copy(detailedView = true, debugScreen = false))
 
 /** A switch of Detailed view that could not be saved. */
 @Preview

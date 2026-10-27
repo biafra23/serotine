@@ -595,8 +595,12 @@ class AppNavigationTest {
         rule.onNodeWithText("Debug").assertDoesNotExist()
         assertTrue(debugScreen.enabled.value)
 
-        // Turned off again, the tab goes.
+        // Detailed view again: the tab is back, its switch kept.
         rule.onNodeWithTag(SETTINGS_DETAILED_VIEW_TAG).performScrollTo().performClick()
+        rule.waitUntil { interfaceMode.mode.value == InterfaceMode.DETAILED }
+        rule.onNodeWithText("Debug").assertIsDisplayed()
+
+        // Turned off again, the tab goes.
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().performClick()
         rule.waitUntil { !debugScreen.enabled.value }
         rule.onNodeWithText("Debug").assertDoesNotExist()
