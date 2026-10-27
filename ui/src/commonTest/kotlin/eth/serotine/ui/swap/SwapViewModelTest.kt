@@ -512,6 +512,28 @@ class SwapViewModelTest {
     }
 
     @Test
+    fun aWaitShownAgainPastItsTimeReadsTheChainBeforeGivingUp() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onShown()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        // Hidden for longer than the wait lasts, while a block took the approval.
+        viewModel.onHidden()
+        clock += 20.minutes
+        inputs.mined = 8
+        inputs.nonce = 8
+        allow(fortyUsdc)
+
+        viewModel.onShown()
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        assertEquals("Step 2 of 2", assertIs<SwapUiState.SwapReview>(viewModel.uiState.value).step)
+    }
+
+    @Test
     fun aReadThatFailsForAMomentWhileTheApprovalWaitsIsWaitedOut() = runTest {
         allow(UInt256.of(5_000_000))
         val viewModel = reviewed()

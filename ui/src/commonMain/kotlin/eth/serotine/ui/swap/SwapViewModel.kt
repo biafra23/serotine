@@ -596,9 +596,10 @@ class SwapViewModel(
         waiting?.cancel()
         waiting = viewModelScope.launch {
             var failed = 0
-            // Bounded by time, and by the polls that fit in it should a clock not move.
-            repeat((AWAIT_MAX / AWAIT_POLL).toInt()) {
-                if (awaiting.since.elapsedNow() >= AWAIT_MAX) return@repeat
+            var polls = 0
+            // Bounded by time, and by the polls that fit in it should a clock not move. At least one read:
+            // a wait shown again past its time checks the chain before it says no block has the approval.
+            do {
                 delay(AWAIT_POLL)
                 val next = quoted(awaiting.request, unlock = null, awaiting.sender)
                 if (step.value != awaiting) return@launch
@@ -630,7 +631,7 @@ class SwapViewModel(
                         return@launch
                     }
                 }
-            }
+            } while (++polls < (AWAIT_MAX / AWAIT_POLL).toInt() && awaiting.since.elapsedNow() < AWAIT_MAX)
             // No block has it yet: back to the compose step, which says so and offers its status.
             if (step.value == awaiting) {
                 step.value = Step.Composing(
