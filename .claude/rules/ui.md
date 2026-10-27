@@ -79,7 +79,10 @@ The trust and data-source rules decide this. The short form:
 - A chain value is verified by the light client, or shown as "not available".
   Never a guess, never a value from another source.
 - The one exception is a balance proved earlier: shown dimmed, dated, marked
-  as possibly changed since, left out of totals, and never acted on.
+  as possibly changed since, left out of totals, and never acted on. In
+  simple mode a balance read a while ago on a network without block access
+  lists shows its age and counts in totals for about an hour
+  (`.claude/rules/trust.md`).
 - A network-upgrade warning says that peers report it.
 - Fiat values are display-only. On Sepolia every fiat value says "testnet
   prices". A token without a feed shows "no price".
@@ -87,6 +90,29 @@ The trust and data-source rules decide this. The short form:
   funds.
 - A screen takes its network from the account it shows. There is no current
   network.
+
+## Two views: simple mode and Detailed view
+
+(Owner's decisions, 2026-10-26, mockups approved 2026-10-27;
+docs/simple-ui.md.)
+
+- Simple mode is the default in every build. Settings → Advanced → *Detailed
+  view* brings back the detailed screens. It is opt-in.
+- Both views draw the same UiState from the same ViewModel. The Route picks
+  `Simple<Feature>Screen` or `<Feature>Screen`. A screen that has no simple
+  version yet draws the detailed one.
+- Where simple mode says something else, the UiState carries a display-ready
+  leaf for it. A screen never interprets a mode flag.
+- Simple mode shows no block numbers. A value the user acts on names its age
+  ("Updated 2 min ago") instead of its block, which stays under *Details*.
+- Simple mode replaces the light client's status strip with a freshness line,
+  a banner when a network cannot be checked, and each network's state in
+  Settings. Detailed view keeps the strip (owner's request, 2026-10-20).
+- In simple mode an account's blockie carries its network's icon, and a
+  Safe's keeps its `t/n` threshold (owner's request, 2026-10-27). The network
+  is named in text too, so the icon is never the only signal.
+- A simple screen has its own previews file and previews test, like any
+  screen.
 
 ## Secrets on screen
 

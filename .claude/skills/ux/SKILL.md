@@ -18,6 +18,8 @@ design side.
   rendered `docs/wallet-ux-screens.png`. They are a sketch; where a mockup
   and the text differ, the text wins. docs/networks.md adds the network
   screens (N1 to N20), with `docs/networks-screens.html` and `.png`.
+- docs/simple-ui.md has simple mode, the default view, with its mockups H1
+  to T1 (`docs/simple-ui-screens.html` and `.png`).
 - docs/swaps.md has the swap screens. docs/keys-and-signing.md says what the
   user chooses between for keys, and what a screen may show of them.
 - docs/wallet-ux.md and docs/swaps.md say it themselves: where the page and
@@ -33,10 +35,16 @@ most designs touch:
 - **Verified, or not available.** A chain value is proven by the light
   client, or the screen says "not available". Never a guess, never a value
   from another source. A value the user acts on names the block it was
-  verified at. The one exception is a balance proved earlier: shown dimmed
-  and dated, out of totals, never acted on (owner's request, 2026-10-19).
+  verified at; in simple mode, its age. The one exception is a balance proved
+  earlier: shown dimmed and dated, out of totals, never acted on (owner's
+  request, 2026-10-19).
 - **The light client's state is in sight wherever it decides something**
-  (owner's request, 2026-10-20): the status strip under the top bar.
+  (owner's request, 2026-10-20): the status strip under the top bar in
+  Detailed view; in simple mode a freshness line, a banner when a network
+  cannot be checked, and Settings' network rows.
+- **Two views** (owner's decisions, 2026-10-26; docs/simple-ui.md and its
+  mockups): simple mode by default, Detailed view opt-in. Design a screen for
+  both, or say that it stays detailed in both for now.
 - **Each account on its network**, named with the network's mark. There is
   no current network. Sepolia keeps every testnet warning (owner ruling,
   2026-10-22), and on Sepolia every fiat value says "testnet prices" (owner
