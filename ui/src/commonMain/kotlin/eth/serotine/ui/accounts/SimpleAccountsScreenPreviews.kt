@@ -199,6 +199,16 @@ private fun SimpleAccountsSetAsidePreview() = SimpleAccountsPreview(
     ),
 )
 
+/** The stored list cannot be read: nothing can be added until it can, in the error colour. */
+@Preview
+@Composable
+private fun SimpleAccountsListUnavailablePreview() = SimpleAccountsPreview(
+    AccountsUiState.ListUnavailable(
+        "Your saved account list cannot be read right now. Nothing has been changed, and no account can be " +
+            "added until it can be read. Serotine keeps trying.",
+    ),
+)
+
 /** The list not read yet. */
 @Preview
 @Composable
@@ -215,4 +225,5 @@ internal val simpleAccountsScreenPreviews: List<@Composable () -> Unit> = listOf
     { SimpleAccountsEmptyPreview() },
     { SimpleAccountsLoadingPreview() },
     { SimpleAccountsSetAsidePreview() },
+    { SimpleAccountsListUnavailablePreview() },
 )

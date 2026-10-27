@@ -825,5 +825,22 @@ class AccountsViewModelTest {
         runCurrent()
         assertEquals(false, (viewModel.uiState.value as AccountsUiState.Ready).refreshing)
     }
+
+    @Test
+    fun aStaleCheckpointHasItsOwnWarningAndNoKeepsTryingBanner() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        repository.accounts = listOf(ethereumMain)
+        lightClient.status.value = LightClientStatus.StaleAnchor(anchorAgePeriods = 6, boundPeriods = 3)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(ethereumMain.address).value =
+            BalanceReading.LastKnown(Wei.of("1000000000000000000"), 9, asOf = now - 3_600)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
+        assertTrue(ready.unreachable.isEmpty(), "only the user's word lets it catch up: no retry is promised")
+        assertNotNull(ready.sections.single().staleAnchor)
+    }
 }
 

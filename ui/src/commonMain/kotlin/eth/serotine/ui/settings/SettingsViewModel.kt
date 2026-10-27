@@ -165,7 +165,9 @@ class SettingsViewModel(
                     !overview.on -> "Off"
                     item.health == LightClientHealth.VERIFIED -> if (live) "live" else "Up to date"
                     item.health == LightClientHealth.NOT_RUNNING -> "Idle until an account needs it"
-                    item.working -> "Catching up…"
+                    // On its way to a verified head; one synced but without a fresh head (STALE) cannot
+                    // check, as Home's banner says of it.
+                    item.health == LightClientHealth.NOT_VERIFIED && item.working -> "Catching up…"
                     else -> "Can't check right now"
                 },
             ).joinToString(" · ").replaceFirstChar { it.uppercase() },
