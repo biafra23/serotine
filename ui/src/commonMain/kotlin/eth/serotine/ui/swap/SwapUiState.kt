@@ -76,11 +76,13 @@ sealed interface SwapUiState {
         override val refreshing: Boolean = false,
         override val signing: Boolean = false,
         override val notSent: NotSentItem? = null,
-    ) : SwapUiState, Signable {
-        /** Which step of the swap this is (docs/simple-ui.md, W2): the approval comes first. */
-        val step: String
-            get() = "Step 1 of 2"
-    }
+        /** Which step of the swap this is (docs/simple-ui.md, W2): "Step 1 of 2", or of 3 with the reset. */
+        val step: String = "Step 1 of 2",
+        /** What follows once a block has this approval: the next step, and that it is confirmed on its own. */
+        val next: String = "",
+        /** The approval sent before this one, in a block yet leaving the allowance short: it may have failed. */
+        val earlierFailed: FailedApproval? = null,
+    ) : SwapUiState, Signable
 
     /**
      * The approval [hash] is broadcast and the swap waits for a block to have it (docs/simple-ui.md,
@@ -219,3 +221,9 @@ sealed interface Signable {
  * still be on its way, to be tried again from its status.
  */
 data class EarlierItem(val hash: String, val label: String, val waiting: Boolean)
+
+/**
+ * An approval sent for this swap that a block has, while the allowance still falls short ([note]
+ * says it may have failed): [hash] opens its status before another is sent.
+ */
+data class FailedApproval(val note: String, val hash: String)

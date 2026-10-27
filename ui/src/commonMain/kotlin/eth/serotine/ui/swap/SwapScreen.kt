@@ -325,6 +325,15 @@ fun SwapScreen(
                 }
                 is SwapUiState.ApprovalReview -> ReviewColumn {
                     StepLabel(state.step)
+                    state.earlierFailed?.let { failed ->
+                        Text(failed.note, color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(
+                            onClick = { onOpenTransfer(failed.hash) },
+                            modifier = Modifier.testTag(SWAP_EARLIER_TAG),
+                        ) {
+                            Text("Open the earlier approval")
+                        }
+                    }
                     if (simple) SimpleApprovalContent(state) else ApprovalContent(state)
                     ReviewFooter(
                         state,
@@ -743,11 +752,7 @@ private fun SimpleApprovalContent(state: SwapUiState.ApprovalReview) {
     Heading("From")
     FromLine(state.from)
     Checked("Checked on chain: this approval should go through. It moves nothing.")
-    Text(
-        "Step 2, the swap: once a block has this approval, the price is checked again and you confirm the swap.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Text(state.next, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Details {
         Spender(state.spender)
         Note("It may take ${state.allowance} now.")
@@ -820,7 +825,7 @@ private fun SimpleCowContent(state: SwapUiState.CowReview) {
         color = if (state.uniswapGivesMore) MaterialTheme.colorScheme.error else Color.Unspecified,
         style = MaterialTheme.typography.bodyMedium,
     )
-    Checked("The minimum is at least what Uniswap gives, checked on chain")
+    Checked("Checked on chain: the minimum is never below what Uniswap gives, less the gas and your tolerance")
     Text(
         "No network fee from this account: CoW takes it out of the trade.",
         style = MaterialTheme.typography.bodyMedium,

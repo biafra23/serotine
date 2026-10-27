@@ -5,6 +5,7 @@ import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RouteStep
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
@@ -74,6 +75,7 @@ private val approval = SwapUiState.ApprovalReview(
     ),
     simulation = "The approval, run as a verified call from this account at block 23,614,077, goes through.",
     unlock = UnlockStep(biometrics = true),
+    next = "Step 2, the swap: once a block has this approval, the price is checked again and you confirm the swap.",
 )
 
 private val swap = SwapUiState.SwapReview(
@@ -190,6 +192,53 @@ private fun SimpleSwapStepTwoPreview() = SimpleSwapPreview(swap)
 @Composable
 private fun SimpleSwapCowPreview() = SimpleSwapPreview(cow)
 
+/** A token that needs its allowance set to zero first: step 1 of 3. */
+@Preview
+@Composable
+private fun SimpleSwapResetFirstPreview() = SimpleSwapPreview(
+    approval.copy(
+        amount = "0 USDC",
+        allowance = "5 USDC",
+        resetNote = "USDC refuses to move one allowance to another, as the approval of the whole amount showed: " +
+            "this sets it to zero first, and the whole amount is approved once that is in a block.",
+        step = "Step 1 of 3",
+        next = "Step 2, the approval of the whole amount: once a block has this one, it is checked again and you " +
+            "confirm it, then the swap.",
+    ),
+)
+
+/** A block has the approval sent before, yet the allowance still falls short. */
+@Preview
+@Composable
+private fun SimpleSwapEarlierFailedPreview() = SimpleSwapPreview(
+    approval.copy(
+        earlierFailed = FailedApproval(
+            "A block has the approval sent before, yet the allowance still falls short: it may have failed. Open " +
+                "it to see why before you send another.",
+            "0x" + "a1".repeat(32),
+        ),
+    ),
+)
+
+/** A swap that needs no approval: one step, "Confirm swap". */
+@Preview
+@Composable
+private fun SimpleSwapOneStepPreview() = SimpleSwapPreview(swap.copy(step = null))
+
+/** Signed, but not sent: Try again sends the same signed swap. */
+@Preview
+@Composable
+private fun SimpleSwapNotSentPreview() = SimpleSwapPreview(
+    swap.copy(
+        step = null,
+        notSent = NotSentItem(
+            "Signed, but not sent: no peer took it right now (no peers). Try again sends the same signed swap, " +
+                "not a new one.",
+            canRetry = true,
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleSwapScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSwapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSwapComposePreview() },
@@ -198,4 +247,8 @@ internal val simpleSwapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSwapPendingPreview() },
     { SimpleSwapStepTwoPreview() },
     { SimpleSwapCowPreview() },
+    { SimpleSwapResetFirstPreview() },
+    { SimpleSwapEarlierFailedPreview() },
+    { SimpleSwapOneStepPreview() },
+    { SimpleSwapNotSentPreview() },
 )

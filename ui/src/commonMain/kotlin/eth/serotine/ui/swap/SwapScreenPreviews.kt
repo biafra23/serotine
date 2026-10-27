@@ -435,6 +435,38 @@ private fun SwapWatchOnlyPreview() = SwapPreview(
 @Composable
 private fun SwapSentPreview() = SwapPreview(SwapUiState.Sent("Sepolia", "0x" + "5e".repeat(32)))
 
+/** Between the steps: the approval sent, the swap quoted once a block has it. */
+@Preview
+@Composable
+private fun SwapApprovalPendingPreview() = SwapPreview(
+    SwapUiState.ApprovalPending(
+        network = "Sepolia",
+        hash = "0x" + "a1".repeat(32),
+        title = "Step 1 of 2 sent: the approval",
+        message = "Once a block has the approval, the swap is quoted again here and you confirm step 2. If you " +
+            "leave, start the swap again later: it needs no new approval, and the approval only lets USDC be taken " +
+            "in a swap you send yourself.",
+    ),
+)
+
+/** The swap quoted once its approval is in a block: step 2 of 2. */
+@Preview
+@Composable
+private fun SwapReviewStepTwoPreview() = SwapPreview(review.copy(step = "Step 2 of 2"))
+
+/** A block has the approval sent before, yet the allowance still falls short: said before another is sent. */
+@Preview
+@Composable
+private fun SwapApprovalEarlierFailedPreview() = SwapPreview(
+    approval.copy(
+        earlierFailed = FailedApproval(
+            "A block has the approval sent before, yet the allowance still falls short: it may have failed. Open " +
+                "it to see why before you send another.",
+            "0x" + "a1".repeat(32),
+        ),
+    ),
+)
+
 /** Every preview above, which SwapScreenPreviewsTest renders: a new preview goes in here too. */
 internal val swapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SwapComposeEmptyPreview() },
@@ -466,4 +498,7 @@ internal val swapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SwapLoadingPreview() },
     { SwapWatchOnlyPreview() },
     { SwapSentPreview() },
+    { SwapApprovalPendingPreview() },
+    { SwapReviewStepTwoPreview() },
+    { SwapApprovalEarlierFailedPreview() },
 )

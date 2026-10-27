@@ -228,8 +228,8 @@ change what it trusts.
   LINK, at least"), and CoW's estimate marked "CoW's estimate, not checked
   on chain". Step 1, allow CoW Protocol to use 100 USDC. Step 2, "Sign the
   order: no network fee, CoW's fee is in the price, it fills within 30 min
-  or expires". "The minimum is at least what Uniswap gives, checked on
-  chain". What CoW's servers see: the order, the address and the IP
+  or expires". "Checked on chain: the minimum is never below what Uniswap
+  gives, less the gas and your tolerance". What CoW's servers see: the order, the address and the IP
   address, and that Uniswap keeps it on the chain alone (owner ruling,
   2026-10-22). Details. "Confirm step 1 of 2".
 
@@ -287,8 +287,13 @@ merge.
    screen, not the mockup's sheet over the form.
 6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4). Between
    the steps the screen re-quotes the swap every few seconds, for up to 15
-   minutes, until a block has the approval; leaving drops step 2 until part
-   7's Activity card brings it back.
+   minutes, until a block has the approval. It pauses while the screen is
+   hidden, and waits out a read that fails a few times in a row. A token that
+   needs its allowance set to zero first takes three steps (zero, the whole
+   amount, the swap), each confirmed on its own. An approval a block has
+   that still leaves the allowance short is said before another is sent,
+   with a link to its status. Leaving drops step 2 until part 7's Activity
+   card brings it back.
 7. The remaining flows: Activity's waiting step, and the screens under *Not
    in simple mode yet* that get a simple version.
 

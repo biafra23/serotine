@@ -45,6 +45,7 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -101,6 +102,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
@@ -433,13 +435,159 @@ class SwapViewModelTest {
         runCurrent()
         assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
 
-        advanceTimeBy(16.minutes)
+        advanceTimeBy(1.minutes)
+        runCurrent()
+        assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
+
+        // The wait is bounded by time: a quarter of an hour after the approval was sent, it gives up.
+        clock += 15.minutes
+        advanceTimeBy(5.seconds)
         runCurrent()
         assertEquals(
             "An approval of this token is on its way and not in a block yet: once a block has it, Review goes on.",
             viewModel.compose.info,
         )
         assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
+    }
+
+    @Test
+    fun anApprovalABlockHasThatLeftTheAllowanceShortIsSaidBeforeAnother() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        val hash = sent.transfers.value.single().hash
+
+        // In a block, yet the allowance is what it was: the approval may have failed.
+        inputs.mined = 8
+        inputs.nonce = 8
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        val again = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
+        assertEquals("Step 1 of 2", again.step)
+        assertEquals(hash, again.earlierFailed?.hash)
+    }
+
+    @Test
+    fun theWaitForTheApprovalPausesWhileTheScreenIsHidden() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onShown()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        viewModel.onHidden()
+        inputs.mined = 8
+        inputs.nonce = 8
+        allow(fortyUsdc)
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value, "nothing is read for a screen no one sees")
+
+        viewModel.onShown()
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        assertEquals("Step 2 of 2", assertIs<SwapUiState.SwapReview>(viewModel.uiState.value).step)
+    }
+
+    @Test
+    fun aReadThatFailsForAMomentWhileTheApprovalWaitsIsWaitedOut() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+
+        inputs.mined = 8
+        inputs.nonce = 8
+        inputs.runs[usdc.address] = Simulation.Unavailable(ReadUnavailable.UNPROVEN)
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
+
+        allow(fortyUsdc)
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        assertEquals("Step 2 of 2", assertIs<SwapUiState.SwapReview>(viewModel.uiState.value).step)
+    }
+
+    @Test
+    fun readsThatKeepFailingWhileTheApprovalWaitsGoBackToComposeWithItsLink() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        val hash = sent.transfers.value.single().hash
+
+        inputs.mined = 8
+        inputs.nonce = 8
+        inputs.runs[usdc.address] = Simulation.Unavailable(ReadUnavailable.UNPROVEN)
+        advanceTimeBy(13.seconds)
+        runCurrent()
+        val compose = assertIs<SwapUiState.Compose>(viewModel.uiState.value)
+        assertNotNull(compose.form.error)
+        assertEquals(hash, compose.earlier?.hash)
+    }
+
+    @Test
+    fun aTokenThatNeedsItsAllowanceSetToZeroFirstIsSwappedInThreeSteps() = runTest {
+        var allowance = UInt256.of(5_000_000)
+        // The token refuses to move one allowance to another: an approval of more than zero reverts while one is set.
+        inputs.runOf = { to, data ->
+            when {
+                to != usdc.address -> null
+                data.size == 68 && data.take(4) == APPROVE ->
+                    if (!allowance.isZero && data.drop(36).any { it != 0.toByte() }) {
+                        Simulation.Reverted(9_412_118)
+                    } else {
+                        Simulation.Succeeded(word(UInt256.ONE), 9_412_118)
+                    }
+                else -> Simulation.Succeeded(word(allowance), 9_412_118)
+            }
+        }
+        val viewModel = reviewed()
+        viewModel.onShown()
+        val reset = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
+        assertEquals("Step 1 of 3", reset.step)
+        assertNotNull(reset.resetNote)
+        assertTrue(reset.next.startsWith("Step 2, the approval of the whole amount"), reset.next)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertEquals(
+            "Step 1 of 3 sent: the allowance set to zero",
+            assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value).title,
+        )
+
+        inputs.mined = 8
+        inputs.nonce = 8
+        allowance = UInt256.ZERO
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        val approval = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
+        assertEquals("Step 2 of 3", approval.step)
+        assertNull(approval.earlierFailed)
+        assertTrue(approval.next.startsWith("Step 3, the swap"), approval.next)
+
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertEquals(
+            "Step 2 of 3 sent: the approval",
+            assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value).title,
+        )
+
+        inputs.mined = 9
+        inputs.nonce = 9
+        allowance = fortyUsdc
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        assertEquals("Step 3 of 3", assertIs<SwapUiState.SwapReview>(viewModel.uiState.value).step)
+        assertEquals(2, signer.passwords.size, "nothing signed for the swap before the user confirms it")
     }
 
     @Test
@@ -806,5 +954,8 @@ class SwapViewModelTest {
         fun word(value: UInt256): String = value.toBytes32().hex()
 
         fun word(address: Address): String = "00".repeat(12) + address.hex.drop(2)
+
+        /** The selector of ERC-20's `approve(address,uint256)`. */
+        val APPROVE = listOf(0x09, 0x5e, 0xa7, 0xb3).map { it.toByte() }
     }
 }

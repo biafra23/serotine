@@ -6,10 +6,12 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
+import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
@@ -93,5 +95,37 @@ class SimpleSwapScreenTest {
         rule.onNodeWithText("Open the approval").performClick()
         rule.onNodeWithTag(SWAP_LATER_TAG).performClick()
         assertEquals(listOf("open 0xabc", "back"), events)
+    }
+
+    @Test
+    fun anApprovalThatMayHaveFailedIsSaidWithItsStatus() {
+        show(approval.copy(earlierFailed = FailedApproval("It may have failed.", "0xdef")))
+
+        rule.onNodeWithText("It may have failed.").assertIsDisplayed()
+        rule.onNodeWithText("Open the earlier approval").performClick()
+        assertEquals(listOf("open 0xdef"), events)
+    }
+
+    @Test
+    fun theFormNamesNoBlock() {
+        val usdc = approval.token.copy(contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+        show(
+            SwapUiState.Compose(
+                form = SwapForm(
+                    network = "Ethereum",
+                    from = approval.from,
+                    sellOptions = listOf(usdc),
+                    sell = usdc,
+                    buyOptions = listOf(usdc),
+                    buy = null,
+                    amount = "100",
+                    tolerance = "0.5",
+                ),
+                fee = FeeLevel.NORMAL,
+            ),
+        )
+
+        rule.onNodeWithText("1,250 USDC", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("block 23,", substring = true).assertDoesNotExist()
     }
 }
