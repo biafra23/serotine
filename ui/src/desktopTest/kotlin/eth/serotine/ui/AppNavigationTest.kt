@@ -385,6 +385,7 @@ class AppNavigationTest {
         debugLog = debugLog,
         debugScreen = debugScreen,
         interfaceMode = interfaceMode,
+        networkFreshness = FakeFreshness(),
         screenCaptureDebugSwitch = null,
         networkDemand = NetworkDemand(),
         networkSettings = MemoryNetworkSettings(),

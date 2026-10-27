@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.LightClientRun
 import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkFreshness
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
@@ -47,6 +48,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 /**
@@ -75,7 +84,7 @@ class MyotisHost private constructor(
     lastBalancesPath: String?,
     private val debugLog: ((String) -> Unit)?,
     private val apiLog: LogSink?,
-) : LightClientControl, StaleAnchorConsent {
+) : LightClientControl, StaleAnchorConsent, NetworkFreshness {
 
     /** The engine of this process: none until a first start, [Absent] when its library does not run here. */
     private sealed interface EngineState {
@@ -183,6 +192,31 @@ class MyotisHost private constructor(
     override fun syncPastStaleAnchor(network: Network) {
         val node = nodes[network] ?: return
         onControlThread { node.acceptStaleAnchor() }
+    }
+
+    override fun observeLive(network: Network): Flow<Boolean> {
+        val node = nodes[network] ?: return flowOf(false)
+        return flow {
+            while (true) {
+                val live = try {
+                    node.live()
+                } catch (e: Throwable) {
+                    // Throwable: the engine's state crosses JNA. A cancellation of this poll ends it.
+                    currentCoroutineContext().ensureActive()
+                    false
+                }
+                emit(live)
+                delay(POLL_INTERVAL)
+            }
+        }.distinctUntilChanged().flowOn(Dispatchers.IO)
+    }
+
+    override fun refresh(network: Network) {
+        nodes[network]?.schedule?.refresh()
+    }
+
+    override fun setOnDemand(onDemand: Boolean) {
+        nodes.values.forEach { it.schedule.setOnDemand(onDemand) }
     }
 
     /**
@@ -320,6 +354,15 @@ class MyotisHost private constructor(
         /** Which accounts the verified blocks touched, so a proof stands until one did (Myotis #691). */
         private val activity = AddressActivity(handleChain)
 
+        /** When this network's balances and prices are proven again: at every head, or on demand in simple mode. */
+        val schedule = ProofSchedule(live = activity::hasAccountCoverage)
+
+        /** Whether this network's values update live: a readable verified head with block access lists. */
+        fun live(): Boolean {
+            val head = (chain.snapshot() as? EngineSnapshot.Running)?.readableHead ?: return false
+            return activity.hasAccountCoverage(head)
+        }
+
         val ports = ChainPorts(
             nativeBalances = VerifiedNativeBalances(
                 network,
@@ -328,6 +371,7 @@ class MyotisHost private constructor(
                 POLL_INTERVAL,
                 lastBalances,
                 activity,
+                schedule,
             ),
             tokenBalances = VerifiedTokenBalances(
                 network,
@@ -337,6 +381,7 @@ class MyotisHost private constructor(
                 lastBalances,
                 activity,
                 gated = BuiltInTokens.of(network).mapTo(HashSet()) { it.address },
+                schedule = schedule,
             ),
             tokenMetadata = VerifiedTokenMetadata(network, chain, Dispatchers.IO, POLL_INTERVAL),
             addressKinds = VerifiedAddressKinds(
@@ -356,6 +401,7 @@ class MyotisHost private constructor(
                 POLL_INTERVAL,
                 ChainlinkFeeds.of(network),
                 activity,
+                schedule,
             ),
             priceHistory = VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network)),
             transactionInputs = EngineTransactionInputs(network, chain, Dispatchers.IO),

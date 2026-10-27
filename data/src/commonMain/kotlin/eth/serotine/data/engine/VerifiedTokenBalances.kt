@@ -40,6 +40,8 @@ class VerifiedTokenBalances internal constructor(
     activity: AddressActivity? = null,
     /** The tokens whose balances [activity] may vouch for: the network's plain, built-in ones. */
     gated: Set<Address> = emptySet(),
+    /** When its balances are proven again: at every head when null; on demand in simple mode ([ProofSchedule]). */
+    schedule: ProofSchedule? = null,
 ) : TokenBalances {
 
     /** One holder's balance of one token. */
@@ -63,6 +65,7 @@ class VerifiedTokenBalances internal constructor(
         },
         // A kept "not a token" is asked again: only an amount stands between heads.
         atHead = { _, value, _ -> value },
+        schedule = schedule,
     ) { verified, key ->
         when (val outcome = verified.call(key.token, Abi.balanceOf(key.holder))) {
             is CallOutcome.Returned -> EngineReading.Proven(
@@ -82,7 +85,7 @@ class VerifiedTokenBalances internal constructor(
             when (reading) {
                 EngineReading.Syncing -> TokenBalanceReading.Syncing
                 is EngineReading.Proven -> reading.value?.let {
-                    TokenBalanceReading.Verified(it, named(reading.blockNumber))
+                    TokenBalanceReading.Verified(it, named(reading.blockNumber), reading.provenAt)
                 } ?: TokenBalanceReading.NotAToken
                 // Only an amount is offered as last known: an older "not a token" is not repeated.
                 is EngineReading.LastKnown -> reading.value?.let {

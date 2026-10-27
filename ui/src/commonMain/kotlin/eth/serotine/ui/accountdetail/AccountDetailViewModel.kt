@@ -26,6 +26,7 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
+import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
@@ -102,6 +103,8 @@ class AccountDetailViewModel(
     observeUpgradeWarnings: ObserveUpgradeWarnings,
     /** Whether Swap is offered on the account's network: greyed out where no venue is pinned. */
     hasSwapVenue: HasSwapVenue,
+    /** Proves the account's network's balances and prices again on [refresh]; its own reads are proven as it opens. */
+    private val refreshNetworkData: RefreshNetworkData,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
@@ -110,6 +113,9 @@ class AccountDetailViewModel(
 
     /** The account's network: everything here is read and sent there. */
     private val network: Network = account.network
+
+    /** Proves the account's network's balances and prices again now: what pulling the screen down asks. */
+    fun refresh() = refreshNetworkData(setOf(network))
 
     /** Whether the account's network is on: until known, as if it were, as nothing is sent from here. */
     private val networkOn =

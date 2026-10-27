@@ -44,6 +44,8 @@ class VerifiedPriceFeeds internal constructor(
     feeds: List<PinnedFeed>,
     /** What vouches for an unchanged feed between heads; none: its calls at every head. */
     private val activity: AddressActivity? = null,
+    /** When its prices are proven again: at every head when null; on demand in simple mode ([ProofSchedule]). */
+    schedule: ProofSchedule? = null,
 ) : PriceFeeds {
 
     private val pinned = feeds.associateBy { it.priceId }
@@ -69,6 +71,7 @@ class VerifiedPriceFeeds internal constructor(
         pollInterval,
         unchangedSince = { id, provenAt, provenHash, head -> unchangedSince(id, provenAt, provenHash, head) },
         atHead = { id, value, headTime -> atHead(id, value, headTime) },
+        schedule = schedule,
     ) { verified, id ->
         val feed = pinned.getValue(id)
         // The head's time before the calls: the calls block, and the head may move meanwhile.

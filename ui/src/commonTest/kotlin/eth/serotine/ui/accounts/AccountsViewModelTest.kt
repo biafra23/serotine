@@ -41,10 +41,12 @@ import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeFreshness
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeTokenBalances
@@ -138,10 +140,13 @@ class AccountsViewModelTest {
             SetNetworkEnabled(networks),
             ObserveUpgradeWarnings(upgrades, NoRecord, lightClient, networks, repository) { now },
             SyncPastStaleAnchor(lightClient, consent),
+            RefreshNetworkData(freshness),
             clock = { now },
             formatTime = { "<$it>" },
         )
     }
+
+    private val freshness = FakeFreshness()
 
     private val treasury =
         Account(
@@ -661,5 +666,15 @@ class AccountsViewModelTest {
 
         override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> =
             if (address in silent) emptyFlow<BalanceReading>().onStart { awaitCancellation() } else of(address)
+    }
+
+    @Test
+    fun aRefreshProvesEveryNetworkAgain() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        assertTrue(freshness.refreshed.isEmpty(), "opening asks nothing: the list's own reads are fresh")
+
+        viewModel.refresh()
+        assertEquals(Network.entries.toList(), freshness.refreshed.toList())
     }
 }

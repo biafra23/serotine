@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkFreshness
 import eth.serotine.domain.repository.NetworkSettings
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
@@ -109,6 +110,7 @@ import eth.serotine.domain.usecase.QuoteTokenApproval
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.ReadSafeTxOwners
 import eth.serotine.domain.usecase.RebroadcastTransfer
+import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.RemoveToken
@@ -265,6 +267,8 @@ class AppGraph(
     private val debugScreen: DebugScreenSetting,
     /** The view the user chose in Settings, simple mode or Detailed view (docs/simple-ui.md). */
     private val interfaceMode: InterfaceModeSetting,
+    /** How fresh each network's values are kept: live, or proven on demand in simple mode (docs/simple-ui.md). */
+    private val networkFreshness: NetworkFreshness,
     /**
      * The debug build's switch that allows screen recordings of the protected screens; null in a
      * release build, and on a host whose screens block nothing (docs/keys-and-signing.md, rule 8).
@@ -295,6 +299,7 @@ class AppGraph(
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            RefreshNetworkData(networkFreshness),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -315,6 +320,7 @@ class AppGraph(
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
             HasSwapVenue(uniswap),
+            RefreshNetworkData(networkFreshness),
         )
 
     /**

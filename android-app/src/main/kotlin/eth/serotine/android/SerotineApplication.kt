@@ -52,6 +52,7 @@ import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowExchangeRate
+import eth.serotine.domain.usecase.FollowInterfaceMode
 import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
@@ -133,7 +134,22 @@ class SerotineApplication : Application() {
             lastBalances = filesDir.resolve("last-balances.json").path,
             debugLog = if (debuggable) { line -> Log.d(LOG_TAG, line) } else null,
             apiLog = debugLog,
-        ).also { host -> scope.launch { followNetworks(host) } }
+        ).also { host ->
+            scope.launch { followNetworks(host) }
+            // Values proven on demand in simple mode, at every head in Detailed view (docs/simple-ui.md).
+            scope.launch { followInterfaceMode(host) }
+        }
+    }
+
+    /** Keeps the proving of values to the view the user chose, for the life of the process. */
+    private suspend fun followInterfaceMode(host: MyotisHost) {
+        try {
+            FollowInterfaceMode(interfaceMode, host)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following the view stopped: ${e::class.simpleName}")
+        }
     }
 
     /**
@@ -344,6 +360,7 @@ class SerotineApplication : Application() {
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             staleAnchorConsent = node,
+            networkFreshness = node,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
             transactionInputs = node.transactionInputs,
