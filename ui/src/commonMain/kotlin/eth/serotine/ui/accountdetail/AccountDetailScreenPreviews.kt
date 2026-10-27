@@ -326,7 +326,7 @@ private fun AccountDetailPreview(
     SerotineTheme(darkTheme = darkTheme) {
         AccountDetailScreen(
             state = state,
-            lightClient = lightClient,
+            chrome = AccountChrome.Strip(lightClient),
             onBack = {},
             onSend = {},
             onSwap = {},

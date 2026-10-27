@@ -147,14 +147,21 @@ class AccountActivity(
                 onChainCoverage(parts, since),
                 if (safe == null) notListedYet(account.network) else null,
             )
-            // Simple mode's words for the same, with no block number (docs/simple-ui.md, H5).
-            val checking = parts.any { (_, history) ->
-                history is IndexedHistory.Checking || (history as? IndexedHistory.Read)?.complete == false
-            }
+            // Simple mode's words for the same, with no block number (docs/simple-ui.md, H5): every
+            // gap the detailed coverage names is named here too.
+            val histories = parts.map { it.second }
+            val since = if (deployedHere) "since it was deployed from this device" else "since you added it"
             val simple = listOfNotNull(
-                if (deployedHere) "Activity since it was deployed from this device" else "Activity since you added it",
-                "older activity is still being checked".takeIf { checking },
-            ).joinToString(" · ")
+                "Activity $since.",
+                "Older activity is still being checked.".takeIf {
+                    histories.any { it is IndexedHistory.Checking || (it as? IndexedHistory.Read)?.complete == false }
+                },
+                "Activity on chain can't be read right now."
+                    .takeIf { histories.any { it == IndexedHistory.Unavailable } },
+                "Activity on chain is listed once the light client is synced."
+                    .takeIf { histories.any { it == IndexedHistory.NotFollowed } },
+                if (safe == null) notListedYet(account.network) else null,
+            ).joinToString(" ")
             return ActivityUiState.Shown(
                 rows = merged(sent, events),
                 coverage = covered.joinToString(" "),

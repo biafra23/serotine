@@ -1,6 +1,7 @@
 package eth.serotine.ui.accountdetail
 
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.accounts.UnreachableNetwork
 import eth.serotine.ui.accounts.networkBlockedReason
 import eth.serotine.ui.accounts.networkOffReason
 import eth.serotine.ui.accounts.sendBlockedReason
@@ -39,7 +40,9 @@ sealed interface AccountDetailUiState {
      * [swapVenue] false where no swap venue is pinned on it (Gnosis Chain), which greys out Swap.
      * Simple mode says how fresh its values are ([freshness]: "Updated 40 s ago · pull down to
      * refresh", "Live", "Checking…"; null while nothing is proven yet) and whether a refresh is
-     * being answered ([refreshing]), docs/simple-ui.md, H4.
+     * being answered ([refreshing]), and [cantCheck], a banner while its network cannot be checked
+     * and the screen shows amounts from before, or its light client has no fresh head
+     * (docs/simple-ui.md, H4).
      */
     data class Ready(
         val label: String,
@@ -67,6 +70,7 @@ sealed interface AccountDetailUiState {
         val swapVenue: Boolean = true,
         val freshness: String? = null,
         val refreshing: Boolean = false,
+        val cantCheck: UnreachableNetwork? = null,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */

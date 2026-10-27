@@ -2,7 +2,6 @@ package eth.serotine.ui.accountdetail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -40,6 +39,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -67,6 +67,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.InterfaceMode
+import eth.serotine.ui.accounts.UnreachableNetwork
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.activity.activityItems
@@ -81,7 +82,6 @@ import eth.serotine.ui.components.GhostLine
 import eth.serotine.ui.components.GhostRows
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
-import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
@@ -195,7 +195,7 @@ fun AccountDetailRoute(
         )
         InterfaceMode.DETAILED -> AccountDetailScreen(
             state = state,
-            lightClient = strip,
+            chrome = AccountChrome.Strip(strip),
             onBack = onBack,
             onSend = send,
             onSwap = swap,
@@ -231,16 +231,14 @@ fun AccountDetailRoute(
  * The account's network is named beside its control (docs/networks.md, N3 and N4); while it is off,
  * Send and Swap say so and offer to turn it on through [onTurnOnNetwork] (N19). An externally owned
  * account's menu adds it on another network through [onAddOnNetwork] (N5).
- *
- * [SimpleAccountDetailScreen] draws it in simple mode: no [lightClient] strip (null), the values'
- * [freshness] under the total, the network's icon on the blockie ([avatarNetwork]), and
- * pull-to-refresh with a Refresh button beside it ([onRefresh]).
+ * How the light client's state is shown is its [chrome]: Detailed view's strip under the top bar,
+ * or simple mode's ([SimpleAccountDetailScreen]) pull-to-refresh.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountDetailScreen(
     state: AccountDetailUiState,
-    lightClient: LightClientItem?,
+    chrome: AccountChrome,
     onBack: () -> Unit,
     onSend: (contract: String?) -> Unit,
     onSwap: (contract: String?) -> Unit,
@@ -259,9 +257,6 @@ fun AccountDetailScreen(
     onTurnOnNetwork: () -> Unit = {},
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
-    onRefresh: (() -> Unit)? = null,
-    freshness: String? = null,
-    avatarNetwork: NetworkLabel? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -302,6 +297,15 @@ fun AccountDetailScreen(
         val reason = (state as? AccountDetailUiState.Ready)?.swapReason
         if (reason == null) onSwap(contract) else unavailable = notice("Swap", reason)
     }
+    // On a network that is off nothing is checked: Refresh is greyed out, with Turn on (#55).
+    val refresh: () -> Unit = {
+        val ready = state as? AccountDetailUiState.Ready
+        if (ready != null && !ready.networkOn) {
+            unavailable = notice("Refresh", refreshOffReason(ready.network.name))
+        } else {
+            (chrome as? AccountChrome.Refresh)?.onRefresh?.invoke()
+        }
+    }
     Scaffold(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbar) },
@@ -315,8 +319,11 @@ fun AccountDetailScreen(
                 title = { Text((state as? AccountDetailUiState.Ready)?.label ?: "") },
                 actions = {
                     // Pulling down is not the only way: a mouse, a screen reader, a keyboard get a button.
-                    if (onRefresh != null && state is AccountDetailUiState.Ready) {
-                        IconButton(onClick = onRefresh, Modifier.testTag(ACCOUNT_REFRESH_TAG)) {
+                    if (chrome is AccountChrome.Refresh && state is AccountDetailUiState.Ready) {
+                        IconButton(
+                            onClick = refresh,
+                            Modifier.testTag(ACCOUNT_REFRESH_TAG).unavailable(!state.networkOn),
+                        ) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                         }
                     }
@@ -393,20 +400,18 @@ fun AccountDetailScreen(
                     onImportRequest = onImportRequest,
                     onOpenActivity = onOpenActivity,
                     onSafeSettings = safeSettings,
-                    freshness = freshness,
-                    avatarNetwork = avatarNetwork,
+                    simple = chrome is AccountChrome.Refresh,
                 )
             }
         }
-        when {
-            lightClient != null -> UnderLightClientStrip(lightClient, Modifier.padding(padding), body)
-            onRefresh != null -> PullToRefreshBox(
+        when (chrome) {
+            is AccountChrome.Strip -> UnderLightClientStrip(chrome.item, Modifier.padding(padding), body)
+            is AccountChrome.Refresh -> PullToRefreshBox(
                 isRefreshing = (state as? AccountDetailUiState.Ready)?.refreshing == true,
-                onRefresh = onRefresh,
+                onRefresh = refresh,
                 modifier = Modifier.padding(padding).fillMaxSize(),
                 content = body,
             )
-            else -> Box(Modifier.padding(padding).fillMaxSize(), content = body)
         }
     }
 }
@@ -429,8 +434,8 @@ private fun Details(
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
     onSafeSettings: () -> Unit,
-    freshness: String?,
-    avatarNetwork: NetworkLabel?,
+    /** Simple mode's chrome: the network on the blockie, the freshness line and the "can't check" banner. */
+    simple: Boolean,
 ) {
     // Each item ends with the space before the next, but an Activity's rows, which follow one another.
     val spaced = Modifier.padding(bottom = 16.dp)
@@ -444,13 +449,20 @@ private fun Details(
         state = if (reading) whileReading else position,
         contentPadding = PaddingValues(16.dp),
     ) {
+        // Simple mode, in place of the strip: the network cannot be checked right now.
+        state.cantCheck?.takeIf { simple }?.let { banner -> item { CantCheck(banner, spaced) } }
         item {
             Row(
                 spaced,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AccountAvatar(state.address, size = 56.dp, threshold = state.threshold, network = avatarNetwork)
+                AccountAvatar(
+                    state.address,
+                    size = 56.dp,
+                    threshold = state.threshold,
+                    network = state.network.takeIf { simple },
+                )
                 Column {
                     Text(
                         state.total,
@@ -466,7 +478,7 @@ private fun Details(
                         )
                     }
                     // Simple mode: how fresh the values are, in place of the strip's block.
-                    freshness?.let {
+                    state.freshness?.takeIf { simple }?.let {
                         Text(
                             it,
                             Modifier.testTag(ACCOUNT_FRESHNESS_TAG),
@@ -918,4 +930,37 @@ private fun AssetItem(asset: AssetRow) {
             }
         },
     )
+}
+
+/**
+ * What the account screen shows of its network's light client: Detailed view's [Strip] of [Strip.item]
+ * under the top bar, or simple mode's [Refresh], pull-to-refresh and a Refresh button asking
+ * [Refresh.onRefresh], with the freshness line and the "can't check" banner in the strip's place.
+ */
+sealed interface AccountChrome {
+    /** Detailed view: the light client's strip. */
+    data class Strip(val item: LightClientItem) : AccountChrome
+
+    /** Simple mode: pull-to-refresh, its button, and how fresh the values are. */
+    data class Refresh(val onRefresh: () -> Unit) : AccountChrome
+}
+
+/** Why Refresh is greyed out on [network], which is off in this wallet. */
+private fun refreshOffReason(network: String): String =
+    "$network is off in this wallet, so nothing on it is checked. Turned on, it checks this account again."
+
+/** A network that cannot be checked right now (simple mode's banner in the strip's place). */
+@Composable
+private fun CantCheck(banner: UnreachableNetwork, modifier: Modifier) {
+    Surface(
+        modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(banner.title, style = MaterialTheme.typography.titleSmall)
+            Text(banner.text, style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }

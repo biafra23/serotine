@@ -39,7 +39,7 @@ fun SimpleAccountDetailScreen(
     val ready = state as? AccountDetailUiState.Ready
     AccountDetailScreen(
         state = ready?.simple() ?: state,
-        lightClient = null,
+        chrome = AccountChrome.Refresh(onRefresh),
         onBack = onBack,
         onSend = onSend,
         onSwap = onSwap,
@@ -58,9 +58,6 @@ fun SimpleAccountDetailScreen(
         onTurnOnNetwork = onTurnOnNetwork,
         onAddOnNetwork = onAddOnNetwork,
         onSafeSettings = onSafeSettings,
-        onRefresh = onRefresh,
-        freshness = ready?.freshness,
-        avatarNetwork = ready?.network,
     )
 }
 

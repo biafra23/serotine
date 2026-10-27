@@ -35,7 +35,8 @@ sealed interface ActivityUiState {
  * (docs/wallet-ux.md, screen 26): the transaction, and for an event its log. Simple mode says no
  * block number (docs/simple-ui.md, H5): [simpleTime] is when, where that is known (null for an event
  * on chain, which only its block dates), and [simpleStatus] how it ended in words ("Confirmed",
- * "Final", "Failed").
+ * "Final", "Failed"), null where that is [status] itself: so a copy that changes [status] (a
+ * caution, a warning) never leaves an older simple status behind.
  */
 data class ActivityRow(
     val key: String,
@@ -47,7 +48,7 @@ data class ActivityRow(
     val state: ActivityState,
     val opens: ActivityKey,
     val simpleTime: String? = time,
-    val simpleStatus: String = status,
+    val simpleStatus: String? = null,
 )
 
 /**
@@ -92,7 +93,7 @@ enum class ActivityState {
  */
 internal fun ActivityUiState.simple(): ActivityUiState = when (this) {
     is ActivityUiState.Shown -> copy(
-        rows = rows.map { it.copy(time = it.simpleTime.orEmpty(), status = it.simpleStatus) },
+        rows = rows.map { it.copy(time = it.simpleTime.orEmpty(), status = it.simpleStatus ?: it.status) },
         coverage = simpleCoverage,
     )
     else -> this

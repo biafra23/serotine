@@ -23,6 +23,7 @@ import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
@@ -41,6 +42,7 @@ import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
+import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveSafe
@@ -166,6 +168,7 @@ class AccountDetailViewModelTest {
         HasSwapVenue(uniswap),
         RefreshNetworkData(freshness),
         ObserveNetworkLive(freshness),
+        ObserveLightClient(lightClient),
         formatTime = { "<$it>" },
         clock = { NOW },
     )
@@ -173,6 +176,14 @@ class AccountDetailViewModelTest {
     private val upgradeReports = FakeUpgradeReports()
     private val upgradeStatus =
         MutableStateFlow<LightClientStatus>(LightClientStatus.Synced(9, null, finalized = null))
+
+    /** The account's network's light client, which simple mode's "can't check" banner reads. */
+    private val clientStatus =
+        MutableStateFlow<LightClientStatus>(LightClientStatus.Synced(9, null, finalized = null))
+    private val lightClient = object : LightClient {
+        override val datesFinalizedBlocks = true
+        override fun observeStatus(network: Network): Flow<LightClientStatus> = clientStatus
+    }
 
     private val networks = MemoryNetworkSettings()
 
@@ -875,6 +886,7 @@ class AccountDetailViewModelTest {
             HasSwapVenue(uniswap),
             RefreshNetworkData(freshness),
             ObserveNetworkLive(freshness),
+            ObserveLightClient(lightClient),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -949,6 +961,38 @@ class AccountDetailViewModelTest {
         assertEquals("Live", ready(viewModel).freshness)
     }
 
+    @Test
+    fun aLightClientWithNoFreshHeadGetsTheCantCheckBanner() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        clientStatus.value = LightClientStatus.WaitingForHead(headAgeSeconds = 600)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val banner = ready(viewModel).cantCheck
+        assertEquals("Can't check Sepolia right now", banner?.title)
+        assertEquals(
+            "Its amounts can't be read yet. Sending from it waits until it can be checked. The app keeps trying.",
+            banner?.text,
+        )
+    }
+
+    @Test
+    fun anAmountFromBeforeSaysItsAgeAndNeverLive() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        freshness.live.value = setOf(Network.SEPOLIA)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(daily.address).value =
+            BalanceReading.LastKnown(Wei.of("1000000000000000000"), 9, asOf = NOW - 3 * 3_600)
+        runCurrent()
+
+        val state = ready(viewModel)
+        assertEquals("3 h ago · may have changed", state.assets.first().ageNote)
+        assertEquals(null, state.freshness, "the banner says how the amounts stand")
+        assertEquals("Can't check Sepolia right now", state.cantCheck?.title)
+    }
+
     private fun ready(viewModel: AccountDetailViewModel) = viewModel.uiState.value as AccountDetailUiState.Ready
 
     private companion object {
@@ -956,4 +1000,3 @@ class AccountDetailViewModelTest {
         const val NOW = 1_792_103_600L
     }
 }
-

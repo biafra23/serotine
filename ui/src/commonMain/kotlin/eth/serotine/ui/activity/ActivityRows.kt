@@ -262,7 +262,7 @@ internal class ActivityRows(
             time = formatTime(transfer.sentAt),
             status = status,
             state = state,
-            simpleStatus = simpleStatusOf(entry) ?: status,
+            simpleStatus = simpleStatusOf(entry),
         )
     }
 
@@ -314,7 +314,7 @@ internal class ActivityRows(
             status = status,
             state = state,
             opens = ActivityKey(order.uid.hex, cowOrder = true),
-            simpleStatus = simple ?: status,
+            simpleStatus = simple,
         )
     }
 

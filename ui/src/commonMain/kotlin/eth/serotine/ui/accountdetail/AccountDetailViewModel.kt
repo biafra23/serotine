@@ -10,6 +10,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenChange
@@ -23,6 +24,7 @@ import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
+import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
@@ -35,11 +37,14 @@ import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.Valuation
+import eth.serotine.ui.accounts.UnreachableNetwork
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LightClientHealth
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.agoText
@@ -53,8 +58,8 @@ import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.lastKnownNote
 import eth.serotine.ui.components.notTurnedOn
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.safeTxActionItem
-import eth.serotine.ui.components.ticking
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
@@ -111,6 +116,8 @@ class AccountDetailViewModel(
     private val refreshNetworkData: RefreshNetworkData,
     /** Whether the account's network updates live, which simple mode's freshness line says. */
     observeNetworkLive: ObserveNetworkLive,
+    /** The account's network's light client, which simple mode's "can't check" banner reads. */
+    observeLightClient: ObserveLightClient,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
     /** Now, in unix seconds: what simple mode's ages are dated against. */
@@ -249,13 +256,13 @@ class AccountDetailViewModel(
                 combine(view, ensName, ::Pair),
                 activityState,
                 combine(networkOn, networkBlocked, swapVenue, ::Triple),
-                combine(live, lastRefresh, ticking(clock), ::Triple),
-            ) { named, activity, networkState, fresh -> Gathered(named, activity, networkState, fresh) },
-        ) { lookup, value, safe, queue, (named, activity, networkState, fresh) ->
+                ::Triple,
+            ),
+        ) { lookup, value, safe, queue, (named, activity, networkState) ->
             val (networkOn, networkBlocked, swapVenue) = networkState
             val (view, ensName) = named
-            val (isLive, refresh, now) = fresh
-            when (lookup) {
+            val rows = rows(value, off = network.displayName.takeUnless { networkOn })
+            val state = when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = accountName(lookup.account, display, ensName),
                     address = display,
@@ -266,7 +273,7 @@ class AccountDetailViewModel(
                         ?: Control.of(lookup.account.kind, lookup.account.custody),
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
-                    assets = sorted(rows(value, off = network.displayName.takeUnless { networkOn }, now), view.sort),
+                    assets = sorted(rows, view.sort),
                     pendingAssets = value.tokens.count { awaitingFirst(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
@@ -288,11 +295,18 @@ class AccountDetailViewModel(
                     networkOn = networkOn,
                     networkBlocked = networkBlocked,
                     swapVenue = swapVenue,
-                ).let { ready -> fresh(ready, value, isLive, refresh, now) }
+                )
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
             }
-        }.stateIn(
+            Built(state, rows, value, networkOn)
+        }
+            // Simple mode's ages, re-dated every second while one is shown; the rows and the queue are
+            // built above once per change, and only dated below.
+            .let { built -> combine(built, live, lastRefresh, observeLightClient(network), ::Dating) }
+            .redatedWhile { it.dated }
+            .map { it.finish(clock()) }
+            .stateIn(
             scope = viewModelScope,
             // As on Accounts: a screen back after the timeout must not show an old balance as current.
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -419,43 +433,100 @@ class AccountDetailViewModel(
     }
 
     /**
+     * The screen's state as built from its readings, before simple mode's ages are added: [rows] with
+     * when each amount last verified was ([Row.asOf]), the [value] the proofs' times come from, and
+     * whether the network is [on].
+     */
+    private class Built(
+        val state: AccountDetailUiState,
+        val rows: List<Row>,
+        val value: AccountValue,
+        val on: Boolean,
+    ) {
+        /** The times of the verified heads the amounts shown were proven at; a token not held is not shown. */
+        val proven: List<Long> = listOfNotNull((value.native as? BalanceReading.Verified)?.provenAt) +
+            value.tokens.mapNotNull { held ->
+                (held.holding.reading as? TokenBalanceReading.Verified)?.takeUnless { it.units.isZero }?.provenAt
+            }
+
+        /** Whether an amount shown is one last verified, from before. */
+        val fromBefore: Boolean = rows.any { it.asset.lastKnown != null }
+    }
+
+    /** [built] with what simple mode dates it by: whether [live], the [refresh] asked, the light client's [status]. */
+    private inner class Dating(
+        val built: Built,
+        val live: Boolean,
+        val refresh: Refresh?,
+        val status: LightClientStatus,
+    ) {
+        /** Whether something shown says an age, so that it is re-dated every second. */
+        val dated: Boolean
+            get() = built.fromBefore || (!live && built.proven.isNotEmpty()) || refresh != null
+
+        /**
+         * The state at [now] (unix seconds) with simple mode's leaves (docs/simple-ui.md, H4): each
+         * amount from before with its age, how fresh the values are ("Updated 40 s ago", "Live",
+         * "Checking…" while a refresh is answered) and a banner while the network cannot be checked.
+         */
+        fun finish(now: Long): AccountDetailUiState {
+            val ready = built.state as? AccountDetailUiState.Ready ?: return built.state
+            val off = network.displayName.takeUnless { built.on }
+            val ages = built.rows.associate { it.asset to ageNote(it.asOf, it.asset.lastKnown != null, off, now) }
+            val oldest = built.proven.minOrNull().takeUnless { live }
+            oldestShown = oldest
+            val refreshing = !live && refresh?.oldest != null && oldest == refresh.oldest &&
+                now - refresh.at < REFRESH_SHOWN_SECONDS
+            val freshness = when {
+                // Amounts from before: the banner says how they stand, never "Live".
+                built.fromBefore || off != null -> null
+                refreshing -> "Checking ${network.displayName}…"
+                live && built.proven.isNotEmpty() -> "Live"
+                oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
+                else -> null
+            }
+            return ready.copy(
+                assets = ready.assets.map { asset -> asset.copy(ageNote = ages[asset]) },
+                freshness = freshness,
+                refreshing = refreshing,
+                cantCheck = cantCheck(off, now),
+            )
+        }
+
+        /**
+         * The banner while the network cannot be checked: amounts from before are shown, or its light
+         * client has no fresh head to read at (STALE), or has stopped short of one; none while it is
+         * on its way (starting, catching up) or the network is off.
+         */
+        private fun cantCheck(off: String?, now: Long): UnreachableNetwork? {
+            if (off != null) return null
+            val client = LightClientItem.from(status, now)
+            val stuck = client.health == LightClientHealth.STALE ||
+                (client.health == LightClientHealth.NOT_VERIFIED && !client.working)
+            if (!built.fromBefore && !stuck) return null
+            val confirmed = built.rows.mapNotNull { it.asOf }.minOrNull()
+            val said = when {
+                status is LightClientStatus.StaleAnchor -> "${client.text}."
+                confirmed != null -> "Its amounts were last confirmed ${agoText(confirmed, now)} and may have changed."
+                built.fromBefore -> "Its amounts may have changed since they were last confirmed."
+                else -> "Its amounts can't be read yet."
+            }
+            return UnreachableNetwork(
+                network.chainId,
+                "Can't check ${network.displayName} right now",
+                "$said Sending from it waits until it can be checked. The app keeps trying.",
+            )
+        }
+    }
+
+    /**
      * The native row and a row per token held: a token whose verified balance is zero is not
      * held. Each row names the block its own amount was verified at: the readings are polled
      * one by one and need not share one. While no head can be read at, a row shows the
      * amount last verified and says that it may have changed since, or, on a network that is off
      * ([off] names it), that it is off.
      */
-    /**
-     * [ready] with how fresh its values are, which simple mode says (docs/simple-ui.md, H4): its
-     * oldest proof's age on a network that is not live, "Live" on one that is, "Checking…" while a
-     * refresh is answered.
-     */
-    private fun fresh(
-        ready: AccountDetailUiState.Ready,
-        value: AccountValue,
-        live: Boolean,
-        refresh: Refresh?,
-        now: Long,
-    ): AccountDetailUiState.Ready {
-        val proven = listOfNotNull((value.native as? BalanceReading.Verified)?.provenAt) +
-            value.tokens.mapNotNull { (it.holding.reading as? TokenBalanceReading.Verified)?.provenAt }
-        val oldest = proven.minOrNull().takeUnless { live }
-        oldestShown = oldest
-        val refreshing = !live && refresh?.oldest != null && oldest == refresh.oldest &&
-            now - refresh.at < REFRESH_SHOWN_SECONDS
-        val freshness = when {
-            refreshing -> "Checking ${network.displayName}…"
-            live && proven.isNotEmpty() -> "Live"
-            oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
-            else -> null
-        }
-        return ready.copy(freshness = freshness, refreshing = refreshing)
-    }
-
-    /** What [uiState]'s last argument gathers. */
-    private data class Gathered<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
-
-    private fun rows(value: AccountValue, off: String?, now: Long): List<Row> {
+    private fun rows(value: AccountValue, off: String?): List<Row> {
         val native = value.native
         val nativeRow = Row(
             AssetRow(
@@ -468,9 +539,9 @@ class AccountDetailViewModel(
                 value = valuationText(value.nativeValue, value.currency, network),
                 lastKnown = (native as? BalanceReading.LastKnown)
                     ?.let { lastKnownNote(it.blockNumber, it.asOf, off, formatTime) },
-                ageNote = (native as? BalanceReading.LastKnown).let { ageNote(it?.asOf, it != null, off, now) },
             ),
             value.nativeValue,
+            asOf = (native as? BalanceReading.LastKnown)?.asOf,
         )
         val tokenRows = value.tokens.mapNotNull { (holding, valuation) ->
             val shown = shownBalance(holding.reading, off) ?: return@mapNotNull null
@@ -491,9 +562,9 @@ class AccountDetailViewModel(
                     contract = Eip55.format(token.address),
                     warning = if (holding.sharesBuiltInSymbol) "Not the built-in $symbol: another contract" else null,
                     lastKnown = shown.lastKnown,
-                    ageNote = ageNote(asOf, shown.lastKnown != null, off, now),
                 ),
                 valuation,
+                asOf = asOf,
             )
         }
         return listOf(nativeRow) + tokenRows
@@ -528,8 +599,8 @@ class AccountDetailViewModel(
         }
     }
 
-    /** A row and the value it is sorted by. */
-    private class Row(val asset: AssetRow, val value: Valuation?)
+    /** A row, the value it is sorted by, and when its amount was last verified when it is one from before. */
+    private class Row(val asset: AssetRow, val value: Valuation?, val asOf: Long? = null)
 
     private fun sorted(rows: List<Row>, order: AssetSort): List<AssetRow> {
         val byName = compareBy<Row> { it.asset.symbol.lowercase() }

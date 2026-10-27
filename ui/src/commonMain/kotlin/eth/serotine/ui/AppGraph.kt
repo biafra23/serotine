@@ -324,6 +324,7 @@ class AppGraph(
             HasSwapVenue(uniswap),
             RefreshNetworkData(networkFreshness),
             ObserveNetworkLive(networkFreshness),
+            ObserveLightClient(lightClient),
         )
 
     /**

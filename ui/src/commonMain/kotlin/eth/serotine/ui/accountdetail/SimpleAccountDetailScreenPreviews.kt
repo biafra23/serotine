@@ -2,6 +2,7 @@ package eth.serotine.ui.accountdetail
 
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.accounts.UnreachableNetwork
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityRow
 import eth.serotine.ui.activity.ActivityState
@@ -93,13 +94,19 @@ private fun SimpleAccountAssetsPreview() = SimpleAccountDetailPreview(main)
 @Composable
 private fun SimpleAccountAssetsDarkPreview() = SimpleAccountDetailPreview(main, darkTheme = true)
 
-/** Ethereum cannot be checked: each amount says how old it is. */
+/** Ethereum cannot be checked: a banner, and each amount says how old it is. */
 @Preview
 @Composable
 private fun SimpleAccountLastVerifiedPreview() = SimpleAccountDetailPreview(
     main.copy(
         total = "Checking…",
         freshness = null,
+        cantCheck = UnreachableNetwork(
+            1,
+            "Can't check Ethereum right now",
+            "Its amounts were last confirmed 3 h ago and may have changed. Sending from it waits until it can be " +
+                "checked. The app keeps trying.",
+        ),
         assets = listOf(
             ether.copy(
                 verified = false,
@@ -152,7 +159,8 @@ private fun SimpleAccountActivityPreview() = SimpleAccountDetailPreview(
             ),
             coverage = "Transactions sent from this device. On chain from block 23,590,000 on, when it was added " +
                 "here: its token transfers.",
-            simpleCoverage = "Activity since you added it",
+            simpleCoverage = "Activity since you added it. ETH it received, and transactions sent from it " +
+                "elsewhere, are not listed yet.",
         ),
     ),
 )
