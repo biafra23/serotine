@@ -27,6 +27,7 @@ private val usdc = AssetChoice(
     "1,250 USDC",
     contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     verifiedAt = "block 23,614,077",
+    age = "updated 2 min ago",
 )
 private val link = AssetChoice(
     "LINK",
@@ -35,6 +36,7 @@ private val link = AssetChoice(
     "40 LINK",
     contract = "0x514910771AF9Ca656af840dff83E8264EcF986CA",
     verifiedAt = "block 23,614,077",
+    age = "updated 2 min ago",
 )
 private val router = SpenderItem("Uniswap's SwapRouter02", "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
 

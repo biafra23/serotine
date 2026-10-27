@@ -175,6 +175,7 @@ class SwapViewModelTest {
     private val swapVenue = MemorySwapVenue()
     private val historyStarts = MemoryHistoryStarts()
     private val clock = TestTimeSource()
+    private var wallClock = headTime
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
         override suspend fun describe() = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, biometrics)
@@ -252,6 +253,7 @@ class SwapViewModelTest {
             PlaceCowOrder(FindUniswapRoute(uniswap, inputs), signer, cowOrders, cowApi, light),
             clock,
             formatTime = { "at $it" },
+            now = { wallClock },
             fill = fill,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -318,6 +320,20 @@ class SwapViewModelTest {
         viewModel.onSellChange(null)
         assertNull(viewModel.compose.buy, "ETH for ETH is no swap: the one bought goes")
         assertEquals(listOf("USDC", "LINK"), viewModel.compose.buyOptions.map { it.symbol })
+    }
+
+    @Test
+    fun eachBalanceSaysHowLongAgoItWasProvedAndIsDatedAnew() = runTest {
+        tokenBalances.of(daily.address, usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("250000000"), 9_412_117, provenAt = wallClock - 120)
+        val viewModel = viewModel(sell = usdc.address)
+        assertEquals("updated 2 min ago", viewModel.compose.sell?.age)
+        assertNull(viewModel.compose.sellOptions.first { it.symbol == "ETH" }.age, "no time of proof, no age")
+
+        wallClock += 60
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertEquals("updated 3 min ago", viewModel.compose.sell?.age, "the age is dated anew every second")
     }
 
     @Test

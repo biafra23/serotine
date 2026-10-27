@@ -111,8 +111,8 @@ class SimpleSwapScreenTest {
     }
 
     @Test
-    fun theFormNamesNoBlock() {
-        val usdc = approval.token.copy(contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+    fun theFormNamesNoBlockButEachBalanceSaysItsAge() {
+        val usdc = approval.token.copy(contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", age = "updated 2 min ago")
         show(
             SwapUiState.Compose(
                 form = SwapForm(
@@ -129,7 +129,7 @@ class SimpleSwapScreenTest {
             ),
         )
 
-        rule.onNodeWithText("1,250 USDC", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("1,250 USDC · updated 2 min ago").assertIsDisplayed()
         rule.onNodeWithText("block 23,", substring = true).assertDoesNotExist()
     }
 }

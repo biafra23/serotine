@@ -73,6 +73,7 @@ import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
@@ -84,6 +85,7 @@ import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.priceHintText
 import eth.serotine.ui.components.priceImpactText
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.routeSteps
 import eth.serotine.ui.components.sellNote
@@ -104,6 +106,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -162,6 +165,7 @@ class SwapViewModel(
     private val placeCowOrder: PlaceCowOrder,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val formatTime: (Long) -> String = ::formatDateTime,
+    private val now: () -> Long = ::epochSecondsNow,
     fill: SwapFill? = null,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
@@ -356,11 +360,18 @@ class SwapViewModel(
             null,
         )
 
-    val uiState: StateFlow<SwapUiState> = combine(model, step) { model, step -> render(model, step) }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-        SwapUiState.Loading(network.displayName),
-    )
+    val uiState: StateFlow<SwapUiState> = combine(model, step) { model, step -> model to step }
+        // A balance's age, which simple mode shows, is dated anew every second on the compose step.
+        .redatedWhile { (model, step) ->
+            step is Step.Composing && model != null &&
+                (model.sellOptions + model.buyOptions).any { it.provenAt != null }
+        }
+        .map { (model, step) -> render(model, step) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            SwapUiState.Loading(network.displayName),
+        )
 
     /**
      * Sells the token at [contract], or the network's currency (null). The venue shown stays as it
@@ -1007,14 +1018,15 @@ class SwapViewModel(
             is Swapper.From -> swapper.account
         }
         val inputs = model.inputs
+        val at = now()
         val amount = typedAmount(inputs.amount, model.sell)
         val form = SwapForm(
             network = network,
             from = SendFrom(account.label, display),
-            sellOptions = model.sellOptions.map { it.choice() },
-            sell = model.sell?.choice(),
-            buyOptions = model.buyOptions.map { it.choice() },
-            buy = model.buy?.choice(),
+            sellOptions = model.sellOptions.map { it.choice(at) },
+            sell = model.sell?.choice(at),
+            buyOptions = model.buyOptions.map { it.choice(at) },
+            buy = model.buy?.choice(at),
             amount = inputs.amount,
             tolerance = inputs.tolerance,
             amountError = amount.error,
