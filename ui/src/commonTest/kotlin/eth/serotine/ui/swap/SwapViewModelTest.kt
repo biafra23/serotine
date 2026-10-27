@@ -552,6 +552,7 @@ class SwapViewModelTest {
         viewModel.onShown()
         val reset = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
         assertEquals("Step 1 of 3", reset.step)
+        assertEquals("Set what Uniswap's SwapRouter02 may use of USDC to zero", reset.headline)
         assertNotNull(reset.resetNote)
         assertTrue(reset.next.startsWith("Step 2, the approval of the whole amount"), reset.next)
 
@@ -570,6 +571,7 @@ class SwapViewModelTest {
         runCurrent()
         val approval = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
         assertEquals("Step 2 of 3", approval.step)
+        assertEquals("Allow Uniswap's SwapRouter02 to use 40 USDC", approval.headline)
         assertNull(approval.earlierFailed)
         assertTrue(approval.next.startsWith("Step 3, the swap"), approval.next)
 

@@ -743,11 +743,8 @@ private fun Details(content: @Composable ColumnScope.() -> Unit) {
  */
 @Composable
 private fun SimpleApprovalContent(state: SwapUiState.ApprovalReview) {
-    Text(
-        "Allow ${state.spender.name} to use ${state.amount}",
-        style = MaterialTheme.typography.titleLarge,
-    )
-    Text("Only this amount, for this swap. Fee at most ${state.maxFee}.", style = MaterialTheme.typography.bodyMedium)
+    Text(state.headline, style = MaterialTheme.typography.titleLarge)
+    Text("${state.scope} Fee at most ${state.maxFee}.", style = MaterialTheme.typography.bodyMedium)
     state.resetNote?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     Heading("From")
     FromLine(state.from)

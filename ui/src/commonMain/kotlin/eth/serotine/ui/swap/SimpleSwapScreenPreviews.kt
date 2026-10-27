@@ -75,7 +75,10 @@ private val approval = SwapUiState.ApprovalReview(
     ),
     simulation = "The approval, run as a verified call from this account at block 23,614,077, goes through.",
     unlock = UnlockStep(biometrics = true),
+    step = "Step 1 of 2",
     next = "Step 2, the swap: once a block has this approval, the price is checked again and you confirm the swap.",
+    headline = "Allow Uniswap's SwapRouter02 to use 100 USDC",
+    scope = "Only this amount, for this swap.",
 )
 
 private val swap = SwapUiState.SwapReview(
@@ -204,6 +207,8 @@ private fun SimpleSwapResetFirstPreview() = SimpleSwapPreview(
         step = "Step 1 of 3",
         next = "Step 2, the approval of the whole amount: once a block has this one, it is checked again and you " +
             "confirm it, then the swap.",
+        headline = "Set what Uniswap's SwapRouter02 may use of USDC to zero",
+        scope = "It allows nothing: the whole amount is approved in the next step.",
     ),
 )
 

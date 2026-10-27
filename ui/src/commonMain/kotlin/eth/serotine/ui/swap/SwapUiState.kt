@@ -77,9 +77,13 @@ sealed interface SwapUiState {
         override val signing: Boolean = false,
         override val notSent: NotSentItem? = null,
         /** Which step of the swap this is (docs/simple-ui.md, W2): "Step 1 of 2", or of 3 with the reset. */
-        val step: String = "Step 1 of 2",
+        val step: String,
         /** What follows once a block has this approval: the next step, and that it is confirmed on its own. */
-        val next: String = "",
+        val next: String,
+        /** What this step does, in one line: "Allow Uniswap's SwapRouter02 to use 100 USDC", or the reset to zero. */
+        val headline: String,
+        /** How far it reaches: "Only this amount, for this swap", or that the reset allows nothing. */
+        val scope: String,
         /** The approval sent before this one, in a block yet leaving the allowance short: it may have failed. */
         val earlierFailed: FailedApproval? = null,
     ) : SwapUiState, Signable

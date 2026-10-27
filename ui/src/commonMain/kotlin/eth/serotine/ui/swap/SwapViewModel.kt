@@ -1079,10 +1079,7 @@ class SwapViewModel(
             token = sell.choice(),
             amount = exactAmount(quote.amount, sell.decimals, sell.symbol),
             allowance = exactAmount(quote.allowance, sell.decimals, sell.symbol),
-            spender = SpenderItem(
-                if (step.request.venue == SwapVenue.COW) VAULT_RELAYER_NAME else ROUTER_NAME,
-                Eip55.format(quote.spender),
-            ),
+            spender = SpenderItem(spenderName(step.request.venue), Eip55.format(quote.spender)),
             resetNote = if (quote.resetsFirst) {
                 "${sell.symbol} refuses to move one allowance to another, as the approval of the whole amount " +
                     "showed: this sets it to zero first, and the whole amount is approved once that is in a block."
@@ -1112,6 +1109,17 @@ class SwapViewModel(
             },
             step = stepText(position),
             next = nextAfter(position, quote, step.request.venue),
+            headline = if (quote.resetsFirst) {
+                "Set what ${spenderName(step.request.venue)} may use of ${sell.symbol} to zero"
+            } else {
+                "Allow ${spenderName(step.request.venue)} to use " +
+                    exactAmount(quote.amount, sell.decimals, sell.symbol)
+            },
+            scope = if (quote.resetsFirst) {
+                "It allows nothing: the whole amount is approved in the next step."
+            } else {
+                "Only this amount, for this swap."
+            },
             earlierFailed = step.earlierFailed?.let {
                 FailedApproval(
                     "A block has the approval sent before, yet the allowance still falls short: it may have " +
@@ -1121,6 +1129,9 @@ class SwapViewModel(
             },
         )
     }
+
+    /** Who the approval lets take the token on [venue]. */
+    private fun spenderName(venue: SwapVenue) = if (venue == SwapVenue.COW) VAULT_RELAYER_NAME else ROUTER_NAME
 
     /** What follows the approval at [position]: the approval of the whole amount after a reset, or the swap. */
     private fun nextAfter(position: Pair<Int, Int>, quote: TokenApprovalQuote, venue: SwapVenue): String {

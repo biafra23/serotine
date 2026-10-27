@@ -39,6 +39,10 @@ class SimpleSwapScreenTest {
         balance = BalanceChange("ETH balance", "3.2 ETH", "at least 3.19 ETH", "verified at block 23,614,077"),
         simulation = "The approval, run as a verified call at block 23,614,077, goes through.",
         unlock = UnlockStep(),
+        step = "Step 1 of 2",
+        next = "Step 2, the swap: once a block has this approval, you confirm the swap.",
+        headline = "Allow Uniswap's SwapRouter02 to use 100 USDC",
+        scope = "Only this amount, for this swap.",
     )
 
     private fun show(state: SwapUiState) = rule.setContent {
