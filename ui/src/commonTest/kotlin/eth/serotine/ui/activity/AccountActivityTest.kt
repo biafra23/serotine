@@ -165,6 +165,7 @@ class AccountActivityTest {
                     "Finalized in block 9,412,118",
                     ActivityState.DONE,
                     ActivityKey(native.hash),
+                    simpleStatus = "Final",
                 ),
                 ActivityRow(
                     token.hash,
@@ -175,6 +176,7 @@ class AccountActivityTest {
                     "Reverted in block 9,401,220",
                     ActivityState.FAILED,
                     ActivityKey(token.hash),
+                    simpleStatus = "Failed: its fee was paid, nothing else done",
                 ),
             ),
             shown.rows,

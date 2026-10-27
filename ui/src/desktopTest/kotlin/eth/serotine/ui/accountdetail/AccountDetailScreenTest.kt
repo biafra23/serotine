@@ -85,7 +85,7 @@ class AccountDetailScreenTest {
         SerotineTheme {
             AccountDetailScreen(
                 state,
-                lightClient = lightClient,
+                chrome = AccountChrome.Strip(lightClient),
                 onBack = { events += "back" },
                 onSend = { events += "send $it" },
                 onSwap = { events += "swap $it" },
@@ -168,7 +168,7 @@ class AccountDetailScreenTest {
             SerotineTheme {
                 AccountDetailScreen(
                     state,
-                    lightClient = verifiedStripSample,
+                    chrome = AccountChrome.Strip(verifiedStripSample),
                     onBack = {},
                     onSend = {},
                     onSwap = {},

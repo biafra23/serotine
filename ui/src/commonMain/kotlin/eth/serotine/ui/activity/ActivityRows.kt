@@ -68,6 +68,7 @@ internal class ActivityRows(
             detail = "",
             about = Eip55.format(transfer.token),
             time = "Block ${grouped(event.blockNumber)}",
+            simpleTime = null,
             status = TOKEN_ON_CHAIN,
             state = ActivityState.DONE,
             opens = ActivityKey(event.transactionHash, event.logIndex),
@@ -185,6 +186,7 @@ internal class ActivityRows(
             detail = detail,
             about = Eip55.format(other),
             time = "Block ${grouped(event.blockNumber)}",
+            simpleTime = null,
             status = status,
             state = state,
             opens = ActivityKey(event.transactionHash, event.logIndex),
@@ -260,6 +262,7 @@ internal class ActivityRows(
             time = formatTime(transfer.sentAt),
             status = status,
             state = state,
+            simpleStatus = simpleStatusOf(entry),
         )
     }
 
@@ -276,6 +279,11 @@ internal class ActivityRows(
      */
     fun orderRow(order: CowOrderRecord): ActivityRow {
         val sells = amount(order.order.sellAmount, order.sell)
+        val simple = when (val end = order.end) {
+            is CowOrderEnd.Filled -> "Filled"
+            is CowOrderEnd.Unfilled -> if (end.cancelled) "Cancelled" else "Not filled: it expired"
+            else -> null
+        }
         val (title, status, state) = when (val end = order.end) {
             null -> Triple(
                 "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}",
@@ -306,6 +314,7 @@ internal class ActivityRows(
             status = status,
             state = state,
             opens = ActivityKey(order.uid.hex, cowOrder = true),
+            simpleStatus = simple,
         )
     }
 
@@ -325,6 +334,13 @@ internal class ActivityRows(
         } else {
             Triple("$verb transaction ${request.nonce}", sender, "By")
         }
+
+    /** What simple mode says instead of a sent transaction's block: null where [statusOf] names none. */
+    private fun simpleStatusOf(entry: HistoryEntry): String? = when (val outcome = entry.outcome) {
+        is SentOutcome.Finalized -> if (outcome.succeeded) "Final" else "Failed: its fee was paid, nothing else done"
+        is SentOutcome.Included -> if (outcome.succeeded) "Confirmed" else "Failed: its fee was paid, nothing else done"
+        else -> null
+    }
 
     /** How a sent transaction's row is marked: how it ended as this device saw it. */
     fun statusOf(entry: HistoryEntry): Pair<String, ActivityState> = when (val outcome = entry.outcome) {

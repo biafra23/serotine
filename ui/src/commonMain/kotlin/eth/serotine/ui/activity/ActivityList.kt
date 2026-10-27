@@ -83,7 +83,7 @@ private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
         modifier = Modifier.testTag(ACTIVITY_ROW_TAG).clickable(onClick = onClick),
         leadingContent = { AccountAvatar(row.about) },
         // When, above what it did: beside it, the date would squeeze each row into narrow lines.
-        overlineContent = { Text(row.time) },
+        overlineContent = row.time.takeIf { it.isNotEmpty() }?.let { time -> { Text(time) } },
         headlineContent = { Text(row.title) },
         supportingContent = {
             Column {
