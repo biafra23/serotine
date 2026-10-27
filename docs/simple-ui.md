@@ -222,9 +222,9 @@ change what it trusts.
   2026-10-22). "You pay" and "You get at least", each a card with its token,
   and the flip button between them. Each balance says how long ago it was
   proved ("updated 2 min ago"), as on Send. The price, the network fees,
-  the price tolerance (behind the settings icon). When the allowance falls short, an
-  info box: "2 steps. First you allow Uniswap to use 100 USDC, then you
-  swap. Each is its own transaction with its own fee." Review.
+  the price tolerance (behind the settings icon). When the allowance falls
+  short, an info box: "2 steps. First you allow Uniswap to use 100 USDC,
+  then you swap. Each is its own transaction with its own fee." Review.
 - **W2 · Swap review, Uniswap, 2 steps.** The swap in one line ("100 USDC →
   7.18 LINK, at least · via Uniswap · from Main"). Step 1, "Allow Uniswap to
   use 100 USDC: only this amount, for this swap", with its fee. Step 2,

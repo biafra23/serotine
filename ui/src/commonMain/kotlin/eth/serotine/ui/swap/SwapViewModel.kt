@@ -85,8 +85,8 @@ import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.priceHintText
 import eth.serotine.ui.components.priceImpactText
-import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.routeSteps
 import eth.serotine.ui.components.sellNote
 import eth.serotine.ui.components.swapOptions

@@ -112,7 +112,10 @@ class SimpleSwapScreenTest {
 
     @Test
     fun theFormNamesNoBlockButEachBalanceSaysItsAge() {
-        val usdc = approval.token.copy(contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", age = "updated 2 min ago")
+        val usdc = approval.token.copy(
+            contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            age = "updated 2 min ago",
+        )
         show(
             SwapUiState.Compose(
                 form = SwapForm(

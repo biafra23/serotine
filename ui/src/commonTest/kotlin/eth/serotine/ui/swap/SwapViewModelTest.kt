@@ -326,8 +326,11 @@ class SwapViewModelTest {
     fun eachBalanceSaysHowLongAgoItWasProvedAndIsDatedAnew() = runTest {
         tokenBalances.of(daily.address, usdc.address).value =
             TokenBalanceReading.Verified(TokenUnits.of("250000000"), 9_412_117, provenAt = wallClock - 120)
+        tokenBalances.of(daily.address, link.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("0"), 9_412_117, provenAt = wallClock - 300)
         val viewModel = viewModel(sell = usdc.address)
         assertEquals("updated 2 min ago", viewModel.compose.sell?.age)
+        assertEquals("updated 5 min ago", viewModel.compose.buyOptions.first { it.symbol == "LINK" }.age)
         assertNull(viewModel.compose.sellOptions.first { it.symbol == "ETH" }.age, "no time of proof, no age")
 
         wallClock += 60
