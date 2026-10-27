@@ -1,225 +1,122 @@
 # P-256 Safe Owner Implementation Plan
 
-## Overview
-Implement P-256 (secp256r1) key support for Safe{Wallet} owners using the WebAuthn signer pattern from safe-modules.
+Status: branch `feature/p256-key-generation`, PR #182 (single-PR work item, base `main`).
+Rewritten 2026-10-27 to cover the full feature end to end, with the owner rulings of
+that day recorded. The architecture sections are the contract a reviewer holds the
+diff against; the rulings below amend this file in place, not `CLAUDE.md` (that
+would be a separate owner decision).
 
-## Architecture Changes
+## Owner rulings (2026-10-27)
 
-### 1. Domain Layer (`:domain`)
+1. **Lazy contract deployment.** The per-owner signer contract is deployed only when
+   it is first needed — never at key creation, and never merely because the key was
+   made an owner. "Needed" means: a Safe is about to send a transaction whose
+   signature set contains this owner's WebAuthn signature, so the Safe will verify it
+   through EIP-1271 at the owner's address and needs code there. Before such a send,
+   the app checks for code at the owner's address (a verified read through the engine)
+   and, when there is none, sends the factory deployment transaction first, waits for
+   its receipt, and only then sends the Safe transaction. The send flow shows the
+   deployment as its own step and its gas in the review; the executing account pays it.
+2. **Cheapest path for multiple P-256 owners.** One minimal proxy per owner, deployed
+   by the pinned `SafeWebAuthnSignerFactory` via CREATE2 (that is the safe-modules
+   pattern). With ruling 1 the cost per key is: zero for a key that never signs, one
+   small deployment the first time it signs, nothing afterwards. N owners are N
+   proxies; there is no shared deployment to save by batching, so deployments are
+   separate transactions. The alternative — `SafeWebAuthnSignerSingleton`, whose
+   signature carries the key and which needs no per-owner deployment at all — is
+   recorded as the cheaper shape and re-evaluated when the verifier decision (open
+   question 2) lands; until then this plan builds the lazy per-owner proxy.
+3. **addOwner and swapOwner.** The Safe's on-chain calls are unchanged
+   (`addOwnerWithThreshold`, `swapOwner` — Safe verifies owner signatures through
+   EIP-1271 natively). "If necessary" resolves to: the *app's* flows change. The
+   Safe-settings flows (`SafeSettingsViewModel`, `SettingsChangeKind.ADD_OWNER` /
+   `SWAP_OWNER`, domain `SafeSettingsChanges`) gain: a held hardware-bound account can
+   be chosen as the added or swapped-in owner, its owner address being its CREATE2
+   proxy address (below); and the threshold warning (ruling 4) in the owners-and-
+   threshold review. A lazily-deployed owner needs no deployment to be added — only
+   when it first signs (ruling 1), and that includes settings transactions: a settings
+   change signed by a P-256 owner goes through the same check-and-deploy step.
+4. **Hardware-only threshold warning.** Whenever owners and threshold are reviewed —
+   Safe creation and the Safe-settings changes — and the threshold can be met by the
+   hardware-bound P-256 owners alone (threshold ≤ number of hardware-bound owners),
+   the review shows a display-ready, non-blocking warning: those device keys alone can
+   spend everything, so a Safe holding value wants at least one owner whose key is
+   held elsewhere. This implements the standing rule that a hardware P-256 key is
+   never the sole owner of a Safe holding value; it warns, it never blocks.
 
-#### New Account Kind
-**File:** `domain/src/commonMain/kotlin/eth/serotine/domain/model/Account.kt`
+## Owner address — open question 1, resolved
 
-```kotlin
-enum class AccountKind {
-    EOA,                    // secp256k1 from mnemonic
-    SAFE_P256,             // P-256 in Secure Enclave/StrongBox via WebAuthn
-}
-```
+The owner address is the CREATE2 address of the owner's signer proxy: computed
+locally in `:domain` from the pinned factory address, the salt derived from the
+key's (x, y) and the verifier address, and the factory's init code. This replaces
+the keccak-of-public-key derivation in `NewHardwareP256Address` — that derivation
+cannot ever hold code, which is what EIP-1271 verification needs at the owner
+address. Keys already created on this branch keep their hardware key; no on-chain
+migration is needed (no proxy was ever deployed, nothing on chain references the old
+address), but recorded debug-build accounts are re-derived at first use after the
+change.
 
-#### New Custody Type
-**File:** `domain/src/commonMain/kotlin/eth/serotine/domain/model/Account.kt`
+## Still open — owner decisions, recorded here before their code lands
 
-```kotlin
-sealed interface AccountCustody {
-    data object Watched : AccountCustody
-    data object InKeyStore : AccountCustody  // secp256k1
-    data object HardwareBound : AccountCustody  // P-256 hardware key
-}
-```
+2. **Verifier contract, per network.** The CREATE2 address depends on it, so this
+   blocks the address computation and the factory pinning. Proposal: the verifier
+   safe-modules uses (FCL-style P-256 verifier), with `SafeWebAuthnSignerFactory` and
+   `SafeWebAuthnSignerSingleton` addresses, pinned per network like Safe's own
+   deployments and proven by their code in the pinning PR.
+3. **Biometric policy for the enclave key.** Invalidate on re-enrolment
+   (`.biometryCurrentSet`) or fall back to the device passcode. Blocks finalising the
+   macOS/iOS key paths, not the Safe integration.
 
-#### Key Import Result for P-256
-**File:** `domain/src/commonMain/kotlin/eth/serotine/domain/repository/KeyStore.kt`
+## Landed on this branch (PR #182 so far)
 
-Add to `KeyImport`:
-```kotlin
-sealed interface KeyImport {
-    // ... existing variants ...
-    
-    /** P-256 key generated in hardware, public key [x], [y] coordinates. */
-    data class HardwareP256Generated(
-        val x: String,  // 64 hex chars
-        val y: String,  // 64 hex chars
-    ) : KeyImport
-}
-```
+- `AccountKind.SAFE_P256`, `AccountCustody.HardwareBound` (domain `Account.kt`).
+- `WebAuthnSignature` (domain `model/WebAuthnSignature.kt`: format, low-s check,
+  `encode()`), `SafeSignature.WebAuthn` (domain `SafeSignatures.kt`), wire + codec
+  support (`data/safe/SafeTxWire.kt` `WireSignatureWebAuthn`,
+  `JsonSigningRequestCodec` version 2).
+- `KeyStore.newHardwareP256Key()` + `NewHardwareP256Key` (domain
+  `repository/KeyStore.kt`), implemented per platform: macOS Secure Enclave via JNA
+  (`MacSecurity`, attributes fallback for enclave keys), Android Keystore
+  (`EnvelopeKeyStore.Android.kt`, DER decoding + `DerPublicKeyDecoderTest`), iOS
+  (`EnvelopeKeyStore.Ios.kt`, `IosSecurity.kt` — thin, completed in Phase C).
+- Key creation and address display flows: `NewHardwareP256Address`,
+  `NewHardwareP256Account` (domain use cases), Create-account integration
+  (`CreateAccountScreen/ViewModel`, accounts menu, `SerotineIcons.HardwareP256`,
+  Android debug deeplink), Safe-creation owner selection (`CreateSafeViewModel`).
+- SafeTx display of WebAuthn signatures (`SafeTxViewModel`), and
+  `SafeTxSigning`'s notes on where WebAuthn verification happens.
 
-### 2. Data Layer (`:data`)
+## Remaining work
 
-#### WebAuthn Signature Support
-**File:** `data/src/commonMain/kotlin/eth/serotine/data/model/WebAuthnSignature.kt` (new)
+- **Phase A — signer identity.** CREATE2 proxy-address computation in `:domain`
+  (keccak + factory + salt + init code; no new library), replacing the keccak
+  derivation; unit tests with known safe-modules vectors.
+- **Phase B — pins.** Factory, singleton and verifier addresses for Ethereum, Gnosis
+  Chain and Sepolia, each entry proven by its code, after open question 2 is decided.
+- **Phase C — signing.** `HardwareSigner` port in `:data` and platform
+  implementations: Android (Keystore ECDSA P-256 + BiometricPrompt), macOS (Secure
+  Enclave via `MacSecurity`, LAContext), iOS. WebAuthn formatting: authenticatorData
+  (rpIdHash, flags), `clientDataFields` with the SafeTx hash as challenge, r‖s (low
+  s) → `WebAuthnSignature`. Open question 3 decides the access-control flags.
+- **Phase D — lazy deployment.** `DeployWebAuthnSigner` use case in `:domain` over
+  the engine: code-at-address check, factory deployment, receipt. Hooked into every
+  Safe send that carries a P-256 owner's signature (transactions and settings
+  changes), as ruling 1 spells out.
+- **Phase E — addOwner/swapOwner.** The Safe-settings changes per ruling 3, plus the
+  threshold warning per ruling 4 in `SafeSettingsViewModel` and
+  `CreateSafeViewModel` (Safe creation).
+- **Phase F — UI finish.** The signing prompt (biometric/passcode per the key's
+  policy), custody labels in accounts list/detail, previews for every new state per
+  the previews rule, screenshots in PR #182.
+- **Phase G — tests.** Use-case tests (address computation vectors, deployment
+  decision, threshold warning), signer unit tests, codec round-trips, UI tests;
+  `./gradlew build` green.
 
-```kotlin
-package eth.serotine.data.model
+## Before the final review of PR #182
 
-/**
- * A WebAuthn-formatted P-256 signature for Safe transactions.
- * Format: authenticatorData ‖ clientDataFields ‖ r ‖ s
- */
-@ConsistentCopyVisibility
-data class WebAuthnSignature(
-    val authenticatorData: ByteArray,
-    val clientDataFields: String,
-    val r: String,  // 64 hex chars
-    val s: String,  // 64 hex chars
-) {
-    fun encode(): ByteArray = authenticatorData + clientDataFields.encodeToByteArray() + r.hexToBytes() + s.hexToBytes()
-}
-```
-
-#### Hardware Signer Interface
-**File:** `data/src/commonMain/kotlin/eth/serotine/data/repository/HardwareSigner.kt` (new)
-
-```kotlin
-package eth.serotine.data.repository
-
-import eth.serotine.domain.model.Address
-import eth.serotine.domain.model.Digest
-import eth.serotine.domain.model.Signature
-import eth.serotine.domain.repository.Signing
-
-/**
- * A signer that uses hardware-bound P-256 keys via platform WebAuthn APIs.
- * Keys never leave the Secure Enclave/StrongBox.
- */
-interface HardwareSigner {
-    /**
-     * Signs [digest] with the P-256 key at [owner]'s x,y coordinates.
-     * Returns WebAuthn-formatted signature.
-     */
-    suspend fun signP256(owner: Address, x: String, y: String, digest: Digest): Signing
-}
-```
-
-#### Platform Implementations
-
-**Android (`data/src/androidMain/kotlin/eth/serotine/data/keys/AndroidHardwareSigner.kt`):**
-- Use Android Keystore P-256 key
-- `setUserAuthenticationRequired(true)` with biometric auth
-- Sign using `Signature.SIGNATURE_ECDSA`
-
-**iOS/macOS (`data/src/iosMain/kotlin/eth/serotine/data/keys/IosHardwareSigner.kt`):**
-- Use Security.framework P-256 key in Secure Enclave
-- `SecKeyCreateSignature()` with `kSecKeyAlgorithmECDSASignatureDigestX962SHA256`
-- Biometric auth via `LAContext`
-
-### 3. UI Layer (`:ui`)
-
-#### New Account Custody Display
-**File:** `ui/src/commonMain/kotlin/eth/serotine/ui/components/AccountItem.kt`
-
-Update to show `HardwareBound` custody differently:
-```kotlin
-when (account.custody) {
-    is AccountCustody.HardwareBound -> "Hardware-bound P-256"
-    // ... existing ...
-}
-```
-
-#### Safe Owner Management
-
-**New Screen:** Add "Add Hardware Owner" flow in Safe setup / settings
-
-**File:** `ui/src/commonMain/kotlin/eth/serotine/ui/safeowner/SafeOwnerRoute.kt` (new)
-
-This extends the existing partial sign flow:
-1. User selects "Add hardware owner"
-2. Platform generates P-256 key in hardware
-3. Public key (x, y) is displayed as QR code or text
-4. User shares this with another signer to add as Safe owner
-5. Once added, the Safe uses WebAuthn signer proxy
-
-### 4. Key Store Changes
-
-**File:** `data/src/commonMain/kotlin/eth/serotine/data/keys/EnvelopeKeyStore.kt`
-
-Add P-256 key generation:
-```kotlin
-override suspend fun newHardwareP256Key(): NewHardwareP256Key {
-    // Platform-specific key generation
-    // Returns x, y coordinates of public key
-}
-```
-
-## WebAuthn Signer Integration
-
-### Safe Creation with P-256 Owner
-
-When creating a Safe with a hardware-bound P-256 owner:
-
-1. **SafeWebAuthnSignerFactory** deploys a proxy for this owner
-2. Proxy stores: public key coordinates (x, y), verifier contract address
-3. Safe's `setup()` includes this as an owner with threshold
-
-### Transaction Signing Flow
-
-```
-1. User taps "Sign" on Safe transaction
-2. Screen prompts for biometric (or device credential)
-3. Platform signs EIP-712 hash using P-256 key
-4. Signature formatted as WebAuthn:
-   - authenticatorData (from hardware)
-   - clientDataFields (JSON with challenge, type)
-   - r, s (ECDSA components)
-5. Signature included in Safe's execTransaction call
-```
-
-## Implementation Steps
-
-### Phase 1: Core Infrastructure
-1. Add `AccountKind.SAFE_P256` and `AccountCustody.HardwareBound`
-2. Create `WebAuthnSignature` model
-3. Create `HardwareSigner` interface and platform implementations
-
-### Phase 2: Key Generation
-4. Add `newHardwareP256Key()` to `KeyStore`
-5. Implement iOS/macOS key generation (Secure Enclave)
-6. Implement Android key generation (Keystore)
-
-### Phase 3: Safe Integration
-7. Create `SafeWebAuthnSignerProxy` deployment logic
-8. Update `SafeCreation` to support P-256 owners
-9. Update `SigningRequestCodec` to handle WebAuthn signatures
-
-### Phase 4: UI
-10. Add "Add Hardware Owner" flow (extends partial sign)
-11. Display P-256 accounts differently in Accounts list
-12. Safe transaction signing with hardware prompt
-
-### Phase 5: Testing
-13. Unit tests for `HardwareSigner` implementations
-14. UI tests for new flows
-15. Integration tests for Safe creation with P-256 owner
-
-## Platform-Specific Details
-
-### iOS/macOS (Priority 1)
-- **API:** Security.framework
-- **Key Type:** `kSecAttrKeyClassPrivate`, `kSecAttrKeyTypeECSECPrimeRandom`
-- **Access Control:** `.privateKeyUsage | .biometryCurrentSet | .whenPasscodeSetThisDeviceOnly`
-- **Signing:** `SecKeyCreateSignature(..., kSecKeyAlgorithmECDSASignatureDigestX962SHA256)`
-
-### Android (Priority 2)
-- **API:** Keystore with `KeyProperties.ECDSA_P256`
-- **Block Mode:** `KeyProperties.BLOCK_MODE_ECB` (no padding for raw ECDSA)
-- **Authentication:** `setUserAuthenticationRequired(true)` + biometric
-- **Signing:** `Signature.SIGNATURE_ECDSA`
-
-## Addresses to Use
-
-From safe-modules:
-- **SafeWebAuthnSignerSingleton** - deployed on Sepolia, Gnosis, Mainnet
-- **SafeWebAuthnSignerFactory** - creates proxies per owner
-
-## Open Questions
-
-1. **Address derivation:** How to map P-256 public key to Safe owner address?
-   - Option A: Use the WebAuthn credential ID (not deterministic)
-   - Option B: Derive from public key hash (like EOA but with P-256)
-
-2. **Verifier contract:** Which P-256 verifier to use?
-   - Safe's built-in precompile at `0x100` (when available)
-   - Fallback Solidity implementation
-
-3. **Biometric policy:** `.biometryCurrentSet` (invalidates on re-enrollment) or
-   `.biometryCurrentSet | .devicePasscode` (fallback to passcode)?
+- The debug `println`s go out of `MacSecurity.kt` and the `NewHardwareP256*` use
+  cases.
+- The PR description gets the screenshots per the screenshots rule and this plan's
+  phase summary.
+- Internal review of the whole diff (`/code-review`), findings addressed, then the
+  PR waits for review comments — the merge is the owner's, as always.
