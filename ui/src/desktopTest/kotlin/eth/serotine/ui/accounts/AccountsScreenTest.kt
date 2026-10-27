@@ -19,9 +19,13 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.rightClick
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.STALE_ANCHOR_CATCH_UP_TAG
+import eth.serotine.ui.components.STALE_ANCHOR_CONFIRM_TAG
+import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.update.UPGRADE_BANNER_TAG
@@ -61,6 +65,8 @@ class AccountsScreenTest {
 
     private val turnedOn = mutableListOf<Long>()
 
+    private val caughtUp = mutableListOf<Long>()
+
     /** [accounts] in Sepolia's section, under [syncing]: the only network until parts 4 and 5. */
     private fun ready(
         accounts: List<AccountItem>,
@@ -92,6 +98,7 @@ class AccountsScreenTest {
                     onCreateHardwareP256 = { adds += "hardware-p256" },
                     onAccountAction = { actions += it },
                     onTurnOnNetwork = { turnedOn += it },
+                    onSyncPastStaleAnchor = { caughtUp += it },
                 )
             }
         }
@@ -420,5 +427,21 @@ class AccountsScreenTest {
 
         rule.onNodeWithText("2/3", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("0x8F3a…91c2 · Safe", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun aStaleCheckpointIsCaughtUpWithOnlyAfterTheDialogIsConfirmed() {
+        val warning = StaleAnchorWarning.of(Network.SEPOLIA, LightClientStatus.StaleAnchor(6, 3))
+        val state = ready(listOf(daily))
+        show(state.copy(sections = state.sections.map { it.copy(staleAnchor = warning) }))
+
+        rule.onNodeWithText(warning.banner).assertExists()
+        rule.onNodeWithTag(STALE_ANCHOR_CATCH_UP_TAG + Network.SEPOLIA.chainId).performClick()
+        rule.onNodeWithText(warning.title).assertExists()
+        assertEquals(emptyList(), caughtUp, "asked first")
+
+        rule.onNodeWithTag(STALE_ANCHOR_CONFIRM_TAG).performClick()
+        assertEquals(listOf(Network.SEPOLIA.chainId), caughtUp)
+        rule.onNodeWithText(warning.title).assertDoesNotExist()
     }
 }

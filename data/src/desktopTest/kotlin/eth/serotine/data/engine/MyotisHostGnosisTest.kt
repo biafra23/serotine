@@ -9,19 +9,20 @@ import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClientRun
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.VenueReading
+import java.nio.file.Files
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assume.assumeTrue
 import org.junit.Test
-import java.nio.file.Files
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.time.Duration.Companion.minutes
 
 /**
  * Gnosis Chain's pins on the real engine and the real chain (docs/networks.md, part 5): boots a
@@ -33,10 +34,10 @@ import kotlin.time.Duration.Companion.minutes
  * `-PmyotisLibraryDir=<dir with libmyotis_engine>`, e.g.
  * `./gradlew :data:desktopTest --tests '*MyotisHostGnosisTest*' -PmyotisLibraryDir=…`.
  *
- * With engine 0.1.19-rc2 it fails at its first read: the release's embedded Gnosis anchor was
- * already 6 sync-committee periods old on 2026-10-23, past the bound of 3 (≈ 34 h at Gnosis's
- * 11.4-hour periods), and the light client refuses to sync (`StaleAnchor`; biafra23/myotis#703).
- * It passes once an engine ships a Gnosis anchor within its bound.
+ * With engine 0.1.19-rc2 the release's embedded Gnosis anchor was already 6 sync-committee
+ * periods old on 2026-10-23, past the bound of 3 (≈ 34 h at Gnosis's 11.4-hour periods), and the
+ * light client refuses to sync (`StaleAnchor`; biafra23/myotis#703). The test then consents as a
+ * user would on Accounts ([MyotisHost.syncPastStaleAnchor]), which also proves that path.
  */
 class MyotisHostGnosisTest {
 
@@ -51,7 +52,10 @@ class MyotisHostGnosisTest {
         val started = System.nanoTime()
         fun at() = "${(System.nanoTime() - started) / 1_000_000_000}s"
         val progress = launch {
-            node.lightClient.observeStatus(gnosis).collect { println("[${at()}] light client: $it") }
+            node.lightClient.observeStatus(gnosis).collect {
+                println("[${at()}] light client: $it")
+                if (it is LightClientStatus.StaleAnchor) node.syncPastStaleAnchor(gnosis)
+            }
         }
         try {
             // WXDAI's contract, which holds the xDAI it wraps: a balance on every Gnosis Chain state.

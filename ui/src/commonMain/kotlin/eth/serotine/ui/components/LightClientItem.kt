@@ -30,8 +30,12 @@ data class LightClientItem(
 ) {
 
     companion object {
-        /** [status] as the strip shows it at [now] (unix seconds), which dates the head block. */
-        fun from(status: LightClientStatus, now: Long): LightClientItem = when (status) {
+        /**
+         * [status] as the strip shows it at [now] (unix seconds), which dates the head block. A
+         * stale checkpoint's line says where the user decides on it, unless [decidedHere] (the
+         * screen offers the decision itself).
+         */
+        fun from(status: LightClientStatus, now: Long, decidedHere: Boolean = false): LightClientItem = when (status) {
             LightClientStatus.Starting -> LightClientItem("Starting the light client…", null, true, NOT_VERIFIED)
             is LightClientStatus.Bootstrapping -> LightClientItem(
                 if (status.lookingForServers) {
@@ -78,8 +82,9 @@ data class LightClientItem(
             LightClientStatus.Sleeping ->
                 LightClientItem("Light client asleep while the app is in the background", null, false, STALE)
             is LightClientStatus.StaleAnchor -> LightClientItem(
-                "Sync refused: the trust anchor is ${status.anchorAgePeriods} periods old" +
-                    if (status.boundPeriods > 0) ", past the limit of ${status.boundPeriods}" else "",
+                "Not syncing: the last trusted checkpoint is ${status.anchorAgePeriods} periods old" +
+                    (if (status.boundPeriods > 0) ", past the safe limit of ${status.boundPeriods}" else "") +
+                    if (decidedHere) "" else " · decide in Settings → Networks",
                 null,
                 false,
                 NOT_VERIFIED,
@@ -135,8 +140,8 @@ enum class LightClientHealth {
  * These states as the strip shows them, dated by [clock] (unix seconds): re-dated every
  * second while one shows a head block's age, unchanged otherwise.
  */
-fun Flow<LightClientStatus>.asItems(clock: () -> Long): Flow<LightClientItem> =
-    redatedWhile { it.dated }.map { LightClientItem.from(it, clock()) }
+fun Flow<LightClientStatus>.asItems(clock: () -> Long, decidedHere: Boolean = false): Flow<LightClientItem> =
+    redatedWhile { it.dated }.map { LightClientItem.from(it, clock(), decidedHere) }
 
 /** Whether this state's line shows a head block's age ("· 8 s ago"), which moves on every second. */
 internal val LightClientStatus.dated: Boolean

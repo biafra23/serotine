@@ -70,6 +70,7 @@ import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.debug.DebugRoute
+import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
@@ -79,6 +80,7 @@ import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
 import eth.serotine.ui.safeimport.SafeImportRoute
 import eth.serotine.ui.safepropose.SafeProposeRoute
+import eth.serotine.ui.safesettings.SafeSettingsRoute
 import eth.serotine.ui.safeswap.SafeSwapRoute
 import eth.serotine.ui.safetx.SafeTxRoute
 import eth.serotine.ui.security.SecurityRoute
@@ -126,6 +128,8 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
         // Whether the bar has a Debug tab: the app's tabs, so scoped to the host too.
         val debugTab = viewModel { graph.debugTabViewModel() }
         val debugShown by debugTab.shown.collectAsStateWithLifecycle()
+        // The Debug screen's filter outlives its destination, which a tab switch pops: scoped to the host too.
+        val debug = viewModel { graph.debugViewModel() }
         val tabs = Tab.entries.filter { it != Tab.DEBUG || debugShown == true }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
@@ -177,6 +181,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
                         update,
                         lightClient,
                         debugShown,
+                        debug,
                         Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
                     )
                 }
@@ -224,6 +229,7 @@ private fun Destinations(
     update: UpdateRequiredViewModel,
     lightClient: LightClientViewModel,
     debugShown: Boolean?,
+    debug: DebugViewModel,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -231,7 +237,7 @@ private fun Destinations(
     // In the NavHost's own composition, so the graph it navigates is set by the time this runs.
     LaunchedEffect(updateRequired) {
         if (updateRequired) {
-            // The whole back stack goes: every other screen's ViewModel is cleared, the seed
+            // The whole back stack goes: every screen's ViewModel but the Debug tab's is cleared, the seed
             // screen's words with it, and back leaves the app instead of reaching a screen.
             navController.navigate(Destination.UPDATE_REQUIRED) {
                 popUpTo(navController.graph.id) { inclusive = true }
@@ -242,10 +248,14 @@ private fun Destinations(
             }
         }
     }
-    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts. Not
-    // before the setting is read (null), so a Debug screen the system restored stays.
+    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts, and
+    // the filter typed goes with the log it was for. Not before the setting is read (null), so a
+    // Debug screen the system restored stays.
     LaunchedEffect(debugShown) {
-        if (debugShown == false) navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
+        if (debugShown == false) {
+            navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
+            debug.setFilter("")
+        }
     }
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is
@@ -291,6 +301,7 @@ private fun Destinations(
                     onAddOnNetwork = { navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex)) },
                     onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
                     onImportRequest = { navController.importRequest(account) },
+                    onSafeSettings = { navController.safeSettings(account) },
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                 )
             }
@@ -399,7 +410,7 @@ private fun Destinations(
         }
         navigation(startDestination = Destination.DEBUG, route = Tab.DEBUG.graph) {
             composable(Destination.DEBUG) {
-                DebugRoute(viewModel { graph.debugViewModel() })
+                DebugRoute(debug)
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
@@ -601,6 +612,20 @@ private fun Destinations(
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) }
+            }
+        }
+        composable(SAFE_SETTINGS_ROUTE) { entry ->
+            val account = entry.account()
+            if (account != null) {
+                SafeSettingsRoute(
+                    viewModel = viewModel { graph.safeSettingsViewModel(account) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) },
+                    // Signed and queued: the change's screen, and back from it to the Safe.
+                    onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_SETTINGS_ROUTE) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) }
             }
         }
         composable(SAFE_IMPORT_ROUTE) { entry ->
@@ -814,6 +839,13 @@ private fun NavController.importRequest(safe: AccountId) {
     navigate("${Destination.SAFE}/${safe.route}/${Destination.IMPORT}")
 }
 
+/** Opens the settings of the Safe [safe]. */
+private fun NavController.safeSettings(safe: AccountId) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == SAFE_SETTINGS_ROUTE) return
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.SAFE_SETTINGS}")
+}
+
 /**
  * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe [safe]; in place of the
  * destination [replacing] when set (the proposal or import that led to it), so back from it returns
@@ -920,6 +952,7 @@ private object Destination {
     const val SAFE_TX = "tx"
     const val PROPOSE = "propose"
     const val IMPORT = "import"
+    const val SAFE_SETTINGS = "settings"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -991,6 +1024,9 @@ private const val SAFE_PROPOSE_ROUTE =
 /** Swap from a Safe: its Safe transactions proposed, selling a token or not, or a queued swap again. */
 private const val SAFE_SWAP_ROUTE =
     "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SWAP}?$ASSET={$ASSET}&$REPLACING={$REPLACING}"
+
+/** A Safe's settings, and the changes of them proposed. */
+private const val SAFE_SETTINGS_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SAFE_SETTINGS}"
 
 /** Import a signing request for a Safe. */
 private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.IMPORT}"

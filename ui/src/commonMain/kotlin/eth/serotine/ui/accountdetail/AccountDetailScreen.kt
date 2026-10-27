@@ -101,6 +101,9 @@ const val ACCOUNT_ADDRESS_TAG = "account-address"
 /** Test tag of a Safe's owners, for UI tests. */
 const val ACCOUNT_OWNERS_TAG = "account-owners"
 
+/** Test tag of a Safe's Safe settings button, for UI tests. */
+const val ACCOUNT_SAFE_SETTINGS_TAG = "account-safe-settings"
+
 /** Test tag of each asset row, for UI tests. */
 const val ACCOUNT_ASSET_TAG = "account-asset"
 
@@ -137,6 +140,7 @@ fun AccountDetailRoute(
     onOpenActivity: (ActivityKey) -> Unit,
     modifier: Modifier = Modifier,
     onAddOnNetwork: () -> Unit = {},
+    onSafeSettings: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val strip by lightClient.collectAsStateWithLifecycle()
@@ -169,6 +173,7 @@ fun AccountDetailRoute(
         modifier = modifier,
         onTurnOnNetwork = viewModel::turnOnNetwork,
         onAddOnNetwork = onAddOnNetwork,
+        onSafeSettings = onSafeSettings,
     )
 }
 
@@ -180,7 +185,8 @@ fun AccountDetailRoute(
  * ([onSort]). Under the buttons are its tabs, Assets | Activity and a Safe's Owners | Queue.
  * [onSend] opens Send with the token at a contract chosen, or the network's currency (null). The
  * Activity tab's rows open their detail through [onOpenActivity]. A Safe's Queue opens a
- * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest].
+ * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest];
+ * its Owners tab opens its settings through [onSafeSettings].
  * The account's network is named beside its control (docs/networks.md, N3 and N4); while it is off,
  * Send and Swap say so and offer to turn it on through [onTurnOnNetwork] (N19). An externally owned
  * account's menu adds it on another network through [onAddOnNetwork] (N5).
@@ -207,6 +213,7 @@ fun AccountDetailScreen(
     modifier: Modifier = Modifier,
     onTurnOnNetwork: () -> Unit = {},
     onAddOnNetwork: () -> Unit = {},
+    onSafeSettings: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -234,6 +241,10 @@ fun AccountDetailScreen(
         } else {
             UnavailableNotice(action, reason)
         }
+    }
+    val safeSettings: () -> Unit = {
+        val reason = (state as? AccountDetailUiState.Ready)?.safeSettingsReason
+        if (reason == null) onSafeSettings() else unavailable = notice("Safe settings", reason)
     }
     val send: (String?) -> Unit = { contract ->
         val reason = (state as? AccountDetailUiState.Ready)?.sendReason
@@ -327,6 +338,7 @@ fun AccountDetailScreen(
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
                     onOpenActivity = onOpenActivity,
+                    onSafeSettings = safeSettings,
                 )
             }
         }
@@ -350,6 +362,7 @@ private fun Details(
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
+    onSafeSettings: () -> Unit,
 ) {
     // Each item ends with the space before the next, but an Activity's rows, which follow one another.
     val spaced = Modifier.padding(bottom = 16.dp)
@@ -438,7 +451,7 @@ private fun Details(
         when {
             state.showsAssets -> item { Assets(state, onSend, onSwap, onCopyContract, onHideToken) }
             state.segment == DetailSegment.ACTIVITY -> activityItems(state.activity, onOpenActivity)
-            state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe)) }
+            state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe), state.safeSettingsReason == null, onSafeSettings) }
             else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }
     }
@@ -699,11 +712,25 @@ private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
 
 /**
  * A Safe's owners with their blockies, "this device" on the ones whose keys are held here, and
- * the threshold; the modules and the guard follow them (docs/wallet-ux.md, screen 16).
+ * the threshold; the modules and the guard follow them (docs/wallet-ux.md, screen 16). Safe
+ * settings, above them, opens the screen that shows and changes them ([onSafeSettings], screen 28),
+ * which says itself when they cannot be read or changed; greyed out unless [settingsAvailable]
+ * (the network off), a tap then saying why.
  */
 @Composable
-private fun SafeOwners(safe: SafeDetails) {
+private fun SafeOwners(safe: SafeDetails, settingsAvailable: Boolean, onSafeSettings: () -> Unit) {
     Column(Modifier.testTag(ACCOUNT_OWNERS_TAG), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = onSafeSettings,
+            modifier = Modifier.testTag(ACCOUNT_SAFE_SETTINGS_TAG).unavailable(!settingsAvailable),
+            colors = if (settingsAvailable) {
+                ButtonDefaults.outlinedButtonColors()
+            } else {
+                ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+            },
+        ) {
+            Text("Safe settings")
+        }
         when (safe) {
             SafeDetails.Checking -> {
                 // The title and the threshold, then owners: as many as a Safe's are, until they are read.

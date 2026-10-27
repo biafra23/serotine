@@ -10,6 +10,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.CurrencyChoice
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.usecase.NetworkOverview
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -17,6 +18,7 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetNetworkEnabled
+import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeFeeds
@@ -53,6 +55,14 @@ class SettingsViewModelTest {
 
     private val usdc = Token(Address.of("0x" + "1c".repeat(20)), "USDC", "USDC", 6, "usdc")
     private val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+
+    /** The networks the user let catch up from a stale checkpoint. */
+    private val consented = mutableListOf<Network>()
+    private val consent = object : StaleAnchorConsent {
+        override fun syncPastStaleAnchor(network: Network) {
+            consented += network
+        }
+    }
     private val lightClient = object : LightClient {
         override val datesFinalizedBlocks = true
         override fun observeStatus(network: Network): Flow<LightClientStatus> = status
@@ -84,6 +94,7 @@ class SettingsViewModelTest {
             screenCapture,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
+            SyncPastStaleAnchor(lightClient, consent),
             clock = { 1_000 },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -206,6 +217,25 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun aRowRefusingAStaleCheckpointWarnsAndCatchesUpOnTheUsersWord() = runTest {
+        val viewModel = viewModel()
+        status.value = LightClientStatus.StaleAnchor(anchorAgePeriods = 6, boundPeriods = 3)
+        runCurrent()
+
+        val row = viewModel.sepolia
+        assertEquals(
+            "1 account · Not syncing: the last trusted checkpoint is 6 periods old, past the safe limit of 3",
+            row.line,
+            "the decision is offered here",
+        )
+        assertEquals("Catch up with Sepolia anyway?", row.staleAnchor?.title)
+
+        viewModel.syncPastStaleAnchor(Network.SEPOLIA.chainId)
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), consented)
+    }
+
+    @Test
     fun aRowsHeadBlockAgeIsReDatedEverySecond() = runTest {
         var now = 1_000L
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
@@ -217,6 +247,7 @@ class SettingsViewModelTest {
             null,
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
+            SyncPastStaleAnchor(lightClient, consent),
             clock = { now },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }

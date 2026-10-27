@@ -4,8 +4,10 @@ The screens Serotine is built towards, for externally owned accounts and Safe
 smart accounts, and the rules they follow. A screen PR is held to this page
 together with docs/architecture.md (how a screen is built) and
 docs/keys-and-signing.md (how a key is held and used). The rules here apply
-CLAUDE.md's *Trust* and *Data sources* sections to the screens; where this
-page and CLAUDE.md disagree, CLAUDE.md wins and this page is fixed.
+the *Trust* and *Data sources* rules to the screens (their short form in
+CLAUDE.md, their full text in `.claude/rules/trust.md` and
+`.claude/rules/data-sources.md`); where this page and those rules disagree,
+the rules win and this page is fixed.
 
 The mockups below (source: `wallet-ux-screens.html`, which opens in a
 browser) draw screens 1 to 20 with their numbers; Security (21) came later
@@ -417,7 +419,9 @@ upgrades*).
 16. **Safe detail**: as 4, with the tabs Assets | Activity | Owners |
     Queue (n). The owners are shown with blockies, a "this device" mark
     on the ones held here, and the threshold; the modules and guard
-    follow them.
+    follow them. Safe settings, above them, opens 28; it is greyed out
+    while the Safe's network is off (a tap offers Turn on) or this version
+    can no longer follow it, as Send is.
     - Queue lists this device's pending transactions in nonce order, from
       the Safe's verified nonce on: one whose nonce the Safe has passed is
       gone (`ObserveSafeTxQueue`), and the file drops it at the next
@@ -632,6 +636,53 @@ upgrades*).
       a signature already shared stays valid elsewhere until the Safe's
       nonce passes it. One the Safe's nonce has passed says it ran, or that
       another transaction used its nonce.
+
+28. **Safe settings** (issue #183), from the Owners tab of 16: the Safe's
+    settings as its verified storage holds them, and the changes of them
+    an owner held here proposes, each a Safe transaction its owners sign
+    like any other (`ProposeSafeSettingsChange`).
+    - Shown: the owners (blockies, "This device" on the ones held here),
+      the threshold, the modules, the guard and, from 1.5.0, the module
+      guard, with the block they were verified at. Each owner offers
+      Replace and Remove; below them Add an owner, Change the threshold,
+      Disable for each module and Remove the guard where there is one.
+      While no owner of the Safe is held here every one of them is greyed
+      out, and a tap says why (owner ruling, 2026-10-18, #55). Enable a
+      module and Update the Safe's version are shown greyed out too, and a
+      tap says why they are never offered here: a module enabled is refused
+      (owner ruling, 2026-10-18, on #54), and a version update runs a
+      migration contract's code as the Safe, a delegate call, which this
+      wallet does not sign (#57) until a migration contract is pinned.
+    - Each change has its form: the owner it removes or replaces; the new
+      owner's address, typed or picked from the wallet's accounts on the
+      Safe's network that are not owners yet (an address only, no name); and
+      the threshold it leaves, a stepper from 1 to the owners the Safe then
+      has, starting at the Safe's own, or one below the owner count where
+      that would leave every owner needed. What is filled in is checked as
+      it is typed against the Safe as verified (`SafeSettingsChange.problem`):
+      an address that is no owner's (zero, the list sentinel `0x1`, the Safe
+      itself), an owner already, an owner or module no longer there, the
+      only owner removed, a threshold out of range or unchanged, and the
+      n-of-n above one the owner's ruling refuses (2026-10-18, #54; 17's
+      `NeedsRecoveryModule`), each said under it with Review greyed out.
+      Removing or replacing an owner held here says what it does to this
+      device's part: it signs with its other owners held here only, or,
+      with none left, the Safe becomes watch-only here. A module disabled
+      and the guard removed carry 17's warnings.
+    - Review proposes it from verified state: the Safe checked as a
+      one-shot check (17's wait), the change checked against it again, the
+      call the Safe's own function on itself with no ether, the entry before
+      an owner or module removed or replaced named from its verified list,
+      at the Safe's next nonce as 16's Send finds it, and run as a verified
+      call from the Safe to itself, which a revert stops. A change queued
+      before it on this device that changes the settings too is said: this
+      one is built against the lists as they are now, and its execution's
+      verified run says whether it still goes through. The review, its
+      minute, its refresh, the signature (the owner held here who signs,
+      the unlock of 8, the Safe checked again first) and a request the queue
+      cannot save follow 16's Send exactly; signed and queued, 17 opens for
+      it in place of the settings. The biometric prompt names the change in
+      full, its warning with it.
 
 ### Activity (issue #85)
 
@@ -860,21 +911,34 @@ read through the light client. Applied:
 
 ## Home-screen widget
 
-An Android home-screen widget with one exchange rate: its network's native
-currency in the display currency (screen 19), in USD where that is ETH
-itself, or none is chosen, or the network does not offer the one stored (as
-the screens have it) — "ETH · EUR", "€2,046.20" — with its change over
+An Android home-screen widget with one exchange rate, a pair chosen when it
+is placed (issue #178) in three steps:
+
+1. **The network**, among the networks that are on and have accounts (every
+   network that is on when none of those is).
+2. **The price**: the network's native currency first, then each price its
+   built-in tokens are priced by, each once and named with what it prices
+   ("ETH — Ether · WETH", "USDC — USDC · USDC.e" on Gnosis Chain, "EUR —
+   EURe"). Only a price with a feed pinned on that network is offered: a
+   token with no price, an added one included, has no rate.
+3. **The currency**: the display currency first, which the widget then
+   follows as the screens have it (screen 19; USD where that is the price
+   itself, none is chosen, or the network does not offer the one stored),
+   then USD and each display currency with a feed pinned on that network,
+   but the price itself.
+
+Choosing reads only the pinned tables, so it starts no light client. The
+widget shows the pair — "LINK · EUR", "€12.50" — with its change over
 the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
 "24h 0.00%" when it rounds to no move, and a line that names its network and
 dates it: "Sepolia · Verified Oct 21, 2:05 PM · may have changed since ·
-testnet prices". Each widget shows one network, asked for when it is placed
-among the networks that are on and have accounts (every network that is on
-when none of those is), and kept; another network
-is another widget, and one placed before networks shows Sepolia. A widget of
+testnet prices". The choice is kept; another pair is another widget. One
+placed before pairs shows its network's native currency in the display
+currency, and one placed before networks shows Sepolia's. A widget of
 a network that is off keeps its last rate and says "Gnosis Chain is off" in
 place of "may have changed since", and nothing reads it until the network is
-on (docs/networks.md, *The widget*). A refresh reads only the networks the
-placed widgets show, each waking alone. A tap on the
+on (docs/networks.md, *The widget*). A refresh reads only the pairs the
+placed widgets show, each network waking alone. A tap on the
 refresh button reads it now (below); a tap anywhere else opens the app. The desktop has no
 home screen, and iOS's widget (a WidgetKit extension) is still to come.
 
@@ -887,7 +951,8 @@ home screen, and iOS's widget (a WidgetKit extension) is still to come.
   fresh round on the path (a stale or unproven feed, an aggregator that took
   over since) shows "24h —", never a change against something else. The
   widget shows the last rate read, from a file of its own
-  (`last-exchange-rate.json`: a price and its times, public data only), with
+  (`last-exchange-rate.json`: a price and its times per pair, public data
+  only), with
   the date and time it was verified and marked as possibly changed since,
   as the one older answer CLAUDE.md's *Trust* allows is (a balance; a kept
   rate is not on that list, so this is for the owner to rule on); a stale

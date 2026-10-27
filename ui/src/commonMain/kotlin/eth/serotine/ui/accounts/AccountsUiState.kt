@@ -10,8 +10,9 @@ import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
-import eth.serotine.ui.components.NOT_CHECKED
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NOT_CHECKED
+import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.ensNameNote
@@ -110,7 +111,9 @@ sealed interface AccountsUiState {
  * that leaves out ([totalNote], "testnet prices"), and its [accounts]. [chainId] names the
  * network to the screen's actions. [blocked] says that this version can no longer follow the
  * network while others still can (docs/networks.md, *Upgrades and the update screen*): the
- * section is drawn in the error colour, with the way to the update.
+ * section is drawn in the error colour, with the way to the update. [staleAnchor] warns that its
+ * light client refuses to sync from a checkpoint past the weak-subjectivity window, with the way
+ * to catch up anyway (owner's request, 2026-10-24): drawn in the error colour too.
  */
 data class NetworkSection(
     val chainId: Long,
@@ -122,6 +125,7 @@ data class NetworkSection(
     val total: String? = null,
     val totalNote: String? = null,
     val blocked: String? = null,
+    val staleAnchor: StaleAnchorWarning? = null,
 )
 
 /**

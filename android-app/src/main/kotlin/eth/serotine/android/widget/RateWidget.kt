@@ -13,6 +13,7 @@ import eth.serotine.android.MainActivity
 import eth.serotine.android.R
 import eth.serotine.android.SerotineApplication
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.RatePair
 import eth.serotine.domain.model.RateSnapshot
 import eth.serotine.ui.ratewidget.Trend
 import eth.serotine.ui.ratewidget.rateWidgetContent
@@ -25,8 +26,9 @@ import eth.serotine.ui.ratewidget.rateWidgetContent
  * ([SerotineApplication.holdEngine]), and from its refresh button, which reads it now on any
  * network, a spinner in the button's place meanwhile ([SerotineApplication.refreshRateWidgetsNow]).
  * Placing the first one schedules the job and removing the last one cancels it. A tap anywhere
- * else opens the app. Each widget shows one network's rate, chosen when it is placed
- * ([RateWidgetConfigureActivity], kept in [RateWidgetNetworks]; docs/networks.md, *The widget*).
+ * else opens the app. Each widget shows one rate, of a network's native currency or of a price of
+ * its tokens, in a currency or the display currency, chosen when it is placed
+ * ([RateWidgetConfigureActivity], kept in [RateWidgetPairs]; docs/wallet-ux.md, *Home-screen widget*).
  */
 class RateWidget : AppWidgetProvider() {
 
@@ -46,14 +48,14 @@ class RateWidget : AppWidgetProvider() {
     }
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-        RateWidgetNetworks(context).forget(appWidgetIds)
-        // The networks the widgets left show are followed from here on, not the removed one's.
+        RateWidgetPairs(context).forget(appWidgetIds)
+        // The pairs the widgets left show are followed from here on, not the removed one's.
         (context.applicationContext as SerotineApplication).rateWidgetsChanged()
     }
 
     override fun onRestored(context: Context, oldWidgetIds: IntArray, newWidgetIds: IntArray) {
-        // A launcher restored from a backup gives the widgets new ids: each keeps its network.
-        RateWidgetNetworks(context).moved(oldWidgetIds, newWidgetIds)
+        // A launcher restored from a backup gives the widgets new ids: each keeps its pair.
+        RateWidgetPairs(context).moved(oldWidgetIds, newWidgetIds)
         (context.applicationContext as SerotineApplication).rateWidgetsChanged()
     }
 
@@ -76,32 +78,37 @@ class RateWidget : AppWidgetProvider() {
         /** Whether a widget is on a home screen: the only case anything is read for one. */
         fun placed(context: Context): Boolean = ids(context).isNotEmpty()
 
-        /** The networks the placed widgets show, each once: what a refresh reads. */
-        fun networks(context: Context): Set<Network> {
-            val networks = RateWidgetNetworks(context)
-            return ids(context).mapTo(LinkedHashSet()) { networks.of(it) }
+        /** The pairs the placed widgets show, each once: what a refresh reads. */
+        fun pairs(context: Context): Set<RatePair> {
+            val pairs = RateWidgetPairs(context)
+            return ids(context).mapTo(LinkedHashSet()) { pairs.of(it) }
         }
 
         /**
-         * Draws every widget placed with its network's rate in [rates] (none kept yet: absent or
-         * null), saying so where that network is not [on], with the spinner in the refresh button's
-         * place while a refresh the user asked for is on its way
+         * Draws every widget placed with its pair's rate in [rates] (none kept yet: absent or
+         * null), saying so where that pair's network is not [on], with the spinner in the refresh
+         * button's place while a refresh the user asked for is on its way
          * ([SerotineApplication.refreshShown]), unless [refreshing] says otherwise. Any thread.
          */
-        fun draw(context: Context, rates: Map<Network, RateSnapshot?>, on: Set<Network>, refreshing: Boolean? = null) {
+        fun draw(
+            context: Context,
+            rates: Map<RatePair, RateSnapshot?>,
+            on: Set<Network>,
+            refreshing: Boolean? = null,
+        ) {
             val manager = AppWidgetManager.getInstance(context)
-            val networks = RateWidgetNetworks(context)
+            val pairs = RateWidgetPairs(context)
             val spinner = refreshing ?: (context.applicationContext as SerotineApplication).refreshShown
             for (id in ids(context)) {
-                val network = networks.of(id)
-                manager.updateAppWidget(id, views(context, rates[network], network, network in on, spinner))
+                val pair = pairs.of(id)
+                manager.updateAppWidget(id, views(context, rates[pair], pair, pair.network in on, spinner))
             }
         }
 
         private fun views(
             context: Context,
             snapshot: RateSnapshot?,
-            network: Network,
+            pair: RatePair,
             on: Boolean,
             refreshing: Boolean,
         ): RemoteViews {
@@ -115,7 +122,7 @@ class RateWidget : AppWidgetProvider() {
                         DateUtils.FORMAT_NO_YEAR,
                 )
             }.orEmpty()
-            val content = rateWidgetContent(snapshot, network, readAt, on)
+            val content = rateWidgetContent(snapshot, pair, readAt, on)
             val change = when (content.trend) {
                 Trend.UP -> R.id.widget_change_up
                 Trend.DOWN -> R.id.widget_change_down

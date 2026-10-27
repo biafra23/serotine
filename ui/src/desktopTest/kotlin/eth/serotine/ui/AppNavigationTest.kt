@@ -99,6 +99,7 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
@@ -315,6 +316,9 @@ class AppNavigationTest {
         lightClient = object : LightClient {
             override val datesFinalizedBlocks = true
             override fun observeStatus(network: Network): Flow<LightClientStatus> = status
+        },
+        staleAnchorConsent = object : StaleAnchorConsent {
+            override fun syncPastStaleAnchor(network: Network) = Unit
         },
         networkUpgrades = object : NetworkUpgrades {
             override fun observeUpgrade(network: Network): Flow<NetworkUpgrade?> = report
@@ -561,6 +565,13 @@ class AppNavigationTest {
         rule.waitUntil { debugScreen.enabled.value }
         rule.onNodeWithText("Debug").performClick()
         rule.onNodeWithText("Myotis · requestAccount: ok, 34 ms").assertIsDisplayed()
+
+        // The filter typed outlives a tab switch, which pops the Debug screen.
+        rule.onNodeWithText("Filter").performTextInput("request")
+        rule.onNodeWithText("Accounts").performClick()
+        rule.onNodeWithText("Debug").performClick()
+        rule.onNodeWithText("request").assertIsDisplayed()
+        rule.onNodeWithText("Filter").performTextClearance()
 
         // Debug took Settings' place over the Accounts tab: back leaves it for the account.
         rule.runOnIdle { navController.single().popBackStack() }

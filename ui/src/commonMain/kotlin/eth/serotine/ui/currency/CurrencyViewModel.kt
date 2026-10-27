@@ -52,16 +52,6 @@ class CurrencyViewModel(
         }
     }
 
-    private fun nameOf(currency: DisplayCurrency): String = when (currency) {
-        DisplayCurrency.USD -> "US dollar"
-        DisplayCurrency.EUR -> "Euro"
-        DisplayCurrency.GBP -> "Pound sterling"
-        DisplayCurrency.CHF -> "Swiss franc"
-        DisplayCurrency.JPY -> "Japanese yen"
-        DisplayCurrency.ETH -> "Ether"
-        DisplayCurrency.BTC -> "Bitcoin"
-    }
-
     private companion object {
         const val NOT_SAVED = "The choice could not be saved. Nothing has changed."
         const val SET_ASIDE = "Your saved choice of currency was damaged and has been set aside: values are in USD."

@@ -639,6 +639,16 @@ user to update — before it, and, after it, nothing else.
   shows that state (`CATCHING_UP`, `STALE_ANCHOR`, an unproven read) instead
   of filling in from anywhere else. There is no RPC-provider fallback, in
   any build type.
+- **A stale anchor is passed only on the user's word** (CLAUDE.md, *Trust*,
+  owner's request of 2026-10-24). A light client parked in `STALE_ANCHOR`
+  (its newest anchor, the embedded checkpoint or the persisted snapshot,
+  older than the weak-subjectivity bound) stays parked until the user
+  confirms Accounts' "Catch up anyway…" for that network:
+  `SyncPastStaleAnchor` checks it is still parked, and the host calls the
+  chain's `acceptStaleAnchor()` on its control lane. The consent lasts for
+  the run (the engine never persists it), so a restart that still finds the
+  anchor stale asks again. The bound (`setWsBoundPeriods`) keeps the
+  engine's default.
 - **A parameter that can change the answer is applied or refused**, never
   accepted and ignored — the Myotis rule, and the reason a port's contract
   spells out what each argument does.
