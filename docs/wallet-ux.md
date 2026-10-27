@@ -21,6 +21,14 @@ the text wins.
 
 ## Rules every screen follows
 
+- **Two views** (owner's decisions, 2026-10-26, mockups approved
+  2026-10-27). Simple mode is the default in every build;
+  docs/simple-ui.md describes it, with its own mockups H1 to T1. The
+  screens on this page are Detailed view, which Settings → Advanced →
+  *Detailed view* turns on. Both views draw the same UiState, and every rule
+  below holds in both, except where a rule says what simple mode does
+  instead. A screen without a simple version draws its detailed one in both.
+
 - **Each account on its network, and named.** Ethereum and Gnosis Chain
   beside Sepolia, one chain per account (owner ruling, 2026-10-22; it
   replaces "Sepolia only" of 2026-10-15). There is no current network: a
@@ -34,7 +42,8 @@ the text wins.
   ("not available", the light client's state); it never shows a guess, a
   value from another source, or an earlier value as if it were current. A
   value the user acts on (a balance on Send, a Safe's owners and threshold,
-  a receipt) names the block it was verified at.
+  a receipt) names the block it was verified at. In simple mode it names its
+  age instead ("Updated 2 min ago"), and the block is under *Details*.
 - **The light client's state is in sight wherever it decides something**
   (owner's request, 2026-10-20). Every screen whose content or actions
   depend on what the light client can verify draws its status strip (as on
@@ -45,7 +54,9 @@ the text wins.
   token list Settings opens and Add token (18, 20). A screen that needs
   nothing verified draws none: Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
   Security (21) and Display currency (19). Settings itself (18) keeps its
-  own Light client row instead of the strip.
+  own Light client row instead of the strip. Simple mode draws no strip: a
+  freshness line, a banner when a network cannot be checked, and each
+  network's state in Settings take its place (docs/simple-ui.md).
 - **A balance last verified is shown as such** (owner's request,
   2026-10-19). While the light client has no head it can read at (asleep,
   catching up, its verified head too old, or no peer serving state proofs),
@@ -58,6 +69,16 @@ the text wins.
   as syncing. While the trust anchor is stale, a proof fails or the engine
   refuses, the row says that and shows no amount from before, and no other
   value (an address's kind, a Safe's owners, a price) is shown last known.
+- **In simple mode a balance may be read a while ago** (owner's decisions,
+  2026-10-26). On a network without block access lists (EIP-7928; Ethereum
+  and Gnosis Chain today), simple mode proves balances when a screen opens
+  and on pull-to-refresh, not at every head. While the light client
+  verifies, such a balance shows its age and counts in totals, at the price
+  read with it, for up to an hour; older, it is shown as last verified
+  (the rule above). A network with them (Sepolia) updates live. Nothing
+  acts on an aged balance: a quote, a review and a signature read fresh
+  state, and Send proves the balance it offers (Max included) when it
+  opens.
 - **Amounts are token units.** An amount is entered, reviewed and signed in
   the token's own units. Fiat values are display-only (owner ruling,
   2026-10-16, *Prices* below): a hint next to an amount, a total, a sort key,
@@ -69,7 +90,9 @@ the text wins.
 - **Every address has a blockie.** The ethereum/blockies identicon (seeded
   with the lowercase address) appears next to every address on screen: rows,
   headers, from and to, review, owners, detection, receive. A Safe's blockie
-  carries a `t/n` overlay: its threshold over its owner count. An address is
+  carries a `t/n` overlay: its threshold over its owner count. In simple
+  mode an account's blockie also carries its network's icon, the network
+  named in text beside it too (owner's request, 2026-10-27). An address is
   shown EIP-55 checksummed, shortened to `0x1234…abcd` where space is short
   and in full wherever the user confirms it.
 - **An address typed or pasted is checked at the input.** A mixed-case
@@ -808,9 +831,11 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
     for now) · Light client (status) · Debug build (the debug Android app
     only: *Allow screen recording*, rule 8 of docs/keys-and-signing.md) ·
-    Developer (*Debug tab*, a switch in every build: 27; turning it off
-    empties the log) · About. Tokens opens the list of every token the
-    wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
+    Advanced (*Detailed view*, off by default, docs/simple-ui.md; and under
+    it, only while it is on, *Debug tab*, a switch in every build: 27;
+    turning it off empties the log) · About. While Detailed view is off,
+    the screens are simple mode's and the Debug tab is hidden, its switch
+    kept. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the
