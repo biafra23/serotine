@@ -166,9 +166,10 @@ data class UnreachableNetwork(val chainId: Long, val title: String, val text: St
  * no longer follow the account's network, which greys out its Send.
  *
  * What simple mode's row says (docs/simple-ui.md, H1): its [network] for the blockie's icon, the
- * line under its name ([networkLine]: "Ethereum", "Gnosis Chain · Safe", "Sepolia · test network"), how old a balance from before is ([ageNote], "3 h ago · may have
- * changed"; "Ethereum is off"), and the account's [accountTotal] in the display currency, every
- * priced holding together ("€12,025.55"; "no real value" on a testnet; null while not valued).
+ * line under its name ([networkLine]: "Ethereum", "Gnosis Chain · Safe", "Sepolia · test
+ * network"), how old a balance from before is ([ageNote], "3 h ago · may have changed"; "Ethereum
+ * is off"), and the account's [accountTotal] in the display currency, every priced holding
+ * together ("€12,025.55"; "no real value" on a testnet; null while not valued).
  */
 data class AccountItem(
     val label: String,

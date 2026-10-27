@@ -150,8 +150,11 @@ class AccountsViewModel(
         .map { inputs ->
             with(inputs) {
                 stateOf(portfolio, safes, ensNames, lightClients, staleAnchors, on, upgrades).let { state ->
-                    if (state is AccountsUiState.Ready) simple(state, portfolio, on, live, refresh).copy(message = message)
-                    else state
+                    if (state is AccountsUiState.Ready) {
+                        simple(state, portfolio, on, live, refresh).copy(message = message)
+                    } else {
+                        state
+                    }
                 }
             }
         }
@@ -207,7 +210,8 @@ class AccountsViewModel(
             else -> null
         }
         val unreachable = held.mapNotNull { network ->
-            val before = readings.filterKeys { it.network == network }.values.filterIsInstance<BalanceReading.LastKnown>()
+            val before = readings.filterKeys { it.network == network }.values
+                .filterIsInstance<BalanceReading.LastKnown>()
             if (before.isEmpty()) return@mapNotNull null
             val confirmed = before.mapNotNull { it.asOf }.minOrNull()
             UnreachableNetwork(

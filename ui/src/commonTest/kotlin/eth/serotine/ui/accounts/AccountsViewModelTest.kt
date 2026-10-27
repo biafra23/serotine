@@ -707,7 +707,10 @@ class AccountsViewModelTest {
             BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = now - 120)
         runCurrent()
 
-        assertEquals("Updated 2 min ago · pull down to refresh", (viewModel.uiState.value as AccountsUiState.Ready).freshness)
+        assertEquals(
+            "Updated 2 min ago · pull down to refresh",
+            (viewModel.uiState.value as AccountsUiState.Ready).freshness,
+        )
     }
 
     @Test

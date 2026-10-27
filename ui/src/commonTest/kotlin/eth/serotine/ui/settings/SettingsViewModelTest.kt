@@ -125,7 +125,14 @@ class SettingsViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(
             listOf(
-                NetworkRow(1, "Ethereum", on = false, "No account · Off", LightClientHealth.NOT_RUNNING, simpleLine = "Off"),
+                NetworkRow(
+                    1,
+                    "Ethereum",
+                    on = false,
+                    "No account · Off",
+                    LightClientHealth.NOT_RUNNING,
+                    simpleLine = "Off",
+                ),
                 NetworkRow(
                     100,
                     "Gnosis Chain",
