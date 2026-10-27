@@ -38,9 +38,10 @@ sealed interface TokenBalanceReading {
 
     /**
      * [units] of the token, from a verified call against the state of block [blockNumber]
-     * (null when the engine did not say which block it ran against).
+     * (null when the engine did not say which block it ran against), made at a verified head
+     * produced at [provenAt] (unix seconds; null when unknown), as [BalanceReading.Verified] says.
      */
-    data class Verified(val units: TokenUnits, val blockNumber: Long?) : TokenBalanceReading
+    data class Verified(val units: TokenUnits, val blockNumber: Long?, val provenAt: Long? = null) : TokenBalanceReading
 
     /**
      * The contract did not answer `balanceOf` as a token does: the verified call reverted or

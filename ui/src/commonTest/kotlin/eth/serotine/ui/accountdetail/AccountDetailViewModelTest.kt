@@ -49,11 +49,13 @@ import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeFreshness
 import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.FakeNames
@@ -140,6 +142,8 @@ class AccountDetailViewModelTest {
             error("not used by these tests")
     }
 
+    private val freshness = FakeFreshness()
+
     private fun viewModel(address: Address = daily.address) = AccountDetailViewModel(
         AccountId(Network.SEPOLIA, address),
         ObserveAccount(accounts),
@@ -159,6 +163,7 @@ class AccountDetailViewModelTest {
         SetNetworkEnabled(networks),
         upgradeWarnings(networks, accounts, upgradeReports, upgradeStatus),
         HasSwapVenue(uniswap),
+        RefreshNetworkData(freshness),
         formatTime = { "<$it>" },
     )
 
@@ -863,6 +868,7 @@ class AccountDetailViewModelTest {
             SetNetworkEnabled(networks),
             upgradeWarnings(networks, accounts),
             HasSwapVenue(uniswap),
+            RefreshNetworkData(freshness),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -892,5 +898,15 @@ class AccountDetailViewModelTest {
         val ready = viewModel.uiState.value as AccountDetailUiState.Ready
         assertEquals("Not a recognised Safe", ready.kindNote)
         assertEquals(Control.WATCH_ONLY, ready.control)
+    }
+
+    @Test
+    fun openingTheAccountProvesItsNetworkAgainAndSoDoesARefresh() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        assertEquals(listOf(Network.SEPOLIA), freshness.refreshed)
+
+        viewModel.refresh()
+        assertEquals(listOf(Network.SEPOLIA, Network.SEPOLIA), freshness.refreshed)
     }
 }

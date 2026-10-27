@@ -35,6 +35,7 @@ import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
+import eth.serotine.domain.usecase.FollowInterfaceMode
 import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
@@ -193,6 +194,16 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following the networks stopped: ${e::class.simpleName}")
             }
         }
+        LaunchedEffect(Unit) {
+            // Values proven on demand in simple mode, at every head in Detailed view (docs/simple-ui.md).
+            try {
+                FollowInterfaceMode(interfaceMode, node)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following the view stopped: ${e::class.simpleName}")
+            }
+        }
         // Each network's upgrade reports, while its light client runs (a network that is off or
         // idle reports none).
         Network.entries.forEach { network ->
@@ -311,6 +322,7 @@ private fun openWallet(dataDir: File) {
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
                 staleAnchorConsent = node,
+                networkFreshness = node,
                 networkUpgrades = node.networkUpgrades,
                 knownUpgrades = knownUpgrades,
                 transactionInputs = node.transactionInputs,

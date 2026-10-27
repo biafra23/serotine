@@ -27,6 +27,7 @@ import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
+import eth.serotine.domain.usecase.FollowInterfaceMode
 import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
@@ -202,6 +203,7 @@ class SerotineWallet {
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             staleAnchorConsent = node,
+            networkFreshness = node,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
             transactionInputs = node.transactionInputs,
@@ -265,6 +267,10 @@ class SerotineWallet {
             reportingFailure("following the networks") {
                 FollowNetworks(networkSettings, accounts, networkDemand, node)()
             }
+        }
+        // Values proven on demand in simple mode, at every head in Detailed view (docs/simple-ui.md).
+        scope.launch {
+            reportingFailure("following the view") { FollowInterfaceMode(interfaceMode, node)() }
         }
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {

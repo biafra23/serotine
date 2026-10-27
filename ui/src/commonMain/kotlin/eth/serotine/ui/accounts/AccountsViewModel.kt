@@ -16,6 +16,7 @@ import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.Portfolio
+import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
@@ -69,11 +70,21 @@ class AccountsViewModel(
     private val setNetworkEnabled: SetNetworkEnabled,
     observeUpgradeWarnings: ObserveUpgradeWarnings,
     private val syncPastStaleAnchor: SyncPastStaleAnchor,
+    /** Proves every network's balances and prices again: as the list opens, and on [refresh]. */
+    private val refreshNetworkData: RefreshNetworkData,
     /** Now, in unix seconds: what the sections date their head blocks against. */
     private val clock: () -> Long = ::epochSecondsNow,
     /** How the banner dates an upgrade, and a row a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
+
+    init {
+        // A value is read when its screen opens (docs/simple-ui.md); in Detailed view, at every head anyway.
+        refresh()
+    }
+
+    /** Proves every network's balances and prices again now: what pulling the list down asks. */
+    fun refresh() = refreshNetworkData(Network.entries.toSet())
 
     /** Each network's light client status, in `Network` order: one subscription each, shared by the two flows below. */
     private val clientStatuses = Network.entries.map { network ->
