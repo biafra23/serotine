@@ -250,12 +250,15 @@ internal fun SigningRequest.unsignable(): SafeTxRefusal? {
 internal fun SigningRequest.withoutRecovery(state: SafeState): SafeTxRefusal? = withoutRecovery(state.owners.size)
 
 /** [withoutRecovery] for a Safe of [owners] owners now. */
-internal fun SigningRequest.withoutRecovery(owners: Int): SafeTxRefusal? {
-    val change = (SafeTxAction.of(safe, tx) as? SafeTxAction.SettingsChange)?.change ?: return null
-    val (after, threshold) = when (change) {
-        is SafeSettingsChange.ThresholdChanged -> owners to change.threshold
-        is SafeSettingsChange.OwnerRemoved -> owners - 1 to change.threshold
-        is SafeSettingsChange.OwnerAdded -> owners + 1 to change.threshold
+internal fun SigningRequest.withoutRecovery(owners: Int): SafeTxRefusal? =
+    (SafeTxAction.of(safe, tx) as? SafeTxAction.SettingsChange)?.change?.withoutRecovery(owners)
+
+/** [SigningRequest.withoutRecovery] for [this] change of a Safe of [owners] owners now. */
+internal fun SafeSettingsChange.withoutRecovery(owners: Int): SafeTxRefusal.NeedsRecoveryModule? {
+    val (after, threshold) = when (this) {
+        is SafeSettingsChange.ThresholdChanged -> owners to threshold
+        is SafeSettingsChange.OwnerRemoved -> owners - 1 to threshold
+        is SafeSettingsChange.OwnerAdded -> owners + 1 to threshold
         else -> return null
     }
     return SafeTxRefusal.NeedsRecoveryModule(after).takeIf { after > 1 && threshold >= after.toLong() }

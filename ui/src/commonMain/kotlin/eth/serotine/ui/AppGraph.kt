@@ -93,6 +93,7 @@ import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.PlaceCowOrder
 import eth.serotine.domain.usecase.PlanSafe
+import eth.serotine.domain.usecase.ProposeSafeSettingsChange
 import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.ProposeSafeTx
 import eth.serotine.domain.usecase.QuoteCowCancellation
@@ -145,6 +146,7 @@ import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
 import eth.serotine.ui.safeimport.SafeImportViewModel
 import eth.serotine.ui.safepropose.SafeProposeViewModel
+import eth.serotine.ui.safesettings.SafeSettingsViewModel
 import eth.serotine.ui.safeswap.SafeSwapViewModel
 import eth.serotine.ui.safetx.SafeTxViewModel
 import eth.serotine.ui.security.SecurityViewModel
@@ -380,6 +382,17 @@ class AppGraph(
             safe.network,
         ),
         signSafeTx(safe.network),
+    )
+
+    /** The settings of the Safe at [safe], and the changes of them its owners held here propose. */
+    fun safeSettingsViewModel(safe: AccountId): SafeSettingsViewModel = SafeSettingsViewModel(
+        safe,
+        ObserveAccounts(accounts),
+        observeSafe(),
+        DescribeKeyStore(keys),
+        ProposeSafeSettingsChange(observeSafe(), transactionInputs, safeTxQueue, safe.network),
+        signSafeTx(safe.network),
+        EncodeSigningRequest(signingRequests),
     )
 
     /** Import a signing request for the Safe at [safe]. */

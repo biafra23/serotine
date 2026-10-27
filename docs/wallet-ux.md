@@ -419,7 +419,9 @@ upgrades*).
 16. **Safe detail**: as 4, with the tabs Assets | Activity | Owners |
     Queue (n). The owners are shown with blockies, a "this device" mark
     on the ones held here, and the threshold; the modules and guard
-    follow them.
+    follow them. Safe settings, above them, opens 28; it is greyed out
+    while the Safe's network is off (a tap offers Turn on) or this version
+    can no longer follow it, as Send is.
     - Queue lists this device's pending transactions in nonce order, from
       the Safe's verified nonce on: one whose nonce the Safe has passed is
       gone (`ObserveSafeTxQueue`), and the file drops it at the next
@@ -634,6 +636,53 @@ upgrades*).
       a signature already shared stays valid elsewhere until the Safe's
       nonce passes it. One the Safe's nonce has passed says it ran, or that
       another transaction used its nonce.
+
+28. **Safe settings** (issue #183), from the Owners tab of 16: the Safe's
+    settings as its verified storage holds them, and the changes of them
+    an owner held here proposes, each a Safe transaction its owners sign
+    like any other (`ProposeSafeSettingsChange`).
+    - Shown: the owners (blockies, "This device" on the ones held here),
+      the threshold, the modules, the guard and, from 1.5.0, the module
+      guard, with the block they were verified at. Each owner offers
+      Replace and Remove; below them Add an owner, Change the threshold,
+      Disable for each module and Remove the guard where there is one.
+      While no owner of the Safe is held here every one of them is greyed
+      out, and a tap says why (owner ruling, 2026-10-18, #55). Enable a
+      module and Update the Safe's version are shown greyed out too, and a
+      tap says why they are never offered here: a module enabled is refused
+      (owner ruling, 2026-10-18, on #54), and a version update runs a
+      migration contract's code as the Safe, a delegate call, which this
+      wallet does not sign (#57) until a migration contract is pinned.
+    - Each change has its form: the owner it removes or replaces; the new
+      owner's address, typed or picked from the wallet's accounts on the
+      Safe's network that are not owners yet (an address only, no name); and
+      the threshold it leaves, a stepper from 1 to the owners the Safe then
+      has, starting at the Safe's own, or one below the owner count where
+      that would leave every owner needed. What is filled in is checked as
+      it is typed against the Safe as verified (`SafeSettingsChange.problem`):
+      an address that is no owner's (zero, the list sentinel `0x1`, the Safe
+      itself), an owner already, an owner or module no longer there, the
+      only owner removed, a threshold out of range or unchanged, and the
+      n-of-n above one the owner's ruling refuses (2026-10-18, #54; 17's
+      `NeedsRecoveryModule`), each said under it with Review greyed out.
+      Removing or replacing an owner held here says what it does to this
+      device's part: it signs with its other owners held here only, or,
+      with none left, the Safe becomes watch-only here. A module disabled
+      and the guard removed carry 17's warnings.
+    - Review proposes it from verified state: the Safe checked as a
+      one-shot check (17's wait), the change checked against it again, the
+      call the Safe's own function on itself with no ether, the entry before
+      an owner or module removed or replaced named from its verified list,
+      at the Safe's next nonce as 16's Send finds it, and run as a verified
+      call from the Safe to itself, which a revert stops. A change queued
+      before it on this device that changes the settings too is said: this
+      one is built against the lists as they are now, and its execution's
+      verified run says whether it still goes through. The review, its
+      minute, its refresh, the signature (the owner held here who signs,
+      the unlock of 8, the Safe checked again first) and a request the queue
+      cannot save follow 16's Send exactly; signed and queued, 17 opens for
+      it in place of the settings. The biometric prompt names the change in
+      full, its warning with it.
 
 ### Activity (issue #85)
 

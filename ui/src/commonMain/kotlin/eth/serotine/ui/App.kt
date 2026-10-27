@@ -70,6 +70,7 @@ import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
 import eth.serotine.ui.safeimport.SafeImportRoute
 import eth.serotine.ui.safepropose.SafeProposeRoute
+import eth.serotine.ui.safesettings.SafeSettingsRoute
 import eth.serotine.ui.safeswap.SafeSwapRoute
 import eth.serotine.ui.safetx.SafeTxRoute
 import eth.serotine.ui.security.SecurityRoute
@@ -286,6 +287,7 @@ private fun Destinations(
                     onAddOnNetwork = { navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex)) },
                     onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
                     onImportRequest = { navController.importRequest(account) },
+                    onSafeSettings = { navController.safeSettings(account) },
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                 )
             }
@@ -583,6 +585,20 @@ private fun Destinations(
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_SWAP_ROUTE, inclusive = true) }
             }
         }
+        composable(SAFE_SETTINGS_ROUTE) { entry ->
+            val account = entry.account()
+            if (account != null) {
+                SafeSettingsRoute(
+                    viewModel = viewModel { graph.safeSettingsViewModel(account) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) },
+                    // Signed and queued: the change's screen, and back from it to the Safe.
+                    onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_SETTINGS_ROUTE) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) }
+            }
+        }
         composable(SAFE_IMPORT_ROUTE) { entry ->
             val account = entry.account()
             if (account != null) {
@@ -794,6 +810,13 @@ private fun NavController.importRequest(safe: AccountId) {
     navigate("${Destination.SAFE}/${safe.route}/${Destination.IMPORT}")
 }
 
+/** Opens the settings of the Safe [safe]. */
+private fun NavController.safeSettings(safe: AccountId) {
+    // A second tap while the first one's screen is opening: one screen, the first one asked for.
+    if (currentDestination?.route == SAFE_SETTINGS_ROUTE) return
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.SAFE_SETTINGS}")
+}
+
 /**
  * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe [safe]; in place of the
  * destination [replacing] when set (the proposal or import that led to it), so back from it returns
@@ -899,6 +922,7 @@ private object Destination {
     const val SAFE_TX = "tx"
     const val PROPOSE = "propose"
     const val IMPORT = "import"
+    const val SAFE_SETTINGS = "settings"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -970,6 +994,9 @@ private const val SAFE_PROPOSE_ROUTE =
 /** Swap from a Safe: its Safe transactions proposed, selling a token or not, or a queued swap again. */
 private const val SAFE_SWAP_ROUTE =
     "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SWAP}?$ASSET={$ASSET}&$REPLACING={$REPLACING}"
+
+/** A Safe's settings, and the changes of them proposed. */
+private const val SAFE_SETTINGS_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SAFE_SETTINGS}"
 
 /** Import a signing request for a Safe. */
 private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.IMPORT}"
