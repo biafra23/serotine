@@ -432,4 +432,14 @@ class SettingsViewModelTest {
         assertFalse(viewModel.uiState.value.detailedView)
         assertFalse(viewModel.uiState.value.detailedViewNotSaved)
     }
+
+    @Test
+    fun simpleModeSaysAStaleHeadCannotCheckAsHomeDoes() = runTest {
+        val viewModel = viewModel()
+        status.value = LightClientStatus.WaitingForHead(headAgeSeconds = 600)
+        runCurrent()
+
+        assertEquals("Test network · Can't check right now", viewModel.sepolia.simpleLine)
+    }
 }
+

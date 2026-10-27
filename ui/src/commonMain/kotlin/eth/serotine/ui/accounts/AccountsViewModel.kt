@@ -9,6 +9,8 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
@@ -147,8 +149,8 @@ class AccountsViewModel(
     }
         // Simple mode's ages ("Updated 2 min ago") are re-dated every second while one is shown.
         .redatedWhile { inputs ->
-            inputs.portfolio.values.values.any {
-                (it.native as? BalanceReading.Verified)?.provenAt != null || it.native is BalanceReading.LastKnown
+            inputs.portfolio.values.values.any { value ->
+                value.provenAts().isNotEmpty() || value.native is BalanceReading.LastKnown
             }
         }
         .map { inputs ->
@@ -203,10 +205,12 @@ class AccountsViewModel(
         val accounts = (portfolio.accounts as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network in on }
         val held = Network.entries.filter { network -> accounts.any { it.network == network } }
         val readings = accounts.associateWith { portfolio.values[it.id]?.native }
-        // How old the oldest proof shown is, on the networks that are not live: what "Updated" says.
+        // How old the oldest proof shown is, on the networks that are not live, a token's among them:
+        // what "Updated" says.
         val notLive = held.filter { !live[it.ordinal] }
-        val oldest = readings.filterKeys { it.network in notLive }.values
-            .mapNotNull { (it as? BalanceReading.Verified)?.provenAt }.minOrNull()
+        val oldest = accounts.filter { it.network in notLive }
+            .flatMap { portfolio.values[it.id]?.provenAts().orEmpty() }
+            .minOrNull()
         oldestShown = oldest
         // Until the oldest proof shown is a newer one, for 15 s at most; nothing to wait for on live networks.
         val refreshing = refresh?.oldest != null && notLive.isNotEmpty() && oldest == refresh.oldest &&
@@ -222,14 +226,16 @@ class AccountsViewModel(
         }
         val unreachable = held.mapNotNull { network ->
             val client = lightClients[network.ordinal]
+            // A stale checkpoint or a network this version can no longer follow has its own warning, with
+            // its own way out (the user's "Catch up anyway…", an update): no "the app keeps trying" here.
+            val alarmed = state.sections.any {
+                it.chainId == network.chainId && (it.staleAnchor != null || it.blocked != null)
+            }
+            if (alarmed) return@mapNotNull null
             // Balances from before, or a light client that has no fresh head to read at (STALE) or has
-            // stopped short of one; a stale checkpoint has its own warning, and a client on its way
-            // (starting, catching up) is not stuck.
-            val anchored = state.sections.any { it.chainId == network.chainId && it.staleAnchor != null }
-            val stuck = !anchored && (
-                client.health == LightClientHealth.STALE ||
-                    (client.health == LightClientHealth.NOT_VERIFIED && !client.working)
-                )
+            // stopped short of one; a client on its way (starting, catching up) is not stuck.
+            val stuck = client.health == LightClientHealth.STALE ||
+                (client.health == LightClientHealth.NOT_VERIFIED && !client.working)
             val shown = before.getValue(network)
             if (shown.isEmpty() && !stuck) return@mapNotNull null
             val confirmed = shown.mapNotNull { it.asOf }.minOrNull()
@@ -418,3 +424,9 @@ class AccountsViewModel(
                 "account can be added until it can be read. Serotine keeps trying."
     }
 }
+
+/** The times of the verified heads this account's proofs shown were made at: its native balance's and each token's. */
+private fun AccountValue.provenAts(): List<Long> =
+    listOfNotNull((native as? BalanceReading.Verified)?.provenAt) +
+        tokens.mapNotNull { (it.holding.reading as? TokenBalanceReading.Verified)?.provenAt }
+
