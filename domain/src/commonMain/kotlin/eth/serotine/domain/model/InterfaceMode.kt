@@ -8,6 +8,6 @@ enum class InterfaceMode {
     /** The default in every build: ages instead of blocks, a freshness line instead of the strip. */
     SIMPLE,
 
-    /** Detailed view, opt-in in Settings: the blocks, proofs, fee levels and the light client's state. */
+    /** Detailed view, opt-in in Settings: the light client's state, blocks and proofs on every screen. */
     DETAILED,
 }
