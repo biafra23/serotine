@@ -357,7 +357,7 @@ class MyotisHost private constructor(
         /** When this network's balances and prices are proven again: at every head, or on demand in simple mode. */
         val schedule = ProofSchedule(live = activity::hasAccountCoverage)
 
-        /** Whether this network's values update live: a readable verified head whose blocks carry block access lists. */
+        /** Whether this network's values update live: a readable verified head with block access lists. */
         fun live(): Boolean {
             val head = (chain.snapshot() as? EngineSnapshot.Running)?.readableHead ?: return false
             return activity.hasAccountCoverage(head)
