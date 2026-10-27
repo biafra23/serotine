@@ -150,9 +150,9 @@ class AccountActivity(
             // Simple mode's words for the same, with no block number (docs/simple-ui.md, H5): every
             // gap the detailed coverage names is named here too.
             val histories = parts.map { it.second }
-            val since = if (deployedHere) "since it was deployed from this device" else "since you added it"
+            val sinceWhen = if (deployedHere) "since it was deployed from this device" else "since you added it"
             val simple = listOfNotNull(
-                "Activity $since.",
+                "Activity $sinceWhen.",
                 "Older activity is still being checked.".takeIf {
                     histories.any { it is IndexedHistory.Checking || (it as? IndexedHistory.Read)?.complete == false }
                 },
