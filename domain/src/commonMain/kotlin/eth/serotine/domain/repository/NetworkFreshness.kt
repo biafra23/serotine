@@ -20,8 +20,9 @@ interface NetworkFreshness {
     fun observeLive(network: Network): Flow<Boolean>
 
     /**
-     * Proves [network]'s balances and prices again now, for every screen that shows them. Does
-     * nothing for a network whose light client does not run. Never fails.
+     * Proves [network]'s balances and prices again now, for every screen that shows them. On a
+     * network whose light client does not run, no proof is made now: a proof held from before it
+     * stopped is proven again once it runs. Never fails.
      */
     fun refresh(network: Network)
 

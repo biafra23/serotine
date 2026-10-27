@@ -236,10 +236,12 @@ internal class ProvenReads<K, T>(
             val running = proofsLock.withLock {
                 proofs[key]?.let { kept ->
                     if (head - kept.head in 0 until keptForHeads(kept.reading.value)) {
-                        // Made at this head, so a refresh asked since is answered by it: no new proof
-                        // at the next head on its account.
-                        schedule?.refreshes?.value?.takeIf { it != kept.refreshes }?.let {
-                            proofs[key] = Kept(kept.head, kept.headTimestamp, it, kept.reading)
+                        // Made at this very head, so a refresh asked since is answered by it: no new
+                        // proof at the next head on its account. One from an earlier head never is.
+                        if (head == kept.head) {
+                            schedule?.refreshes?.value?.takeIf { it != kept.refreshes }?.let {
+                                proofs[key] = Kept(kept.head, kept.headTimestamp, it, kept.reading)
+                            }
                         }
                         return kept.reading
                     }
