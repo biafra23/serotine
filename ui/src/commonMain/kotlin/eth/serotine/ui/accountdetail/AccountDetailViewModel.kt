@@ -475,6 +475,8 @@ class AccountDetailViewModel(
             val ages = built.rows.associate { it.asset to ageNote(it.asOf, it.asset.lastKnown != null, off, now) }
             val oldest = built.proven.minOrNull().takeUnless { live }
             oldestShown = oldest
+            // A refresh's window is over: forgotten, so that nothing is re-dated on its account any more.
+            if (refresh != null && now - refresh.at >= REFRESH_SHOWN_SECONDS) lastRefresh.compareAndSet(refresh, null)
             val refreshing = !live && refresh?.oldest != null && oldest == refresh.oldest &&
                 now - refresh.at < REFRESH_SHOWN_SECONDS
             val freshness = when {
@@ -502,7 +504,8 @@ class AccountDetailViewModel(
             // A network this version can no longer follow says so on its greyed-out actions: an update
             // is the way out, not the app trying again.
             if (off != null || (built.state as? AccountDetailUiState.Ready)?.networkBlocked == true) return null
-            val client = LightClientItem.from(status, now)
+            // Decided here: the banner's own closing sentence says where (Settings → Networks).
+            val client = LightClientItem.from(status, now, decidedHere = true)
             val stuck = client.health == LightClientHealth.STALE ||
                 (client.health == LightClientHealth.NOT_VERIFIED && !client.working)
             if (!built.fromBefore && !stuck) return null
