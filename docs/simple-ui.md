@@ -99,15 +99,25 @@ change what it trusts.
 ## Freshness and pull-to-refresh
 
 - **Live or not.** A domain port `NetworkFreshness` says, per network,
-  whether it is live (the engine has BAL account coverage at its verified
-  head: `AddressActivity.hasAccountCoverage`) and the time of that head.
-  `MyotisHost` adapts it.
-- **Refreshing.** A use case `RefreshNetworkData(network)` proves the
-  balances and prices of a screen's accounts again, now. In simple mode, on
-  a network that is not live, the data layer proves them when the screen
-  opens and on refresh, and not at every head. A live network keeps
-  updating: it reads again only the accounts its block access list says
-  were touched.
+  whether it is live: the engine has BAL account coverage at its readable
+  verified head (`AddressActivity.hasAccountCoverage`). `MyotisHost`
+  implements it.
+- **Refreshing.** The use case `RefreshNetworkData(networks)` proves the
+  balances and prices of those networks again, now, for every screen that
+  shows them, and wakes their polls at once. Home refreshes every network as
+  it opens, an account its own network, and both offer `refresh()` for
+  pull-to-refresh.
+- **On demand.** Each network has a `ProofSchedule`, which its native
+  balances, token balances and prices share. In simple mode
+  (`FollowInterfaceMode`, run by the hosts), on a network that is not live,
+  a proof stands across heads until a refresh or until it is an hour old,
+  and is then made again. A live network keeps its per-head reads: its block
+  access lists say which accounts a head touched, so only those are read
+  again. Detailed view proves at every head, as before.
+- **How old a value is.** A balance reading carries the time of the
+  verified head it was proven at (`BalanceReading.Verified.provenAt`,
+  `TokenBalanceReading.Verified.provenAt`), so a screen can say how old it
+  is.
 - **What the screen says.** `FreshnessItem` is the display-ready line:
   - "Live" on a network with BALs;
   - "Updated 2 min ago · pull down to refresh", the age of the oldest value
@@ -251,8 +261,10 @@ merge.
 1. The mode setting: the port, the adapter, the hosts, the Settings switch,
    and each Route choosing its screen.
 2. Freshness and refresh: `NetworkFreshness`, `RefreshNetworkData`, the data
-   layer's on-demand reads, `FreshnessItem`, pull-to-refresh.
-3. Simple Home, Account, Settings and Receive (H1 to H6, T1).
+   layer's on-demand reads, the proof's time in the readings, and the
+   refresh on open and `refresh()` in the Home and account ViewModels.
+3. Simple Home, Account, Settings and Receive (H1 to H6, T1), with
+   `FreshnessItem` and pull-to-refresh, where they are first drawn.
 4. Simple Send (S1 to S3).
 5. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
 6. The remaining flows: Activity's waiting step, and the screens under *Not
