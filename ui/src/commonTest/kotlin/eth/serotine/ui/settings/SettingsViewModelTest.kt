@@ -17,6 +17,7 @@ import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKnownTokens
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetInterfaceMode
@@ -25,6 +26,7 @@ import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeFreshness
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryCurrencySetting
@@ -102,6 +104,7 @@ class SettingsViewModelTest {
             SyncPastStaleAnchor(lightClient, consent),
             ObserveInterfaceMode(interfaceMode),
             SetInterfaceMode(interfaceMode),
+            ObserveNetworkLive(FakeFreshness(live = setOf(Network.SEPOLIA))),
             clock = { 1_000 },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -122,8 +125,15 @@ class SettingsViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(
             listOf(
-                NetworkRow(1, "Ethereum", on = false, "No account · Off", LightClientHealth.NOT_RUNNING),
-                NetworkRow(100, "Gnosis Chain", on = false, "No account · Off", LightClientHealth.NOT_RUNNING),
+                NetworkRow(1, "Ethereum", on = false, "No account · Off", LightClientHealth.NOT_RUNNING, simpleLine = "Off"),
+                NetworkRow(
+                    100,
+                    "Gnosis Chain",
+                    on = false,
+                    "No account · Off",
+                    LightClientHealth.NOT_RUNNING,
+                    simpleLine = "Off",
+                ),
                 NetworkRow(
                     11_155_111,
                     "Sepolia",
@@ -131,6 +141,8 @@ class SettingsViewModelTest {
                     "1 account · Verified at block 9,412,118 · 8 s ago",
                     LightClientHealth.VERIFIED,
                     testnet = true,
+                    // Sepolia updates live: simple mode says so instead of the block.
+                    simpleLine = "Test network · live",
                 ),
             ),
             state.networks,
@@ -166,7 +178,15 @@ class SettingsViewModelTest {
         assertNull(viewModel.uiState.value.turningOff, "nothing to ask about")
         assertEquals(emptySet(), networks.on.value)
         assertEquals(
-            NetworkRow(11_155_111, "Sepolia", false, "No account · Off", LightClientHealth.NOT_RUNNING, true),
+            NetworkRow(
+                11_155_111,
+                "Sepolia",
+                false,
+                "No account · Off",
+                LightClientHealth.NOT_RUNNING,
+                true,
+                simpleLine = "Test network · Off",
+            ),
             viewModel.sepolia,
         )
 
@@ -257,6 +277,7 @@ class SettingsViewModelTest {
             SyncPastStaleAnchor(lightClient, consent),
             ObserveInterfaceMode(interfaceMode),
             SetInterfaceMode(interfaceMode),
+            ObserveNetworkLive(FakeFreshness(live = setOf(Network.SEPOLIA))),
             clock = { now },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }

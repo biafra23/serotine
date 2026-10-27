@@ -87,7 +87,8 @@ change what it trusts.
   yet draws the detailed one, so the switch works from the first part.
 - **Leaves, not flags.** Where simple mode says something else (an age where
   detailed view names a block), the UiState gets a display-ready leaf of its
-  own, such as `FreshnessItem`. A screen never interprets a mode flag.
+  own, such as `AccountsUiState.Ready.freshness`. A screen never interprets
+  a mode flag.
 - **Previews and tests.** Each `Simple<Feature>Screen` has
   `Simple<Feature>ScreenPreviews.kt`, its previews test and its headless
   screen tests, as every screen does (`.claude/rules/ui.md`).
@@ -122,7 +123,8 @@ change what it trusts.
   verified head it was proven at (`BalanceReading.Verified.provenAt`,
   `TokenBalanceReading.Verified.provenAt`), so a screen can say how old it
   is.
-- **What the screen says.** `FreshnessItem` is the display-ready line:
+- **What the screen says.** A display-ready line in the Home UiState
+  (`AccountsUiState.Ready.freshness`), re-dated every second:
   - "Live" on a network with BALs;
   - "Updated 2 min ago · pull down to refresh", the age of the oldest value
     the screen shows;
@@ -130,7 +132,9 @@ change what it trusts.
   - "Can't check Ethereum right now", with the age of what is shown, when
     the light client cannot verify (H3).
 - **Pull-to-refresh** (M3 `PullToRefreshBox`) on Home, Account and its
-  Activity. It refreshes every network the screen shows.
+  Activity. It refreshes every network the screen shows. A Refresh button
+  in the top bar does the same, so the gesture is never the only way (a
+  mouse, a keyboard, a screen reader).
 - **The light client's state.** Detailed view keeps the status strip on
   every screen whose content or actions depend on it (owner's request,
   2026-10-20). Simple mode replaces it with the freshness line, a banner
@@ -265,13 +269,15 @@ merge.
 1. The mode setting: the port, the adapter, the hosts, the Settings switch,
    and each Route choosing its screen.
 2. Freshness and refresh: `NetworkFreshness`, `RefreshNetworkData`, the data
-   layer's on-demand reads, the proof's time in the readings, and the
-   refresh on open and `refresh()` in the Home and account ViewModels.
-3. Simple Home, Account, Settings and Receive (H1 to H6, T1), with
-   `FreshnessItem` and pull-to-refresh, where they are first drawn.
-4. Simple Send (S1 to S3).
-5. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
-6. The remaining flows: Activity's waiting step, and the screens under *Not
+   layer's on-demand reads, the proof's time in the readings, and
+   `refresh()` in the Home and account ViewModels.
+3. Simple Home and Settings (H1 to H3, T1): the freshness line, the "can't
+   check" banner, pull-to-refresh with a Refresh button beside it, and the
+   network's icon on an account's blockie.
+4. Simple Account, its Activity tab and Receive (H4 to H6).
+5. Simple Send (S1 to S3).
+6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
+7. The remaining flows: Activity's waiting step, and the screens under *Not
    in simple mode yet* that get a simple version.
 
 Then the final PR into `main`.

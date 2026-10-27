@@ -35,6 +35,7 @@ import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafes
@@ -59,6 +60,7 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.update.UpgradeBannerItem
 import kotlin.test.AfterTest
@@ -141,6 +143,7 @@ class AccountsViewModelTest {
             ObserveUpgradeWarnings(upgrades, NoRecord, lightClient, networks, repository) { now },
             SyncPastStaleAnchor(lightClient, consent),
             RefreshNetworkData(freshness),
+            ObserveNetworkLive(freshness),
             clock = { now },
             formatTime = { "<$it>" },
         )
@@ -174,6 +177,9 @@ class AccountsViewModelTest {
             balance,
             verified,
             kindNote = "Safe",
+            network = NetworkLabel.of(Network.SEPOLIA),
+            networkLine = "Sepolia · test network",
+            accountTotal = "no real value",
         )
 
     @AfterTest
@@ -282,7 +288,10 @@ class AccountsViewModelTest {
         val ready = viewModel.uiState.value as AccountsUiState.Ready
         assertEquals(
             treasuryItem("2.5 ETH", verified = false)
-                .copy(balanceNote = "Last verified <1792100000> · may have changed since"),
+                .copy(
+                    balanceNote = "Last verified <1792100000> · may have changed since",
+                    ageNote = "just now · may have changed",
+                ),
             ready.accounts.single(),
         )
         assertEquals("Checking…", ready.total, "a balance that may have changed is not added up")
@@ -677,4 +686,91 @@ class AccountsViewModelTest {
         viewModel.refresh()
         assertEquals(Network.entries.toList(), freshness.refreshed.toList())
     }
+
+    /** A real-funds account on Ethereum, whose key is held here. */
+    private val ethereumMain = Account(
+        Network.ETHEREUM,
+        Address.of("0x" + "e1".repeat(20)),
+        AccountKind.EOA,
+        "Main",
+        AccountCustody.InKeyStore,
+    )
+
+    @Test
+    fun simpleModeSaysHowOldTheValuesOfANetworkThatIsNotLiveAre() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        repository.accounts = listOf(ethereumMain)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(ethereumMain.address).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = now - 120)
+        runCurrent()
+
+        assertEquals("Updated 2 min ago · pull down to refresh", (viewModel.uiState.value as AccountsUiState.Ready).freshness)
+    }
+
+    @Test
+    fun simpleModeSaysLiveWhenEveryNetworkShownUpdatesLive() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        freshness.live.value = setOf(Network.SEPOLIA)
+        repository.accounts = listOf(treasury)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(treasury.address).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = now - 600)
+        runCurrent()
+
+        assertEquals("Live", (viewModel.uiState.value as AccountsUiState.Ready).freshness)
+    }
+
+    @Test
+    fun aRefreshSaysCheckingUntilANewerProofArrives() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        repository.accounts = listOf(ethereumMain)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        val balance = balances.of(ethereumMain.address)
+        balance.value = BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = now - 120)
+        runCurrent()
+
+        viewModel.refresh()
+        runCurrent()
+        val refreshing = viewModel.uiState.value as AccountsUiState.Ready
+        assertTrue(refreshing.refreshing)
+        assertEquals("Checking Ethereum…", refreshing.freshness)
+
+        balance.value = BalanceReading.Verified(Wei.of("1000000000000000000"), 12, provenAt = now)
+        runCurrent()
+        val done = viewModel.uiState.value as AccountsUiState.Ready
+        assertEquals(false, done.refreshing)
+        assertEquals("Updated just now · pull down to refresh", done.freshness)
+    }
+
+    @Test
+    fun aNetworkShowingBalancesFromBeforeGetsABanner() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        repository.accounts = listOf(ethereumMain)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(ethereumMain.address).value =
+            BalanceReading.LastKnown(Wei.of("1000000000000000000"), 9, asOf = now - 3 * 3_600)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
+        assertEquals(
+            listOf(
+                UnreachableNetwork(
+                    Network.ETHEREUM.chainId,
+                    "Can't check Ethereum right now",
+                    "Its balances were last confirmed 3 h ago and may have changed. The app keeps trying.",
+                ),
+            ),
+            ready.unreachable,
+        )
+        assertEquals("3 h ago · may have changed", ready.accounts.single().ageNote)
+    }
 }
+

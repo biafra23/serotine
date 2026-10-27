@@ -7,11 +7,13 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
+import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveLightClient
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafes
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
@@ -27,9 +29,11 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.StaleAnchorWarning
+import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.asItems
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.notTurnedOn
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.spokenList
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
@@ -72,14 +76,34 @@ class AccountsViewModel(
     private val syncPastStaleAnchor: SyncPastStaleAnchor,
     /** Proves every network's balances and prices again on [refresh]; the list's own reads are proven as it opens. */
     private val refreshNetworkData: RefreshNetworkData,
+    /** Whether each network updates live, which simple mode's freshness line says. */
+    observeNetworkLive: ObserveNetworkLive,
     /** Now, in unix seconds: what the sections date their head blocks against. */
     private val clock: () -> Long = ::epochSecondsNow,
     /** How the banner dates an upgrade, and a row a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
 
+    /**
+     * The last refresh asked: when ([Refresh.at], unix seconds), and the oldest balance proof shown
+     * then ([Refresh.oldest]). The list says it is refreshing until that changes, or for
+     * [REFRESH_SHOWN_SECONDS] at most.
+     */
+    private data class Refresh(val at: Long, val oldest: Long?)
+
+    private val lastRefresh = MutableStateFlow<Refresh?>(null)
+
+    /** The oldest balance proof the list shows, as last computed: what a refresh waits to see change. */
+    private var oldestShown: Long? = null
+
     /** Proves every network's balances and prices again now: what pulling the list down asks. */
-    fun refresh() = refreshNetworkData(Network.entries.toSet())
+    fun refresh() {
+        lastRefresh.value = Refresh(clock(), oldestShown)
+        refreshNetworkData(Network.entries.toSet())
+    }
+
+    /** Which networks update live, in `Network` order: not live until known. */
+    private val live = combine(Network.entries.map { observeNetworkLive(it).onStart { emit(false) } }) { it.toList() }
 
     /** Each network's light client status, in `Network` order: one subscription each, shared by the two flows below. */
     private val clientStatuses = Network.entries.map { network ->
@@ -116,13 +140,21 @@ class AccountsViewModel(
         observePortfolio(),
         combine(observeSafes(), ensNames, ::Pair),
         combine(statuses, staleAnchors, observeEnabledNetworks(), ::Triple),
-        upgrades,
-        message,
-    ) { portfolio, (safes, ensNames), (lightClients, staleAnchors, on), upgrades, message ->
-        stateOf(portfolio, safes, ensNames, lightClients, staleAnchors, on.toSet(), upgrades).let { state ->
-            if (state is AccountsUiState.Ready) state.copy(message = message) else state
-        }
+        combine(upgrades, live, ::Pair),
+        combine(message, lastRefresh, ::Pair),
+    ) { portfolio, (safes, ensNames), (lightClients, staleAnchors, on), (upgrades, live), (message, refresh) ->
+        Inputs(portfolio, safes, ensNames, lightClients, staleAnchors, on.toSet(), upgrades, live, message, refresh)
     }
+        // Simple mode's ages ("Updated 2 min ago") are re-dated every second while accounts are listed.
+        .redatedWhile { it.portfolio.accounts is AccountList.Loaded }
+        .map { inputs ->
+            with(inputs) {
+                stateOf(portfolio, safes, ensNames, lightClients, staleAnchors, on, upgrades).let { state ->
+                    if (state is AccountsUiState.Ready) simple(state, portfolio, on, live, refresh).copy(message = message)
+                    else state
+                }
+            }
+        }
         .stateIn(
             scope = viewModelScope,
             // Keeps collecting across a configuration change (the screen re-subscribes within
@@ -131,6 +163,62 @@ class AccountsViewModel(
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
             initialValue = AccountsUiState.Loading(),
         )
+
+    /** What [uiState] is made of, gathered before it is re-dated. */
+    private data class Inputs(
+        val portfolio: Portfolio,
+        val safes: Map<AccountId, SafeReading>,
+        val ensNames: Map<AccountId, EnsNameCheck>,
+        val lightClients: List<LightClientItem>,
+        val staleAnchors: List<StaleAnchorWarning?>,
+        val on: Set<Network>,
+        val upgrades: UpgradeWarnings,
+        val live: List<Boolean>,
+        val message: String?,
+        val refresh: Refresh?,
+    )
+
+    /**
+     * [state] with what simple mode draws instead of the strips (docs/simple-ui.md, H1 to H3): how
+     * fresh the values are, a banner per network that cannot be checked while it shows balances from
+     * before, and whether a refresh is being answered.
+     */
+    private fun simple(
+        state: AccountsUiState.Ready,
+        portfolio: Portfolio,
+        on: Set<Network>,
+        live: List<Boolean>,
+        refresh: Refresh?,
+    ): AccountsUiState.Ready {
+        val now = clock()
+        val accounts = (portfolio.accounts as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network in on }
+        val held = Network.entries.filter { network -> accounts.any { it.network == network } }
+        val readings = accounts.associateWith { portfolio.values[it.id]?.native }
+        // How old the oldest proof shown is, on the networks that are not live: what "Updated" says.
+        val notLive = held.filter { !live[it.ordinal] }
+        val oldest = readings.filterKeys { it.network in notLive }.values
+            .mapNotNull { (it as? BalanceReading.Verified)?.provenAt }.minOrNull()
+        oldestShown = oldest
+        val refreshing = refresh != null && now - refresh.at < REFRESH_SHOWN_SECONDS && oldest == refresh.oldest
+        val freshness = when {
+            refreshing && notLive.isNotEmpty() -> "Checking ${spokenList(notLive.map { it.displayName })}…"
+            oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
+            held.isNotEmpty() && notLive.isEmpty() && readings.values.any { it is BalanceReading.Verified } -> "Live"
+            else -> null
+        }
+        val unreachable = held.mapNotNull { network ->
+            val before = readings.filterKeys { it.network == network }.values.filterIsInstance<BalanceReading.LastKnown>()
+            if (before.isEmpty()) return@mapNotNull null
+            val confirmed = before.mapNotNull { it.asOf }.minOrNull()
+            UnreachableNetwork(
+                network.chainId,
+                "Can't check ${network.displayName} right now",
+                (confirmed?.let { "Its balances were last confirmed ${agoText(it, now)} and may have changed." }
+                    ?: "Its balances may have changed since they were last confirmed.") + " The app keeps trying.",
+            )
+        }
+        return state.copy(freshness = freshness, unreachable = unreachable, refreshing = refreshing)
+    }
 
     /** Turns the network of [chainId] on again: the way out of a greyed-out action on one that is off (N19). */
     fun turnOnNetwork(chainId: Long) {
@@ -202,6 +290,8 @@ class AccountsViewModel(
                             formatTime,
                             ensNames[account.id],
                             networkOn = isOn,
+                            now = clock(),
+                            total = value?.total,
                         ).let { item -> if (blocked != null) item.copy(networkBlocked = blocked) else item }
                     }
                     val total = portfolio.totalOn(network)
@@ -258,6 +348,9 @@ class AccountsViewModel(
         }
 
     private companion object {
+        /** For how long at most the list says a refresh is being answered, in seconds. */
+        const val REFRESH_SHOWN_SECONDS = 15L
+
         /** How long a network's shared status outlives its last subscriber: across a configuration change. */
         const val SHARE_TIMEOUT_MS = 5_000L
 

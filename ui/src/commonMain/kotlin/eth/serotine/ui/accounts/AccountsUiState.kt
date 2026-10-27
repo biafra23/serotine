@@ -7,17 +7,21 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.SafeReading
+import eth.serotine.domain.usecase.Total
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NOT_CHECKED
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.accountName
+import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.ensNameNote
 import eth.serotine.ui.components.lastKnownNote
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
 import eth.serotine.ui.platform.formatDateTime
 import eth.serotine.ui.update.UpgradeBannerItem
@@ -55,6 +59,12 @@ sealed interface AccountsUiState {
      * never a testnet beside them, or the testnet alone when it is all there is. [totalNote] says
      * what it leaves out ("1 asset without a price · Sepolia not included"). [message] is said once,
      * until the screen has ([AccountsViewModel.messageShown]): a network that could not be turned on.
+     *
+     * What simple mode draws instead of the sections' strips (docs/simple-ui.md, H1 to H3):
+     * [freshness], how fresh the values shown are ("Updated 2 min ago · pull down to refresh",
+     * "Live", "Checking Ethereum and Gnosis Chain…"; null while nothing is proven yet);
+     * [unreachable], a banner per network that cannot be checked right now while it shows balances
+     * from before; and [refreshing], while a pull-to-refresh is being answered.
      */
     data class Ready(
         val sections: List<NetworkSection>,
@@ -64,6 +74,9 @@ sealed interface AccountsUiState {
         val totalNote: String? = null,
         override val upgrades: List<UpgradeBannerItem> = emptyList(),
         val message: String? = null,
+        val freshness: String? = null,
+        val unreachable: List<UnreachableNetwork> = emptyList(),
+        val refreshing: Boolean = false,
     ) : AccountsUiState {
         init {
             require(accounts.distinctBy { it.chainId to it.address }.size == accounts.size) {
@@ -129,6 +142,13 @@ data class NetworkSection(
 )
 
 /**
+ * A network simple mode cannot check right now while it shows its accounts' balances from before
+ * (docs/simple-ui.md, H3): [title] ("Can't check Ethereum right now") and what that means
+ * ([text]). [chainId] names the network.
+ */
+data class UnreachableNetwork(val chainId: Long, val title: String, val text: String)
+
+/**
  * One account as the list shows it: display strings only, derived once from the domain
  * model. [address] is EIP-55 checksummed. [balance] is a verified amount ("0.5 ETH") when
  * [balanceVerified], and otherwise says why there is none ("Checking…", "Syncing…", "Not
@@ -144,6 +164,11 @@ data class NetworkSection(
  * (docs/networks.md, N18): its balance is then the one last verified, or "Not checked", with no
  * value, and Send waits for the network to be turned on. [networkBlocked] says that this version can
  * no longer follow the account's network, which greys out its Send.
+ *
+ * What simple mode's row says (docs/simple-ui.md, H1): its [network] for the blockie's icon, the
+ * line under its name ([networkLine]: "Ethereum", "Gnosis Chain · Safe", "Sepolia · test network"), how old a balance from before is ([ageNote], "3 h ago · may have
+ * changed"; "Ethereum is off"), and the account's [accountTotal] in the display currency, every
+ * priced holding together ("€12,025.55"; "no real value" on a testnet; null while not valued).
  */
 data class AccountItem(
     val label: String,
@@ -161,6 +186,10 @@ data class AccountItem(
     val nameNote: String? = null,
     val networkOff: String? = null,
     val networkBlocked: String? = null,
+    val network: NetworkLabel? = null,
+    val networkLine: String = "",
+    val ageNote: String? = null,
+    val accountTotal: String? = null,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -189,7 +218,9 @@ data class AccountItem(
          * re-renders the row per balance computes once; [formatTime] dates a balance last
          * verified (unix seconds); [ensName] is the latest check of the ENS name its name
          * follows, if it follows one (null: none yet). [networkOn] false: the account's network is
-         * off in this wallet, and the row says so.
+         * off in this wallet, and the row says so. [now] (unix seconds) dates a balance from before for
+         * simple mode's row, and [total] is the account's value with every priced holding, in the
+         * currency of [value].
          */
         fun from(
             account: Account,
@@ -201,17 +232,25 @@ data class AccountItem(
             formatTime: (Long) -> String = ::formatDateTime,
             ensName: EnsNameCheck? = null,
             networkOn: Boolean = true,
+            now: Long? = null,
+            total: Total? = null,
         ): AccountItem {
             val off = network.displayName.takeUnless { networkOn }
             val lastKnown = balance as? BalanceReading.LastKnown
+            val control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
+                ?: Control.of(account.kind, account.custody)
+            val kindNote = when {
+                account.kind != AccountKind.SAFE -> null
+                safe == SafeReading.NotASafe -> "Not a recognised Safe"
+                else -> "Safe"
+            }
             return AccountItem(
                 label = accountName(account, address, ensName),
                 address = address,
                 chainId = account.network.chainId,
                 kind = account.kind,
                 // A Safe's control is its verified owners'; until they are read, no more than watch-only.
-                control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
-                    ?: Control.of(account.kind, account.custody),
+                control = control,
                 balance = when {
                     off != null && lastKnown == null -> NOT_CHECKED
                     else -> balance?.let { balanceText(it, network) } ?: "Checking…"
@@ -226,13 +265,26 @@ data class AccountItem(
                 value = value?.takeIf { off == null }
                     ?.let { (valuation, currency) -> valuationText(valuation, currency, network) },
                 signers = (safe as? SafeReading.Verified)?.let { "${it.state.threshold}/${it.state.owners.size}" },
-                kindNote = when {
-                    account.kind != AccountKind.SAFE -> null
-                    safe == SafeReading.NotASafe -> "Not a recognised Safe"
-                    else -> "Safe"
-                },
+                kindNote = kindNote,
                 nameNote = ensNameNote(account, ensName),
                 networkOff = off,
+                network = NetworkLabel.of(network),
+                // Watch-only and co-signer are the control badge's to say.
+                networkLine = listOfNotNull(network.displayName, if (network.testnet) "test network" else kindNote)
+                    .joinToString(" · "),
+                ageNote = when {
+                    lastKnown != null ->
+                        listOfNotNull(lastKnown.asOf?.let { at -> now?.let { agoText(at, it) } }, "may have changed")
+                            .joinToString(" · ")
+                    off != null -> "$off is off"
+                    else -> null
+                },
+                accountTotal = when {
+                    off != null -> null
+                    network.testnet -> "no real value"
+                    else -> total?.takeIf { it.valued > 0 || it.complete }
+                        ?.let { totalText(it, value?.second ?: return@let null) }
+                },
             )
         }
     }

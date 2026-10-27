@@ -60,7 +60,7 @@ data class LightClientItem(
             is LightClientStatus.WaitingForHead -> when (val headAge = status.headAgeSeconds) {
                 null -> LightClientItem("Synced · waiting for the first verified head", null, true, NOT_VERIFIED)
                 else -> LightClientItem(
-                    "Synced · the verified head is ${age(headAge)} old, waiting for a fresh one",
+                    "Synced · the verified head is ${ageOf(headAge)} old, waiting for a fresh one",
                     null,
                     true,
                     STALE,
@@ -99,14 +99,8 @@ data class LightClientItem(
         /** " · 8 s ago" for a block produced at [timestamp], or nothing when its time is unknown. */
         private fun since(timestamp: Long?, now: Long): String = timestamp?.let {
             val seconds = now - it
-            if (seconds < 1) " · just now" else " · ${age(seconds)} ago"
+            if (seconds < 1) " · just now" else " · ${ageOf(seconds)} ago"
         } ?: ""
-
-        private fun age(seconds: Long): String = when {
-            seconds < 120 -> "$seconds s"
-            seconds < 7_200 -> "${seconds / 60} min"
-            else -> "${seconds / 3_600} h"
-        }
     }
 }
 
