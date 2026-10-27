@@ -49,8 +49,10 @@ data class SendFrom(val label: String, val address: String)
 /**
  * One asset the account can send: its [symbol], [name] and bundled [icon] (null: a monogram), a
  * token's EIP-55 [contract] (null for the network's currency), the [balance] held ("1.5 ETH",
- * or why there is none yet), the block it was verified at ([verifiedAt], "block 9,412,118"), and
- * [warning] for a token the user added whose symbol is a built-in token's.
+ * or why there is none yet), the block it was verified at ([verifiedAt], "block 9,412,118"),
+ * [warning] for a token the user added whose symbol is a built-in token's, and [age], how long ago
+ * the balance was proved ("updated 2 min ago"), which simple mode shows in place of the block
+ * (docs/simple-ui.md); null where not known.
  */
 data class AssetChoice(
     val symbol: String,
@@ -60,6 +62,7 @@ data class AssetChoice(
     val contract: String? = null,
     val verifiedAt: String? = null,
     val warning: String? = null,
+    val age: String? = null,
 )
 
 /** One of the wallet's accounts, offered as the recipient: its [label] and EIP-55 [address]. */

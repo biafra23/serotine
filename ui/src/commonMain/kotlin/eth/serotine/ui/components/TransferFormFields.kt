@@ -157,7 +157,9 @@ internal fun AssetChoiceRow(
 @Composable
 internal fun AssetBalanceLines(asset: AssetChoice) {
     Text(
-        asset.verifiedAt?.let { "${asset.balance} · verified at $it" } ?: asset.balance,
+        asset.verifiedAt?.let { "${asset.balance} · verified at $it" }
+            ?: asset.age?.let { "${asset.balance} · $it" }
+            ?: asset.balance,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

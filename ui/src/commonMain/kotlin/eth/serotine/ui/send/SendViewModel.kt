@@ -52,6 +52,7 @@ import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
@@ -62,6 +63,7 @@ import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.recipientHint
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
@@ -99,6 +101,9 @@ import kotlinx.coroutines.withContext
  * made again. Its recipient's name is resolved again
  * with every quote. A price never reaches it: the amount is what was typed, in token units.
  *
+ * The compose step dates each balance against [now] (unix seconds), anew every second: simple mode
+ * shows how long ago it was proved in place of its block (docs/simple-ui.md).
+ *
  * One of the ViewModels the [WalletPassword] passes through (CLAUDE.md, *Trust*): it holds it in
  * the review's state while the field is shown, hands it to the signer in an [Unlock], and never
  * logs, saves or caches it; it is dropped once used, when the screen is not shown ([onHidden])
@@ -116,6 +121,7 @@ class SendViewModel(
     private val rebroadcastTransfer: RebroadcastTransfer,
     private val warmFeeHistory: WarmFeeHistory,
     private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val now: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val from: Address = account.address
@@ -251,11 +257,17 @@ class SendViewModel(
             null,
         )
 
-    val uiState: StateFlow<SendUiState> = combine(model, step) { model, step -> render(model, step) }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-        SendUiState.Loading(network.displayName),
-    )
+    val uiState: StateFlow<SendUiState> = combine(model, step) { model, step -> model to step }
+        // A balance's age, which simple mode shows, is dated anew every second on the compose step.
+        .redatedWhile { (model, step) ->
+            step is Step.Composing && model?.options.orEmpty().any { it.provenAt != null }
+        }
+        .map { (model, step) -> render(model, step) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            SendUiState.Loading(network.displayName),
+        )
 
     /** Chooses the asset: the token at [contract], or the network's currency (null). */
     fun onAssetChange(contract: String?) {
@@ -593,6 +605,7 @@ class SendViewModel(
 
     private fun compose(model: Model, sender: SendFrom, step: Step.Composing): SendUiState.Compose {
         val inputs = model.inputs
+        val at = now()
         val text = inputs.to.trim()
         // The lookup of what is typed now; one of an earlier text is no answer about it.
         val lookup = model.lookup.takeIf { it.text == text }
@@ -605,8 +618,8 @@ class SendViewModel(
             toLabel = addressFieldLabel(network),
             toHint = recipientHint(network),
             from = sender,
-            assets = model.options.map { it.choice() },
-            asset = selected?.choice(),
+            assets = model.options.map { it.choice(at) },
+            asset = selected?.choice(at),
             to = inputs.to,
             accounts = model.accounts.filter { it.address != from }
                 .map { AccountChoice(it.label, Eip55.format(it.address)) },

@@ -21,10 +21,19 @@ private const val MAIN = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 private const val FRIEND = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
 private const val USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
 
-// The blocks are in the state; simple mode keeps them out of the form and behind Details in the review.
-private val ether = AssetChoice("ETH", "Ether", "eth", "3.2041 ETH", verifiedAt = "block 23,614,077")
-private val usdc =
-    AssetChoice("USDC", "USD Coin", "usdc", "1,250 USDC", contract = USDC, verifiedAt = "block 23,614,077")
+// The blocks are in the state; simple mode keeps them out of the form, which says each balance's
+// age instead, and behind Details in the review.
+private val ether =
+    AssetChoice("ETH", "Ether", "eth", "3.2041 ETH", verifiedAt = "block 23,614,077", age = "updated 2 min ago")
+private val usdc = AssetChoice(
+    "USDC",
+    "USD Coin",
+    "usdc",
+    "1,250 USDC",
+    contract = USDC,
+    verifiedAt = "block 23,614,077",
+    age = "updated 2 min ago",
+)
 private val friend =
     RecipientItem(FRIEND, name = "friend-example.eth", resolvedAt = "Resolved at finalized block 23,613,990")
 
@@ -93,7 +102,7 @@ private fun SimpleSendPreview(state: SendUiState, darkTheme: Boolean = false) {
     }
 }
 
-/** S1: the form, with no block beside the balance or the name. */
+/** S1: the form, each balance with its age and no block beside it or the name. */
 @Preview
 @Composable
 private fun SimpleSendComposePreview() = SimpleSendPreview(composed)
@@ -107,9 +116,29 @@ private fun SimpleSendReviewPreview() = SimpleSendPreview(review)
 @Composable
 private fun SimpleSendReviewDarkPreview() = SimpleSendPreview(review, darkTheme = true)
 
+/** The form after a review was refused, said in simple mode's words: no block named. */
+@Preview
+@Composable
+private fun SimpleSendComposeRefusedPreview() = SimpleSendPreview(
+    composed.copy(
+        // A short form, so the refusal under the fee is in the picture.
+        form = composed.form.copy(
+            assets = listOf(usdc),
+            to = FRIEND,
+            accounts = emptyList(),
+            recipient = null,
+            amountHint = null,
+            error = "The transfer reverts, run as a verified call at block 23,614,077: the token's contract " +
+                "refuses it. Nothing was signed.",
+            simpleError = "Checked on chain, the token's contract refuses this transfer. Nothing was signed.",
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleSendScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSendScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSendComposePreview() },
     { SimpleSendReviewPreview() },
     { SimpleSendReviewDarkPreview() },
+    { SimpleSendComposeRefusedPreview() },
 )

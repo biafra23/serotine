@@ -104,7 +104,6 @@ fun SendRoute(
 ) {
     // Main.immediate: as on the seed screens, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? SendUiState.Sent)?.hash
@@ -134,9 +133,10 @@ fun SendRoute(
             onBack = onBack,
             modifier = modifier,
         )
+        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
         InterfaceMode.DETAILED -> SendScreen(
             state = state,
-            chrome = SendChrome.Strip(strip),
+            chrome = SendChrome.Strip(lightClient.collectAsStateWithLifecycle().value),
             onAssetChange = viewModel::onAssetChange,
             onToChange = viewModel::onToChange,
             onPickAccount = viewModel::onPickAccount,

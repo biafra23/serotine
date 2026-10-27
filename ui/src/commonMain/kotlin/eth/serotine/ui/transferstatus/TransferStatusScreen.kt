@@ -80,11 +80,14 @@ fun TransferStatusRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.collectAsStateWithLifecycle()
-    // The same state in the view the user chose (docs/simple-ui.md).
+    // The same state in the view the user chose (docs/simple-ui.md); the strip is collected only
+    // where it is drawn: shared while subscribed, it stays idle otherwise.
     when (LocalInterfaceMode.current) {
         InterfaceMode.SIMPLE -> SimpleTransferStatusScreen(state, onDone, viewModel::retry, modifier)
-        InterfaceMode.DETAILED -> TransferStatusScreen(state, strip, onDone, viewModel::retry, modifier)
+        InterfaceMode.DETAILED -> {
+            val strip by lightClient.collectAsStateWithLifecycle()
+            TransferStatusScreen(state, strip, onDone, viewModel::retry, modifier)
+        }
     }
 }
 

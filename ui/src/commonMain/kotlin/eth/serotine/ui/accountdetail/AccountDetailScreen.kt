@@ -156,7 +156,6 @@ fun AccountDetailRoute(
     onSafeSettings: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     // A dialog destination over this one holds it at STARTED; it is RESUMED when in front.
     val inFront = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
@@ -193,9 +192,10 @@ fun AccountDetailRoute(
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
         )
+        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
         InterfaceMode.DETAILED -> AccountDetailScreen(
             state = state,
-            chrome = AccountChrome.Strip(strip),
+            chrome = AccountChrome.Strip(lightClient.collectAsStateWithLifecycle().value),
             onBack = onBack,
             onSend = send,
             onSwap = swap,
