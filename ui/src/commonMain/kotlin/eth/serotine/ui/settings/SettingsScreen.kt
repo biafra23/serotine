@@ -191,6 +191,7 @@ fun SettingsScreen(
                 supportingContent = {
                     Column {
                         Text("Show the light client's state, blocks and proofs on every screen.")
+                        state.detailedViewNote?.let { Text(it) }
                         if (state.detailedViewNotSaved) {
                             Text("The change could not be saved.", color = MaterialTheme.colorScheme.error)
                         }
