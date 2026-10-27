@@ -669,11 +669,10 @@ class AccountsViewModelTest {
     }
 
     @Test
-    fun openingTheListProvesEveryNetworkAgainAndSoDoesARefresh() = runTest {
+    fun aRefreshProvesEveryNetworkAgain() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = viewModel()
-        assertEquals(Network.entries.toSet(), freshness.refreshed.toSet())
-        freshness.refreshed.clear()
+        assertTrue(freshness.refreshed.isEmpty(), "opening asks nothing: the list's own reads are fresh")
 
         viewModel.refresh()
         assertEquals(Network.entries.toList(), freshness.refreshed.toList())

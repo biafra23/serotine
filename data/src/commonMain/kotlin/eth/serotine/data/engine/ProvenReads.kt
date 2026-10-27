@@ -156,6 +156,10 @@ internal class ProvenReads<K, T>(
     fun observe(key: K): Flow<EngineReading<T>> {
         val chain = chain ?: return flowOf(EngineReading.Unavailable(ReadUnavailable.NO_ENGINE))
         return flow {
+            // Whether this subscriber has had a proof made for it: only then may it be held one
+            // ([ProofSchedule]). A new subscriber, a screen opening or the one-shot read of a quote,
+            // a review or a signature, gets a fresh proof, never one held from before.
+            var proven = false
             while (true) {
                 val snapshot = try {
                     chain.snapshot()
@@ -173,7 +177,8 @@ internal class ProvenReads<K, T>(
                     emit(EngineReading.Unavailable(ReadUnavailable.NO_ENGINE))
                     return@flow
                 }
-                val reading = readingAt(chain, key, snapshot)
+                val reading = readingAt(chain, key, snapshot, mayHold = proven)
+                if (reading is EngineReading.Proven) proven = true
                 emit(reading)
                 // A refusal is for good on this build: asking again on every tick changes nothing.
                 if (reading == REFUSED) return@flow
@@ -189,7 +194,16 @@ internal class ProvenReads<K, T>(
         withTimeoutOrNull(pollInterval) { refreshes.first { it != seen } }
     }
 
-    private suspend fun readingAt(chain: VerifiedChain, key: K, snapshot: EngineSnapshot): EngineReading<T> {
+    /**
+     * The reading of [key] at [snapshot]; [mayHold] when the subscriber asking has had a proof made
+     * for it, so that a proof [schedule] holds across heads may stand for it.
+     */
+    private suspend fun readingAt(
+        chain: VerifiedChain,
+        key: K,
+        snapshot: EngineSnapshot,
+        mayHold: Boolean,
+    ): EngineReading<T> {
         // A stopped network: what was last verified, dated, or that it is off; never "syncing".
         if (snapshot is EngineSnapshot.Stopped) {
             val last = if (offersLastKnownWhenStopped) lastKnown(key) else null
@@ -204,11 +218,13 @@ internal class ProvenReads<K, T>(
         proofsLock.withLock { proofs[key] }?.let { kept ->
             if (head >= kept.head && unchangedSince(key, kept.reading.blockNumber, kept.reading.blockHash, head)) {
                 atHead(key, kept.reading.value, snapshot.headTimestamp)?.let {
-                    return kept.reading.copy(value = it)
+                    // Vouched unchanged up to this head: as good as a proof made at it.
+                    return kept.reading.copy(value = it, provenAt = snapshot.headTimestamp ?: kept.reading.provenAt)
                 }
             }
             // On demand (simple mode): a proof stands across heads until a refresh, or for an hour.
-            val held = schedule?.holds(kept.headTimestamp, kept.refreshes, head, snapshot.headTimestamp) == true
+            val held = mayHold &&
+                schedule?.holds(kept.headTimestamp, kept.refreshes, head, snapshot.headTimestamp) == true
             if (head >= kept.head && held) {
                 atHead(key, kept.reading.value, snapshot.headTimestamp)?.let {
                     return kept.reading.copy(value = it)
@@ -219,7 +235,14 @@ internal class ProvenReads<K, T>(
             val pending = CompletableDeferred<EngineReading<T>?>()
             val running = proofsLock.withLock {
                 proofs[key]?.let { kept ->
-                    if (head - kept.head in 0 until keptForHeads(kept.reading.value)) return kept.reading
+                    if (head - kept.head in 0 until keptForHeads(kept.reading.value)) {
+                        // Made at this head, so a refresh asked since is answered by it: no new proof
+                        // at the next head on its account.
+                        schedule?.refreshes?.value?.takeIf { it != kept.refreshes }?.let {
+                            proofs[key] = Kept(kept.head, kept.headTimestamp, it, kept.reading)
+                        }
+                        return kept.reading
+                    }
                 }
                 inFlight[key]?.takeIf { (at, _) -> head - at in 0 until sharedForHeads }?.second ?: run {
                     inFlight[key] = head to pending

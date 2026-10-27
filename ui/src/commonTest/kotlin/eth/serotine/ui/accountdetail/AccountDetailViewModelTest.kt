@@ -901,12 +901,12 @@ class AccountDetailViewModelTest {
     }
 
     @Test
-    fun openingTheAccountProvesItsNetworkAgainAndSoDoesARefresh() = runTest {
+    fun aRefreshProvesTheAccountsNetworkAgain() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = viewModel()
-        assertEquals(listOf(Network.SEPOLIA), freshness.refreshed)
+        assertTrue(freshness.refreshed.isEmpty(), "opening asks nothing: the screen's own reads are fresh")
 
         viewModel.refresh()
-        assertEquals(listOf(Network.SEPOLIA, Network.SEPOLIA), freshness.refreshed)
+        assertEquals(listOf(Network.SEPOLIA), freshness.refreshed)
     }
 }

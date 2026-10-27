@@ -70,18 +70,13 @@ class AccountsViewModel(
     private val setNetworkEnabled: SetNetworkEnabled,
     observeUpgradeWarnings: ObserveUpgradeWarnings,
     private val syncPastStaleAnchor: SyncPastStaleAnchor,
-    /** Proves every network's balances and prices again: as the list opens, and on [refresh]. */
+    /** Proves every network's balances and prices again on [refresh]; the list's own reads are proven as it opens. */
     private val refreshNetworkData: RefreshNetworkData,
     /** Now, in unix seconds: what the sections date their head blocks against. */
     private val clock: () -> Long = ::epochSecondsNow,
     /** How the banner dates an upgrade, and a row a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) : ViewModel() {
-
-    init {
-        // A value is read when its screen opens (docs/simple-ui.md); in Detailed view, at every head anyway.
-        refresh()
-    }
 
     /** Proves every network's balances and prices again now: what pulling the list down asks. */
     fun refresh() = refreshNetworkData(Network.entries.toSet())

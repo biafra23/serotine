@@ -141,10 +141,6 @@ class SerotineApplication : Application() {
         }
     }
 
-    /**
-     * Keeps each network's light client running while it is on and needed, for the life of the
-     * process. A failure ends it and is reported: the light clients keep their last state.
-     */
     /** Keeps the proving of values to the view the user chose, for the life of the process. */
     private suspend fun followInterfaceMode(host: MyotisHost) {
         try {
@@ -156,6 +152,10 @@ class SerotineApplication : Application() {
         }
     }
 
+    /**
+     * Keeps each network's light client running while it is on and needed, for the life of the
+     * process. A failure ends it and is reported: the light clients keep their last state.
+     */
     private suspend fun followNetworks(host: MyotisHost) {
         try {
             FollowNetworks(networkSettings, accounts, networkDemand, host)()

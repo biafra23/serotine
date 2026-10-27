@@ -3,6 +3,7 @@ package eth.serotine.data.engine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /**
  * When one network's facts are proven again (docs/simple-ui.md, *Freshness and pull-to-refresh*):
@@ -14,7 +15,13 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * A proof held this way stays a proof: its reading keeps the block it anchors to and the time of
  * its head, so a screen can say how old it is, and it never stands for longer than
- * [MAX_HELD_SECONDS], the hour the owner allowed (owner's decisions, 2026-10-26).
+ * [MAX_HELD_SECONDS], the hour the owner allowed (owner's decisions, 2026-10-26). It is held only
+ * for a subscriber that has had a proof made for it ([ProvenReads]): a new one (a screen opening,
+ * the one-shot read of a quote, a review or a signature) gets a fresh proof, as every quote,
+ * review and signature reads fresh state (`.claude/rules/trust.md`). Unlike a proof
+ * [AddressActivity.unchangedSince] vouches for, a held one is not checked against a reorganisation
+ * of its block: on a network without block access lists, for up to that hour, a value shown may
+ * rest on a block a reorg has since replaced, as it may have changed for any other reason.
  */
 internal class ProofSchedule(
     /** Whether the network's blocks up to `head` show account activity ([AddressActivity.hasAccountCoverage]). */
@@ -33,7 +40,7 @@ internal class ProofSchedule(
 
     /** Asks for every fact of the network to be proven again now. */
     fun refresh() {
-        generation.value += 1
+        generation.update { it + 1 }
     }
 
     /**

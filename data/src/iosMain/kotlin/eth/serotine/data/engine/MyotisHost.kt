@@ -198,7 +198,7 @@ class MyotisHost private constructor(
                 val live = try {
                     node.live()
                 } catch (e: Throwable) {
-                    // Throwable: the engine's state crosses JNA. A cancellation of this poll ends it.
+                    // Throwable: the engine's state crosses into native code. A cancellation of this poll ends it.
                     currentCoroutineContext().ensureActive()
                     false
                 }

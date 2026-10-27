@@ -104,9 +104,13 @@ change what it trusts.
   implements it.
 - **Refreshing.** The use case `RefreshNetworkData(networks)` proves the
   balances and prices of those networks again, now, for every screen that
-  shows them, and wakes their polls at once. Home refreshes every network as
-  it opens, an account its own network, and both offer `refresh()` for
-  pull-to-refresh.
+  shows them, and wakes their polls at once. Home offers `refresh()` for
+  every network, an account for its own: what pull-to-refresh asks.
+- **Opening is reading.** A screen, or any one-shot read, that starts
+  reading a value gets a fresh proof, at the current head. Only a reader
+  that has had one may be held a proof across heads. So a screen shows
+  fresh values as it opens, and a quote, a review and a signature always
+  read fresh state, in either view.
 - **On demand.** Each network has a `ProofSchedule`, which its native
   balances, token balances and prices share. In simple mode
   (`FollowInterfaceMode`, run by the hosts), on a network that is not live,

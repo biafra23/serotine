@@ -103,7 +103,7 @@ class AccountDetailViewModel(
     observeUpgradeWarnings: ObserveUpgradeWarnings,
     /** Whether Swap is offered on the account's network: greyed out where no venue is pinned. */
     hasSwapVenue: HasSwapVenue,
-    /** Proves the account's network's balances and prices again: as the screen opens, and on [refresh]. */
+    /** Proves the account's network's balances and prices again on [refresh]; its own reads are proven as it opens. */
     private val refreshNetworkData: RefreshNetworkData,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
@@ -113,11 +113,6 @@ class AccountDetailViewModel(
 
     /** The account's network: everything here is read and sent there. */
     private val network: Network = account.network
-
-    init {
-        // A value is read when its screen opens (docs/simple-ui.md); in Detailed view, at every head anyway.
-        refresh()
-    }
 
     /** Proves the account's network's balances and prices again now: what pulling the screen down asks. */
     fun refresh() = refreshNetworkData(setOf(network))

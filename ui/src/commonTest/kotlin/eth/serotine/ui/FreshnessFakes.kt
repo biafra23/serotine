@@ -6,11 +6,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 
-/** A [NetworkFreshness] whose [live] networks a test sets, recording each refresh asked. */
+/** A [NetworkFreshness] whose [live] networks a test sets, recording each refresh asked; it ignores the view. */
 internal class FakeFreshness(live: Set<Network> = emptySet()) : NetworkFreshness {
     val live = MutableStateFlow(live)
     val refreshed = mutableListOf<Network>()
-    var onDemand: Boolean? = null
 
     override fun observeLive(network: Network): Flow<Boolean> = live.map { network in it }
 
@@ -18,7 +17,5 @@ internal class FakeFreshness(live: Set<Network> = emptySet()) : NetworkFreshness
         refreshed += network
     }
 
-    override fun setOnDemand(onDemand: Boolean) {
-        this.onDemand = onDemand
-    }
+    override fun setOnDemand(onDemand: Boolean) = Unit
 }

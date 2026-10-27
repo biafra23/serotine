@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -354,5 +355,30 @@ class VerifiedNativeBalancesTest {
             assertEquals(2, chain.proofRequests.size)
             collecting.cancel()
         }
+    }
+
+    @Test
+    fun aNewReaderGetsAFreshProofWhileAHeldOneStandsForTheScreen() = runTest {
+        val schedule = ProofSchedule(live = { false }).apply { setOnDemand(true) }
+        val balances = scheduled(schedule)
+        chain.snapshot = running(head = 7, headTimestamp = 1_000)
+        chain.proofs[address] = ProvenBalance("1", 7)
+        val seen = mutableListOf<BalanceReading>()
+        val screen = launch { balances.observeBalance(Network.SEPOLIA, address).collect { seen += it } }
+        runCurrent()
+        chain.proofs[address] = ProvenBalance("2", 8)
+        step(running(head = 8, headTimestamp = 1_012))
+        assertEquals(1, chain.proofRequests.size, "held for the screen")
+
+        // The one-shot read of a quote, a review or a signature: proven at the current head.
+        val quoted = async { balances.observeBalance(Network.SEPOLIA, address).first() }
+        runCurrent()
+        assertEquals(BalanceReading.Verified(Wei.of("2"), 8, provenAt = 1_012), quoted.await())
+        assertEquals(2, chain.proofRequests.size)
+
+        // The screen takes the newer proof at its next poll.
+        step(running(head = 8, headTimestamp = 1_012))
+        assertEquals(BalanceReading.Verified(Wei.of("2"), 8, provenAt = 1_012), seen.last())
+        screen.cancel()
     }
 }
