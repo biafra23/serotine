@@ -73,10 +73,11 @@ the text wins.
   2026-10-26). On a network without block access lists (EIP-7928; Ethereum
   and Gnosis Chain today), simple mode proves balances when a screen opens
   and on pull-to-refresh, not at every head. While the light client
-  verifies, such a balance shows its age and counts in totals for about an
-  hour; older, it is shown as last verified (the rule above). A network with
+  verifies, such a balance shows its age and counts in totals, at the price
+  read with it, for up to an hour; older, it is shown as last verified (the rule above). A network with
   them (Sepolia) updates live. Nothing acts on an aged balance: a quote, a
-  review and a signature read fresh state.
+  review and a signature read fresh state, and Send proves the balance it
+  offers (Max included) when it opens.
 - **Amounts are token units.** An amount is entered, reviewed and signed in
   the token's own units. Fiat values are display-only (owner ruling,
   2026-10-16, *Prices* below): a hint next to an amount, a total, a sort key,
@@ -830,7 +831,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     for now) · Light client (status) · Debug build (the debug Android app
     only: *Allow screen recording*, rule 8 of docs/keys-and-signing.md) ·
     Developer (*Debug tab*, a switch in every build: 27; turning it off
-    empties the log) · About. Tokens opens the list of every token the
+    empties the log) · About. Advanced holds *Detailed view*, off by
+    default (docs/simple-ui.md): while it is off, the screens are simple
+    mode's, and the Debug tab and its switch are hidden. Tokens opens the list of every token the
     wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.

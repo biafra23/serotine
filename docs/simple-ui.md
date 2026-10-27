@@ -36,8 +36,9 @@ approved 2026-10-27):
    the screen says how old. This holds in simple mode only. Detailed view
    reads at every head, as today.
 5. **A balance read a while ago counts, with its age.** In simple mode, a
-   balance on a network without BALs counts in totals while it is under
-   about an hour old and the light client verifies. The screen shows its
+   balance on a network without BALs counts in totals, at the price read
+   with it, while it is under an hour old (the owner's "about an hour",
+   pinned at 60 minutes) and the light client verifies. The screen shows its
    age. An older one is dimmed and left out of totals, as a balance last
    verified is today (docs/wallet-ux.md, *Rules every screen follows*).
 6. **Swaps much simpler, two steps said out loud.** When the allowance falls
@@ -165,6 +166,8 @@ change what it trusts.
   25%, 50% and Max. The recipient: an address or an ENS name, with the
   resolved address under it, and the user's own accounts as chips. One fee
   row: "Network fee ≈ €0.36 · Normal ›", which opens the fee levels. Review.
+  Send proves the balance it offers when it opens, so the available amount,
+  25%, 50% and Max never come from an aged balance.
 - **S2 · Send, review.** A sheet over the form: "Send 250 USDC" and its
   value, the recipient in full with its blockie, From with its network, the
   most the fee can be in the native token and its value, and the balance
@@ -205,8 +208,9 @@ change what it trusts.
   address, and that Uniswap keeps it on the chain alone (owner ruling,
   2026-10-22). Details. "Confirm step 1 of 2".
 
-A swap whose allowance already suffices has one step: its review has no
-numbers and says "Confirm swap".
+A swap whose allowance already suffices has one step: its review is W2
+without the numbered steps, and says "Confirm swap". It has no mockup of its
+own.
 
 **Between the steps** (`ApprovalPending`, a new step of `SwapUiState` that
 both views share). Today, once the approval is broadcast, the swap screen

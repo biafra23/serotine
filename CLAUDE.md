@@ -111,9 +111,6 @@ Full text: `.claude/rules/platform.md`, `.claude/rules/ui.md`,
 - **Every screen has previews** (owner's request, 2026-10-17): one per state
   plus one in the dark theme, rendered by a test, so a broken preview fails
   the build.
-- **Two views** (owner's decisions, 2026-10-26; docs/simple-ui.md): simple
-  mode by default in every build, Detailed view opt-in in Settings. One
-  UiState and one ViewModel; the Route picks the screen.
 - Adding a feature follows the five-step checklist at the end of
   docs/architecture.md, and the PR describes it along those steps.
 - Two Android apps come out of `:android-app`, release and debug. **Never
@@ -211,7 +208,7 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
   on. Past the weak-subjectivity window only on the user's word (owner's
   request, 2026-10-24). In simple mode, on a network without block access
   lists, a balance is read on demand and counts in totals with its age for
-  about an hour (owner's decisions, 2026-10-26).
+  up to an hour (owner's decisions, 2026-10-26).
 - A Safe transaction that sets a fallback handler other than the pinned one,
   or none (owner ruling, 2026-10-18, #63), or enables a module (owner ruling,
   2026-10-18, on #54), is shown and never signed, approved or executed.
