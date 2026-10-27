@@ -2,6 +2,7 @@ package eth.serotine.ui.transferstatus
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +37,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.LightClientItem
@@ -43,6 +45,7 @@ import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.mode.LocalInterfaceMode
 import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of each step, for UI tests. */
@@ -71,19 +74,24 @@ fun TransferStatusRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val strip by lightClient.collectAsStateWithLifecycle()
-    TransferStatusScreen(state, strip, onDone, onRetry = viewModel::retry, modifier = modifier)
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleTransferStatusScreen(state, onDone, viewModel::retry, modifier)
+        InterfaceMode.DETAILED -> TransferStatusScreen(state, strip, onDone, viewModel::retry, modifier)
+    }
 }
 
 /**
  * Send, status (docs/wallet-ux.md, screen 9) as a pure function of [state]: what was sent, and
  * Signed → Broadcast → Included → Finalized, each step with its block once it has one; for one
- * maybe sent, Try again ([onRetry]), which sends the same signed bytes.
+ * maybe sent, Try again ([onRetry]), which sends the same signed bytes. [lightClient] is the
+ * network's strip, Detailed view's; simple mode ([SimpleTransferStatusScreen]) draws none (null).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransferStatusScreen(
     state: TransferStatusUiState,
-    lightClient: LightClientItem,
+    lightClient: LightClientItem?,
     onDone: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -109,11 +117,16 @@ fun TransferStatusScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+        val body: @Composable BoxScope.() -> Unit = {
             when (state) {
                 is TransferStatusUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is TransferStatusUiState.Shown -> Shown(state, onDone, onRetry)
             }
+        }
+        if (lightClient != null) {
+            UnderLightClientStrip(lightClient, Modifier.padding(padding), body)
+        } else {
+            Box(Modifier.padding(padding).fillMaxSize(), content = body)
         }
     }
 }

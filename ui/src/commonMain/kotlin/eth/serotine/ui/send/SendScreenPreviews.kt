@@ -118,7 +118,7 @@ private fun SendPreview(
     SerotineTheme(darkTheme = darkTheme) {
         SendScreen(
             state = state,
-            lightClient = lightClient,
+            chrome = SendChrome.Strip(lightClient),
             onAssetChange = {},
             onToChange = {},
             onPickAccount = {},

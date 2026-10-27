@@ -283,7 +283,8 @@ merge.
    network's icon on an account's blockie.
 4. Simple Account and its Activity tab (H4, H5). Receive (H6) draws the
    same in both views: it names no block.
-5. Simple Send (S1 to S3).
+5. Simple Send and a transfer's status (S1 to S3). S2's review stays a
+   screen, not the mockup's sheet over the form.
 6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
 7. The remaining flows: Activity's waiting step, and the screens under *Not
    in simple mode yet* that get a simple version.

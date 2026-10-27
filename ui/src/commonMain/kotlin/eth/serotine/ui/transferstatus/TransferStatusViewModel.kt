@@ -124,7 +124,13 @@ class TransferStatusViewModel(
                 "No peer confirmed it$takenAt: it may be on its way, or may not have reached the network",
             )
             unconfirmed -> StatusStep("Broadcast", StepState.UNCONFIRMED, "No peer confirmed it$takenAt")
-            else -> StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers$takenAt")
+            else -> StatusStep(
+                "Broadcast",
+                StepState.DONE,
+                "Handed to the network's peers$takenAt",
+                simpleLabel = "Sent",
+                simpleDetail = status.transfer?.let { formatTime(it.sentAt) },
+            )
         }
         // A used nonce the history recorded, whether the receipt is not found or not verifiable now.
         val used = nonceUsed(status)
@@ -137,7 +143,13 @@ class TransferStatusViewModel(
             )
             else -> when (progress) {
                 TransactionProgress.Pending ->
-                    StatusStep("Included", StepState.WAITING, "Waiting for a block to include it")
+                    StatusStep(
+                        "Included",
+                        StepState.WAITING,
+                        "Waiting for a block to include it",
+                        simpleLabel = "Confirmed",
+                        simpleDetail = "Waiting to be confirmed",
+                    )
                 is TransactionProgress.Included -> includedStep(progress.blockNumber, progress.succeeded)
                 is TransactionProgress.Finalized -> includedStep(progress.blockNumber, progress.succeeded)
                 is TransactionProgress.Unavailable ->
@@ -148,9 +160,21 @@ class TransferStatusViewModel(
             used -> StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device")
             else -> when (progress) {
                 TransactionProgress.Pending, is TransactionProgress.Included ->
-                    StatusStep("Finalized", StepState.WAITING, "Once the beacon chain finalizes its block")
+                    StatusStep(
+                        "Finalized",
+                        StepState.WAITING,
+                        "Once the beacon chain finalizes its block",
+                        simpleLabel = "Final",
+                        simpleDetail = "Once the network finalizes it, it can't be reversed",
+                    )
                 is TransactionProgress.Finalized ->
-                    StatusStep("Finalized", StepState.DONE, "Block ${grouped(progress.blockNumber)} is finalized")
+                    StatusStep(
+                        "Finalized",
+                        StepState.DONE,
+                        "Block ${grouped(progress.blockNumber)} is finalized",
+                        simpleLabel = "Final",
+                        simpleDetail = "It can't be reversed by the network",
+                    )
                 is TransactionProgress.Unavailable ->
                     StatusStep("Finalized", StepState.UNKNOWN, "Cannot be verified right now")
             }
@@ -269,9 +293,21 @@ class TransferStatusViewModel(
     }
 
     private fun includedStep(block: Long, succeeded: Boolean) = if (succeeded) {
-        StatusStep("Included", StepState.DONE, "In block ${grouped(block)}, its receipt verified")
+        StatusStep(
+            "Included",
+            StepState.DONE,
+            "In block ${grouped(block)}, its receipt verified",
+            simpleLabel = "Confirmed",
+            simpleDetail = "Its receipt checked on chain",
+        )
     } else {
-        StatusStep("Included", StepState.FAILED, "In block ${grouped(block)}, its receipt verified: it reverted")
+        StatusStep(
+            "Included",
+            StepState.FAILED,
+            "In block ${grouped(block)}, its receipt verified: it reverted",
+            simpleLabel = "Failed",
+            simpleDetail = "Its receipt checked on chain: it reverted",
+        )
     }
 
     /** [asset]'s symbol as shown, its decimals and its bundled icon. */
