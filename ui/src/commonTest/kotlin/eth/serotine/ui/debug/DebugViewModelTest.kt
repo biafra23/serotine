@@ -83,6 +83,16 @@ class DebugViewModelTest {
     }
 
     @Test
+    fun theFilterTextIsThereAtOnceWithoutTheUiStateCatchingUp() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.setFilter("ge")
+        viewModel.setFilter("get")
+
+        assertEquals("get", viewModel.filterText.value)
+    }
+
+    @Test
     fun clearEmptiesTheLog() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         log.records.value = listOf(log.record(1))

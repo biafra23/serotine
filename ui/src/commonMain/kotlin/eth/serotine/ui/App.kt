@@ -60,6 +60,7 @@ import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.debug.DebugRoute
+import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
@@ -116,6 +117,8 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
         // Whether the bar has a Debug tab: the app's tabs, so scoped to the host too.
         val debugTab = viewModel { graph.debugTabViewModel() }
         val debugShown by debugTab.shown.collectAsStateWithLifecycle()
+        // The Debug screen's filter outlives its destination, which a tab switch pops: scoped to the host too.
+        val debug = viewModel { graph.debugViewModel() }
         val tabs = Tab.entries.filter { it != Tab.DEBUG || debugShown == true }
         val entry by navController.currentBackStackEntryAsState()
         val selected = entry?.destination?.hierarchy?.firstNotNullOfOrNull { destination ->
@@ -167,6 +170,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
                         update,
                         lightClient,
                         debugShown,
+                        debug,
                         Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
                     )
                 }
@@ -214,6 +218,7 @@ private fun Destinations(
     update: UpdateRequiredViewModel,
     lightClient: LightClientViewModel,
     debugShown: Boolean?,
+    debug: DebugViewModel,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -221,7 +226,7 @@ private fun Destinations(
     // In the NavHost's own composition, so the graph it navigates is set by the time this runs.
     LaunchedEffect(updateRequired) {
         if (updateRequired) {
-            // The whole back stack goes: every other screen's ViewModel is cleared, the seed
+            // The whole back stack goes: every screen's ViewModel but the Debug tab's is cleared, the seed
             // screen's words with it, and back leaves the app instead of reaching a screen.
             navController.navigate(Destination.UPDATE_REQUIRED) {
                 popUpTo(navController.graph.id) { inclusive = true }
@@ -232,10 +237,14 @@ private fun Destinations(
             }
         }
     }
-    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts. Not
-    // before the setting is read (null), so a Debug screen the system restored stays.
+    // The Debug tab turned off while its screen is shown: that screen goes, back to Accounts, and
+    // the filter typed goes with the log it was for. Not before the setting is read (null), so a
+    // Debug screen the system restored stays.
     LaunchedEffect(debugShown) {
-        if (debugShown == false) navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
+        if (debugShown == false) {
+            navController.popBackStack(Tab.DEBUG.graph, inclusive = true)
+            debug.setFilter("")
+        }
     }
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is
@@ -385,7 +394,7 @@ private fun Destinations(
         }
         navigation(startDestination = Destination.DEBUG, route = Tab.DEBUG.graph) {
             composable(Destination.DEBUG) {
-                DebugRoute(viewModel { graph.debugViewModel() })
+                DebugRoute(debug)
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
