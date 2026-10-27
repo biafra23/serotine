@@ -39,6 +39,8 @@ internal data class AssetOption(
     val balance: UInt256?,
     val balanceText: String,
     val verifiedAt: String?,
+    /** When the head the balance was proved at was produced, in unix seconds; null when not known. */
+    val provenAt: Long?,
     val valuation: Valuation?,
     val warning: String?,
 ) {
@@ -46,8 +48,8 @@ internal data class AssetOption(
     val contract: Address?
         get() = (asset as? TransferAsset.Erc20Token)?.token?.address
 
-    /** As the form lists it. */
-    fun choice() = AssetChoice(
+    /** As the form lists it, its balance dated against [now] (unix seconds) where one is given. */
+    fun choice(now: Long? = null) = AssetChoice(
         symbol = symbol,
         name = name,
         icon = icon,
@@ -55,6 +57,7 @@ internal data class AssetOption(
         contract = contract?.let(Eip55::format),
         verifiedAt = verifiedAt,
         warning = warning,
+        age = provenAt?.let { at -> now?.let { "updated ${agoText(at, it)}" } },
     )
 }
 
@@ -84,6 +87,7 @@ internal fun assetOptions(
             else -> balanceText(native, network)
         },
         verifiedAt = (native as? BalanceReading.Verified)?.let { block(it.blockNumber) },
+        provenAt = (native as? BalanceReading.Verified)?.provenAt,
         valuation = value.nativeValue,
         warning = null,
     )
@@ -109,6 +113,7 @@ internal fun assetOptions(
                 is TokenBalanceReading.Unavailable -> "Not verified"
             },
             verifiedAt = verified?.blockNumber?.let(::block),
+            provenAt = verified?.provenAt,
             valuation = valuation,
             warning = if (holding.sharesBuiltInSymbol) "Not the built-in $symbol: another contract" else null,
         )

@@ -109,9 +109,27 @@ class TransferStatusViewModelTest {
         assertEquals(
             listOf(
                 StatusStep("Signed", StepState.DONE, "On this device"),
-                StatusStep("Broadcast", StepState.DONE, "Handed to the network's peers, at 1800000000"),
-                StatusStep("Included", StepState.WAITING, "Waiting for a block to include it"),
-                StatusStep("Finalized", StepState.WAITING, "Once the beacon chain finalizes its block"),
+                StatusStep(
+                    "Broadcast",
+                    StepState.DONE,
+                    "Handed to the network's peers, at 1800000000",
+                    simpleLabel = "Sent",
+                    simpleDetail = "at 1800000000",
+                ),
+                StatusStep(
+                    "Included",
+                    StepState.WAITING,
+                    "Waiting for a block to include it",
+                    simpleLabel = "Confirmed",
+                    simpleDetail = "Waiting to be confirmed",
+                ),
+                StatusStep(
+                    "Finalized",
+                    StepState.WAITING,
+                    "Once the beacon chain finalizes its block",
+                    simpleLabel = "Final",
+                    simpleDetail = "Once the network finalizes it, its outcome can't be reversed",
+                ),
             ),
             pending.steps,
         )
@@ -119,14 +137,26 @@ class TransferStatusViewModelTest {
 
         receipts.of(record.hash).value = TransactionProgress.Included(9_412_120, succeeded = true)
         assertEquals(
-            StatusStep("Included", StepState.DONE, "In block 9,412,120, its receipt verified"),
+            StatusStep(
+                "Included",
+                StepState.DONE,
+                "In block 9,412,120, its receipt verified",
+                simpleLabel = "Confirmed",
+                simpleDetail = "Its receipt checked on chain",
+            ),
             viewModel.shown.steps[2],
         )
         assertFalse(viewModel.shown.finished)
 
         receipts.of(record.hash).value = TransactionProgress.Finalized(9_412_120, succeeded = true)
         assertEquals(
-            StatusStep("Finalized", StepState.DONE, "Block 9,412,120 is finalized"),
+            StatusStep(
+                "Finalized",
+                StepState.DONE,
+                "Block 9,412,120 is finalized",
+                simpleLabel = "Final",
+                simpleDetail = "Its outcome can't be reversed by the network",
+            ),
             viewModel.shown.steps[3],
         )
         assertTrue(viewModel.shown.finished)
@@ -140,7 +170,13 @@ class TransferStatusViewModelTest {
         runCurrent()
 
         assertEquals(
-            StatusStep("Included", StepState.FAILED, "In block 9,412,120, its receipt verified: it reverted"),
+            StatusStep(
+                "Included",
+                StepState.FAILED,
+                "In block 9,412,120, its receipt verified: it reverted",
+                simpleLabel = "Failed",
+                simpleDetail = "Its receipt checked on chain: it reverted",
+            ),
             viewModel.shown.steps[2],
         )
         assertEquals(

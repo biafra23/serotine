@@ -75,7 +75,7 @@ class SendScreenTest {
         SerotineTheme {
             SendScreen(
                 state = state,
-                lightClient = verifiedStripSample,
+                chrome = SendChrome.Strip(verifiedStripSample),
                 onAssetChange = { events += "asset $it" },
                 onToChange = { events += "to $it" },
                 onPickAccount = { events += "pick $it" },

@@ -16,7 +16,8 @@ package eth.serotine.ui.components
  * [quoting] while the quote for the review is made, [error] why the last one was refused, and
  * [canReview] when it can be asked for. [toLabel] and [toHint] are the recipient field's label
  * and the line under it while nothing is said of what is typed: a name only on a network that
- * resolves names.
+ * resolves names. [simpleError] is [error] in simple mode's words, with no block, null where it is
+ * the same (docs/simple-ui.md).
  */
 data class TransferForm(
     val network: String,
@@ -39,6 +40,7 @@ data class TransferForm(
     val canReview: Boolean = false,
     val toLabel: String = "Address or ENS name",
     val toHint: String = "An address, an ENS name, or one of your accounts below",
+    val simpleError: String? = null,
 )
 
 /** The account sent from: its [label] and EIP-55 [address]. */
@@ -47,8 +49,10 @@ data class SendFrom(val label: String, val address: String)
 /**
  * One asset the account can send: its [symbol], [name] and bundled [icon] (null: a monogram), a
  * token's EIP-55 [contract] (null for the network's currency), the [balance] held ("1.5 ETH",
- * or why there is none yet), the block it was verified at ([verifiedAt], "block 9,412,118"), and
- * [warning] for a token the user added whose symbol is a built-in token's.
+ * or why there is none yet), the block it was verified at ([verifiedAt], "block 9,412,118"),
+ * [warning] for a token the user added whose symbol is a built-in token's, and [age], how long ago
+ * the balance was proved ("updated 2 min ago"), which simple mode shows in place of the block
+ * (docs/simple-ui.md); null where not known.
  */
 data class AssetChoice(
     val symbol: String,
@@ -58,6 +62,7 @@ data class AssetChoice(
     val contract: String? = null,
     val verifiedAt: String? = null,
     val warning: String? = null,
+    val age: String? = null,
 )
 
 /** One of the wallet's accounts, offered as the recipient: its [label] and EIP-55 [address]. */
@@ -78,10 +83,17 @@ data class RecipientItem(
 )
 
 /**
- * One balance of the verified simulation: [what] ("ETH balance"), [before] and [after] it, and
- * the block the balance before was verified at ([verifiedAt]).
+ * One balance of the verified simulation: [what] ("ETH balance, which pays the fee"), [before] and
+ * [after] it, and the block the balance before was verified at ([verifiedAt]); [short], what a line
+ * naming its value after calls it ("ETH balance"), [what] by default.
  */
-data class BalanceChange(val what: String, val before: String, val after: String, val verifiedAt: String)
+data class BalanceChange(
+    val what: String,
+    val before: String,
+    val after: String,
+    val verifiedAt: String,
+    val short: String = what,
+)
 
 /**
  * The Safe's balance of the asset as the proposal leaves it: [what] ("ETH balance of the Safe"),
