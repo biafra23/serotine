@@ -29,10 +29,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.LightClientHealthDot
 import eth.serotine.ui.components.StaleAnchorBanner
 import eth.serotine.ui.components.StaleAnchorDialog
 import eth.serotine.ui.components.StaleAnchorWarning
+import eth.serotine.ui.mode.LocalInterfaceMode
 
 /** Test tag of the app's version line, for UI tests. */
 const val SETTINGS_VERSION_TAG = "settings-version"
@@ -49,7 +51,7 @@ const val SETTINGS_DEBUG_SCREEN_TAG = "settings-debug-screen"
 /** Test tag of a network's row, followed by its chain id, for UI tests. */
 const val SETTINGS_NETWORK_TAG = "settings-network-"
 
-/** Binds [SettingsScreen] to its ViewModel. */
+/** Binds [SettingsScreen], or in simple mode [SimpleSettingsScreen], to its ViewModel. */
 @Composable
 fun SettingsRoute(
     viewModel: SettingsViewModel,
@@ -59,20 +61,37 @@ fun SettingsRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    SettingsScreen(
-        state,
-        onCurrency,
-        onTokens,
-        onSecurity,
-        viewModel::allowScreenCapture,
-        viewModel::showDebugScreen,
-        modifier,
-        onDetailedViewChange = viewModel::showDetailedView,
-        onNetworkChange = viewModel::switchNetwork,
-        onConfirmTurnOff = viewModel::confirmTurnOff,
-        onCancelTurnOff = viewModel::cancelTurnOff,
-        onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
-    )
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleSettingsScreen(
+            state,
+            onCurrency,
+            onTokens,
+            onSecurity,
+            viewModel::allowScreenCapture,
+            viewModel::showDebugScreen,
+            modifier,
+            onNetworkChange = viewModel::switchNetwork,
+            onConfirmTurnOff = viewModel::confirmTurnOff,
+            onCancelTurnOff = viewModel::cancelTurnOff,
+            onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onDetailedViewChange = viewModel::showDetailedView,
+        )
+        InterfaceMode.DETAILED -> SettingsScreen(
+            state,
+            onCurrency,
+            onTokens,
+            onSecurity,
+            viewModel::allowScreenCapture,
+            viewModel::showDebugScreen,
+            modifier,
+            onNetworkChange = viewModel::switchNetwork,
+            onConfirmTurnOff = viewModel::confirmTurnOff,
+            onCancelTurnOff = viewModel::cancelTurnOff,
+            onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onDetailedViewChange = viewModel::showDetailedView,
+        )
+    }
 }
 
 /**

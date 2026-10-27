@@ -10,6 +10,7 @@ import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKnownTokens
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetInterfaceMode
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -54,6 +56,8 @@ class SettingsViewModel(
     private val syncPastStaleAnchor: SyncPastStaleAnchor,
     observeInterfaceMode: ObserveInterfaceMode,
     private val setInterfaceMode: SetInterfaceMode,
+    /** Whether each network updates live, which simple mode's rows say. */
+    observeNetworkLive: ObserveNetworkLive,
     /** Now, in unix seconds: what the light clients' lines date the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
@@ -77,8 +81,8 @@ class SettingsViewModel(
                 observeNetworkOverview().redatedWhile { networks -> networks.any { it.on && it.status.dated } },
                 networkNotSaved,
                 turningOff,
-                ::Triple,
-            ),
+                combine(Network.entries.map { observeNetworkLive(it).onStart { emit(false) } }) { it.toList() },
+            ) { networks, notSaved, confirming, live -> Rows(networks, notSaved, confirming, live) },
             combine(Network.entries.map { observeKnownTokens(it) }) { it.toList() },
             observeDisplayCurrencies(),
             screenCapture?.allowed ?: flowOf(null),
@@ -89,7 +93,7 @@ class SettingsViewModel(
                 detailedViewNotSaved,
                 ::Switches,
             ),
-        ) { (networks, notSaved, confirming), known, currencies, captureAllowed, switches ->
+        ) { (networks, notSaved, confirming, live), known, currencies, captureAllowed, switches ->
             val tokens = known.flatMap { it.tokens }
             val builtIn = tokens.count { it.origin == TokenOrigin.BUILT_IN }
             val added = if (known.any { it.settingsUnavailable }) {
@@ -103,7 +107,7 @@ class SettingsViewModel(
                 else -> ""
             }
             SettingsUiState(
-                networks = networks.map { rowOf(it, it.network in notSaved) },
+                networks = networks.map { rowOf(it, it.network in notSaved, live[it.network.ordinal]) },
                 version = APP_VERSION,
                 tokens = "$builtIn built in · $added",
                 currency = currency,
@@ -127,7 +131,15 @@ class SettingsViewModel(
                 SettingsUiState(emptyList(), APP_VERSION, screenCaptureAllowed = screenCapture?.allowed?.value),
             )
 
-    private fun rowOf(overview: NetworkOverview, notSaved: Boolean): NetworkRow {
+    /** The networks' rows as read, before they are drawn. */
+    private data class Rows(
+        val networks: List<NetworkOverview>,
+        val notSaved: Set<Network>,
+        val confirming: TurnOffConfirmation?,
+        val live: List<Boolean>,
+    )
+
+    private fun rowOf(overview: NetworkOverview, notSaved: Boolean, live: Boolean): NetworkRow {
         val accounts = overview.accounts
         val count = when {
             accounts == null -> "Accounts cannot be read"
@@ -147,6 +159,18 @@ class SettingsViewModel(
             staleAnchor = (overview.status as? LightClientStatus.StaleAnchor)
                 ?.takeIf { overview.on }
                 ?.let { StaleAnchorWarning.of(overview.network, it) },
+            simpleLine = listOfNotNull(
+                "Test network".takeIf { overview.network.testnet },
+                when {
+                    !overview.on -> "Off"
+                    item.health == LightClientHealth.VERIFIED -> if (live) "live" else "Up to date"
+                    item.health == LightClientHealth.NOT_RUNNING -> "Idle until an account needs it"
+                    // On its way to a verified head; one synced but without a fresh head (STALE) cannot
+                    // check, as Home's banner says of it.
+                    item.health == LightClientHealth.NOT_VERIFIED && item.working -> "Catching up…"
+                    else -> "Can't check right now"
+                },
+            ).joinToString(" · ").replaceFirstChar { it.uppercase() },
         )
     }
 

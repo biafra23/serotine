@@ -40,7 +40,9 @@ data class SettingsUiState(
  * of it could not be saved. [chainId] names the network to the switch; [testnet] marks Sepolia.
  * [staleAnchor] warns that its light client refuses a checkpoint past the weak-subjectivity
  * window, with the way to catch up anyway (owner's request, 2026-10-24), whether or not it has
- * accounts: a screen's hold (Watch, Add token) runs it too.
+ * accounts: a screen's hold (Watch, Add token) runs it too. [simpleLine] is what simple mode says
+ * instead of [line], with no block number (docs/simple-ui.md, T1): "Up to date", "Test network ·
+ * live", "Catching up…", "Can't check right now", "Off".
  */
 data class NetworkRow(
     val chainId: Long,
@@ -51,6 +53,7 @@ data class NetworkRow(
     val testnet: Boolean = false,
     val notSaved: Boolean = false,
     val staleAnchor: StaleAnchorWarning? = null,
+    val simpleLine: String = line,
 )
 
 /**

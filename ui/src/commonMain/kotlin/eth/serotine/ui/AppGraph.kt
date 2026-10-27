@@ -81,6 +81,7 @@ import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
@@ -300,6 +301,7 @@ class AppGraph(
             observeUpgradeWarnings(),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
             RefreshNetworkData(networkFreshness),
+            ObserveNetworkLive(networkFreshness),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -613,6 +615,7 @@ class AppGraph(
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
             ObserveInterfaceMode(interfaceMode),
             SetInterfaceMode(interfaceMode),
+            ObserveNetworkLive(networkFreshness),
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
