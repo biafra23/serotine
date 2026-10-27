@@ -4,8 +4,10 @@ The screens Serotine is built towards, for externally owned accounts and Safe
 smart accounts, and the rules they follow. A screen PR is held to this page
 together with docs/architecture.md (how a screen is built) and
 docs/keys-and-signing.md (how a key is held and used). The rules here apply
-CLAUDE.md's *Trust* and *Data sources* sections to the screens; where this
-page and CLAUDE.md disagree, CLAUDE.md wins and this page is fixed.
+the *Trust* and *Data sources* rules to the screens (their short form in
+CLAUDE.md, their full text in `.claude/rules/trust.md` and
+`.claude/rules/data-sources.md`); where this page and those rules disagree,
+the rules win and this page is fixed.
 
 The mockups below (source: `wallet-ux-screens.html`, which opens in a
 browser) draw screens 1 to 20 with their numbers; Security (21) came later
