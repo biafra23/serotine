@@ -91,9 +91,10 @@ change what it trusts.
 - **Previews and tests.** Each `Simple<Feature>Screen` has
   `Simple<Feature>ScreenPreviews.kt`, its previews test and its headless
   screen tests, as every screen does (`.claude/rules/ui.md`).
-- **The Debug tab's switch** moves under Detailed view in Settings. It is
-  shown only while Detailed view is on. Turning Detailed view off hides the
-  Debug tab as well.
+- **The Debug tab's switch** moves to Settings → Advanced, under the
+  *Detailed view* row, and is shown only while Detailed view is on. Turning
+  Detailed view off hides the Debug tab as well and keeps its switch, so
+  the tab is back once Detailed view is on again.
 
 ## Freshness and pull-to-refresh
 
@@ -227,8 +228,9 @@ kept.
 - **T1 · Settings.** Display: Currency, Tokens. Networks: each with its
   switch and its state ("Up to date · checked 2 min ago", "Test network ·
   live", or what is wrong). Security: password and fingerprint. Advanced:
-  *Detailed view* ("Show blocks, proofs, fee levels and the light client's
-  state"), off by default. About, with the version.
+  *Detailed view* ("Show the light client's state, blocks and proofs on every
+  screen"), off by default: what Detailed view shows up front, since simple
+  mode keeps the fee levels behind a row and the blocks under *Details*. About, with the version.
 
 ### Not in simple mode yet
 

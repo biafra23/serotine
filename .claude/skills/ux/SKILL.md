@@ -37,7 +37,9 @@ most designs touch:
   from another source. A value the user acts on names the block it was
   verified at; in simple mode, its age. The one exception is a balance proved
   earlier: shown dimmed and dated, out of totals, never acted on (owner's
-  request, 2026-10-19).
+  request, 2026-10-19). In simple mode, a balance read a while ago on a
+  network without block access lists shows its age and counts in totals
+  for up to an hour while the light client verifies (`.claude/rules/trust.md`).
 - **The light client's state is in sight wherever it decides something**
   (owner's request, 2026-10-20): the status strip under the top bar in
   Detailed view; in simple mode a freshness line, a banner when a network

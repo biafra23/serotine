@@ -74,10 +74,11 @@ the text wins.
   and Gnosis Chain today), simple mode proves balances when a screen opens
   and on pull-to-refresh, not at every head. While the light client
   verifies, such a balance shows its age and counts in totals, at the price
-  read with it, for up to an hour; older, it is shown as last verified (the rule above). A network with
-  them (Sepolia) updates live. Nothing acts on an aged balance: a quote, a
-  review and a signature read fresh state, and Send proves the balance it
-  offers (Max included) when it opens.
+  read with it, for up to an hour; older, it is shown as last verified
+  (the rule above). A network with them (Sepolia) updates live. Nothing
+  acts on an aged balance: a quote, a review and a signature read fresh
+  state, and Send proves the balance it offers (Max included) when it
+  opens.
 - **Amounts are token units.** An amount is entered, reviewed and signed in
   the token's own units. Fiat values are display-only (owner ruling,
   2026-10-16, *Prices* below): a hint next to an amount, a total, a sort key,
@@ -830,11 +831,11 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     (wallet password, biometric unlock; 21) · Network (Sepolia, the only one
     for now) · Light client (status) · Debug build (the debug Android app
     only: *Allow screen recording*, rule 8 of docs/keys-and-signing.md) ·
-    Developer (*Debug tab*, a switch in every build: 27; turning it off
-    empties the log) · About. Advanced holds *Detailed view*, off by
-    default (docs/simple-ui.md): while it is off, the screens are simple
-    mode's, and the Debug tab and its switch are hidden. Tokens opens the list of every token the
-    wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
+    Advanced (*Detailed view*, off by default, docs/simple-ui.md; and under
+    it, only while it is on, *Debug tab*, a switch in every build: 27;
+    turning it off empties the log) · About. While Detailed view is off,
+    the screens are simple mode's and the Debug tab is hidden, its switch
+    kept. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the
