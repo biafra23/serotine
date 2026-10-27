@@ -63,6 +63,7 @@ import eth.serotine.ui.debug.DebugRoute
 import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
+import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
 import eth.serotine.ui.platform.ScreenCaptureWarnings
 import eth.serotine.ui.receive.ReceiveRoute
@@ -102,12 +103,20 @@ fun App(graph: AppGraph) = App(graph, rememberNavController())
 /** [App] with the [navController] a test drives. */
 @Composable
 internal fun App(graph: AppGraph, navController: NavHostController) {
-    CompositionLocalProvider(LocalScreenCaptureDebugSwitch provides graph.screenCaptureDebugSwitch) {
+    // The view every Route draws its screen in: the app's, so scoped to the host.
+    val interfaceMode = viewModel { graph.interfaceModeViewModel() }
+    // Nothing is drawn until the choice is read (a file read, quick), so no screen is drawn in one
+    // view and then again in the other: nothing acts on a guess.
+    val mode = interfaceMode.mode.collectAsStateWithLifecycle().value ?: return
+    CompositionLocalProvider(
+        LocalScreenCaptureDebugSwitch provides graph.screenCaptureDebugSwitch,
+        LocalInterfaceMode provides mode,
+    ) {
         AppContent(graph, navController)
     }
 }
 
-/** [App] under the host's screen-capture switch. */
+/** [App] under the host's screen-capture switch and the view the screens are drawn in. */
 @Composable
 private fun AppContent(graph: AppGraph, navController: NavHostController) {
     SerotineTheme {

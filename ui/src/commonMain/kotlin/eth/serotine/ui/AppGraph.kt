@@ -15,6 +15,7 @@ import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.HistoryStarts
+import eth.serotine.domain.repository.InterfaceModeSetting
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
@@ -71,9 +72,11 @@ import eth.serotine.domain.usecase.ObserveCowOrder
 import eth.serotine.domain.usecase.ObserveCowOrderLife
 import eth.serotine.domain.usecase.ObserveDebugLog
 import eth.serotine.domain.usecase.ObserveDebugScreen
+import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
+import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
@@ -118,6 +121,7 @@ import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.SetDebugLogLevel
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetDisplayCurrency
+import eth.serotine.domain.usecase.SetInterfaceMode
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.SignSafeTx
@@ -140,6 +144,7 @@ import eth.serotine.ui.debug.DebugTabViewModel
 import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
+import eth.serotine.ui.mode.InterfaceModeViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
@@ -258,6 +263,8 @@ class AppGraph(
      * `FollowDebugScreen` keeps [debugLog] to.
      */
     private val debugScreen: DebugScreenSetting,
+    /** The view the user chose in Settings, simple mode or Detailed view (docs/simple-ui.md). */
+    private val interfaceMode: InterfaceModeSetting,
     /**
      * The debug build's switch that allows screen recordings of the protected screens; null in a
      * release build, and on a host whose screens block nothing (docs/keys-and-signing.md, rule 8).
@@ -598,10 +605,15 @@ class AppGraph(
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            ObserveInterfaceMode(interfaceMode),
+            SetInterfaceMode(interfaceMode),
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
-    fun debugTabViewModel(): DebugTabViewModel = DebugTabViewModel(ObserveDebugScreen(debugScreen))
+    fun debugTabViewModel(): DebugTabViewModel = DebugTabViewModel(ObserveDebugTab(debugScreen, interfaceMode))
+
+    /** The view the screens are drawn in: one for the app, in the host's scope. */
+    fun interfaceModeViewModel(): InterfaceModeViewModel = InterfaceModeViewModel(ObserveInterfaceMode(interfaceMode))
 
     /** The Debug tab: the debug log. */
     fun debugViewModel(): DebugViewModel =

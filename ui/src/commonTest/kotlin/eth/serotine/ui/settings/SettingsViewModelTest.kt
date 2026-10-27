@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.repository.CurrencyChoice
@@ -14,9 +15,11 @@ import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.usecase.NetworkOverview
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.SetDebugScreen
+import eth.serotine.domain.usecase.SetInterfaceMode
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.ui.APP_VERSION
@@ -26,6 +29,7 @@ import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryDebugScreen
+import eth.serotine.ui.MemoryInterfaceMode
 import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
@@ -71,6 +75,7 @@ class SettingsViewModelTest {
     private val accounts = FakeAccounts(main)
     private val networks = MemoryNetworkSettings()
     private val debugScreen = MemoryDebugScreen()
+    private val interfaceMode = MemoryInterfaceMode()
     private val currency = MemoryCurrencySetting()
 
     @AfterTest
@@ -95,6 +100,8 @@ class SettingsViewModelTest {
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
             SyncPastStaleAnchor(lightClient, consent),
+            ObserveInterfaceMode(interfaceMode),
+            SetInterfaceMode(interfaceMode),
             clock = { 1_000 },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -248,6 +255,8 @@ class SettingsViewModelTest {
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
             SyncPastStaleAnchor(lightClient, consent),
+            ObserveInterfaceMode(interfaceMode),
+            SetInterfaceMode(interfaceMode),
             clock = { now },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -332,24 +341,67 @@ class SettingsViewModelTest {
 
     @Test
     fun theDebugTabsSwitchTurnsItOnAndOffAndSaysWhenThatCouldNotBeSaved() = runTest {
+        interfaceMode.mode.value = InterfaceMode.DETAILED
         val viewModel = viewModel()
-        assertFalse(viewModel.uiState.value.debugScreen)
+        assertEquals(false, viewModel.uiState.value.debugScreen)
 
         viewModel.showDebugScreen(true)
         runCurrent()
-        assertTrue(viewModel.uiState.value.debugScreen)
+        assertEquals(true, viewModel.uiState.value.debugScreen)
         assertFalse(viewModel.uiState.value.debugScreenNotSaved)
 
         debugScreen.failSaves = true
         viewModel.showDebugScreen(false)
         runCurrent()
-        assertTrue(viewModel.uiState.value.debugScreen)
+        assertEquals(true, viewModel.uiState.value.debugScreen)
         assertTrue(viewModel.uiState.value.debugScreenNotSaved)
 
         debugScreen.failSaves = false
         viewModel.showDebugScreen(false)
         runCurrent()
-        assertFalse(viewModel.uiState.value.debugScreen)
+        assertEquals(false, viewModel.uiState.value.debugScreen)
         assertFalse(viewModel.uiState.value.debugScreenNotSaved)
+    }
+
+    @Test
+    fun simpleModeOffersNoDebugTabSwitchAndKeepsItsValueForDetailedView() = runTest {
+        debugScreen.enabled.value = true
+        val viewModel = viewModel()
+        assertNull(viewModel.uiState.value.debugScreen, "simple mode, as in every build")
+
+        viewModel.showDetailedView(true)
+        runCurrent()
+        assertEquals(true, viewModel.uiState.value.debugScreen)
+        // Turning Detailed view off would empty the tab's log: its row says so.
+        assertEquals(SettingsViewModel.DEBUG_TAB_GOES, viewModel.uiState.value.detailedViewNote)
+
+        viewModel.showDebugScreen(false)
+        runCurrent()
+        assertNull(viewModel.uiState.value.detailedViewNote)
+    }
+
+    @Test
+    fun detailedViewIsOffUntilTurnedOnAndSaysWhenThatCouldNotBeSaved() = runTest {
+        val viewModel = viewModel()
+        assertFalse(viewModel.uiState.value.detailedView, "simple mode, as in every build")
+
+        viewModel.showDetailedView(true)
+        runCurrent()
+        assertEquals(InterfaceMode.DETAILED, interfaceMode.mode.value)
+        assertTrue(viewModel.uiState.value.detailedView)
+        assertFalse(viewModel.uiState.value.detailedViewNotSaved)
+
+        interfaceMode.failSaves = true
+        viewModel.showDetailedView(false)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.detailedView)
+        assertTrue(viewModel.uiState.value.detailedViewNotSaved)
+
+        interfaceMode.failSaves = false
+        viewModel.showDetailedView(false)
+        runCurrent()
+        assertEquals(InterfaceMode.SIMPLE, interfaceMode.mode.value)
+        assertFalse(viewModel.uiState.value.detailedView)
+        assertFalse(viewModel.uiState.value.detailedViewNotSaved)
     }
 }

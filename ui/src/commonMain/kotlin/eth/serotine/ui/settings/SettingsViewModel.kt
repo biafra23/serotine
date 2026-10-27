@@ -2,14 +2,17 @@ package eth.serotine.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.usecase.NetworkOverview
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
+import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.SetDebugScreen
+import eth.serotine.domain.usecase.SetInterfaceMode
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.TokenOrigin
@@ -32,10 +35,11 @@ import kotlinx.coroutines.launch
 
 /**
  * The Settings screen's ViewModel: the display currency, the known tokens, the networks with their
- * switches and light clients (docs/networks.md, N16 and N20), the Debug tab's switch and the
- * version; and, in a debug build, the switch that allows screen recordings of the protected
- * screens. Turning a network on asks nothing; turning off one with accounts asks first, and one
- * without turns off at once. The tokens are every network's, counted together; the currency is
+ * switches and light clients (docs/networks.md, N16 and N20), Detailed view's switch
+ * (docs/simple-ui.md), the Debug tab's switch (in Detailed view only) and the version; and, in a
+ * debug build, the switch that allows screen recordings of the protected screens. Turning a
+ * network on asks nothing; turning off one with accounts asks first, and one without turns off at
+ * once. The tokens are every network's, counted together; the currency is
  * the wallet's one.
  */
 class SettingsViewModel(
@@ -48,12 +52,17 @@ class SettingsViewModel(
     observeDebugScreen: ObserveDebugScreen,
     private val setDebugScreen: SetDebugScreen,
     private val syncPastStaleAnchor: SyncPastStaleAnchor,
+    observeInterfaceMode: ObserveInterfaceMode,
+    private val setInterfaceMode: SetInterfaceMode,
     /** Now, in unix seconds: what the light clients' lines date the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
     /** Whether the last switch of the Debug tab could not be saved. */
     private val debugScreenNotSaved = MutableStateFlow(false)
+
+    /** Whether the last switch of Detailed view could not be saved. */
+    private val detailedViewNotSaved = MutableStateFlow(false)
 
     /** The networks whose last switch could not be saved. */
     private val networkNotSaved = MutableStateFlow(emptySet<Network>())
@@ -73,8 +82,14 @@ class SettingsViewModel(
             combine(Network.entries.map { observeKnownTokens(it) }) { it.toList() },
             observeDisplayCurrencies(),
             screenCapture?.allowed ?: flowOf(null),
-            combine(observeDebugScreen(), debugScreenNotSaved, ::Pair),
-        ) { (networks, notSaved, confirming), known, currencies, captureAllowed, (debugScreen, debugNotSaved) ->
+            combine(
+                observeDebugScreen(),
+                debugScreenNotSaved,
+                observeInterfaceMode(),
+                detailedViewNotSaved,
+                ::Switches,
+            ),
+        ) { (networks, notSaved, confirming), known, currencies, captureAllowed, switches ->
             val tokens = known.flatMap { it.tokens }
             val builtIn = tokens.count { it.origin == TokenOrigin.BUILT_IN }
             val added = if (known.any { it.settingsUnavailable }) {
@@ -93,8 +108,15 @@ class SettingsViewModel(
                 tokens = "$builtIn built in · $added",
                 currency = currency,
                 screenCaptureAllowed = captureAllowed,
-                debugScreen = debugScreen,
-                debugScreenNotSaved = debugNotSaved,
+                // The Debug tab is Detailed view's alone: simple mode offers no switch for it.
+                debugScreen = switches.debugScreen.takeIf { switches.mode == InterfaceMode.DETAILED },
+                debugScreenNotSaved = switches.debugScreenNotSaved,
+                detailedView = switches.mode == InterfaceMode.DETAILED,
+                // Simple mode hides the tab and empties its log, as turning the tab off does: said where it is done.
+                detailedViewNote = DEBUG_TAB_GOES.takeIf {
+                    switches.mode == InterfaceMode.DETAILED && switches.debugScreen
+                },
+                detailedViewNotSaved = switches.detailedViewNotSaved,
                 turningOff = confirming,
             )
         }
@@ -188,7 +210,28 @@ class SettingsViewModel(
         viewModelScope.launch { debugScreenNotSaved.value = !setDebugScreen(shown) }
     }
 
+    /**
+     * Draws the screens in Detailed view, or in simple mode, which also hides the Debug tab (its
+     * switch kept). A switch that cannot be saved leaves the row as it was, saying so.
+     */
+    fun showDetailedView(shown: Boolean) {
+        viewModelScope.launch {
+            detailedViewNotSaved.value = !setInterfaceMode(if (shown) InterfaceMode.DETAILED else InterfaceMode.SIMPLE)
+        }
+    }
+
+    /** The switches at the bottom of Settings, as read and as last saved. */
+    private data class Switches(
+        val debugScreen: Boolean,
+        val debugScreenNotSaved: Boolean,
+        val mode: InterfaceMode,
+        val detailedViewNotSaved: Boolean,
+    )
+
     internal companion object {
+        /** What turning Detailed view off does to a Debug tab that is on. */
+        const val DEBUG_TAB_GOES = "Turning it off also hides the Debug tab and empties its log."
+
         /** The question before [overview]'s network, which has accounts, is turned off (N20). */
         fun confirmationOf(overview: NetworkOverview): TurnOffConfirmation {
             val name = overview.network.displayName

@@ -57,7 +57,7 @@ target is what resolves the engine's AAR. One package per area,
 | `history` | Where each account's history starts. |
 | `rates` | The exchange rate last verified, for the home-screen widget. |
 | `logs` | The Debug tab's log, in memory only. The engine adapter writes each request into it. |
-| `settings` | The display currency and the swap venue last chosen. |
+| `settings` | The display currency, the swap venue last chosen, the Debug tab's switch and the view chosen (simple mode or Detailed view). |
 
 ### `ui`
 
