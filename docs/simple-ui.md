@@ -171,7 +171,8 @@ change what it trusts.
   with Copy, and chips for its network and its control ("Your key", "2 of 3
   sign", "Watch only"). Send, Swap and Receive. The Assets | Activity tabs.
   Each asset row has its icon, its name, its balance and its value, or "no
-  price". "Updated 40 s ago · pull down to refresh" at the bottom.
+  price". "Updated 40 s ago · pull down to refresh" under the total, as
+  on Home.
 - **H5 · Account, Activity.** A card on top for a swap whose step 2 waits:
   "Swap 100 USDC → LINK · Step 1 done. Step 2 is waiting for you."
   with Continue (part 6). Then the rows, newest first: what happened, when
