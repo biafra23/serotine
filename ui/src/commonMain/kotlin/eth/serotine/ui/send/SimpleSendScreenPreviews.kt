@@ -121,7 +121,13 @@ private fun SimpleSendReviewDarkPreview() = SimpleSendPreview(review, darkTheme 
 @Composable
 private fun SimpleSendComposeRefusedPreview() = SimpleSendPreview(
     composed.copy(
+        // A short form, so the refusal under the fee is in the picture.
         form = composed.form.copy(
+            assets = listOf(usdc),
+            to = FRIEND,
+            accounts = emptyList(),
+            recipient = null,
+            amountHint = null,
             error = "The transfer reverts, run as a verified call at block 23,614,077: the token's contract " +
                 "refuses it. Nothing was signed.",
             simpleError = "Checked on chain, the token's contract refuses this transfer. Nothing was signed.",
