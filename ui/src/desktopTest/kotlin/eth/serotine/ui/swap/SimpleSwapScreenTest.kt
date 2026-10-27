@@ -81,7 +81,12 @@ class SimpleSwapScreenTest {
     @Test
     fun whileTheApprovalWaitsItsStatusAndLaterAreOffered() {
         show(
-            SwapUiState.ApprovalPending("Ethereum", "0xabc", "Step 1 of 2 sent: the approval", "Once a block has it…"),
+            SwapUiState.ApprovalPending(
+                network = "Ethereum",
+                hash = "0xabc",
+                title = "Step 1 of 2 sent: the approval",
+                message = "Once a block has it…",
+            ),
         )
 
         rule.onNodeWithTag(SWAP_AWAITING_TAG).assertIsDisplayed()
