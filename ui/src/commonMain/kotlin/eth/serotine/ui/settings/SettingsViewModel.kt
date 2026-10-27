@@ -37,8 +37,9 @@ import kotlinx.coroutines.launch
  * The Settings screen's ViewModel: the display currency, the known tokens, the networks with their
  * switches and light clients (docs/networks.md, N16 and N20), Detailed view's switch
  * (docs/simple-ui.md), the Debug tab's switch (in Detailed view only) and the version; and, in a
- * debug build, the switch that allows screen recordings of the protected screens. Turning a network on asks nothing; turning off one with accounts asks first, and one
- * without turns off at once. The tokens are every network's, counted together; the currency is
+ * debug build, the switch that allows screen recordings of the protected screens. Turning a
+ * network on asks nothing; turning off one with accounts asks first, and one without turns off at
+ * once. The tokens are every network's, counted together; the currency is
  * the wallet's one.
  */
 class SettingsViewModel(
@@ -111,6 +112,10 @@ class SettingsViewModel(
                 debugScreen = switches.debugScreen.takeIf { switches.mode == InterfaceMode.DETAILED },
                 debugScreenNotSaved = switches.debugScreenNotSaved,
                 detailedView = switches.mode == InterfaceMode.DETAILED,
+                // Simple mode hides the tab and empties its log, as turning the tab off does: said where it is done.
+                detailedViewNote = DEBUG_TAB_GOES.takeIf {
+                    switches.mode == InterfaceMode.DETAILED && switches.debugScreen
+                },
                 detailedViewNotSaved = switches.detailedViewNotSaved,
                 turningOff = confirming,
             )
@@ -224,6 +229,9 @@ class SettingsViewModel(
     )
 
     internal companion object {
+        /** What turning Detailed view off does to a Debug tab that is on. */
+        const val DEBUG_TAB_GOES = "Turning it off also hides the Debug tab and empties its log."
+
         /** The question before [overview]'s network, which has accounts, is turned off (N20). */
         fun confirmationOf(overview: NetworkOverview): TurnOffConfirmation {
             val name = overview.network.displayName

@@ -118,7 +118,9 @@ private fun SettingsDebugBuildCaptureAllowedPreview() = SettingsPreview(synced.c
 /** The Debug tab turned on, in Detailed view: the only view that offers it. */
 @Preview
 @Composable
-private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(detailedView = true, debugScreen = true))
+private fun SettingsDebugScreenPreview() = SettingsPreview(
+    synced.copy(detailedView = true, debugScreen = true, detailedViewNote = SettingsViewModel.DEBUG_TAB_GOES),
+)
 
 /** A switch of the Debug tab that could not be saved. */
 @Preview

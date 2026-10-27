@@ -372,6 +372,12 @@ class SettingsViewModelTest {
         viewModel.showDetailedView(true)
         runCurrent()
         assertEquals(true, viewModel.uiState.value.debugScreen)
+        // Turning Detailed view off would empty the tab's log: its row says so.
+        assertEquals(SettingsViewModel.DEBUG_TAB_GOES, viewModel.uiState.value.detailedViewNote)
+
+        viewModel.showDebugScreen(false)
+        runCurrent()
+        assertNull(viewModel.uiState.value.detailedViewNote)
     }
 
     @Test
