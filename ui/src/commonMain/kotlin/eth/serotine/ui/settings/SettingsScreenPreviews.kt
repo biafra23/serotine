@@ -42,6 +42,7 @@ private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false) 
             onSecurity = {},
             onScreenCaptureChange = {},
             onDebugScreenChange = {},
+            onDetailedViewChange = {},
         )
     }
 }
@@ -114,15 +115,26 @@ private fun SettingsDebugBuildPreview() = SettingsPreview(synced.copy(screenCapt
 @Composable
 private fun SettingsDebugBuildCaptureAllowedPreview() = SettingsPreview(synced.copy(screenCaptureAllowed = true))
 
-/** The Debug tab turned on. */
+/** The Debug tab turned on, in Detailed view: the only view that offers it. */
 @Preview
 @Composable
-private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(debugScreen = true))
+private fun SettingsDebugScreenPreview() = SettingsPreview(synced.copy(detailedView = true, debugScreen = true))
 
 /** A switch of the Debug tab that could not be saved. */
 @Preview
 @Composable
-private fun SettingsDebugScreenNotSavedPreview() = SettingsPreview(synced.copy(debugScreenNotSaved = true))
+private fun SettingsDebugScreenNotSavedPreview() =
+    SettingsPreview(synced.copy(detailedView = true, debugScreenNotSaved = true))
+
+/** Detailed view turned on (docs/simple-ui.md, T1): the Debug tab's switch appears under it. */
+@Preview
+@Composable
+private fun SettingsDetailedViewPreview() = SettingsPreview(synced.copy(detailedView = true))
+
+/** A switch of Detailed view that could not be saved. */
+@Preview
+@Composable
+private fun SettingsDetailedViewNotSavedPreview() = SettingsPreview(synced.copy(detailedViewNotSaved = true))
 
 /** On, with nothing needing it: no account on the network yet, so its light client waits. */
 @Preview
@@ -196,4 +208,6 @@ internal val settingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SettingsNetworkNotSavedPreview() },
     { SettingsTurnOffPreview() },
     { SettingsStaleAnchorPreview() },
+    { SettingsDetailedViewPreview() },
+    { SettingsDetailedViewNotSavedPreview() },
 )

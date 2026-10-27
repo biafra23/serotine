@@ -25,6 +25,7 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileInterfaceMode
 import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -42,6 +43,7 @@ import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -145,6 +147,8 @@ private fun openWallet(dataDir: File) {
     // user has that tab turned on (debugScreen, followed below).
     val apiLog = MemoryDebugLog()
     val debugScreen = FileDebugScreen(dataDir.resolve("debug-screen.json").path)
+    // The view the user chose, simple mode or Detailed view (docs/simple-ui.md); the Debug tab is the latter's.
+    val interfaceMode = FileInterfaceMode(dataDir.resolve("ui-mode.json").path)
     // One engine, one light client per network that is on and needed (FollowNetworks, below).
     val node = MyotisHost.start(
         dataDir.resolve("myotis"),
@@ -207,7 +211,7 @@ private fun openWallet(dataDir: File) {
         LaunchedEffect(Unit) {
             // The debug log records while the Debug tab is on. A failure ends it, never the wallet.
             try {
-                FollowDebugScreen(debugScreen, apiLog)()
+                FollowDebugScreen(ObserveDebugTab(debugScreen, interfaceMode), apiLog)()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -335,6 +339,7 @@ private fun openWallet(dataDir: File) {
                 swapVenue = FileSwapVenue(dataDir.resolve("swap-venue.json").path),
                 debugLog = apiLog,
                 debugScreen = debugScreen,
+                interfaceMode = interfaceMode,
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.
                 screenCaptureDebugSwitch = null,
                 networkDemand = networkDemand,

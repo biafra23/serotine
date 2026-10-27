@@ -38,6 +38,7 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileInterfaceMode
 import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
@@ -59,6 +60,7 @@ import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.ReadExchangeRate
@@ -156,6 +158,9 @@ class SerotineApplication : Application() {
 
     /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
     private val debugScreen by lazy { FileDebugScreen(filesDir.resolve("debug-screen.json").path) }
+
+    /** The view the user chose, simple mode or Detailed view (docs/simple-ui.md), beside the other settings. */
+    private val interfaceMode by lazy { FileInterfaceMode(filesDir.resolve("ui-mode.json").path) }
 
     /** eth.serotine.debug is debuggable, the release app is not: what the debug app's extras hang on. */
     private val debuggable by lazy { applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
@@ -368,6 +373,7 @@ class SerotineApplication : Application() {
             swapVenue = swapVenue,
             debugLog = debugLog,
             debugScreen = debugScreen,
+            interfaceMode = interfaceMode,
             // The debug app only: Settings may lift FLAG_SECURE for a screen recording, until the
             // process ends. The release app has no switch (docs/keys-and-signing.md, rule 8).
             screenCaptureDebugSwitch = if (debuggable) ScreenCaptureDebugSwitch() else null,
@@ -441,7 +447,7 @@ class SerotineApplication : Application() {
         scope.launch { UpgradeCheckJob.schedule(this@SerotineApplication) }
         // The debug log records while the Debug tab is on, for the life of the process: it needs
         // no engine, and a request made while the app is in the background is one too.
-        scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
+        scope.launch { FollowDebugScreen(ObserveDebugTab(debugScreen, interfaceMode), debugLog)() }
         // Records each network's default the first time it is found unrecorded, before any engine starts.
         scope.launch { networkSettings.observe().first() }
         // Kept scheduled while a widget is placed, whatever cancelled it (a widget restored by a

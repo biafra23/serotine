@@ -29,6 +29,7 @@ class SettingsScreenTest {
     private var securityOpened = 0
     private val screenCaptureChanges = mutableListOf<Boolean>()
     private val debugScreenChanges = mutableListOf<Boolean>()
+    private val detailedViewChanges = mutableListOf<Boolean>()
     private val networkChanges = mutableListOf<Pair<Long, Boolean>>()
     private var turnOffsConfirmed = 0
     private var turnOffsCancelled = 0
@@ -39,6 +40,7 @@ class SettingsScreenTest {
     private fun show(
         screenCaptureAllowed: Boolean? = null,
         debugScreen: Boolean = false,
+        detailedView: Boolean = false,
         networks: List<NetworkRow> = listOf(sepolia),
         turningOff: TurnOffConfirmation? = null,
     ) = rule.setContent {
@@ -51,6 +53,7 @@ class SettingsScreenTest {
                     currency = "EUR",
                     screenCaptureAllowed = screenCaptureAllowed,
                     debugScreen = debugScreen,
+                    detailedView = detailedView,
                     turningOff = turningOff,
                 ),
                 onCurrency = { currencyOpened++ },
@@ -61,6 +64,7 @@ class SettingsScreenTest {
                 onNetworkChange = { chainId, on -> networkChanges += chainId to on },
                 onConfirmTurnOff = { turnOffsConfirmed++ },
                 onCancelTurnOff = { turnOffsCancelled++ },
+                onDetailedViewChange = { detailedViewChanges += it },
             )
         }
     }
@@ -168,7 +172,7 @@ class SettingsScreenTest {
 
     @Test
     fun theDebugTabsRowTurnsItOnAndOff() {
-        show()
+        show(detailedView = true)
 
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().assertIsOff().performClick()
         assertEquals(listOf(true), debugScreenChanges)
@@ -176,9 +180,24 @@ class SettingsScreenTest {
 
     @Test
     fun theDebugTabsRowSaysWhenItIsOn() {
-        show(debugScreen = true)
+        show(debugScreen = true, detailedView = true)
 
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().assertIsOn().performClick()
         assertEquals(listOf(false), debugScreenChanges)
+    }
+
+    @Test
+    fun detailedViewsRowTurnsItOnAndOff() {
+        show()
+
+        rule.onNodeWithTag(SETTINGS_DETAILED_VIEW_TAG).performScrollTo().assertIsOff().performClick()
+        assertEquals(listOf(true), detailedViewChanges)
+    }
+
+    @Test
+    fun theDebugTabsRowIsDetailedViewsAlone() {
+        show(debugScreen = true)
+
+        rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).assertDoesNotExist()
     }
 }

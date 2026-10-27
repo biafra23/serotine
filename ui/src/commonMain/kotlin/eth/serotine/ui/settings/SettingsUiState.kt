@@ -8,7 +8,9 @@ import eth.serotine.ui.components.StaleAnchorWarning
  * as far as the wallet has settings yet: the display [currency] ("EUR"), the [tokens] it knows
  * ("3 built in · 1 added"), the [networks] with their switches and light clients, whether the
  * Debug tab is on ([debugScreen]; [debugScreenNotSaved] when the last switch of it could not be
- * saved), and the app's [version]. The security settings join it with the features they belong to.
+ * saved), whether the screens are in Detailed view ([detailedView], docs/simple-ui.md;
+ * [detailedViewNotSaved] likewise), and the app's [version]. The Debug tab's switch is Detailed
+ * view's alone: the screen shows it only while [detailedView] is on. The security settings join it with the features they belong to.
  * [turningOff] is the confirmation asked before a network with accounts is turned off (N20), null
  * while none is asked.
  *
@@ -24,6 +26,8 @@ data class SettingsUiState(
     val screenCaptureAllowed: Boolean? = null,
     val debugScreen: Boolean = false,
     val debugScreenNotSaved: Boolean = false,
+    val detailedView: Boolean = false,
+    val detailedViewNotSaved: Boolean = false,
     val turningOff: TurnOffConfirmation? = null,
 )
 
