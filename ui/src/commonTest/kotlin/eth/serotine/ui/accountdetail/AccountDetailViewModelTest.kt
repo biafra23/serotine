@@ -85,6 +85,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -975,6 +976,19 @@ class AccountDetailViewModelTest {
             "Its amounts can't be read yet. Sending from it waits until it can be checked. The app keeps trying.",
             banner?.text,
         )
+    }
+
+    @Test
+    fun aStaleCheckpointsBannerSaysWhereToDecideOnce() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        clientStatus.value = LightClientStatus.StaleAnchor(anchorAgePeriods = 5, boundPeriods = 3)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val text = assertNotNull(ready(viewModel).cantCheck).text
+        assertEquals(1, Regex("Settings → Networks").findAll(text).count(), text)
+        assertFalse("keeps trying" in text, "only the user's word lets it catch up")
     }
 
     @Test

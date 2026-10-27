@@ -197,6 +197,26 @@ private fun SimpleAccountSafePreview() = SimpleAccountDetailPreview(
     ),
 )
 
+/** Ethereum turned off in this wallet: Refresh greyed out, each amount says the network is off. */
+@Preview
+@Composable
+private fun SimpleAccountNetworkOffPreview() = SimpleAccountDetailPreview(
+    main.copy(
+        total = "Off",
+        freshness = null,
+        networkOn = false,
+        assets = listOf(
+            ether.copy(
+                verified = false,
+                verifiedAt = null,
+                value = null,
+                lastKnown = "Last verified Oct 27, 2026, 9:12 AM · Ethereum is off",
+                ageNote = "Ethereum is off · 3 h ago",
+            ),
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleAccountDetailScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleAccountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleAccountAssetsPreview() },
@@ -204,4 +224,5 @@ internal val simpleAccountDetailScreenPreviews: List<@Composable () -> Unit> = l
     { SimpleAccountLastVerifiedPreview() },
     { SimpleAccountActivityPreview() },
     { SimpleAccountSafePreview() },
+    { SimpleAccountNetworkOffPreview() },
 )
