@@ -154,14 +154,16 @@ change what it trusts.
   ends with "Test networks aren't counted in the total." The add button,
   and the Wallet | Settings bar. No network sections and no status strip:
   those are Detailed view's.
-- **H2 · Home, pulled to refresh.** The spinner, "Checking Ethereum and
-  Gnosis Chain…" under the total, and "checking…" on each row being read.
-  A Sepolia row says "live". A line under the list says that Sepolia
-  updates by itself and the others are checked when a screen opens or is
-  pulled down.
+- **H2 · Home, pulled to refresh.** The spinner, and "Checking Ethereum and
+  Gnosis Chain…" under the total, until a newer proof is shown (15 s at
+  most). A wallet on live networks alone ("Live") needs no spinner. The
+  mockup's per-row "checking…" and "live" are not built: the line under the
+  total says it for the list.
 - **H3 · Home, can't check right now.** A banner: "Can't check Ethereum
   right now", when its balances were last confirmed, that they may have
-  changed, and that the app keeps trying. The rows of that network are
+  changed, that sending from its accounts waits, and that the app keeps
+  trying. It shows too for a light client with no fresh head to read at,
+  with no balances from before. The rows of that network are
   dimmed, with "3 h ago · may have changed". The total leaves them out and
   says how many it does not count. A line says that sending and swapping
   from them wait until their balances can be checked again.
@@ -244,11 +246,12 @@ kept.
 ### Settings
 
 - **T1 · Settings.** Display: Currency, Tokens. Networks: each with its
-  switch and its state ("Up to date · checked 2 min ago", "Test network ·
-  live", or what is wrong). Security: password and fingerprint. Advanced:
-  *Detailed view* ("Show the light client's state, blocks and proofs on every
-  screen"), off by default: what Detailed view shows up front, since simple
-  mode keeps the fee levels behind a row and the blocks under *Details*. About, with the version.
+  switch and its state ("Up to date", "Test network · live", "Catching
+  up…", "Can't check right now", "Off"). Security: password and
+  fingerprint. Advanced: *Detailed view* ("Show the light client's state,
+  blocks and proofs on every screen"), off by default: what Detailed view
+  shows up front, since simple mode keeps the fee levels behind a row and
+  the blocks under *Details*. About, with the version.
 
 ### Not in simple mode yet
 

@@ -154,6 +154,8 @@ fun SimpleAccountsScreen(
                 is AccountsUiState.Ready -> if (state.accounts.isEmpty()) {
                     Column(Modifier.fillMaxSize()) {
                         state.upgrades.forEach { UpgradeBanner(it) }
+                        // A damaged list set aside is said exactly when the list that follows is empty.
+                        state.notice?.let { Notice(it) }
                         Box(Modifier.weight(1f).fillMaxWidth()) { NoAccounts(Modifier.align(Alignment.Center)) }
                     }
                 } else {
@@ -179,17 +181,10 @@ private fun SimpleAccountList(
         items(state.sections.filter { it.blocked != null || it.staleAnchor != null }, key = { "alarm/${it.chainId}" }) {
             NetworkAlarm(it, onCatchUp)
         }
-        state.notice?.let { notice ->
-            item(key = "notice") {
-                Text(
-                    notice,
-                    Modifier.padding(16.dp).testTag(ACCOUNTS_NOTICE_TAG),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+        state.notice?.let { notice -> item(key = "notice") { Notice(notice) } }
+        if (state.total != null || state.freshness != null || state.totalNote != null) {
+            item(key = "total") { SimpleTotal(state.total, state.freshness, state.totalNote) }
         }
-        state.total?.let { total -> item(key = "total") { SimpleTotal(total, state.freshness) } }
         items(state.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
             WithActionMenu(
                 actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
@@ -202,31 +197,42 @@ private fun SimpleAccountList(
             }
             HorizontalDivider()
         }
-        state.totalNote?.let { note ->
-            item(key = "total-note") {
-                Text(
-                    note,
-                    Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
     }
+}
+
+/** The stored list damaged and set aside, so these are only the accounts added since: in the error colour. */
+@Composable
+private fun Notice(notice: String) {
+    Text(
+        notice,
+        Modifier.padding(16.dp).testTag(ACCOUNTS_NOTICE_TAG),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error,
+    )
 }
 
 /** How opaque a row showing a balance from before, or on a network that is off, is drawn. */
 private const val DIMMED = 0.6f
 
-/** The total, large, with how fresh the values under it are ("Updated 2 min ago · pull down to refresh"). */
+/**
+ * The total, large, with what it leaves out right under it ([note]: "Testnet prices", "2 Ethereum
+ * accounts not counted") and how fresh the values are ("Updated 2 min ago · pull down to refresh").
+ * Without a total (only a testnet beside networks that are off), the note and the freshness alone.
+ */
 @Composable
-private fun SimpleTotal(total: String, freshness: String?) {
+private fun SimpleTotal(total: String?, freshness: String?, note: String?) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(total, Modifier.testTag(ACCOUNTS_TOTAL_TAG), style = MaterialTheme.typography.displaySmall)
+        total?.let {
+            Text("Total", style = MaterialTheme.typography.labelMedium, color = muted)
+            Text(it, Modifier.testTag(ACCOUNTS_TOTAL_TAG), style = MaterialTheme.typography.displaySmall)
+        }
+        note?.let {
+            Text(it, style = MaterialTheme.typography.labelMedium, color = muted, textAlign = TextAlign.Center)
+        }
         freshness?.let {
             Text(
                 it,

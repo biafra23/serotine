@@ -105,4 +105,12 @@ class SimpleAccountsScreenTest {
         rule.onNodeWithText("Can't check Ethereum right now").assertIsDisplayed()
         rule.onNodeWithText("3 h ago · may have changed").assertIsDisplayed()
     }
+
+    @Test
+    fun aDamagedListSetAsideIsSaidAboveTheEmptyList() {
+        show(AccountsUiState.Ready(emptyList(), notice = "Your saved account list was damaged and has been set aside."))
+
+        rule.onNodeWithTag(ACCOUNTS_NOTICE_TAG).assertIsDisplayed()
+        rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+    }
 }

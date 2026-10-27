@@ -143,13 +143,14 @@ private fun SimpleAccountsUnreachablePreview() = SimpleAccountsPreview(
             NetworkSection(sepolia.chainId, "Sepolia", true, true, strip, listOf(test)),
         ),
         total = "€4,500.00",
-        totalNote = "2 accounts not verified right now · Sepolia not included",
+        totalNote = "2 Ethereum accounts not counted · Sepolia not included",
         freshness = "Updated 40 s ago · pull down to refresh",
         unreachable = listOf(
             UnreachableNetwork(
                 ethereum.chainId,
                 "Can't check Ethereum right now",
-                "Its balances were last confirmed 3 h ago and may have changed. The app keeps trying.",
+                "Its balances were last confirmed 3 h ago and may have changed. Sending from its accounts waits " +
+                    "until they can be checked. The app keeps trying.",
             ),
         ),
     ),
@@ -188,6 +189,16 @@ private fun SimpleAccountsStaleAnchorPreview() = SimpleAccountsPreview(
 @Composable
 private fun SimpleAccountsEmptyPreview() = SimpleAccountsPreview(AccountsUiState.Ready(emptyList()))
 
+/** The stored list was damaged and set aside: said above the empty list that follows. */
+@Preview
+@Composable
+private fun SimpleAccountsSetAsidePreview() = SimpleAccountsPreview(
+    AccountsUiState.Ready(
+        emptyList(),
+        notice = "Your saved account list was damaged and has been set aside. Add your accounts again.",
+    ),
+)
+
 /** The list not read yet. */
 @Preview
 @Composable
@@ -203,4 +214,5 @@ internal val simpleAccountsScreenPreviews: List<@Composable () -> Unit> = listOf
     { SimpleAccountsStaleAnchorPreview() },
     { SimpleAccountsEmptyPreview() },
     { SimpleAccountsLoadingPreview() },
+    { SimpleAccountsSetAsidePreview() },
 )

@@ -271,19 +271,22 @@ data class AccountItem(
                 networkOff = off,
                 network = NetworkLabel.of(network),
                 // Watch-only and co-signer are the control badge's to say.
-                networkLine = listOfNotNull(network.displayName, if (network.testnet) "test network" else kindNote)
+                networkLine = listOfNotNull(network.displayName, kindNote, "test network".takeIf { network.testnet })
                     .joinToString(" · "),
-                ageNote = when {
-                    lastKnown != null ->
-                        listOfNotNull(lastKnown.asOf?.let { at -> now?.let { agoText(at, it) } }, "may have changed")
-                            .joinToString(" · ")
-                    off != null -> "$off is off"
-                    else -> null
+                ageNote = lastKnown?.asOf?.let { at -> now?.let { agoText(at, it) } }.let { age ->
+                    when {
+                        // Off first: nothing else on simple mode's Home says the network is off.
+                        off != null -> listOfNotNull("$off is off", age).joinToString(" · ")
+                        lastKnown != null -> listOfNotNull(age, "may have changed").joinToString(" · ")
+                        else -> null
+                    }
                 },
                 accountTotal = when {
                     off != null -> null
                     network.testnet -> "no real value"
-                    else -> total?.takeIf { it.valued > 0 || it.complete }
+                    // Only a total that leaves nothing out: one that would have to say what it left out
+                    // (docs/wallet-ux.md, *Prices*) gives way to the native balance.
+                    else -> total?.takeIf { it.complete && it.leftOut == 0 && it.unverified == 0 && !it.noRate }
                         ?.let { totalText(it, value?.second ?: return@let null) }
                 },
             )

@@ -145,13 +145,17 @@ class AccountsViewModel(
     ) { portfolio, (safes, ensNames), (lightClients, staleAnchors, on), (upgrades, live), (message, refresh) ->
         Inputs(portfolio, safes, ensNames, lightClients, staleAnchors, on.toSet(), upgrades, live, message, refresh)
     }
-        // Simple mode's ages ("Updated 2 min ago") are re-dated every second while accounts are listed.
-        .redatedWhile { it.portfolio.accounts is AccountList.Loaded }
+        // Simple mode's ages ("Updated 2 min ago") are re-dated every second while one is shown.
+        .redatedWhile { inputs ->
+            inputs.portfolio.values.values.any {
+                (it.native as? BalanceReading.Verified)?.provenAt != null || it.native is BalanceReading.LastKnown
+            }
+        }
         .map { inputs ->
             with(inputs) {
                 stateOf(portfolio, safes, ensNames, lightClients, staleAnchors, on, upgrades).let { state ->
                     if (state is AccountsUiState.Ready) {
-                        simple(state, portfolio, on, live, refresh).copy(message = message)
+                        simple(state, portfolio, on, live, lightClients, refresh).copy(message = message)
                     } else {
                         state
                     }
@@ -183,14 +187,16 @@ class AccountsViewModel(
 
     /**
      * [state] with what simple mode draws instead of the strips (docs/simple-ui.md, H1 to H3): how
-     * fresh the values are, a banner per network that cannot be checked while it shows balances from
-     * before, and whether a refresh is being answered.
+     * fresh the values are, a banner per network that cannot be checked (one showing balances from
+     * before, or whose light client is stuck), what the total leaves out of them, and whether a
+     * refresh is being answered.
      */
     private fun simple(
         state: AccountsUiState.Ready,
         portfolio: Portfolio,
         on: Set<Network>,
         live: List<Boolean>,
+        lightClients: List<LightClientItem>,
         refresh: Refresh?,
     ): AccountsUiState.Ready {
         val now = clock()
@@ -202,26 +208,67 @@ class AccountsViewModel(
         val oldest = readings.filterKeys { it.network in notLive }.values
             .mapNotNull { (it as? BalanceReading.Verified)?.provenAt }.minOrNull()
         oldestShown = oldest
-        val refreshing = refresh != null && now - refresh.at < REFRESH_SHOWN_SECONDS && oldest == refresh.oldest
+        // Until the oldest proof shown is a newer one, for 15 s at most; nothing to wait for on live networks.
+        val refreshing = refresh?.oldest != null && notLive.isNotEmpty() && oldest == refresh.oldest &&
+            now - refresh.at < REFRESH_SHOWN_SECONDS
         val freshness = when {
             refreshing && notLive.isNotEmpty() -> "Checking ${spokenList(notLive.map { it.displayName })}…"
             oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
             held.isNotEmpty() && notLive.isEmpty() && readings.values.any { it is BalanceReading.Verified } -> "Live"
             else -> null
         }
+        val before = held.associateWith { network ->
+            readings.filterKeys { it.network == network }.values.filterIsInstance<BalanceReading.LastKnown>()
+        }
         val unreachable = held.mapNotNull { network ->
-            val before = readings.filterKeys { it.network == network }.values
-                .filterIsInstance<BalanceReading.LastKnown>()
-            if (before.isEmpty()) return@mapNotNull null
-            val confirmed = before.mapNotNull { it.asOf }.minOrNull()
+            val client = lightClients[network.ordinal]
+            // Balances from before, or a light client that has no fresh head to read at (STALE) or has
+            // stopped short of one; a stale checkpoint has its own warning, and a client on its way
+            // (starting, catching up) is not stuck.
+            val anchored = state.sections.any { it.chainId == network.chainId && it.staleAnchor != null }
+            val stuck = !anchored && (
+                client.health == LightClientHealth.STALE ||
+                    (client.health == LightClientHealth.NOT_VERIFIED && !client.working)
+                )
+            val shown = before.getValue(network)
+            if (shown.isEmpty() && !stuck) return@mapNotNull null
+            val confirmed = shown.mapNotNull { it.asOf }.minOrNull()
             UnreachableNetwork(
                 network.chainId,
                 "Can't check ${network.displayName} right now",
-                (confirmed?.let { "Its balances were last confirmed ${agoText(it, now)} and may have changed." }
-                    ?: "Its balances may have changed since they were last confirmed.") + " The app keeps trying.",
+                listOf(
+                    when {
+                        confirmed != null ->
+                            "Its balances were last confirmed ${agoText(confirmed, now)} and may have changed."
+                        shown.isNotEmpty() -> "Its balances may have changed since they were last confirmed."
+                        else -> "Its balances can't be read yet."
+                    },
+                    "Sending from its accounts waits until they can be checked. The app keeps trying.",
+                ).joinToString(" "),
             )
         }
-        return state.copy(freshness = freshness, unreachable = unreachable, refreshing = refreshing)
+        // What the total leaves out of the networks that cannot be checked, said instead of "still checking".
+        val notCounted = held.mapNotNull { network ->
+            when (val n = before.getValue(network).size) {
+                0 -> null
+                1 -> "1 ${network.displayName} account not counted"
+                else -> "$n ${network.displayName} accounts not counted"
+            }
+        }
+        val totalNote = if (notCounted.isEmpty()) {
+            state.totalNote
+        } else {
+            (notCounted + state.totalNote.orEmpty().split(" · ").filterNot { it.equals("still checking", true) })
+                .filter { it.isNotEmpty() }
+                .joinToString(" · ")
+                .replaceFirstChar { it.uppercase() }
+        }
+        return state.copy(
+            freshness = freshness,
+            unreachable = unreachable,
+            refreshing = refreshing,
+            totalNote = totalNote,
+        )
     }
 
     /** Turns the network of [chainId] on again: the way out of a greyed-out action on one that is off (N19). */

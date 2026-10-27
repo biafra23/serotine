@@ -178,7 +178,7 @@ class AccountsViewModelTest {
             verified,
             kindNote = "Safe",
             network = NetworkLabel.of(Network.SEPOLIA),
-            networkLine = "Sepolia · test network",
+            networkLine = "Sepolia · Safe · test network",
             accountTotal = "no real value",
         )
 
@@ -768,12 +768,62 @@ class AccountsViewModelTest {
                 UnreachableNetwork(
                     Network.ETHEREUM.chainId,
                     "Can't check Ethereum right now",
-                    "Its balances were last confirmed 3 h ago and may have changed. The app keeps trying.",
+                    "Its balances were last confirmed 3 h ago and may have changed. Sending from its accounts " +
+                        "waits until they can be checked. The app keeps trying.",
                 ),
             ),
             ready.unreachable,
         )
         assertEquals("3 h ago · may have changed", ready.accounts.single().ageNote)
+        assertEquals("1 Ethereum account not counted", ready.totalNote, "said instead of still checking")
+    }
+
+    @Test
+    fun aNetworkWhoseLightClientIsStuckGetsABannerWithoutBalancesFromBefore() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        repository.accounts = listOf(ethereumMain)
+        lightClient.status.value = LightClientStatus.WaitingForHead(headAgeSeconds = 600)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        assertEquals(
+            "Its balances can't be read yet. Sending from its accounts waits until they can be checked. " +
+                "The app keeps trying.",
+            (viewModel.uiState.value as AccountsUiState.Ready).unreachable.single().text,
+        )
+    }
+
+    @Test
+    fun anAccountOnANetworkThatIsOffSaysSoBesideItsAge() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = emptySet()
+        repository.accounts = listOf(ethereumMain)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(ethereumMain.address).value =
+            BalanceReading.LastKnown(Wei.of("1000000000000000000"), 9, asOf = now - 3 * 3_600)
+        runCurrent()
+
+        val row = (viewModel.uiState.value as AccountsUiState.Ready).accounts.single()
+        assertEquals("Ethereum is off · 3 h ago", row.ageNote)
+    }
+
+    @Test
+    fun aRefreshOnLiveNetworksAloneShowsNoSpinner() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        freshness.live.value = setOf(Network.SEPOLIA)
+        repository.accounts = listOf(treasury)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(treasury.address).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = now - 10)
+        runCurrent()
+
+        viewModel.refresh()
+        runCurrent()
+        assertEquals(false, (viewModel.uiState.value as AccountsUiState.Ready).refreshing)
     }
 }
 
