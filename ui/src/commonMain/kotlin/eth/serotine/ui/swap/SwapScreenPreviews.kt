@@ -195,7 +195,7 @@ private fun SwapPreview(
     SerotineTheme(darkTheme = darkTheme) {
         SwapScreen(
             state = state,
-            lightClient = lightClient,
+            chrome = SwapChrome.Strip(lightClient),
             onSellChange = {},
             onBuyChange = {},
             onAmountChange = {},

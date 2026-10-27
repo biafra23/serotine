@@ -285,7 +285,10 @@ merge.
    same in both views: it names no block.
 5. Simple Send and a transfer's status (S1 to S3). S2's review stays a
    screen, not the mockup's sheet over the form.
-6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
+6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4). Between
+   the steps the screen re-quotes the swap every few seconds, for up to 15
+   minutes, until a block has the approval; leaving drops step 2 until part
+   7's Activity card brings it back.
 7. The remaining flows: Activity's waiting step, and the screens under *Not
    in simple mode yet* that get a simple version.
 

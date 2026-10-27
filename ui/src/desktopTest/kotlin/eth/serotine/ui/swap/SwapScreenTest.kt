@@ -93,7 +93,7 @@ class SwapScreenTest {
         SerotineTheme {
             SwapScreen(
                 state = state.value,
-                lightClient = verifiedStripSample,
+                chrome = SwapChrome.Strip(verifiedStripSample),
                 onSellChange = { events += "sell $it" },
                 onBuyChange = { events += "buy $it" },
                 onAmountChange = { events += "amount $it" },

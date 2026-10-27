@@ -76,7 +76,23 @@ sealed interface SwapUiState {
         override val refreshing: Boolean = false,
         override val signing: Boolean = false,
         override val notSent: NotSentItem? = null,
-    ) : SwapUiState, Signable
+    ) : SwapUiState, Signable {
+        /** Which step of the swap this is (docs/simple-ui.md, W2): the approval comes first. */
+        val step: String
+            get() = "Step 1 of 2"
+    }
+
+    /**
+     * The approval [hash] is broadcast and the swap waits for a block to have it (docs/simple-ui.md,
+     * W3): [title] and [message] say so, and that the swap is quoted again then for the user to confirm.
+     * The screen offers the approval's status, and leaving.
+     */
+    data class ApprovalPending(
+        override val network: String,
+        val hash: String,
+        val title: String,
+        val message: String,
+    ) : SwapUiState
 
     /**
      * Screen 23: a verified quote of the swap. [sold] exact in [sell]'s units; [receive] what the
@@ -115,6 +131,8 @@ sealed interface SwapUiState {
         override val refreshing: Boolean = false,
         override val signing: Boolean = false,
         override val notSent: NotSentItem? = null,
+        /** "Step 2 of 2" when its approval went first (docs/simple-ui.md, W3); null when it needed none. */
+        val step: String? = null,
     ) : SwapUiState, Signable
 
     /**
@@ -149,6 +167,8 @@ sealed interface SwapUiState {
         override val unlock: UnlockStep,
         override val refreshing: Boolean = false,
         override val signing: Boolean = false,
+        /** "Step 2 of 2" when its approval went first (docs/simple-ui.md, W3); null when it needed none. */
+        val step: String? = null,
     ) : SwapUiState, Signable {
         // Nothing is broadcast here: CoW's answer, whatever it is, is the order placed.
         override val notSent: NotSentItem?

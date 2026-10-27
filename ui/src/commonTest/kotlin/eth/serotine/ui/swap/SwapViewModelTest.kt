@@ -103,6 +103,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -111,6 +113,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -400,39 +403,43 @@ class SwapViewModelTest {
         runCurrent()
         val action = assertIs<SentAction.TokenApproval>(sent.transfers.value.single().action)
         assertEquals(fortyUsdc, action.amount)
-        val compose = assertIs<SwapUiState.Compose>(viewModel.uiState.value)
-        assertEquals(APPROVAL_SENT, compose.form.info)
-        assertEquals("Open the approval", compose.earlier?.label)
-        assertEquals("40", compose.form.amount, "the swap stays composed")
+        // Step 1 of 2 is sent: the screen waits for its block, then quotes the swap itself.
+        val pending = assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
+        assertEquals(sent.transfers.value.single().hash, pending.hash)
+        assertEquals("Step 1 of 2 sent: the approval", pending.title)
 
-        // A fee changed meanwhile: the approval still holds the swap back, and stays said.
-        viewModel.onFeeChange(FeeLevel.FAST)
-        assertEquals(APPROVAL_SENT, viewModel.compose.info)
-        assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
+        // Not in a block yet: each quote says so, and the screen keeps waiting.
+        advanceTimeBy(20.seconds)
+        runCurrent()
+        assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
 
-        // Not in a block yet: Review says so again rather than ask for a second approval.
-        viewModel.review()
+        // In a block, and allowed: the swap is quoted, step 2 of 2, for the user to confirm.
+        inputs.mined = 8
+        allow(fortyUsdc)
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        val swap = assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
+        assertEquals("Step 2 of 2", swap.step)
+        assertEquals(WalletPassword.EMPTY, swap.unlock.password, "nothing typed for the approval signs the swap")
+        assertEquals(1, signer.passwords.size, "nothing signed for step 2 before the user confirms it")
+    }
+
+    @Test
+    fun anApprovalNoBlockHasAfterAWhileGoesBackToComposeSayingSo() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
+
+        advanceTimeBy(16.minutes)
         runCurrent()
         assertEquals(
             "An approval of this token is on its way and not in a block yet: once a block has it, Review goes on.",
             viewModel.compose.info,
         )
         assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
-
-        // A quote that fails before it finds the approval again keeps it said, with its link.
-        light.status.value = LightClientStatus.Bootstrapping(lookingForServers = false)
-        viewModel.review()
-        runCurrent()
-        assertEquals("The light client is not synced yet: try again in a moment.", viewModel.compose.error)
-        assertEquals("Open the approval", assertIs<SwapUiState.Compose>(viewModel.uiState.value).earlier?.label)
-        light.status.value = LightClientStatus.Synced(headBlock = 9_412_119, headTimestamp = headTime, finalized = null)
-
-        // In a block, and allowed: the swap itself is quoted.
-        inputs.mined = 8
-        allow(fortyUsdc)
-        viewModel.review()
-        runCurrent()
-        assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
     }
 
     @Test
@@ -794,8 +801,6 @@ class SwapViewModelTest {
     }
 
     private companion object {
-        const val APPROVAL_SENT = "Your approval is on its way: once a block has it, Review quotes the swap."
-
         fun ByteArray.hex(): String = joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
         fun word(value: UInt256): String = value.toBytes32().hex()

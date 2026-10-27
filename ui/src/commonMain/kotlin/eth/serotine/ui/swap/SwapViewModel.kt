@@ -92,11 +92,14 @@ import eth.serotine.ui.components.toleranceError
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -272,10 +275,18 @@ class SwapViewModel(
             val signing: Boolean = false,
             val notSent: NotSent? = null,
             val hidden: Boolean = false,
+            /** Quoted on its own once the approval before it was in a block: step 2 of 2. */
+            val secondStep: Boolean = false,
         ) : Step {
             val idle: Boolean
                 get() = !refreshing && !signing && notSent == null
         }
+
+        /**
+         * The approval [hash] of [request] is broadcast, and the swap waits for a block to have it
+         * (`ApprovalPending`, docs/simple-ui.md): quoted again until it is, then reviewed as step 2.
+         */
+        data class Awaiting(val request: Request, val hash: String, val sender: SendFrom, val resets: Boolean) : Step
 
         data class Sent(val hash: String) : Step
 
@@ -535,6 +546,46 @@ class SwapViewModel(
         job = viewModelScope.launch {
             val sending = safely { rebroadcastTransfer(notSent.transfer) }
             step.update { latest -> if (latest is Step.Reviewing) after(latest, sending) else latest }
+            awaitApproval()
+        }
+    }
+
+    /**
+     * While the approval is on its way ([Step.Awaiting]): quotes the swap again every [AWAIT_POLL]
+     * until a block has the approval, then shows its review, step 2, for the user to confirm: nothing
+     * is signed for it before that. A swap that can no longer be quoted goes back to the compose
+     * step, which says why, and so does one whose approval no block has after [AWAIT_MAX], which says
+     * it is still on its way. Leaving the screen ends it.
+     */
+    private fun awaitApproval() {
+        val awaiting = step.value as? Step.Awaiting ?: return
+        job = viewModelScope.launch {
+            repeat((AWAIT_MAX / AWAIT_POLL).toInt()) {
+                delay(AWAIT_POLL)
+                val next = quoted(awaiting.request, unlock = null, awaiting.sender)
+                if (step.value != awaiting) return@launch
+                when {
+                    // Still not in a block: the quote says the approval is pending.
+                    next is Step.Composing && next.earlier?.waiting == true && next.error == null -> return@repeat
+                    next is Step.Reviewing -> {
+                        val swap = next.quoted !is Quoted.Approval
+                        step.value = next.copy(secondStep = swap, hidden = !shown)
+                        requoteIfHidden()
+                        return@launch
+                    }
+                    else -> {
+                        step.value = next
+                        return@launch
+                    }
+                }
+            }
+            // No block has it yet: back to the compose step, which says so and offers its status.
+            if (step.value == awaiting) {
+                step.value = Step.Composing(
+                    info = APPROVAL_PENDING,
+                    earlier = EarlierItem(awaiting.hash, "Open the approval", waiting = true),
+                )
+            }
         }
     }
 
@@ -604,6 +655,7 @@ class SwapViewModel(
                 return@launch
             }
             step.update { latest -> if (latest is Step.Reviewing) after(latest, sending) else latest }
+            awaitApproval()
             // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
             if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) refresh(note = PROMPT_TIMED_OUT)
             requoteIfHidden()
@@ -656,13 +708,13 @@ class SwapViewModel(
     private fun after(review: Step.Reviewing, sending: TransferSending?): Step {
         val approval = review.quoted is Quoted.Approval
         return when (sending) {
+            // The approval is step 1 of 2: the swap waits for it, and is quoted on its own once a block has it.
             is TransferSending.Sent -> if (approval) {
-                val resets = (review.quoted as Quoted.Approval).quote.resetsFirst
-                val then = if (review.request.venue == SwapVenue.COW) "the order" else "the swap"
-                Step.Composing(
-                    info = if (resets) RESET_SENT else "Your approval is on its way: once a block has it, Review " +
-                        "quotes $then.",
-                    earlier = EarlierItem(sending.hash, "Open the approval", waiting = true),
+                Step.Awaiting(
+                    review.request,
+                    sending.hash,
+                    review.sender,
+                    resets = (review.quoted as Quoted.Approval).quote.resetsFirst,
                 )
             } else {
                 Step.Sent(sending.hash)
@@ -897,6 +949,7 @@ class SwapViewModel(
             is Step.Sent -> return SwapUiState.Sent(network, step.hash)
             is Step.Placed -> return placed(step.record)
             is Step.Reviewing -> return review(step)
+            is Step.Awaiting -> return awaiting(step)
             is Step.Composing -> step
         }
         model ?: return SwapUiState.Loading(network)
@@ -935,10 +988,27 @@ class SwapViewModel(
         )
     }
 
+    /** The approval [step] waits for: step 1 of 2 is sent, and the swap is quoted once a block has it. */
+    private fun awaiting(step: Step.Awaiting): SwapUiState.ApprovalPending {
+        val then = if (step.request.venue == SwapVenue.COW) "the order is quoted" else "the swap is quoted"
+        return SwapUiState.ApprovalPending(
+            network = network.displayName,
+            hash = step.hash,
+            title = if (step.resets) "The allowance set to zero is sent" else "Step 1 of 2 sent: the approval",
+            message = if (step.resets) {
+                "Once a block has it, the approval of the whole amount is quoted here for you to confirm."
+            } else {
+                "Once a block has the approval, $then again here and you confirm step 2. If you leave, start " +
+                    "the swap again later: it needs no new approval, and the approval only lets " +
+                    "${step.request.sell.symbol} be taken in a swap you send yourself."
+            },
+        )
+    }
+
     private fun review(step: Step.Reviewing): SwapUiState = when (val quoted = step.quoted) {
         is Quoted.Approval -> approvalReview(step, quoted.quote)
-        is Quoted.Swap -> swapReview(step, quoted.quote)
-        is Quoted.Cow -> cowReview(step, quoted.quote)
+        is Quoted.Swap -> swapReview(step, quoted.quote).copy(step = SECOND_STEP.takeIf { step.secondStep })
+        is Quoted.Cow -> cowReview(step, quoted.quote).copy(step = SECOND_STEP.takeIf { step.secondStep })
     }
 
     private fun approvalReview(step: Step.Reviewing, quote: TokenApprovalQuote): SwapUiState.ApprovalReview {
@@ -965,6 +1035,7 @@ class SwapViewModel(
             feeDetail = feeDetail(quote.level, quote.transaction, quote.feeBlock),
             balance = BalanceChange(
                 what = "$native balance, which pays the fee",
+                short = "$native balance",
                 before = exactAmount(quote.nativeBefore, NATIVE_DECIMALS, native),
                 after = "at least " + exactAmount(quote.nativeAfterAtLeast, NATIVE_DECIMALS, native),
                 verifiedAt = verifiedAt(quote.balanceBlock),
@@ -1011,6 +1082,7 @@ class SwapViewModel(
             },
             BalanceChange(
                 what = "$native balance" + if (sold != null && bought != null) ", which pays the fee" else "",
+                short = "$native balance",
                 before = exactAmount(quote.nativeBefore, NATIVE_DECIMALS, native),
                 after = "at least " + exactAmount(
                     if (buy.asset == TransferAsset.Native) quote.nativeAfterAtLeast + quote.minimumOut else
@@ -1319,8 +1391,15 @@ class SwapViewModel(
     }
 
     private companion object {
-        const val RESET_SENT = "Your approval of zero is on its way: once a block has it, Review asks for the " +
-            "approval of the whole amount."
+        /** How often the swap is quoted again while its approval waits for a block. */
+        val AWAIT_POLL = 4.seconds
+
+        /** For how long the screen waits for the approval's block before it goes back to the compose step. */
+        val AWAIT_MAX = 15.minutes
+
+        /** The swap after its approval: step 2 of 2 (docs/simple-ui.md, W3). */
+        const val SECOND_STEP = "Step 2 of 2"
+
         const val APPROVAL_PENDING =
             "An approval of this token is on its way and not in a block yet: once a block has it, Review goes on."
         const val ALLOWANCE_MOVED =
