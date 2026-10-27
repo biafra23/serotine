@@ -77,4 +77,37 @@ class SimpleSendScreenTest {
         rule.onNodeWithTag(SEND_NETWORK_TAG).assertTextEquals("On Ethereum")
         rule.onNodeWithTag(SEND_AMOUNT_REVIEWED_TAG).assertTextEquals("Send 0.1 ETH")
     }
+
+    @Test
+    fun theFormNamesNoBlockBesideTheBalanceOrTheNameNorInItsError() {
+        show(
+            SendUiState.Compose(
+                form = eth.serotine.ui.components.TransferForm(
+                    network = "Ethereum",
+                    from = SendFrom("Main", "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"),
+                    assets = listOf(review.asset),
+                    asset = review.asset,
+                    to = "friend-example.eth",
+                    accounts = emptyList(),
+                    amount = "1",
+                    recipient = RecipientItem(
+                        "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+                        name = "friend-example.eth",
+                        resolvedAt = "Resolved at finalized block 23,613,990",
+                    ),
+                    error = "The transfer reverts, run as a verified call at block 23,614,077: the recipient " +
+                        "refuses it.",
+                    simpleError = "Checked on chain, this transfer fails: the recipient refuses it. Nothing was " +
+                        "signed.",
+                ),
+                fee = eth.serotine.domain.repository.FeeLevel.NORMAL,
+            ),
+        )
+
+        rule.onNodeWithText("block 23,", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Checked on chain, this transfer fails", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
 }
+

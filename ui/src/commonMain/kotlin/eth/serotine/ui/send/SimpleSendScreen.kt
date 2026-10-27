@@ -59,6 +59,7 @@ private fun SendUiState.simple(): SendUiState = when (this) {
             assets = form.assets.map { it.copy(verifiedAt = null) },
             asset = form.asset?.copy(verifiedAt = null),
             recipient = form.recipient?.copy(resolvedAt = null),
+            error = form.simpleError ?: form.error,
         ),
     )
     else -> this

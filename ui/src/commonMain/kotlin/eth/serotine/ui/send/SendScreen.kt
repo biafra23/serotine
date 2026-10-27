@@ -428,7 +428,7 @@ private fun SimpleReviewContent(
         FromLine(state.from)
         ReviewLine("Network fee, at most", state.maxFee)
         // "ETH balance after": what pays the fee is in Details.
-        state.balances.forEach { change -> ReviewLine("${change.what.substringBefore(",")} after", change.after) }
+        state.balances.forEach { change -> ReviewLine("${change.short} after", change.after) }
         Surface(
             Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,

@@ -16,7 +16,8 @@ package eth.serotine.ui.components
  * [quoting] while the quote for the review is made, [error] why the last one was refused, and
  * [canReview] when it can be asked for. [toLabel] and [toHint] are the recipient field's label
  * and the line under it while nothing is said of what is typed: a name only on a network that
- * resolves names.
+ * resolves names. [simpleError] is [error] in simple mode's words, with no block, null where it is
+ * the same (docs/simple-ui.md).
  */
 data class TransferForm(
     val network: String,
@@ -39,6 +40,7 @@ data class TransferForm(
     val canReview: Boolean = false,
     val toLabel: String = "Address or ENS name",
     val toHint: String = "An address, an ENS name, or one of your accounts below",
+    val simpleError: String? = null,
 )
 
 /** The account sent from: its [label] and EIP-55 [address]. */
@@ -78,10 +80,17 @@ data class RecipientItem(
 )
 
 /**
- * One balance of the verified simulation: [what] ("ETH balance"), [before] and [after] it, and
- * the block the balance before was verified at ([verifiedAt]).
+ * One balance of the verified simulation: [what] ("ETH balance, which pays the fee"), [before] and
+ * [after] it, and the block the balance before was verified at ([verifiedAt]); [short], what a line
+ * naming its value after calls it ("ETH balance"), [what] by default.
  */
-data class BalanceChange(val what: String, val before: String, val after: String, val verifiedAt: String)
+data class BalanceChange(
+    val what: String,
+    val before: String,
+    val after: String,
+    val verifiedAt: String,
+    val short: String = what,
+)
 
 /**
  * The Safe's balance of the asset as the proposal leaves it: [what] ("ETH balance of the Safe"),

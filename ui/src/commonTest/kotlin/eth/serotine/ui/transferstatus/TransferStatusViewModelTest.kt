@@ -128,7 +128,7 @@ class TransferStatusViewModelTest {
                     StepState.WAITING,
                     "Once the beacon chain finalizes its block",
                     simpleLabel = "Final",
-                    simpleDetail = "Once the network finalizes it, it can't be reversed",
+                    simpleDetail = "Once the network finalizes it, its outcome can't be reversed",
                 ),
             ),
             pending.steps,
@@ -155,7 +155,7 @@ class TransferStatusViewModelTest {
                 StepState.DONE,
                 "Block 9,412,120 is finalized",
                 simpleLabel = "Final",
-                simpleDetail = "It can't be reversed by the network",
+                simpleDetail = "Its outcome can't be reversed by the network",
             ),
             viewModel.shown.steps[3],
         )

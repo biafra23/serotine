@@ -1,6 +1,7 @@
 package eth.serotine.ui.transferstatus
 
 import androidx.compose.runtime.Composable
+import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -37,7 +38,7 @@ private val waitingFinal = StatusStep(
     StepState.WAITING,
     "Once the beacon chain finalizes its block",
     simpleLabel = "Final",
-    simpleDetail = "Once the network finalizes it, it can't be reversed",
+    simpleDetail = "Once the network finalizes it, its outcome can't be reversed",
 )
 
 private val confirmedState = TransferStatusUiState.Shown(
@@ -77,7 +78,7 @@ private fun SimpleTransferFinalPreview() = SimpleTransferStatusPreview(
                 StepState.DONE,
                 "Block 23,614,012 is finalized",
                 simpleLabel = "Final",
-                simpleDetail = "It can't be reversed by the network",
+                simpleDetail = "Its outcome can't be reversed by the network",
             ),
         ),
         finished = true,
@@ -105,10 +106,44 @@ private fun SimpleTransferFailedPreview() = SimpleTransferStatusPreview(
     ),
 )
 
+/** Maybe sent: no peer answered its broadcast, and Try again sends the same signed bytes. */
+@Preview
+@Composable
+private fun SimpleTransferMaybeSentPreview() = SimpleTransferStatusPreview(
+    confirmedState.copy(
+        steps = listOf(
+            signed,
+            StatusStep(
+                "Broadcast",
+                StepState.UNCONFIRMED,
+                "No peer confirmed it, Oct 27, 2026, 2:02 PM: it may be on its way, or may not have reached " +
+                    "the network",
+                simpleLabel = "Sent",
+                simpleDetail = "No peer answered, Oct 27, 2026, 2:02 PM: it may be on its way, or may not have " +
+                    "reached the network",
+            ),
+            StatusStep(
+                "Included",
+                StepState.WAITING,
+                "Waiting for a block to include it",
+                simpleLabel = "Confirmed",
+                simpleDetail = "Waiting to be confirmed",
+            ),
+            waitingFinal,
+        ),
+        notSent = NotSentItem(
+            "No peer answered when this transfer was broadcast, so it may not have reached the network, or it may " +
+                "be on its way. Try again sends the same signed transfer.",
+            canRetry = true,
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleTransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleTransferStatusScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleTransferConfirmedPreview() },
     { SimpleTransferConfirmedDarkPreview() },
     { SimpleTransferFinalPreview() },
     { SimpleTransferFailedPreview() },
+    { SimpleTransferMaybeSentPreview() },
 )

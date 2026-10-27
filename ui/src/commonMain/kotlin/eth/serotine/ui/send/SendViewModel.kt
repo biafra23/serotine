@@ -189,8 +189,13 @@ class SendViewModel(
          * [earlier] the hash of an earlier transaction that may still be on its way, which held it
          * back: its status is where it is tried again.
          */
-        data class Composing(val quoting: Boolean = false, val error: String? = null, val earlier: String? = null) :
-            Step
+        data class Composing(
+            val quoting: Boolean = false,
+            val error: String? = null,
+            val earlier: String? = null,
+            /** [error] in simple mode's words, null where it is the same: no block named. */
+            val simpleError: String? = null,
+        ) : Step
 
         /**
          * [quote] of [request], made at [quotedAt], under review; [hidden] once the screen stopped
@@ -505,6 +510,7 @@ class SendViewModel(
             return Step.Composing(
                 error = refusal(quoting, request.option),
                 earlier = (quoting as? TransferQuoting.EarlierMaybeSent)?.hash,
+                simpleError = (quoting as? TransferQuoting.Reverts)?.let { simpleReverts(request.option) },
             )
         }
         return Step.Reviewing(
@@ -619,6 +625,7 @@ class SendViewModel(
             canMax = selected?.balance != null && !step.quoting,
             quoting = step.quoting,
             error = step.error,
+            simpleError = step.simpleError,
             canReview = !step.quoting && requestOf(model) != null,
         )
         return SendUiState.Compose(form, inputs.fee, earlier = step.earlier)
@@ -639,6 +646,7 @@ class SendViewModel(
         }
         val nativeBalance = BalanceChange(
             what = "$native balance" + if (tokenBalance != null) ", which pays the fee" else "",
+            short = "$native balance",
             before = exactAmount(quote.nativeBefore, NATIVE_DECIMALS, native),
             after = "at least " + exactAmount(quote.nativeAfterAtLeast, NATIVE_DECIMALS, native),
             verifiedAt = verifiedAt(quote.balanceBlock),
@@ -705,6 +713,13 @@ class SendViewModel(
         val option = model.selected ?: return null
         val amount = typedAmount(model.inputs.amount, option).units ?: return null
         return Request(model.inputs, to, option, amount)
+    }
+
+    /** A transfer that reverts, as simple mode says it: no block named (docs/simple-ui.md). */
+    private fun simpleReverts(option: AssetOption): String = if (option.asset == TransferAsset.Native) {
+        "Checked on chain, this transfer fails: the recipient refuses it. Nothing was signed."
+    } else {
+        "Checked on chain, the token's contract refuses this transfer. Nothing was signed."
     }
 
     private fun refusal(quoting: TransferQuoting, option: AssetOption): String = when (quoting) {

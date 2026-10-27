@@ -418,6 +418,7 @@ class SendViewModelTest {
                     "1.5 ETH",
                     "at least 1.498827 ETH",
                     "verified at block 9,412,118",
+                    short = "ETH balance",
                 ),
             ),
             review.balances,

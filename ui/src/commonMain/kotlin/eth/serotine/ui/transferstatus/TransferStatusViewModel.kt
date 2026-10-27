@@ -122,8 +122,16 @@ class TransferStatusViewModel(
                 "Broadcast",
                 StepState.UNCONFIRMED,
                 "No peer confirmed it$takenAt: it may be on its way, or may not have reached the network",
+                simpleLabel = "Sent",
+                simpleDetail = "No peer answered$takenAt: it may be on its way, or may not have reached the network",
             )
-            unconfirmed -> StatusStep("Broadcast", StepState.UNCONFIRMED, "No peer confirmed it$takenAt")
+            unconfirmed -> StatusStep(
+                "Broadcast",
+                StepState.UNCONFIRMED,
+                "No peer confirmed it$takenAt",
+                simpleLabel = "Sent",
+                simpleDetail = "No peer answered$takenAt",
+            )
             else -> StatusStep(
                 "Broadcast",
                 StepState.DONE,
@@ -140,6 +148,7 @@ class TransferStatusViewModel(
                 StepState.UNKNOWN,
                 "Its nonce was used on chain while the app was not watching: by this transaction, unless " +
                     "another one took its place, such as one sent from this account elsewhere",
+                simpleLabel = "Confirmed",
             )
             else -> when (progress) {
                 TransactionProgress.Pending ->
@@ -153,11 +162,11 @@ class TransferStatusViewModel(
                 is TransactionProgress.Included -> includedStep(progress.blockNumber, progress.succeeded)
                 is TransactionProgress.Finalized -> includedStep(progress.blockNumber, progress.succeeded)
                 is TransactionProgress.Unavailable ->
-                    StatusStep("Included", StepState.UNKNOWN, "Cannot be verified right now")
+                    StatusStep("Included", StepState.UNKNOWN, "Cannot be verified right now", simpleLabel = "Confirmed")
             }
         }
         val finalized = when {
-            used -> StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device")
+            used -> StatusStep("Finalized", StepState.UNKNOWN, "Not known on this device", simpleLabel = "Final")
             else -> when (progress) {
                 TransactionProgress.Pending, is TransactionProgress.Included ->
                     StatusStep(
@@ -165,7 +174,7 @@ class TransferStatusViewModel(
                         StepState.WAITING,
                         "Once the beacon chain finalizes its block",
                         simpleLabel = "Final",
-                        simpleDetail = "Once the network finalizes it, it can't be reversed",
+                        simpleDetail = "Once the network finalizes it, its outcome can't be reversed",
                     )
                 is TransactionProgress.Finalized ->
                     StatusStep(
@@ -173,10 +182,10 @@ class TransferStatusViewModel(
                         StepState.DONE,
                         "Block ${grouped(progress.blockNumber)} is finalized",
                         simpleLabel = "Final",
-                        simpleDetail = "It can't be reversed by the network",
+                        simpleDetail = "Its outcome can't be reversed by the network",
                     )
                 is TransactionProgress.Unavailable ->
-                    StatusStep("Finalized", StepState.UNKNOWN, "Cannot be verified right now")
+                    StatusStep("Finalized", StepState.UNKNOWN, "Cannot be verified right now", simpleLabel = "Final")
             }
         }
         val failed = (progress as? TransactionProgress.Included)?.succeeded == false ||

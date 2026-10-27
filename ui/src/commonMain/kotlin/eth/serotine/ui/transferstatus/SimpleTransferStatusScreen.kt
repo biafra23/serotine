@@ -6,7 +6,8 @@ import androidx.compose.ui.Modifier
 /**
  * A transfer's status in simple mode (docs/simple-ui.md, S3): [TransferStatusScreen] for the same
  * [state], with no light-client strip and each step in simple mode's words, Sent → Confirmed →
- * Final, without a block. The hash, what was sent and Try again are as in Detailed view.
+ * Final, without a block; Detailed view's words, the blocks among them, are behind *Details*. The
+ * hash, what was sent and Try again are as in Detailed view.
  */
 @Composable
 fun SimpleTransferStatusScreen(
@@ -14,7 +15,15 @@ fun SimpleTransferStatusScreen(
     onDone: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
-) = TransferStatusScreen(state.simple(), lightClient = null, onDone, onRetry, modifier)
+) = TransferStatusScreen(
+    state.simple(),
+    lightClient = null,
+    onDone,
+    onRetry,
+    modifier,
+    details = (state as? TransferStatusUiState.Shown)?.steps.orEmpty()
+        .mapNotNull { step -> step.detail?.let { "${step.label}: $it" } },
+)
 
 /** [this] with each step's simple label and detail in place of Detailed view's. */
 private fun TransferStatusUiState.simple(): TransferStatusUiState = when (this) {

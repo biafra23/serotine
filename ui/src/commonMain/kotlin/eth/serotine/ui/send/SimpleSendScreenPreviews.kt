@@ -61,6 +61,7 @@ private val review = SendUiState.Review(
             "3.2041 ETH",
             "at least 3.20389 ETH",
             "verified at block 23,614,077",
+            short = "ETH balance",
         ),
     ),
     simulation = "The token's transfer, run as a verified call from this account at block 23,614,077, goes through.",
