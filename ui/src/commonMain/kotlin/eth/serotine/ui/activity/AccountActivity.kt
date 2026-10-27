@@ -147,10 +147,19 @@ class AccountActivity(
                 onChainCoverage(parts, since),
                 if (safe == null) notListedYet(account.network) else null,
             )
+            // Simple mode's words for the same, with no block number (docs/simple-ui.md, H5).
+            val checking = parts.any { (_, history) ->
+                history is IndexedHistory.Checking || (history as? IndexedHistory.Read)?.complete == false
+            }
+            val simple = listOfNotNull(
+                if (deployedHere) "Activity since it was deployed from this device" else "Activity since you added it",
+                "older activity is still being checked".takeIf { checking },
+            ).joinToString(" · ")
             return ActivityUiState.Shown(
                 rows = merged(sent, events),
                 coverage = covered.joinToString(" "),
                 empty = "Nothing listed yet.",
+                simpleCoverage = simple,
             )
         }
     }

@@ -116,9 +116,11 @@ import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_ASSET_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_REFRESH_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
+import eth.serotine.ui.accounts.ACCOUNTS_REFRESH_TAG
 import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.activitydetail.ACTIVITY_DETAIL_FIELD_TAG
@@ -277,7 +279,8 @@ class AppNavigationTest {
 
     private val debugLog = FakeDebugLog()
     private val debugScreen = MemoryDebugScreen()
-    private val interfaceMode = MemoryInterfaceMode()
+    // These tests were written for the detailed screens; simple mode's are tested on their own.
+    private val interfaceMode = MemoryInterfaceMode(InterfaceMode.DETAILED)
 
     private val graph = AppGraph(
         accounts = accountRepository,
@@ -559,6 +562,7 @@ class AppNavigationTest {
     fun theDebugTabShowsOnceTurnedOnInSettingsAndOpensOverTheAccountsTabAsSettingsDoes() {
         accounts.value = listOf(daily)
         debugLog.records.value = listOf(debugLog.record(1, message = "requestAccount: ok, 34 ms"))
+        interfaceMode.mode.value = InterfaceMode.SIMPLE
         showApp()
         rule.onNodeWithText("Debug").assertDoesNotExist()
         rule.onNodeWithText("Daily").performClick()
@@ -605,6 +609,18 @@ class AppNavigationTest {
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().performClick()
         rule.waitUntil { !debugScreen.enabled.value }
         rule.onNodeWithText("Debug").assertDoesNotExist()
+    }
+
+    @Test
+    fun inSimpleModeAnAccountShowsNoStripAndOffersARefresh() {
+        interfaceMode.mode.value = InterfaceMode.SIMPLE
+        accounts.value = listOf(daily)
+        showApp()
+
+        rule.onNodeWithTag(ACCOUNTS_REFRESH_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_REFRESH_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertDoesNotExist()
     }
 
     @Test

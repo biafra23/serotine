@@ -23,6 +23,7 @@ import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
@@ -41,16 +42,19 @@ import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.accountName
+import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.balanceText
 import eth.serotine.ui.components.displayName
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.ensNameNote
+import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.lastKnownNote
 import eth.serotine.ui.components.notTurnedOn
 import eth.serotine.ui.components.safeTxActionItem
+import eth.serotine.ui.components.ticking
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
@@ -105,8 +109,12 @@ class AccountDetailViewModel(
     hasSwapVenue: HasSwapVenue,
     /** Proves the account's network's balances and prices again on [refresh]; its own reads are proven as it opens. */
     private val refreshNetworkData: RefreshNetworkData,
+    /** Whether the account's network updates live, which simple mode's freshness line says. */
+    observeNetworkLive: ObserveNetworkLive,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
+    /** Now, in unix seconds: what simple mode's ages are dated against. */
+    private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val address: Address = account.address
@@ -115,7 +123,24 @@ class AccountDetailViewModel(
     private val network: Network = account.network
 
     /** Proves the account's network's balances and prices again now: what pulling the screen down asks. */
-    fun refresh() = refreshNetworkData(setOf(network))
+    fun refresh() {
+        lastRefresh.value = Refresh(clock(), oldestShown)
+        refreshNetworkData(setOf(network))
+    }
+
+    /**
+     * The last refresh asked: when ([Refresh.at], unix seconds), and the oldest proof shown then
+     * ([Refresh.oldest]). The screen says it is refreshing until that changes, for 15 s at most.
+     */
+    private data class Refresh(val at: Long, val oldest: Long?)
+
+    private val lastRefresh = MutableStateFlow<Refresh?>(null)
+
+    /** The oldest proof the screen shows, as last computed: what a refresh waits to see change. */
+    private var oldestShown: Long? = null
+
+    /** Whether the account's network updates live: not until known. */
+    private val live = observeNetworkLive(network).onStart { emit(false) }
 
     /** Whether the account's network is on: until known, as if it were, as nothing is sent from here. */
     private val networkOn =
@@ -224,11 +249,12 @@ class AccountDetailViewModel(
                 combine(view, ensName, ::Pair),
                 activityState,
                 combine(networkOn, networkBlocked, swapVenue, ::Triple),
-                ::Triple,
-            ),
-        ) { lookup, value, safe, queue, (named, activity, networkState) ->
+                combine(live, lastRefresh, ticking(clock), ::Triple),
+            ) { named, activity, networkState, fresh -> Gathered(named, activity, networkState, fresh) },
+        ) { lookup, value, safe, queue, (named, activity, networkState, fresh) ->
             val (networkOn, networkBlocked, swapVenue) = networkState
             val (view, ensName) = named
+            val (isLive, refresh, now) = fresh
             when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
                     label = accountName(lookup.account, display, ensName),
@@ -240,7 +266,7 @@ class AccountDetailViewModel(
                         ?: Control.of(lookup.account.kind, lookup.account.custody),
                     total = totalText(value.total, value.currency),
                     totalNote = totalNote(value.total, network, value.currency).ifEmpty { null },
-                    assets = sorted(rows(value, off = network.displayName.takeUnless { networkOn }), view.sort),
+                    assets = sorted(rows(value, off = network.displayName.takeUnless { networkOn }, now), view.sort),
                     pendingAssets = value.tokens.count { awaitingFirst(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
@@ -262,7 +288,7 @@ class AccountDetailViewModel(
                     networkOn = networkOn,
                     networkBlocked = networkBlocked,
                     swapVenue = swapVenue,
-                )
+                ).let { ready -> fresh(ready, value, isLive, refresh, now) }
                 AccountLookup.NotInList -> AccountDetailUiState.Gone
                 AccountLookup.ListUnavailable -> AccountDetailUiState.Unavailable(LIST_UNAVAILABLE)
             }
@@ -399,7 +425,37 @@ class AccountDetailViewModel(
      * amount last verified and says that it may have changed since, or, on a network that is off
      * ([off] names it), that it is off.
      */
-    private fun rows(value: AccountValue, off: String?): List<Row> {
+    /**
+     * [ready] with how fresh its values are, which simple mode says (docs/simple-ui.md, H4): its
+     * oldest proof's age on a network that is not live, "Live" on one that is, "Checking…" while a
+     * refresh is answered.
+     */
+    private fun fresh(
+        ready: AccountDetailUiState.Ready,
+        value: AccountValue,
+        live: Boolean,
+        refresh: Refresh?,
+        now: Long,
+    ): AccountDetailUiState.Ready {
+        val proven = listOfNotNull((value.native as? BalanceReading.Verified)?.provenAt) +
+            value.tokens.mapNotNull { (it.holding.reading as? TokenBalanceReading.Verified)?.provenAt }
+        val oldest = proven.minOrNull().takeUnless { live }
+        oldestShown = oldest
+        val refreshing = !live && refresh?.oldest != null && oldest == refresh.oldest &&
+            now - refresh.at < REFRESH_SHOWN_SECONDS
+        val freshness = when {
+            refreshing -> "Checking ${network.displayName}…"
+            live && proven.isNotEmpty() -> "Live"
+            oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
+            else -> null
+        }
+        return ready.copy(freshness = freshness, refreshing = refreshing)
+    }
+
+    /** What [uiState]'s last argument gathers. */
+    private data class Gathered<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+    private fun rows(value: AccountValue, off: String?, now: Long): List<Row> {
         val native = value.native
         val nativeRow = Row(
             AssetRow(
@@ -412,11 +468,13 @@ class AccountDetailViewModel(
                 value = valuationText(value.nativeValue, value.currency, network),
                 lastKnown = (native as? BalanceReading.LastKnown)
                     ?.let { lastKnownNote(it.blockNumber, it.asOf, off, formatTime) },
+                ageNote = (native as? BalanceReading.LastKnown).let { ageNote(it?.asOf, it != null, off, now) },
             ),
             value.nativeValue,
         )
         val tokenRows = value.tokens.mapNotNull { (holding, valuation) ->
             val shown = shownBalance(holding.reading, off) ?: return@mapNotNull null
+            val asOf = (holding.reading as? TokenBalanceReading.LastKnown)?.asOf
             if (shown.units.isZero) return@mapNotNull null
             val token = holding.token
             val symbol = displaySymbol(token.symbol)
@@ -433,6 +491,7 @@ class AccountDetailViewModel(
                     contract = Eip55.format(token.address),
                     warning = if (holding.sharesBuiltInSymbol) "Not the built-in $symbol: another contract" else null,
                     lastKnown = shown.lastKnown,
+                    ageNote = ageNote(asOf, shown.lastKnown != null, off, now),
                 ),
                 valuation,
             )
@@ -455,6 +514,19 @@ class AccountDetailViewModel(
     }
 
     private class ShownBalance(val units: TokenUnits, val blockNumber: Long?, val lastKnown: String?)
+
+    /**
+     * What simple mode says of an amount last verified ([lastKnown]) at [asOf] (unix seconds; null:
+     * unknown), or on a network that is off ([off] names it): its age instead of its time.
+     */
+    private fun ageNote(asOf: Long?, lastKnown: Boolean, off: String?, now: Long): String? {
+        val age = asOf?.let { agoText(it, now) }
+        return when {
+            off != null -> listOfNotNull("$off is off", age).joinToString(" · ")
+            lastKnown -> listOfNotNull(age, "may have changed").joinToString(" · ")
+            else -> null
+        }
+    }
 
     /** A row and the value it is sorted by. */
     private class Row(val asset: AssetRow, val value: Valuation?)
@@ -511,6 +583,9 @@ class AccountDetailViewModel(
     private fun block(number: Long) = "block ${grouped(number)}"
 
     private companion object {
+        /** For how long at most the screen says a refresh is being answered, in seconds. */
+        const val REFRESH_SHOWN_SECONDS = 15L
+
         const val PRICES = "Prices: Chainlink feeds, read through the light client"
         const val LIST_UNAVAILABLE = "Your account list cannot be read right now. Serotine keeps trying."
         const val QUEUE_UNREADABLE =

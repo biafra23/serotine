@@ -42,6 +42,7 @@ import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
@@ -164,7 +165,9 @@ class AccountDetailViewModelTest {
         upgradeWarnings(networks, accounts, upgradeReports, upgradeStatus),
         HasSwapVenue(uniswap),
         RefreshNetworkData(freshness),
+        ObserveNetworkLive(freshness),
         formatTime = { "<$it>" },
+        clock = { NOW },
     )
 
     private val upgradeReports = FakeUpgradeReports()
@@ -478,6 +481,7 @@ class AccountDetailViewModelTest {
                     "eth",
                     verified = false,
                     lastKnown = "Last verified <1792100000> · may have changed since",
+                    ageNote = "60 min ago · may have changed",
                 ),
                 AssetRow(
                     "USDC",
@@ -487,6 +491,7 @@ class AccountDetailViewModelTest {
                     verified = false,
                     contract = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
                     lastKnown = "Last verified at block 12 · may have changed since",
+                    ageNote = "may have changed",
                 ),
             ),
             ready.assets,
@@ -869,6 +874,7 @@ class AccountDetailViewModelTest {
             upgradeWarnings(networks, accounts),
             HasSwapVenue(uniswap),
             RefreshNetworkData(freshness),
+            ObserveNetworkLive(freshness),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -909,4 +915,45 @@ class AccountDetailViewModelTest {
         viewModel.refresh()
         assertEquals(listOf(Network.SEPOLIA), freshness.refreshed)
     }
+
+    @Test
+    fun simpleModeSaysHowOldTheAccountsValuesAreAndWhileARefreshRuns() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(daily.address).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = NOW - 40)
+        runCurrent()
+        assertEquals("Updated 40 s ago · pull down to refresh", ready(viewModel).freshness)
+
+        viewModel.refresh()
+        runCurrent()
+        assertEquals(true, ready(viewModel).refreshing)
+        assertEquals("Checking Sepolia…", ready(viewModel).freshness)
+
+        balances.of(daily.address).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 12, provenAt = NOW)
+        runCurrent()
+        assertEquals(false, ready(viewModel).refreshing)
+        assertEquals("Updated just now · pull down to refresh", ready(viewModel).freshness)
+    }
+
+    @Test
+    fun onALiveNetworkSimpleModeSaysLive() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        freshness.live.value = setOf(Network.SEPOLIA)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(daily.address).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = NOW - 600)
+        runCurrent()
+        assertEquals("Live", ready(viewModel).freshness)
+    }
+
+    private fun ready(viewModel: AccountDetailViewModel) = viewModel.uiState.value as AccountDetailUiState.Ready
+
+    private companion object {
+        /** The test's now: an hour after the balances last verified at 1_792_100_000. */
+        const val NOW = 1_792_103_600L
+    }
 }
+

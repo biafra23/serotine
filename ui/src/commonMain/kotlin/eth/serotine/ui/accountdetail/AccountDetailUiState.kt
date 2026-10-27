@@ -37,6 +37,9 @@ sealed interface AccountDetailUiState {
      * (N19), when Send and Swap wait for it to be turned on; [networkBlocked] while this version can
      * no longer follow that network and others still can, which greys out Send and Swap too;
      * [swapVenue] false where no swap venue is pinned on it (Gnosis Chain), which greys out Swap.
+     * Simple mode says how fresh its values are ([freshness]: "Updated 40 s ago · pull down to
+     * refresh", "Live", "Checking…"; null while nothing is proven yet) and whether a refresh is
+     * being answered ([refreshing]), docs/simple-ui.md, H4.
      */
     data class Ready(
         val label: String,
@@ -62,6 +65,8 @@ sealed interface AccountDetailUiState {
         val networkOn: Boolean = true,
         val networkBlocked: Boolean = false,
         val swapVenue: Boolean = true,
+        val freshness: String? = null,
+        val refreshing: Boolean = false,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
@@ -244,7 +249,9 @@ enum class AssetSort {
  * the display currency, or why there is none ("No price"; null while there is no verified
  * amount to value), the bundled [icon] key (null: a monogram), a token's EIP-55 [contract]
  * (null for the native currency), which its long-press menu copies and hides, and
- * [warning], set when an added token's symbol is a built-in token's, which it is not.
+ * [warning], set when an added token's symbol is a built-in token's, which it is not. Simple mode
+ * says how old an amount last verified is instead of when ([ageNote]: "3 h ago · may have changed",
+ * "Ethereum is off · 3 h ago").
  */
 data class AssetRow(
     val symbol: String,
@@ -257,4 +264,5 @@ data class AssetRow(
     val contract: String? = null,
     val warning: String? = null,
     val lastKnown: String? = null,
+    val ageNote: String? = null,
 )

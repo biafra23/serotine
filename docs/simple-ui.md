@@ -174,9 +174,13 @@ change what it trusts.
   price". "Updated 40 s ago · pull down to refresh" at the bottom.
 - **H5 · Account, Activity.** A card on top for a swap whose step 2 waits:
   "Swap 100 USDC → LINK · Step 1 done. Step 2 is waiting for you."
-  with Continue. Then the rows by day: what happened, when, the amount and
-  its value. "Activity since you added this account" when the history is
-  walked from the block it was added at.
+  with Continue (part 6). Then the rows, newest first: what happened, when
+  it was sent or signed here (an event on chain is dated only by its block,
+  so its row has no time), and how it ended in words ("Confirmed", "Final",
+  "Failed", "Filled"), never a block number. Above them "Activity since you
+  added it" (or since it was deployed from this device), and "older
+  activity is still being checked" while it is. The mockup's day headings
+  and amounts' values are not built yet.
 - **H6 · Receive.** The account's blockie and name, the QR code, the full
   address in groups of four, "Only send assets on Ethereum to this address",
   with what happens otherwise, and Copy and Share.
@@ -277,7 +281,8 @@ merge.
 3. Simple Home and Settings (H1 to H3, T1): the freshness line, the "can't
    check" banner, pull-to-refresh with a Refresh button beside it, and the
    network's icon on an account's blockie.
-4. Simple Account, its Activity tab and Receive (H4 to H6).
+4. Simple Account and its Activity tab (H4, H5). Receive (H6) draws the
+   same in both views: it names no block.
 5. Simple Send (S1 to S3).
 6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
 7. The remaining flows: Activity's waiting step, and the screens under *Not

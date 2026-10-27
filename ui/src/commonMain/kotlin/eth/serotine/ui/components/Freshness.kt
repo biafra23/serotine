@@ -1,5 +1,18 @@
 package eth.serotine.ui.components
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlin.time.Duration.Companion.seconds
+
+/** [clock]'s now (unix seconds), every second: what a screen's ages are re-dated by. */
+internal fun ticking(clock: () -> Long): Flow<Long> = flow {
+    while (true) {
+        emit(clock())
+        delay(1.seconds)
+    }
+}
+
 /** An age of [seconds] as a screen says it: "8 s", "2 min", "3 h". */
 internal fun ageOf(seconds: Long): String = when {
     seconds < 120 -> "$seconds s"
