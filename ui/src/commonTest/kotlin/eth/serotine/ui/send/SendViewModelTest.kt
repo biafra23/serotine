@@ -160,6 +160,9 @@ class SendViewModelTest {
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
     private val clock = TestTimeSource()
+
+    /** Now, in unix seconds, as the compose step dates a balance's age against it. */
+    private var wallClock = 1_800_000_000L
     private val receipts = FakeReceipts()
 
     private fun TestScope.viewModel(from: Address = daily.address, asset: Address? = null): SendViewModel {
@@ -185,6 +188,7 @@ class SendViewModelTest {
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
             clock,
+            now = { wallClock },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -220,6 +224,20 @@ class SendViewModelTest {
         // The light client builds its fee history on a first request: asked now, warm by Review.
         assertEquals(1, inputs.feeReads)
         assertEquals(0, inputs.estimated.size, "nothing quoted")
+    }
+
+    @Test
+    fun eachBalanceSaysHowLongAgoItWasProvedAndIsDatedAnew() = runTest {
+        balances.of(daily.address).value =
+            BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118, provenAt = wallClock - 120)
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals("updated 2 min ago", viewModel.compose.asset?.age)
+
+        wallClock += 60
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertEquals("updated 3 min ago", viewModel.compose.asset?.age, "the age is dated anew every second")
     }
 
     @Test

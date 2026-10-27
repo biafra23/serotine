@@ -80,13 +80,14 @@ class SimpleSendScreenTest {
 
     @Test
     fun theFormNamesNoBlockBesideTheBalanceOrTheNameNorInItsError() {
+        val dated = review.asset.copy(age = "updated 2 min ago")
         show(
             SendUiState.Compose(
                 form = eth.serotine.ui.components.TransferForm(
                     network = "Ethereum",
                     from = SendFrom("Main", "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"),
-                    assets = listOf(review.asset),
-                    asset = review.asset,
+                    assets = listOf(dated),
+                    asset = dated,
                     to = "friend-example.eth",
                     accounts = emptyList(),
                     amount = "1",
@@ -105,6 +106,8 @@ class SimpleSendScreenTest {
         )
 
         rule.onNodeWithText("block 23,", substring = true).assertDoesNotExist()
+        // Its age in place of its block (docs/wallet-ux.md, *Verified, or not available*).
+        rule.onNodeWithText("3.2 ETH · updated 2 min ago").assertIsDisplayed()
         rule.onNodeWithText("Checked on chain, this transfer fails", substring = true)
             .performScrollTo()
             .assertIsDisplayed()

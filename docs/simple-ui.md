@@ -193,16 +193,27 @@ change what it trusts.
   resolved address under it, and the user's own accounts as chips. One fee
   row: "Network fee ≈ €0.36 · Normal ›", which opens the fee levels. Review.
   Send proves the balance it offers when it opens, so the available amount,
-  25%, 50% and Max never come from an aged balance.
+  25%, 50% and Max never come from an aged balance. While the form stays
+  open the proof may grow old, so each balance says its age ("1,250 USDC ·
+  updated 2 min ago") in place of its block.
 - **S2 · Send, review.** A sheet over the form: "Send 250 USDC" and its
   value, the recipient in full with its blockie, From with its network, the
   most the fee can be in the native token and its value, and the balance
   after. "Checked on chain: this transfer should go through" (decision 8).
   Details (the block, the gas limit, the fee caps, the nonce). "Confirm and
   send" with biometrics, or "Use password instead".
+  As built in part 5 (#193), and open for the owner to decide: the review is
+  a screen of its own, not a sheet over the form; it shows no value beside
+  the amount or the fee, and its Details have no nonce, since the review's
+  state carries neither yet.
 - **S3 · Sent.** The amount and the recipient, then Sent → Confirmed (when,
   and the fee paid) → Final ("in about 13 min. After that it can't be
   reversed by the network."). Details (the hash, the blocks) and Done.
+  As built in part 5 (#193), and open for the owner to decide: a Signed step
+  comes before Sent; the hash stays in the body, where it can be copied, as
+  in Detailed view; Confirmed says its receipt was checked on chain, without
+  when or the fee paid; the waiting Final says what it means, without how
+  long it takes.
 
 ### Swap
 
@@ -284,8 +295,8 @@ merge.
    network's icon on an account's blockie.
 4. Simple Account and its Activity tab (H4, H5). Receive (H6) draws the
    same in both views: it names no block.
-5. Simple Send and a transfer's status (S1 to S3). S2's review stays a
-   screen, not the mockup's sheet over the form.
+5. Simple Send and a transfer's status (S1 to S3). What it builds
+   differently from S2 and S3 is said under each, open for the owner.
 6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
 7. The remaining flows: Activity's waiting step, and the screens under *Not
    in simple mode yet* that get a simple version.
