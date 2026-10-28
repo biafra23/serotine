@@ -18,9 +18,20 @@ class SafeDeploymentsTest {
     /**
      * Each factory's proxy runtime code, as a verified create call of its `proxyCreationCode()`
      * returned it through the Myotis engine on Sepolia, 2026-10-17 (1.3.0's equal to its own
-     * `proxyRuntimeCode()`).
+     * `proxyRuntimeCode()`); 1.0.0's and 1.1.1's (also 1.2.0's, which reuses 1.1.1's factory) as
+     * an `eth_call` of `proxyRuntimeCode()` on Mainnet at block 26,289,609 (SafeDeployments.kt's
+     * doc comment).
      */
     private val runtimeCode = mapOf(
+        "1.0.0" to
+            "608060405273ffffffffffffffffffffffffffffffffffffffff600054163660008037600080366000845af43d6000803e" +
+            "6000811415603d573d6000fd5b3d6000f3fea165627a7a723058201e7d648b83cfac072cbccefc2ffc62a6999d4a050ee87" +
+            "a721942de1da9670db80029",
+        "1.1.1" to
+            "608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e000000000000000000000000000000" +
+            "0000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e" +
+            "60008114156070573d6000fd5b3d6000f3fea265627a7a72315820d8a00dc4fe6bf675a9d7416fc2d00bb3433362aa8186b7" +
+            "50f76c4027269667ff64736f6c634300050e0032",
         "1.3.0" to
             "608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e000000000000000000000000000000" +
             "0000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e" +
@@ -52,7 +63,11 @@ class SafeDeploymentsTest {
             val singletons = SafeDeployments.of(network).singletons.values
 
             assertEquals(setOf("1.5.0"), singletons.filter { it.moduleGuard }.map { it.version }.toSet())
-            assertEquals(setOf("1.3.0", "1.4.1", "1.5.0"), singletons.map { it.version }.toSet(), network.displayName)
+            assertEquals(
+                setOf("1.0.0", "1.1.1", "1.2.0", "1.3.0", "1.4.1", "1.5.0"),
+                singletons.map { it.version }.toSet(),
+                network.displayName,
+            )
         }
     }
 

@@ -51,6 +51,33 @@ internal data class SafeSingleton(val version: String, val l2: Boolean, val modu
  * Only its [Table.creation] differs: Safe{Wallet} creates SafeL2 there, the 1.4.1 L2 singleton
  * (owner ruling, 2026-10-22; docs/networks.md, open question 6), whose events let any indexer
  * follow the Safe; `MyotisHostGnosisTest` proves the deployments through the light client.
+ *
+ * A Safe older than 1.3.0 is recognised too (issue: diskordia.eth, an address the user reported
+ * as "a recognised Safe" that Serotine showed as a plain contract): 1.0.0, 1.1.1 and 1.2.0, the
+ * three Mainnet releases of `safe-global/safe-deployments` before 1.3.0 introduced the `Safe`
+ * rename and the guard. Their `GnosisSafe.sol` is `MasterCopy, ModuleManager, OwnerManager, ...`
+ * (1.0.0's `BaseSafe` is `ModuleManager, OwnerManager` under another name): the same six slots
+ * `readSafe` already reads, with no guard (read as none, since nothing was ever written at its
+ * hashed slot) and, before 1.3.0 added `moduleGuard`, none of that either. A Safe left on one of
+ * these singletons is still read as what it is; one moved since to a pinned singleton by the
+ * owners' own `changeMasterCopy` call (as diskordia.eth was, to the 1.3.0 L1 singleton already
+ * pinned above) needs only its [Table.proxyCodeHashes] widened, since its proxy's own code never
+ * changes. 1.2.0 reused 1.1.1's `ProxyFactory` (`safe-deployments` lists no `v1.2.0` factory of
+ * its own), so one more proxy hash plus three more singletons cover all three:
+ * - 1.0.0's `ProxyFactory` 0x12302fE9c02ff50939BaAaaf415fc226C078613C and its singleton
+ *   0xb6029EA3B2c51D09a50B53CA8012FeEB05bDa35A ("Gnosis Safe" `VERSION()` "1.0.0");
+ * - 1.1.1's `ProxyFactory` 0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B (also 1.2.0's) and its
+ *   singleton 0x34CfAC646f301356fAa8B21e94227e3583Fe3F5F ("1.1.1");
+ * - 1.2.0's singleton 0x6851D6fDFAfD08c0295C392436245E5bc78B0185 ("1.2.0").
+ *
+ * Each factory's `proxyRuntimeCode()` (`addacc0f`, unchanged since 1.0.0) and each singleton's
+ * `VERSION()` were read as an `eth_call` on Mainnet at block 26,289,609 through two independent
+ * public nodes, which agreed (publicnode.com and drpc.org; a debugging source only, CLAUDE.md,
+ * *Data sources*: the Myotis engine is what proves them for a user). The same two addresses carry
+ * the same code and `VERSION()`s on Gnosis Chain at block 48,982,569, `networkAddresses` in
+ * `safe-deployments` lists Gnosis among them, and 1.1.1's `ProxyFactory` runtime code there was
+ * read in full and starts with the same selector table (`addacc0f` among them). Diskordia.eth's
+ * own deployed code, read directly, is exactly 1.1.1's `proxyRuntimeCode()` byte for byte.
  */
 internal object SafeDeployments {
 
@@ -78,6 +105,11 @@ internal object SafeDeployments {
     /** The canonical deployments, a new Safe created from 1.4.1's L1 singleton or, with [l2], its L2 one. */
     private fun table(l2: Boolean) = Table(
         proxyCodeHashes = setOf(
+            // 1.0.0, from ProxyFactory 0x12302fE9c02ff50939BaAaaf415fc226C078613C.
+            "f8fffcb9b9c73fbc4ffb6dc52f0001fa998951e0d4177894b1b899f7732b6eaf",
+            // 1.1.1 (also 1.2.0's, which reuses this factory), from ProxyFactory
+            // 0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B.
+            "aea7d4252f6245f301e540cfbee27d3a88de543af8e49c5c62405d5499fab7e5",
             // 1.3.0, from GnosisSafeProxyFactory 0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2.
             "b89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
             // 1.4.1, from SafeProxyFactory 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67.
@@ -86,6 +118,9 @@ internal object SafeDeployments {
             "4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f",
         ),
         singletons = mapOf(
+            singleton("0xb6029ea3b2c51d09a50b53ca8012feeb05bda35a", "1.0.0", l2 = false),
+            singleton("0x34cfac646f301356faa8b21e94227e3583fe3f5f", "1.1.1", l2 = false),
+            singleton("0x6851d6fdfafd08c0295c392436245e5bc78b0185", "1.2.0", l2 = false),
             singleton("0xd9db270c1b5e3bd161e8c8503c55ceabee709552", "1.3.0", l2 = false),
             singleton("0x3e5c63644e683549055b9be8653de26e0b4cd36e", "1.3.0", l2 = true),
             singleton("0x69f4d1788e39c87893c980c06edf4b7f686e2938", "1.3.0", l2 = false),

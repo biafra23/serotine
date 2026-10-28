@@ -1051,14 +1051,19 @@ address. Applied:
 - **Detection** (issue #10) reads only verified state, each value with its
   block: the proxy's code hash must be a pinned SafeProxy runtime hash; slot
   0 (the singleton) must be a pinned canonical singleton for the network
-  (1.3.0, 1.4.1 or 1.5.0, L1 or L2); the owners are the linked list in slot
-  2 walked from the sentinel `0x1` with storage proofs, the threshold is slot
-  4 and the nonce slot 5. The modules (slot 1's list), the guard and, from
-  1.5.0, the module guard are read too, because a module can move funds
-  without the owners' signatures.
+  (1.0.0, 1.1.1, 1.2.0, 1.3.0, 1.4.1 or 1.5.0, L1 or L2 where there is one);
+  the owners are the linked list in slot 2 walked from the sentinel `0x1`
+  with storage proofs, the threshold is slot 4 and the nonce slot 5. The
+  modules (slot 1's list), the guard and, from 1.5.0, the module guard are
+  read too, because a module can move funds without the owners' signatures;
+  a Safe older than 1.3.0 has neither, and is read as having none of either.
   Anything that does not match is "another contract", never a Safe. The
-  pins (`SafeDeployments`) cover 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the
-  SafeProxy runtime code of each factory. A Safe's control badge follows its
+  pins (`SafeDeployments`) cover 1.0.0, 1.1.1 and 1.2.0 (one proxy shared by
+  the last two), and 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the SafeProxy
+  runtime code of each factory: a pre-1.3.0 Safe whose owners moved it since
+  to a pinned singleton (`changeMasterCopy`) is recognised by its own older
+  proxy pointing at that pinned singleton, same as one still on its original
+  singleton. A Safe's control badge follows its
   verified owners: as many held here as its threshold is full control, fewer
   is co-signer, none is watch-only, and so is a Safe not read yet.
   - The numbered slots carry the block they were proven at; the guards sit
