@@ -183,6 +183,10 @@ class AccountActivityTest {
         assertEquals(unsure, card(null).message)
         val other = assertIs<ActivityUiState.Shown>(activity(treasury.address).value)
         assertEquals(emptyList(), other.waiting, "another account's")
+
+        // A token bought that is no longer listed is not named, and never as the network's currency.
+        waitingSwaps.swaps.value = waitingSwaps.swaps.value.map { it.copy(buy = Address.of("0x" + "77".repeat(20))) }
+        assertEquals("A swap", assertIs<ActivityUiState.Shown>(activity.value).waiting.single().title)
     }
 
     @Test

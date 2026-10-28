@@ -66,6 +66,7 @@ import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
 import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +81,7 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The account detail screen's ViewModel: the account under [address], what it holds and what
@@ -326,7 +328,8 @@ class AccountDetailViewModel(
     /** Lets the swap selling the token at [sell] (its address) wait no longer: its card in the Activity tab goes. */
     fun dismissWaiting(sell: String) {
         val token = Address.parse(sell) ?: return
-        viewModelScope.launch { dropWaitingSwap(account, token) }
+        // Run to its end, the screen left or not: a dismissed card does not come back.
+        viewModelScope.launch { withContext(NonCancellable) { dropWaitingSwap(account, token) } }
     }
 
     /** Orders the rows by [order]. */

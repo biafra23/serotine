@@ -16,6 +16,7 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readString
 import kotlinx.io.writeString
 import kotlin.random.Random
 import kotlin.test.AfterTest
@@ -91,9 +92,17 @@ class FileWaitingSwapsTest {
             """"approval":"0x${"01".repeat(32)}","step":2,"steps":2}"""
         val unknownVenue = good.replace("\"uniswap\"", "\"elsewhere\"")
         val unknownChain = good.replace("11155111", "999")
-        write("""{"version":1,"swaps":[$unknownVenue,$good,$unknownChain]}""")
+        val ofAnotherType = good.replace("\"step\":2", "\"step\":\"two\"")
+        val text = """{"version":1,"swaps":[$unknownVenue,$good,$unknownChain,$ofAnotherType]}"""
+        write(text)
 
         assertEquals(listOf(swap()), swaps().observe().first())
+
+        // What was passed over outlives the next write, in a copy of the file it was read from.
+        assertTrue(swaps().drop(main, usdc))
+        val aside = SystemFileSystem.list(directory).filter { ".damaged-" in it.name }
+        assertEquals(1, aside.size)
+        assertEquals(text, SystemFileSystem.source(aside.single()).buffered().use { it.readString() })
     }
 
     @Test

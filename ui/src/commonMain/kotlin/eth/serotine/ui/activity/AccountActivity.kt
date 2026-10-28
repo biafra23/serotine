@@ -188,8 +188,9 @@ class AccountActivity(
         private fun waitingStep(swap: WaitingSwap, entries: List<HistoryEntry>, tokens: Map<Address, KnownToken>?) =
             WaitingStep(
                 title = tokens?.get(swap.sell)?.token?.let { sold ->
-                    val bought = swap.buy?.let { tokens[it]?.token?.symbol } ?: account.network.nativeSymbol
-                    "Swap ${exactAmount(swap.amount, sold.decimals, sold.symbol)} → $bought"
+                    // Only no token bought is the network's currency: one no longer listed is not named.
+                    val bought = if (swap.buy == null) account.network.nativeSymbol else tokens[swap.buy]?.token?.symbol
+                    bought?.let { "Swap ${exactAmount(swap.amount, sold.decimals, sold.symbol)} → $it" }
                 } ?: "A swap",
                 message = waitingText(swap, entries.firstOrNull { it.transfer.hash.equals(swap.approval, true) }),
                 sell = swap.sell.hex,

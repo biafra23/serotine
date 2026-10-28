@@ -18,13 +18,16 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /**
  * [WaitingSwaps] kept in the file at [path] (a [VersionedJsonFile]): each swap's inputs, all public,
  * never a quote or a signature. One this build cannot read (a chain no [Network] is, a venue it does
- * not know, a field out of its range) is left out, and the others are kept; a file that is no list of
- * them is damaged, set aside, and the list starts empty. One that cannot be read reads as empty: a
- * waiting swap is a convenience, which Continue quotes again from the chain.
+ * not know, a field missing, of another type or out of its range) is left out and the others are
+ * kept; the file holding it is first copied aside whole, once, before anything rewrites it, as the
+ * other adapters do. A file that is no list of them is damaged, set aside, and the list starts empty.
+ * One that cannot be read reads as empty: a waiting swap is a convenience, which Continue quotes
+ * again from the chain.
  */
 class FileWaitingSwaps(
     path: String,
@@ -37,9 +40,12 @@ class FileWaitingSwaps(
         what = "waiting swaps",
         formatVersion = FORMAT_VERSION,
         empty = emptyList<WaitingSwap>(),
-        decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).swaps.mapNotNull(::swap) },
+        decode = { _, text -> JSON.decodeFromString(StoredFile.serializer(), text).swaps.mapNotNull(::decoded) },
+        // An entry passed over is copied aside with the whole file before the first rewrite.
+        incomplete = { text, swaps -> JSON.decodeFromString(StoredFile.serializer(), text).swaps.size != swaps.size },
         encode = { swaps ->
-            JSON.encodeToString(StoredFile.serializer(), StoredFile(FORMAT_VERSION, swaps.map(::stored)))
+            val entries = swaps.map { JSON.encodeToJsonElement(StoredSwap.serializer(), stored(it)) }
+            JSON.encodeToString(StoredFile.serializer(), StoredFile(FORMAT_VERSION, entries))
         },
     )
 
@@ -61,7 +67,7 @@ class FileWaitingSwaps(
 
     /** The file's layout. [version] comes first and is always written. */
     @Serializable
-    private class StoredFile(val version: Int, val swaps: List<StoredSwap>)
+    private class StoredFile(val version: Int, val swaps: List<JsonElement>)
 
     /** One swap: [buy] null for the network's currency, [amount] in the sold token's units, as decimal text. */
     @Serializable
@@ -101,6 +107,14 @@ class FileWaitingSwaps(
             step = swap.step,
             steps = swap.steps,
         )
+
+        /** [entry] as the swap it keeps, or null for one this build cannot read: left out. */
+        fun decoded(entry: JsonElement): WaitingSwap? = try {
+            swap(JSON.decodeFromJsonElement(StoredSwap.serializer(), entry))
+        } catch (e: IllegalArgumentException) {
+            // A SerializationException: a field missing or of another type.
+            null
+        }
 
         /** [stored] as the swap it keeps, or null for one this build cannot read: left out. */
         fun swap(stored: StoredSwap): WaitingSwap? {

@@ -740,17 +740,21 @@ class SwapViewModel(
             val waiting = findWaitingSwap(account, sell) ?: return@launch
             val token = SwapPick.Token(waiting.sell)
             val opened = inputs.value
-            val shown = model.first { it?.sell != null && it.inputs.sell == token }
+            // Once the account's tokens are read: a token no longer among them is said by the compose step,
+            // and nothing is waited for, so that nothing keeps the balances read for a screen left behind.
+            val shown = model.first { it != null && it.inputs.sell == token && (it.sell != null || it.tokensRead) }
+            val option = shown?.sell ?: return@launch
             // The user changed the form meanwhile: it is theirs, and nothing is quoted for them.
             if (inputs.value != opened || opened.sell != token) return@launch
             val filled = opened.copy(
                 buy = waiting.buy?.let(SwapPick::Token) ?: SwapPick.Native,
-                amount = waiting.amount.formatUnits(requireNotNull(shown?.sell).decimals),
+                amount = waiting.amount.formatUnits(option.decimals),
                 tolerance = waiting.tolerance.percent,
                 venue = waiting.venue,
             )
             change { filled }
-            val read = model.first { it?.inputs == filled } ?: return@launch
+            // Read for the form as filled, or edited since, which ends the wait too.
+            val read = model.first { it?.inputs == filled || inputs.value != filled } ?: return@launch
             // A swap the form cannot quote as it stands (a balance moved, a token no longer listed) stays
             // at the compose step, which says why; one edited meanwhile is the user's.
             if (inputs.value != filled || requestOf(read) == null) return@launch
