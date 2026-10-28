@@ -41,12 +41,14 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.ActionDropdown
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.launch
 
@@ -65,15 +67,28 @@ fun TokensRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    TokensScreen(
-        state,
-        onBack = onBack,
-        onAddToken = onAddToken,
-        onCopy = rememberCopyText(),
-        onSetHidden = viewModel::setHidden,
-        onRemove = viewModel::remove,
-        modifier = modifier,
-    )
+    val copy = rememberCopyText()
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleTokensScreen(
+            state,
+            onBack = onBack,
+            onAddToken = onAddToken,
+            onCopy = copy,
+            onSetHidden = viewModel::setHidden,
+            onRemove = viewModel::remove,
+            modifier = modifier,
+        )
+        InterfaceMode.DETAILED -> TokensScreen(
+            state,
+            onBack = onBack,
+            onAddToken = onAddToken,
+            onCopy = copy,
+            onSetHidden = viewModel::setHidden,
+            onRemove = viewModel::remove,
+            modifier = modifier,
+        )
+    }
 }
 
 /**

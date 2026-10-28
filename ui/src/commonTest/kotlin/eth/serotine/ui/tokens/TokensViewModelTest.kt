@@ -56,6 +56,7 @@ class TokensViewModelTest {
 
         val (builtIn, added) = viewModel.uiState.value.sepolia
         assertEquals("Built in · checked against its contract at block 11,932,144", builtIn.status)
+        assertEquals("Built in · checked against its contract", builtIn.simpleStatus, "no block")
         assertEquals("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", builtIn.address)
         assertEquals("Added: as its contract describes itself", added.status)
         assertEquals("Not the built-in USDC: another contract", added.warning)

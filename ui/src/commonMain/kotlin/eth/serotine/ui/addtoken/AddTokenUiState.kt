@@ -31,7 +31,8 @@ sealed interface TokenCard {
 
     /**
      * What the contract at the EIP-55 [address] says: [symbol], [name] and [decimals], read
-     * [checkedAt]; [warning] when the symbol is a built-in token's, which this is not.
+     * [checkedAt]; [warning] when the symbol is a built-in token's, which this is not. [simpleCheckedAt]
+     * is [checkedAt] with no block, for simple mode (docs/simple-ui.md).
      */
     data class Claim(
         val address: String,
@@ -40,6 +41,7 @@ sealed interface TokenCard {
         val decimals: Int,
         val checkedAt: String,
         val warning: String?,
+        val simpleCheckedAt: String = checkedAt,
     ) : TokenCard
 
     /** The wallet knows the address already, as [symbol]. */
