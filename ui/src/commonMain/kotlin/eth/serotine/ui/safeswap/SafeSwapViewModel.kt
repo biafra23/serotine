@@ -59,6 +59,7 @@ import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.grouped
@@ -69,10 +70,12 @@ import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.priceHintText
 import eth.serotine.ui.components.priceImpactText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.routeSteps
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.sellNote
+import eth.serotine.ui.components.simpleSafeTxRefusalText
 import eth.serotine.ui.components.swapOptions
 import eth.serotine.ui.components.toleranceError
 import eth.serotine.ui.components.typedAmount
@@ -138,6 +141,7 @@ class SafeSwapViewModel(
     private val signSafeTx: SignSafeTx,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val formatTime: (Long) -> String = ::formatDateTime,
+    private val now: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val safe: Address = account.address
@@ -200,7 +204,12 @@ class SafeSwapViewModel(
 
     /** Where the flow stands. */
     private sealed interface Step {
-        data class Composing(val proposing: Boolean = false, val error: String? = null) : Step
+        data class Composing(
+            val proposing: Boolean = false,
+            val error: String? = null,
+            /** [error] with no block, for simple mode; null where it is [error] itself. */
+            val simpleError: String? = null,
+        ) : Step
 
         /**
          * [proposal] of [request], made at [proposedAt], under review, to be signed by [owner];
@@ -223,6 +232,8 @@ class SafeSwapViewModel(
             val signed: Int = 0,
             val error: String? = null,
             val hidden: Boolean = false,
+            /** [error] with no block, for simple mode; null where it is [error] itself. */
+            val simpleError: String? = null,
         ) : Step {
             val idle: Boolean
                 get() = !refreshing && !signing
@@ -277,7 +288,14 @@ class SafeSwapViewModel(
         null,
     )
 
-    val uiState: StateFlow<SafeSwapUiState> = combine(model, step, ::render).stateIn(
+    val uiState: StateFlow<SafeSwapUiState> = combine(model, step) { model, step -> model to step }
+        // A balance's age, which simple mode shows, is dated anew every second on the compose step.
+        .redatedWhile { (model, step) ->
+            step is Step.Composing && model != null &&
+                (model.sellOptions + model.buyOptions).any { it.provenAt != null }
+        }
+        .map { (model, step) -> render(model, step) }
+        .stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         SafeSwapUiState.Loading(network.displayName),
@@ -346,7 +364,13 @@ class SafeSwapViewModel(
         step.update { current ->
             if (current is Step.Reviewing && current.idle && owner in current.proposal.safe.ownersHeld) {
                 // Another owner signs every one of them, the approval queued by the last one too.
-                current.copy(owner = owner, unlock = current.unlock.copy(error = null), error = null, signed = 0)
+                current.copy(
+                    owner = owner,
+                    unlock = current.unlock.copy(error = null),
+                    error = null,
+                    simpleError = null,
+                    signed = 0,
+                )
             } else {
                 current
             }
@@ -360,7 +384,7 @@ class SafeSwapViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (!current.idle) return
         val cleared = current.unlock.copy(error = null)
-        step.value = current.copy(refreshing = true, hidden = false, error = null, unlock = cleared)
+        step.value = current.copy(refreshing = true, hidden = false, error = null, simpleError = null, unlock = cleared)
         job = viewModelScope.launch {
             val accounts = model.value?.accounts ?: current.accounts
             val next = proposed(current.request, current.owner, current.unlock, current.safeAccount, accounts)
@@ -485,7 +509,7 @@ class SafeSwapViewModel(
     private fun sign(review: Step.Reviewing, unlockFor: (index: Int) -> Unlock) {
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = review.unlock.copy(password = WalletPassword.EMPTY, error = null)
-        step.value = review.copy(signing = true, checking = true, error = null, unlock = unlocked)
+        step.value = review.copy(signing = true, checking = true, error = null, simpleError = null, unlock = unlocked)
         val requests = review.proposal.requests
         // What an earlier tap on this very review signed and queued already, as this owner.
         val from = review.signed
@@ -547,6 +571,7 @@ class SafeSwapViewModel(
                     is SafeTxSigning.Refused -> safeTxRefusalText(signing.refusal, network)
                     null -> SIGN_FAILED
                 }
+                val simpleWhy = (signing as? SafeTxSigning.Refused)?.let { simpleSafeTxRefusalText(it.refusal) }
                 step.update { latest ->
                     if (latest !is Step.Reviewing) return@update latest
                     val notSigned = signing as? SafeTxSigning.NotSigned
@@ -559,6 +584,9 @@ class SafeSwapViewModel(
                             null
                         } else {
                             signedSoFar(review.proposal, index)?.let { "$it $why" } ?: why
+                        },
+                        simpleError = simpleWhy?.let { simple ->
+                            signedSoFar(review.proposal, index)?.let { "$it $simple" } ?: simple
                         },
                         unlock = latest.unlock.copy(
                             error = why.takeIf { underUnlock },
@@ -638,7 +666,9 @@ class SafeSwapViewModel(
             // The use case promises not to throw; the backstop.
             SafeSwapProposing.Unavailable(ReadUnavailable.UNPROVEN, figure = null)
         }
-        if (proposing !is SafeSwapProposing.Proposed) return Step.Composing(error = refusal(proposing, request))
+        if (proposing !is SafeSwapProposing.Proposed) {
+            return Step.Composing(error = refusal(proposing, request), simpleError = simpleRefusal(proposing, request))
+        }
         val proposal = proposing.proposal
         val held = proposal.safe.ownersHeld
         val signer = owner?.takeIf { it in held } ?: held.firstOrNull()
@@ -738,13 +768,14 @@ class SafeSwapViewModel(
             return SafeSwapUiState.CannotSwap(network, REPLACED_UNKNOWN_TOKEN)
         }
         val amount = typedAmount(inputs.amount, model.sell)
+        val at = now()
         val form = SwapForm(
             network = network,
             from = SendFrom(account.label, display),
-            sellOptions = model.sellOptions.map { it.choice() },
-            sell = model.sell?.choice(),
-            buyOptions = model.buyOptions.map { it.choice() },
-            buy = model.buy?.choice(),
+            sellOptions = model.sellOptions.map { it.choice(at) },
+            sell = model.sell?.choice(at),
+            buyOptions = model.buyOptions.map { it.choice(at) },
+            buy = model.buy?.choice(at),
             amount = inputs.amount,
             tolerance = inputs.tolerance,
             amountError = amount.error,
@@ -754,6 +785,7 @@ class SafeSwapViewModel(
             note = sellNote(model.sell, model.tokensRead, "this Safe"),
             quoting = composing.proposing,
             error = composing.error,
+            simpleError = composing.simpleError,
             info = if (found != null) {
                 null
             } else {
@@ -799,6 +831,7 @@ class SafeSwapViewModel(
             quotedAt = "QuoterV2's verified quote" +
                 (proposal.quoteBlock?.let { " at block ${grouped(it)}" } ?: " at the head") +
                 ": what the route returns for this amount now.",
+            simpleQuotedAt = "QuoterV2's quote, checked on chain: what the route returns for this amount now.",
             minimum = "at least " + exactAmount(proposal.minimumOut, buy.decimals, buy.symbol),
             tolerance = "${proposal.tolerance} tolerance below the quote, fixed in the swap the owners sign: " +
                 "it is not quoted again when they do.",
@@ -842,6 +875,7 @@ class SafeSwapViewModel(
                 verifiedAt = verifiedAt(proposal.balanceBlock),
             ),
             simulation = simulationText(proposal, buy),
+            simpleSimulation = simpleSimulationText(proposal, buy),
             owners = held.map { AccountChoice(labels[it] ?: Eip55.format(it), Eip55.format(it)) },
             owner = Eip55.format(step.owner),
             unlock = step.unlock,
@@ -854,6 +888,7 @@ class SafeSwapViewModel(
                 null
             },
             error = step.error,
+            simpleError = step.simpleError,
         )
     }
 
@@ -902,6 +937,36 @@ class SafeSwapViewModel(
             SafeSwapSimulation.NotRun -> "Not simulated: the light client on this device does not run a call " +
                 "from the Safe's address. Its execution, the whole of it, is run as a verified call before anyone " +
                 "sends it."
+        }
+        return reset + approval + swap
+    }
+
+    /**
+     * [simulationText] in simple mode's words, with no block, and said with care (docs/simple-ui.md,
+     * decision 8); null where it names none.
+     */
+    private fun simpleSimulationText(proposal: SafeSwapProposal, buy: AssetOption): String? {
+        val ran = listOf(proposal.resetSimulation, proposal.approvalSimulation).any { it is SafeCallSimulation.Ran } ||
+            proposal.swapSimulation is SafeSwapSimulation.Ran
+        if (!ran) return null
+        val reset = if (proposal.resetSimulation is SafeCallSimulation.Ran) {
+            "Checked on chain: the allowance set to zero should go through; the approval after it is checked when " +
+                "its execution is quoted. "
+        } else {
+            ""
+        }
+        val approval = if (proposal.approvalSimulation is SafeCallSimulation.Ran) {
+            "Checked on chain: the approval should go through. "
+        } else {
+            ""
+        }
+        val swap = when (val run = proposal.swapSimulation) {
+            is SafeSwapSimulation.Ran -> "Checked on chain: the swap should return " +
+                exactAmount(run.amountOut, buy.decimals, buy.symbol) + ", at least its minimum."
+            SafeSwapSimulation.AfterApproval -> "The swap is checked on chain when its execution is quoted, once " +
+                "the router's allowance is approved."
+            SafeSwapSimulation.NotRun -> "Not checked yet: its execution, the whole of it, is checked on chain " +
+                "before anyone sends it."
         }
         return reset + approval + swap
     }
@@ -971,6 +1036,21 @@ class SafeSwapViewModel(
                 ReadUnavailable.REFUSED -> "The light client on this device cannot quote this swap."
             }
         }
+    }
+
+    /** [refusal] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
+    private fun simpleRefusal(proposing: SafeSwapProposing, request: Request): String? = when (proposing) {
+        is SafeSwapProposing.ApprovalReverts -> if (proposing.toZero) {
+            "${request.sell.symbol}'s contract refuses the approval of the amount over the allowance the router " +
+                "has, and refuses to set that allowance to zero too, as checked on chain. Nothing was proposed."
+        } else {
+            "${request.sell.symbol}'s contract refuses the approval with its allowance at zero, as checked on " +
+                "chain. Nothing was proposed."
+        }
+        is SafeSwapProposing.Reverts ->
+            "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was proposed."
+        is SafeSwapProposing.Refused -> simpleSafeTxRefusalText(proposing.refusal)
+        else -> null
     }
 
     /** Whether the biometric prompt is on for this wallet ([DescribeKeyStore]); never throws. */

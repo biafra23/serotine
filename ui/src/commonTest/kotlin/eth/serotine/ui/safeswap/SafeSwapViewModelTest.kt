@@ -264,6 +264,9 @@ class SafeSwapViewModelTest {
         )
         assertTrue(review.approvalNote.orEmpty().contains("sets it to zero"), review.approvalNote)
         assertTrue(review.simulation.startsWith("The allowance set to zero, run as a verified call"), review.simulation)
+        // Simple mode's words for the same: no block (docs/simple-ui.md).
+        val simple = listOfNotNull(review.simpleSimulation, review.simpleQuotedAt)
+        assertTrue(simple.size == 2 && simple.none { "block" in it }, simple.toString())
 
         viewModel.onPasswordChange("made-up test password")
         viewModel.sign()
