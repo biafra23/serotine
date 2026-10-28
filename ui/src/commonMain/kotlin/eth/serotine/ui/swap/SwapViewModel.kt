@@ -267,6 +267,7 @@ class SwapViewModel(
          * what to know (an approval sent), and [earlier] the transaction that holds the swap back.
          * [uniswapInstead]: CoW could not quote the swap, and the same swap may go to Uniswap.
          * [liveOrder]: the UID of an earlier CoW order of the token that may still fill.
+         * [simpleError]: [error] in simple mode's words, with no block, or null where it names none.
          */
         data class Composing(
             val quoting: Boolean = false,
@@ -275,6 +276,7 @@ class SwapViewModel(
             val earlier: EarlierItem? = null,
             val uniswapInstead: Boolean = false,
             val liveOrder: String? = null,
+            val simpleError: String? = null,
         ) : Step, Next
 
         /**
@@ -987,7 +989,10 @@ class SwapViewModel(
             error = EARLIER_MAYBE_SENT,
             earlier = EarlierItem(approving.hash, "Open the earlier transaction", waiting = false),
         )
-        else -> Step.Composing(error = approvalRefusal(approving, request.sell))
+        else -> Step.Composing(
+            error = approvalRefusal(approving, request.sell),
+            simpleError = simpleApprovalRefusal(approving, request.sell),
+        )
     }
 
     private suspend fun askSwap(request: Request): SwapQuoting = try {
@@ -1030,7 +1035,7 @@ class SwapViewModel(
             error = EARLIER_MAYBE_SENT,
             earlier = EarlierItem(quoting.hash, "Open the earlier transaction", waiting = false),
         )
-        else -> Step.Composing(error = swapRefusal(quoting, request))
+        else -> Step.Composing(error = swapRefusal(quoting, request), simpleError = simpleSwapRefusal(quoting))
     }
 
     /** The compose step saying why [quoting], not an order to review, came back from CoW's quote. */
@@ -1163,6 +1168,7 @@ class SwapViewModel(
             note = sellNote(model.sell, model.tokensRead, "this account"),
             quoting = composing.quoting,
             error = composing.error,
+            simpleError = composing.simpleError,
             info = composing.info,
             canReview = !composing.quoting && requestOf(model) != null,
         )
@@ -1511,6 +1517,20 @@ class SwapViewModel(
         SwapQuoting.Refused -> "The light client on this device cannot quote this swap."
         SwapQuoting.Syncing -> "The light client is not synced yet: try again in a moment."
         is SwapQuoting.Unavailable -> unavailableText(quoting.reason, quoting.figure)
+    }
+
+    /** [swapRefusal] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
+    private fun simpleSwapRefusal(quoting: SwapQuoting): String? = when (quoting) {
+        is SwapQuoting.Reverts ->
+            "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was signed."
+        else -> null
+    }
+
+    /** [approvalRefusal] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
+    private fun simpleApprovalRefusal(quoting: ApprovalQuoting, sell: AssetOption): String? = when (quoting) {
+        is ApprovalQuoting.Reverts -> "${sell.symbol}'s contract refuses the approval, as checked on chain. Nothing " +
+            "was signed."
+        else -> null
     }
 
     /** Why CoW's quote of [request] came to [quoting], not an order, in its own words (docs/swaps.md). */

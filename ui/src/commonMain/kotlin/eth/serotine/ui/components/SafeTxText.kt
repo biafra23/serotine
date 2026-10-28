@@ -344,7 +344,7 @@ private fun swapItem(
     val deadline = "Refused by the router after ${formatTime(swap.deadline)}."
     return SafeSwapItem(
         lines = listOf(router, now, deadline),
-        simpleLines = listOf(router, simpleNow, deadline),
+        simpleLines = listOf(router, simpleNow, deadline).takeIf { simpleNow != now },
         warning = warnings.takeIf { it.isNotEmpty() }?.joinToString(" "),
         proposeAgain = checked.expired == true || checked.leftOpen != null,
     )
