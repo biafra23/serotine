@@ -504,6 +504,13 @@ internal fun callRefusalText(refusal: CallRefusal, network: Network): String = w
 }
 
 /**
+ * [safeTxRefusalText] in simple mode's words, with no block (docs/simple-ui.md); null where that is
+ * [safeTxRefusalText] itself, which names none.
+ */
+internal fun simpleSafeTxRefusalText(refusal: SafeTxRefusal): String? =
+    (refusal as? SafeTxRefusal.NotQuoted)?.let { simpleCallRefusalText(it.refusal) }
+
+/**
  * [callRefusalText] in simple mode's words, with no block (docs/simple-ui.md); null where that is
  * [callRefusalText] itself, which names none.
  */
