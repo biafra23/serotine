@@ -42,7 +42,7 @@ private fun SafeTxUiState.simple(): SafeTxUiState = when (this) {
     is SafeTxUiState.Review -> copy(
         feeDetail = "",
         balance = balance.copy(verifiedAt = ""),
-        simulation = simpleSimulation,
+        simulation = simpleSimulation ?: simulation,
         swap = swap?.simple(),
     )
     else -> this
@@ -51,31 +51,35 @@ private fun SafeTxUiState.simple(): SafeTxUiState = when (this) {
 private fun OwnersItem.simple(): OwnersItem = when (this) {
     is OwnersItem.Shown -> copy(
         rows = rows.map { it.copy(detail = it.simpleDetail ?: it.detail) },
-        verifiedAt = simpleVerifiedAt,
+        verifiedAt = simpleVerifiedAt ?: verifiedAt,
     )
     is OwnersItem.Unavailable -> copy(message = simpleMessage ?: message)
     OwnersItem.Checking -> this
 }
 
-private fun SafeSwapItem.simple() = copy(lines = simpleLines)
+private fun SafeSwapItem.simple() = copy(lines = simpleLines ?: lines)
 
 /** What each step keeps behind *Details* in simple mode: the blocks Detailed view names. */
 private fun SafeTxUiState.details(): List<String> = when (this) {
     is SafeTxUiState.Overview -> buildList {
         (owners as? OwnersItem.Shown)?.let { shown ->
-            add(shown.verifiedAt)
+            if (shown.simpleVerifiedAt != null) add(shown.verifiedAt)
             shown.rows.filter { it.simpleDetail != null }.forEach { add("${it.label ?: it.address}: ${it.detail}") }
         }
         (owners as? OwnersItem.Unavailable)?.takeIf { it.simpleMessage != null }?.let { add(it.message) }
-        swap?.let { item -> addAll(item.lines.filterNot { it in item.simpleLines }) }
+        swap?.let { addAll(it.blocks()) }
         refusal?.takeIf { simpleRefusal != null }?.let(::add)
         message?.takeIf { simpleMessage != null }?.let(::add)
     }
     is SafeTxUiState.Review -> listOfNotNull(
         feeDetail,
         "${balance.what}: ${balance.before} → ${balance.after}, ${balance.verifiedAt}",
-        simulation,
-    ) + swap?.let { item -> item.lines.filterNot { it in item.simpleLines } }.orEmpty()
-    is SafeTxUiState.Signing -> swap?.let { item -> item.lines.filterNot { it in item.simpleLines } }.orEmpty()
+        simulation.takeIf { simpleSimulation != null },
+    ) + swap?.blocks().orEmpty()
+    is SafeTxUiState.Signing -> swap?.blocks().orEmpty()
     else -> emptyList()
 }
+
+/** The lines of a swap's stand that simple mode says without their block. */
+private fun SafeSwapItem.blocks(): List<String> =
+    simpleLines?.let { simple -> lines.filterNot { it in simple } }.orEmpty()

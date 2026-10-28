@@ -210,6 +210,7 @@ class SafeTxViewModelTest {
         )
         assertEquals("2 of 3 owners must confirm", owners.threshold)
         assertEquals("2 of 2 confirmations", owners.confirmations)
+        assertEquals("Owners checked on chain", owners.simpleVerifiedAt, "simple mode's words, no block")
         assertTrue(state.canSign, "Alice is held here and has not confirmed it")
         assertFalse(state.canApprove, "the confirmations reach the threshold already")
         assertTrue(state.canExecute)
@@ -590,6 +591,10 @@ class SafeTxViewModelTest {
         runCurrent()
         val review = viewModel.review
         assertEquals(ReviewKind.APPROVAL, review.kind)
+        assertEquals(
+            "Checked on chain: the Safe's approveHash of this transaction should go through.",
+            review.simpleSimulation,
+        )
         assertEquals(Eip55.format(world.alice.address), review.account)
         assertEquals(FeeLevel.NORMAL, review.fee)
         assertEquals("ETH balance of Alice, which pays the fee", review.balance.what)
@@ -615,6 +620,8 @@ class SafeTxViewModelTest {
         runCurrent()
         val review = viewModel.review
         assertEquals(ReviewKind.EXECUTION, review.kind)
+        assertTrue(review.simpleSimulation.orEmpty().startsWith("Checked on chain: the whole execution"))
+        assertTrue("block" !in review.simpleSimulation.orEmpty())
         assertEquals(Eip55.format(world.alice.address), review.account, "a held owner first")
         // Dave is no owner: from him, Carol's signature alone falls short.
         assertEquals(listOf(Eip55.format(world.alice.address)), review.accounts.map { it.address })

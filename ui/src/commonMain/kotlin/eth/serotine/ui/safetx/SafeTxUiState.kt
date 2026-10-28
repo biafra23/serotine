@@ -109,8 +109,8 @@ sealed interface SafeTxUiState {
      * while it is quoted again,
      * [signing] while it is signed and broadcast, and [notSent] once it was signed but not
      * broadcast: then the same signed bytes are all that can be sent. [simpleSimulation] is
-     * [simulation] with no block, for simple mode, which keeps the fee's make-up and the blocks
-     * behind *Details*.
+     * [simulation] with no block, for simple mode (null: the same), which keeps the fee's make-up and
+     * the blocks behind *Details*.
      */
     data class Review(
         override val network: String,
@@ -133,7 +133,7 @@ sealed interface SafeTxUiState {
         val refreshing: Boolean = false,
         val signing: Boolean = false,
         val notSent: NotSentItem? = null,
-        val simpleSimulation: String = simulation,
+        val simpleSimulation: String? = null,
     ) : SafeTxUiState {
 
         /** Something is typed, and nothing else runs or has run: the password may sign. */
@@ -171,14 +171,15 @@ sealed interface OwnersItem {
     /**
      * Every owner's stand ([rows], in the Safe's order), how many must confirm ([threshold], "2 of
      * 3 owners must confirm"), how many do ([confirmations], "1 of 2 confirmations"), and the block
-     * the owners were verified at ([verifiedAt]); [simpleVerifiedAt] that with no block, for simple mode.
+     * the owners were verified at ([verifiedAt]); [simpleVerifiedAt] that with no block, for simple mode
+     * (null: the same).
      */
     data class Shown(
         val rows: List<OwnerStateRow>,
         val threshold: String,
         val confirmations: String,
         val verifiedAt: String,
-        val simpleVerifiedAt: String = verifiedAt,
+        val simpleVerifiedAt: String? = null,
     ) : OwnersItem
 
     /** Not verifiable right now, for the reason [message] gives; [simpleMessage] that with no block, or null. */

@@ -174,6 +174,7 @@ class SafeProposeViewModelTest {
             review.balance,
         )
         assertTrue(review.simulation.startsWith("The Safe's call, run as a verified call from the Safe at block 100"))
+        assertTrue(review.simpleSimulation.orEmpty().startsWith("Checked on chain: the Safe's call should go through"))
         assertEquals(listOf(AccountChoice("Alice", Eip55.format(world.alice.address))), review.owners)
         assertEquals(emptyList(), world.queue.requests.value, "nothing is queued before it is signed")
 
@@ -205,6 +206,7 @@ class SafeProposeViewModelTest {
         val viewModel = reviewed()
 
         assertTrue(viewModel.review.simulation.startsWith("Not simulated:"), viewModel.review.simulation)
+        assertEquals(null, viewModel.review.simpleSimulation, "it names no block: the same in both views")
     }
 
     @Test

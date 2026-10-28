@@ -44,14 +44,14 @@ data class SafeTxActionItem(
  * fallen behind the market, or its deadline has passed (owner ruling, 2026-10-19);
  * [proposeAgainReason] why that cannot be done from here (no owner held here), the offer then
  * greyed out (owner ruling, 2026-10-18, #55), or null when it can. [simpleLines] are [lines] with
- * no block, for simple mode (docs/simple-ui.md).
+ * no block, for simple mode (docs/simple-ui.md); null where they are [lines] themselves.
  */
 data class SafeSwapItem(
     val lines: List<String>,
     val warning: String? = null,
     val proposeAgain: Boolean = false,
     val proposeAgainReason: String? = null,
-    val simpleLines: List<String> = lines,
+    val simpleLines: List<String>? = null,
 )
 
 /** An address a Safe transaction names: [what] it is ("To", "New owner") and its EIP-55 [address]. */
