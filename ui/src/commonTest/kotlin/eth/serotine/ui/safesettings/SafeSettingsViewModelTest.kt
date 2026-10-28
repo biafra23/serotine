@@ -151,6 +151,7 @@ class SafeSettingsViewModelTest {
         assertEquals("Add an owner", review.action.title)
         assertEquals("Safe nonce 4", review.nonce)
         assertTrue(review.simulation.startsWith("The change, run as a verified call from the Safe at block 100"))
+        assertTrue(review.simpleSimulation.orEmpty().startsWith("Checked on chain: the change should go through"))
         assertEquals(listOf(AccountChoice("Alice", alice)), review.owners)
         assertEquals(emptyList(), world.queue.requests.value, "nothing is queued before it is signed")
 
@@ -285,6 +286,11 @@ class SafeSettingsViewModelTest {
             "The change reverts, run as a verified call from the Safe at block 101: the Safe refuses it as it is " +
                 "now. Nothing was proposed.",
             viewModel.form.error,
+        )
+        assertEquals(
+            "The change reverts, as checked on chain: the Safe refuses it as it is now. Nothing was proposed.",
+            viewModel.form.simpleError,
+            "simple mode's words, with no block",
         )
         viewModel.cancel()
         assertIs<SafeSettingsUiState.Overview>(viewModel.uiState.value)

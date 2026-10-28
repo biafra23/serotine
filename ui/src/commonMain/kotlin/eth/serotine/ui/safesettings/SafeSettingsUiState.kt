@@ -37,7 +37,7 @@ sealed interface SafeSettingsUiState {
      * that reason (owner ruling, 2026-10-18, #55); so are Remove while [removeReason] is set and
      * Change the threshold while [thresholdReason] is (a Safe of one owner). [enableModuleReason]
      * and [updateReason] say why enabling a module and updating the Safe's version are never
-     * offered here.
+     * offered here. [simpleCheckedAt] is [checkedAt] with no block, for simple mode.
      */
     data class Overview(
         override val network: String,
@@ -54,6 +54,7 @@ sealed interface SafeSettingsUiState {
         val moduleGuard: String? = null,
         val removeReason: String? = null,
         val thresholdReason: String? = null,
+        val simpleCheckedAt: String = checkedAt,
     ) : SafeSettingsUiState {
 
         /** Whether a change can be proposed: an owner held here signs it. */
@@ -81,6 +82,8 @@ sealed interface SafeSettingsUiState {
      * replaces. [refreshing] while it is proposed again, [signing] while it is signed and queued,
      * and [error] what the last attempt came to. [share] is a signed request the queue could not
      * keep, to be shared from here; [askingToDrop] while Back asks whether to leave it behind.
+     * Simple mode says no block (docs/simple-ui.md): [simpleSimulation] and [simpleError] are
+     * [simulation] and [error] in its words, null where they are the same.
      */
     data class Review(
         override val network: String,
@@ -101,6 +104,8 @@ sealed interface SafeSettingsUiState {
         val error: String? = null,
         val share: ShareItem? = null,
         val askingToDrop: Boolean = false,
+        val simpleSimulation: String? = null,
+        val simpleError: String? = null,
     ) : SafeSettingsUiState {
 
         /** Something is typed and nothing runs: the password may sign. */
@@ -141,7 +146,8 @@ enum class SettingsChangeKind {
  * the owner or module it is about ([subject], null for a new owner or the threshold); the new
  * owner's [address] field, and the [threshold] it leaves, where the change takes them; [warning]
  * what to know before it is proposed; [problem], why the change as filled in cannot be made to
- * the Safe as verified now; [proposing] while it is proposed, and [error] what that came to.
+ * the Safe as verified now; [proposing] while it is proposed, and [error] what that came to;
+ * [simpleError] that with no block, for simple mode, null where it is [error] itself.
  */
 data class SettingsForm(
     val kind: SettingsChangeKind,
@@ -155,6 +161,7 @@ data class SettingsForm(
     val proposing: Boolean = false,
     val error: String? = null,
     val canReview: Boolean = false,
+    val simpleError: String? = null,
 )
 
 /**
