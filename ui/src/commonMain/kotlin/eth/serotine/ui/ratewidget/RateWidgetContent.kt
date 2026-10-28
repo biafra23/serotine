@@ -13,7 +13,9 @@ import kotlin.math.roundToLong
  * [change] over the 24 hours before it was read ("24h +2.31%", "24h −1.05%", "24h —" when none
  * was verified; null without a rate) in the direction [trend] says, and the [note] that dates it
  * and says where it comes from ("Verified 14:05 · may have changed since · testnet prices"). The host draws it in its own
- * widget toolkit, green for [Trend.UP] and red for [Trend.DOWN].
+ * widget toolkit, green for [Trend.UP] and red for [Trend.DOWN]. [icon] is the watched asset's
+ * bundled icon key ([eth.serotine.ui.components.TokenIcons]'s keys; null: no icon shown), drawn
+ * in the widget's top-left corner.
  */
 data class RateWidgetContent(
     val pair: String,
@@ -21,6 +23,7 @@ data class RateWidgetContent(
     val change: String?,
     val trend: Trend,
     val note: String,
+    val icon: String? = null,
 )
 
 /** Which way a rate moved in 24 hours, as far as its shown digits tell. */
@@ -34,13 +37,16 @@ enum class Trend { UP, DOWN, FLAT, UNKNOWN }
  * widget*). Being a rate kept and shown later, it says it may have changed since it was verified,
  * or, while the network is not [on] in this wallet, that it is off (nothing reads it then); one
  * whose feeds were stale says how old its price is. On a testnet every rate says "testnet
- * prices" (CLAUDE.md, *Data sources*).
+ * prices" (CLAUDE.md, *Data sources*). [icon] is the bundled icon key of [pair]'s base
+ * ([eth.serotine.domain.usecase.RateWidgetChoices.icon]; the host resolves it, since this
+ * function stays a pure, display-ready mapping), passed straight through.
  */
 fun rateWidgetContent(
     snapshot: RateSnapshot?,
     pair: RatePair,
     readAt: String,
     on: Boolean = true,
+    icon: String? = null,
 ): RateWidgetContent {
     val network = pair.network
     val off = "${network.displayName} is off".takeUnless { on }
@@ -51,6 +57,7 @@ fun rateWidgetContent(
             change = null,
             trend = Trend.UNKNOWN,
             note = listOfNotNull(network.displayName, off ?: "No verified rate yet").joinToString(" · "),
+            icon = icon,
         )
     }
     val percent = snapshot.dayChangePercent
@@ -74,6 +81,7 @@ fun rateWidgetContent(
             "price ${age(snapshot.readAt - snapshot.updatedAt)} old".takeIf { snapshot.stale },
             "testnet prices".takeIf { network.testnet },
         ).joinToString(" · "),
+        icon = icon,
     )
 }
 

@@ -928,19 +928,22 @@ is placed (issue #178) in three steps:
    but the price itself.
 
 Choosing reads only the pinned tables, so it starts no light client. The
-widget shows the pair — "LINK · EUR", "€12.50" — with its change over
-the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
-"24h 0.00%" when it rounds to no move, and a line that names its network and
-dates it: "Sepolia · Verified Oct 21, 2:05 PM · may have changed since ·
-testnet prices". The choice is kept; another pair is another widget. One
-placed before pairs shows its network's native currency in the display
-currency, and one placed before networks shows Sepolia's. A widget of
-a network that is off keeps its last rate and says "Gnosis Chain is off" in
-place of "may have changed since", and nothing reads it until the network is
-on (docs/networks.md, *The widget*). A refresh reads only the pairs the
-placed widgets show, each network waking alone. A tap on the
-refresh button reads it now (below); a tap anywhere else opens the app. The desktop has no
-home screen, and iOS's widget (a WidgetKit extension) is still to come.
+widget shows the watched asset's bundled icon in its top-left corner (its
+network's own icon for a native currency, a built-in token's own otherwise;
+none where none is bundled), then the pair — "LINK · EUR", "€12.50" — with
+its change over the 24 hours before it was read, "24h +2.31%" in green,
+"24h −1.05%" in red, "24h 0.00%" when it rounds to no move, and a line that
+names its network and dates it: "Sepolia · Verified Oct 21, 2:05 PM · may
+have changed since · testnet prices". The choice is kept; another pair is
+another widget. One placed before pairs shows its network's native currency
+in the display currency, and one placed before networks shows Sepolia's. A
+widget of a network that is off keeps its last rate and says "Gnosis Chain
+is off" in place of "may have changed since", and nothing reads it until
+the network is on (docs/networks.md, *The widget*). A refresh reads only
+the pairs the placed widgets show, each network waking alone. A tap on the
+refresh button reads it now (below); a tap anywhere else opens the app.
+The desktop has no home screen, and iOS's widget (a WidgetKit extension) is
+still to come.
 
 - **Only verified rates, dated.** The rate is the price the screens show
   (*Prices*, above), every check included; the change is the same path read
