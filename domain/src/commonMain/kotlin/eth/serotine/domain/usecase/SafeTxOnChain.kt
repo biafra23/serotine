@@ -96,7 +96,7 @@ class ReadSafeTxOwners(
             safe.state.threshold,
             safe.state.nonce,
             safe.blockNumber,
-            refusal = request.withoutRecovery(safe.state),
+            refusal = safe.state.tooOldToSign() ?: request.withoutRecovery(safe.state),
         )
     }
 }
@@ -191,6 +191,7 @@ class QuoteSafeApproval(
             is SafeCheck.Refused -> return refused(check.refusal)
         }
         safeChecked()
+        state.tooOldToSign()?.let { return refused(it) }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (owner !in state.owners) return refused(SafeTxRefusal.NotAnOwner(owner))
         request.withoutRecovery(state)?.let { return refused(it) }
@@ -321,6 +322,7 @@ class QuoteSafeExecution(
             is SafeCheck.Refused -> return refused(check.refusal)
         }
         safeChecked()
+        state.tooOldToSign()?.let { return refused(it) }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (request.nonce > state.nonce) return refused(SafeTxRefusal.NotNext(state.nonce))
         request.withoutRecovery(state)?.let { return refused(it) }

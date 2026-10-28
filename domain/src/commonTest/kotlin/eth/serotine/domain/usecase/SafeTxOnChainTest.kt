@@ -103,6 +103,25 @@ class SafeTxOnChainTest {
     }
 
     @Test
+    fun aSafeStillOnAPreOneThreeZeroSingletonIsNeitherApprovedNorExecutedThoughItsOwnersStand() = runTest {
+        world.state = world.state.copy(version = "1.1.1")
+        val request = world.request(payment, world.alice.address)
+
+        val reading = assertIs<SafeTxOwnersReading.Read>(readOwners(request))
+        assertEquals(SafeTxRefusal.TooOldToSign("1.1.1"), reading.refusal, "shown, with why it may not be acted on")
+        assertEquals(1, reading.confirmations, "the owners still stand as the chain says")
+
+        assertEquals(
+            SafeApprovalQuoting.Refused(SafeTxRefusal.TooOldToSign("1.1.1")),
+            quoteApproval(request, world.alice.address, FeeLevel.NORMAL),
+        )
+        assertEquals(
+            SafeExecutionQuoting.Refused(SafeTxRefusal.TooOldToSign("1.1.1")),
+            quoteExecution(request, world.alice.address, FeeLevel.NORMAL),
+        )
+    }
+
+    @Test
     fun approvalAndExecutionQuotesSayWhenTheSafeWasCheckedBeforeTheirFiguresAreRead() = runTest {
         world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
         launch {

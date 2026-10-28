@@ -128,6 +128,36 @@ class SafeTxSigningTest {
     }
 
     @Test
+    fun aSafeStillOnAPreOneThreeZeroSingletonIsNeitherImportedNorSignedThoughItIsRecognised() = runTest {
+        // diskordia.eth's case, had it never moved to a pinned ≥1.3.0 singleton: recognised (its
+        // owners and threshold are read and shown) but checks a hash this app does not compute.
+        for (version in listOf("1.0.0", "1.1.1", "1.2.0")) {
+            world.state = world.state.copy(version = version)
+            val request = world.request(usdcTransfer(4), world.carol)
+
+            assertEquals(
+                SigningRequestImport.Refused(SafeTxRefusal.TooOldToSign(version)),
+                import(world.codec.encode(request)),
+            )
+            assertEquals(
+                SafeTxSignCheck.Refused(SafeTxRefusal.TooOldToSign(version)),
+                sign.check(request, world.alice.address),
+            )
+        }
+        assertEquals(emptyList(), world.queue.requests.value)
+        assertEquals(emptyList(), world.signer.asked)
+    }
+
+    @Test
+    fun aSafeMigratedToAPinnedSingletonSignsAsAnyOtherOne() = runTest {
+        // changeMasterCopy only ever moves a Safe to a singleton this build pins (SafeDeployments):
+        // state.version is what it reads there now, 1.3.0 on here, never one of the three above.
+        world.state = world.state.copy(version = "1.3.0")
+
+        assertIs<SafeTxSignCheck.Ready>(sign.check(world.request(usdcTransfer(4)), world.alice.address))
+    }
+
+    @Test
     fun aSafeThatCouldNotBeVerifiedThisTimeIsWaitedOutForItsNextReading() = runTest {
         val request = world.request(usdcTransfer(4), world.carol)
         world.kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)

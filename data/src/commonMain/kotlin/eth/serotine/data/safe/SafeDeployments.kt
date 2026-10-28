@@ -62,8 +62,12 @@ internal data class SafeSingleton(val version: String, val l2: Boolean, val modu
  * these singletons is still read as what it is; one moved since to a pinned singleton by the
  * owners' own `changeMasterCopy` call (as diskordia.eth was, to the 1.3.0 L1 singleton already
  * pinned above) needs only its [Table.proxyCodeHashes] widened, since its proxy's own code never
- * changes. 1.2.0 reused 1.1.1's `ProxyFactory` (`safe-deployments` lists no `v1.2.0` factory of
- * its own), so one more proxy hash plus three more singletons cover all three:
+ * changes. Recognition is display only: a Safe left on 1.0.0, 1.1.1 or 1.2.0 (unlike one migrated
+ * to a pinned ≥1.3.0 singleton) checks a different EIP-712 domain than `SafeTx.hash` computes, so
+ * `SafeTxRefusal.TooOldToSign` keeps every signing, approval and execution flow off it
+ * (`SafeTx.hash`'s KDoc). 1.2.0 reused 1.1.1's `ProxyFactory` (`safe-deployments` lists no
+ * `v1.2.0` factory of its own), so one more proxy hash plus three more singletons cover all
+ * three:
  * - 1.0.0's `ProxyFactory` 0x12302fE9c02ff50939BaAaaf415fc226C078613C and its singleton
  *   0xb6029EA3B2c51D09a50B53CA8012FeEB05bDa35A ("Gnosis Safe" `VERSION()` "1.0.0");
  * - 1.1.1's `ProxyFactory` 0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B (also 1.2.0's) and its
