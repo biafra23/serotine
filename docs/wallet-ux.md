@@ -953,19 +953,22 @@ is placed (issue #178) in three steps:
    but the price itself.
 
 Choosing reads only the pinned tables, so it starts no light client. The
-widget shows the pair — "LINK · EUR", "€12.50" — with its change over
-the 24 hours before it was read, "24h +2.31%" in green, "24h −1.05%" in red,
-"24h 0.00%" when it rounds to no move, and a line that names its network and
-dates it: "Sepolia · Verified Oct 21, 2:05 PM · may have changed since ·
-testnet prices". The choice is kept; another pair is another widget. One
-placed before pairs shows its network's native currency in the display
-currency, and one placed before networks shows Sepolia's. A widget of
-a network that is off keeps its last rate and says "Gnosis Chain is off" in
-place of "may have changed since", and nothing reads it until the network is
-on (docs/networks.md, *The widget*). A refresh reads only the pairs the
-placed widgets show, each network waking alone. A tap on the
-refresh button reads it now (below); a tap anywhere else opens the app. The desktop has no
-home screen, and iOS's widget (a WidgetKit extension) is still to come.
+widget shows the watched asset's bundled icon in its top-left corner (its
+network's own icon for a native currency, a built-in token's own otherwise;
+none where none is bundled), then the pair — "LINK · EUR", "€12.50" — with
+its change over the 24 hours before it was read, "24h +2.31%" in green,
+"24h −1.05%" in red, "24h 0.00%" when it rounds to no move, and a line that
+names its network and dates it: "Sepolia · Verified Oct 21, 2:05 PM · may
+have changed since · testnet prices". The choice is kept; another pair is
+another widget. One placed before pairs shows its network's native currency
+in the display currency, and one placed before networks shows Sepolia's. A
+widget of a network that is off keeps its last rate and says "Gnosis Chain
+is off" in place of "may have changed since", and nothing reads it until
+the network is on (docs/networks.md, *The widget*). A refresh reads only
+the pairs the placed widgets show, each network waking alone. A tap on the
+refresh button reads it now (below); a tap anywhere else opens the app.
+The desktop has no home screen, and iOS's widget (a WidgetKit extension) is
+still to come.
 
 - **Only verified rates, dated.** The rate is the price the screens show
   (*Prices*, above), every check included; the change is the same path read
@@ -1076,16 +1079,26 @@ address. Applied:
 - **Detection** (issue #10) reads only verified state, each value with its
   block: the proxy's code hash must be a pinned SafeProxy runtime hash; slot
   0 (the singleton) must be a pinned canonical singleton for the network
-  (1.3.0, 1.4.1 or 1.5.0, L1 or L2); the owners are the linked list in slot
-  2 walked from the sentinel `0x1` with storage proofs, the threshold is slot
-  4 and the nonce slot 5. The modules (slot 1's list), the guard and, from
-  1.5.0, the module guard are read too, because a module can move funds
-  without the owners' signatures.
+  (1.0.0, 1.1.1, 1.2.0, 1.3.0, 1.4.1 or 1.5.0, L1 or L2 where there is one);
+  the owners are the linked list in slot 2 walked from the sentinel `0x1`
+  with storage proofs, the threshold is slot 4 and the nonce slot 5. The
+  modules (slot 1's list), the guard and, from 1.5.0, the module guard are
+  read too, because a module can move funds without the owners' signatures;
+  a Safe older than 1.3.0 has neither guard, and is read as having none.
   Anything that does not match is "another contract", never a Safe. The
-  pins (`SafeDeployments`) cover 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the
-  SafeProxy runtime code of each factory. A Safe's control badge follows its
-  verified owners: as many held here as its threshold is full control, fewer
-  is co-signer, none is watch-only, and so is a Safe not read yet.
+  pins (`SafeDeployments`) cover 1.0.0, 1.1.1 and 1.2.0 (one proxy shared by
+  the last two) on Ethereum and Gnosis Chain, and, everywhere, 1.3.0, 1.4.1
+  and 1.5.0, L1 and L2, and the SafeProxy runtime code of each factory: a
+  pre-1.3.0 Safe whose owners moved it since to a pinned singleton
+  (`changeMasterCopy`) is recognised by its own older proxy pointing at that
+  pinned singleton, same as one still on its original singleton. Sepolia
+  pins 1.1.1 and 1.2.0 too (their singletons carry live code there) but not
+  1.0.0, whose Mainnet singleton predates Sepolia and has none there — a
+  recognised Safe always names a singleton proven to hold real Safe code on
+  that network, never merely an address this app expects one at. A Safe's
+  control badge follows its verified owners: as many held here as its
+  threshold is full control, fewer is co-signer, none is watch-only, and so
+  is a Safe not read yet.
   - The numbered slots carry the block they were proven at; the guards sit
     at hashed slots no storage proof names, so they are verified reads at the
     head, which may be a head newer than that block.

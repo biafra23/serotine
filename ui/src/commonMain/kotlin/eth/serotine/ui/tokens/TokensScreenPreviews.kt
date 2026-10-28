@@ -84,6 +84,9 @@ private val builtIn = listOf(
     "USDT" to "USDT",
     "WBTC" to "WBTC",
     "AAVE" to "AAVE",
+    "GNO" to "Gnosis Token",
+    "COW" to "CoW Protocol Token",
+    "SAFE" to "Safe Token",
 ).map { (symbol, name) -> usdc.copy(symbol = symbol, name = name, icon = symbol.lowercase()) }
 
 @Composable
@@ -171,6 +174,8 @@ private fun TokensGnosisPreview() = TokensPreview(
                     "GNO" to "Gnosis Token on xDai",
                     "EURe" to "Monerium EURe",
                     "sDAI" to "Savings xDAI",
+                    "COW" to "CoW Protocol Token from Mainnet",
+                    "SAFE" to "Safe Token from Mainnet",
                 ).map { (symbol, name) ->
                     usdc.copy(symbol = symbol, name = name, icon = symbol.lowercase().removeSuffix(".e"))
                 },

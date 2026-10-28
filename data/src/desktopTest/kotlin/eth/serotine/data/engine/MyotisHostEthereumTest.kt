@@ -131,6 +131,18 @@ class MyotisHostEthereumTest {
             println("[${at()}] $safe: $kind")
             assertIs<AddressKind.Safe>(assertIs<KindReading.Verified>(kind).kind, "a recognised Safe")
 
+            // diskordia.eth: a 1.1.1 proxy (SafeDeployments.kt's doc comment), migrated since by its
+            // owners to the 1.3.0 L1 singleton above — recognised through the 1.1.1 pin alone.
+            val oldSafe = Address.of("0x308686553a1eac2fe721ac8b814de638975a276e")
+            val oldKind = withTimeout(5.minutes) {
+                node.addressKinds.observeKind(ethereum, oldSafe).first {
+                    it !is KindReading.Syncing &&
+                        !(it is KindReading.Unavailable && it.reason == ReadUnavailable.UNPROVEN)
+                }
+            }
+            println("[${at()}] $oldSafe: $oldKind")
+            assertIs<AddressKind.Safe>(assertIs<KindReading.Verified>(oldKind).kind, "a recognised Safe")
+
             val name = withTimeout(5.minutes) {
                 var resolution: NameResolution
                 do {

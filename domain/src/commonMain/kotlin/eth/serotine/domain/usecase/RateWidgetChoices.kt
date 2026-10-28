@@ -51,6 +51,18 @@ class RateWidgetChoices(private val catalog: TokenCatalog, private val feeds: Fe
         return DisplayCurrency.entries.filter { it.priceId != base }
             .map { RateQuote(it, priced = it.priceId == PriceId.USD || it.priceId in pinned) }
     }
+
+    /**
+     * The bundled icon key of [base] on [network] (CLAUDE.md, *Data sources*: no icon fetched),
+     * for the widget to draw in its corner: [network]'s own where [base] is its native
+     * currency, else a built-in token priced by it; null where none is bundled, drawn as no
+     * icon at all (every base [bases] offers is a native currency or a priced built-in token,
+     * so this is null only for a base no longer offered).
+     */
+    suspend fun icon(network: Network, base: PriceId): String? {
+        if (base == network.nativePriceId) return network.nativeIcon
+        return catalog.observeTokens(network).first().firstOrNull { it.priceId == base }?.icon
+    }
 }
 
 /**

@@ -174,6 +174,20 @@ sealed interface SafeTxRefusal {
 
     /** The transaction the owner account would send was not quoted: [refusal]. */
     data class NotQuoted(val refusal: CallRefusal) : SafeTxRefusal
+
+    /**
+     * The Safe is still on its [version] singleton, from before 1.3.0's EIP-712 domain
+     * (`EIP712Domain(uint256 chainId,address verifyingContract)`, computed fresh for every call):
+     * 1.0.0, 1.1.1 and 1.2.0 each compute their `domainSeparator` once at setup and store it, with
+     * no chain id anywhere in it ([SafeTx.hash]'s KDoc). [SafeTx.hash] would compute a digest that
+     * Safe never checks, so nothing here is signed, approved or executed against it. Shown only
+     * (`SafeDeployments` recognises 1.0.0, 1.1.1 and 1.2.0 for display so a Safe left there, or
+     * one still deciding whether to migrate, is not shown as a plain contract). A Safe since moved
+     * to a pinned ≥1.3.0 singleton by its owners (`changeMasterCopy`) is unaffected:
+     * [eth.serotine.domain.repository.SafeState.version] is the singleton it is on now, not the
+     * one its proxy was deployed with.
+     */
+    data class TooOldToSign(val version: String) : SafeTxRefusal
 }
 
 /**
@@ -252,6 +266,17 @@ internal fun SigningRequest.withoutRecovery(state: SafeState): SafeTxRefusal? = 
 /** [withoutRecovery] for a Safe of [owners] owners now. */
 internal fun SigningRequest.withoutRecovery(owners: Int): SafeTxRefusal? =
     (SafeTxAction.of(safe, tx) as? SafeTxAction.SettingsChange)?.change?.withoutRecovery(owners)
+
+/**
+ * [SafeTxRefusal.TooOldToSign] when this Safe is still on one of the singletons from before
+ * 1.3.0's EIP-712 domain and `SafeTx` struct type ([SafeTxRefusal.TooOldToSign]'s KDoc); null
+ * for a pinned ≥1.3.0 singleton, migrated to or deployed on.
+ */
+internal fun SafeState.tooOldToSign(): SafeTxRefusal? =
+    SafeTxRefusal.TooOldToSign(version).takeIf { version in PRE_EIP712_DOMAIN_VERSIONS }
+
+/** The versions [SafeState.tooOldToSign] refuses: Safe's own releases before 1.3.0. */
+private val PRE_EIP712_DOMAIN_VERSIONS = setOf("1.0.0", "1.1.1", "1.2.0")
 
 /** [SigningRequest.withoutRecovery] for [this] change of a Safe of [owners] owners now. */
 internal fun SafeSettingsChange.withoutRecovery(owners: Int): SafeTxRefusal.NeedsRecoveryModule? {
@@ -388,6 +413,7 @@ class ImportSigningRequest(
             is SafeCheck.Refused -> return SigningRequestImport.Refused(check.refusal)
         }
         val state = reading.state
+        state.tooOldToSign()?.let { return SigningRequestImport.Refused(it) }
         if (request.nonce < state.nonce) return SigningRequestImport.Refused(SafeTxRefusal.NonceUsed(state.nonce))
         recovery.check(request, state.owners)?.let { return SigningRequestImport.Refused(it) }
         queue.prune(AccountId(request.network, request.safe), state.nonce)
@@ -478,6 +504,7 @@ class SignSafeTx(
             is SafeCheck.Verified -> check.reading.state
             is SafeCheck.Refused -> return refused(check.refusal)
         }
+        state.tooOldToSign()?.let { return refused(it) }
         if (request.nonce < state.nonce) return refused(SafeTxRefusal.NonceUsed(state.nonce))
         if (owner !in state.owners) return refused(SafeTxRefusal.NotAnOwner(owner))
         request.withoutRecovery(state)?.let { return refused(it) }

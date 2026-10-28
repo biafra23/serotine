@@ -288,7 +288,11 @@ class SerotineApplication : Application() {
     private suspend fun drawWidgets(refreshing: Boolean? = null) {
         val pairs = RateWidget.pairs(this)
         val rates = pairs.associateWith { lastRate.load(it) }
-        RateWidget.draw(this, rates, networkSettings.observe().first(), refreshing)
+        // Each (network, base) once: widgets of the same base in different currencies share it.
+        val iconOf = pairs.map { it.network to it.base }.distinct()
+            .associateWith { (network, base) -> widgetChoices.icon(network, base) }
+        val icons = pairs.associateWith { iconOf[it.network to it.base] }
+        RateWidget.draw(this, rates, icons, networkSettings.observe().first(), refreshing)
     }
 
     /**

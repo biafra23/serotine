@@ -482,6 +482,9 @@ internal fun safeTxRefusalText(refusal: SafeTxRefusal, network: Network): String
     is SafeTxRefusal.SafeUnavailable ->
         if (refusal.reason == ReadUnavailable.UNPROVEN) SAFE_UNPROVEN else unavailableText(refusal.reason)
     is SafeTxRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)
+    is SafeTxRefusal.TooOldToSign -> "This Safe is still on version ${refusal.version}, from before the way " +
+        "Serotine checks signatures today: it is shown, but not signed, approved or executed here. Migrating it " +
+        "to a newer version (in Safe{Wallet} or another app) fixes this."
 }
 
 /**
