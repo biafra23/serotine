@@ -27,6 +27,7 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
 import eth.serotine.ui.components.MODULE_ENABLED_REFUSAL
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.ShareItem
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -113,6 +114,7 @@ class SafeSettingsViewModelTest {
             ),
             overview.owners,
         )
+        assertEquals("Checked on chain", overview.simpleCheckedAt, "simple mode's words, no block")
         assertTrue(overview.canChange)
         assertEquals(MODULE_ENABLED_REFUSAL, overview.enableModuleReason)
         assertTrue(overview.updateReason.startsWith("Updating a Safe's version runs a migration contract's code"))
@@ -292,8 +294,37 @@ class SafeSettingsViewModelTest {
             viewModel.form.simpleError,
             "simple mode's words, with no block",
         )
+        // Changed, the form's error is cleared, and its simple words with it.
+        viewModel.onThresholdChange(3)
+        assertEquals(null, viewModel.form.error)
+        assertEquals(null, viewModel.form.simpleError, "no simple words for an error no longer shown")
         viewModel.cancel()
         assertIs<SafeSettingsUiState.Overview>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun aSignatureNotSavedStaysOnTheReviewWhenTheChangeRevertsOnRefreshAndSimpleModeSaysSoWithNoBlock() = runTest {
+        val viewModel = viewModel()
+        viewModel.onChangeThreshold()
+        viewModel.onThresholdChange(1)
+        viewModel.review()
+        runCurrent()
+        world.queue.failSaves = true
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertIs<ShareItem>(viewModel.review.share, "signed, kept nowhere else")
+
+        world.inputs.simulation = Simulation.Reverted(101)
+        viewModel.refresh()
+        runCurrent()
+
+        val review = viewModel.review
+        assertTrue("at block 101" in review.error.orEmpty(), review.error)
+        assertEquals(
+            "The change reverts, as checked on chain: the Safe refuses it as it is now. Nothing was proposed.",
+            review.simpleError,
+        )
     }
 
     @Test

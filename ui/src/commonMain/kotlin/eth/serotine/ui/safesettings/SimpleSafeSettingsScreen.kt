@@ -31,7 +31,7 @@ fun SimpleSafeSettingsScreen(
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */
 private fun SafeSettingsUiState.simple(): SafeSettingsUiState = when (this) {
-    is SafeSettingsUiState.Overview -> copy(checkedAt = simpleCheckedAt)
+    is SafeSettingsUiState.Overview -> copy(checkedAt = simpleCheckedAt ?: checkedAt)
     is SafeSettingsUiState.Edit -> copy(form = form.copy(error = form.simpleError ?: form.error))
     is SafeSettingsUiState.Review -> copy(
         simulation = simpleSimulation ?: simulation,
@@ -42,7 +42,7 @@ private fun SafeSettingsUiState.simple(): SafeSettingsUiState = when (this) {
 
 /** What each step keeps behind *Details* in simple mode: the blocks Detailed view names. */
 private fun SafeSettingsUiState.details(): List<String> = when (this) {
-    is SafeSettingsUiState.Overview -> listOf(checkedAt).filter { it != simpleCheckedAt }
+    is SafeSettingsUiState.Overview -> listOfNotNull(checkedAt.takeIf { simpleCheckedAt != null })
     is SafeSettingsUiState.Edit -> listOfNotNull(form.error.takeIf { form.simpleError != null })
     is SafeSettingsUiState.Review -> listOfNotNull(
         simulation.takeIf { simpleSimulation != null },

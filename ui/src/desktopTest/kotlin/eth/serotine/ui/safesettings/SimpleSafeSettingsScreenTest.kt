@@ -43,4 +43,32 @@ class SimpleSafeSettingsScreenTest {
         rule.onNodeWithTag(SETTINGS_DETAILS_TAG).performScrollTo().performClick()
         rule.onNodeWithText("Verified at block 8,412,307").performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun aChangeTheSafeRevertsOnIsRefusedOnTheFormWithNoBlockAndTheBlockIsBehindDetails() {
+        val reverts = "The change reverts, run as a verified call from the Safe at block 8,412,307: the Safe refuses " +
+            "it as it is now. Nothing was proposed."
+        val state = SafeSettingsUiState.Edit(
+            network = "Sepolia",
+            safe = SendFrom("Treasury", "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"),
+            form = SettingsForm(
+                kind = SettingsChangeKind.CHANGE_THRESHOLD,
+                title = "Change the threshold",
+                explanation = "How many of the Safe's owners must sign each of its transactions.",
+                threshold = ThresholdField(1, 3, "1 of 3 owners must sign"),
+                error = reverts,
+                simpleError = "The change reverts, as checked on chain. Nothing was proposed.",
+                canReview = true,
+            ),
+        )
+        rule.setContent { SerotineTheme { SimpleSafeSettingsScreen(state, SafeSettingsActions(), onBack = {}) } }
+
+        rule.onNodeWithText("The change reverts, as checked on chain. Nothing was proposed.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        rule.onNodeWithText("at block", substring = true).assertDoesNotExist()
+
+        rule.onNodeWithTag(SETTINGS_DETAILS_TAG).performScrollTo().performClick()
+        rule.onNodeWithText(reverts).performScrollTo().assertIsDisplayed()
+    }
 }

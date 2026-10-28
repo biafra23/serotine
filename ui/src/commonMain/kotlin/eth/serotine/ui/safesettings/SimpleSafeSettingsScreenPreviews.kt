@@ -6,6 +6,7 @@ import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.MODULE_ENABLED_REFUSAL
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
+import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -59,6 +60,25 @@ private val review = SafeSettingsUiState.Review(
     unlock = UnlockStep(),
 )
 
+private const val REVERTS = "The change reverts, run as a verified call from the Safe at block 8,412,307: the Safe " +
+    "refuses it as it is now. Nothing was proposed."
+private const val SIMPLE_REVERTS = "The change reverts, as checked on chain: the Safe refuses it as it is now. " +
+    "Nothing was proposed."
+
+private val refused = SafeSettingsUiState.Edit(
+    network = "Sepolia",
+    safe = safe,
+    form = SettingsForm(
+        kind = SettingsChangeKind.CHANGE_THRESHOLD,
+        title = "Change the threshold",
+        explanation = "How many of the Safe's owners must sign each of its transactions.",
+        threshold = ThresholdField(1, 3, "1 of 3 owners must sign"),
+        error = REVERTS,
+        simpleError = SIMPLE_REVERTS,
+        canReview = true,
+    ),
+)
+
 @Composable
 private fun SimpleSafeSettingsPreview(state: SafeSettingsUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
@@ -80,9 +100,32 @@ private fun SimpleSafeSettingsOverviewDarkPreview() = SimpleSafeSettingsPreview(
 @Composable
 private fun SimpleSafeSettingsReviewPreview() = SimpleSafeSettingsPreview(review)
 
+/** A change the Safe reverts on, refused on the form: checked on chain, its block behind Details. */
+@Preview
+@Composable
+private fun SimpleSafeSettingsRefusedPreview() = SimpleSafeSettingsPreview(refused)
+
+/** A signature the queue could not keep, and the change reverting when proposed again: no block. */
+@Preview
+@Composable
+private fun SimpleSafeSettingsReviewRefusedPreview() = SimpleSafeSettingsPreview(
+    review.copy(
+        error = REVERTS,
+        simpleError = SIMPLE_REVERTS,
+        share = ShareItem(
+            text = "{\"v\":1,\"chainId\":11155111,\"safe\":\"0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb\",\"tx\":{…}}",
+            qr = true,
+            note = "The raw transaction and 1 signature: the other device decodes it and checks it against the chain " +
+                "itself.",
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleSafeSettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSafeSettingsScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSafeSettingsOverviewPreview() },
     { SimpleSafeSettingsOverviewDarkPreview() },
+    { SimpleSafeSettingsRefusedPreview() },
     { SimpleSafeSettingsReviewPreview() },
+    { SimpleSafeSettingsReviewRefusedPreview() },
 )

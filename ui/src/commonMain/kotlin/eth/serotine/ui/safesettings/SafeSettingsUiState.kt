@@ -37,7 +37,7 @@ sealed interface SafeSettingsUiState {
      * that reason (owner ruling, 2026-10-18, #55); so are Remove while [removeReason] is set and
      * Change the threshold while [thresholdReason] is (a Safe of one owner). [enableModuleReason]
      * and [updateReason] say why enabling a module and updating the Safe's version are never
-     * offered here. [simpleCheckedAt] is [checkedAt] with no block, for simple mode.
+     * offered here. [simpleCheckedAt] is [checkedAt] with no block, for simple mode, or null.
      */
     data class Overview(
         override val network: String,
@@ -54,7 +54,7 @@ sealed interface SafeSettingsUiState {
         val moduleGuard: String? = null,
         val removeReason: String? = null,
         val thresholdReason: String? = null,
-        val simpleCheckedAt: String = checkedAt,
+        val simpleCheckedAt: String? = null,
     ) : SafeSettingsUiState {
 
         /** Whether a change can be proposed: an owner held here signs it. */
@@ -83,7 +83,8 @@ sealed interface SafeSettingsUiState {
      * and [error] what the last attempt came to. [share] is a signed request the queue could not
      * keep, to be shared from here; [askingToDrop] while Back asks whether to leave it behind.
      * Simple mode says no block (docs/simple-ui.md): [simpleSimulation] and [simpleError] are
-     * [simulation] and [error] in its words, null where they are the same.
+     * [simulation] and [error] in its words, null where Detailed view's own text serves. A run is
+     * said in its words even when it names no block: it "should go through".
      */
     data class Review(
         override val network: String,
