@@ -15,6 +15,8 @@ import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.UInt256
@@ -32,6 +34,8 @@ import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.VenueReading
+import eth.serotine.domain.repository.WaitingSwap
+import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
@@ -52,6 +56,7 @@ import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
@@ -73,6 +78,7 @@ import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemorySafeTxQueue
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.MemoryWaitingSwaps
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
@@ -114,6 +120,7 @@ class AccountDetailViewModelTest {
     private val accounts = FakeAccounts(daily)
     private val history = MemoryTransactionHistory()
     private val cowOrders = MemoryCowOrders()
+    private val waitingSwaps = MemoryWaitingSwaps()
     private val logIndex = FakeLogIndex()
     private val historyStarts = MemoryHistoryStarts()
     private val names = FakeNames()
@@ -170,6 +177,7 @@ class AccountDetailViewModelTest {
         RefreshNetworkData(freshness),
         ObserveNetworkLive(freshness),
         ObserveLightClient(lightClient),
+        DropWaitingSwap(waitingSwaps),
         formatTime = { "<$it>" },
         clock = { NOW },
     )
@@ -196,10 +204,35 @@ class AccountDetailViewModelTest {
         ObserveKnownTokens(catalog, userTokens, metadata),
         ObserveSentToAddresses(history),
         ObserveAccountCowOrders(cowOrders),
+        ObserveWaitingSwaps(waitingSwaps),
     ) { "at $it" }
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
+
+    @Test
+    fun dismissLetsTheSwapWaitingInTheActivityGo() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val token = Address.of("0x" + "aa".repeat(20))
+        val kept = WaitingSwap(
+            account = AccountId(Network.SEPOLIA, daily.address),
+            sell = token,
+            buy = null,
+            amount = UInt256.of(40_000_000),
+            tolerance = SlippageTolerance.DEFAULT,
+            venue = SwapVenue.UNISWAP,
+            approval = "0x" + "a1".repeat(32),
+            step = 2,
+            steps = 2,
+        )
+        val other = kept.copy(sell = Address.of("0x" + "bb".repeat(20)))
+        waitingSwaps.swaps.value = listOf(kept, other)
+        val viewModel = viewModel()
+
+        viewModel.dismissWaiting(token.hex)
+        runCurrent()
+        assertEquals(listOf(other), waitingSwaps.swaps.value)
+    }
 
     @Test
     fun onANetworkThatIsOffSendAndSwapWaitForItAndALastBalanceSaysSo() = runTest {
@@ -888,6 +921,7 @@ class AccountDetailViewModelTest {
             RefreshNetworkData(freshness),
             ObserveNetworkLive(freshness),
             ObserveLightClient(lightClient),
+            DropWaitingSwap(waitingSwaps),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

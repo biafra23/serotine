@@ -35,6 +35,8 @@ fun SimpleAccountDetailScreen(
     onTurnOnNetwork: () -> Unit = {},
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onContinueSwap: (sell: String) -> Unit = {},
+    onDismissWaiting: (sell: String) -> Unit = {},
 ) {
     val ready = state as? AccountDetailUiState.Ready
     AccountDetailScreen(
@@ -58,6 +60,8 @@ fun SimpleAccountDetailScreen(
         onTurnOnNetwork = onTurnOnNetwork,
         onAddOnNetwork = onAddOnNetwork,
         onSafeSettings = onSafeSettings,
+        onContinueSwap = onContinueSwap,
+        onDismissWaiting = onDismissWaiting,
     )
 }
 

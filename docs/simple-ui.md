@@ -175,7 +175,11 @@ change what it trusts.
   on Home.
 - **H5 · Account, Activity.** A card on top for a swap whose step 2 waits:
   "Swap 100 USDC → LINK · Step 1 done. Step 2 is waiting for you."
-  with Continue (part 6). Then the rows, newest first: what happened, when
+  with Continue. As built in part 7: "Step 1 done" only on the approval's
+  verified receipt that it succeeded; otherwise the card says the approval
+  is on its way, failed in its block, or that Continue checks where it
+  stands. Dismiss beside Continue lets it go. The card shows in Detailed
+  view too: it names no block. Then the rows, newest first: what happened, when
   it was sent or signed here (an event on chain is dated only by its block,
   so its row has no time), and how it ended in words ("Confirmed", "Final",
   "Failed", "Filled"), never a block number. Above them "Activity since you
@@ -274,8 +278,13 @@ waits for the approval's verified receipt, then quotes step 2 itself, with a
 fresh quote and its own confirmation (W3). Nothing is signed for step 2
 before the user confirms it. A step 2 left for later is kept as the swap's
 inputs (the pair, the amount, the venue, the tolerance), never as a quote or
-a signature, and Continue (H5) quotes it again. Part 5 decides where it is
-kept.
+a signature, and Continue (H5) quotes it again. It is kept on this device in
+a file of its own (`WaitingSwaps`), one per account and token sold, until a
+swap or an order of that token is sent from the account or the user
+dismisses its card. Continue opens Swap filled in with it and quotes it at
+once: the review is numbered as the step that waited, and an approval asked
+for again where the swap should come says that the earlier one may have
+failed.
 
 ### Settings
 
@@ -287,12 +296,32 @@ kept.
   shows up front, since simple mode keeps the fee levels behind a row and
   the blocks under *Details*. About, with the version.
 
+### The other screens
+
+As built in part 8, Watch address, Create Safe, an Activity row's detail, a
+CoW order's status, Tokens and Add token each have a simple version, the
+same screen with simple mode's words:
+
+- No light-client strip.
+- No block. What the detailed screen dates by its block is said as
+  "checked on chain": a card, a resolved name, an owner's name, a
+  contract's claim, the factory's run, a cancellation's run. An order's end
+  is "proven from this account's verified logs". An Activity row's detail
+  says how it ended in words ("Final").
+- A check is said with care, as on Send (decision 8): a run "should go
+  through", and the address the factory returns "held no code when it was
+  checked".
+- Every block the screen no longer shows, the fee's make-up and the verified
+  runs are one tap away, under *Details*.
+
+Create account, Import and Receive name no block, and draw the same in both
+views. The Debug tab is Detailed view's alone.
+
 ### Not in simple mode yet
 
-A Safe's transaction screens (propose, co-sign, execute, import), Create
-Safe, Watch address, Create account and Import draw their detailed screens in
-both views until a later part gives them a simple one. The Debug tab is
-Detailed view's alone.
+A Safe's transaction screens (propose, swap, co-sign, execute, import) and
+its settings draw their detailed screens in both views until parts 9 and 10
+give them a simple one.
 
 ## Delivery: a multi-PR plan through `feature/simple-ui`
 
@@ -324,7 +353,13 @@ merge.
    that still leaves the allowance short is said before another is sent,
    with a link to its status. Leaving drops step 2 until part 7's Activity
    card brings it back.
-7. The remaining flows: Activity's waiting step, and the screens under *Not
-   in simple mode yet* that get a simple version.
+7. Activity's waiting step (H5): the swap kept as its inputs, its card with
+   Continue and Dismiss, and Swap opened from it.
+8. Simple versions of the screens that showed the light client's strip or
+   a block: Watch address, Create Safe, an Activity row's detail, a CoW
+   order's status, Tokens and Add token (*The other screens* above).
+9. Simple versions of a Safe's transaction screens: propose, swap, co-sign
+   and execute, and import.
+10. Simple Safe settings (owner's request, 2026-10-28).
 
 Then the final PR into `main`.

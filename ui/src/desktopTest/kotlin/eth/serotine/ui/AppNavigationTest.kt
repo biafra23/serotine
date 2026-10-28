@@ -385,6 +385,7 @@ class AppNavigationTest {
 
             override suspend fun choose(venue: SwapVenue): Boolean = true
         },
+        waitingSwaps = MemoryWaitingSwaps(),
         debugLog = debugLog,
         debugScreen = debugScreen,
         interfaceMode = interfaceMode,
@@ -810,7 +811,7 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
@@ -917,7 +918,7 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(COW_ORDER_UNISWAP_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithText("Slippage tolerance").fetchSemanticsNodes().isNotEmpty() }
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens(), "in the order's place")
 
         rule.onNodeWithContentDescription("Back").performClick()

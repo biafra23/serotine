@@ -197,6 +197,21 @@ private fun SimpleAccountSafePreview() = SimpleAccountDetailPreview(
     ),
 )
 
+/** H5: a swap whose step 2 waits, its card above the Activity with Continue and Dismiss. */
+@Preview
+@Composable
+private fun SimpleAccountWaitingSwapPreview() = SimpleAccountDetailPreview(
+    main.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Shown(
+            rows = emptyList(),
+            coverage = "Transactions sent from this device.",
+            simpleCoverage = "Activity since you added it.",
+            waiting = listOf(WAITING_SWAP),
+        ),
+    ),
+)
+
 /** Ethereum turned off in this wallet: Refresh greyed out, each amount says the network is off. */
 @Preview
 @Composable
@@ -223,6 +238,7 @@ internal val simpleAccountDetailScreenPreviews: List<@Composable () -> Unit> = l
     { SimpleAccountAssetsDarkPreview() },
     { SimpleAccountLastVerifiedPreview() },
     { SimpleAccountActivityPreview() },
+    { SimpleAccountWaitingSwapPreview() },
     { SimpleAccountSafePreview() },
     { SimpleAccountNetworkOffPreview() },
 )
