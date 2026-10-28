@@ -41,7 +41,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -65,6 +64,7 @@ import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.FeeChoice
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
@@ -728,13 +728,7 @@ private fun Checked(text: String) {
 
 /** A simple review's detail, behind *Details*: the routes, the blocks, the fee's make-up. */
 @Composable
-private fun Details(content: @Composable ColumnScope.() -> Unit) {
-    var open by rememberSaveable { mutableStateOf(false) }
-    TextButton(onClick = { open = !open }, Modifier.testTag(SWAP_DETAILS_TAG)) {
-        Text(if (open) "Hide details" else "Details")
-    }
-    if (open) Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
-}
+private fun Details(content: @Composable ColumnScope.() -> Unit) = HiddenDetails(SWAP_DETAILS_TAG, content)
 
 /**
  * The approval in simple mode (docs/simple-ui.md, W2): what it allows, for this swap only, and its

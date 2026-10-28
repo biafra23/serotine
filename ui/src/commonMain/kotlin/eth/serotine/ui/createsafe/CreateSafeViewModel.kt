@@ -747,6 +747,7 @@ class CreateSafeViewModel(
                         label = typed.name ?: model.accounts.firstOrNull { it.address == typed.address }?.label,
                         note = typedNote(typed, model),
                         selected = true,
+                        simpleNote = simpleTypedNote(typed, model),
                     )
                 },
             input = inputs.input,
@@ -763,6 +764,7 @@ class CreateSafeViewModel(
                     label = it.name ?: model.accounts.firstOrNull { account -> account.address == it.address }?.label,
                     note = it.blockNumber?.let { block -> "Resolved at finalized block ${grouped(block)}" } ?: TYPED,
                     selected = it.address in owners,
+                    simpleNote = it.blockNumber?.let { RESOLVED_ON_CHAIN },
                 )
             },
             inputNote = note,
@@ -808,6 +810,9 @@ class CreateSafeViewModel(
             address = Eip55.format(plan.address),
             signers = "${plan.threshold}/${plan.owners.size}",
             version = "Safe ${plan.release.version}",
+            simplePrediction = quote?.let {
+                "$computed The factory's run, checked on chain, returns this address, which holds no code yet."
+            },
             prediction = when {
                 quote != null -> {
                     val ran = quote.call.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head"
@@ -837,6 +842,8 @@ class CreateSafeViewModel(
                     ),
                     simulation = "Run as a verified call from this account $ran, the factory deploys the Safe at " +
                         "this address and sets it up with these owners and this threshold.",
+                    simpleSimulation = "Checked on chain: the factory deploys the Safe at this address and sets " +
+                        "it up with these owners and this threshold.",
                     pending = call.pendingCost.takeUnless { cost -> cost.isZero }?.let { cost ->
                         "Earlier transactions from this account, not mined yet, may still take up to " +
                             exactAmount(cost, NATIVE_DECIMALS, native) + ": the balance after counts it."
@@ -864,6 +871,7 @@ class CreateSafeViewModel(
                 typed != null -> typedNote(typed, model)
                 else -> TYPED
             },
+            simpleNote = typed?.takeIf { account == null }?.let { simpleTypedNote(it, model) },
         )
     }
 
@@ -873,6 +881,11 @@ class CreateSafeViewModel(
         model.accounts.any { it.address == typed.address } -> "In your wallet"
         else -> TYPED
     }
+
+    /** [typedNote] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
+    private fun simpleTypedNote(typed: Typed, model: Model): String? =
+        typed.takeIf { it.name != null && it.resolvedAt != null && typedNote(it, model) != TYPED }
+            ?.let { "Resolved from ${it.name}, checked on chain" }
 
     private fun nameError(name: String): String? =
         if (name.trim().length > RenameAccount.MAX_LABEL_LENGTH) {
@@ -1024,6 +1037,9 @@ class CreateSafeViewModel(
         const val KEY_HERE = "Key on this device"
         const val WATCHED = "Watch-only: its key is elsewhere"
         const val TYPED = "Typed"
+
+        /** A name's resolution in simple mode's words: no block (docs/simple-ui.md). */
+        const val RESOLVED_ON_CHAIN = "Resolved, checked on chain"
         const val DEVICE_KEY =
             "This device's hardware key (Secure Enclave or StrongBox) as an owner comes later: Serotine does not " +
                 "build its passkey signer yet."
