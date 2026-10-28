@@ -162,7 +162,8 @@ def vector_xml(key, spec):
         if p['alpha']:
             attrs.insert(0 if not p['type'] else 1, '            android:fillAlpha="%s"' % p['alpha'])
         if p['fill']['gradient']:
-            attrs.insert(0, '            android:fillColor="#00000000"')
+            # No plain android:fillColor here: aapt2 rejects a <path> that carries both a
+            # literal fillColor and an <aapt:attr> override of the same attribute.
             body = '\n'.join(attrs)
             start, end = p['fill']['start'], p['fill']['end']
             colors = p['fill']['colors']
