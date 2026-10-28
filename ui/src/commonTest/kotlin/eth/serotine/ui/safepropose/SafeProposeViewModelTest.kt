@@ -70,6 +70,7 @@ class SafeProposeViewModelTest {
 
     private val world = SafeWorld()
     private val clock = TestTimeSource()
+    private var wallClock = 1_800_000_000L
     private val feeds = FakeFeeds()
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
@@ -117,6 +118,7 @@ class SafeProposeViewModelTest {
             SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
             EncodeSigningRequest(world.codec),
             clock,
+            now = { wallClock },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -225,6 +227,41 @@ class SafeProposeViewModelTest {
                 "what they move.",
             viewModel.form.error,
         )
+    }
+
+    @Test
+    fun aCallThatRevertsIsRefusedOnTheFormAndSimpleModeSaysSoWithNoBlock() = runTest {
+        world.inputs.simulation = Simulation.Reverted(100)
+        holding()
+        val viewModel = viewModel()
+        viewModel.onToChange(Eip55.format(world.recipient))
+        viewModel.onAmountChange("0.1")
+        runCurrent()
+
+        viewModel.review()
+        runCurrent()
+
+        val form = viewModel.form
+        assertTrue("at block 100" in form.error.orEmpty(), form.error)
+        assertEquals(
+            "The Safe's call reverts, checked on chain: the recipient or the token refuses it. Nothing was proposed.",
+            form.simpleError,
+        )
+    }
+
+    @Test
+    fun eachBalanceSaysHowLongAgoItWasProvedAndIsDatedAnew() = runTest {
+        holding()
+        world.balances.of(world.safe).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 100, provenAt = wallClock - 120)
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals("updated 2 min ago", viewModel.form.asset?.age)
+
+        wallClock += 60
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertEquals("updated 3 min ago", viewModel.form.asset?.age, "the age is dated anew every second")
     }
 
     @Test

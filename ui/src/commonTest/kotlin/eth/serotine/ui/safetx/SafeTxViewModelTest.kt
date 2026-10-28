@@ -857,6 +857,29 @@ class SafeTxViewModelTest {
     }
 
     @Test
+    fun aQuoteThatRevertsIsSaidInSimpleModeWithNoBlockAndOnlyWhileItsMessageStands() = runTest {
+        funded()
+        world.inputs.simulation = Simulation.Reverted(100)
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+
+        viewModel.startApproval()
+        runCurrent()
+        val refused = viewModel.overview
+        assertTrue("block 100" in refused.message.orEmpty(), refused.message)
+        assertEquals("It reverts, checked on chain. Nothing was signed.", refused.simpleMessage)
+
+        // Quoted again, it goes through: the message is cleared, and its simple words with it.
+        world.inputs.simulation = Simulation.Succeeded("", 100)
+        viewModel.startApproval()
+        runCurrent()
+        viewModel.back()
+        runCurrent()
+        val back = viewModel.overview
+        assertEquals(null, back.message)
+        assertEquals(null, back.simpleMessage, "no simple words for a message no longer shown")
+    }
+
+    @Test
     fun removingTakesItOutOfThisDevicesQueueAndTheScreenLeaves() = runTest {
         val viewModel = viewModel(queued(world.request(world.ether(4))))
 
