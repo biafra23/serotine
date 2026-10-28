@@ -12,6 +12,8 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
@@ -30,6 +32,7 @@ import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.TokenSettings
+import eth.serotine.domain.repository.WaitingSwap
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -37,6 +40,7 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSentToAddresses
 import eth.serotine.domain.usecase.ObserveTokenTransfers
+import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
@@ -45,6 +49,7 @@ import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.MemoryWaitingSwaps
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
 import eth.serotine.ui.components.GUARD_SET_WARNING
 import eth.serotine.ui.components.MODULE_DISABLED_WARNING
@@ -83,6 +88,7 @@ class AccountActivityTest {
     private val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc")
     private val history = MemoryTransactionHistory()
     private val cowOrders = MemoryCowOrders()
+    private val waitingSwaps = MemoryWaitingSwaps()
     private val accounts = FakeAccounts(alice, treasury)
     private val starts = MemoryHistoryStarts()
     private val index = FakeLogIndex()
@@ -124,6 +130,7 @@ class AccountActivityTest {
             ObserveKnownTokens(ListCatalog(usdc), userTokens, FakeMetadata()),
             ObserveSentToAddresses(history),
             ObserveAccountCowOrders(cowOrders),
+            ObserveWaitingSwaps(waitingSwaps),
         ) { "at $it" }
             .of(AccountId(Network.SEPOLIA, address))
             // Unconfined, so that what a test changes is listed before it reads the value.
@@ -133,6 +140,50 @@ class AccountActivityTest {
                 ActivityUiState.Loading,
             )
             .also { runCurrent() }
+
+    @Test
+    fun aSwapWhoseNextStepWaitsIsACardThatSaysWhereItsApprovalStands() = runTest {
+        val router = Address.of("0x" + "50".repeat(20))
+        val approval = sent(10, SentAction.TokenApproval(usdc, router, UInt256.of(40_000_000)), 600)
+        waitingSwaps.swaps.value = listOf(
+            WaitingSwap(
+                account = alice.id,
+                sell = usdc.address,
+                buy = null,
+                amount = UInt256.of(40_000_000),
+                tolerance = SlippageTolerance.DEFAULT,
+                venue = SwapVenue.UNISWAP,
+                approval = approval.hash,
+                step = 2,
+                steps = 2,
+            ),
+        )
+        val activity = activity()
+        fun card(outcome: SentOutcome?): WaitingStep {
+            history.entries.value = listOfNotNull(outcome?.let { HistoryEntry(approval, it) })
+            return assertIs<ActivityUiState.Shown>(activity.value).waiting.single()
+        }
+
+        val done = card(SentOutcome.Included(9_410_000, succeeded = true))
+        assertEquals(
+            WaitingStep("Swap 40 USDC → ETH", "Step 1 done. Step 2 is waiting for you.", usdc.address.hex),
+            done,
+        )
+        assertEquals(
+            "Step 1, the approval, is on its way. Once a block has it, step 2 is yours to confirm.",
+            card(SentOutcome.NotSeen).message,
+            "never said done before a verified receipt",
+        )
+        assertEquals(
+            "Step 1, the approval, failed in its block: nothing was swapped. Continue quotes it again.",
+            card(SentOutcome.Finalized(9_410_000, succeeded = false)).message,
+        )
+        val unsure = "Step 2 is waiting for you. Continue checks where step 1 stands."
+        assertEquals(unsure, card(SentOutcome.NonceUsed).message)
+        assertEquals(unsure, card(null).message)
+        val other = assertIs<ActivityUiState.Shown>(activity(treasury.address).value)
+        assertEquals(emptyList(), other.waiting, "another account's")
+    }
 
     @Test
     fun eachTransactionNewestFirstWithWhatItDidAndHowItEnded() = runTest {

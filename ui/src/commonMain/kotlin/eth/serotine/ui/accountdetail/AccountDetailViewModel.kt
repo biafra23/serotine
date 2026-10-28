@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DecodedSafeTx
+import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.ObserveAccount
@@ -118,6 +119,8 @@ class AccountDetailViewModel(
     observeNetworkLive: ObserveNetworkLive,
     /** The account's network's light client, which simple mode's "can't check" banner reads. */
     observeLightClient: ObserveLightClient,
+    /** Lets a swap whose next step waits go, at the user's word: Dismiss on its card in the Activity tab. */
+    private val dropWaitingSwap: DropWaitingSwap,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
     /** Now, in unix seconds: what simple mode's ages are dated against. */
@@ -318,6 +321,12 @@ class AccountDetailViewModel(
         viewModelScope.launch {
             if (!setNetworkEnabled(network, on = true)) view.update { it.copy(message = notTurnedOn(network)) }
         }
+    }
+
+    /** Lets the swap selling the token at [sell] (its address) wait no longer: its card in the Activity tab goes. */
+    fun dismissWaiting(sell: String) {
+        val token = Address.parse(sell) ?: return
+        viewModelScope.launch { dropWaitingSwap(account, token) }
     }
 
     /** Orders the rows by [order]. */

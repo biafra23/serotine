@@ -14,6 +14,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.QuoterV2
+import eth.serotine.domain.model.SlippageTolerance
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.Token
@@ -53,10 +54,14 @@ import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.repository.VenueChoice
 import eth.serotine.domain.repository.VenueReading
+import eth.serotine.domain.repository.WaitingSwap
 import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.FindUniswapRoute
+import eth.serotine.domain.usecase.FindWaitingSwap
+import eth.serotine.domain.usecase.KeepWaitingSwap
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
@@ -92,6 +97,7 @@ import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemorySwapVenue
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.MemoryWaitingSwaps
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.RouteStep
 import eth.serotine.ui.components.STALE_QUOTE
@@ -173,6 +179,7 @@ class SwapViewModelTest {
     private val cowChain = FakeCowChain()
     private val cowApi = FakeCowApi()
     private val swapVenue = MemorySwapVenue()
+    private val waitingSwaps = MemoryWaitingSwaps()
     private val historyStarts = MemoryHistoryStarts()
     private val clock = TestTimeSource()
     private var wallClock = headTime
@@ -200,6 +207,7 @@ class SwapViewModelTest {
         from: Address = daily.address,
         sell: Address? = null,
         fill: SwapFill? = null,
+        continuing: Boolean = false,
     ): SwapViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { headTime }
@@ -251,10 +259,14 @@ class SwapViewModelTest {
                 now,
             ),
             PlaceCowOrder(FindUniswapRoute(uniswap, inputs), signer, cowOrders, cowApi, light),
+            KeepWaitingSwap(waitingSwaps),
+            DropWaitingSwap(waitingSwaps),
+            FindWaitingSwap(waitingSwaps),
             clock,
             formatTime = { "at $it" },
             now = { wallClock },
             fill = fill,
+            continuing = continuing,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -444,6 +456,95 @@ class SwapViewModelTest {
         assertEquals(WalletPassword.EMPTY, swap.unlock.password, "nothing typed for the approval signs the swap")
         assertEquals(1, signer.passwords.size, "nothing signed for step 2 before the user confirms it")
     }
+
+    @Test
+    fun aSentApprovalKeepsTheSwapWaitingUntilTheSwapIsSent() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onShown()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        val approval = sent.transfers.value.single().hash
+
+        // Step 1 is sent: the swap waits for step 2, kept as its inputs for the account's Activity.
+        assertEquals(
+            listOf(
+                WaitingSwap(
+                    account = AccountId(Network.SEPOLIA, daily.address),
+                    sell = usdc.address,
+                    buy = null,
+                    amount = fortyUsdc,
+                    tolerance = SlippageTolerance.DEFAULT,
+                    venue = SwapVenue.UNISWAP,
+                    approval = approval,
+                    step = 2,
+                    steps = 2,
+                ),
+            ),
+            waitingSwaps.swaps.value,
+        )
+
+        // The swap is sent: nothing waits any more.
+        inputs.mined = 8
+        allow(fortyUsdc)
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertIs<SwapUiState.Sent>(viewModel.uiState.value)
+        assertEquals(emptyList(), waitingSwaps.swaps.value)
+    }
+
+    @Test
+    fun continueFillsTheWaitingSwapInAndQuotesItsStepTwo() = runTest {
+        val approval = "0x" + "a1".repeat(32)
+        waitingSwaps.swaps.value = listOf(waiting(approval))
+
+        val viewModel = viewModel(sell = usdc.address, continuing = true)
+        runCurrent()
+
+        val swap = assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
+        assertEquals("Step 2 of 2", swap.step, "numbered as the step that waited")
+        assertEquals(WalletPassword.EMPTY, swap.unlock.password)
+        assertEquals(0, signer.passwords.size, "nothing signed before the user confirms it")
+    }
+
+    @Test
+    fun continueWhereTheApprovalLeftTheAllowanceShortSaysItMayHaveFailed() = runTest {
+        allow(UInt256.of(5_000_000))
+        val approval = "0x" + "a1".repeat(32)
+        waitingSwaps.swaps.value = listOf(waiting(approval))
+
+        val viewModel = viewModel(sell = usdc.address, continuing = true)
+        runCurrent()
+
+        val again = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
+        assertEquals("Step 1 of 2", again.step)
+        assertEquals(approval, again.earlierFailed?.hash)
+    }
+
+    @Test
+    fun continueWithNothingKeptIsTheComposeStep() = runTest {
+        val viewModel = viewModel(sell = usdc.address, continuing = true)
+        runCurrent()
+        assertNull(viewModel.compose.buy)
+        assertEquals("", viewModel.compose.amount)
+    }
+
+    /** 40 USDC for ETH from Daily on Uniswap, waiting for step 2 of 2 after the approval [hash]. */
+    private fun waiting(hash: String) = WaitingSwap(
+        account = AccountId(Network.SEPOLIA, daily.address),
+        sell = usdc.address,
+        buy = null,
+        amount = fortyUsdc,
+        tolerance = SlippageTolerance.DEFAULT,
+        venue = SwapVenue.UNISWAP,
+        approval = hash,
+        step = 2,
+        steps = 2,
+    )
 
     @Test
     fun anApprovalNoBlockHasAfterAWhileGoesBackToComposeSayingSo() = runTest {

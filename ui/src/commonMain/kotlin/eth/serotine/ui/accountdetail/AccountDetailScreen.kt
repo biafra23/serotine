@@ -154,6 +154,7 @@ fun AccountDetailRoute(
     modifier: Modifier = Modifier,
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onContinueSwap: (sell: String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
@@ -191,6 +192,8 @@ fun AccountDetailRoute(
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
+            onContinueSwap = onContinueSwap,
+            onDismissWaiting = viewModel::dismissWaiting,
         )
         // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
         InterfaceMode.DETAILED -> AccountDetailScreen(
@@ -214,6 +217,8 @@ fun AccountDetailRoute(
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
+            onContinueSwap = onContinueSwap,
+            onDismissWaiting = viewModel::dismissWaiting,
         )
     }
 }
@@ -225,7 +230,8 @@ fun AccountDetailRoute(
  * account list; while the asset rows are shown, the menu also sorts them the other way
  * ([onSort]). Under the buttons are its tabs, Assets | Activity and a Safe's Owners | Queue.
  * [onSend] opens Send with the token at a contract chosen, or the network's currency (null). The
- * Activity tab's rows open their detail through [onOpenActivity]. A Safe's Queue opens a
+ * Activity tab's rows open their detail through [onOpenActivity]; a swap waiting there for its next
+ * step opens Swap through [onContinueSwap], or goes through [onDismissWaiting]. A Safe's Queue opens a
  * transaction through [onOpenSafeTx] by its hash, and Import a request through [onImportRequest];
  * its Owners tab opens its settings through [onSafeSettings].
  * The account's network is named beside its control (docs/networks.md, N3 and N4); while it is off,
@@ -257,6 +263,8 @@ fun AccountDetailScreen(
     onTurnOnNetwork: () -> Unit = {},
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onContinueSwap: (sell: String) -> Unit = {},
+    onDismissWaiting: (sell: String) -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -399,6 +407,8 @@ fun AccountDetailScreen(
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
                     onOpenActivity = onOpenActivity,
+                    onContinueSwap = onContinueSwap,
+                    onDismissWaiting = onDismissWaiting,
                     onSafeSettings = safeSettings,
                     simple = chrome is AccountChrome.Refresh,
                 )
@@ -433,6 +443,8 @@ private fun Details(
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
+    onContinueSwap: (String) -> Unit,
+    onDismissWaiting: (String) -> Unit,
     onSafeSettings: () -> Unit,
     /** Simple mode's chrome: the network on the blockie, the freshness line and the "can't check" banner. */
     simple: Boolean,
@@ -539,7 +551,7 @@ private fun Details(
         // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
             state.showsAssets -> item { Assets(state, onSend, onSwap, onCopyContract, onHideToken) }
-            state.segment == DetailSegment.ACTIVITY -> activityItems(state.activity, onOpenActivity)
+            state.segment == DetailSegment.ACTIVITY -> activityItems(state.activity, onOpenActivity, onContinueSwap, onDismissWaiting)
             state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe), state.safeSettingsReason == null, onSafeSettings) }
             else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }

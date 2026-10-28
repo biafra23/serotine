@@ -36,6 +36,7 @@ import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.SwapVenueSetting
+import eth.serotine.domain.repository.WaitingSwaps
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
@@ -53,14 +54,17 @@ import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
+import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.FindUniswapRoute
+import eth.serotine.domain.usecase.FindWaitingSwap
 import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
+import eth.serotine.domain.usecase.KeepWaitingSwap
 import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
@@ -96,6 +100,7 @@ import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.domain.usecase.PlaceCowOrder
 import eth.serotine.domain.usecase.PlanSafe
 import eth.serotine.domain.usecase.ProposeSafeSettingsChange
@@ -256,6 +261,8 @@ class AppGraph(
     private val cowOrders: CowOrders,
     /** The venue the user last chose on Swap, compose, which the next swap starts at. */
     private val swapVenue: SwapVenueSetting,
+    /** The swaps whose next step waits for the user, which the account's Activity offers with Continue. */
+    private val waitingSwaps: WaitingSwaps,
     /**
      * The app's debug log, which the Debug tab shows: the host's one instance, which the engine's
      * node writes each request into.
@@ -325,6 +332,7 @@ class AppGraph(
             RefreshNetworkData(networkFreshness),
             ObserveNetworkLive(networkFreshness),
             ObserveLightClient(lightClient),
+            DropWaitingSwap(waitingSwaps),
         )
 
     /**
@@ -457,9 +465,15 @@ class AppGraph(
 
     /**
      * Swap from the account at [from], selling the token at [sell] (null: the network's currency),
-     * opened with [fill] filled in when given: the same swap again.
+     * opened with [fill] filled in when given: the same swap again; [continuing] the swap of it whose
+     * next step waits, quoted again.
      */
-    fun swapViewModel(from: AccountId, sell: Address?, fill: SwapFill? = null): SwapViewModel = SwapViewModel(
+    fun swapViewModel(
+        from: AccountId,
+        sell: Address?,
+        fill: SwapFill? = null,
+        continuing: Boolean = false,
+    ): SwapViewModel = SwapViewModel(
         from,
         sell,
         ObserveAccounts(accounts),
@@ -497,7 +511,11 @@ class AppGraph(
             from.network,
         ),
         PlaceCowOrder(FindUniswapRoute(uniswap, transactionInputs), signer, cowOrders, cowApi, lightClient),
+        KeepWaitingSwap(waitingSwaps),
+        DropWaitingSwap(waitingSwaps),
+        FindWaitingSwap(waitingSwaps),
         fill = fill,
+        continuing = continuing,
     )
 
     /**
@@ -537,6 +555,7 @@ class AppGraph(
         knownTokens(),
         ObserveSentToAddresses(transactionHistory),
         ObserveAccountCowOrders(cowOrders),
+        ObserveWaitingSwaps(waitingSwaps),
     )
 
     /**
