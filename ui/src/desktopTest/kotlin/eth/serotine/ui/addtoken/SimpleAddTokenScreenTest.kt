@@ -41,4 +41,27 @@ class SimpleAddTokenScreenTest {
         rule.onNodeWithTag(ADD_TOKEN_DETAILS_TAG).performScrollTo().performClick()
         rule.onNodeWithText("Read from the contract at block 8,412,307").performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun aClaimReadWithoutABlockHasNoDetails() {
+        val contract = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb"
+        val state = AddTokenUiState(
+            address = contract,
+            card = TokenCard.Claim(
+                contract,
+                "EURS",
+                "STASIS EURS Token",
+                2,
+                "Read from the contract",
+                warning = null,
+                simpleCheckedAt = "Read from the contract",
+            ),
+        )
+        rule.setContent {
+            SerotineTheme { SimpleAddTokenScreen(state = state, onAddressChange = {}, onAdd = {}, onBack = {}) }
+        }
+
+        rule.onNodeWithText("Read from the contract").assertIsDisplayed()
+        rule.onNodeWithTag(ADD_TOKEN_DETAILS_TAG).assertDoesNotExist()
+    }
 }

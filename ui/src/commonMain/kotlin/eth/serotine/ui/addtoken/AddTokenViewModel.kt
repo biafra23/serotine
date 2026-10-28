@@ -223,7 +223,8 @@ class AddTokenViewModel(
                 decimals = reading.decimals,
                 checkedAt = reading.blockNumber?.let { "Read from the contract at block ${grouped(it)}" }
                     ?: "Read from the contract",
-                simpleCheckedAt = "Read from the contract, checked on chain",
+                simpleCheckedAt = reading.blockNumber?.let { "Read from the contract, checked on chain" }
+                    ?: "Read from the contract",
                 warning = known.tokens.firstOrNull { it.token.symbol.equals(reading.symbol, ignoreCase = true) }
                     ?.let {
                         "Not the ${displaySymbol(it.token.symbol)} the wallet lists: another contract calls itself that"

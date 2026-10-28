@@ -27,5 +27,8 @@ fun SimpleAddTokenScreen(
     modifier,
     onNetwork = onNetwork,
     onTurnOnNetwork = onTurnOnNetwork,
-    details = listOfNotNull((state.card as? TokenCard.Claim)?.checkedAt),
+    // The block, where one was named: a claim read without one has nothing more to say there.
+    details = listOfNotNull(
+        (state.card as? TokenCard.Claim)?.let { claim -> claim.checkedAt.takeIf { it != claim.simpleCheckedAt } },
+    ),
 )
