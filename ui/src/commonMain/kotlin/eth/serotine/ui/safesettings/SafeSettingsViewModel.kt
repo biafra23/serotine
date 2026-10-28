@@ -53,6 +53,7 @@ import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.shareItem
+import eth.serotine.ui.components.simpleSafeTxRefusalText
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
@@ -138,6 +139,8 @@ class SafeSettingsViewModel(
             val threshold: Int? = null,
             val proposing: Boolean = false,
             val error: String? = null,
+            /** Simple mode's words for [error], with no block, while it is the error they are of. */
+            val simple: SimpleText? = null,
         ) : Step
 
         /**
@@ -167,6 +170,10 @@ class SafeSettingsViewModel(
             val hidden: Boolean = false,
             val unsaved: SigningRequest? = null,
             val askingToDrop: Boolean = false,
+            /** Simple mode's words for [error], with no block, while it is the error they are of. */
+            val simple: SimpleText? = null,
+            /** Proposed again and failed: [proposal] is from before, kept for a signature not saved. */
+            val outdated: Boolean = false,
         ) : Step {
             val idle: Boolean
                 get() = !refreshing && !signing
@@ -174,6 +181,9 @@ class SafeSettingsViewModel(
 
         data class Proposed(val hash: String) : Step
     }
+
+    /** [text], simple mode's words for the error [of], which it stands for only while that is the error. */
+    private data class SimpleText(val of: String, val text: String)
 
     // The checksum once, not on every reading.
     private val display = Eip55.format(safe)
@@ -365,12 +375,19 @@ class SafeSettingsViewModel(
                             unsaved = unsaved,
                             error = if (latest.unsaved != null && unsaved == null) UNSAVED_REPLACED else latest.error,
                             askingToDrop = latest.askingToDrop && unsaved != null,
+                            outdated = false,
                         )
                     }
                     // A request signed here that is kept nowhere else is not given up with a
                     // re-proposal that fails: the review stays, saying why, with it to share.
                     latest.unsaved != null && next is Step.Editing ->
-                        latest.copy(refreshing = false, error = next.error, unlock = latest.unlock.copy(error = note))
+                        latest.copy(
+                            refreshing = false,
+                            error = next.error,
+                            simple = next.simple,
+                            unlock = latest.unlock.copy(error = note),
+                            outdated = true,
+                        )
                     else -> next
                 }
             }
@@ -527,8 +544,10 @@ class SafeSettingsViewModel(
                             biometrics = latest.unlock.biometrics && biometricsStillOffered(signing.signing),
                         ),
                     )
-                    is SafeTxSigning.Refused ->
-                        latest.copy(signing = false, error = safeTxRefusalText(signing.refusal, network))
+                    is SafeTxSigning.Refused -> {
+                        val error = safeTxRefusalText(signing.refusal, network)
+                        latest.copy(signing = false, error = error, simple = simpleOf(error, signing.refusal))
+                    }
                     null -> latest.copy(signing = false, unlock = latest.unlock.copy(error = SIGN_FAILED))
                 }
             }
@@ -569,12 +588,16 @@ class SafeSettingsViewModel(
             is SafeSettingsProposing.Problem -> return failed.copy(error = problemText(proposing.problem, form.kind))
             is SafeSettingsProposing.Reverts -> {
                 val at = proposing.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
-                return failed.copy(
-                    error = "The change reverts, run as a verified call from the Safe$at: the Safe refuses it as " +
-                        "it is now. Nothing was proposed.",
-                )
+                val error = "The change reverts, run as a verified call from the Safe$at: the Safe refuses it as it " +
+                    "is now. Nothing was proposed."
+                val simple = "The change reverts, as checked on chain: the Safe refuses it as it is now. Nothing was " +
+                    "proposed."
+                return failed.copy(error = error, simple = SimpleText(error, simple))
             }
-            is SafeSettingsProposing.Refused -> return failed.copy(error = safeTxRefusalText(proposing.refusal, network))
+            is SafeSettingsProposing.Refused -> {
+                val error = safeTxRefusalText(proposing.refusal, network)
+                return failed.copy(error = error, simple = simpleOf(error, proposing.refusal))
+            }
         }
         val held = proposal.safe.ownersHeld
         val signer = owner?.takeIf { it in held } ?: held.firstOrNull()
@@ -656,6 +679,7 @@ class SafeSettingsViewModel(
             modules = state.modules.map(Eip55::format),
             guard = state.guard?.let(Eip55::format),
             checkedAt = "Verified at block ${grouped(shown.reading.blockNumber)}",
+            simpleCheckedAt = "Checked on chain",
             changeReason = changeReason(shown),
             enableModuleReason = MODULE_ENABLED_REFUSAL,
             updateReason = "Updating a Safe's version runs a migration contract's code as the Safe, a delegate " +
@@ -737,8 +761,13 @@ class SafeSettingsViewModel(
             proposing = form.proposing,
             error = form.error,
             canReview = !form.proposing && change != null && problem == null,
+            simpleError = form.simple?.takeIf { it.of == form.error }?.text,
         )
     }
+
+    /** [refusal]'s text [error] with simple mode's words for it, where they differ: no block. */
+    private fun simpleOf(error: String, refusal: SafeTxRefusal): SimpleText? =
+        simpleSafeTxRefusalText(refusal)?.let { SimpleText(error, it) }
 
     private fun review(step: Step.Reviewing): SafeSettingsUiState.Review {
         val proposal = step.proposal
@@ -772,6 +801,16 @@ class SafeSettingsViewModel(
                     "Not simulated: the light client on this device does not run a call from the Safe's address. " +
                         "Its execution, the whole of it, is run as a verified call before anyone sends it."
             },
+            // Detailed view orders a kept run and a later failure by their blocks; simple mode, by its words.
+            simpleSimulation = (proposal.simulation as? SafeCallSimulation.Ran)?.let {
+                val run = if (step.outdated) {
+                    "When it was proposed, it was checked on chain: the change was to go through then."
+                } else {
+                    "Checked on chain: the change should go through."
+                }
+                "$run The Safe's own checks — its owners' signatures and its nonce — and its guard run when its " +
+                    "execution is quoted."
+            },
             owners = held.map { AccountChoice(labels[it] ?: Eip55.format(it), Eip55.format(it)) },
             owner = Eip55.format(step.owner),
             unlock = step.unlock,
@@ -782,6 +821,7 @@ class SafeSettingsViewModel(
             error = step.error,
             share = step.unsaved?.let { shareItem(encodeSigningRequest(it), it.signatures.size) },
             askingToDrop = step.askingToDrop,
+            simpleError = step.simple?.takeIf { it.of == step.error }?.text,
         )
     }
 
