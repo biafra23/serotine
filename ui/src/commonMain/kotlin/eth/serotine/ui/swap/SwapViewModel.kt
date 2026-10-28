@@ -491,8 +491,22 @@ class SwapViewModel(
             val next = quoted(request, unlock = null, SendFrom(account.label, display))
             if (step.value != quoting) return@launch
             // Continued from the account's Activity: the review is the step that waited.
-            val waited = resumed
+            val waited = resumed?.takeIf { it.isFor(request) }
             resumed = null
+            val pending = next as? Step.Composing
+            if (waited != null && pending?.earlier?.waiting == true && pending.earlier.hash == waited.approval) {
+                // Its approval is still on its way: the screen waits for its block, as when it was sent.
+                step.value = Step.Awaiting(
+                    request,
+                    waited.approval,
+                    SendFrom(account.label, display),
+                    resets = waited.steps == RESET_STEPS && waited.step == 2,
+                    sent = waited.step - 1 to waited.steps,
+                    since = timeSource.markNow(),
+                )
+                awaitApproval()
+                return@launch
+            }
             step.value = when {
                 // Made while hidden: it is from before the screen came back, so it is made again.
                 next is Step.Reviewing -> {
@@ -515,6 +529,7 @@ class SwapViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (current.signing || current.notSent?.canRetry == true) return
         job?.cancel()
+        resumed = null
         step.value = Step.Composing()
     }
 
@@ -683,7 +698,13 @@ class SwapViewModel(
     private suspend fun keepOrLetGo(review: Step.Reviewing) {
         val request = review.request
         val token = (request.sell.asset as? TransferAsset.Erc20Token)?.token?.address ?: return
-        when (val now = step.value) {
+        val now = step.value
+        // Run to its end, the screen left or not: a swap sent must not stay offered with Continue.
+        withContext(NonCancellable) { keepOrLetGo(now, request, token) }
+    }
+
+    private suspend fun keepOrLetGo(now: Step, request: Request, token: Address) {
+        when (now) {
             is Step.Awaiting -> keepWaitingSwap(
                 WaitingSwap(
                     account = account,
@@ -702,6 +723,12 @@ class SwapViewModel(
         }
     }
 
+    /** Whether [request] is this waiting swap: the same token sold, for the same asset, amount and venue. */
+    private fun WaitingSwap.isFor(request: Request): Boolean =
+        (request.sell.asset as? TransferAsset.Erc20Token)?.token?.address == sell &&
+            (request.buy.asset as? TransferAsset.Erc20Token)?.token?.address == buy &&
+            request.amount == amount && request.venue == venue
+
     /**
      * Opened with Continue from the account's Activity: the swap kept as waiting for the token at
      * [sell] is filled in and quoted again, its review numbered as the step that waits. None kept: the
@@ -711,16 +738,22 @@ class SwapViewModel(
     private fun continueWaiting(sell: Address) {
         viewModelScope.launch {
             val waiting = findWaitingSwap(account, sell) ?: return@launch
-            val decimals = model.first { it?.sell != null }?.sell?.decimals ?: return@launch
-            change {
-                it.copy(
-                    buy = waiting.buy?.let(SwapPick::Token) ?: SwapPick.Native,
-                    amount = waiting.amount.formatUnits(decimals),
-                    tolerance = waiting.tolerance.percent,
-                    venue = waiting.venue,
-                )
-            }
-            model.first { model -> model != null && model.inputs == inputs.value && requestOf(model) != null }
+            val token = SwapPick.Token(waiting.sell)
+            val opened = inputs.value
+            val shown = model.first { it?.sell != null && it.inputs.sell == token }
+            // The user changed the form meanwhile: it is theirs, and nothing is quoted for them.
+            if (inputs.value != opened || opened.sell != token) return@launch
+            val filled = opened.copy(
+                buy = waiting.buy?.let(SwapPick::Token) ?: SwapPick.Native,
+                amount = waiting.amount.formatUnits(requireNotNull(shown?.sell).decimals),
+                tolerance = waiting.tolerance.percent,
+                venue = waiting.venue,
+            )
+            change { filled }
+            val read = model.first { it?.inputs == filled } ?: return@launch
+            // A swap the form cannot quote as it stands (a balance moved, a token no longer listed) stays
+            // at the compose step, which says why; one edited meanwhile is the user's.
+            if (inputs.value != filled || requestOf(read) == null) return@launch
             resumed = waiting
             review()
         }
@@ -1038,6 +1071,8 @@ class SwapViewModel(
     private fun change(edit: (Inputs) -> Inputs) {
         val current = step.value as? Step.Composing ?: return
         job?.cancel()
+        // An edit makes it another swap than the one that waited: its review is numbered as any.
+        resumed = null
         val before = inputs.value.sell
         inputs.update(edit)
         val pending = current.earlier?.takeIf { it.waiting && inputs.value.sell == before }
@@ -1590,6 +1625,9 @@ class SwapViewModel(
 
         /** How many quotes in a row may fail while the approval waits before the compose step says why. */
         const val AWAIT_FAILURES = 3
+
+        /** How many steps a swap has whose allowance is set to zero first: zero, the whole amount, the swap. */
+        const val RESET_STEPS = 3
 
         /** Where the next step waits once the screen is left (docs/simple-ui.md, H5). */
         const val LATER = "If you leave, it waits in this account's Activity: Continue there quotes it again."

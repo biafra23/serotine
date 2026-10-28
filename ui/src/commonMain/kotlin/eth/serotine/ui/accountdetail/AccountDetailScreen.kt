@@ -305,6 +305,11 @@ fun AccountDetailScreen(
         val reason = (state as? AccountDetailUiState.Ready)?.swapReason
         if (reason == null) onSwap(contract) else unavailable = notice("Swap", reason)
     }
+    // A waiting swap's Continue needs what Swap needs, and is greyed out with Swap's reason (#55).
+    val continueSwap: (String) -> Unit = { sell ->
+        val reason = (state as? AccountDetailUiState.Ready)?.swapReason
+        if (reason == null) onContinueSwap(sell) else unavailable = notice("Continue", reason)
+    }
     // On a network that is off nothing is checked: Refresh is greyed out, with Turn on (#55).
     val refresh: () -> Unit = {
         val ready = state as? AccountDetailUiState.Ready
@@ -407,7 +412,7 @@ fun AccountDetailScreen(
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
                     onOpenActivity = onOpenActivity,
-                    onContinueSwap = onContinueSwap,
+                    onContinueSwap = continueSwap,
                     onDismissWaiting = onDismissWaiting,
                     onSafeSettings = safeSettings,
                     simple = chrome is AccountChrome.Refresh,
@@ -551,7 +556,13 @@ private fun Details(
         // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
             state.showsAssets -> item { Assets(state, onSend, onSwap, onCopyContract, onHideToken) }
-            state.segment == DetailSegment.ACTIVITY -> activityItems(state.activity, onOpenActivity, onContinueSwap, onDismissWaiting)
+            state.segment == DetailSegment.ACTIVITY -> activityItems(
+                state.activity,
+                onOpenActivity,
+                onContinue = onContinueSwap,
+                onDismiss = onDismissWaiting,
+                continueAvailable = state.canSwap,
+            )
             state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe), state.safeSettingsReason == null, onSafeSettings) }
             else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }

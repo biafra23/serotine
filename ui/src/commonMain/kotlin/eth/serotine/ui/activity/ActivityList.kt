@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ListItem
@@ -24,6 +25,8 @@ import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
 import eth.serotine.ui.components.GhostCircle
 import eth.serotine.ui.components.GhostLine
+import eth.serotine.ui.components.Unavailable
+import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.components.GhostRows
 
 /** Test tag of each transaction row, for UI tests. */
@@ -37,7 +40,8 @@ const val WAITING_STEP_TAG = "waiting-step"
  * detail's Activity tab: what the list covers, then each transaction this device sent for it and
  * each event on chain, newest first, with how it ended as this device saw it; a tap on a row opens
  * its detail ([onOpen], by its key). Above them, a card for each swap whose next step waits for the
- * user (docs/simple-ui.md, H5): Continue opens Swap with it ([onContinue], by the token it sells), and
+ * user (docs/simple-ui.md, H5): Continue opens Swap with it ([onContinue], by the token it sells), greyed
+ * out unless [continueAvailable] as Swap is (a tap still goes to [onContinue], which says why), and
  * Dismiss lets it go ([onDismiss]). One item per row, so that a long history is composed as it
  * scrolls into view. While it is read, ghost rows in the rows' shape hold their room.
  */
@@ -46,6 +50,7 @@ fun LazyListScope.activityItems(
     onOpen: (ActivityKey) -> Unit,
     onContinue: (sell: String) -> Unit = {},
     onDismiss: (sell: String) -> Unit = {},
+    continueAvailable: Boolean = true,
 ) {
     when (state) {
         // What the list covers and a few rows, in their shapes, until it is read: no spinner the rows push down.
@@ -62,6 +67,7 @@ fun LazyListScope.activityItems(
             items(state.waiting, key = { "waiting-${it.sell}" }) { waiting ->
                 WaitingStepCard(
                     waiting,
+                    continueAvailable,
                     onContinue = { onContinue(waiting.sell) },
                     onDismiss = { onDismiss(waiting.sell) },
                 )
@@ -86,7 +92,7 @@ fun LazyListScope.activityItems(
 
 /** A swap whose next step waits: what it swaps, where it stands, and Continue or Dismiss. */
 @Composable
-private fun WaitingStepCard(step: WaitingStep, onContinue: () -> Unit, onDismiss: () -> Unit) {
+private fun WaitingStepCard(step: WaitingStep, available: Boolean, onContinue: () -> Unit, onDismiss: () -> Unit) {
     Card(
         Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag(WAITING_STEP_TAG),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
@@ -96,7 +102,11 @@ private fun WaitingStepCard(step: WaitingStep, onContinue: () -> Unit, onDismiss
             Text(step.message, style = MaterialTheme.typography.bodyMedium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss) { Text("Dismiss") }
-                Button(onClick = onContinue) { Text("Continue") }
+                Button(
+                    onClick = onContinue,
+                    modifier = Modifier.unavailable(!available),
+                    colors = if (available) ButtonDefaults.buttonColors() else Unavailable.buttonColors(),
+                ) { Text("Continue") }
             }
         }
     }

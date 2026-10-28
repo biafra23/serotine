@@ -526,6 +526,64 @@ class SwapViewModelTest {
     }
 
     @Test
+    fun continueWhileTheApprovalIsOnItsWayWaitsForItsBlockThenQuotesStepTwo() = runTest {
+        allow(UInt256.of(5_000_000))
+        val first = reviewed()
+        first.onPasswordChange("made-up test password")
+        first.sign()
+        runCurrent()
+        val approval = sent.transfers.value.single().hash
+
+        // Opened again from the account's Activity before a block has the approval.
+        val viewModel = viewModel(sell = usdc.address, continuing = true)
+        viewModel.onShown()
+        runCurrent()
+        val pending = assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
+        assertEquals(approval, pending.hash)
+        assertEquals("Step 1 of 2 sent: the approval", pending.title)
+
+        inputs.mined = 8
+        allow(fortyUsdc)
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        assertEquals("Step 2 of 2", assertIs<SwapUiState.SwapReview>(viewModel.uiState.value).step)
+    }
+
+    @Test
+    fun continueAfterAnAllowanceSetToZeroQuotesTheWholeAmountAsStepTwoOfThree() = runTest {
+        // The allowance is zero now, and the approval of the whole amount goes through (true).
+        inputs.runOf = { to, data ->
+            when {
+                to != usdc.address -> null
+                data.size == 68 && data.take(4) == APPROVE -> Simulation.Succeeded(word(UInt256.ONE), 9_412_118)
+                else -> Simulation.Succeeded(word(UInt256.ZERO), 9_412_118)
+            }
+        }
+        waitingSwaps.swaps.value = listOf(waiting("0x" + "a1".repeat(32)).copy(step = 2, steps = 3))
+
+        val viewModel = viewModel(sell = usdc.address, continuing = true)
+        runCurrent()
+
+        val approval = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
+        assertEquals("Step 2 of 3", approval.step)
+        assertNull(approval.earlierFailed, "the allowance set to zero was step 1: this is the next one")
+    }
+
+    @Test
+    fun anEditedSwapAfterContinueIsNotNumberedAsTheOneThatWaited() = runTest {
+        waitingSwaps.swaps.value = listOf(waiting("0x" + "a1".repeat(32)))
+        val viewModel = viewModel(sell = usdc.address, continuing = true)
+        runCurrent()
+        assertEquals("Step 2 of 2", assertIs<SwapUiState.SwapReview>(viewModel.uiState.value).step)
+
+        viewModel.edit()
+        viewModel.onBuyChange(link.address.hex)
+        viewModel.review()
+        runCurrent()
+        assertNull((viewModel.uiState.value as? SwapUiState.SwapReview)?.step, "another swap: one step")
+    }
+
+    @Test
     fun continueWithNothingKeptIsTheComposeStep() = runTest {
         val viewModel = viewModel(sell = usdc.address, continuing = true)
         runCurrent()
@@ -861,6 +919,7 @@ class SwapViewModelTest {
     @Test
     fun aCowOrderIsReviewedBesideTheVerifiedUniswapNetAndPlaced() = runTest {
         cowReady()
+        waitingSwaps.swaps.value = listOf(waiting("0x" + "a1".repeat(32)).copy(venue = SwapVenue.COW))
         val viewModel = reviewed()
 
         val review = assertIs<SwapUiState.CowReview>(viewModel.uiState.value)
@@ -880,6 +939,7 @@ class SwapViewModelTest {
 
         val placed = assertIs<SwapUiState.OrderPlaced>(viewModel.uiState.value)
         assertEquals("Sent to CoW", placed.title)
+        assertEquals(emptyList(), waitingSwaps.swaps.value, "an order of the token placed: nothing of it waits")
         val record = cowOrders.orders.value.single()
         assertEquals(record.uid.hex, placed.uid)
         assertEquals(listOf(record.uid), cowApi.placed)
