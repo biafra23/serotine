@@ -46,7 +46,8 @@ import kotlinx.coroutines.flow.flowOf
  * app checks every entry through the light client at every run, and `MyotisHostGnosisTest` does so
  * on the real chain.
  *
- * Added 2026-10-28, to list GNO, COW and SAFE on every network they exist on: Gnosis's own GNO
+ * Added 2026-10-28, on the owner's instruction (docs/networks.md, *Values*), to list GNO, COW
+ * and SAFE on every network they exist on: Gnosis's own GNO
  * (already listed on Gnosis Chain) is added on Ethereum too; CoW Protocol's COW and Safe's SAFE
  * are each added on Ethereum, the issuer's own contract, and on Gnosis Chain, the official
  * bridge's deployment of the Ethereum token (`docs.cow.fi`'s own token table for COW; for SAFE,
