@@ -109,9 +109,24 @@ private fun SimpleSafeSwapReviewPreview() = SimpleSafeSwapPreview(review)
 @Composable
 private fun SimpleSafeSwapReviewDarkPreview() = SimpleSafeSwapPreview(review, darkTheme = true)
 
+/** A swap refused: said with no block. */
+@Preview
+@Composable
+private fun SimpleSafeSwapRefusedPreview() = SimpleSafeSwapPreview(
+    SafeSwapUiState.Compose(
+        form.copy(
+            error = "The swap reverts, or returns less than its minimum, run as a verified call from the Safe at " +
+                "block 8,412,307. Nothing was proposed.",
+            simpleError = "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was " +
+                "proposed.",
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleSafeSwapScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSafeSwapScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSafeSwapComposePreview() },
+    { SimpleSafeSwapRefusedPreview() },
     { SimpleSafeSwapReviewPreview() },
     { SimpleSafeSwapReviewDarkPreview() },
 )

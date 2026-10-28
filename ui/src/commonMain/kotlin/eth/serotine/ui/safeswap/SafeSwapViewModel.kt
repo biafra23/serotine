@@ -965,8 +965,8 @@ class SafeSwapViewModel(
                 exactAmount(run.amountOut, buy.decimals, buy.symbol) + ", at least its minimum."
             SafeSwapSimulation.AfterApproval -> "The swap is checked on chain when its execution is quoted, once " +
                 "the router's allowance is approved."
-            SafeSwapSimulation.NotRun -> "Not checked yet: its execution, the whole of it, is checked on chain " +
-                "before anyone sends it."
+            SafeSwapSimulation.NotRun -> "Not checked: the light client on this device does not run a call from " +
+                "the Safe's address. Its execution, the whole of it, is checked on chain before anyone sends it."
         }
         return reset + approval + swap
     }

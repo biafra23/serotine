@@ -29,8 +29,20 @@ private fun SimpleSafeImportEmptyPreview() = SimpleSafeImportPreview(empty)
 @Composable
 private fun SimpleSafeImportEmptyDarkPreview() = SimpleSafeImportPreview(empty, darkTheme = true)
 
+/** A request refused: said with no block. */
+@Preview
+@Composable
+private fun SimpleSafeImportRefusedPreview() = SimpleSafeImportPreview(
+    empty.copy(
+        text = "{\"v\":1,\"chainId\":11155111}",
+        error = "It reverts, run as a verified call at block 8,412,307. Nothing was signed.",
+        simpleError = "It reverts, checked on chain. Nothing was signed.",
+    ),
+)
+
 /** Every preview above, which SimpleSafeImportScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSafeImportScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSafeImportEmptyPreview() },
     { SimpleSafeImportEmptyDarkPreview() },
+    { SimpleSafeImportRefusedPreview() },
 )

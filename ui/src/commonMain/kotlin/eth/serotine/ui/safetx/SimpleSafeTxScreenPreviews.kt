@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.SafeSwapItem
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
@@ -103,9 +104,76 @@ private fun SimpleSafeTxOverviewDarkPreview() = SimpleSafeTxPreview(overview, da
 @Composable
 private fun SimpleSafeTxReviewPreview() = SimpleSafeTxPreview(review)
 
+private val swapNow = SafeSwapItem(
+    lines = listOf(
+        "Through Uniswap's SwapRouter02, its code proven by the light client.",
+        "Returns 0.0402 ETH now, by a verified QuoterV2 quote at block 8,412,307: it meets its minimum.",
+        "Refused by the router after 20 Oct 2026, 14:32.",
+    ),
+    simpleLines = listOf(
+        "Through Uniswap's SwapRouter02, its code proven by the light client.",
+        "Returns 0.0402 ETH now, as checked on chain: it meets its minimum.",
+        "Refused by the router after 20 Oct 2026, 14:32.",
+    ),
+)
+
+/** A swap: what it returns now, checked on chain, its quote's block behind Details. */
+@Preview
+@Composable
+private fun SimpleSafeTxSwapPreview() = SimpleSafeTxPreview(
+    overview.copy(
+        action = SafeTxActionItem(title = "Swap 100 USDC for at least 0.04 ETH", addresses = emptyList()),
+        swap = swapNow,
+    ),
+)
+
+/** A quote refused: said with no block, the detailed words behind Details. */
+@Preview
+@Composable
+private fun SimpleSafeTxRefusedPreview() = SimpleSafeTxPreview(
+    overview.copy(
+        message = "It reverts, run as a verified call at block 8,412,307. Nothing was signed.",
+        simpleMessage = "It reverts, checked on chain. Nothing was signed.",
+    ),
+)
+
+/** Signing a swap's hash: its stand without the block. */
+@Preview
+@Composable
+private fun SimpleSafeTxSigningPreview() = SimpleSafeTxPreview(
+    SafeTxUiState.Signing(
+        network = "Sepolia",
+        safe = safe,
+        action = SafeTxActionItem(title = "Swap 100 USDC for at least 0.04 ETH", addresses = emptyList()),
+        nonce = "Safe nonce 12 · next to run",
+        hash = HASH,
+        owners = listOf(SignerChoice("Daily", DAILY)),
+        owner = DAILY,
+        unlock = UnlockStep(),
+        swap = swapNow,
+    ),
+)
+
+/** An approval on chain under review: its run checked on chain. */
+@Preview
+@Composable
+private fun SimpleSafeTxApprovalPreview() = SimpleSafeTxPreview(
+    review.copy(
+        kind = ReviewKind.APPROVAL,
+        simulation = "The Safe's approveHash of this transaction, run as a verified call from this account at block " +
+            "8,412,307, goes through.",
+        simpleSimulation = "Checked on chain: the Safe's approveHash of this transaction should go through.",
+        confirmations = null,
+    ),
+)
+
 /** Every preview above, which SimpleSafeTxScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSafeTxScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSafeTxOverviewPreview() },
     { SimpleSafeTxOverviewDarkPreview() },
     { SimpleSafeTxReviewPreview() },
+    { SimpleSafeTxSwapPreview() },
+    { SimpleSafeTxRefusedPreview() },
+    { SimpleSafeTxSigningPreview() },
+    { SimpleSafeTxApprovalPreview() },
 )

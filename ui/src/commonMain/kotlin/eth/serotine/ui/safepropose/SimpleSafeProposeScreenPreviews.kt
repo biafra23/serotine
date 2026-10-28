@@ -83,9 +83,24 @@ private fun SimpleSafeProposeReviewPreview() = SimpleSafeProposePreview(review)
 @Composable
 private fun SimpleSafeProposeReviewDarkPreview() = SimpleSafeProposePreview(review, darkTheme = true)
 
+/** A proposal refused: said with no block. */
+@Preview
+@Composable
+private fun SimpleSafeProposeRefusedPreview() = SimpleSafeProposePreview(
+    SafeProposeUiState.Compose(
+        form.copy(
+            error = "The Safe's call reverts, run as a verified call from the Safe at block 8,412,307: the recipient " +
+                "or the token refuses it. Nothing was proposed.",
+            simpleError = "The Safe's call reverts, checked on chain: the recipient or the token refuses it. Nothing " +
+                "was proposed.",
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleSafeProposeScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSafeProposeScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSafeProposeComposePreview() },
+    { SimpleSafeProposeRefusedPreview() },
     { SimpleSafeProposeReviewPreview() },
     { SimpleSafeProposeReviewDarkPreview() },
 )
