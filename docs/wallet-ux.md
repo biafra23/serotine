@@ -1056,16 +1056,21 @@ address. Applied:
   with storage proofs, the threshold is slot 4 and the nonce slot 5. The
   modules (slot 1's list), the guard and, from 1.5.0, the module guard are
   read too, because a module can move funds without the owners' signatures;
-  a Safe older than 1.3.0 has neither, and is read as having none of either.
+  a Safe older than 1.3.0 has neither guard, and is read as having none.
   Anything that does not match is "another contract", never a Safe. The
   pins (`SafeDeployments`) cover 1.0.0, 1.1.1 and 1.2.0 (one proxy shared by
-  the last two), and 1.3.0, 1.4.1 and 1.5.0, L1 and L2, and the SafeProxy
-  runtime code of each factory: a pre-1.3.0 Safe whose owners moved it since
-  to a pinned singleton (`changeMasterCopy`) is recognised by its own older
-  proxy pointing at that pinned singleton, same as one still on its original
-  singleton. A Safe's control badge follows its
-  verified owners: as many held here as its threshold is full control, fewer
-  is co-signer, none is watch-only, and so is a Safe not read yet.
+  the last two) on Ethereum and Gnosis Chain, and, everywhere, 1.3.0, 1.4.1
+  and 1.5.0, L1 and L2, and the SafeProxy runtime code of each factory: a
+  pre-1.3.0 Safe whose owners moved it since to a pinned singleton
+  (`changeMasterCopy`) is recognised by its own older proxy pointing at that
+  pinned singleton, same as one still on its original singleton. Sepolia
+  pins 1.1.1 and 1.2.0 too (their singletons carry live code there) but not
+  1.0.0, whose Mainnet singleton predates Sepolia and has none there — a
+  recognised Safe always names a singleton proven to hold real Safe code on
+  that network, never merely an address this app expects one at. A Safe's
+  control badge follows its verified owners: as many held here as its
+  threshold is full control, fewer is co-signer, none is watch-only, and so
+  is a Safe not read yet.
   - The numbered slots carry the block they were proven at; the guards sit
     at hashed slots no storage proof names, so they are verified reads at the
     head, which may be a head newer than that block.

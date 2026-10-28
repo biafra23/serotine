@@ -51,9 +51,14 @@ class SafeDeploymentsTest {
     @Test
     fun everyPinnedProxyHashIsTheHashOfASafeProxysRuntimeCode() {
         val hashes = runtimeCode.values.map { Keccak256().digest(it.fromHex()).toHex() }.toSet()
+        val oneZeroZeroHash = Keccak256().digest(runtimeCode.getValue("1.0.0").fromHex()).toHex()
 
         for (network in safeNetworks) {
-            assertEquals(hashes, SafeDeployments.of(network).proxyCodeHashes, network.displayName)
+            // Sepolia's singleton for 1.0.0 carries no code there (SafeDeployments.kt's doc
+            // comment): its proxy hash is left out, so a proxy naming it is read as a plain
+            // contract rather than shown as a Safe nothing proves holds real Safe code.
+            val expected = if (network == Network.SEPOLIA) hashes - oneZeroZeroHash else hashes
+            assertEquals(expected, SafeDeployments.of(network).proxyCodeHashes, network.displayName)
         }
     }
 
@@ -61,14 +66,24 @@ class SafeDeploymentsTest {
     fun onlyFromVersionOneFiveAModuleGuardIsConsulted() {
         for (network in safeNetworks) {
             val singletons = SafeDeployments.of(network).singletons.values
+            val everyVersion = setOf("1.0.0", "1.1.1", "1.2.0", "1.3.0", "1.4.1", "1.5.0")
 
             assertEquals(setOf("1.5.0"), singletons.filter { it.moduleGuard }.map { it.version }.toSet())
             assertEquals(
-                setOf("1.0.0", "1.1.1", "1.2.0", "1.3.0", "1.4.1", "1.5.0"),
+                if (network == Network.SEPOLIA) everyVersion - "1.0.0" else everyVersion,
                 singletons.map { it.version }.toSet(),
                 network.displayName,
             )
         }
+    }
+
+    @Test
+    fun oneZeroZeroIsPinnedOnlyWhereItsSingletonCarriesCode() {
+        val oneZeroZero = Address.of("0xb6029ea3b2c51d09a50b53ca8012feeb05bda35a")
+
+        assertEquals(null, SafeDeployments.of(Network.SEPOLIA).singletons[oneZeroZero])
+        assertEquals(SafeSingleton("1.0.0", l2 = false), SafeDeployments.of(Network.ETHEREUM).singletons[oneZeroZero])
+        assertEquals(SafeSingleton("1.0.0", l2 = false), SafeDeployments.of(Network.GNOSIS).singletons[oneZeroZero])
     }
 
     @Test
