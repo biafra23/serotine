@@ -202,6 +202,7 @@ class SafeTxViewModelTest {
                     heldHere = false,
                     OwnerState.APPROVED,
                     "Approved on chain, verified at block 99",
+                    simpleDetail = "Approved on chain",
                 ),
                 OwnerStateRow(Eip55.format(world.carol), null, heldHere = false, OwnerState.SIGNED, "Signed"),
             ),
@@ -235,6 +236,12 @@ class SafeTxViewModelTest {
                 listOf(
                     "Through Uniswap's SwapRouter02, its code proven by the light client.",
                     "Returns 0.0402 ETH now, by a verified QuoterV2 quote at block 100: it meets its minimum.",
+                    "Refused by the router after at ${HEAD_TIME + DAY}.",
+                ),
+                // Simple mode's words for the same: no block (docs/simple-ui.md).
+                simpleLines = listOf(
+                    "Through Uniswap's SwapRouter02, its code proven by the light client.",
+                    "Returns 0.0402 ETH now, as checked on chain: it meets its minimum.",
                     "Refused by the router after at ${HEAD_TIME + DAY}.",
                 ),
             ),
