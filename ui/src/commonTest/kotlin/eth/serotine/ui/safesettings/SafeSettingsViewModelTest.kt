@@ -325,6 +325,16 @@ class SafeSettingsViewModelTest {
             "The change reverts, as checked on chain: the Safe refuses it as it is now. Nothing was proposed.",
             review.simpleError,
         )
+        assertTrue(
+            review.simpleSimulation.orEmpty().startsWith("When it was proposed, it was checked on chain"),
+            "the run kept is said as from before the failure: ${review.simpleSimulation}",
+        )
+
+        world.inputs.simulation = Simulation.Succeeded("0x", 102)
+        viewModel.refresh()
+        runCurrent()
+
+        assertTrue(viewModel.review.simpleSimulation.orEmpty().startsWith("Checked on chain: the change should go"))
     }
 
     @Test

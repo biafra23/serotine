@@ -329,7 +329,8 @@ greyed out, and every check, is as in Detailed view.
 
 Create account, Import and Receive name no block, and draw the same in both
 views. The Debug tab is Detailed view's alone. Every other screen has a
-simple version.
+simple version, or names no block and draws the same in both views:
+Currency, Security, Add network, the update screen and the dialogs.
 
 ## Delivery: a multi-PR plan through `feature/simple-ui`
 

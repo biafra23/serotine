@@ -84,7 +84,8 @@ sealed interface SafeSettingsUiState {
      * keep, to be shared from here; [askingToDrop] while Back asks whether to leave it behind.
      * Simple mode says no block (docs/simple-ui.md): [simpleSimulation] and [simpleError] are
      * [simulation] and [error] in its words, null where Detailed view's own text serves. A run is
-     * said in its words even when it names no block: it "should go through".
+     * said in its words even when it names no block: it "should go through". A run kept from before a
+     * re-proposal that failed says it is from then, since the blocks that order the two are under *Details*.
      */
     data class Review(
         override val network: String,

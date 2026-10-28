@@ -172,6 +172,8 @@ class SafeSettingsViewModel(
             val askingToDrop: Boolean = false,
             /** Simple mode's words for [error], with no block, while it is the error they are of. */
             val simple: SimpleText? = null,
+            /** Proposed again and failed: [proposal] is from before, kept for a signature not saved. */
+            val outdated: Boolean = false,
         ) : Step {
             val idle: Boolean
                 get() = !refreshing && !signing
@@ -373,6 +375,7 @@ class SafeSettingsViewModel(
                             unsaved = unsaved,
                             error = if (latest.unsaved != null && unsaved == null) UNSAVED_REPLACED else latest.error,
                             askingToDrop = latest.askingToDrop && unsaved != null,
+                            outdated = false,
                         )
                     }
                     // A request signed here that is kept nowhere else is not given up with a
@@ -383,6 +386,7 @@ class SafeSettingsViewModel(
                             error = next.error,
                             simple = next.simple,
                             unlock = latest.unlock.copy(error = note),
+                            outdated = true,
                         )
                     else -> next
                 }
@@ -797,9 +801,15 @@ class SafeSettingsViewModel(
                     "Not simulated: the light client on this device does not run a call from the Safe's address. " +
                         "Its execution, the whole of it, is run as a verified call before anyone sends it."
             },
+            // Detailed view orders a kept run and a later failure by their blocks; simple mode, by its words.
             simpleSimulation = (proposal.simulation as? SafeCallSimulation.Ran)?.let {
-                "Checked on chain: the change should go through. The Safe's own checks — its owners' signatures " +
-                    "and its nonce — and its guard run when its execution is quoted."
+                val run = if (step.outdated) {
+                    "When it was proposed, it was checked on chain: the change was to go through then."
+                } else {
+                    "Checked on chain: the change should go through."
+                }
+                "$run The Safe's own checks — its owners' signatures and its nonce — and its guard run when its " +
+                    "execution is quoted."
             },
             owners = held.map { AccountChoice(labels[it] ?: Eip55.format(it), Eip55.format(it)) },
             owner = Eip55.format(step.owner),

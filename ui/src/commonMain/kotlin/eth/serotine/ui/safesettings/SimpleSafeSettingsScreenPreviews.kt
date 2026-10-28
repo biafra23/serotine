@@ -110,6 +110,9 @@ private fun SimpleSafeSettingsRefusedPreview() = SimpleSafeSettingsPreview(refus
 @Composable
 private fun SimpleSafeSettingsReviewRefusedPreview() = SimpleSafeSettingsPreview(
     review.copy(
+        simpleSimulation = "When it was proposed, it was checked on chain: the change was to go through then. " +
+            "The Safe's own checks — its owners' signatures and its nonce — and its guard run when its execution " +
+            "is quoted.",
         error = REVERTS,
         simpleError = SIMPLE_REVERTS,
         share = ShareItem(
