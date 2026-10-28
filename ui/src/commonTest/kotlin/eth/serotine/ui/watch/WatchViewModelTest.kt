@@ -347,6 +347,7 @@ class WatchViewModelTest {
             "Resolves to $vitalik, verified at finalized block 9,412,040",
             viewModel.uiState.value.addressNote,
         )
+        assertEquals("Resolves to $vitalik, checked on chain", viewModel.uiState.value.simpleAddressNote, "no block")
         assertNull(viewModel.uiState.value.addressError)
         assertEquals(
             Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),

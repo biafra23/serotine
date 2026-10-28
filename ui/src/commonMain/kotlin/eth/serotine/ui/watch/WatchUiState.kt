@@ -19,6 +19,9 @@ import eth.serotine.ui.components.NetworkLabel
  * [cardNetwork] is the network [detection] was read on, which Add adds it on. [noNetwork] says
  * that no network is on, so nothing can be checked. The networks that are off are
  * listed greyed out ([offNetworks]), each with Turn on as the way to check the address there too.
+ *
+ * Simple mode says no block (docs/simple-ui.md): [simpleAddressNote] is the field's note in its
+ * words, null where that is [addressNote] itself.
  */
 data class WatchUiState(
     val address: String = "",
@@ -41,6 +44,7 @@ data class WatchUiState(
     val noNetwork: String? = null,
     val offNetworks: List<NetworkLabel> = emptyList(),
     val cardNetwork: NetworkLabel? = null,
+    val simpleAddressNote: String? = null,
 ) {
     /** Whether adding now would name the account by [nameDefault]: no name typed, and an add it can be. */
     val followsEns: Boolean

@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
@@ -47,13 +48,14 @@ import eth.serotine.ui.components.ControlBadge
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NETWORK_CHOICE_TAG
 import eth.serotine.ui.components.NetworkMark
-import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.next
 import eth.serotine.ui.components.nextTo
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.submitOnDone
 import eth.serotine.ui.lightclient.LightClientViewModel
+import eth.serotine.ui.mode.LocalInterfaceMode
 
 /** Test tag of the address field, for UI tests. */
 const val WATCH_ADDRESS_TAG = "watch-address"
@@ -83,24 +85,39 @@ fun WatchRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
-    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     val added by rememberUpdatedState(onAdded)
     LaunchedEffect(state.done) {
         if (state.done) added()
     }
-    WatchScreen(
-        state,
-        strip,
-        viewModel::onAddressChange,
-        viewModel::onNameChange,
-        viewModel::add,
-        onBack,
-        modifier,
-        onRetryLookup = viewModel::onRetryLookup,
-        onChooseNetworks = viewModel::onChooseNetworks,
-        onNetworkToggle = viewModel::onNetworkToggle,
-        onTurnOnNetwork = viewModel::onTurnOnNetwork,
-    )
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleWatchScreen(
+            state,
+            viewModel::onAddressChange,
+            viewModel::onNameChange,
+            viewModel::add,
+            onBack,
+            modifier,
+            onRetryLookup = viewModel::onRetryLookup,
+            onChooseNetworks = viewModel::onChooseNetworks,
+            onNetworkToggle = viewModel::onNetworkToggle,
+            onTurnOnNetwork = viewModel::onTurnOnNetwork,
+        )
+        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.DETAILED -> WatchScreen(
+            state,
+            lightClient.item(network).collectAsStateWithLifecycle().value,
+            viewModel::onAddressChange,
+            viewModel::onNameChange,
+            viewModel::add,
+            onBack,
+            modifier,
+            onRetryLookup = viewModel::onRetryLookup,
+            onChooseNetworks = viewModel::onChooseNetworks,
+            onNetworkToggle = viewModel::onNetworkToggle,
+            onTurnOnNetwork = viewModel::onTurnOnNetwork,
+        )
+    }
 }
 
 /**
@@ -110,13 +127,14 @@ fun WatchRoute(
  * more networks on, a card per network (docs/networks.md, N10 and N11): an address with no code on
  * all of them is offered on all of them, with [onChooseNetworks] to tick them instead
  * ([onNetworkToggle]); a Safe only where it is one, ticked. A network that is off is listed greyed
- * out, turned on through [onTurnOnNetwork].
+ * out, turned on through [onTurnOnNetwork]. [lightClient] is the strip above it, Detailed view's;
+ * simple mode ([SimpleWatchScreen]) has none.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchScreen(
     state: WatchUiState,
-    lightClient: LightClientItem,
+    lightClient: LightClientItem?,
     onAddressChange: (String) -> Unit,
     onNameChange: (String) -> Unit,
     onAdd: () -> Unit,
@@ -141,7 +159,7 @@ fun WatchScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

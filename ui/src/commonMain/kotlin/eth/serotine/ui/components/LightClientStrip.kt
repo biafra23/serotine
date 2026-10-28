@@ -74,5 +74,23 @@ fun UnderLightClientStrip(
     }
 }
 
+/**
+ * [content] under the light client's strip where there is one ([item], Detailed view's), and on its
+ * own where there is none: simple mode, which says how fresh its values are in its own words
+ * (docs/simple-ui.md).
+ */
+@Composable
+fun UnderLightClientStripIfAny(
+    item: LightClientItem?,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    if (item != null) {
+        UnderLightClientStrip(item, modifier, content)
+    } else {
+        Box(modifier.fillMaxSize(), content = content)
+    }
+}
+
 /** How strongly a progress bar's track shows its colour under the part done. */
 private const val TRACK_ALPHA = 0.4f

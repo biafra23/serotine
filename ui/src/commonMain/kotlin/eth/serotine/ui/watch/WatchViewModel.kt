@@ -198,6 +198,8 @@ class WatchViewModel(
             name = typed.name,
             addressError = note.takeIf { isError },
             addressNote = note.takeUnless { isError },
+            simpleAddressNote = found?.takeIf { !isError && it.blockNumber != null }
+                ?.let { "Resolves to ${Eip55.format(it.address)}, checked on chain" },
             canRetryLookup = result is RecipientLookup.Unavailable,
             // The name an empty field leaves the account with: the ENS name, when it is one to follow.
             nameDefault = found?.name?.takeIf { it.length <= RenameAccount.MAX_LABEL_LENGTH },
