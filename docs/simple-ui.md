@@ -296,13 +296,32 @@ failed.
   shows up front, since simple mode keeps the fee levels behind a row and
   the blocks under *Details*. About, with the version.
 
+### The other screens
+
+As built in part 8, Watch address, Create Safe, an Activity row's detail, a
+CoW order's status, Tokens and Add token each have a simple version, the
+same screen with simple mode's words:
+
+- No light-client strip.
+- No block. What the detailed screen dates by its block is said as
+  "checked on chain": a card, a resolved name, an owner's name, a
+  contract's claim, the factory's run, a cancellation's run. An order's end
+  is "proven from this account's verified logs". An Activity row's detail
+  says how it ended in words ("Final").
+- A check is said with care, as on Send (decision 8): a run "should go
+  through", and the address the factory returns "held no code when it was
+  checked".
+- Every block the screen no longer shows, the fee's make-up and the verified
+  runs are one tap away, under *Details*.
+
+Create account, Import and Receive name no block, and draw the same in both
+views. The Debug tab is Detailed view's alone.
+
 ### Not in simple mode yet
 
-A Safe's transaction screens (propose, co-sign, execute, import), its
-settings, Create Safe, Watch address, Create account and Import draw their
-detailed screens in both views until a later part gives them a simple one
-(parts 8 to 10 below). The Debug tab is
-Detailed view's alone.
+A Safe's transaction screens (propose, swap, co-sign, execute, import) and
+its settings draw their detailed screens in both views until parts 9 and 10
+give them a simple one.
 
 ## Delivery: a multi-PR plan through `feature/simple-ui`
 
@@ -336,9 +355,9 @@ merge.
    card brings it back.
 7. Activity's waiting step (H5): the swap kept as its inputs, its card with
    Continue and Dismiss, and Swap opened from it.
-8. Simple versions of the screens under *Not in simple mode yet* that show
-   the light client's strip or a block: Watch address, Create Safe, an
-   Activity row's detail, a CoW order's status, Tokens and Add token.
+8. Simple versions of the screens that showed the light client's strip or
+   a block: Watch address, Create Safe, an Activity row's detail, a CoW
+   order's status, Tokens and Add token (*The other screens* above).
 9. Simple versions of a Safe's transaction screens: propose, swap, co-sign
    and execute, and import.
 10. Simple Safe settings (owner's request, 2026-10-28).
