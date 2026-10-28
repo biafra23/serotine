@@ -86,13 +86,15 @@ class RateWidget : AppWidgetProvider() {
 
         /**
          * Draws every widget placed with its pair's rate in [rates] (none kept yet: absent or
-         * null), saying so where that pair's network is not [on], with the spinner in the refresh
-         * button's place while a refresh the user asked for is on its way
+         * null) and its watched asset's bundled icon key in [icons] (absent or null: no icon
+         * shown), saying so where that pair's network is not [on], with the spinner in the
+         * refresh button's place while a refresh the user asked for is on its way
          * ([SerotineApplication.refreshShown]), unless [refreshing] says otherwise. Any thread.
          */
         fun draw(
             context: Context,
             rates: Map<RatePair, RateSnapshot?>,
+            icons: Map<RatePair, String?>,
             on: Set<Network>,
             refreshing: Boolean? = null,
         ) {
@@ -101,13 +103,15 @@ class RateWidget : AppWidgetProvider() {
             val spinner = refreshing ?: (context.applicationContext as SerotineApplication).refreshShown
             for (id in ids(context)) {
                 val pair = pairs.of(id)
-                manager.updateAppWidget(id, views(context, rates[pair], pair, pair.network in on, spinner))
+                val views = views(context, rates[pair], icons[pair], pair, pair.network in on, spinner)
+                manager.updateAppWidget(id, views)
             }
         }
 
         private fun views(
             context: Context,
             snapshot: RateSnapshot?,
+            icon: String?,
             pair: RatePair,
             on: Boolean,
             refreshing: Boolean,
@@ -122,12 +126,13 @@ class RateWidget : AppWidgetProvider() {
                         DateUtils.FORMAT_NO_YEAR,
                 )
             }.orEmpty()
-            val content = rateWidgetContent(snapshot, pair, readAt, on)
+            val content = rateWidgetContent(snapshot, pair, readAt, on, icon)
             val change = when (content.trend) {
                 Trend.UP -> R.id.widget_change_up
                 Trend.DOWN -> R.id.widget_change_down
                 Trend.FLAT, Trend.UNKNOWN -> R.id.widget_change_flat
             }.takeIf { content.change != null }
+            val iconRes = content.icon?.let(WidgetAssetIcons::of)
             return RemoteViews(context.packageName, R.layout.widget_rate).apply {
                 setTextViewText(R.id.widget_pair, content.pair)
                 setTextViewText(R.id.widget_rate, content.rate)
@@ -136,6 +141,8 @@ class RateWidget : AppWidgetProvider() {
                     setViewVisibility(id, if (id == change) View.VISIBLE else View.GONE)
                     if (id == change) setTextViewText(id, content.change)
                 }
+                setViewVisibility(R.id.widget_icon, if (iconRes != null) View.VISIBLE else View.GONE)
+                if (iconRes != null) setImageViewResource(R.id.widget_icon, iconRes)
                 setViewVisibility(R.id.widget_refresh, if (refreshing) View.GONE else View.VISIBLE)
                 setViewVisibility(R.id.widget_refreshing, if (refreshing) View.VISIBLE else View.GONE)
                 setOnClickPendingIntent(R.id.widget_refresh, refresh(context))

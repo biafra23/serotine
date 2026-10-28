@@ -87,6 +87,13 @@ class RateWidgetContentTest {
     }
 
     @Test
+    fun theIconPassesThroughWhetherOrNotThereIsARate() {
+        assertEquals("eth", rateWidgetContent(snapshot, sepolia, "14:05", icon = "eth").icon)
+        assertEquals("eth", rateWidgetContent(null, sepolia, "", icon = "eth").icon)
+        assertEquals(null, rateWidgetContent(snapshot, sepolia, "14:05").icon)
+    }
+
+    @Test
     fun aTokenInItsOwnCurrencyIsNamedSoBeforeItsFirstRate() {
         val linkInEur = RatePair(Network.ETHEREUM, PriceId("LINK"), DisplayCurrency.EUR)
 

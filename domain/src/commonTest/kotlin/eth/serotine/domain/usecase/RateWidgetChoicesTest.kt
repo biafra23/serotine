@@ -20,8 +20,8 @@ class RateWidgetChoicesTest {
             mapOf(ETH to PriceId.USD, LINK_ID to ETH, EUR to PriceId.USD)
     }
 
-    private fun token(symbol: String, priceId: PriceId?, n: Int) =
-        Token(Address.of("0x" + n.toString().padStart(40, '0')), symbol, symbol, 18, icon = null, priceId = priceId)
+    private fun token(symbol: String, priceId: PriceId?, n: Int, icon: String? = null) =
+        Token(Address.of("0x" + n.toString().padStart(40, '0')), symbol, symbol, 18, icon = icon, priceId = priceId)
 
     @Test
     fun theNativeCurrencyComesFirstThenEachPriceIdOfThePricedTokensOnceThenTheUnpricedOnes() = runTest {
@@ -81,5 +81,27 @@ class RateWidgetChoicesTest {
     fun aPairOfOneCurrencyInItselfIsNone() {
         assertFailsWith<IllegalArgumentException> { RatePair(Network.ETHEREUM, ETH, DisplayCurrency.ETH) }
         assertEquals(RatePair(Network.GNOSIS, PriceId("XDAI"), null), RatePair.native(Network.GNOSIS))
+    }
+
+    @Test
+    fun theIconOfTheNativeCurrencyIsTheNetworksOwn() = runTest {
+        val choices = RateWidgetChoices(ListCatalog(), table)
+
+        assertEquals(Network.SEPOLIA.nativeIcon, choices.icon(Network.SEPOLIA, ETH))
+    }
+
+    @Test
+    fun theIconOfAPricedTokenIsTheBuiltInTokensOwn() = runTest {
+        val catalog = ListCatalog(token("LINK", LINK_ID, 1, icon = "link"))
+        val choices = RateWidgetChoices(catalog, table)
+
+        assertEquals("link", choices.icon(Network.SEPOLIA, LINK_ID))
+    }
+
+    @Test
+    fun aBaseNoBuiltInTokenPricesHasNoIcon() = runTest {
+        val choices = RateWidgetChoices(ListCatalog(token("UNI", null, 1)), table)
+
+        assertEquals(null, choices.icon(Network.SEPOLIA, PriceId("SOMETHING")))
     }
 }
