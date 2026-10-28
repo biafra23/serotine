@@ -33,15 +33,22 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkChips
+import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.TokenIcon
-import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.submitOnDone
 import eth.serotine.ui.lightclient.LightClientViewModel
+import eth.serotine.ui.mode.LocalInterfaceMode
 
 /** Test tag of the address field, for UI tests. */
 const val ADD_TOKEN_ADDRESS_TAG = "add-token-address"
+
+/** Test tag of the *Details* that keep the block in simple mode, for UI tests. */
+const val ADD_TOKEN_DETAILS_TAG = "add-token-details"
 
 /** Test tag of the contract's card, for UI tests. */
 const val ADD_TOKEN_CARD_TAG = "add-token-card"
@@ -57,21 +64,33 @@ fun AddTokenRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
-    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     val added by rememberUpdatedState(onAdded)
     LaunchedEffect(state.done) {
         if (state.done) added()
     }
-    AddTokenScreen(
-        state,
-        strip,
-        viewModel::onAddressChange,
-        viewModel::add,
-        onBack,
-        modifier,
-        onNetwork = viewModel::onNetwork,
-        onTurnOnNetwork = viewModel::onTurnOnNetwork,
-    )
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleAddTokenScreen(
+            state,
+            viewModel::onAddressChange,
+            viewModel::add,
+            onBack,
+            modifier,
+            onNetwork = viewModel::onNetwork,
+            onTurnOnNetwork = viewModel::onTurnOnNetwork,
+        )
+        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.DETAILED -> AddTokenScreen(
+            state,
+            lightClient.item(network).collectAsStateWithLifecycle().value,
+            viewModel::onAddressChange,
+            viewModel::add,
+            onBack,
+            modifier,
+            onNetwork = viewModel::onNetwork,
+            onTurnOnNetwork = viewModel::onTurnOnNetwork,
+        )
+    }
 }
 
 /**
@@ -79,19 +98,21 @@ fun AddTokenRoute(
  * address, then what the contract says about itself, labelled as its claim, with the monogram
  * it will be drawn with; Add only for a contract that answers as a token. The network comes first
  * (docs/networks.md, N17), chosen through [onNetwork], one that is off turned on through
- * [onTurnOnNetwork].
+ * [onTurnOnNetwork]. [lightClient] is the strip above it, Detailed view's; simple mode
+ * ([SimpleAddTokenScreen]) has none, and keeps the block behind *Details* ([details]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTokenScreen(
     state: AddTokenUiState,
-    lightClient: LightClientItem,
+    lightClient: LightClientItem?,
     onAddressChange: (String) -> Unit,
     onAdd: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onNetwork: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    details: List<String> = emptyList(),
 ) {
     Scaffold(
         modifier = modifier,
@@ -106,7 +127,7 @@ fun AddTokenScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -132,6 +153,7 @@ fun AddTokenScreen(
                     keyboardActions = submitOnDone(state.canAdd, onAdd),
                 )
                 state.card?.let { Card(it) }
+                if (details.isNotEmpty()) HiddenDetails(ADD_TOKEN_DETAILS_TAG) { details.forEach { Note(it) } }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(
                     "Name and symbol are the contract's own claim: a token is identified by its address only.",

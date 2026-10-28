@@ -151,6 +151,7 @@ class ActivityDetailViewModelTest {
         assertEquals("Alice", shown.title)
         assertEquals("Sent 40.5 USDC", shown.headline)
         assertEquals("Finalized in block 9,412,118", shown.status)
+        assertEquals("Final", shown.simpleStatus, "simple mode's words, no block")
         assertEquals(ActivityState.DONE, shown.state)
         assertEquals(
             listOf(
@@ -161,7 +162,7 @@ class ActivityDetailViewModelTest {
                 DetailField("Transaction hash", sent.hash, DetailKind.HASH),
                 DetailField("Nonce", "7"),
                 DetailField("Sent", "at 300"),
-                DetailField("Block", "9,412,118"),
+                DetailField("Block", "9,412,118", DetailKind.BLOCK),
             ),
             shown.fields,
         )
@@ -209,7 +210,7 @@ class ActivityDetailViewModelTest {
             listOf(
                 DetailField("Token contract", Eip55.format(spam), DetailKind.ADDRESS),
                 DetailField("Transaction hash", tx, DetailKind.HASH),
-                DetailField("Block", "9,402,000"),
+                DetailField("Block", "9,402,000", DetailKind.BLOCK),
             ),
             shown.fields,
             "the other side an unlisted contract names, not",
@@ -249,7 +250,7 @@ class ActivityDetailViewModelTest {
                 DetailField("Amount", "40 USDC"),
                 DetailField("Token contract", Eip55.format(usdc.address), DetailKind.ADDRESS, "USDC"),
                 DetailField("Transaction hash", tx, DetailKind.HASH),
-                DetailField("Block", "9,402,000"),
+                DetailField("Block", "9,402,000", DetailKind.BLOCK),
             ),
             shown.fields,
         )
@@ -288,7 +289,7 @@ class ActivityDetailViewModelTest {
                 DetailField("Amount", "1 ETH"),
                 DetailField("Safe", Eip55.format(treasury.address), DetailKind.ADDRESS, "Treasury"),
                 DetailField("Transaction hash", tx, DetailKind.HASH),
-                DetailField("Block", "9,405,000"),
+                DetailField("Block", "9,405,000", DetailKind.BLOCK),
             ),
             shown.fields,
         )

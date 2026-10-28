@@ -93,7 +93,8 @@ sealed interface CreateSafeUiState {
      * is its verified quote (null while it is first made, or when it was refused: [error] says why).
      * [unlock] is how it is signed. [quoting] while the quote is made, [signing] while it is signed
      * and broadcast, and [notSent] once it was signed but not broadcast: then the same signed bytes
-     * are all that can be sent.
+     * are all that can be sent. Simple mode says no block (docs/simple-ui.md): [simplePrediction] and
+     * [simpleError] are [prediction] and [error] in its words, null where they are the same.
      */
     data class Review(
         override val network: String,
@@ -113,6 +114,8 @@ sealed interface CreateSafeUiState {
         val quoting: Boolean = false,
         val signing: Boolean = false,
         val notSent: NotSentItem? = null,
+        val simplePrediction: String? = null,
+        val simpleError: String? = null,
     ) : CreateSafeUiState {
 
         /** A quote stands, something is typed, and nothing else runs or has run: the password may sign. */
@@ -135,18 +138,30 @@ sealed interface CreateSafeUiState {
 /**
  * One owner the Safe may get: its EIP-55 [address], its [label] (its name in the wallet, or the
  * ENS name it was resolved from; null: none), [note] what it is ("Key on this device"), and
- * whether it is [selected] as an owner.
+ * whether it is [selected] as an owner. [simpleNote] is [note] with no block, for simple mode; null
+ * where that is [note] itself.
  */
-data class OwnerChoice(val address: String, val label: String?, val note: String, val selected: Boolean)
+data class OwnerChoice(
+    val address: String,
+    val label: String?,
+    val note: String,
+    val selected: Boolean,
+    val simpleNote: String? = null,
+)
 
-/** One owner of the Safe as the threshold and the review list it: its EIP-55 [address], [label] and [note]. */
-data class OwnerItem(val address: String, val label: String?, val note: String)
+/**
+ * One owner of the Safe as the threshold and the review list it: its EIP-55 [address], [label] and
+ * [note]; [simpleNote] is [note] with no block, for simple mode, null where that is [note] itself.
+ */
+data class OwnerItem(val address: String, val label: String?, val note: String, val simpleNote: String? = null)
 
 /**
  * The verified quote of a deployment: the most its fee can be ([maxFee], in the network's
  * currency) and what it is made of ([feeDetail]); the payer's [balance] before → after, with its
  * block; how the factory's call ran ([simulation]); and [pending], what the payer's earlier
- * transactions not mined yet may still take, if anything.
+ * transactions not mined yet may still take, if anything. [simpleSimulation] is [simulation] with
+ * no block, for simple mode, which keeps the fee's make-up, the balance's block and the run's
+ * behind *Details*.
  */
 data class DeploymentQuoteItem(
     val maxFee: String,
@@ -154,4 +169,5 @@ data class DeploymentQuoteItem(
     val balance: BalanceChange,
     val simulation: String,
     val pending: String? = null,
+    val simpleSimulation: String = simulation,
 )

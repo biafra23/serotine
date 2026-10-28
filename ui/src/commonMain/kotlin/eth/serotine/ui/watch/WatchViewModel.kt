@@ -198,6 +198,8 @@ class WatchViewModel(
             name = typed.name,
             addressError = note.takeIf { isError },
             addressNote = note.takeUnless { isError },
+            simpleAddressNote = found?.takeIf { !isError && it.blockNumber != null }
+                ?.let { "Resolves to ${Eip55.format(it.address)}, checked on chain" },
             canRetryLookup = result is RecipientLookup.Unavailable,
             // The name an empty field leaves the account with: the ENS name, when it is one to follow.
             nameDefault = found?.name?.takeIf { it.length <= RenameAccount.MAX_LABEL_LENGTH },
@@ -433,9 +435,14 @@ class WatchViewModel(
         else -> {
             val verified = reading as KindReading.Verified
             when (val kind = verified.kind) {
-                AddressKind.Eoa -> Detection.Account(Eip55.format(address), checkedAt(verified), delegate = null)
-                is AddressKind.DelegatedEoa ->
-                    Detection.Account(Eip55.format(address), checkedAt(verified), Eip55.format(kind.delegate))
+                AddressKind.Eoa ->
+                    Detection.Account(Eip55.format(address), checkedAt(verified), null, CHECKED_ON_CHAIN)
+                is AddressKind.DelegatedEoa -> Detection.Account(
+                    Eip55.format(address),
+                    checkedAt(verified),
+                    Eip55.format(kind.delegate),
+                    CHECKED_ON_CHAIN,
+                )
                 is AddressKind.Safe -> safeCard(address, kind.state, accounts, verified)
                 AddressKind.Contract -> Detection.Contract(CONTRACT)
             }
@@ -456,6 +463,7 @@ class WatchViewModel(
             control = Control.of(state.control(state.ownersHeld(accounts).size)),
             moduleGuard = state.moduleGuard?.let(Eip55::format),
             threshold = "${state.threshold}/${state.owners.size}",
+            simpleCheckedAt = CHECKED_ON_CHAIN,
         )
 
     /** The address typed, once the lookup found one for the text as it is now. */
@@ -507,6 +515,8 @@ class WatchViewModel(
     }
 
     private companion object {
+        /** What a card says in simple mode in place of its block: what it shows was read from the chain and proven. */
+        const val CHECKED_ON_CHAIN = "Checked on chain"
         const val ZERO_ADDRESS = "The zero address: nobody holds its key, so there is no account to watch."
         const val NO_NETWORK = "No network is on in this wallet, so the address cannot be checked. Turn one on in " +
             "Settings → Networks."
