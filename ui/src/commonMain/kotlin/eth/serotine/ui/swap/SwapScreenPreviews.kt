@@ -453,8 +453,8 @@ private fun SwapApprovalPendingPreview() = SwapPreview(
         hash = "0x" + "a1".repeat(32),
         title = "Step 1 of 2 sent: the approval",
         message = "Once a block has the approval, the swap is quoted again here and you confirm step 2. If you " +
-            "leave, start the swap again later: it needs no new approval, and the approval only lets USDC be taken " +
-            "in a swap you send yourself.",
+            "leave, it waits in this account's Activity: Continue there quotes it again. The approval only lets " +
+            "USDC be taken in a swap you send yourself.",
     ),
 )
 

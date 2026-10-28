@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.DecodedSafeTx
+import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.ObserveAccount
@@ -65,6 +66,7 @@ import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
 import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -79,6 +81,7 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The account detail screen's ViewModel: the account under [address], what it holds and what
@@ -118,6 +121,8 @@ class AccountDetailViewModel(
     observeNetworkLive: ObserveNetworkLive,
     /** The account's network's light client, which simple mode's "can't check" banner reads. */
     observeLightClient: ObserveLightClient,
+    /** Lets a swap whose next step waits go, at the user's word: Dismiss on its card in the Activity tab. */
+    private val dropWaitingSwap: DropWaitingSwap,
     /** How a row dates a balance last verified (unix seconds). */
     private val formatTime: (Long) -> String = ::formatDateTime,
     /** Now, in unix seconds: what simple mode's ages are dated against. */
@@ -318,6 +323,13 @@ class AccountDetailViewModel(
         viewModelScope.launch {
             if (!setNetworkEnabled(network, on = true)) view.update { it.copy(message = notTurnedOn(network)) }
         }
+    }
+
+    /** Lets the swap selling the token at [sell] (its address) wait no longer: its card in the Activity tab goes. */
+    fun dismissWaiting(sell: String) {
+        val token = Address.parse(sell) ?: return
+        // Run to its end, the screen left or not: a dismissed card does not come back.
+        viewModelScope.launch { withContext(NonCancellable) { dropWaitingSwap(account, token) } }
     }
 
     /** Orders the rows by [order]. */

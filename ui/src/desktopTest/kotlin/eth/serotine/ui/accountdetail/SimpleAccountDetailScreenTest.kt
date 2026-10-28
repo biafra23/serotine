@@ -8,6 +8,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.activity.ActivityUiState
+import eth.serotine.ui.activity.WAITING_STEP_TAG
+import eth.serotine.ui.activity.WaitingStep
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.theme.SerotineTheme
@@ -22,6 +25,7 @@ class SimpleAccountDetailScreenTest {
     val rule = createComposeRule()
 
     private var refreshes = 0
+    private val events = mutableListOf<String>()
 
     private val state = AccountDetailUiState.Ready(
         label = "Main",
@@ -54,6 +58,8 @@ class SimpleAccountDetailScreenTest {
                 onImportRequest = {},
                 onOpenActivity = {},
                 onRefresh = { refreshes++ },
+                onContinueSwap = { events += "continue $it" },
+                onDismissWaiting = { events += "dismiss $it" },
             )
         }
     }
@@ -65,6 +71,29 @@ class SimpleAccountDetailScreenTest {
         rule.onNodeWithTag(ACCOUNT_FRESHNESS_TAG).assertTextEquals("Updated 40 s ago · pull down to refresh")
         rule.onNodeWithText("block", substring = true).assertDoesNotExist()
         rule.onNodeWithContentDescription("Ethereum").assertIsDisplayed()
+    }
+
+    @Test
+    fun aSwapWhoseNextStepWaitsIsContinuedOrDismissedFromItsCard() {
+        val usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+        show(
+            state.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(
+                    rows = emptyList(),
+                    coverage = "Activity since you added it.",
+                    waiting = listOf(
+                        WaitingStep("Swap 100 USDC → LINK", "Step 1 done. Step 2 is waiting for you.", usdc),
+                    ),
+                ),
+            ),
+        )
+
+        rule.onNodeWithTag(WAITING_STEP_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Step 1 done. Step 2 is waiting for you.").assertIsDisplayed()
+        rule.onNodeWithText("Continue").performClick()
+        rule.onNodeWithText("Dismiss").performClick()
+        assertEquals(listOf("continue $usdc", "dismiss $usdc"), events)
     }
 
     @Test
