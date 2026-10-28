@@ -45,6 +45,21 @@ import kotlinx.coroutines.flow.flowOf
  * agreed, a debugging source only: `symbol()`, `name()` and `decimals()`, each as listed here; the
  * app checks every entry through the light client at every run, and `MyotisHostGnosisTest` does so
  * on the real chain.
+ *
+ * Added 2026-10-28, to list GNO, COW and SAFE on every network they exist on: Gnosis's own GNO
+ * (already listed on Gnosis Chain) is added on Ethereum too; CoW Protocol's COW and Safe's SAFE
+ * are each added on Ethereum, the issuer's own contract, and on Gnosis Chain, the official
+ * bridge's deployment of the Ethereum token (`docs.cow.fi`'s own token table for COW; for SAFE,
+ * not in the Safe Foundation's own token page, which names Ethereum only, but its contract
+ * answers `name()` as "Safe Token from Mainnet", the Omnibridge's own naming for a bridged
+ * token, the same as GNO's "Gnosis Token on xDai" and COW's "CoW Protocol Token from Mainnet").
+ * None of the three has a Chainlink feed on Ethereum or on Gnosis Chain beyond the GNO / USD one
+ * already pinned on Gnosis Chain (checked against `reference-data-directory.vercel.app`'s
+ * `feeds-mainnet.json` and `feeds-xdai-mainnet.json`), so GNO has no price on Ethereum and COW
+ * and SAFE have none on either network. None of the three has a Sepolia deployment, so none is
+ * added there. Read on 2026-10-28 at mainnet blocks 26,289,553 to 26,289,569 and at Gnosis
+ * blocks 48,982,469 to 48,982,471, each through two public nodes, which agreed, a debugging
+ * source only: `symbol()`, `name()` and `decimals()`, each as listed here.
  */
 object BuiltInTokens {
 
@@ -68,6 +83,18 @@ object BuiltInTokens {
         priced("0x6c3ea9036406852006290770bedfcaba0e23a0e8", "PYUSD", "PayPal USD", 6, "pyusd"),
         priced("0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f", "GHO", "Gho Token", 18, "gho"),
         priced("0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9", "AAVE", "Aave Token", 18, "aave"),
+        // Gnosis's GNO, also listed on Gnosis Chain (priced there); no GNO / USD feed on Ethereum.
+        Token(Address.of("0x6810e776880c02933d47db1b9fc05908e5386b96"), "GNO", "Gnosis Token", 18, icon = "gno"),
+        // CoW Protocol's governance token; no COW feed, so it has no price.
+        Token(
+            Address.of("0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab"),
+            "COW",
+            "CoW Protocol Token",
+            18,
+            icon = "cow",
+        ),
+        // Safe's governance token; no SAFE feed, so it has no price.
+        Token(Address.of("0x5afe3855358e112b5647b952709e6165e1c1eeee"), "SAFE", "Safe Token", 18, icon = "safe"),
     )
 
     private val GNOSIS = listOf(
@@ -81,6 +108,22 @@ object BuiltInTokens {
         priced("0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430", "EURe", "Monerium EURe", 18, "eure", "EUR"),
         // A share of xDAI saved in Spark's vault, worth more than one xDAI and rising: no feed, no price.
         Token(Address.of("0xaf204776c7245bf4147c2612bf6e5972ee483701"), "sDAI", "Savings xDAI", 18, icon = "sdai"),
+        // CoW Protocol's COW, bridged from Ethereum over the official bridge; no COW feed.
+        Token(
+            Address.of("0x177127622c4a00f3d409b75571e12cb3c8973d3c"),
+            "COW",
+            "CoW Protocol Token from Mainnet",
+            18,
+            icon = "cow",
+        ),
+        // Safe's SAFE, bridged from Ethereum over the official bridge; no SAFE feed.
+        Token(
+            Address.of("0x4d18815d14fe5c3304e87b3fa18318baa5c23820"),
+            "SAFE",
+            "Safe Token from Mainnet",
+            18,
+            icon = "safe",
+        ),
     )
 
     /** A token priced by the feed of [priceId], its own symbol's unless another is named. */
