@@ -22,7 +22,7 @@ fun SimpleCreateSafeScreen(
     actions = actions,
     onBack = onBack,
     modifier = modifier,
-    details = (state as? CreateSafeUiState.Review)?.details().orEmpty(),
+    details = state.details(),
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */
@@ -35,6 +35,7 @@ private fun CreateSafeUiState.simple(): CreateSafeUiState = when (this) {
     is CreateSafeUiState.Threshold -> copy(owners = owners.map { it.simple() })
     is CreateSafeUiState.Review -> copy(
         prediction = simplePrediction ?: prediction,
+        error = simpleError ?: error,
         owners = owners.map { it.simple() },
         quote = quote?.let {
             it.copy(
@@ -51,10 +52,24 @@ private fun OwnerChoice.simple() = copy(note = simpleNote ?: note)
 
 private fun OwnerItem.simple() = copy(note = simpleNote ?: note)
 
-/** What the review keeps behind *Details* in simple mode: what Detailed view says of the address and the quote. */
-private fun CreateSafeUiState.Review.details(): List<String> = listOfNotNull(
-    prediction.takeIf { simplePrediction != null },
-    quote?.feeDetail,
-    quote?.balance?.let { "${it.what}: ${it.before} → ${it.after}, ${it.verifiedAt}" },
-    quote?.simulation,
-)
+/**
+ * What each step keeps behind *Details* in simple mode: the blocks an owner's name was resolved at
+ * and, on the review, what Detailed view says of the address, the quote and a refusal.
+ */
+private fun CreateSafeUiState.details(): List<String> = when (this) {
+    is CreateSafeUiState.Owners -> (accounts + typed + listOfNotNull(inputOwner))
+        .filter { it.simpleNote != null }
+        .map { "${it.label ?: it.address}: ${it.note}" }
+    is CreateSafeUiState.Threshold -> owners.resolvedAt()
+    is CreateSafeUiState.Review -> owners.resolvedAt() + listOfNotNull(
+        prediction.takeIf { simplePrediction != null },
+        quote?.feeDetail,
+        quote?.balance?.let { "${it.what}: ${it.before} → ${it.after}, ${it.verifiedAt}" },
+        quote?.simulation,
+        error.takeIf { simpleError != null },
+    )
+    else -> emptyList()
+}
+
+private fun List<OwnerItem>.resolvedAt(): List<String> =
+    filter { it.simpleNote != null }.map { "${it.label ?: it.address}: ${it.note}" }

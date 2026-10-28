@@ -93,8 +93,8 @@ sealed interface CreateSafeUiState {
      * is its verified quote (null while it is first made, or when it was refused: [error] says why).
      * [unlock] is how it is signed. [quoting] while the quote is made, [signing] while it is signed
      * and broadcast, and [notSent] once it was signed but not broadcast: then the same signed bytes
-     * are all that can be sent. Simple mode says no block (docs/simple-ui.md): [simplePrediction] is
-     * [prediction] in its words, null where that is [prediction] itself.
+     * are all that can be sent. Simple mode says no block (docs/simple-ui.md): [simplePrediction] and
+     * [simpleError] are [prediction] and [error] in its words, null where they are the same.
      */
     data class Review(
         override val network: String,
@@ -115,6 +115,7 @@ sealed interface CreateSafeUiState {
         val signing: Boolean = false,
         val notSent: NotSentItem? = null,
         val simplePrediction: String? = null,
+        val simpleError: String? = null,
     ) : CreateSafeUiState {
 
         /** A quote stands, something is typed, and nothing else runs or has run: the password may sign. */

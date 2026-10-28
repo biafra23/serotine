@@ -63,6 +63,7 @@ import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
+import eth.serotine.ui.components.simpleCallRefusalText
 import eth.serotine.ui.components.unavailableText
 import eth.serotine.ui.components.verifiedAt
 import kotlin.concurrent.Volatile
@@ -226,6 +227,8 @@ class CreateSafeViewModel(
             val signing: Boolean = false,
             val notSent: NotSent? = null,
             val hidden: Boolean = false,
+            /** [error] with no block, for simple mode; null where it is [error] itself. */
+            val simpleError: String? = null,
         ) : Step {
             val idle: Boolean
                 get() = !quoting && !signing && notSent == null
@@ -554,7 +557,7 @@ class CreateSafeViewModel(
         // A quote in flight is of another payer or fee, or as good as this one: for nothing now.
         job?.cancel()
         val cleared = current.unlock.copy(error = null)
-        val asked = current.copy(quoting = true, hidden = false, error = null, unlock = cleared)
+        val asked = current.copy(quoting = true, hidden = false, error = null, simpleError = null, unlock = cleared)
         step.value = asked
         job = viewModelScope.launch { quote(asked, note) }
     }
@@ -601,6 +604,8 @@ class CreateSafeViewModel(
                     quotedAt = null,
                     quoting = false,
                     error = refusalText(quoting.refusal),
+                    simpleError = (quoting.refusal as? SafeDeploymentRefusal.NotQuoted)
+                        ?.let { simpleCallRefusalText(it.refusal) },
                 )
             }
         }
@@ -811,7 +816,8 @@ class CreateSafeViewModel(
             signers = "${plan.threshold}/${plan.owners.size}",
             version = "Safe ${plan.release.version}",
             simplePrediction = quote?.let {
-                "$computed The factory's run, checked on chain, returns this address, which holds no code yet."
+                "$computed The factory's run, checked on chain, returns this address, which held no code when " +
+                    "it was checked."
             },
             prediction = when {
                 quote != null -> {
@@ -842,8 +848,8 @@ class CreateSafeViewModel(
                     ),
                     simulation = "Run as a verified call from this account $ran, the factory deploys the Safe at " +
                         "this address and sets it up with these owners and this threshold.",
-                    simpleSimulation = "Checked on chain: the factory deploys the Safe at this address and sets " +
-                        "it up with these owners and this threshold.",
+                    simpleSimulation = "Checked on chain: the factory should deploy the Safe at this address and " +
+                        "set it up with these owners and this threshold.",
                     pending = call.pendingCost.takeUnless { cost -> cost.isZero }?.let { cost ->
                         "Earlier transactions from this account, not mined yet, may still take up to " +
                             exactAmount(cost, NATIVE_DECIMALS, native) + ": the balance after counts it."
@@ -851,6 +857,7 @@ class CreateSafeViewModel(
                 )
             },
             error = step.error,
+            simpleError = step.simpleError,
             quoting = step.quoting,
             signing = step.signing,
             notSent = step.notSent?.let {

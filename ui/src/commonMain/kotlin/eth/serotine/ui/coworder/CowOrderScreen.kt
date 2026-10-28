@@ -147,8 +147,8 @@ fun CowOrderRoute(
  * word labelled as CoW's, until when it may fill, and "Cancel on chain" while it may; then the
  * cancellation's review with the unlock that signs it. Once it is proven not to have swapped, the
  * same swap on Uniswap. [lightClient] is the strip above it, Detailed view's; simple mode
- * ([SimpleCowOrderScreen]) has none, and keeps the cancellation's blocks and fee make-up behind
- * *Details* ([details]).
+ * ([SimpleCowOrderScreen]) has none, and keeps the blocks, the order's and its cancellation's, and the
+ * fee's make-up behind *Details* ([details]).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -214,7 +214,10 @@ fun CowOrderScreen(
                     Modifier.align(Alignment.Center).padding(24.dp),
                     textAlign = TextAlign.Center,
                 )
-                is CowOrderUiState.Shown -> Content { OrderContent(state, onCancel, onOpenTransfer, onSwapAgain) }
+                is CowOrderUiState.Shown -> Content {
+                    OrderContent(state, onCancel, onOpenTransfer, onSwapAgain)
+                    if (details.isNotEmpty()) HiddenDetails(COW_ORDER_DETAILS_TAG) { details.forEach { Note(it) } }
+                }
                 is CowOrderUiState.CancelReview -> Content {
                     CancelContent(state)
                     if (details.isNotEmpty()) HiddenDetails(COW_ORDER_DETAILS_TAG) { details.forEach { Note(it) } }

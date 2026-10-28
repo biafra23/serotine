@@ -47,7 +47,7 @@ class SimpleCreateSafeScreenTest {
                 "verified at block 8,412,307",
             ),
             simulation = "Run as a verified call at block 8,412,307, the factory deploys the Safe.",
-            simpleSimulation = "Checked on chain: the factory deploys the Safe.",
+            simpleSimulation = "Checked on chain: the factory should deploy the Safe.",
         ),
     )
 
@@ -56,7 +56,9 @@ class SimpleCreateSafeScreenTest {
         rule.setContent { SerotineTheme { SimpleCreateSafeScreen(review, CreateSafeActions(), onBack = {}) } }
 
         rule.onNodeWithText("The factory's run, checked on chain, returns this address.").assertIsDisplayed()
-        rule.onNodeWithText("Checked on chain: the factory deploys the Safe.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Checked on chain: the factory should deploy the Safe.")
+            .performScrollTo()
+            .assertIsDisplayed()
         rule.onNodeWithText("at block", substring = true).assertDoesNotExist()
 
         rule.onNodeWithTag(CREATE_SAFE_DETAILS_TAG).performScrollTo().performClick()

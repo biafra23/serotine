@@ -2,7 +2,10 @@ package eth.serotine.ui.addtoken
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -34,5 +37,8 @@ class SimpleAddTokenScreenTest {
 
         rule.onNodeWithText("Read from the contract, checked on chain").assertIsDisplayed()
         rule.onNodeWithText("at block", substring = true).assertDoesNotExist()
+
+        rule.onNodeWithTag(ADD_TOKEN_DETAILS_TAG).performScrollTo().performClick()
+        rule.onNodeWithText("Read from the contract at block 8,412,307").performScrollTo().assertIsDisplayed()
     }
 }

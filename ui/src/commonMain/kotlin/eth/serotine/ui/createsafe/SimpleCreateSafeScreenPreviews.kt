@@ -53,7 +53,7 @@ private val review = CreateSafeUiState.Review(
     prediction = "Computed here (CREATE2) from the factory, the singleton, the owners, the threshold and a salt. " +
         "The factory's verified run at block 8,412,307 returns this address, which held no code at block 8,412,307.",
     simplePrediction = "Computed here (CREATE2) from the factory, the singleton, the owners, the threshold and a " +
-        "salt. The factory's run, checked on chain, returns this address, which holds no code yet.",
+        "salt. The factory's run, checked on chain, returns this address, which held no code when it was checked.",
     owners = ownerItems,
     shape = "2 of 2 owners sign each transaction",
     payers = listOf(AccountChoice("Daily", DAILY)),
@@ -71,8 +71,8 @@ private val review = CreateSafeUiState.Review(
         ),
         simulation = "Run as a verified call from this account at block 8,412,307, the factory deploys the Safe at " +
             "this address and sets it up with these owners and this threshold.",
-        simpleSimulation = "Checked on chain: the factory deploys the Safe at this address and sets it up with these " +
-            "owners and this threshold.",
+        simpleSimulation = "Checked on chain: the factory should deploy the Safe at this address and set it up with " +
+            "these owners and this threshold.",
     ),
 )
 

@@ -6,7 +6,8 @@ import androidx.compose.ui.Modifier
 /**
  * Add token in simple mode (docs/simple-ui.md): [AddTokenScreen] for the same [state], with no
  * light-client strip, and what the contract says of itself read on chain with no block. The claim,
- * labelled as the contract's, and Add are as in Detailed view.
+ * labelled as the contract's, and Add are as in Detailed view; the block it was read at is behind
+ * *Details*.
  */
 @Composable
 fun SimpleAddTokenScreen(
@@ -26,4 +27,5 @@ fun SimpleAddTokenScreen(
     modifier,
     onNetwork = onNetwork,
     onTurnOnNetwork = onTurnOnNetwork,
+    details = listOfNotNull((state.card as? TokenCard.Claim)?.checkedAt),
 )

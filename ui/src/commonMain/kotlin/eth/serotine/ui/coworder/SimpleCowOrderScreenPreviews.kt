@@ -52,8 +52,8 @@ private val review = CowOrderUiState.CancelReview(
         "verified at block 8,412,307",
     ),
     simulation = "The cancellation, run as a verified call from this account at block 8,412,307, goes through.",
-    simpleSimulation = "Checked on chain: the cancellation goes through. Once it is in a block, nothing can fill the " +
-        "order.",
+    simpleSimulation = "Checked on chain: the cancellation should go through. Once it is in a block, nothing can " +
+        "fill the order.",
     unlock = UnlockStep(),
 )
 

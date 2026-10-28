@@ -207,8 +207,8 @@ class CreateSafeActions(
  * the address computed here, the account that pays and the unlock that signs it (3/3). While the
  * review takes the wallet password, the window is kept out of screen capture where the platform
  * allows; where it does not, the screen says so. [lightClient] is the strip above it, Detailed
- * view's; simple mode ([SimpleCreateSafeScreen]) has none, and keeps the review's blocks, the fee's
- * make-up and the factory's verified run behind *Details* ([details]).
+ * view's; simple mode ([SimpleCreateSafeScreen]) has none, and keeps the blocks, the review's fee
+ * make-up and the factory's verified run behind *Details* ([details]) on each step.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -284,8 +284,8 @@ fun CreateSafeScreen(
                     }
                     Text(state.message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 }
-                is CreateSafeUiState.Owners -> OwnersContent(state, actions)
-                is CreateSafeUiState.Threshold -> ThresholdContent(state, actions)
+                is CreateSafeUiState.Owners -> OwnersContent(state, actions, details)
+                is CreateSafeUiState.Threshold -> ThresholdContent(state, actions, details)
                 is CreateSafeUiState.Review -> ReviewContent(state, actions, details)
             }
         }
@@ -293,7 +293,7 @@ fun CreateSafeScreen(
 }
 
 @Composable
-private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeActions) {
+private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeActions, details: List<String>) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -402,12 +402,13 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
             if (state.canRetryLookup) TextButton(onClick = actions.onRetryLookup) { Text("Try again") }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (details.isNotEmpty()) HiddenDetails(CREATE_SAFE_DETAILS_TAG) { details.forEach { Note(it) } }
         ContinueButton("Next: the threshold", state.canContinue, actions.onContinue, Modifier.align(Alignment.End))
     }
 }
 
 @Composable
-private fun ThresholdContent(state: CreateSafeUiState.Threshold, actions: CreateSafeActions) {
+private fun ThresholdContent(state: CreateSafeUiState.Threshold, actions: CreateSafeActions, details: List<String>) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -437,6 +438,7 @@ private fun ThresholdContent(state: CreateSafeUiState.Threshold, actions: Create
         state.rules.forEach { rule -> Text("• $rule", style = MaterialTheme.typography.bodySmall) }
         Heading("Owners")
         Column { state.owners.forEach { OwnerRow(it, full = false) } }
+        if (details.isNotEmpty()) HiddenDetails(CREATE_SAFE_DETAILS_TAG) { details.forEach { Note(it) } }
         ContinueButton("Next: review", state.canContinue, actions.onContinue, Modifier.align(Alignment.End))
     }
 }

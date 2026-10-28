@@ -583,8 +583,8 @@ class CowOrderViewModel(
             ),
             simulation = "The cancellation, run as a verified call from this account $ran, goes through. Once a " +
                 "block has it, nothing can fill the order, and its end is proven once that block is finalized.",
-            simpleSimulation = "Checked on chain: the cancellation goes through. Once it is in a block, nothing can " +
-                "fill the order.",
+            simpleSimulation = "Checked on chain: the cancellation should go through. Once it is in a block, " +
+                "nothing can fill the order.",
             unlock = step.unlock,
             refreshing = step.refreshing,
             signing = step.signing,

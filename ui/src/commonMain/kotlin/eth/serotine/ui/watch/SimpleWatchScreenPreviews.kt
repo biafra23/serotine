@@ -17,7 +17,7 @@ private const val TREASURY = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
 private val account = WatchUiState(
     address = SAVINGS,
     name = "Savings",
-    detection = Detection.Account(SAVINGS, "Checked at block 8,412,307", delegate = null),
+    detection = Detection.Account(SAVINGS, "Checked at block 8,412,307", null, "Checked on chain"),
 )
 
 @Composable
@@ -53,6 +53,7 @@ private fun SimpleWatchSafePreview() = SimpleWatchPreview(
             checkedAt = "Checked at block 8,412,307",
             control = Control.CO_SIGNER,
             threshold = "2/3",
+            simpleCheckedAt = "Checked on chain",
         ),
     ),
 )
@@ -80,13 +81,13 @@ private fun SimpleWatchEveryNetworkPreview() = SimpleWatchPreview(
         networks = listOf(
             WatchNetwork(
                 NetworkLabel(1, "Ethereum", testnet = false),
-                Detection.Account(SAVINGS, "Checked at block 23,618,402", null),
+                Detection.Account(SAVINGS, "Checked at block 23,618,402", null, "Checked on chain"),
                 offered = true,
                 chosen = true,
             ),
             WatchNetwork(
                 NetworkLabel(100, "Gnosis Chain", testnet = false),
-                Detection.Account(SAVINGS, "Checked at block 42,907,115", null),
+                Detection.Account(SAVINGS, "Checked at block 42,907,115", null, "Checked on chain"),
                 offered = true,
                 chosen = true,
             ),

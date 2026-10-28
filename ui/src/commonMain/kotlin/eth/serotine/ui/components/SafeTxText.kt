@@ -504,6 +504,13 @@ internal fun callRefusalText(refusal: CallRefusal, network: Network): String = w
 }
 
 /**
+ * [callRefusalText] in simple mode's words, with no block (docs/simple-ui.md); null where that is
+ * [callRefusalText] itself, which names none.
+ */
+internal fun simpleCallRefusalText(refusal: CallRefusal): String? =
+    if (refusal is CallRefusal.Reverts) "It reverts, checked on chain. Nothing was signed." else null
+
+/**
  * Why nothing new is quoted from an account whose earlier transaction may still be on its way
  * ([CallRefusal.EarlierMaybeSent]), where the screen offers no way to its status: Send on that
  * account does.

@@ -5,7 +5,8 @@ import androidx.compose.ui.Modifier
 
 /**
  * Settings → Tokens in simple mode (docs/simple-ui.md): [TokensScreen] for the same [state], each
- * token's check said with no block. The tokens, their menus and Add token are as in Detailed view.
+ * token's check said with no block, the blocks behind *Details*. The tokens, their menus and Add token
+ * are as in Detailed view.
  */
 @Composable
 fun SimpleTokensScreen(
@@ -28,4 +29,7 @@ fun SimpleTokensScreen(
     onSetHidden = onSetHidden,
     onRemove = onRemove,
     modifier = modifier,
+    details = state.sections.flatMap { section ->
+        section.items.filter { it.simpleStatus != null }.map { "${it.symbol} on ${section.network.name}: ${it.status}" }
+    },
 )

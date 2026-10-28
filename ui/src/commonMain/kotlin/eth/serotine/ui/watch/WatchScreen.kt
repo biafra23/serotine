@@ -45,9 +45,11 @@ import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NETWORK_CHOICE_TAG
 import eth.serotine.ui.components.NetworkMark
+import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.next
@@ -65,6 +67,9 @@ const val WATCH_NAME_TAG = "watch-name"
 
 /** Test tag of the detection card, for UI tests. */
 const val WATCH_DETECTION_TAG = "watch-detection"
+
+/** Test tag of the *Details* that keep the blocks in simple mode, for UI tests. */
+const val WATCH_DETAILS_TAG = "watch-details"
 
 /** Test tag of the checksummed address on the detection card, for UI tests. */
 const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
@@ -128,7 +133,7 @@ fun WatchRoute(
  * all of them is offered on all of them, with [onChooseNetworks] to tick them instead
  * ([onNetworkToggle]); a Safe only where it is one, ticked. A network that is off is listed greyed
  * out, turned on through [onTurnOnNetwork]. [lightClient] is the strip above it, Detailed view's;
- * simple mode ([SimpleWatchScreen]) has none.
+ * simple mode ([SimpleWatchScreen]) has none, and keeps the blocks behind *Details* ([details]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,6 +149,7 @@ fun WatchScreen(
     onChooseNetworks: () -> Unit = {},
     onNetworkToggle: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    details: List<String> = emptyList(),
 ) {
     val nameField = remember { FocusRequester() }
     Scaffold(
@@ -233,6 +239,7 @@ fun WatchScreen(
                 state.question?.takeIf { !state.choosing }
                     ?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (details.isNotEmpty()) HiddenDetails(WATCH_DETAILS_TAG) { details.forEach { Note(it) } }
                 Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.question != null && !state.choosing) {
                         TextButton(onClick = onChooseNetworks, enabled = !state.adding) { Text("Choose networks") }

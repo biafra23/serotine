@@ -93,7 +93,7 @@ class WatchViewModelTest {
         runCurrent()
 
         assertEquals(
-            Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),
+            Detection.Account(vitalik, "Checked at block 9,412,118", null, simpleCheckedAt = "Checked on chain"),
             viewModel.uiState.value.detection,
         )
         assertEquals(NetworkLabel.of(Network.SEPOLIA), viewModel.uiState.value.cardNetwork, "what Add adds it on")
@@ -321,6 +321,7 @@ class WatchViewModelTest {
                 // Daily's key is held here: one of the two that must sign.
                 control = Control.CO_SIGNER,
                 threshold = "2/2",
+                simpleCheckedAt = "Checked on chain",
             ),
             viewModel.uiState.value.detection,
         )
@@ -350,7 +351,7 @@ class WatchViewModelTest {
         assertEquals("Resolves to $vitalik, checked on chain", viewModel.uiState.value.simpleAddressNote, "no block")
         assertNull(viewModel.uiState.value.addressError)
         assertEquals(
-            Detection.Account(vitalik, "Checked at block 9,412,118", delegate = null),
+            Detection.Account(vitalik, "Checked at block 9,412,118", null, simpleCheckedAt = "Checked on chain"),
             viewModel.uiState.value.detection,
         )
         assertEquals("vitalik.eth", viewModel.uiState.value.nameDefault, "what an empty name field leaves")

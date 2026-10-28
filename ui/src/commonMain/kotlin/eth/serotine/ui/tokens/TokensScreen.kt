@@ -43,8 +43,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.ActionDropdown
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.NetworkMark
+import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.shortAddress
@@ -54,6 +56,9 @@ import kotlinx.coroutines.launch
 
 /** Test tag of each token row, for UI tests. */
 const val TOKENS_ROW_TAG = "tokens-row"
+
+/** Test tag of the *Details* that keep the blocks in simple mode, for UI tests. */
+const val TOKENS_DETAILS_TAG = "tokens-details"
 
 /** Test tag prefix of a network's section header, followed by its chain id, for UI tests. */
 const val TOKENS_SECTION_TAG = "tokens-section-"
@@ -96,7 +101,8 @@ fun TokensRoute(
  * each with what its check says (which names the block it was checked at, so no light-client
  * strip: the tokens are several networks') and a menu (Copy contract, Hide or Show, Remove for an
  * added one) behind a visible button, and Add token. [onSetHidden] and [onRemove] get the token's
- * network's chain id and its address.
+ * network's chain id and its address. Simple mode ([SimpleTokensScreen]) keeps the blocks behind
+ * *Details* ([details]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +114,7 @@ fun TokensScreen(
     onSetHidden: (chainId: Long, address: String, hidden: Boolean) -> Unit,
     onRemove: (chainId: Long, address: String) -> Unit,
     modifier: Modifier = Modifier,
+    details: List<String> = emptyList(),
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -162,6 +169,11 @@ fun TokensScreen(
                         onSetHidden = { onSetHidden(chainId, item.address, it) },
                         onRemove = { onRemove(chainId, item.address) },
                     )
+                }
+            }
+            if (details.isNotEmpty()) {
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    HiddenDetails(TOKENS_DETAILS_TAG) { details.forEach { Note(it) } }
                 }
             }
             Text(

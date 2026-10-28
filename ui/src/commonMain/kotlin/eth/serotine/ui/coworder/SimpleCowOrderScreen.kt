@@ -6,8 +6,8 @@ import androidx.compose.ui.Modifier
 /**
  * A CoW order's status in simple mode (docs/simple-ui.md): [CowOrderScreen] for the same [state],
  * with no light-client strip and no block. How the order ended says it was proven from this
- * account's verified logs, without the block; the cancellation's review says its run was checked
- * on chain and keeps the fee's make-up and the blocks behind *Details*. CoW's word, labelled as
+ * account's verified logs, its block behind *Details*; the cancellation's review says its run was
+ * checked on chain and keeps the fee's make-up and the blocks behind *Details* too. CoW's word, labelled as
  * CoW's, Cancel on chain and the same swap on Uniswap are as in Detailed view.
  */
 @Composable
@@ -38,7 +38,14 @@ fun SimpleCowOrderScreen(
     onSwapAgain = onSwapAgain,
     onBack = onBack,
     modifier = modifier,
-    details = (state as? CowOrderUiState.CancelReview)?.details().orEmpty(),
+    details = when (state) {
+        is CowOrderUiState.Shown -> listOfNotNull(
+            state.end.takeIf { state.simpleEnd != null },
+            state.error.takeIf { state.simpleError != null },
+        )
+        is CowOrderUiState.CancelReview -> state.details()
+        else -> emptyList()
+    },
 )
 
 /** What the cancellation's review keeps behind *Details* in simple mode: the fee's make-up and the blocks. */

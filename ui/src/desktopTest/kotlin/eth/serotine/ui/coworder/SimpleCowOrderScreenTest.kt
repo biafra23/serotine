@@ -65,6 +65,9 @@ class SimpleCowOrderScreenTest {
 
         rule.onNodeWithText("Filled: it bought 0.016102 ETH, as this account's verified logs say.").assertIsDisplayed()
         rule.onNodeWithText("8,412,322", substring = true).assertDoesNotExist()
+
+        rule.onNodeWithTag(COW_ORDER_DETAILS_TAG).performScrollTo().performClick()
+        rule.onNodeWithText("Filled in block 8,412,322: it bought 0.016102 ETH.").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -80,12 +83,14 @@ class SimpleCowOrderScreenTest {
                 feeDetail = feeDetail,
                 balance = BalanceChange("ETH balance", "1.25 ETH", "at least 1.24 ETH", "verified at block 8,412,307"),
                 simulation = "The cancellation, run at block 8,412,307, goes through.",
-                simpleSimulation = "Checked on chain: the cancellation goes through.",
+                simpleSimulation = "Checked on chain: the cancellation should go through.",
                 unlock = UnlockStep(),
             ),
         )
 
-        rule.onNodeWithText("Checked on chain: the cancellation goes through.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Checked on chain: the cancellation should go through.")
+            .performScrollTo()
+            .assertIsDisplayed()
         rule.onNodeWithText("at block", substring = true).assertDoesNotExist()
         rule.onNodeWithTag(COW_ORDER_DETAILS_TAG).performScrollTo().performClick()
         rule.onNodeWithText(feeDetail).performScrollTo().assertIsDisplayed()
