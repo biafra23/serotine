@@ -51,7 +51,7 @@ target is what resolves the engine's AAR. One package per area,
 | `tokens` | The built-in token list and the user's token settings. |
 | `prices` | The Chainlink feed table. |
 | `safe` | The pinned Safe deployments, the queue of Safe transactions and the signing-request codec. |
-| `swaps` | The pinned Uniswap v3 and CoW Protocol deployments. |
+| `swaps` | The pinned Uniswap v3 and CoW Protocol deployments, and the swaps whose next step waits for the user. |
 | `cow` | CoW's order API, over Ktor, and the record of the CoW orders signed here. |
 | `transfers` | The record of sent transactions and the history of them, kept for good. |
 | `history` | Where each account's history starts. |

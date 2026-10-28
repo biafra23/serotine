@@ -40,6 +40,7 @@ import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.settings.FileInterfaceMode
 import eth.serotine.data.settings.FileSwapVenue
+import eth.serotine.data.swaps.FileWaitingSwaps
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -248,6 +249,7 @@ class SerotineApplication : Application() {
 
     /** The venue last chosen on Swap, compose, which the next swap starts at. */
     private val swapVenue by lazy { FileSwapVenue(filesDir.resolve("swap-venue.json").path) }
+    private val waitingSwaps by lazy { FileWaitingSwaps(filesDir.resolve("waiting-swaps.json").path) }
 
     /**
      * The exchange rate last verified, for the widget, beside the other files: a price and its
@@ -388,6 +390,7 @@ class SerotineApplication : Application() {
             cowApi = HttpCowApi.create(),
             cowOrders = cowOrders,
             swapVenue = swapVenue,
+            waitingSwaps = waitingSwaps,
             debugLog = debugLog,
             debugScreen = debugScreen,
             interfaceMode = interfaceMode,

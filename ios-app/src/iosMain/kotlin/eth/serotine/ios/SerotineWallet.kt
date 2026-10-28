@@ -19,6 +19,7 @@ import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
 import eth.serotine.data.settings.FileInterfaceMode
 import eth.serotine.data.settings.FileSwapVenue
+import eth.serotine.data.swaps.FileWaitingSwaps
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -232,6 +233,7 @@ class SerotineWallet {
             cowApi = HttpCowApi.create(),
             cowOrders = cowOrders,
             swapVenue = FileSwapVenue("$dataDir/swap-venue.json"),
+            waitingSwaps = FileWaitingSwaps("$dataDir/waiting-swaps.json"),
             debugLog = debugLog,
             debugScreen = debugScreen,
             interfaceMode = interfaceMode,

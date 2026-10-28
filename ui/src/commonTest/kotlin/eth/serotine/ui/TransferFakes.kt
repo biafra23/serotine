@@ -49,6 +49,8 @@ import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.VenueChoice
+import eth.serotine.domain.repository.WaitingSwap
+import eth.serotine.domain.repository.WaitingSwaps
 import eth.serotine.domain.repository.prunable
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
@@ -64,6 +66,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 
 /** One gwei, in wei. */
 internal const val GWEI = 1_000_000_000L
@@ -376,6 +379,23 @@ internal class FakeCowApi : CowApi {
     override suspend fun life(network: Network, uid: CowOrderUid): CowOrderLife {
         lives += uid
         return lifePending?.await() ?: life
+    }
+}
+
+/** The swaps whose next step waits, in memory: one per account and token sold, as the file keeps them. */
+internal class MemoryWaitingSwaps : WaitingSwaps {
+    val swaps = MutableStateFlow<List<WaitingSwap>>(emptyList())
+
+    override fun observe(): Flow<List<WaitingSwap>> = swaps
+
+    override suspend fun keep(swap: WaitingSwap): Boolean {
+        swaps.update { list -> list.filterNot { it.account == swap.account && it.sell == swap.sell } + swap }
+        return true
+    }
+
+    override suspend fun drop(account: AccountId, sell: Address): Boolean {
+        swaps.update { list -> list.filterNot { it.account == account && it.sell == sell } }
+        return true
     }
 }
 

@@ -14,12 +14,14 @@ sealed interface ActivityUiState {
      * The [rows], newest first (none: nothing listed yet, which [empty] says), and [coverage],
      * what the list covers and what it leaves out; [simpleCoverage], the same in simple mode's
      * words, with no block number (docs/simple-ui.md, H5: "Activity since you added this account").
+     * Above them, the swaps whose next step [waiting] for the user, each with Continue.
      */
     data class Shown(
         val rows: List<ActivityRow>,
         val coverage: String,
         val empty: String = "Nothing sent from this device yet.",
         val simpleCoverage: String = coverage,
+        val waiting: List<WaitingStep> = emptyList(),
     ) : ActivityUiState
 
     /** The history cannot be read right now, for the reason [message] gives. */
@@ -58,6 +60,15 @@ data class ActivityRow(
  * and a tap opens the order's status instead.
  */
 data class ActivityKey(val hash: String, val logIndex: Int? = null, val cowOrder: Boolean = false)
+
+/**
+ * A swap whose next step waits for the user (docs/simple-ui.md, H5): what it swaps ([title], "Swap 40
+ * USDC → ETH"), where it stands ([message], "Step 1 done. Step 2 is waiting for you.", said from the
+ * approval's verified receipt and never claimed without one), and the token it sells ([sell], its
+ * address), which Continue opens Swap with and Dismiss lets go of. In words, with no block number, in
+ * both views.
+ */
+data class WaitingStep(val title: String, val message: String, val sell: String)
 
 /** How a sent transaction ended, as an [ActivityRow] marks it. */
 enum class ActivityState {
