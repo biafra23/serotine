@@ -220,10 +220,15 @@ change what it trusts.
 - **W1 · Swap.** The venue as two choices, Uniswap | CoW Protocol: the user
   chooses each swap's venue (owner's directions, 2026-10-18 and
   2026-10-22). "You pay" and "You get at least", each a card with its token,
-  and the flip button between them. The price, the network fees, the price
-  tolerance (behind the settings icon). When the allowance falls short, an
-  info box: "2 steps. First you allow Uniswap to use 100 USDC, then you
-  swap. Each is its own transaction with its own fee." Review.
+  and the flip button between them. Each balance says how long ago it was
+  proved ("updated 2 min ago"), as on Send. The price, the network fees,
+  the price tolerance (behind the settings icon). When the allowance falls
+  short, an info box: "2 steps. First you allow Uniswap to use 100 USDC,
+  then you swap. Each is its own transaction with its own fee." Review.
+  As built in part 6 (#194), and open for the owner to decide: the form has
+  no "2 steps" box, since only the quote reads the allowance. The two steps
+  are first said on the review ("Step 1 of 2"), so decision 6's "before the
+  review" is not delivered yet.
 - **W2 · Swap review, Uniswap, 2 steps.** The swap in one line ("100 USDC →
   7.18 LINK, at least · via Uniswap · from Main"). Step 1, "Allow Uniswap to
   use 100 USDC: only this amount, for this swap", with its fee. Step 2,
@@ -231,19 +236,32 @@ change what it trusts.
   confirm the swap", with its fee. "Price checked on chain". What happens
   if the price moves past the tolerance. Details (the route, the pool, the
   router, the block). "Confirm step 1 of 2".
+  As built in part 6 (#194), and open for the owner to decide: the review is
+  step 1 alone, headed by what it allows ("Allow Uniswap's SwapRouter02 to
+  use 100 USDC"). It has no one-line swap, and says what step 2 is without
+  its fee, which is quoted only once a block has the approval.
 - **W3 · Swap, between the steps.** Step 1 done ("Confirmed 20 s ago · fee
   paid €0.38"). Step 2 quoted again: "Swap 100 USDC for at least 7.17 LINK.
   Price checked again just now (was 7.18)". "Confirm step 2 of 2", or Later.
   Later leaves step 2 waiting in the account's Activity (H5), and says that
   the permission lets Uniswap take the token only in a swap the user sends.
+  As built in part 6 (#194), and open for the owner to decide: the screen
+  waits for the approval's block ("Step 1 of 2 sent: the approval", its
+  status and Later), then shows step 2's review, as W2's swap with "Step 2
+  of 2". That review does not say when step 1 was confirmed or the fee it
+  paid, nor the price quoted before.
 - **W4 · Swap review, CoW Protocol.** The signed minimum ("100 USDC → 7.20
   LINK, at least"), and CoW's estimate marked "CoW's estimate, not checked
   on chain". Step 1, allow CoW Protocol to use 100 USDC. Step 2, "Sign the
   order: no network fee, CoW's fee is in the price, it fills within 30 min
-  or expires". "The minimum is at least what Uniswap gives, checked on
-  chain". What CoW's servers see: the order, the address and the IP
-  address, and that Uniswap keeps it on the chain alone (owner ruling,
-  2026-10-22). Details. "Confirm step 1 of 2".
+  or expires". "Checked on chain: the minimum is never below what Uniswap
+  gives, less the gas and your tolerance". What CoW's servers see: the
+  order, the address and the IP address, and that Uniswap keeps it on the
+  chain alone (owner ruling, 2026-10-22). Details. "Confirm step 1 of 2".
+  As built in part 6 (#194), and open for the owner to decide: step 1 is the
+  same approval review as W2's, naming CoW's vault relayer. The signed
+  minimum, CoW's estimate and the check against Uniswap come on step 2's
+  review, the order's, quoted once a block has the approval.
 
 A swap whose allowance already suffices has one step: its review is W2
 without the numbered steps, and says "Confirm swap". It has no mockup of its
@@ -297,7 +315,15 @@ merge.
    same in both views: it names no block.
 5. Simple Send and a transfer's status (S1 to S3). What it builds
    differently from S2 and S3 is said under each, open for the owner.
-6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4).
+6. Simple Swap for both venues, and `ApprovalPending` (W1 to W4). Between
+   the steps the screen re-quotes the swap every few seconds, for up to 15
+   minutes, until a block has the approval. It pauses while the screen is
+   hidden, and waits out a read that fails a few times in a row. A token that
+   needs its allowance set to zero first takes three steps (zero, the whole
+   amount, the swap), each confirmed on its own. An approval a block has
+   that still leaves the allowance short is said before another is sent,
+   with a link to its status. Leaving drops step 2 until part 7's Activity
+   card brings it back.
 7. The remaining flows: Activity's waiting step, and the screens under *Not
    in simple mode yet* that get a simple version.
 
