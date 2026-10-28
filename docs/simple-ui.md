@@ -321,13 +321,15 @@ approval's or an execution's run and every refusal are "checked on chain".
 The forms of Send from a Safe and a Safe's swap say each balance's age, as
 Send's and Swap's do.
 
+As built in part 10, a Safe's settings follow them too (owner's request,
+2026-10-28). The owners, the threshold, the modules and the guard are
+"checked on chain". A change's run "should go through", and one that
+reverts, or is refused, says so without its block. Every change offered or
+greyed out, and every check, is as in Detailed view.
+
 Create account, Import and Receive name no block, and draw the same in both
-views. The Debug tab is Detailed view's alone.
-
-### Not in simple mode yet
-
-A Safe's settings draw their detailed screen in both views until part 10
-gives them a simple one.
+views. The Debug tab is Detailed view's alone. Every other screen has a
+simple version.
 
 ## Delivery: a multi-PR plan through `feature/simple-ui`
 
@@ -366,6 +368,7 @@ merge.
    order's status, Tokens and Add token (*The other screens* above).
 9. Simple versions of a Safe's transaction screens: propose, swap, co-sign
    and execute, and import (*The other screens* above).
-10. Simple Safe settings (owner's request, 2026-10-28).
+10. Simple Safe settings (owner's request, 2026-10-28; *The other screens*
+    above).
 
 Then the final PR into `main`.
