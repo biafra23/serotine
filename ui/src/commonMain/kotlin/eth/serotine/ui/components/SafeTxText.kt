@@ -43,13 +43,15 @@ data class SafeTxActionItem(
  * [proposeAgain] when Uniswap's swap is worth proposing again in its place: its minimum has
  * fallen behind the market, or its deadline has passed (owner ruling, 2026-10-19);
  * [proposeAgainReason] why that cannot be done from here (no owner held here), the offer then
- * greyed out (owner ruling, 2026-10-18, #55), or null when it can.
+ * greyed out (owner ruling, 2026-10-18, #55), or null when it can. [simpleLines] are [lines] with
+ * no block, for simple mode (docs/simple-ui.md); null where they are [lines] themselves.
  */
 data class SafeSwapItem(
     val lines: List<String>,
     val warning: String? = null,
     val proposeAgain: Boolean = false,
     val proposeAgainReason: String? = null,
+    val simpleLines: List<String>? = null,
 )
 
 /** An address a Safe transaction names: [what] it is ("To", "New owner") and its EIP-55 [address]. */
@@ -331,12 +333,18 @@ private fun swapItem(
                 "of it. Propose it again with a fresh minimum, or execute it as signed."
         },
     )
+    val simpleNow = (checked.now as? SwapNow.Quoted)?.let { quote ->
+        "Returns ${bought(quote.amountOut)} now, as checked on chain" + if (checked.meetsMinimum == true) {
+            ": it meets its minimum."
+        } else {
+            ": below its minimum, so executed now it reverts."
+        }
+    } ?: now
+    val router = "Through Uniswap's SwapRouter02, its code proven by the light client."
+    val deadline = "Refused by the router after ${formatTime(swap.deadline)}."
     return SafeSwapItem(
-        lines = listOf(
-            "Through Uniswap's SwapRouter02, its code proven by the light client.",
-            now,
-            "Refused by the router after ${formatTime(swap.deadline)}.",
-        ),
+        lines = listOf(router, now, deadline),
+        simpleLines = listOf(router, simpleNow, deadline).takeIf { simpleNow != now },
         warning = warnings.takeIf { it.isNotEmpty() }?.joinToString(" "),
         proposeAgain = checked.expired == true || checked.leftOpen != null,
     )
@@ -502,6 +510,13 @@ internal fun callRefusalText(refusal: CallRefusal, network: Network): String = w
     }
     is CallRefusal.EarlierMaybeSent -> EARLIER_MAYBE_SENT
 }
+
+/**
+ * [safeTxRefusalText] in simple mode's words, with no block (docs/simple-ui.md); null where that is
+ * [safeTxRefusalText] itself, which names none.
+ */
+internal fun simpleSafeTxRefusalText(refusal: SafeTxRefusal): String? =
+    (refusal as? SafeTxRefusal.NotQuoted)?.let { simpleCallRefusalText(it.refusal) }
 
 /**
  * [callRefusalText] in simple mode's words, with no block (docs/simple-ui.md); null where that is

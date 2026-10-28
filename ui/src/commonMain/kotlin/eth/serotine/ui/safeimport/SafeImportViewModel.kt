@@ -13,6 +13,7 @@ import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SigningRequestImport
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.safeTxRefusalText
+import eth.serotine.ui.components.simpleSafeTxRefusalText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,7 +47,11 @@ class SafeImportViewModel(
 
     /** Where the import stands. */
     private sealed interface Step {
-        data class Entering(val importing: Boolean = false, val error: String? = null) : Step
+        data class Entering(
+            val importing: Boolean = false,
+            val error: String? = null,
+            val simpleError: String? = null,
+        ) : Step
 
         data class Imported(val hash: String) : Step
     }
@@ -65,6 +70,7 @@ class SafeImportViewModel(
                 text = text,
                 importing = step.importing,
                 error = step.error,
+                simpleError = step.simpleError,
             )
         }
     }.stateIn(
@@ -103,8 +109,10 @@ class SafeImportViewModel(
                     } else {
                         Step.Entering(error = NOT_SAVED)
                     }
-                    is SigningRequestImport.Refused ->
-                        Step.Entering(error = safeTxRefusalText(imported.refusal, network))
+                    is SigningRequestImport.Refused -> Step.Entering(
+                        error = safeTxRefusalText(imported.refusal, network),
+                        simpleError = simpleSafeTxRefusalText(imported.refusal),
+                    )
                 }
             }
         }

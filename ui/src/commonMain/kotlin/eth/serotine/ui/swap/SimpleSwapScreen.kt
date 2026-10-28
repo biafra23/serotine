@@ -66,6 +66,7 @@ private fun SwapUiState.simple(): SwapUiState = when (this) {
             sell = form.sell?.copy(verifiedAt = null),
             buyOptions = form.buyOptions.map { it.copy(verifiedAt = null) },
             buy = form.buy?.copy(verifiedAt = null),
+            error = form.simpleError ?: form.error,
         ),
     )
     else -> this

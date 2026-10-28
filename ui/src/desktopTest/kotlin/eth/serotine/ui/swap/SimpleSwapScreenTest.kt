@@ -135,4 +135,30 @@ class SimpleSwapScreenTest {
         rule.onNodeWithText("1,250 USDC · updated 2 min ago").assertIsDisplayed()
         rule.onNodeWithText("block 23,", substring = true).assertDoesNotExist()
     }
+
+    @Test
+    fun aRefusalOnTheFormIsSaidInSimpleModesWordsWithNoBlock() {
+        show(
+            SwapUiState.Compose(
+                form = SwapForm(
+                    network = "Ethereum",
+                    from = approval.from,
+                    sellOptions = listOf(approval.token),
+                    sell = approval.token,
+                    buyOptions = listOf(approval.token),
+                    buy = null,
+                    amount = "100",
+                    tolerance = "0.5",
+                    error = "The swap reverts, or returns less than its minimum, run as a verified call at block " +
+                        "23,614,077. Nothing was signed.",
+                    simpleError = "The swap reverts, or returns less than its minimum, as checked on chain. Nothing " +
+                        "was signed.",
+                ),
+                fee = FeeLevel.NORMAL,
+            ),
+        )
+
+        rule.onNodeWithText("as checked on chain", substring = true).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("at block", substring = true).assertDoesNotExist()
+    }
 }

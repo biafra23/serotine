@@ -314,14 +314,20 @@ same screen with simple mode's words:
 - Every block the screen no longer shows, the fee's make-up and the verified
   runs are one tap away, under *Details*.
 
+As built in part 9, a Safe's transaction screens follow the same rules:
+Import a request, Send from a Safe, a Safe's swap, and a Safe transaction's
+overview, signing and review. The owners' stand, a swap's quote, an
+approval's or an execution's run and every refusal are "checked on chain".
+The forms of Send from a Safe and a Safe's swap say each balance's age, as
+Send's and Swap's do.
+
 Create account, Import and Receive name no block, and draw the same in both
 views. The Debug tab is Detailed view's alone.
 
 ### Not in simple mode yet
 
-A Safe's transaction screens (propose, swap, co-sign, execute, import) and
-its settings draw their detailed screens in both views until parts 9 and 10
-give them a simple one.
+A Safe's settings draw their detailed screen in both views until part 10
+gives them a simple one.
 
 ## Delivery: a multi-PR plan through `feature/simple-ui`
 
@@ -359,7 +365,7 @@ merge.
    a block: Watch address, Create Safe, an Activity row's detail, a CoW
    order's status, Tokens and Add token (*The other screens* above).
 9. Simple versions of a Safe's transaction screens: propose, swap, co-sign
-   and execute, and import.
+   and execute, and import (*The other screens* above).
 10. Simple Safe settings (owner's request, 2026-10-28).
 
 Then the final PR into `main`.

@@ -811,6 +811,19 @@ class SwapViewModelTest {
     }
 
     @Test
+    fun aSwapThatRevertsIsSaidOnTheComposeStepAndSimpleModeSaysItWithNoBlock() = runTest {
+        inputs.runs[router] = Simulation.Reverted(9_412_118)
+        val viewModel = reviewed()
+
+        val form = viewModel.compose
+        assertTrue("block 9,412,118" in form.error.orEmpty(), form.error)
+        assertEquals(
+            "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was signed.",
+            form.simpleError,
+        )
+    }
+
+    @Test
     fun aPairNoPoolTakesIsSaidOnTheComposeStep() = runTest {
         val viewModel = viewModel(sell = usdc.address)
         viewModel.onBuyChange(link.address.hex)

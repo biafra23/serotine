@@ -55,6 +55,7 @@ import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.assetOptions
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSignedText
@@ -64,10 +65,12 @@ import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
+import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.shareItem
+import eth.serotine.ui.components.simpleSafeTxRefusalText
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import kotlin.time.TimeMark
@@ -120,6 +123,7 @@ class SafeProposeViewModel(
     private val signSafeTx: SignSafeTx,
     private val encodeSigningRequest: EncodeSigningRequest,
     private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val now: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val safe: Address = account.address
@@ -167,7 +171,12 @@ class SafeProposeViewModel(
 
     /** Where the flow stands. */
     private sealed interface Step {
-        data class Composing(val proposing: Boolean = false, val error: String? = null) : Step
+        data class Composing(
+            val proposing: Boolean = false,
+            val error: String? = null,
+            /** [error] with no block, for simple mode; null where it is [error] itself. */
+            val simpleError: String? = null,
+        ) : Step
 
         /**
          * [proposal] of [request], made at [proposedAt], under review, to be signed by [owner];
@@ -194,6 +203,8 @@ class SafeProposeViewModel(
             val hidden: Boolean = false,
             val unsaved: SigningRequest? = null,
             val askingToDrop: Boolean = false,
+            /** [error] with no block, for simple mode; null where it is [error] itself. */
+            val simpleError: String? = null,
         ) : Step {
             val idle: Boolean
                 get() = !refreshing && !signing
@@ -236,11 +247,17 @@ class SafeProposeViewModel(
         null,
     )
 
-    val uiState: StateFlow<SafeProposeUiState> = combine(model, step, ::render).stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
-        SafeProposeUiState.Loading(network.displayName),
-    )
+    val uiState: StateFlow<SafeProposeUiState> = combine(model, step) { model, step -> model to step }
+        // A balance's age, which simple mode shows, is dated anew every second on the compose step.
+        .redatedWhile { (model, step) ->
+            step is Step.Composing && model?.options.orEmpty().any { it.provenAt != null }
+        }
+        .map { (model, step) -> render(model, step) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            SafeProposeUiState.Loading(network.displayName),
+        )
 
     /** Chooses the asset: the token at [contract], or the network's currency (null). */
     fun onAssetChange(contract: String?) {
@@ -326,7 +343,12 @@ class SafeProposeViewModel(
         val owner = Address.parse(address) ?: return
         step.update { current ->
             if (current is Step.Reviewing && current.idle && owner in current.proposal.safe.ownersHeld) {
-                current.copy(owner = owner, unlock = current.unlock.copy(error = null), error = null)
+                current.copy(
+                    owner = owner,
+                    unlock = current.unlock.copy(error = null),
+                    error = null,
+                    simpleError = null,
+                )
             } else {
                 current
             }
@@ -340,7 +362,7 @@ class SafeProposeViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (!current.idle) return
         val cleared = current.unlock.copy(error = null)
-        step.value = current.copy(refreshing = true, hidden = false, error = null, unlock = cleared)
+        step.value = current.copy(refreshing = true, hidden = false, error = null, simpleError = null, unlock = cleared)
         job = viewModelScope.launch {
             val accounts = model.value?.accounts ?: current.accounts
             val next = proposed(current.request, current.owner, current.unlock, current.safeAccount, accounts)
@@ -369,7 +391,12 @@ class SafeProposeViewModel(
                     // A request signed here that is kept nowhere else is not given up with a
                     // re-proposal that fails: the review stays, saying why, with it to share.
                     latest.unsaved != null && next is Step.Composing ->
-                        latest.copy(refreshing = false, error = next.error, unlock = latest.unlock.copy(error = note))
+                        latest.copy(
+                            refreshing = false,
+                            error = next.error,
+                            simpleError = next.simpleError,
+                            unlock = latest.unlock.copy(error = note),
+                        )
                     else -> next
                 }
             }
@@ -466,7 +493,7 @@ class SafeProposeViewModel(
     private fun sign(review: Step.Reviewing, unlock: Unlock) {
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = review.unlock.copy(password = WalletPassword.EMPTY, error = null)
-        step.value = review.copy(signing = true, checking = true, error = null, unlock = unlocked)
+        step.value = review.copy(signing = true, checking = true, error = null, simpleError = null, unlock = unlocked)
         // The check has what is left of the proposal's minute, less the prompt's least time when
         // the prompt signs: past that the signature could not be made in time anyway.
         val checkUntil = (unlock as? Unlock.WithBiometrics)?.notAfter?.let { it - MIN_PROMPT_TIME }
@@ -524,8 +551,11 @@ class SafeProposeViewModel(
                             biometrics = latest.unlock.biometrics && biometricsStillOffered(signing.signing),
                         ),
                     )
-                    is SafeTxSigning.Refused ->
-                        latest.copy(signing = false, error = safeTxRefusalText(signing.refusal, network))
+                    is SafeTxSigning.Refused -> latest.copy(
+                        signing = false,
+                        error = safeTxRefusalText(signing.refusal, network),
+                        simpleError = simpleSafeTxRefusalText(signing.refusal),
+                    )
                     null -> latest.copy(signing = false, unlock = latest.unlock.copy(error = SIGN_FAILED))
                 }
             }
@@ -568,7 +598,9 @@ class SafeProposeViewModel(
             // The use case promises not to throw; the backstop.
             SafeTxProposing.Refused(SafeTxRefusal.Unavailable(ReadUnavailable.UNPROVEN))
         }
-        if (proposing !is SafeTxProposing.Proposed) return Step.Composing(error = refusal(proposing, request.option))
+        if (proposing !is SafeTxProposing.Proposed) {
+            return Step.Composing(error = refusal(proposing, request.option), simpleError = simpleRefusal(proposing))
+        }
         val proposal = proposing.proposal
         val held = proposal.safe.ownersHeld
         val signer = owner?.takeIf { it in held } ?: held.firstOrNull()
@@ -663,13 +695,14 @@ class SafeProposeViewModel(
         val (note, isError) = recipientNote(text, lookup)
         val selected = model.selected
         val amount = typedAmount(inputs.amount, selected)
+        val at = now()
         return TransferForm(
             network = network.displayName,
             toLabel = addressFieldLabel(network),
             toHint = recipientHint(network),
             from = from,
-            assets = model.options.map { it.choice() },
-            asset = selected?.choice(),
+            assets = model.options.map { it.choice(at) },
+            asset = selected?.choice(at),
             to = inputs.to,
             accounts = model.accounts.filter { it.address != safe }
                 .map { AccountChoice(it.label, Eip55.format(it.address)) },
@@ -688,6 +721,7 @@ class SafeProposeViewModel(
             canMax = selected?.balance != null && !step.proposing,
             quoting = step.proposing,
             error = step.error,
+            simpleError = step.simpleError,
             canReview = !step.proposing && requestOf(model) != null,
         )
     }
@@ -735,6 +769,10 @@ class SafeProposeViewModel(
                     "Not simulated: the light client on this device does not run a call from the Safe's address. " +
                         "Its execution, the whole of it, is run as a verified call before anyone sends it."
             },
+            simpleSimulation = (proposal.simulation as? SafeCallSimulation.Ran)?.let {
+                "Checked on chain: the Safe's call should go through. Its owners' signatures, its nonce and its " +
+                    "guard are checked when its execution is quoted."
+            },
             owners = held.map { AccountChoice(labels[it] ?: Eip55.format(it), Eip55.format(it)) },
             owner = Eip55.format(step.owner),
             unlock = step.unlock,
@@ -744,6 +782,7 @@ class SafeProposeViewModel(
             error = step.error,
             share = step.unsaved?.let { shareItem(encodeSigningRequest(it), it.signatures.size) },
             askingToDrop = step.askingToDrop,
+            simpleError = step.simpleError,
         )
     }
 
@@ -786,6 +825,14 @@ class SafeProposeViewModel(
                 "refuses it. Nothing was proposed."
         }
         is SafeTxProposing.Refused -> safeTxRefusalText(proposing.refusal, network)
+    }
+
+    /** [refusal] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
+    private fun simpleRefusal(proposing: SafeTxProposing): String? = when (proposing) {
+        is SafeTxProposing.Reverts -> "The Safe's call reverts, checked on chain: the recipient or the token refuses " +
+            "it. Nothing was proposed."
+        is SafeTxProposing.Refused -> simpleSafeTxRefusalText(proposing.refusal)
+        else -> null
     }
 
     /** What [text] names, resolved ([ResolveRecipient]); never throws. */
