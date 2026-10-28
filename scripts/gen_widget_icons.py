@@ -73,6 +73,10 @@ def add_paths(block):
             grad_m = re.search(r'Brush\.linearGradient\(', rest)
             grad = balanced(rest, grad_m.end() - 1)
             colors = re.findall(r'Color\((0x[0-9A-Fa-f]+)\)', grad)
+            if len(colors) != 2:
+                # The VectorDrawable <gradient> this writes takes one startColor/endColor pair;
+                # a third stop would be silently dropped instead of failing loud.
+                raise ValueError('expected exactly 2 gradient stops, got %d: %r' % (len(colors), grad[:120]))
             start = re.search(r'start = Offset\(([\d.]+)f,\s*([\d.]+)f\)', grad)
             end = re.search(r'end = Offset\(([\d.]+)f,\s*([\d.]+)f\)', grad)
             fill = {
@@ -100,51 +104,58 @@ def add_paths(block):
     return out
 
 
-# The keys whose lazy block is one flat `icon("x", units?).addPath(...)*.build()`: scraped
-# whole, one block per key.
-SIMPLE_KEYS = ['usdc', 'link', 'uni', 'gno', 'eure', 'usdt', 'wbtc', 'aave', 'eurc', 'pyusd', 'gho']
-
-icons = {}
-for key in SIMPLE_KEYS:
-    block = lazy_block(key)
-    icons[key] = {'viewport': icon_viewport(block), 'paths': add_paths(block)}
-
-# eth/weth and dai/xdai/wxdai/sdai each share one glyph (ethGlyph/daiGlyph) over their own
-# background colour, so that shared body is scraped once per helper and then applied with
-# each key's own background.
+def of_keys():
+    """Each `"<key>" -> <valName>` branch of `TokenIcons.of`'s `when`: the exact key set this
+    scrapes, so a key `of` gains or loses is picked up (or missed) here too, never hardcoded."""
+    m = re.search(r'fun of\(key: String\): ImageVector\? = when \(key\) \{\n(.*?)\n\s*else -> null', TEXT, re.DOTALL)
+    if not m:
+        raise ValueError("could not find TokenIcons.of(...)'s when-block in %s" % SRC)
+    branches = re.findall(r'"(\w+)"\s*->\s*(\w+)', m.group(1))
+    if not branches:
+        raise ValueError("TokenIcons.of(...)'s when-block in %s has no \"key\" -> val branches" % SRC)
+    return branches
 
 
 def helper_body(name):
+    """The body of the shared glyph helper `name` (`ethGlyph`/`daiGlyph`), scraped once and
+    then coloured per key by `glyph_oneliner`'s own background."""
     pattern = r'private fun %s\(name: String, background: Color\): ImageVector =\n(.*?)\n        \.build\(\)' % name
     m = re.search(pattern, TEXT, re.DOTALL)
     if not m:
         raise ValueError('no helper function named %r in %s' % (name, SRC))
-    return m.group(1) + '\n        .build()'
+    return add_paths(m.group(1) + '\n        .build()')
 
 
-ETH_GLYPH = add_paths(helper_body('ethGlyph'))
-DAI_GLYPH = add_paths(helper_body('daiGlyph'))
+def glyph_oneliner(val_name):
+    """`private val <val_name>: ImageVector by lazy { ethGlyph("x", Color(0x...)) }` (or
+    `daiGlyph`): the helper name and background colour this one-liner draws with, scraped
+    from the call itself rather than a hand-kept table that could go stale beside it. None
+    when `val_name` is not a one-liner over `ethGlyph`/`daiGlyph`."""
+    m = re.search(
+        r'private val %s: ImageVector by lazy \{ (ethGlyph|daiGlyph)\("\w+", Color\((0x[0-9A-Fa-f]+)\)\) \}'
+        % re.escape(val_name),
+        TEXT,
+    )
+    return (m.group(1), m.group(2).replace('0x', '#')) if m else None
 
-BACKGROUNDS = {
-    'eth': '0xFF627EEA', 'weth': '0xFFEC1C79',
-    'dai': '0xFFF4B731', 'xdai': '0xFF48A9A6', 'wxdai': '0xFF3E6957', 'sdai': '0xFFB8741A',
-}
-for key, glyph in (('eth', ETH_GLYPH), ('weth', ETH_GLYPH), ('dai', DAI_GLYPH), ('xdai', DAI_GLYPH),
-                   ('wxdai', DAI_GLYPH), ('sdai', DAI_GLYPH)):
-    paths = []
-    for p in glyph:
-        fill = p['fill']
-        if not fill['gradient'] and fill['color'] is None:
-            fill = {'gradient': False, 'color': BACKGROUNDS[key].replace('0x', '#')}
-        paths.append({**p, 'fill': fill})
-    icons[key] = {'viewport': 32, 'paths': paths}
 
-EXPECTED_KEYS = {
-    'eth', 'usdc', 'link', 'uni', 'weth', 'eurc', 'pyusd', 'gho', 'dai', 'usdt', 'wbtc', 'aave',
-    'xdai', 'wxdai', 'sdai', 'gno', 'eure',
-}
-if set(icons) != EXPECTED_KEYS:
-    raise ValueError('scraped %s, expected %s' % (sorted(icons), sorted(EXPECTED_KEYS)))
+_glyphs = {}  # helper name -> its scraped, uncoloured paths (each helper scraped once)
+icons = {}
+for key, val_name in of_keys():
+    glyph = glyph_oneliner(val_name)
+    if glyph is not None:
+        helper, background = glyph
+        paths = []
+        for p in _glyphs.setdefault(helper, helper_body(helper)):
+            fill = p['fill']
+            if not fill['gradient'] and fill['color'] is None:
+                fill = {'gradient': False, 'color': background}
+            paths.append({**p, 'fill': fill})
+        icons[key] = {'viewport': 32, 'paths': paths}
+    else:
+        # Not a glyph one-liner: a flat `icon("x", units?).addPath(...)*.build()` lazy block.
+        block = lazy_block(val_name)
+        icons[key] = {'viewport': icon_viewport(block), 'paths': add_paths(block)}
 
 
 def vector_xml(key, spec):
@@ -208,8 +219,19 @@ def write(path, text):
         fh.write(text)
 
 
+keep = set()
 for key, spec in icons.items():
-    write(os.path.join(RES_DIR, 'ic_widget_asset_%s.xml' % key), vector_xml(key, spec))
+    path = os.path.join(RES_DIR, 'ic_widget_asset_%s.xml' % key)
+    write(path, vector_xml(key, spec))
+    keep.add(path)
+
+# A key TokenIcons.of no longer has: its drawable is deleted here too, instead of sitting in
+# the APK and WidgetAssetIcons.kt (which is rewritten whole, below) unreferenced but stale.
+if os.path.isdir(RES_DIR):
+    for name in os.listdir(RES_DIR):
+        path = os.path.join(RES_DIR, name)
+        if name.startswith('ic_widget_asset_') and name.endswith('.xml') and path not in keep:
+            os.remove(path)
 
 kt = (
     'package eth.serotine.android.widget\n\n'
