@@ -36,8 +36,10 @@ the contract for keys.
 (Owner's request, 2026-10-24.)
 
 - A light client whose last trusted checkpoint is older than its network's
-  weak-subjectivity bound refuses to sync. The bound is 3 sync-committee
-  periods: about 3.4 days on Ethereum and Sepolia, 34 hours on Gnosis Chain.
+  weak-subjectivity bound refuses to sync. The bound is the engine's
+  default (Myotis's `NetworkConfig.wsBoundPeriods()`), in sync-committee periods:
+  13 on Ethereum and Sepolia, about 15 days of 27.3-hour periods; 3 on
+  Gnosis Chain, about 34 hours of 11.4-hour periods.
 - Accounts warns of it in that network's section, in plain words: what
   catching up has to trust, and what a forged chain could and could not do.
 - Only the user's confirmation lets it catch up (the engine's
