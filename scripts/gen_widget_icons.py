@@ -76,6 +76,9 @@ def add_paths(block):
             # evenly from 0 to 1, as Compose spreads them.
             stops = re.findall(r'([\d.]+)f to Color\((0x[0-9A-Fa-f]+)\)', grad)
             if stops:
+                # A stop whose colour is not a literal Color(0x...) would be dropped without a word.
+                if len(stops) != grad.count(' to '):
+                    raise ValueError('a gradient stop that is not a literal colour: %r' % grad[:120])
                 colors = [c for _, c in stops]
                 offsets = [o for o, _ in stops]
             else:
