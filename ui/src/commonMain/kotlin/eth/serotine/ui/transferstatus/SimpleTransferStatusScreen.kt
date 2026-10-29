@@ -9,6 +9,7 @@ import eth.serotine.ui.components.LightClientItem
  * [state], with no light-client strip and each step in simple mode's words, Sent → Confirmed →
  * Final, without a block; Detailed view's words, the blocks among them, are behind *Details*. The
  * hash, what was sent and Try again are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleTransferStatusScreen(

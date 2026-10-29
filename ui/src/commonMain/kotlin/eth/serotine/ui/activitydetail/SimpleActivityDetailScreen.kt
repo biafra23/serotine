@@ -9,6 +9,7 @@ import eth.serotine.ui.components.LightClientItem
  * the same [state], with no light-client strip, how it ended in words ("Confirmed"), and its block
  * behind *Details*. Every address and hash it concerns, Copy, Status and Add token are as in
  * Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleActivityDetailScreen(

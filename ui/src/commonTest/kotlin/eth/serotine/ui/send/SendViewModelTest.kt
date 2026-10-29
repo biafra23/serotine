@@ -75,6 +75,7 @@ import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SYNC_RETRY_MS
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import kotlin.test.AfterTest
@@ -83,6 +84,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -870,6 +872,24 @@ class SendViewModelTest {
         assertEquals("0.2 ETH", viewModel.review.amount)
         assertEquals("", viewModel.review.unlock.password.text, "a new review, a new password")
         assertEquals(2, inputs.estimated.size)
+    }
+
+    @Test
+    fun aRecipientsNameAskedWhileTheLightClientSyncsGreysOutTryAgainAndIsLookedUpAgainByItself() = runTest {
+        holding()
+        names.names["friend.eth"] = NameResolution.Unavailable(ReadUnavailable.SYNCING)
+        val viewModel = viewModel()
+        viewModel.onToChange("friend.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertTrue(viewModel.compose.canRetryLookup)
+        assertNotNull(viewModel.compose.retryLookupWaits, "Try again greyed out, with its reason")
+
+        names.names["friend.eth"] = NameResolution.Resolved("friend.eth", friend, 9_411_900)
+        advanceTimeBy(SYNC_RETRY_MS)
+        runCurrent()
+        assertEquals("friend.eth", viewModel.compose.recipient?.name, "resolved by itself once it has caught up")
+        assertNull(viewModel.compose.retryLookupWaits)
     }
 
     @Test

@@ -10,6 +10,7 @@ import eth.serotine.ui.components.LightClientItem
  * Send does; the review says the Safe's call was checked on chain, and keeps the blocks behind
  * *Details*. The Safe transaction, decoded here, the owner who signs and every refusal are as in
  * Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeProposeScreen(

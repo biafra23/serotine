@@ -8,6 +8,7 @@ import eth.serotine.ui.components.LightClientItem
  * Import a request in simple mode (docs/simple-ui.md): [SafeImportScreen] for the same [state],
  * with no light-client strip, and a refusal said with no block. The request, its checks against the
  * chain and Import are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeImportScreen(

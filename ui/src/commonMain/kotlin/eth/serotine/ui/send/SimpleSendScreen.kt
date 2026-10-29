@@ -10,6 +10,7 @@ import eth.serotine.ui.components.LightClientItem
  * mode's chrome, no light-client strip, no block in the form (an asset's balance and a name's
  * resolution say none), and the simple review, its detail behind *Details*. Every check, refusal and
  * greyed-out reason is the same as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSendScreen(

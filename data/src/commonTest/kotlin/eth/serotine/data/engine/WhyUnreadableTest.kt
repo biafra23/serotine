@@ -19,6 +19,11 @@ class WhyUnreadableTest {
         listOf(Phase.STARTING, Phase.SYNCING, Phase.CATCHING_UP).forEach { phase ->
             assertEquals(ReadUnavailable.SYNCING, whyUnreadable(running(phase = phase)), "$phase")
         }
+        assertEquals(
+            ReadUnavailable.SYNCING,
+            whyUnreadable(running(head = 0, headAgeMs = Long.MAX_VALUE)),
+            "synced, waiting for its first verified head",
+        )
     }
 
     @Test

@@ -9,6 +9,7 @@ import eth.serotine.ui.components.LightClientItem
  * light-client strip, and what the contract says of itself read on chain with no block. The claim,
  * labelled as the contract's, and Add are as in Detailed view; the block it was read at is behind
  * *Details*.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleAddTokenScreen(

@@ -39,10 +39,11 @@ sealed interface AccountDetailUiState {
      * no longer follow that network and others still can, which greys out Send and Swap too;
      * [swapVenue] false where no swap venue is pinned on it (Gnosis Chain), which greys out Swap.
      * Simple mode says how fresh its values are ([freshness]: "Updated 40 s ago · pull down to
-     * refresh", "Live", "Checking…"; null while nothing is proven yet) and whether a refresh is
-     * being answered ([refreshing]), and [cantCheck], a banner while its network cannot be checked
-     * and the screen shows amounts from before, or its light client has no fresh head
-     * (docs/simple-ui.md, H4).
+     * refresh", "Live", "Checking…", "Syncing Ethereum · 2 of 6 periods" while it catches up; null
+     * while nothing is proven yet) and whether a refresh is being answered ([refreshing]), and
+     * [cantCheck], a banner while its network cannot be checked and the screen shows amounts from
+     * before, or its light client has no fresh head; "is still syncing" while it catches up
+     * (docs/simple-ui.md, H4 and *The sync line*).
      */
     data class Ready(
         val label: String,

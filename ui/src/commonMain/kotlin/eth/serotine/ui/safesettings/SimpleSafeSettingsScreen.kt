@@ -10,6 +10,7 @@ import eth.serotine.ui.components.LightClientItem
  * say they were checked on chain, a change's run that it should go through, and a refusal is said
  * without its block; the blocks are behind *Details*. The owners, the threshold, the modules, the
  * guard, every change offered or greyed out, and every check are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeSettingsScreen(

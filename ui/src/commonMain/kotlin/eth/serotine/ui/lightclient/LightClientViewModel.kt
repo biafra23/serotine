@@ -39,7 +39,9 @@ class LightClientViewModel(
                 // was, never from "Starting" again, and the poll's first answer, read at once,
                 // replaces it.
                 started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                initialValue = LightClientItem.from(LightClientStatus.Starting, now = 0, network = network.displayName),
+                // Simple mode draws no sync line from it: the first poll says whether there is one, and a
+                // synced network's screens never flash one.
+                initialValue = LightClientItem.from(LightClientStatus.Starting, now = 0).copy(simpleText = null),
             )
     }
 }

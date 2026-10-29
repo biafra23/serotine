@@ -10,6 +10,7 @@ import eth.serotine.ui.components.LightClientItem
  * account's verified logs, its block behind *Details*; the cancellation's review says its run was
  * checked on chain and keeps the fee's make-up and the blocks behind *Details* too. CoW's word, labelled as
  * CoW's, Cancel on chain and the same swap on Uniswap are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleCowOrderScreen(

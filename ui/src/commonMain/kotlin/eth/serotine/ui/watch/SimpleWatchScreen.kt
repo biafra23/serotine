@@ -9,6 +9,7 @@ import eth.serotine.ui.components.LightClientItem
  * light-client strip and no block: each card says it was checked on chain, and a name says what it
  * resolves to the same way; the blocks are behind *Details*. What is at the address, and whether it
  * can be added, are the same as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleWatchScreen(

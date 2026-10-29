@@ -480,7 +480,8 @@ class AccountDetailViewModel(
         /**
          * The state at [now] (unix seconds) with simple mode's leaves (docs/simple-ui.md, H4): each
          * amount from before with its age, how fresh the values are ("Updated 40 s ago", "Live",
-         * "Checking…" while a refresh is answered) and a banner while the network cannot be checked.
+         * "Checking…" while a refresh is answered, "Syncing Ethereum · 2 of 6 periods" while it
+         * catches up) and a banner while the network cannot be checked.
          */
         fun finish(now: Long): AccountDetailUiState {
             val ready = built.state as? AccountDetailUiState.Ready ?: return built.state
@@ -516,7 +517,8 @@ class AccountDetailViewModel(
         /**
          * The banner while the network cannot be checked: amounts from before are shown, or its light
          * client has no fresh head to read at (STALE), or has stopped short of one; none while it is
-         * on its way (starting, catching up) or the network is off.
+         * on its way (starting, catching up) with nothing from before, or the network is off. With
+         * amounts from before while it catches up, it says the network is still syncing.
          */
         private fun cantCheck(off: String?, now: Long): UnreachableNetwork? {
             // A network this version can no longer follow says so on its greyed-out actions: an update

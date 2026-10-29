@@ -570,6 +570,28 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun aNameCheckedAgainAtTheAddWhileTheLightClientSyncsSaysSoAndAddsNothing() = runTest {
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        names.names["vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.SYNCING)
+        viewModel.add()
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.done)
+        assertEquals(
+            "The light client is still syncing, so “vitalik.eth” can't be checked again yet. Try again once it " +
+                "has caught up.",
+            viewModel.uiState.value.error,
+            "never \"again just now\"",
+        )
+        assertEquals(listOf(daily), accounts.accounts.value, "nothing added")
+    }
+
+    @Test
     fun aNameThatCannotBeVerifiedAgainAtTheAddIsNotAddedAndCanBeTriedAgain() = runTest {
         names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
         val viewModel = viewModel()

@@ -10,6 +10,7 @@ import eth.serotine.ui.components.LightClientItem
  * review says the factory's run, checked on chain, returns the address, and keeps the blocks, the
  * fee's make-up, the payer's balance block and the run's block behind *Details*. The owners, the
  * threshold, the payer, the fee and every check are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleCreateSafeScreen(

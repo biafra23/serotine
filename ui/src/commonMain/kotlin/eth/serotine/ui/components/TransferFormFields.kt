@@ -302,7 +302,8 @@ internal fun FeeChoice(fee: FeeLevel, enabled: Boolean, onFeeChange: (FeeLevel) 
  */
 @Composable
 internal fun RetryLookupButton(waits: String?, onRetry: () -> Unit) {
-    var asking by remember { mutableStateOf(false) }
+    // Asked about this reason alone: once it is gone, a later one is never shown unasked.
+    var asking by remember(waits) { mutableStateOf(false) }
     if (waits == null) {
         TextButton(onClick = onRetry) { Text("Try again") }
         return

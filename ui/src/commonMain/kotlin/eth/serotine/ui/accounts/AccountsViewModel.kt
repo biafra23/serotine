@@ -223,9 +223,11 @@ class AccountsViewModel(
         val syncing = held.filter { network ->
             lightClients[network.ordinal].let { it.health == LightClientHealth.NOT_VERIFIED && it.working }
         }
+        // The age of the values shown from the other networks stays beside it: they count in the total.
+        val shownAge = oldest?.let { " · updated ${agoText(it, now)}" }.orEmpty()
         val freshness = when {
-            syncing.size == 1 -> lightClients[syncing.single().ordinal].simpleText
-            syncing.isNotEmpty() -> "Syncing ${spokenList(syncing.map { it.displayName })}"
+            syncing.size == 1 -> lightClients[syncing.single().ordinal].simpleText + shownAge
+            syncing.isNotEmpty() -> "Syncing ${spokenList(syncing.map { it.displayName })}$shownAge"
             refreshing && notLive.isNotEmpty() -> "Checking ${spokenList(notLive.map { it.displayName })}…"
             oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
             held.isNotEmpty() && notLive.isEmpty() && readings.values.any { it is BalanceReading.Verified } -> "Live"

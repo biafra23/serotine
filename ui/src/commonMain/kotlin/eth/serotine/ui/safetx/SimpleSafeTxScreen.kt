@@ -11,6 +11,7 @@ import eth.serotine.ui.components.SafeSwapItem
  * run and every refusal say they were checked on chain; the blocks, and the review's fee make-up,
  * are behind *Details*. The transaction, decoded here, its hash, what can be done and every check
  * are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeTxScreen(

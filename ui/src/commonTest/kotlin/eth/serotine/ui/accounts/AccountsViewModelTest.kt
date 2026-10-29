@@ -671,8 +671,11 @@ class AccountsViewModelTest {
 
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+
+        /** A network's own status, where a test gives it one; [status] otherwise. */
+        val of = mutableMapOf<Network, MutableStateFlow<LightClientStatus>>()
         override val datesFinalizedBlocks = true
-        override fun observeStatus(network: Network): Flow<LightClientStatus> = status
+        override fun observeStatus(network: Network): Flow<LightClientStatus> = of[network] ?: status
     }
 
     private class FakeBalances : NativeBalances {
@@ -808,6 +811,26 @@ class AccountsViewModelTest {
         )
         assertEquals("1 Ethereum account not counted", ready.simpleTotalNote, "said instead of still checking")
         assertEquals("Still checking", ready.totalNote, "Detailed view's note as before")
+    }
+
+    @Test
+    fun aNetworkThatSyncsIsSaidWithTheAgeOfWhatTheOthersShow() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        lightClient.status.value = synced
+        lightClient.of[Network.SEPOLIA] = MutableStateFlow(LightClientStatus.CatchingUp(done = 2, total = 6))
+        repository.accounts = listOf(ethereumMain, daily)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(ethereumMain.address).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = now - 120)
+        runCurrent()
+
+        assertEquals(
+            "Syncing Sepolia · 2 of 6 periods · updated 2 min ago",
+            (viewModel.uiState.value as AccountsUiState.Ready).freshness,
+            "Ethereum's balances count in the total: their age stays in sight",
+        )
     }
 
     @Test

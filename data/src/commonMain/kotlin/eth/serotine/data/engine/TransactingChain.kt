@@ -88,8 +88,9 @@ internal fun whyUnreadable(snapshot: EngineSnapshot): ReadUnavailable? = when (s
     EngineSnapshot.Booting -> ReadUnavailable.SYNCING
     is EngineSnapshot.Running -> when {
         snapshot.phase == EngineSnapshot.Phase.STALE_ANCHOR -> ReadUnavailable.STALE_ANCHOR
-        // On its way to a verified head; one synced but without a fresh head, or a proof peer, is not.
-        snapshot.phase != EngineSnapshot.Phase.SYNCED -> ReadUnavailable.SYNCING
+        // On its way to a verified head, its first one included; one synced whose head is not fresh, or
+        // that has no proof peer, is not.
+        snapshot.phase != EngineSnapshot.Phase.SYNCED || snapshot.headBlock <= 0 -> ReadUnavailable.SYNCING
         snapshot.readableHead == null -> ReadUnavailable.UNPROVEN
         else -> null
     }

@@ -10,6 +10,7 @@ import eth.serotine.ui.components.LightClientItem
  * does; the review says its quote and its runs were checked on chain, and keeps the blocks behind
  * *Details*. The Safe transactions, decoded here, the owner who signs and every refusal are as in
  * Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeSwapScreen(

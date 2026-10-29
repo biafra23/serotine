@@ -12,6 +12,7 @@ import eth.serotine.ui.components.LightClientItem
  * ("Confirm step 1 of 2") with its detail (routes, blocks, the fee's make-up) behind *Details*, and
  * the wait for the approval's block between the steps. Every check, refusal, greyed-out reason and
  * the venue the user chooses are the same as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSwapScreen(

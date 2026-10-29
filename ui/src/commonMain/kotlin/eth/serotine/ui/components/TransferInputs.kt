@@ -210,8 +210,13 @@ internal suspend fun resolveAgain(
     val name = found.name ?: return ResolvedAgain.Same(found)
     val again = lookUp(name)
     if (again is RecipientLookup.Found && again.address == found.address) return ResolvedAgain.Same(again)
+    if (again.syncing) return ResolvedAgain.Changed(stillSyncing(name))
     return ResolvedAgain.Changed(said(name, again is RecipientLookup.Unavailable))
 }
+
+/** Why [name] is not taken again now: the light client is still syncing, never "this time". */
+private fun stillSyncing(name: String): String =
+    "The light client is still syncing, so “$name” can't be checked again yet. Try again once it has caught up."
 
 /** Why a recipient's [name] is not signed for again: it could not be verified again ([unverifiable]), or it moved. */
 private fun recipientChanged(name: String, unverifiable: Boolean): String = if (unverifiable) {
