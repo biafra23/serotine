@@ -77,11 +77,67 @@ only" of 2026-10-15.)
   is no HTTP price API.
 - On Sepolia these are Chainlink's Sepolia feeds, and every fiat value says
   "testnet prices".
-- A token without a feed shows "no price" and is left out of every total.
+- A token without a feed shows "no price" and is left out of every total,
+  unless the pool fallback below prices it.
 - **Prices are display-only.** An amount is entered, reviewed and signed in
   token units, never derived from a price. The light client proves what the
   aggregator says, not that the oracles are right. That is why a price never
   reaches a signature.
+- One exception: the fallback to a pool's average, below (owner ruling,
+  2026-10-29, #205). It excepts Chainlink-only prices, not display-only.
+
+## A Uniswap pool's average prices a token where no feed is pinned
+
+(Owner ruling, 2026-10-29, #205. It narrows *Prices come from Chainlink
+aggregators*: on the screens, in the totals and on the home-screen widget,
+labelled and counted in totals, over a 30-minute window, and never in place
+of a stale feed.)
+
+- A pinned Chainlink feed always wins. Where a price id has one on the
+  network, it prices the token everywhere. A feed that is stale is shown as
+  stale. It is never replaced by a pool's average.
+- Only where the network pins no feed for a price id, a Uniswap v3
+  time-weighted average price (TWAP) of a pinned pool prices it. Today that
+  is Ethereum, for COW and SAFE. Gnosis Chain pins no Uniswap, and Sepolia has
+  no market.
+- The average is a verified call: `observe` of a pinned pool. The pool is a
+  pool only when the pinned factory's `getPool(tokenA, tokenB, fee)` returns
+  it in a verified call, as for swaps (docs/swaps.md, *Pins*). There is no
+  HTTP price API.
+- It is quoted in WETH. USD is the pool average times Chainlink's ETH/USD.
+  Another display currency divides by that currency's pinned USD feed. Those
+  feeds are read with every check a feed-priced value has: a stale feed on
+  the path makes the value stale, said as for any feed, and an unproven one
+  makes it no price.
+- The window is 30 minutes. The reading is no price when any of these holds:
+  - the pool holds fewer than two observations, or its oldest is younger
+    than the window. An idle pool's `observe` extrapolates its last tick, so
+    without this check its "average" is just its spot price;
+  - its liquidity is below a pinned floor;
+  - the average and the pool's current tick differ by more than a pinned
+    band.
+- Every value priced this way says so: "Uniswap 30-min average" beside an
+  asset's value, and on the widget's line that names its network and dates
+  it.
+- **It counts in totals.** A total that includes one says so under it
+  ("includes Uniswap averages"), as a Sepolia total says "testnet prices".
+- The widget's 24-hour change is the whole path a day back, as for a
+  feed-priced rate (docs/wallet-ux.md, *Only verified rates, dated*): the
+  pool's average a day back (`observe` at the verified head), and each feed
+  on the path from its own round history. It is "24h —" when the pool's
+  history does not reach a day back, or when a feed on the path has no
+  verified, fresh round there.
+- The pools, their liquidity floor and the divergence band are pinned by
+  the PR that codes this, each proven on chain.
+- One price id shows one source at a time. A feed pinned later replaces the
+  average with no prompt.
+- The average is display-only, like every price: it never reaches a
+  signature, and a swap's amounts come from its verified quote, never from
+  it.
+- Why: Chainlink has no feed for these tokens on Ethereum. A pool is one
+  venue and can be moved at a cost, so it is the fallback and is labelled as
+  one. The light client proves what the pool says, not that its price is
+  right.
 
 ## The token list is built in
 

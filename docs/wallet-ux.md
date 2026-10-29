@@ -892,6 +892,11 @@ read through the light client. Applied:
   the source of truth. On Sepolia the table has ETH, BTC, LINK, USDC, EUR,
   GBP and JPY, each against USD; UNI has no Sepolia feed, so it has no price,
   and neither has a token the user adds.
+- **Where no feed is pinned, a pool's average** prices a token (owner
+  ruling, 2026-10-29, #205; .claude/rules/data-sources.md): a pinned Uniswap
+  pool's 30-minute average, today for COW and SAFE on Ethereum. Its value
+  reads "≈ $123.45 · Uniswap 30-min average", it counts in totals, and a
+  total that includes one says "includes Uniswap averages" under it.
 - **A price is a verified call** of `latestRoundData()` and `decimals()`,
   each at the verified head it is made at (two calls for now; one Multicall3
   call once its code hash is pinned, as for balances). The feed address is a
@@ -944,8 +949,9 @@ is placed (issue #178) in three steps:
 2. **The price**: the network's native currency first, then each price its
    built-in tokens are priced by, each once and named with what it prices
    ("ETH — Ether · WETH", "USDC — USDC · USDC.e" on Gnosis Chain, "EUR —
-   EURe"). Only a price with a feed pinned on that network is offered: a
-   token with no price, an added one included, has no rate.
+   EURe"). Only a price with a feed pinned on that network, or a pool
+   pinned for the fallback (*Prices*), is offered: a token with no price, an
+   added one included, has no rate.
 3. **The currency**: the display currency first, which the widget then
    follows as the screens have it (screen 19; USD where that is the price
    itself, none is chosen, or the network does not offer the one stored),
@@ -971,13 +977,18 @@ The desktop has no home screen, and iOS's widget (a WidgetKit extension) is
 still to come.
 
 - **Only verified rates, dated.** The rate is the price the screens show
-  (*Prices*, above), every check included; the change is the same path read
+  (*Prices*, above), every check included, or, where no feed is pinned, a
+  pool's 30-minute average (*Prices*, above); the change is the same path read
   from each feed's own round history, a day back by the head's own time:
   `getRoundData` calls of the feed's proxy at the verified head, never a
   call at a past block and never a rate the device kept, so both ends of the
-  change are what the light client proved. A day back with no verified,
-  fresh round on the path (a stale or unproven feed, an aggregator that took
-  over since) shows "24h —", never a change against something else. The
+  change are what the light client proved. A pool on the path is read a day
+  back the same way, by its own observations (`observe` at the verified
+  head). A day back with no verified, fresh round on the path (a stale or
+  unproven feed, an aggregator that took over since), or a pool whose
+  history does not reach that far, shows "24h —", never a change against
+  something else. A pool-sourced rate adds "Uniswap 30-min average" to the
+  line that names its network and dates it. The
   widget shows the last rate read, from a file of its own
   (`last-exchange-rate.json`: a price and its times per pair, public data
   only), with
