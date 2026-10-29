@@ -35,6 +35,7 @@ import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
+import eth.serotine.ui.components.retryLookupWaits
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -201,6 +202,7 @@ class WatchViewModel(
             simpleAddressNote = found?.takeIf { !isError && it.blockNumber != null }
                 ?.let { "Resolves to ${Eip55.format(it.address)}, checked on chain" },
             canRetryLookup = result is RecipientLookup.Unavailable,
+            retryLookupWaits = retryLookupWaits(result),
             // The name an empty field leaves the account with: the ENS name, when it is one to follow.
             nameDefault = found?.name?.takeIf { it.length <= RenameAccount.MAX_LABEL_LENGTH },
             adding = outcome.adding,
@@ -427,6 +429,8 @@ class WatchViewModel(
                     "The light client refuses to sync, so the address cannot be checked."
                 // Not the code's fault alone: for a Safe, its code may be proven and its storage
                 // (owners, threshold) not, and the reading does not tell the two apart.
+                ReadUnavailable.SYNCING ->
+                    "The light client is still syncing, so what is at this address cannot be checked yet."
                 ReadUnavailable.UNPROVEN -> "What is at this address could not be verified this time: its code, or " +
                     "for a Safe its owners and threshold. Serotine keeps trying."
                 ReadUnavailable.REFUSED -> "The light client on this device cannot check this address."

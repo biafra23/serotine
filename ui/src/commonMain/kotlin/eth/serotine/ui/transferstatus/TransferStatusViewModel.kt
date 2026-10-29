@@ -416,6 +416,7 @@ class TransferStatusViewModel(
             ReadUnavailable.NO_ENGINE -> "there is no light client on this device."
             ReadUnavailable.NETWORK_OFF -> "the network's light client is not running."
             ReadUnavailable.STALE_ANCHOR -> "the light client refuses to sync."
+            ReadUnavailable.SYNCING -> "the light client is still syncing. Serotine keeps checking."
             ReadUnavailable.UNPROVEN -> "its receipt could not be verified this time. Serotine keeps checking."
             ReadUnavailable.REFUSED -> "the light client on this device cannot read receipts."
         }

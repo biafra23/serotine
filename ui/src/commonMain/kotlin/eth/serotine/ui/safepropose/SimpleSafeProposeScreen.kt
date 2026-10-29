@@ -2,6 +2,7 @@ package eth.serotine.ui.safepropose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Send from a Safe in simple mode (docs/simple-ui.md): [SafeProposeScreen] for the same [state], with
@@ -9,6 +10,7 @@ import androidx.compose.ui.Modifier
  * Send does; the review says the Safe's call was checked on chain, and keeps the blocks behind
  * *Details*. The Safe transaction, decoded here, the owner who signs and every refusal are as in
  * Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeProposeScreen(
@@ -18,6 +20,7 @@ fun SimpleSafeProposeScreen(
     onCopy: (String) -> Unit = {},
     onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SafeProposeScreen(
     state = state.simple(),
     lightClient = null,
@@ -27,6 +30,7 @@ fun SimpleSafeProposeScreen(
     onShareText = onShareText,
     modifier = modifier,
     details = (state as? SafeProposeUiState.Review)?.details().orEmpty(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

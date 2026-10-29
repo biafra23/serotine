@@ -73,6 +73,7 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkChips
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.RetryLookupButton
 import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.done
@@ -161,8 +162,14 @@ fun CreateSafeRoute(
     }
     // The same state in the view the user chose (docs/simple-ui.md).
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleCreateSafeScreen(state, actions, onBack, modifier)
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.SIMPLE -> SimpleCreateSafeScreen(
+            state,
+            actions,
+            onBack,
+            modifier,
+            syncLine = lightClient.item(network).collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> CreateSafeScreen(
             state = state,
             lightClient = lightClient.item(network).collectAsStateWithLifecycle().value,
@@ -219,6 +226,7 @@ fun CreateSafeScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? CreateSafeUiState.Review
     // Back is a step back, until bytes may be out there: after a broadcast no peer answered, only
@@ -265,7 +273,7 @@ fun CreateSafeScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is CreateSafeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is CreateSafeUiState.Sent -> Column(
@@ -399,7 +407,7 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
                 enabled = state.canAdd,
                 modifier = Modifier.testTag(CREATE_SAFE_ADD_TAG),
             ) { Text("Add as an owner") }
-            if (state.canRetryLookup) TextButton(onClick = actions.onRetryLookup) { Text("Try again") }
+            if (state.canRetryLookup) RetryLookupButton(state.retryLookupWaits, actions.onRetryLookup)
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (details.isNotEmpty()) HiddenDetails(CREATE_SAFE_DETAILS_TAG) { details.forEach { Note(it) } }

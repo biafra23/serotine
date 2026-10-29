@@ -2,6 +2,8 @@ package eth.serotine.ui.watch
 
 import androidx.compose.runtime.Composable
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientHealth
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -21,11 +23,36 @@ private val account = WatchUiState(
 )
 
 @Composable
-private fun SimpleWatchPreview(state: WatchUiState, darkTheme: Boolean = false) {
+private fun SimpleWatchPreview(state: WatchUiState, darkTheme: Boolean = false, syncLine: LightClientItem? = null) {
     SerotineTheme(darkTheme = darkTheme) {
-        SimpleWatchScreen(state = state, onAddressChange = {}, onNameChange = {}, onAdd = {}, onBack = {})
+        SimpleWatchScreen(
+            state = state,
+            onAddressChange = {},
+            onNameChange = {},
+            onAdd = {},
+            onBack = {},
+            syncLine = syncLine,
+        )
     }
 }
+
+/** Ethereum's light client catching up, as simple mode's sync line says it. */
+private val catchingUp = LightClientItem(
+    "Verifying sync committees · 2 of 6 periods",
+    2f / 6,
+    true,
+    LightClientHealth.NOT_VERIFIED,
+    simpleText = "Syncing Ethereum · 2 of 6 periods",
+)
+
+private val syncing = WatchUiState(
+    address = "savings-example.eth",
+    addressError = "The light client is still syncing, so the name can't be resolved yet. It is looked up again " +
+        "once it has caught up.",
+    canRetryLookup = true,
+    retryLookupWaits = "The light client is still syncing. The name is looked up again by itself every few " +
+        "seconds until it has caught up.",
+)
 
 /** An account: checked on chain, no block, no strip. */
 @Preview
@@ -97,6 +124,16 @@ private fun SimpleWatchEveryNetworkPreview() = SimpleWatchPreview(
     ),
 )
 
+/** A name asked while Ethereum still syncs: the sync line, the reason, and Try again greyed out. */
+@Preview
+@Composable
+private fun SimpleWatchSyncingPreview() = SimpleWatchPreview(syncing, syncLine = catchingUp)
+
+/** The same, in the dark theme. */
+@Preview
+@Composable
+private fun SimpleWatchSyncingDarkPreview() = SimpleWatchPreview(syncing, darkTheme = true, syncLine = catchingUp)
+
 /** Every preview above, which SimpleWatchScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleWatchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleWatchAccountPreview() },
@@ -104,4 +141,6 @@ internal val simpleWatchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleWatchSafePreview() },
     { SimpleWatchNameResolvedPreview() },
     { SimpleWatchEveryNetworkPreview() },
+    { SimpleWatchSyncingPreview() },
+    { SimpleWatchSyncingDarkPreview() },
 )

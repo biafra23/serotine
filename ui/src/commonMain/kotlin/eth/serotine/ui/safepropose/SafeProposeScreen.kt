@@ -124,8 +124,16 @@ fun SafeProposeRoute(
     val share = rememberShareText()
     // The same state in the view the user chose (docs/simple-ui.md).
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleSafeProposeScreen(state, actions, onBack, copy, share, modifier)
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.SIMPLE -> SimpleSafeProposeScreen(
+            state,
+            actions,
+            onBack,
+            copy,
+            share,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> SafeProposeScreen(
             state = state,
             lightClient = lightClient.collectAsStateWithLifecycle().value,
@@ -186,6 +194,7 @@ fun SafeProposeScreen(
     onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? SafeProposeUiState.Review
     // In the review, back is to the form; while a signature runs, back waits for it. While the Safe
@@ -239,7 +248,7 @@ fun SafeProposeScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is SafeProposeUiState.Loading, is SafeProposeUiState.Proposed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))

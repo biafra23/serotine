@@ -2,6 +2,7 @@ package eth.serotine.ui.safetx
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.SafeSwapItem
 
 /**
@@ -10,6 +11,7 @@ import eth.serotine.ui.components.SafeSwapItem
  * run and every refusal say they were checked on chain; the blocks, and the review's fee make-up,
  * are behind *Details*. The transaction, decoded here, its hash, what can be done and every check
  * are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeTxScreen(
@@ -19,6 +21,7 @@ fun SimpleSafeTxScreen(
     onCopy: (String) -> Unit,
     onShareText: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SafeTxScreen(
     state = state.simple(),
     lightClient = null,
@@ -28,6 +31,7 @@ fun SimpleSafeTxScreen(
     onShareText = onShareText,
     modifier = modifier,
     details = state.details(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

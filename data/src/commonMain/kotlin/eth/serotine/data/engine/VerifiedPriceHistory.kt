@@ -68,7 +68,7 @@ class VerifiedPriceHistory internal constructor(
         // No engine, a failed start or a network that is off say so; one still starting is checking.
         if (snapshot !is EngineSnapshot.Running) {
             val why = whyUnreadable(snapshot)
-            return if (why == null || why == ReadUnavailable.UNPROVEN) {
+            return if (why == null || why == ReadUnavailable.UNPROVEN || why == ReadUnavailable.SYNCING) {
                 PastReading.Syncing
             } else {
                 PastReading.Unavailable(why)

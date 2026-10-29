@@ -2,6 +2,7 @@ package eth.serotine.ui.createsafe
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Create Safe in simple mode (docs/simple-ui.md): [CreateSafeScreen] for the same [state], with no
@@ -9,6 +10,7 @@ import androidx.compose.ui.Modifier
  * review says the factory's run, checked on chain, returns the address, and keeps the blocks, the
  * fee's make-up, the payer's balance block and the run's block behind *Details*. The owners, the
  * threshold, the payer, the fee and every check are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleCreateSafeScreen(
@@ -16,6 +18,7 @@ fun SimpleCreateSafeScreen(
     actions: CreateSafeActions,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = CreateSafeScreen(
     state = state.simple(),
     lightClient = null,
@@ -23,6 +26,7 @@ fun SimpleCreateSafeScreen(
     onBack = onBack,
     modifier = modifier,
     details = state.details(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

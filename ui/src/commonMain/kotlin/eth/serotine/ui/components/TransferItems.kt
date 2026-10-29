@@ -9,8 +9,9 @@ package eth.serotine.ui.components
  * holds, each with its verified balance; [asset] the chosen one (null while the one asked for is
  * not known yet, or is not among them: [assetNote] says which). [to] is the recipient as typed,
  * [recipient] what it is once it parses as an address or resolves as a name, and [toNote] what the
- * field says under it — an error when [toError], with [canRetryLookup] when asking again may
- * help. [accounts] are the wallet's other accounts, to pick one as the recipient. [amount] is typed
+ * field says under it — an error when [toError], with [canRetryLookup] when Try again is shown,
+ * greyed out with [retryLookupWaits] while asking by hand changes nothing (the light client still
+ * syncing, the name looked up again by itself). [accounts] are the wallet's other accounts, to pick one as the recipient. [amount] is typed
  * in token units ([amountError] why it is no amount), with [amountHint] its value in the display
  * currency (display only) and [canMax] when the whole verified balance can be filled in.
  * [quoting] while the quote for the review is made, [error] why the last one was refused, and
@@ -32,6 +33,7 @@ data class TransferForm(
     val toNote: String? = null,
     val toError: Boolean = false,
     val canRetryLookup: Boolean = false,
+    val retryLookupWaits: String? = null,
     val amountError: String? = null,
     val amountHint: String? = null,
     val canMax: Boolean = false,

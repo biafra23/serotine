@@ -121,8 +121,9 @@ fun CowOrderRoute(
             onSwapAgain = onSwapAgain,
             onBack = onBack,
             modifier = modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
         )
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> CowOrderScreen(
             state = state,
             lightClient = lightClient.collectAsStateWithLifecycle().value,
@@ -167,6 +168,7 @@ fun CowOrderScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? CowOrderUiState.CancelReview
     // Back from the review is to the order, until bytes may be out there, and waits while a signature runs.
@@ -199,7 +201,7 @@ fun CowOrderScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is CowOrderUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is CowOrderUiState.CancelSent -> Column(

@@ -153,8 +153,16 @@ fun SafeSettingsRoute(
     val share = rememberShareText()
     // The same state in the view the user chose (docs/simple-ui.md).
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleSafeSettingsScreen(state, actions, onBack, copy, share, modifier)
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.SIMPLE -> SimpleSafeSettingsScreen(
+            state,
+            actions,
+            onBack,
+            copy,
+            share,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> SafeSettingsScreen(
             state = state,
             lightClient = lightClient.collectAsStateWithLifecycle().value,
@@ -221,6 +229,7 @@ fun SafeSettingsScreen(
     onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? SafeSettingsUiState.Review
     val edit = state as? SafeSettingsUiState.Edit
@@ -281,7 +290,7 @@ fun SafeSettingsScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is SafeSettingsUiState.Loading, is SafeSettingsUiState.Proposed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))

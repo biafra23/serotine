@@ -62,7 +62,8 @@ sealed interface AccountsUiState {
      *
      * What simple mode draws instead of the sections' strips (docs/simple-ui.md, H1 to H3):
      * [freshness], how fresh the values shown are ("Updated 2 min ago · pull down to refresh",
-     * "Live", "Checking Ethereum and Gnosis Chain…"; null while nothing is proven yet);
+     * "Live", "Checking Ethereum and Gnosis Chain…", or "Syncing Ethereum · 2 of 6 periods" while a
+     * network catches up, with the age of the rest beside it; null while nothing is proven yet);
      * [unreachable], a banner per network that cannot be checked right now while it shows balances
      * from before; [refreshing], while a pull-to-refresh is being answered; and [simpleTotalNote],
      * [totalNote] with the accounts it leaves out of those networks ("1 Ethereum account not

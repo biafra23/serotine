@@ -2,6 +2,7 @@ package eth.serotine.ui.coworder
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * A CoW order's status in simple mode (docs/simple-ui.md): [CowOrderScreen] for the same [state],
@@ -9,6 +10,7 @@ import androidx.compose.ui.Modifier
  * account's verified logs, its block behind *Details*; the cancellation's review says its run was
  * checked on chain and keeps the fee's make-up and the blocks behind *Details* too. CoW's word, labelled as
  * CoW's, Cancel on chain and the same swap on Uniswap are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleCowOrderScreen(
@@ -24,6 +26,7 @@ fun SimpleCowOrderScreen(
     onSwapAgain: (SwapAgain) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = CowOrderScreen(
     state = state.simple(),
     lightClient = null,
@@ -46,6 +49,7 @@ fun SimpleCowOrderScreen(
         is CowOrderUiState.CancelReview -> state.details()
         else -> emptyList()
     },
+    syncLine = syncLine,
 )
 
 /** What the cancellation's review keeps behind *Details* in simple mode: the fee's make-up and the blocks. */

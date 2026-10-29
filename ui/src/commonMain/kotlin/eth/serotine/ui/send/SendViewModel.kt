@@ -67,6 +67,7 @@ import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
+import eth.serotine.ui.components.retryLookupWaits
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import kotlin.time.TimeMark
@@ -633,6 +634,7 @@ class SendViewModel(
             toNote = note,
             toError = isError,
             canRetryLookup = result is RecipientLookup.Unavailable,
+            retryLookupWaits = retryLookupWaits(result),
             amountError = amount.error,
             amountHint = amountHint(amount.units, selected, model.currency, network),
             canMax = selected?.balance != null && !step.quoting,
@@ -766,6 +768,7 @@ class SendViewModel(
             ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so nothing can be sent."
             ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so nothing can be sent."
             ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so nothing can be quoted."
+            ReadUnavailable.SYNCING -> "The light client is still syncing, so nothing can be quoted yet."
             ReadUnavailable.UNPROVEN -> "${figureText(quoting.figure, "of the quote")} could not be verified this " +
                 "time: try again."
             ReadUnavailable.REFUSED -> "The light client on this device cannot quote this transfer."

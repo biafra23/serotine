@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Swap in simple mode (docs/simple-ui.md, W1 to W4): [SwapScreen] for the same [state] with simple
@@ -11,6 +12,7 @@ import eth.serotine.domain.repository.FeeLevel
  * ("Confirm step 1 of 2") with its detail (routes, blocks, the fee's make-up) behind *Details*, and
  * the wait for the approval's block between the steps. Every check, refusal, greyed-out reason and
  * the venue the user chooses are the same as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSwapScreen(
@@ -34,9 +36,10 @@ fun SimpleSwapScreen(
     onOpenOrder: (uid: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SwapScreen(
     state = state.simple(),
-    chrome = SwapChrome.Simple,
+    chrome = SwapChrome.Simple(syncLine),
     onSellChange = onSellChange,
     onBuyChange = onBuyChange,
     onAmountChange = onAmountChange,

@@ -78,8 +78,9 @@ fun AddTokenRoute(
             modifier,
             onNetwork = viewModel::onNetwork,
             onTurnOnNetwork = viewModel::onTurnOnNetwork,
+            syncLine = lightClient.item(network).collectAsStateWithLifecycle().value,
         )
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> AddTokenScreen(
             state,
             lightClient.item(network).collectAsStateWithLifecycle().value,
@@ -113,6 +114,7 @@ fun AddTokenScreen(
     onNetwork: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     Scaffold(
         modifier = modifier,
@@ -127,7 +129,7 @@ fun AddTokenScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

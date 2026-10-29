@@ -48,6 +48,7 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.mode.LocalInterfaceMode
 import kotlinx.coroutines.flow.StateFlow
@@ -80,10 +81,13 @@ fun TransferStatusRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    // The same state in the view the user chose (docs/simple-ui.md); the strip is collected only
-    // where it is drawn: shared while subscribed, it stays idle otherwise.
+    // The same state in the view the user chose (docs/simple-ui.md): the strip in Detailed view; in simple
+    // mode the same item, drawn as the sync line while it says something.
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleTransferStatusScreen(state, onDone, viewModel::retry, modifier)
+        InterfaceMode.SIMPLE -> {
+            val strip by lightClient.collectAsStateWithLifecycle()
+            SimpleTransferStatusScreen(state, onDone, viewModel::retry, modifier, syncLine = strip)
+        }
         InterfaceMode.DETAILED -> {
             val strip by lightClient.collectAsStateWithLifecycle()
             TransferStatusScreen(state, strip, onDone, viewModel::retry, modifier)
@@ -107,6 +111,7 @@ fun TransferStatusScreen(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     Scaffold(
         modifier = modifier,
@@ -135,11 +140,7 @@ fun TransferStatusScreen(
                 is TransferStatusUiState.Shown -> Shown(state, onDone, onRetry, details)
             }
         }
-        if (lightClient != null) {
-            UnderLightClientStrip(lightClient, Modifier.padding(padding), body)
-        } else {
-            Box(Modifier.padding(padding).fillMaxSize(), content = body)
-        }
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine, body)
     }
 }
 

@@ -26,10 +26,12 @@ import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NetworkLabel
+import eth.serotine.ui.components.SYNC_RETRY_MS
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
@@ -333,6 +335,58 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun aNameAskedWhileTheLightClientSyncsSaysSoAndIsResolvedByItselfOnceItHasCaughtUp() = runTest {
+        names.names["vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.SYNCING)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        val waiting = viewModel.uiState.value
+        assertEquals(
+            "The light client is still syncing, so the name can't be resolved yet. It is looked up again once " +
+                "it has caught up.",
+            waiting.addressError,
+            "never \"this time\"",
+        )
+        assertTrue(waiting.canRetryLookup, "Try again is shown")
+        assertNotNull(waiting.retryLookupWaits, "greyed out: asking by hand changes nothing while it syncs")
+        assertEquals(1, names.asked.size)
+
+        // Still syncing a few seconds later: asked again by itself.
+        advanceTimeBy(SYNC_RETRY_MS)
+        runCurrent()
+        assertEquals(2, names.asked.size)
+
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        advanceTimeBy(SYNC_RETRY_MS)
+        runCurrent()
+
+        val resolved = viewModel.uiState.value
+        assertNull(resolved.addressError)
+        assertEquals("Resolves to $vitalik, checked on chain", resolved.simpleAddressNote)
+        assertNull(resolved.retryLookupWaits)
+        advanceTimeBy(SYNC_RETRY_MS * 3)
+        runCurrent()
+        assertEquals(3, names.asked.size, "not asked again once resolved")
+    }
+
+    @Test
+    fun aNameThatCouldNotBeVerifiedThisTimeMayBeAskedAgainByHand() = runTest {
+        names.names["vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.canRetryLookup)
+        assertNull(viewModel.uiState.value.retryLookupWaits, "Try again is not greyed out")
+        advanceTimeBy(SYNC_RETRY_MS * 3)
+        runCurrent()
+        assertEquals(1, names.asked.size, "not asked again by itself")
+    }
+
+    @Test
     fun aNameIsResolvedVerifiedAndItsAddressAdded() = runTest {
         names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
         val viewModel = viewModel()
@@ -513,6 +567,28 @@ class WatchViewModelTest {
         )
         assertEquals(listOf(daily), accounts.accounts.value, "nothing added")
         assertEquals(Eip55.format(elsewhere), (viewModel.uiState.value.detection as Detection.Account).address)
+    }
+
+    @Test
+    fun aNameCheckedAgainAtTheAddWhileTheLightClientSyncsSaysSoAndAddsNothing() = runTest {
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        names.names["vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.SYNCING)
+        viewModel.add()
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.done)
+        assertEquals(
+            "The light client is still syncing, so “vitalik.eth” can't be checked again yet. Try again once it " +
+                "has caught up.",
+            viewModel.uiState.value.error,
+            "never \"again just now\"",
+        )
+        assertEquals(listOf(daily), accounts.accounts.value, "nothing added")
     }
 
     @Test

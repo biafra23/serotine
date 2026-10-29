@@ -103,7 +103,10 @@ class AccountsViewModelTest {
         }
     }
     private val upgrades = FakeNetworkUpgrades()
-    private val starting = LightClientItem.from(LightClientStatus.Starting, 0)
+    /** A light client serving verified reads: what a verified balance is read at. */
+    private val synced = LightClientStatus.Synced(headBlock = 11_923_074, headTimestamp = null, finalized = null)
+
+    private val starting = LightClientItem.from(LightClientStatus.Starting, 0, network = "Sepolia")
     private var now = 1_792_100_000L
     private val feeds = FakeFeeds()
     private val kind = MutableStateFlow<KindReading>(KindReading.Syncing)
@@ -206,6 +209,7 @@ class AccountsViewModelTest {
                 total = "Checking…",
                 totalLabel = "Total · USD · Sepolia",
                 totalNote = "Testnet prices · still checking",
+                freshness = "Syncing Sepolia · starting",
             ),
             viewModel.uiState.value,
         )
@@ -308,7 +312,13 @@ class AccountsViewModelTest {
         runCurrent()
 
         assertEquals(
-            LightClientItem("Verifying sync committees · 1 of 4 periods", 0.25f, true, NOT_VERIFIED),
+            LightClientItem(
+                "Verifying sync committees · 1 of 4 periods",
+                0.25f,
+                true,
+                NOT_VERIFIED,
+                simpleText = "Syncing Sepolia · 1 of 4 periods",
+            ),
             viewModel.sepoliaStatus,
         )
     }
@@ -661,8 +671,11 @@ class AccountsViewModelTest {
 
     private class FakeLightClient : LightClient {
         val status = MutableStateFlow<LightClientStatus>(LightClientStatus.Starting)
+
+        /** A network's own status, where a test gives it one; [status] otherwise. */
+        val of = mutableMapOf<Network, MutableStateFlow<LightClientStatus>>()
         override val datesFinalizedBlocks = true
-        override fun observeStatus(network: Network): Flow<LightClientStatus> = status
+        override fun observeStatus(network: Network): Flow<LightClientStatus> = of[network] ?: status
     }
 
     private class FakeBalances : NativeBalances {
@@ -699,6 +712,7 @@ class AccountsViewModelTest {
     @Test
     fun simpleModeSaysHowOldTheValuesOfANetworkThatIsNotLiveAre() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        lightClient.status.value = synced
         networks.on.value = Network.entries.toSet()
         repository.accounts = listOf(ethereumMain)
         val viewModel = viewModel()
@@ -716,6 +730,7 @@ class AccountsViewModelTest {
     @Test
     fun simpleModeSaysLiveWhenEveryNetworkShownUpdatesLive() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        lightClient.status.value = synced
         freshness.live.value = setOf(Network.SEPOLIA)
         repository.accounts = listOf(treasury)
         val viewModel = viewModel()
@@ -730,6 +745,7 @@ class AccountsViewModelTest {
     @Test
     fun aRefreshSaysCheckingUntilANewerProofArrives() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        lightClient.status.value = synced
         networks.on.value = Network.entries.toSet()
         repository.accounts = listOf(ethereumMain)
         val viewModel = viewModel()
@@ -767,16 +783,54 @@ class AccountsViewModelTest {
             listOf(
                 UnreachableNetwork(
                     Network.ETHEREUM.chainId,
+                    "Ethereum is still syncing",
+                    "Its balances were last confirmed 3 h ago and may have changed. Sending from its accounts " +
+                        "waits until it has caught up.",
+                ),
+            ),
+            ready.unreachable,
+            "starting: on its way, not stuck",
+        )
+        assertEquals("Syncing Ethereum · starting", ready.freshness)
+        assertEquals("3 h ago · may have changed", ready.accounts.single().ageNote)
+
+        lightClient.status.value = LightClientStatus.WaitingForHead(headAgeSeconds = 600)
+        runCurrent()
+
+        val stuck = viewModel.uiState.value as AccountsUiState.Ready
+        assertEquals(
+            listOf(
+                UnreachableNetwork(
+                    Network.ETHEREUM.chainId,
                     "Can't check Ethereum right now",
                     "Its balances were last confirmed 3 h ago and may have changed. Sending from its accounts " +
                         "waits until they can be checked. The app keeps trying.",
                 ),
             ),
-            ready.unreachable,
+            stuck.unreachable,
         )
-        assertEquals("3 h ago · may have changed", ready.accounts.single().ageNote)
         assertEquals("1 Ethereum account not counted", ready.simpleTotalNote, "said instead of still checking")
         assertEquals("Still checking", ready.totalNote, "Detailed view's note as before")
+    }
+
+    @Test
+    fun aNetworkThatSyncsIsSaidWithTheAgeOfWhatTheOthersShow() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        lightClient.status.value = synced
+        lightClient.of[Network.SEPOLIA] = MutableStateFlow(LightClientStatus.CatchingUp(done = 2, total = 6))
+        repository.accounts = listOf(ethereumMain, daily)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(ethereumMain.address).value =
+            BalanceReading.Verified(Wei.of("1000000000000000000"), 9, provenAt = now - 120)
+        runCurrent()
+
+        assertEquals(
+            "Syncing Sepolia · 2 of 6 periods · updated 2 min ago",
+            (viewModel.uiState.value as AccountsUiState.Ready).freshness,
+            "Ethereum's balances count in the total: their age stays in sight",
+        )
     }
 
     @Test

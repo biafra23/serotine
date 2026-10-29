@@ -3,12 +3,14 @@ package eth.serotine.ui.send
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Send in simple mode (docs/simple-ui.md, S1 and S2): [SendScreen] for the same [state] with simple
  * mode's chrome, no light-client strip, no block in the form (an asset's balance and a name's
  * resolution say none), and the simple review, its detail behind *Details*. Every check, refusal and
  * greyed-out reason is the same as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSendScreen(
@@ -30,9 +32,10 @@ fun SimpleSendScreen(
     onOpenTransfer: (hash: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SendScreen(
     state = state.simple(),
-    chrome = SendChrome.Simple,
+    chrome = SendChrome.Simple(syncLine),
     onAssetChange = onAssetChange,
     onToChange = onToChange,
     onPickAccount = onPickAccount,

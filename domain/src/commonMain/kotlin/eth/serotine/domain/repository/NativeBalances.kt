@@ -72,6 +72,14 @@ enum class ReadUnavailable {
     UNPROVEN,
 
     /**
+     * The light client is still syncing (starting, bootstrapping from its checkpoint, catching
+     * up on sync committees): no head is verified yet, and one will be once it has caught up.
+     * Asking again before then changes nothing (docs/simple-ui.md, *A read refused while syncing
+     * says so*).
+     */
+    SYNCING,
+
+    /**
      * The engine will not answer this read on this build, and asking again changes nothing
      * (the Myotis engine's REFUSED, say past a fork it cannot execute).
      */

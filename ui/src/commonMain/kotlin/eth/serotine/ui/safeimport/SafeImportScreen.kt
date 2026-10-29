@@ -73,9 +73,15 @@ fun SafeImportRoute(
     }
     // The same state in the view the user chose (docs/simple-ui.md).
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE ->
-            SimpleSafeImportScreen(state, viewModel::onTextChange, viewModel::import, onBack, modifier)
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.SIMPLE -> SimpleSafeImportScreen(
+            state,
+            viewModel::onTextChange,
+            viewModel::import,
+            onBack,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> SafeImportScreen(
             state,
             lightClient.collectAsStateWithLifecycle().value,
@@ -102,6 +108,7 @@ fun SafeImportScreen(
     onImport: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) {
     // The Safe's check can take up to 45 s: the display stays on while it runs.
     if ((state as? SafeImportUiState.Entering)?.importing == true) KeepScreenOn()
@@ -126,7 +133,7 @@ fun SafeImportScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is SafeImportUiState.Imported -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is SafeImportUiState.Entering -> Entering(state, onTextChange, onImport)

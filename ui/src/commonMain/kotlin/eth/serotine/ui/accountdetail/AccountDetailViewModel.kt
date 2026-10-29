@@ -438,6 +438,7 @@ class AccountDetailViewModel(
                 ReadUnavailable.NETWORK_OFF ->
                     "The network's light client is not running, so the owners cannot be read."
                 ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the owners cannot be read."
+                ReadUnavailable.SYNCING -> "The light client is still syncing, so the owners cannot be read yet."
                 ReadUnavailable.UNPROVEN -> "The Safe's storage could not be verified this time. Serotine keeps trying."
                 ReadUnavailable.REFUSED -> "The light client on this device cannot read this Safe's storage."
             },
@@ -479,7 +480,8 @@ class AccountDetailViewModel(
         /**
          * The state at [now] (unix seconds) with simple mode's leaves (docs/simple-ui.md, H4): each
          * amount from before with its age, how fresh the values are ("Updated 40 s ago", "Live",
-         * "Checking…" while a refresh is answered) and a banner while the network cannot be checked.
+         * "Checking…" while a refresh is answered, "Syncing Ethereum · 2 of 6 periods" while it
+         * catches up) and a banner while the network cannot be checked.
          */
         fun finish(now: Long): AccountDetailUiState {
             val ready = built.state as? AccountDetailUiState.Ready ?: return built.state
@@ -491,9 +493,14 @@ class AccountDetailViewModel(
             if (refresh != null && now - refresh.at >= REFRESH_SHOWN_SECONDS) lastRefresh.compareAndSet(refresh, null)
             val refreshing = !live && refresh?.oldest != null && oldest == refresh.oldest &&
                 now - refresh.at < REFRESH_SHOWN_SECONDS
+            // On its way to a verified head (starting, catching up): what it is doing, with its progress.
+            val syncing = LightClientItem.from(status, now, decidedHere = true, network = network.displayName)
+                .takeIf { it.health == LightClientHealth.NOT_VERIFIED && it.working }
             val freshness = when {
+                off != null -> null
+                syncing != null -> syncing.simpleText
                 // Amounts from before: the banner says how they stand, never "Live".
-                built.fromBefore || off != null -> null
+                built.fromBefore -> null
                 refreshing -> "Checking ${network.displayName}…"
                 live && built.proven.isNotEmpty() -> "Live"
                 oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
@@ -510,7 +517,8 @@ class AccountDetailViewModel(
         /**
          * The banner while the network cannot be checked: amounts from before are shown, or its light
          * client has no fresh head to read at (STALE), or has stopped short of one; none while it is
-         * on its way (starting, catching up) or the network is off.
+         * on its way (starting, catching up) with nothing from before, or the network is off. With
+         * amounts from before while it catches up, it says the network is still syncing.
          */
         private fun cantCheck(off: String?, now: Long): UnreachableNetwork? {
             // A network this version can no longer follow says so on its greyed-out actions: an update
@@ -521,6 +529,8 @@ class AccountDetailViewModel(
             val stuck = client.health == LightClientHealth.STALE ||
                 (client.health == LightClientHealth.NOT_VERIFIED && !client.working)
             if (!built.fromBefore && !stuck) return null
+            // Amounts from before while it catches up: it is syncing, not stuck, and says so.
+            val syncing = client.health == LightClientHealth.NOT_VERIFIED && client.working
             val confirmed = built.rows.mapNotNull { it.asOf }.minOrNull()
             val said = when {
                 status is LightClientStatus.StaleAnchor -> "${client.text}."
@@ -529,12 +539,18 @@ class AccountDetailViewModel(
                 else -> "Its amounts can't be read yet."
             }
             // A stale checkpoint waits for the user's word (owner's request, 2026-10-24), never a retry.
-            val after = if (status is LightClientStatus.StaleAnchor) {
-                "Sending from it waits until you decide in Settings → Networks."
-            } else {
-                "Sending from it waits until it can be checked. The app keeps trying."
+            val after = when {
+                status is LightClientStatus.StaleAnchor ->
+                    "Sending from it waits until you decide in Settings → Networks."
+                syncing -> "Sending from it waits until it has caught up."
+                else -> "Sending from it waits until it can be checked. The app keeps trying."
             }
-            return UnreachableNetwork(network.chainId, "Can't check ${network.displayName} right now", "$said $after")
+            val title = if (syncing) {
+                "${network.displayName} is still syncing"
+            } else {
+                "Can't check ${network.displayName} right now"
+            }
+            return UnreachableNetwork(network.chainId, title, "$said $after")
         }
     }
 

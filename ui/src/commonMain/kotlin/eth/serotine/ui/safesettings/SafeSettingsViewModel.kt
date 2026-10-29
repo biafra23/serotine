@@ -929,6 +929,7 @@ class SafeSettingsViewModel(
             "${network.displayName} is off in this wallet, so the Safe's settings cannot be read. Turn it on in " +
                 "Settings → Networks."
         ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the Safe's settings cannot be read."
+        ReadUnavailable.SYNCING -> "The light client is still syncing, so the Safe's settings cannot be read yet."
         ReadUnavailable.UNPROVEN -> "The Safe's storage could not be verified this time. Serotine keeps trying."
         ReadUnavailable.REFUSED -> "The light client on this device cannot read this Safe's storage."
     }

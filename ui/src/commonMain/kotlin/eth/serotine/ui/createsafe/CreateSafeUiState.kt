@@ -39,8 +39,9 @@ sealed interface CreateSafeUiState {
      * the wallet's accounts ([accounts], each chosen or not) and the addresses typed and added
      * ([typed], chosen; each can be taken out again). [input] is the address or ENS name being
      * typed, [inputOwner] what it is once it parses as an address or resolves, and [inputNote] what
-     * the field says under it — an error when [inputError], with [canRetryLookup] when asking again
-     * may help; [canAdd] once it can be added. [deviceKeyNote] says why this device's hardware key
+     * the field says under it — an error when [inputError], with [canRetryLookup] when Try again is
+     * shown, greyed out with [retryLookupWaits] while asking by hand changes nothing (the light client
+     * still syncing); [canAdd] once it can be added. [deviceKeyNote] says why this device's hardware key
      * is not offered. [summary] counts the owners chosen ("2 owners"), [error] says why they cannot
      * own a Safe, and [canContinue] when they can go on to the threshold. The [networks] come first:
      * the network the Safe is created on (docs/networks.md, N12).
@@ -60,6 +61,7 @@ sealed interface CreateSafeUiState {
         val inputError: Boolean = false,
         val inputLabel: String = "Address or ENS name",
         val canRetryLookup: Boolean = false,
+        val retryLookupWaits: String? = null,
         val canAdd: Boolean = false,
         val error: String? = null,
         val canContinue: Boolean = false,

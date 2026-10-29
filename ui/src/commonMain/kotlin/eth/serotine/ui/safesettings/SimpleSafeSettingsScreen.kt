@@ -2,6 +2,7 @@ package eth.serotine.ui.safesettings
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * A Safe's settings in simple mode (docs/simple-ui.md; owner's request, 2026-10-28):
@@ -9,6 +10,7 @@ import androidx.compose.ui.Modifier
  * say they were checked on chain, a change's run that it should go through, and a refusal is said
  * without its block; the blocks are behind *Details*. The owners, the threshold, the modules, the
  * guard, every change offered or greyed out, and every check are as in Detailed view.
+ * [syncLine] is its network's sync line (docs/simple-ui.md, *The sync line*), drawn while it says something.
  */
 @Composable
 fun SimpleSafeSettingsScreen(
@@ -18,6 +20,7 @@ fun SimpleSafeSettingsScreen(
     onCopy: (String) -> Unit = {},
     onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SafeSettingsScreen(
     state = state.simple(),
     lightClient = null,
@@ -27,6 +30,7 @@ fun SimpleSafeSettingsScreen(
     onShareText = onShareText,
     modifier = modifier,
     details = state.details(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

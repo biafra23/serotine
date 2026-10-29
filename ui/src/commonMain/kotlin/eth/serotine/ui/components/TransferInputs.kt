@@ -141,7 +141,9 @@ internal sealed interface RecipientState {
  * The recipient as [typed] (the text, trimmed, and what asks to resolve it again when it changes:
  * how often the user asked, and on Watch the network a name is resolved on), resolved by
  * [lookUp]: an address at once, a name once the typing paused, so that a name is not resolved for
- * every letter of it.
+ * every letter of it. While the light client is still syncing, it is looked up again by itself
+ * every [SYNC_RETRY_MS] until it can be answered (docs/simple-ui.md, *A read refused while syncing
+ * says so*).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun recipientStates(
@@ -159,8 +161,27 @@ internal fun recipientStates(
             emit(RecipientState.Resolving(text))
             delay(NAME_PAUSE_MS)
         }
-        emit(RecipientState.Done(text, lookUp(text)))
+        var result = lookUp(text)
+        emit(RecipientState.Done(text, result))
+        while (result.syncing) {
+            delay(SYNC_RETRY_MS)
+            result = lookUp(text)
+            emit(RecipientState.Done(text, result))
+        }
     }
+
+/** Whether this lookup could not be answered because the light client is still syncing. */
+private val RecipientLookup.syncing: Boolean
+    get() = this is RecipientLookup.Unavailable && reason == ReadUnavailable.SYNCING
+
+/**
+ * Why asking again for [result] by hand changes nothing, for its greyed-out Try again: the light
+ * client is still syncing, and the name is looked up again by itself. Null where asking may help.
+ */
+internal fun retryLookupWaits(result: RecipientLookup?): String? = RETRY_WAITS.takeIf { result?.syncing == true }
+
+private const val RETRY_WAITS = "The light client is still syncing. The name is looked up again by itself every few " +
+    "seconds until it has caught up."
 
 /** [text], a typed recipient, as it is resolved: an all-caps copy upper-cases the `0x` prefix too. */
 internal fun recipientText(text: String): String = if (text.startsWith("0X")) "0x" + text.drop(2) else text
@@ -189,8 +210,13 @@ internal suspend fun resolveAgain(
     val name = found.name ?: return ResolvedAgain.Same(found)
     val again = lookUp(name)
     if (again is RecipientLookup.Found && again.address == found.address) return ResolvedAgain.Same(again)
+    if (again.syncing) return ResolvedAgain.Changed(stillSyncing(name))
     return ResolvedAgain.Changed(said(name, again is RecipientLookup.Unavailable))
 }
+
+/** Why [name] is not taken again now: the light client is still syncing, never "this time". */
+private fun stillSyncing(name: String): String =
+    "The light client is still syncing, so “$name” can't be checked again yet. Try again once it has caught up."
 
 /** Why a recipient's [name] is not signed for again: it could not be verified again ([unverifiable]), or it moved. */
 private fun recipientChanged(name: String, unverifiable: Boolean): String = if (unverifiable) {
@@ -300,6 +326,9 @@ internal fun nameUnavailable(reason: ReadUnavailable): String = when (reason) {
     ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so the name cannot be resolved."
     ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so the name cannot be resolved."
     ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the name cannot be resolved."
+    ReadUnavailable.SYNCING ->
+        "The light client is still syncing, so the name can't be resolved yet. It is looked up again once it has " +
+            "caught up."
     ReadUnavailable.UNPROVEN -> "The name could not be resolved with verified calls this time."
     ReadUnavailable.REFUSED -> "The light client on this device cannot resolve names."
 }
@@ -391,6 +420,9 @@ private const val ADDRESS_LENGTH = 42
 
 /** How long the typing must pause before a name is resolved. */
 private const val NAME_PAUSE_MS = 600L
+
+/** How often a name is looked up again while the light client is still syncing. */
+internal const val SYNC_RETRY_MS = 5_000L
 private val HEX_SO_FAR = Regex("^(0|0[xX][0-9a-fA-F]*)$")
 private val LABEL_SO_FAR = Regex("^[A-Za-z0-9-]+$")
 private val DECIMAL = Regex("^(0|[1-9][0-9]*)(\\.[0-9]+)?$")

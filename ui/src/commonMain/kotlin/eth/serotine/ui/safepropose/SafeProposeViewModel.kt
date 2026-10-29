@@ -67,6 +67,7 @@ import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.resolveAgain
+import eth.serotine.ui.components.retryLookupWaits
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.shareItem
@@ -716,6 +717,7 @@ class SafeProposeViewModel(
             toNote = note,
             toError = isError,
             canRetryLookup = result is RecipientLookup.Unavailable,
+            retryLookupWaits = retryLookupWaits(result),
             amountError = amount.error,
             amountHint = amountHint(amount.units, selected, model.currency, network),
             canMax = selected?.balance != null && !step.proposing,
