@@ -8,7 +8,8 @@ import eth.serotine.ui.components.NetworkLabel
  * ([address]: an address or an ENS name; [name]), why it names no address ([addressError]),
  * what the field says otherwise ([addressNote]: a name being resolved, the block it was
  * resolved at), whether a name that could not be verified may be resolved again
- * ([canRetryLookup]), the name an empty [name] leaves the account with ([nameDefault]: the ENS
+ * ([canRetryLookup]; greyed out with [retryLookupWaits] while asking by hand changes nothing, the
+ * light client still syncing), the name an empty [name] leaves the account with ([nameDefault]: the ENS
  * name typed, which the account's name then follows; null: "Account N"), what the light client
  * says is at the address ([detection], null until the text names one), and how adding went.
  *
