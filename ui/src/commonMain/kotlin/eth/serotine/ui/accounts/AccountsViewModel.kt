@@ -297,7 +297,7 @@ class AccountsViewModel(
             // The detailed note's first part, capitalised as its start, is no longer the start; a network's
             // name keeps its capital.
             val rest = state.totalNote.orEmpty().split(" · ")
-                .map { if (it == "Still checking" || it == "Testnet prices") it.lowercase() else it }
+                .map { if (it in CAPITALISED_FIRST) it.replaceFirstChar(Char::lowercase) else it }
                 .filter { it.isNotEmpty() && (stillChecking || it != "still checking") }
             (notCounted + rest).joinToString(" · ").replaceFirstChar { it.uppercase() }
         }
@@ -452,6 +452,12 @@ class AccountsViewModel(
 
         /** How long a network's shared status outlives its last subscriber: across a configuration change. */
         const val SHARE_TIMEOUT_MS = 5_000L
+
+        /**
+         * The parts of the total's note that are capitalised only because they open it: lowercased
+         * where simple mode puts the accounts not counted before them.
+         */
+        val CAPITALISED_FIRST = setOf("Still checking", "Testnet prices", "Includes Uniswap averages")
 
         /** A network's status line while it is off in this wallet (N18). */
         val OFF =

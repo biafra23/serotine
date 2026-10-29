@@ -69,6 +69,15 @@ class RateWidgetContentTest {
     }
 
     @Test
+    fun aRateAtAPoolsAverageSaysSoOnTheLineThatDatesIt() {
+        val cow = snapshot.copy(base = PriceId("COW"), rate = 0.11, poolAverage = true)
+
+        val content = rateWidgetContent(cow, RatePair(Network.ETHEREUM, PriceId("COW"), DisplayCurrency.EUR), "14:05")
+
+        assertEquals("Ethereum · Verified 14:05 · Uniswap\u00a030-\u2060min\u00a0average · may have changed since", content.note)
+    }
+
+    @Test
     fun noRateKeptYetSaysSo() {
         assertEquals(
             RateWidgetContent("ETH", "—", null, Trend.UNKNOWN, "Sepolia · No verified rate yet"),

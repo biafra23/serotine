@@ -888,7 +888,8 @@ read through the light client. Applied:
 - **A feed table per network**: price id → feed address, the currency it
   quotes in, its decimals and its heartbeat, pinned in code from Chainlink's
   feed directory (`ChainlinkFeeds`). A token names its price id; a token
-  without one has no price. The pins say what is expected; the contract is
+  without one has no price. The pools that price what no feed does are a
+  table of their own (`UniswapPools`, below). The pins say what is expected; the contract is
   the source of truth. On Sepolia the table has ETH, BTC, LINK, USDC, EUR,
   GBP and JPY, each against USD; UNI has no Sepolia feed, so it has no price,
   and neither has a token the user adds.

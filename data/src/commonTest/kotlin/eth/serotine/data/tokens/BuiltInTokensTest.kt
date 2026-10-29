@@ -1,6 +1,7 @@
 package eth.serotine.data.tokens
 
 import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.prices.UniswapPools
 import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
@@ -24,7 +25,7 @@ class BuiltInTokensTest {
     }
 
     @Test
-    fun theEthereumListIsThePlansCandidatesEachWithAnIconAndPricedButGnoCowAndSafe() {
+    fun theEthereumListIsThePlansCandidatesEachWithAnIconAndPricedButGno() {
         val tokens = BuiltInTokens.of(Network.ETHEREUM)
 
         assertEquals(tokens.size, tokens.distinctBy { it.address }.size)
@@ -36,13 +37,20 @@ class BuiltInTokensTest {
             ),
             tokens.map { it.symbol },
         )
-        // Each priced on Ethereum by a feed pinned there, none by another network's, whose chain of
-        // quotes ends in USD there (WBTC's goes through BTC); GNO, COW and SAFE have no feed there.
+        // Each priced on Ethereum by a feed pinned there, or where none is by a pool pinned there
+        // (COW and SAFE), none by another network's, whose chain of quotes ends in USD there (WBTC's
+        // goes through BTC, the pools' through ETH); GNO has neither.
         val feeds = ChainlinkFeeds.of(Network.ETHEREUM)
         // One feed per price id: a second would shadow the first, unseen (VerifiedPriceFeeds keys by it).
         assertEquals(feeds.size, feeds.distinctBy { it.priceId }.size, "one Ethereum feed per price id")
-        val quotes = feeds.associate { it.priceId to it.quote }
-        assertEquals(listOf("GNO", "COW", "SAFE"), tokens.filter { it.priceId == null }.map { it.symbol })
+        val pools = UniswapPools.of(Network.ETHEREUM)
+        assertTrue(pools.none { pool -> feeds.any { it.priceId == pool.priceId } }, "a pool only where no feed is")
+        val quotes = feeds.associate { it.priceId to it.quote } + pools.associate { it.priceId to it.quote }
+        assertEquals(listOf("COW", "SAFE"), pools.map { it.priceId.id })
+        pools.forEach { pool ->
+            assertEquals(pool.token, tokens.single { it.priceId == pool.priceId }.address, "${pool.priceId.id}'s token")
+        }
+        assertEquals(listOf("GNO"), tokens.filter { it.priceId == null }.map { it.symbol })
         tokens.filter { it.priceId != null }.forEach { token ->
             var id = token.priceId
             val seen = mutableSetOf<PriceId?>()

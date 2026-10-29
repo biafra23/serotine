@@ -89,7 +89,8 @@ class FileLastExchangeRate(
     /**
      * One rate: format 1's whole file, with its [version]; from format 2 a network's, the network
      * of [chain], and from format 3 a pair's, which [follows] the display currency or has its own,
-     * [quote]. No rate is all null.
+     * [quote]. [poolAverage], when true, says a pool's average was on its path; a file written
+     * before pool prices has none, and its rates had no pool on their path. No rate is all null.
      */
     @Serializable
     private class StoredRate(
@@ -103,6 +104,7 @@ class FileLastExchangeRate(
         val updatedAt: Long? = null,
         val readAt: Long? = null,
         val stale: Boolean? = null,
+        val poolAverage: Boolean? = null,
     ) {
         /**
          * The pair of [chain] whose rate it holds, following the display currency where [follows];
@@ -121,7 +123,16 @@ class FileLastExchangeRate(
         fun toSnapshot(): RateSnapshot? {
             val currency = DisplayCurrency.entries.firstOrNull { it.code == quote } ?: return null
             return runCatching {
-                RateSnapshot(PriceId(base!!), currency, rate!!, dayAgoRate, updatedAt!!, readAt!!, stale!!)
+                RateSnapshot(
+                    PriceId(base!!),
+                    currency,
+                    rate!!,
+                    dayAgoRate,
+                    updatedAt!!,
+                    readAt!!,
+                    stale!!,
+                    poolAverage = poolAverage == true,
+                )
             }.getOrNull()
         }
 
@@ -137,6 +148,7 @@ class FileLastExchangeRate(
                 snapshot?.updatedAt,
                 snapshot?.readAt,
                 snapshot?.stale,
+                snapshot?.poolAverage?.takeIf { it },
             )
         }
     }

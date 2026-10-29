@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -933,7 +934,9 @@ private fun AssetItem(asset: AssetRow) {
             }
         },
         trailingContent = {
-            Column(horizontalAlignment = Alignment.End) {
+            // At most this wide, so a value with notes beside it ("€110.00 · Uniswap 30-min
+            // average") wraps under itself rather than squeezing the token's name.
+            Column(Modifier.widthIn(max = TRAILING_MAX_WIDTH), horizontalAlignment = Alignment.End) {
                 Text(
                     asset.amount,
                     style = MaterialTheme.typography.bodyLarge,
@@ -948,6 +951,7 @@ private fun AssetItem(asset: AssetRow) {
                         it,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
                     )
                 }
             }
@@ -987,3 +991,6 @@ private fun CantCheck(banner: UnreachableNetwork, modifier: Modifier) {
         }
     }
 }
+
+/** The widest an asset row's amount and value may be. */
+private val TRAILING_MAX_WIDTH = 184.dp

@@ -15,6 +15,7 @@ import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
+import eth.serotine.ui.components.POOL_AVERAGE
 import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.staleStripSample
 import eth.serotine.ui.components.verifiedStripSample
@@ -621,19 +622,32 @@ private fun AccountDetailEnsNameMovedPreview() = AccountDetailPreview(
     ),
 )
 
-/** Docs/networks.md's N3: an account on Ethereum, real prices, no testnet note. */
+/**
+ * Docs/networks.md's N3: an account on Ethereum, real prices, no testnet note; COW, which no feed
+ * prices, at its pool's average, labelled, and counted in the total, which says so (#205).
+ */
 @Preview
 @Composable
 private fun AccountDetailEthereumPreview() = AccountDetailPreview(
     daily.copy(
         label = "Main",
         network = NetworkLabel(1, "Ethereum", testnet = false),
-        total = "€9,612.30",
-        totalNote = null,
+        total = "€9,722.30",
+        totalNote = "Includes Uniswap averages",
         assets = listOf(
             ether.copy(amount = "3.2041 ETH", verifiedAt = "block 23,618,402", value = "€9,612.30"),
+            AssetRow(
+                "COW",
+                "CoW Protocol Token",
+                "1,000 COW",
+                "cow",
+                verified = true,
+                verifiedAt = "block 23,618,401",
+                value = "≈ €110.00 · $POOL_AVERAGE",
+                contract = "0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab",
+            ),
         ),
-        pricesNote = "Prices: Chainlink feeds, read through the light client",
+        pricesNote = "Prices: Chainlink feeds and Uniswap 30-min averages, read through the light client",
     ),
 )
 

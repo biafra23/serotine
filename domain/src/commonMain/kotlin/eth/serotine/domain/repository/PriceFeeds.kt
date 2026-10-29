@@ -37,13 +37,16 @@ sealed interface FeedReading {
      * One unit of the priced asset costs [price] in the feed's quote, as of the feed's last
      * update at [updatedAt] (unix seconds): [ageSeconds] before the verified head, by the
      * head's own time, never the device's clock; [stale] once that is longer than the feed's
-     * heartbeat.
+     * heartbeat. [poolAverage] when it is no feed's answer but a pinned Uniswap pool's 30-minute
+     * average, for a price id no feed is pinned for (CLAUDE.md, *Data sources*: owner ruling,
+     * 2026-10-29, #205): dated by the head it was read at, and never stale on its own.
      */
     data class Verified(
         val price: Double,
         val updatedAt: Long,
         val ageSeconds: Long,
         val stale: Boolean,
+        val poolAverage: Boolean = false,
     ) : FeedReading
 
     /** The feed answered, verified, with something that is no price, for [reason]. */
@@ -66,4 +69,16 @@ enum class NoPriceReason {
 
     /** What answered is no feed: a revert, or no round data. */
     NOT_A_FEED,
+
+    /** The pinned pool is not the pinned factory's pool of its pair, or does not answer as one. */
+    NOT_A_POOL,
+
+    /** The pool's observations do not reach back over the averaging window. */
+    POOL_HISTORY_SHORT,
+
+    /** The pool's liquidity in range stands for less of the quote token than its pinned floor. */
+    POOL_TOO_THIN,
+
+    /** The pool's price now differs from its average by more than the pinned band. */
+    POOL_MOVED,
 }

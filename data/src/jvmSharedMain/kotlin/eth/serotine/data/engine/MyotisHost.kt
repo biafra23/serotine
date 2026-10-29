@@ -4,7 +4,10 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.prices.FeedsThenPools
+import eth.serotine.data.prices.UniswapPools
 import eth.serotine.data.safe.SafeDeployments
+import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -131,7 +134,7 @@ class MyotisHost private constructor(
     /** What a token contract says about itself, as verified calls. */
     val tokenMetadata: TokenMetadata = routed.tokenMetadata
 
-    /** Prices, each a verified call of one of the network's pinned Chainlink feeds. */
+    /** Prices: each a verified call of a pinned Chainlink feed of the network, or of a pinned pool where none is. */
     val priceFeeds: PriceFeeds = routed.priceFeeds
 
     /** What the same feeds answered some time ago, from their round histories, as verified calls. */
@@ -363,6 +366,34 @@ class MyotisHost private constructor(
             return activity.hasAccountCoverage(head)
         }
 
+        /** The network's pinned Chainlink feeds' prices, proven on the network's schedule. */
+        private val feeds = VerifiedPriceFeeds(
+            network,
+            chain,
+            Dispatchers.IO,
+            POLL_INTERVAL,
+            ChainlinkFeeds.of(network),
+            activity,
+            schedule,
+        )
+
+        /** The pinned Uniswap pools' averages, for what no feed prices (owner ruling, 2026-10-29, #205). */
+        private val pools = VerifiedPoolPrices(
+            network,
+            chain,
+            Dispatchers.IO,
+            POLL_INTERVAL,
+            UniswapPools.of(network),
+            UniswapDeployments.of(network),
+        )
+
+        /** A feed's price where one is pinned, a pool's only where none is: now and a day back alike. */
+        private val prices = FeedsThenPools(
+            feeds,
+            VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network)),
+            pools,
+        )
+
         val ports = ChainPorts(
             nativeBalances = VerifiedNativeBalances(
                 network,
@@ -394,16 +425,8 @@ class MyotisHost private constructor(
             ),
             lightClient = EngineLightClient(network, chain, Dispatchers.IO, PROGRESS_POLL_INTERVAL),
             networkUpgrades = EngineNetworkUpgrades(network, chain, Dispatchers.IO, POLL_INTERVAL),
-            priceFeeds = VerifiedPriceFeeds(
-                network,
-                chain,
-                Dispatchers.IO,
-                POLL_INTERVAL,
-                ChainlinkFeeds.of(network),
-                activity,
-                schedule,
-            ),
-            priceHistory = VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network)),
+            priceFeeds = prices,
+            priceHistory = prices,
             transactionInputs = EngineTransactionInputs(network, chain, Dispatchers.IO),
             broadcaster = EngineBroadcaster(network, chain, Dispatchers.IO),
             receipts = EngineReceipts(network, chain, Dispatchers.IO, POLL_INTERVAL),

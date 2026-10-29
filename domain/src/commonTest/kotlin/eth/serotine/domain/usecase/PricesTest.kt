@@ -37,6 +37,18 @@ class PricesTest {
     private val usd = ObserveUsdPrice(feeds)
 
     @Test
+    fun aPoolsAverageOnThePathMarksThePriceAndAFeedPriceIsNoAverage() = runTest {
+        feeds.answer(LINK_ID, 0.005, updatedAt = 1_100, ageSeconds = 0, pool = true)
+        feeds.answer(ETH, 2_400.0, updatedAt = 900, ageSeconds = 300)
+
+        assertEquals(
+            Price.Priced(12.0, updatedAt = 900, ageSeconds = 300, stale = false, poolAverage = true),
+            usd(Network.SEPOLIA, LINK_ID).first(),
+        )
+        assertEquals(false, (usd(Network.SEPOLIA, ETH).first() as Price.Priced).poolAverage)
+    }
+
+    @Test
     fun aPriceQuotedInEthGoesThroughEthUsdAndIsDatedByItsOldestFeed() = runTest {
         feeds.answer(LINK_ID, 0.005, updatedAt = 900, ageSeconds = 300)
         feeds.answer(ETH, 2_400.0, updatedAt = 1_100, ageSeconds = 100)
@@ -151,6 +163,19 @@ class PricesTest {
 
         assertEquals(Total(3_250.0, valued = 2, leftOut = 1), value.total) // UNI has no feed
         assertEquals(Valuation.NoPrice(NoPriceReason.NO_FEED), value.tokens[1].value)
+    }
+
+    @Test
+    fun aHoldingValuedAtAPoolsAverageCountsInTheTotalAndIsCountedAsOne() = runTest {
+        pricesAndBalances()
+        feeds.answer(PriceId("USDC"), 1.0, pool = true)
+
+        val value = accountValue(holder.onSepolia).first { it.total.complete && it.tokens.size == 2 }
+
+        // Counted in (owner ruling, 2026-10-29, #205), and counted as a pool's average.
+        assertEquals(Total(3_250.0, valued = 2, leftOut = 1, poolAveraged = 1), value.total)
+        assertEquals(Valuation.Valued(250.0, ageSeconds = 60, stale = false, poolAverage = true), value.tokens[0].value)
+        assertEquals(false, (value.nativeValue as Valuation.Valued).poolAverage)
     }
 
     @Test
