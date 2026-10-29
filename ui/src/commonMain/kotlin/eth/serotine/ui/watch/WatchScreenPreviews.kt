@@ -175,6 +175,20 @@ private fun WatchNameOnOneRegistryPreview() = WatchPreview(
     ),
 )
 
+/** A name found on Ethereum's registry and not verified on Sepolia's: each said, Try again for Sepolia's. */
+@Preview
+@Composable
+private fun WatchNameUnverifiedOnOneRegistryPreview() = WatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        name = "",
+        addressNote = "On Ethereum: resolves to $SAVINGS, verified at finalized block 8,412,240\nOn Sepolia's test " +
+            "registry: the name could not be resolved with verified calls this time.",
+        canRetryLookup = true,
+        nameDefault = "savings-example.eth",
+    ),
+)
+
 @Preview
 @Composable
 private fun WatchNameResolvedPreview() = WatchPreview(
@@ -308,6 +322,7 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchResolvingNamePreview() },
     { WatchNameResolvedPreview() },
     { WatchNameOnOneRegistryPreview() },
+    { WatchNameUnverifiedOnOneRegistryPreview() },
     { WatchNameMovedPreview() },
     { WatchNameUnavailablePreview() },
     { WatchNameResolvedNoNamePreview() },

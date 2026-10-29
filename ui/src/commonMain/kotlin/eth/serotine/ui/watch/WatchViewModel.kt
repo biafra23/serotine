@@ -62,9 +62,9 @@ import kotlinx.coroutines.launch
  * by a name and given none of the user's, the account's name follows that ENS name (issue #67).
  *
  * The address is checked on every network that is on ([ObserveEnabledNetworks]), each held
- * running while the screen is open ([HoldNetwork]): with one, as one card; with more, a row each,
- * and an address with no code on all of them offered on all of them, or on those ticked
- * (docs/networks.md, N10 and N11). A name is resolved on every registry that is on, Ethereum's
+ * running while the screen is open ([HoldNetwork]): one card where one network has an answer; with
+ * more, a row each, and an address with no code on all of them offered on all of them, or on those
+ * ticked (docs/networks.md, N10 and N11). A name is resolved on every registry that is on, Ethereum's
  * and Sepolia's, each network's account at its own registry's address, and Gnosis Chain's at
  * Ethereum's, never a testnet's; each answer says which registry gave it (docs/networks.md, *Names*).
  */
@@ -82,13 +82,6 @@ class WatchViewModel(
     /** The networks on in this wallet, in `Network` order; null until read, so none is said to be off before. */
     private val on: StateFlow<List<Network>?> =
         observeEnabledNetworks().stateIn(viewModelScope, SharingStarted.Eagerly, null)
-
-    /**
-     * The network whose light client the strip shows: the one a name is resolved on, the first
-     * that is on and resolves names, or the first that is on when none does.
-     */
-    val stripNetwork: StateFlow<Network> = on.map { it?.let(::registries)?.firstOrNull() ?: Network.entries.first() }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, Network.entries.first())
 
     /** A hold on each network that is on, released when it goes off or the screen is gone ([onCleared]). */
     private val holds = mutableMapOf<Network, NetworkHold>()
@@ -108,8 +101,12 @@ class WatchViewModel(
         holds.clear()
     }
 
-    /** What is typed, and how often the user asked to resolve the name again ([lookupAttempt]). */
-    private data class Typed(val address: String = "", val name: String = "", val lookupAttempt: Int = 0)
+    /** What is typed, and how often each registry was asked to resolve the name again ([lookupAttempts]). */
+    private data class Typed(
+        val address: String = "",
+        val name: String = "",
+        val lookupAttempts: Map<Network, Int> = emptyMap(),
+    )
 
     private class Outcome(
         val adding: Boolean = false,
@@ -129,7 +126,8 @@ class WatchViewModel(
     /**
      * The typed text resolved on each registry that is on ([registries]): an address at once, a name
      * once the typing paused, and anew when the registries change (one turned on from this screen),
-     * so that one registry's answer is never taken for another network's.
+     * so that one registry's answer is never taken for another network's. Each is asked again on its
+     * own, so that an answer one registry gave stands while another is asked again.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val lookups: StateFlow<Map<Network, RecipientState>> = on.map { it?.let(::registries).orEmpty() }
@@ -140,7 +138,7 @@ class WatchViewModel(
             } else {
                 combine(
                     registries.map { registry ->
-                        recipientStates(typed.map { it.address.trim() to it.lookupAttempt }) { text ->
+                        recipientStates(typed.map { it.address.trim() to it.lookupAttempts[registry] }) { text ->
                             lookUp(registry, text)
                         }.map { registry to it }
                     },
@@ -152,6 +150,18 @@ class WatchViewModel(
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
             emptyMap(),
         )
+
+    /**
+     * The network whose light client the strip or the sync line shows: of the registries a name is
+     * resolved on, the first whose answer waits for its light client to sync, else the first; with
+     * none, the first network that is on.
+     */
+    val stripNetwork: StateFlow<Network> = combine(on, lookups) { read, lookups ->
+        val registries = read?.let(::registries).orEmpty()
+        registries.firstOrNull { registry ->
+            ((lookups[registry] as? RecipientState.Done)?.result as? RecipientLookup.Unavailable)?.reason == SYNCING
+        } ?: registries.firstOrNull() ?: Network.entries.first()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), Network.entries.first())
 
     /**
      * The cards of what each network that is on would watch ([answerOn]), each read at its own
@@ -202,13 +212,13 @@ class WatchViewModel(
             .mapNotNull { (registry, state) -> (state as? RecipientState.Done)?.let { registry to it.result } }
         val found = results.firstNotNullOfOrNull { it.second as? RecipientLookup.Found }
         val unavailable = results.mapNotNull { it.second as? RecipientLookup.Unavailable }
-        val (note, isError) = addressNote(text, lookups)
+        val (note, isError) = addressNote(text, lookups, on.orEmpty())
         WatchUiState(
             address = typed.address,
             name = typed.name,
             addressError = note.takeIf { isError },
             addressNote = note.takeUnless { isError },
-            simpleAddressNote = addressNote(text, lookups, simple = true).first
+            simpleAddressNote = addressNote(text, lookups, on.orEmpty(), simple = true).first
                 .takeIf { !isError && results.any { (it.second as? RecipientLookup.Found)?.blockNumber != null } },
             canRetryLookup = unavailable.isNotEmpty(),
             // Greyed out only while every answer missing waits for a light client still syncing.
@@ -332,11 +342,25 @@ class WatchViewModel(
         outcome.value = Outcome()
     }
 
-    /** Resolves the typed name again, after a lookup that could not be verified. */
+    /**
+     * Resolves the typed name again on each registry whose lookup could not be verified; an address
+     * another registry gave stands meanwhile.
+     */
     fun onRetryLookup() {
         if (outcome.value.adding || outcome.value.done) return
-        typed.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
+        val text = typed.value.address.trim()
+        val unanswered = lookups.value.filterValues { state ->
+            state.text == text && (state as? RecipientState.Done)?.result is RecipientLookup.Unavailable
+        }.keys
+        lookUpAgain(unanswered.ifEmpty { lookups.value.keys })
+        choice.value = Choice()
         outcome.value = Outcome()
+    }
+
+    /** Asks each of [registries] to resolve the typed text again. */
+    private fun lookUpAgain(registries: Collection<Network>) = typed.update { current ->
+        val attempts = current.lookupAttempts
+        current.copy(lookupAttempts = attempts + registries.associateWith { (attempts[it] ?: 0) + 1 })
     }
 
     /**
@@ -373,7 +397,7 @@ class WatchViewModel(
                         is ResolvedAgain.Same -> checked.found.also { again[registry] = it }
                         is ResolvedAgain.Changed -> {
                             // Resolved again for the card, which then shows what the name has now.
-                            typed.update { it.copy(lookupAttempt = it.lookupAttempt + 1) }
+                            lookUpAgain(listOf(registry))
                             outcome.value = Outcome(error = checked.message)
                             return@launch
                         }
@@ -526,47 +550,66 @@ class WatchViewModel(
     /**
      * What the address field says under [text], from [lookups] of it on each registry, and whether
      * that is an error: as Send's recipient field, but for the zero address, which nobody can hold,
-     * and with the block a name was resolved at, or, in [simple] mode's words, none. A name resolved
-     * on two registries says each one's answer; a testnet's registry is always named as one.
+     * and with the block a name was resolved at, or, in [simple] mode's words, none. A name says
+     * which registry answered (docs/networks.md, *Names*): with two registries, each one's answer,
+     * one still resolving among them; with one, its name on an address found or a name it has none
+     * for or could not verify, where it is a testnet's or another network that is [on] takes its
+     * answer (Gnosis Chain, Ethereum's). The same miss from every registry is said once.
      */
     private fun addressNote(
         text: String,
         lookups: Map<Network, RecipientState>,
+        on: List<Network>,
         simple: Boolean = false,
     ): Pair<String?, Boolean> {
         val states = lookups.filterValues { it.text == text }
         if (states.isEmpty()) return recipientNote(text, null)
-        states.values.firstOrNull { it !is RecipientState.Done }?.let { return recipientNote(text, it) }
-        val results = states.mapValues { (it.value as RecipientState.Done).result }
+        val results = states.filterValues { it is RecipientState.Done }
+            .mapValues { (it.value as RecipientState.Done).result }
+        // Nothing answered yet, or an address still being checked: one note for it.
+        if (results.isEmpty() || ('.' !in text && results.size < states.size)) {
+            return recipientNote(text, states.values.first { it !is RecipientState.Done })
+        }
         if (results.values.any { it == RecipientLookup.ZeroAddress }) return ZERO_ADDRESS to true
-        val isError = results.values.none { it is RecipientLookup.Found }
-        // An address typed, or one registry asked: one answer, said once.
-        if ('.' !in text || results.size == 1) {
+        val resolving = results.size < states.size
+        val isError = !resolving && results.values.none { it is RecipientLookup.Found }
+        val sameMiss = !resolving && results.values.distinct().size == 1 &&
+            results.values.first() !is RecipientLookup.Found
+        // An address typed, one registry asked, or every registry's same miss: one answer, said once.
+        if ('.' !in text || states.size == 1 || sameMiss) {
             val (registry, result) = results.entries.first()
+            val named = registry.takeIf {
+                '.' in text && !sameMiss && it.ensNames && (it.testnet || on.any { n -> !n.ensNames })
+            }
             val found = result as? RecipientLookup.Found
             val resolvedAt = found?.blockNumber
             // In full, whatever the card can say of it: the address the name points to is what is added.
-            return if (found != null && resolvedAt != null) {
-                resolves(found, registry.takeIf { it.testnet }, resolvedAt, simple) to false
-            } else {
-                recipientNote(text, states.getValue(registry))
-            }
+            if (found != null && resolvedAt != null) return resolves(found, named, resolvedAt, simple) to false
+            val (note, error) = recipientNote(text, states.getValue(registry))
+            // The registry's own answer is named; a name that is not one is no registry's.
+            val answered = result == RecipientLookup.NoAddress || result is RecipientLookup.Unavailable
+            return (if (named != null && answered && note != null) onRegistry(named, note) else note) to error
         }
-        return results.entries.joinToString("\n") { (registry, result) ->
+        return states.entries.joinToString("\n") { (registry, state) ->
+            val result = results[registry]
             val found = result as? RecipientLookup.Found
             val block = found?.blockNumber
             val answer = when {
                 found != null && block != null -> resolves(found, null, block, simple)
                 result == RecipientLookup.NoAddress -> "no address"
-                else -> recipientNote(text, RecipientState.Done(text, result)).first.orEmpty()
+                else -> recipientNote(text, state).first.orEmpty()
             }
-            "On ${registryOf(registry)}: ${answer.replaceFirstChar { it.lowercase() }}"
+            onRegistry(registry, answer)
         } to isError
     }
 
-    /** "Resolves to 0x…", on [testnet]'s registry where it is one, verified at [block] or checked on chain. */
-    private fun resolves(found: RecipientLookup.Found, testnet: Network?, block: Long, simple: Boolean): String =
-        "Resolves to ${Eip55.format(found.address)}" + testnet?.let { " on ${registryOf(it)}" }.orEmpty() +
+    /** "On Sepolia's test registry: no address": [answer] as [registry]'s. */
+    private fun onRegistry(registry: Network, answer: String) =
+        "On ${registryOf(registry)}: ${answer.replaceFirstChar { it.lowercase() }}"
+
+    /** "Resolves to 0x…", on [registry]'s registry where it is named, verified at [block] or checked on chain. */
+    private fun resolves(found: RecipientLookup.Found, registry: Network?, block: Long, simple: Boolean): String =
+        "Resolves to ${Eip55.format(found.address)}" + registry?.let { " on ${registryOf(it)}" }.orEmpty() +
             if (simple) ", checked on chain" else ", verified at finalized block ${grouped(block)}"
 
     /** "Ethereum", "Sepolia's test registry": whose answer a line gives. */

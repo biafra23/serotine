@@ -115,6 +115,22 @@ private fun SimpleWatchNameOnOneRegistryPreview() = SimpleWatchPreview(
     ),
 )
 
+/** A name found on Ethereum's registry and not verified on Sepolia's: each said with no block, Try again. */
+@Preview
+@Composable
+private fun SimpleWatchNameUnverifiedOnOneRegistryPreview() = SimpleWatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        name = "",
+        addressNote = "On Ethereum: resolves to $SAVINGS, verified at finalized block 8,412,240\nOn Sepolia's test " +
+            "registry: the name could not be resolved with verified calls this time.",
+        simpleAddressNote = "On Ethereum: resolves to $SAVINGS, checked on chain\nOn Sepolia's test registry: the " +
+            "name could not be resolved with verified calls this time.",
+        canRetryLookup = true,
+        nameDefault = "savings-example.eth",
+    ),
+)
+
 /** Two networks on: each card checked on chain. */
 @Preview
 @Composable
@@ -158,6 +174,7 @@ internal val simpleWatchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleWatchSafePreview() },
     { SimpleWatchNameResolvedPreview() },
     { SimpleWatchNameOnOneRegistryPreview() },
+    { SimpleWatchNameUnverifiedOnOneRegistryPreview() },
     { SimpleWatchEveryNetworkPreview() },
     { SimpleWatchSyncingPreview() },
     { SimpleWatchSyncingDarkPreview() },

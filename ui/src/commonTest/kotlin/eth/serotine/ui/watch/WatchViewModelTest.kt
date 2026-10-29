@@ -345,10 +345,10 @@ class WatchViewModelTest {
 
         val waiting = viewModel.uiState.value
         assertEquals(
-            "The light client is still syncing, so the name can't be resolved yet. It is looked up again once " +
-                "it has caught up.",
+            "On Sepolia's test registry: the light client is still syncing, so the name can't be resolved yet. It " +
+                "is looked up again once it has caught up.",
             waiting.addressError,
-            "never \"this time\"",
+            "never \"this time\", and a testnet's registry named as one",
         )
         assertTrue(waiting.canRetryLookup, "Try again is shown")
         assertNotNull(waiting.retryLookupWaits, "greyed out: asking by hand changes nothing while it syncs")
@@ -468,6 +468,11 @@ class WatchViewModelTest {
         assertEquals(
             "This address has no code. Watch it on Ethereum and Gnosis Chain?",
             viewModel.uiState.value.question,
+        )
+        assertEquals(
+            "Resolves to $vitalik on Ethereum, verified at finalized block 9,412,040",
+            viewModel.uiState.value.addressNote,
+            "Gnosis Chain takes Ethereum's answer: the note says whose it is",
         )
 
         viewModel.add()
@@ -596,11 +601,129 @@ class WatchViewModelTest {
         advanceTimeBy(1_000)
         runCurrent()
 
-        assertTrue(Network.ETHEREUM in names.networks.drop(1), "asked again, on Ethereum's registry too")
+        assertEquals(
+            listOf(Network.ETHEREUM, Network.SEPOLIA),
+            names.networks.drop(1).sortedBy { it.ordinal },
+            "each registry asked anew once the registries changed, Ethereum's among them",
+        )
         assertEquals(
             "This address has no code. Watch it on all three networks?",
             viewModel.uiState.value.question,
         )
+    }
+
+    @Test
+    fun oneRegistryUnverifiedBesideAnAddressSaysEachAndTryAgainAsksThatOneAlone() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.SEPOLIA)
+        names.on[Network.ETHEREUM to "vitalik.eth"] =
+            NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        names.on[Network.SEPOLIA to "vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertNull(state.addressError, "an address was found")
+        assertEquals(
+            "On Ethereum: resolves to $vitalik, verified at finalized block 9,412,040\nOn Sepolia's test registry: " +
+                "the name could not be resolved with verified calls this time.",
+            state.addressNote,
+        )
+        assertTrue(state.canRetryLookup)
+        assertNull(state.retryLookupWaits, "asking again may help")
+        assertEquals(NetworkLabel.of(Network.ETHEREUM), state.cardNetwork)
+        assertNotNull(state.detection)
+
+        names.on[Network.SEPOLIA to "vitalik.eth"] =
+            NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 8_412_240)
+        val before = names.networks.size
+        viewModel.onRetryLookup()
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(listOf(Network.SEPOLIA), names.networks.drop(before), "Ethereum's answer stands")
+        assertEquals("This address has no code. Watch it on Ethereum and Sepolia?", viewModel.uiState.value.question)
+    }
+
+    @Test
+    fun aRegistryStillSyncingGreysTryAgainOutAndItsNetworkIsTheSyncLines() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.SEPOLIA)
+        names.on[Network.ETHEREUM to "vitalik.eth"] = NameResolution.NoAddress
+        names.on[Network.SEPOLIA to "vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.SYNCING)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.stripNetwork.collect {} }
+        runCurrent()
+        assertEquals(Network.ETHEREUM, viewModel.stripNetwork.value, "the first registry while nothing waits")
+
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.canRetryLookup)
+        assertNotNull(viewModel.uiState.value.retryLookupWaits, "every answer missing waits for a sync")
+        assertEquals(Network.SEPOLIA, viewModel.stripNetwork.value, "the network whose sync it waits for")
+    }
+
+    @Test
+    fun theSameMissFromEveryRegistryIsSaidOnce() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.SEPOLIA)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("nobody.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals("This name has no address.", viewModel.uiState.value.addressError)
+    }
+
+    @Test
+    fun onSepoliasRegistryAloneANameWithNoAddressNamesThatRegistry() = runTest {
+        val viewModel = viewModel()
+        viewModel.onAddressChange("nobody.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(
+            "On Sepolia's test registry: this name has no address.",
+            viewModel.uiState.value.addressError,
+            "never as if no registry had it",
+        )
+    }
+
+    @Test
+    fun anAddressTypedWithGnosisChainAndSepoliaOnIsOfferedOnBoth() = runTest {
+        networks.on.value = setOf(Network.GNOSIS, Network.SEPOLIA)
+        val viewModel = viewModel()
+        viewModel.onAddressChange(vitalik)
+        runCurrent()
+
+        assertEquals(
+            "This address has no code. Watch it on Gnosis Chain and Sepolia?",
+            viewModel.uiState.value.question,
+        )
+        viewModel.add()
+        runCurrent()
+        assertEquals(
+            listOf(Network.GNOSIS to vitalik, Network.SEPOLIA to vitalik),
+            accounts.accounts.value.drop(1).map { it.network to Eip55.format(it.address) },
+        )
+    }
+
+    @Test
+    fun withEthereumsAnswerUnverifiedGnosisChainNeverTakesSepolias() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA)
+        names.on[Network.ETHEREUM to "vitalik.eth"] = NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
+        names.on[Network.SEPOLIA to "vitalik.eth"] =
+            NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 8_412_240)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertEquals(NetworkLabel.of(Network.SEPOLIA), state.cardNetwork, "Sepolia's card alone")
+        assertTrue(state.networks.isEmpty(), "no Gnosis Chain row")
+        assertTrue(state.canRetryLookup)
     }
 
     @Test
@@ -723,7 +846,7 @@ class WatchViewModelTest {
         advanceTimeBy(1_000)
         runCurrent()
         assertEquals(
-            "The name could not be resolved with verified calls this time.",
+            "On Sepolia's test registry: the name could not be resolved with verified calls this time.",
             viewModel.uiState.value.addressError,
         )
         assertTrue(viewModel.uiState.value.canRetryLookup)
