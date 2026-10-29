@@ -2,6 +2,7 @@ package eth.serotine.ui.createsafe
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Create Safe in simple mode (docs/simple-ui.md): [CreateSafeScreen] for the same [state], with no
@@ -16,6 +17,7 @@ fun SimpleCreateSafeScreen(
     actions: CreateSafeActions,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = CreateSafeScreen(
     state = state.simple(),
     lightClient = null,
@@ -23,6 +25,7 @@ fun SimpleCreateSafeScreen(
     onBack = onBack,
     modifier = modifier,
     details = state.details(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

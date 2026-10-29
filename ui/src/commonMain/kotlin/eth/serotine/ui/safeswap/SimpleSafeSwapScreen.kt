@@ -2,6 +2,7 @@ package eth.serotine.ui.safeswap
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * A Safe's swap in simple mode (docs/simple-ui.md): [SafeSwapScreen] for the same [state], with no
@@ -16,6 +17,7 @@ fun SimpleSafeSwapScreen(
     actions: SafeSwapActions,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SafeSwapScreen(
     state = state.simple(),
     lightClient = null,
@@ -23,6 +25,7 @@ fun SimpleSafeSwapScreen(
     onBack = onBack,
     modifier = modifier,
     details = (state as? SafeSwapUiState.Review)?.details().orEmpty(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

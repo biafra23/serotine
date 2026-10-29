@@ -58,6 +58,7 @@ import eth.serotine.ui.components.ReviewButton
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.TransferFormFields
 import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.protectFromScreenCapture
@@ -132,8 +133,9 @@ fun SendRoute(
             onOpenTransfer = onOpenTransfer,
             onBack = onBack,
             modifier = modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
         )
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> SendScreen(
             state = state,
             chrome = SendChrome.Strip(lightClient.collectAsStateWithLifecycle().value),
@@ -260,14 +262,14 @@ fun SendScreen(
                 is SendUiState.Review -> when (chrome) {
                     is SendChrome.Strip ->
                         ReviewContent(state, onRefresh, onPasswordChange, onSign, onSignWithBiometrics, onRetry)
-                    SendChrome.Simple ->
+                    is SendChrome.Simple ->
                         SimpleReviewContent(state, onRefresh, onPasswordChange, onSign, onSignWithBiometrics, onRetry)
                 }
             }
         }
         when (chrome) {
             is SendChrome.Strip -> UnderLightClientStrip(chrome.item, Modifier.padding(padding), body)
-            SendChrome.Simple -> Box(Modifier.padding(padding).fillMaxSize(), content = body)
+            is SendChrome.Simple -> UnderLightClientStripIfAny(null, Modifier.padding(padding), chrome.sync, body)
         }
     }
 }
@@ -281,8 +283,8 @@ sealed interface SendChrome {
     /** Detailed view: the light client's strip and the full review. */
     data class Strip(val item: LightClientItem) : SendChrome
 
-    /** Simple mode: no strip, and the simple review. */
-    data object Simple : SendChrome
+    /** Simple mode: no strip but the [sync] line while it has something to say, and the simple review. */
+    data class Simple(val sync: LightClientItem? = null) : SendChrome
 }
 
 @Composable

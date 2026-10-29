@@ -63,6 +63,7 @@ import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
+import eth.serotine.ui.components.retryLookupWaits
 import eth.serotine.ui.components.simpleCallRefusalText
 import eth.serotine.ui.components.unavailableText
 import eth.serotine.ui.components.verifiedAt
@@ -776,6 +777,7 @@ class CreateSafeViewModel(
             inputError = isError,
             inputLabel = addressFieldLabel(model.network),
             canRetryLookup = (lookup as? RecipientState.Done)?.result is RecipientLookup.Unavailable,
+            retryLookupWaits = retryLookupWaits((lookup as? RecipientState.Done)?.result),
             canAdd = found != null && found.address !in owners,
             error = error ?: if (owners.isEmpty()) null else ownersRefusal(model)?.let(::planRefusalText),
             canContinue = owners.isNotEmpty() && ownersRefusal(model) == null && nameError(inputs.name) == null,

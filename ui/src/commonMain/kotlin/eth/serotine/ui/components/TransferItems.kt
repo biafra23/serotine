@@ -32,6 +32,7 @@ data class TransferForm(
     val toNote: String? = null,
     val toError: Boolean = false,
     val canRetryLookup: Boolean = false,
+    val retryLookupWaits: String? = null,
     val amountError: String? = null,
     val amountHint: String? = null,
     val canMax: Boolean = false,

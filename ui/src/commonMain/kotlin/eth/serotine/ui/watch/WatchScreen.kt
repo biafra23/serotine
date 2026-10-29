@@ -50,6 +50,7 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NETWORK_CHOICE_TAG
 import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.RetryLookupButton
 import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.next
@@ -107,8 +108,9 @@ fun WatchRoute(
             onChooseNetworks = viewModel::onChooseNetworks,
             onNetworkToggle = viewModel::onNetworkToggle,
             onTurnOnNetwork = viewModel::onTurnOnNetwork,
+            syncLine = lightClient.item(network).collectAsStateWithLifecycle().value,
         )
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> WatchScreen(
             state,
             lightClient.item(network).collectAsStateWithLifecycle().value,
@@ -150,6 +152,7 @@ fun WatchScreen(
     onNetworkToggle: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val nameField = remember { FocusRequester() }
     Scaffold(
@@ -165,7 +168,7 @@ fun WatchScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -187,7 +190,7 @@ fun WatchScreen(
                     ).next(),
                     keyboardActions = nextTo(nameField),
                 )
-                if (state.canRetryLookup) TextButton(onClick = onRetryLookup) { Text("Try again") }
+                if (state.canRetryLookup) RetryLookupButton(state.retryLookupWaits, onRetryLookup)
                 OutlinedTextField(
                     value = state.name,
                     onValueChange = onNameChange,

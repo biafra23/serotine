@@ -85,9 +85,11 @@ internal data class NameAnswer(
 internal fun whyUnreadable(snapshot: EngineSnapshot): ReadUnavailable? = when (snapshot) {
     EngineSnapshot.Down, EngineSnapshot.Failed -> ReadUnavailable.NO_ENGINE
     is EngineSnapshot.Stopped -> ReadUnavailable.NETWORK_OFF
-    EngineSnapshot.Booting -> ReadUnavailable.UNPROVEN
+    EngineSnapshot.Booting -> ReadUnavailable.SYNCING
     is EngineSnapshot.Running -> when {
         snapshot.phase == EngineSnapshot.Phase.STALE_ANCHOR -> ReadUnavailable.STALE_ANCHOR
+        // On its way to a verified head; one synced but without a fresh head, or a proof peer, is not.
+        snapshot.phase != EngineSnapshot.Phase.SYNCED -> ReadUnavailable.SYNCING
         snapshot.readableHead == null -> ReadUnavailable.UNPROVEN
         else -> null
     }

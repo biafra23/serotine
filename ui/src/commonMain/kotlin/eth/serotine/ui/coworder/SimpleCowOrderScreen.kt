@@ -2,6 +2,7 @@ package eth.serotine.ui.coworder
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * A CoW order's status in simple mode (docs/simple-ui.md): [CowOrderScreen] for the same [state],
@@ -24,6 +25,7 @@ fun SimpleCowOrderScreen(
     onSwapAgain: (SwapAgain) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = CowOrderScreen(
     state = state.simple(),
     lightClient = null,
@@ -46,6 +48,7 @@ fun SimpleCowOrderScreen(
         is CowOrderUiState.CancelReview -> state.details()
         else -> emptyList()
     },
+    syncLine = syncLine,
 )
 
 /** What the cancellation's review keeps behind *Details* in simple mode: the fee's make-up and the blocks. */

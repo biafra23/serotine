@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Swap in simple mode (docs/simple-ui.md, W1 to W4): [SwapScreen] for the same [state] with simple
@@ -34,9 +35,10 @@ fun SimpleSwapScreen(
     onOpenOrder: (uid: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SwapScreen(
     state = state.simple(),
-    chrome = SwapChrome.Simple,
+    chrome = SwapChrome.Simple(syncLine),
     onSellChange = onSellChange,
     onBuyChange = onBuyChange,
     onAmountChange = onAmountChange,

@@ -557,6 +557,7 @@ internal fun unavailableText(reason: ReadUnavailable): String = when (reason) {
     ReadUnavailable.NO_ENGINE -> "There is no light client on this device, so nothing can be verified."
     ReadUnavailable.NETWORK_OFF -> "The network's light client is not running, so nothing can be verified."
     ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so nothing can be verified."
+    ReadUnavailable.SYNCING -> "The light client is still syncing, so nothing can be verified yet."
     ReadUnavailable.UNPROVEN -> "A figure could not be verified this time: try again."
     ReadUnavailable.REFUSED -> "The light client on this device cannot read this."
 }

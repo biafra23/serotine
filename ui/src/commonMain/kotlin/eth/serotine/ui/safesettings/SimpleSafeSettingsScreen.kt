@@ -2,6 +2,7 @@ package eth.serotine.ui.safesettings
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * A Safe's settings in simple mode (docs/simple-ui.md; owner's request, 2026-10-28):
@@ -18,6 +19,7 @@ fun SimpleSafeSettingsScreen(
     onCopy: (String) -> Unit = {},
     onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SafeSettingsScreen(
     state = state.simple(),
     lightClient = null,
@@ -27,6 +29,7 @@ fun SimpleSafeSettingsScreen(
     onShareText = onShareText,
     modifier = modifier,
     details = state.details(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

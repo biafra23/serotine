@@ -118,8 +118,14 @@ fun SafeSwapRoute(
     }
     // The same state in the view the user chose (docs/simple-ui.md).
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleSafeSwapScreen(state, actions, onBack, modifier)
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.SIMPLE -> SimpleSafeSwapScreen(
+            state,
+            actions,
+            onBack,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> SafeSwapScreen(
             state = state,
             lightClient = lightClient.collectAsStateWithLifecycle().value,
@@ -169,6 +175,7 @@ fun SafeSwapScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? SafeSwapUiState.Review
     // In the review, back is to the form; while a signature runs, back waits for it. While the Safe
@@ -201,7 +208,7 @@ fun SafeSwapScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is SafeSwapUiState.Loading, is SafeSwapUiState.Proposed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))

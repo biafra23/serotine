@@ -2,6 +2,7 @@ package eth.serotine.ui.addtoken
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Add token in simple mode (docs/simple-ui.md): [AddTokenScreen] for the same [state], with no
@@ -18,6 +19,7 @@ fun SimpleAddTokenScreen(
     modifier: Modifier = Modifier,
     onNetwork: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    syncLine: LightClientItem? = null,
 ) = AddTokenScreen(
     state.copy(card = (state.card as? TokenCard.Claim)?.let { it.copy(checkedAt = it.simpleCheckedAt) } ?: state.card),
     lightClient = null,
@@ -31,4 +33,5 @@ fun SimpleAddTokenScreen(
     details = listOfNotNull(
         (state.card as? TokenCard.Claim)?.let { claim -> claim.checkedAt.takeIf { it != claim.simpleCheckedAt } },
     ),
+    syncLine = syncLine,
 )

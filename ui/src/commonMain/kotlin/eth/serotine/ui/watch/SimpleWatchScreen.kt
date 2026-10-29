@@ -2,6 +2,7 @@ package eth.serotine.ui.watch
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Watch address in simple mode (docs/simple-ui.md): [WatchScreen] for the same [state], with no
@@ -21,6 +22,7 @@ fun SimpleWatchScreen(
     onChooseNetworks: () -> Unit = {},
     onNetworkToggle: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    syncLine: LightClientItem? = null,
 ) = WatchScreen(
     state.simple(),
     lightClient = null,
@@ -34,6 +36,7 @@ fun SimpleWatchScreen(
     onNetworkToggle = onNetworkToggle,
     onTurnOnNetwork = onTurnOnNetwork,
     details = state.details(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: the cards checked on chain, and the field's note, with no block. */

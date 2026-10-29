@@ -60,6 +60,7 @@ sealed interface CreateSafeUiState {
         val inputError: Boolean = false,
         val inputLabel: String = "Address or ENS name",
         val canRetryLookup: Boolean = false,
+        val retryLookupWaits: String? = null,
         val canAdd: Boolean = false,
         val error: String? = null,
         val canContinue: Boolean = false,

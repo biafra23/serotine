@@ -20,22 +20,55 @@ import kotlin.time.ExperimentalTime
  * The light client's state as the status strip shows it (on Accounts and every other screen that
  * depends on the light client) and Settings' row: [text] always; [progress] (0 to 1) when there
  * is a fraction to show, null for an open-ended wait; [working] while the client is on its way
- * to serving verified reads; and its [health], the strip's colour.
+ * to serving verified reads; and its [health], the strip's colour. [simpleText] is simple mode's
+ * sync line (docs/simple-ui.md, *The sync line*): what keeps the network from verified reads, in
+ * plain words, or null while nothing does, or nothing needs saying (asleep, off, idle).
  */
 data class LightClientItem(
     val text: String,
     val progress: Float?,
     val working: Boolean,
     val health: LightClientHealth,
+    val simpleText: String? = null,
 ) {
 
     companion object {
         /**
          * [status] as the strip shows it at [now] (unix seconds), which dates the head block. A
          * stale checkpoint's line says where the user decides on it, unless [decidedHere] (the
-         * screen offers the decision itself).
+         * screen offers the decision itself). Simple mode's line names [network].
          */
-        fun from(status: LightClientStatus, now: Long, decidedHere: Boolean = false): LightClientItem = when (status) {
+        fun from(
+            status: LightClientStatus,
+            now: Long,
+            decidedHere: Boolean = false,
+            network: String = "the network",
+        ): LightClientItem = strip(status, now, decidedHere).copy(simpleText = simpleText(status, network, decidedHere))
+
+        /** Simple mode's sync line for [status] on [network], or null when it draws none. */
+        private fun simpleText(status: LightClientStatus, network: String, decidedHere: Boolean): String? =
+            when (status) {
+                LightClientStatus.Starting, is LightClientStatus.Bootstrapping -> "Syncing $network · starting"
+                is LightClientStatus.CatchingUp ->
+                    if (status.total > 0 && status.done < status.total) {
+                        "Syncing $network · ${status.done} of ${status.total} periods"
+                    } else {
+                        "Syncing $network"
+                    }
+                is LightClientStatus.WaitingForHead -> when (val age = status.headAgeSeconds) {
+                    null -> "Syncing $network · waiting for its first block"
+                    else -> "Waiting for a new $network block · the last is ${ageOf(age)} old"
+                }
+                is LightClientStatus.WaitingForProofPeers -> "Looking for $network peers that can prove balances"
+                is LightClientStatus.StaleAnchor -> "$network isn't syncing: its checkpoint is too old" +
+                    if (decidedHere) "" else " · decide in Settings → Networks"
+                LightClientStatus.Unavailable -> "No light client for $network on this device"
+                is LightClientStatus.Synced, LightClientStatus.Sleeping, LightClientStatus.Off,
+                LightClientStatus.Idle,
+                -> null
+            }?.replaceFirstChar { it.uppercase() }
+
+        private fun strip(status: LightClientStatus, now: Long, decidedHere: Boolean): LightClientItem = when (status) {
             LightClientStatus.Starting -> LightClientItem("Starting the light client…", null, true, NOT_VERIFIED)
             is LightClientStatus.Bootstrapping -> LightClientItem(
                 if (status.lookingForServers) {
@@ -134,8 +167,11 @@ enum class LightClientHealth {
  * These states as the strip shows them, dated by [clock] (unix seconds): re-dated every
  * second while one shows a head block's age, unchanged otherwise.
  */
-fun Flow<LightClientStatus>.asItems(clock: () -> Long, decidedHere: Boolean = false): Flow<LightClientItem> =
-    redatedWhile { it.dated }.map { LightClientItem.from(it, clock(), decidedHere) }
+fun Flow<LightClientStatus>.asItems(
+    clock: () -> Long,
+    decidedHere: Boolean = false,
+    network: String = "the network",
+): Flow<LightClientItem> = redatedWhile { it.dated }.map { LightClientItem.from(it, clock(), decidedHere, network) }
 
 /** Whether this state's line shows a head block's age ("· 8 s ago"), which moves on every second. */
 internal val LightClientStatus.dated: Boolean

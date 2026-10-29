@@ -2,6 +2,7 @@ package eth.serotine.ui.safepropose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Send from a Safe in simple mode (docs/simple-ui.md): [SafeProposeScreen] for the same [state], with
@@ -18,6 +19,7 @@ fun SimpleSafeProposeScreen(
     onCopy: (String) -> Unit = {},
     onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SafeProposeScreen(
     state = state.simple(),
     lightClient = null,
@@ -27,6 +29,7 @@ fun SimpleSafeProposeScreen(
     onShareText = onShareText,
     modifier = modifier,
     details = (state as? SafeProposeUiState.Review)?.details().orEmpty(),
+    syncLine = syncLine,
 )
 
 /** [this] in simple mode's words: each block-naming text in its block-free form. */

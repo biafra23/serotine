@@ -72,8 +72,16 @@ fun ActivityDetailRoute(
     val copy = rememberCopyText()
     // The same state in the view the user chose (docs/simple-ui.md).
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleActivityDetailScreen(state, onBack, copy, onStatus, onAddToken, modifier)
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.SIMPLE -> SimpleActivityDetailScreen(
+            state,
+            onBack,
+            copy,
+            onStatus,
+            onAddToken,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> ActivityDetailScreen(
             state,
             lightClient.collectAsStateWithLifecycle().value,
@@ -105,6 +113,7 @@ fun ActivityDetailScreen(
     onAddToken: (String) -> Unit,
     modifier: Modifier = Modifier,
     details: List<DetailField> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     Scaffold(
         modifier = modifier,
@@ -124,7 +133,7 @@ fun ActivityDetailScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             DetailContent(state, onCopy, onStatus, onAddToken, details)
         }
     }

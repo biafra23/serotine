@@ -2,6 +2,7 @@ package eth.serotine.ui.transferstatus
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * A transfer's status in simple mode (docs/simple-ui.md, S3): [TransferStatusScreen] for the same
@@ -15,6 +16,7 @@ fun SimpleTransferStatusScreen(
     onDone: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = TransferStatusScreen(
     state.simple(),
     lightClient = null,
@@ -23,6 +25,7 @@ fun SimpleTransferStatusScreen(
     modifier,
     details = (state as? TransferStatusUiState.Shown)?.steps.orEmpty()
         .mapNotNull { step -> step.detail?.let { "${step.label}: $it" } },
+    syncLine = syncLine,
 )
 
 /** [this] with each step's simple label and detail in place of Detailed view's. */

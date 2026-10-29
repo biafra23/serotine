@@ -30,7 +30,7 @@ class LightClientViewModel(
 
     /** [network]'s strip as it is now; followed while a screen that draws it is shown. */
     fun item(network: Network): StateFlow<LightClientItem> = items.getOrPut(network) {
-        observeLightClient(network).asItems(clock)
+        observeLightClient(network).asItems(clock, network = network.displayName)
             .stateIn(
                 scope = viewModelScope,
                 // Each subscription polls the engine's status (every second, on the desktop and
@@ -39,7 +39,7 @@ class LightClientViewModel(
                 // was, never from "Starting" again, and the poll's first answer, read at once,
                 // replaces it.
                 started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                initialValue = LightClientItem.from(LightClientStatus.Starting, now = 0),
+                initialValue = LightClientItem.from(LightClientStatus.Starting, now = 0, network = network.displayName),
             )
     }
 }

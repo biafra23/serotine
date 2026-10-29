@@ -75,6 +75,7 @@ import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.mode.LocalInterfaceMode
@@ -171,8 +172,9 @@ fun SwapRoute(
             onOpenOrder = onOpenOrder,
             onBack = onBack,
             modifier = modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
         )
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> SwapScreen(
             state = state,
             chrome = SwapChrome.Strip(lightClient.collectAsStateWithLifecycle().value),
@@ -276,7 +278,7 @@ fun SwapScreen(
             )
         },
     ) { padding ->
-        val simple = chrome == SwapChrome.Simple
+        val simple = chrome is SwapChrome.Simple
         val body: @Composable BoxScope.() -> Unit = {
             when (state) {
                 is SwapUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -404,7 +406,7 @@ fun SwapScreen(
         }
         when (chrome) {
             is SwapChrome.Strip -> UnderLightClientStrip(chrome.item, Modifier.padding(padding), body)
-            SwapChrome.Simple -> Box(Modifier.padding(padding).fillMaxSize(), content = body)
+            is SwapChrome.Simple -> UnderLightClientStripIfAny(null, Modifier.padding(padding), chrome.sync, body)
         }
     }
 }
@@ -418,8 +420,8 @@ sealed interface SwapChrome {
     /** Detailed view: the light client's strip and the full reviews. */
     data class Strip(val item: LightClientItem) : SwapChrome
 
-    /** Simple mode: no strip, and the simple reviews. */
-    data object Simple : SwapChrome
+    /** Simple mode: no strip but the [sync] line while it has something to say, and the simple reviews. */
+    data class Simple(val sync: LightClientItem? = null) : SwapChrome
 }
 
 @Composable

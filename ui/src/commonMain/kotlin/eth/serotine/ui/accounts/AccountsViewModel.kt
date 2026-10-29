@@ -113,7 +113,11 @@ class AccountsViewModel(
     }
 
     /** Each network's light client as its section's strip, in `Network` order. */
-    private val statuses = combine(clientStatuses.map { it.asItems(clock, decidedHere = true) }) { it.toList() }
+    private val statuses = combine(
+        Network.entries.zip(clientStatuses) { network, statusOf ->
+            statusOf.asItems(clock, decidedHere = true, network = network.displayName)
+        },
+    ) { it.toList() }
 
     /** Each network's stale-checkpoint warning, in `Network` order: null while it is not refusing to sync. */
     private val staleAnchors = combine(
@@ -215,7 +219,13 @@ class AccountsViewModel(
         // Until the oldest proof shown is a newer one, for 15 s at most; nothing to wait for on live networks.
         val refreshing = refresh?.oldest != null && notLive.isNotEmpty() && oldest == refresh.oldest &&
             now - refresh.at < REFRESH_SHOWN_SECONDS
+        // The networks on their way to a verified head (starting, catching up): said before how fresh the rest is.
+        val syncing = held.filter { network ->
+            lightClients[network.ordinal].let { it.health == LightClientHealth.NOT_VERIFIED && it.working }
+        }
         val freshness = when {
+            syncing.size == 1 -> lightClients[syncing.single().ordinal].simpleText
+            syncing.isNotEmpty() -> "Syncing ${spokenList(syncing.map { it.displayName })}"
             refreshing && notLive.isNotEmpty() -> "Checking ${spokenList(notLive.map { it.displayName })}…"
             oldest != null -> "Updated ${agoText(oldest, now)} · pull down to refresh"
             held.isNotEmpty() && notLive.isEmpty() && readings.values.any { it is BalanceReading.Verified } -> "Live"
@@ -239,9 +249,15 @@ class AccountsViewModel(
             val shown = before.getValue(network)
             if (shown.isEmpty() && !stuck) return@mapNotNull null
             val confirmed = shown.mapNotNull { it.asOf }.minOrNull()
+            // Balances from before while it catches up: it is syncing, not stuck, and says so.
+            val catchingUp = network in syncing
             UnreachableNetwork(
                 network.chainId,
-                "Can't check ${network.displayName} right now",
+                if (catchingUp) {
+                    "${network.displayName} is still syncing"
+                } else {
+                    "Can't check ${network.displayName} right now"
+                },
                 listOf(
                     when {
                         confirmed != null ->
@@ -249,7 +265,11 @@ class AccountsViewModel(
                         shown.isNotEmpty() -> "Its balances may have changed since they were last confirmed."
                         else -> "Its balances can't be read yet."
                     },
-                    "Sending from its accounts waits until they can be checked. The app keeps trying.",
+                    if (catchingUp) {
+                        "Sending from its accounts waits until it has caught up."
+                    } else {
+                        "Sending from its accounts waits until they can be checked. The app keeps trying."
+                    },
                 ).joinToString(" "),
             )
         }

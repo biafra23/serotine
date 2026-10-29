@@ -2,6 +2,7 @@ package eth.serotine.ui.activitydetail
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * The detail of an Activity row in simple mode (docs/simple-ui.md, H5): [ActivityDetailScreen] for
@@ -17,6 +18,7 @@ fun SimpleActivityDetailScreen(
     onStatus: (String) -> Unit,
     onAddToken: (String) -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) {
     val shown = state as? ActivityDetailUiState.Shown
     ActivityDetailScreen(
@@ -31,5 +33,6 @@ fun SimpleActivityDetailScreen(
         onAddToken = onAddToken,
         modifier = modifier,
         details = shown?.fields.orEmpty().filter { it.kind == DetailKind.BLOCK },
+        syncLine = syncLine,
     )
 }

@@ -173,8 +173,16 @@ fun SafeTxRoute(
     val share = rememberShareText()
     // The same state in the view the user chose (docs/simple-ui.md).
     when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleSafeTxScreen(state, actions, onBack, copy, share, modifier)
-        // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
+        InterfaceMode.SIMPLE -> SimpleSafeTxScreen(
+            state,
+            actions,
+            onBack,
+            copy,
+            share,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
         InterfaceMode.DETAILED -> SafeTxScreen(
             state = state,
             lightClient = lightClient.collectAsStateWithLifecycle().value,
@@ -236,6 +244,7 @@ fun SafeTxScreen(
     onShareText: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
     details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? SafeTxUiState.Review
     val signing = state as? SafeTxUiState.Signing
@@ -294,7 +303,7 @@ fun SafeTxScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is SafeTxUiState.Loading, is SafeTxUiState.Sent, is SafeTxUiState.Removed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))

@@ -2,6 +2,7 @@ package eth.serotine.ui.safeimport
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import eth.serotine.ui.components.LightClientItem
 
 /**
  * Import a request in simple mode (docs/simple-ui.md): [SafeImportScreen] for the same [state],
@@ -15,6 +16,7 @@ fun SimpleSafeImportScreen(
     onImport: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    syncLine: LightClientItem? = null,
 ) = SafeImportScreen(
     state = (state as? SafeImportUiState.Entering)?.let { it.copy(error = it.simpleError ?: it.error) } ?: state,
     lightClient = null,
@@ -22,4 +24,5 @@ fun SimpleSafeImportScreen(
     onImport = onImport,
     onBack = onBack,
     modifier = modifier,
+    syncLine = syncLine,
 )
