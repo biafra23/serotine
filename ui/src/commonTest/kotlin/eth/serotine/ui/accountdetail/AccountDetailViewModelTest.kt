@@ -92,6 +92,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -1010,6 +1011,30 @@ class AccountDetailViewModelTest {
             "Its amounts can't be read yet. Sending from it waits until it can be checked. The app keeps trying.",
             banner?.text,
         )
+    }
+
+    @Test
+    fun whileItsLightClientCatchesUpTheAccountSaysItIsSyncingNotThatItCannotCheck() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        clientStatus.value = LightClientStatus.CatchingUp(done = 2, total = 6)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+        assertEquals("Syncing Sepolia · 2 of 6 periods", ready(viewModel).freshness)
+        assertNull(ready(viewModel).cantCheck, "on its way, with nothing from before: no banner")
+
+        balances.of(daily.address).value =
+            BalanceReading.LastKnown(Wei.of("1000000000000000000"), 9, asOf = NOW - 3 * 3_600)
+        runCurrent()
+
+        val banner = assertNotNull(ready(viewModel).cantCheck)
+        assertEquals("Sepolia is still syncing", banner.title)
+        assertEquals(
+            "Its amounts were last confirmed 3 h ago and may have changed. Sending from it waits until it has " +
+                "caught up.",
+            banner.text,
+        )
+        assertEquals("Syncing Sepolia · 2 of 6 periods", ready(viewModel).freshness, "its progress beside it")
     }
 
     @Test

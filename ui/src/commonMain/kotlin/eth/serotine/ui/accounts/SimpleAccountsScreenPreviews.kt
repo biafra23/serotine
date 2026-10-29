@@ -156,6 +156,24 @@ private fun SimpleAccountsUnreachablePreview() = SimpleAccountsPreview(
     ),
 )
 
+/** Ethereum still catching up, with balances from before: it says it is syncing, not that it cannot check. */
+@Preview
+@Composable
+private fun SimpleAccountsSyncingPreview() = SimpleAccountsPreview(
+    everyday.copy(
+        freshness = "Syncing Ethereum · 2 of 6 periods",
+        totalNote = "2 Ethereum accounts not counted · Sepolia not included",
+        unreachable = listOf(
+            UnreachableNetwork(
+                ethereum.chainId,
+                "Ethereum is still syncing",
+                "Its balances were last confirmed 3 h ago and may have changed. Sending from its accounts waits " +
+                    "until it has caught up.",
+            ),
+        ),
+    ),
+)
+
 /** A wallet on Sepolia alone, which updates live: the debug build's first network. */
 @Preview
 @Composable
@@ -219,6 +237,7 @@ internal val simpleAccountsScreenPreviews: List<@Composable () -> Unit> = listOf
     { SimpleAccountsEverydayPreview() },
     { SimpleAccountsEverydayDarkPreview() },
     { SimpleAccountsRefreshingPreview() },
+    { SimpleAccountsSyncingPreview() },
     { SimpleAccountsUnreachablePreview() },
     { SimpleAccountsLivePreview() },
     { SimpleAccountsStaleAnchorPreview() },

@@ -5,6 +5,8 @@ import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
+import eth.serotine.ui.components.LightClientHealth
+import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
@@ -78,7 +80,7 @@ private val review = SendUiState.Review(
 )
 
 @Composable
-private fun SimpleSendPreview(state: SendUiState, darkTheme: Boolean = false) {
+private fun SimpleSendPreview(state: SendUiState, darkTheme: Boolean = false, syncLine: LightClientItem? = null) {
     SerotineTheme(darkTheme = darkTheme) {
         SimpleSendScreen(
             state = state,
@@ -98,6 +100,7 @@ private fun SimpleSendPreview(state: SendUiState, darkTheme: Boolean = false) {
             onRetry = {},
             onOpenTransfer = {},
             onBack = {},
+            syncLine = syncLine,
         )
     }
 }
@@ -135,9 +138,24 @@ private fun SimpleSendComposeRefusedPreview() = SimpleSendPreview(
     ),
 )
 
+/** The form while Ethereum still syncs: the sync line under the top bar, with its progress. */
+@Preview
+@Composable
+private fun SimpleSendSyncingPreview() = SimpleSendPreview(
+    composed,
+    syncLine = LightClientItem(
+        "Verifying sync committees · 2 of 6 periods",
+        2f / 6,
+        true,
+        LightClientHealth.NOT_VERIFIED,
+        simpleText = "Syncing Ethereum · 2 of 6 periods",
+    ),
+)
+
 /** Every preview above, which SimpleSendScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSendScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleSendComposePreview() },
+    { SimpleSendSyncingPreview() },
     { SimpleSendReviewPreview() },
     { SimpleSendReviewDarkPreview() },
     { SimpleSendComposeRefusedPreview() },

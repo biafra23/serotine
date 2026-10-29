@@ -126,6 +126,22 @@ private fun SimpleAccountLastVerifiedPreview() = SimpleAccountDetailPreview(
     ),
 )
 
+/** Ethereum still catching up: the freshness line says so with its progress, and the banner that it is syncing. */
+@Preview
+@Composable
+private fun SimpleAccountSyncingPreview() = SimpleAccountDetailPreview(
+    main.copy(
+        total = "Checking…",
+        freshness = "Syncing Ethereum · 2 of 6 periods",
+        cantCheck = UnreachableNetwork(
+            1,
+            "Ethereum is still syncing",
+            "Its amounts were last confirmed 3 h ago and may have changed. Sending from it waits until it has " +
+                "caught up.",
+        ),
+    ),
+)
+
 /** H5: the Activity, a time where one is known and how each ended in words, no block. */
 @Preview
 @Composable
@@ -237,6 +253,7 @@ internal val simpleAccountDetailScreenPreviews: List<@Composable () -> Unit> = l
     { SimpleAccountAssetsPreview() },
     { SimpleAccountAssetsDarkPreview() },
     { SimpleAccountLastVerifiedPreview() },
+    { SimpleAccountSyncingPreview() },
     { SimpleAccountActivityPreview() },
     { SimpleAccountWaitingSwapPreview() },
     { SimpleAccountSafePreview() },
