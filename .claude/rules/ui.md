@@ -109,6 +109,10 @@ docs/simple-ui.md.)
 - Simple mode replaces the light client's status strip with a freshness line,
   a banner when a network cannot be checked, and each network's state in
   Settings. Detailed view keeps the strip (owner's request, 2026-10-20).
+- In simple mode the sync status is visible on every screen where it decides
+  what the user can see or do: a sync line while the network's light client
+  cannot serve verified reads. A read refused because it is still syncing
+  says so, never "this time" (owner's requests, 2026-10-29).
 - In simple mode an account's blockie carries its network's icon, and a
   Safe's keeps its `t/n` threshold (owner's request, 2026-10-27). The network
   is named in text too, so the icon is never the only signal.

@@ -138,9 +138,33 @@ change what it trusts.
 - **The light client's state.** Detailed view keeps the status strip on
   every screen whose content or actions depend on it (owner's request,
   2026-10-20). Simple mode replaces it with the freshness line, a banner
-  when a network cannot be checked (H3), and each network's state in
-  Settings (T1). An action the light client blocks is greyed out and says
-  why, in both views.
+  when a network cannot be checked (H3), each network's state in Settings
+  (T1), and a sync line (below). An action the light client blocks is
+  greyed out and says why, in both views.
+- **The sync line** (owner's requests, 2026-10-29: the sync status visible
+  on every screen where it decides what the user can see or do). Every
+  simple screen that reads a network draws a line under its top bar while
+  that network's light client cannot serve verified reads, and none once
+  it can. It names the network, in the strip's colour, with a progress bar
+  where there is a fraction:
+  - "Syncing Ethereum · starting", "Syncing Ethereum · 2 of 6 periods",
+    "Syncing Ethereum · waiting for its first block";
+  - "Waiting for a new Ethereum block · the last is 2 min old";
+  - "Looking for Ethereum peers that can prove balances";
+  - "Ethereum isn't syncing: its checkpoint is too old · decide in
+    Settings → Networks";
+  - "No light client for Ethereum on this device".
+
+  Synced, asleep in the background, off or idle, it draws nothing: an
+  action on a network that is off is greyed out with its Turn on, as
+  before. Home and an account say the same in their freshness line while a
+  network first catches up, instead of nothing.
+- **A read refused while syncing says so.** A read the light client cannot
+  verify because it is still syncing (starting, bootstrapping, catching up)
+  is `ReadUnavailable.SYNCING`, never "this time": "The light client is
+  still syncing, so the name can't be resolved yet." A name is looked up
+  again by itself every few seconds while it is, and Try again is greyed
+  out meanwhile; a tap says why. In both views.
 
 ## Screens
 
@@ -371,5 +395,8 @@ merge.
    and execute, and import (*The other screens* above).
 10. Simple Safe settings (owner's request, 2026-10-28; *The other screens*
     above).
+11. The sync line on every simple screen that reads a network, and reads
+    refused while syncing said so (owner's requests, 2026-10-29; *Freshness
+    and pull-to-refresh* above).
 
 Then the final PR into `main`.
