@@ -953,9 +953,13 @@ still to come.
   from each feed's own round history, a day back by the head's own time:
   `getRoundData` calls of the feed's proxy at the verified head, never a
   call at a past block and never a rate the device kept, so both ends of the
-  change are what the light client proved. A day back with no verified,
-  fresh round on the path (a stale or unproven feed, an aggregator that took
-  over since) shows "24h —", never a change against something else. The
+  change are what the light client proved. A pool on the path is read a day
+  back the same way, by its own observations (`observe` at the verified
+  head). A day back with no verified, fresh round on the path (a stale or
+  unproven feed, an aggregator that took over since), or a pool whose
+  history does not reach that far, shows "24h —", never a change against
+  something else. A pool-sourced rate adds "Uniswap 30-min average" to the
+  line that names its network and dates it. The
   widget shows the last rate read, from a file of its own
   (`last-exchange-rate.json`: a price and its times per pair, public data
   only), with

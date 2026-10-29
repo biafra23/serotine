@@ -97,18 +97,29 @@ only" of 2026-10-15.)
   Uniswap v3 time-weighted average price (TWAP) of a pinned pool. Today that
   is Ethereum, for COW and SAFE. Gnosis Chain pins no Uniswap, and Sepolia has
   no market.
-- The average is a verified call: `observe` of a pinned pool, its address
-  proven by the pool's code like Uniswap's other pinned contracts. There is no
+- The average is a verified call: `observe` of a pinned pool. The pool is a
+  pool only when the pinned factory's `getPool(tokenA, tokenB, fee)` returns
+  it in a verified call, as for swaps (docs/swaps.md, *Pins*). There is no
   HTTP price API.
 - It is quoted in WETH. USD is the pool average times Chainlink's ETH/USD.
-  Another display currency divides by that currency's pinned USD feed.
+  Another display currency divides by that currency's pinned USD feed. Those
+  feeds are read with every check a feed-priced rate has: a stale feed on the
+  path makes the rate stale, said as for any feed, and an unproven one makes
+  it no price.
 - The window is 30 minutes. The reading is no price when any of these holds:
-  the pool's observations do not cover the window, its liquidity is below a
-  pinned floor, or the average and the pool's current tick differ by more
-  than a pinned band.
-- The widget says where the number comes from: "Uniswap 30-min average". Its
-  24-hour change is read from the same pool a day back, and is "24h —" when
-  the pool's history does not reach that far.
+  - the pool holds fewer than two observations, or its oldest is younger
+    than the window. An idle pool's `observe` extrapolates its last tick, so
+    without this check its "average" is just its spot price;
+  - its liquidity is below a pinned floor;
+  - the average and the pool's current tick differ by more than a pinned
+    band.
+- The widget says where the number comes from: "Uniswap 30-min average", on
+  the line that names its network and dates it.
+- Its 24-hour change is the whole path a day back, as for a feed-priced rate
+  (docs/wallet-ux.md, *Only verified rates, dated*): the pool's average a day
+  back (`observe` at the verified head), and each feed on the path from its
+  own round history. It is "24h —" when the pool's history does not reach a
+  day back, or when a feed on the path has no verified, fresh round there.
 - One price id shows one source at a time. A feed pinned later replaces the
   average with no prompt.
 - The average is display-only, on the widget alone. No screen, total or token

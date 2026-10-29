@@ -239,11 +239,11 @@ rulings to the screens.
   2026-10-16). The token list is built in
   (owner ruling, 2026-10-16). Safe co-signing uses no off-chain service
   (owner ruling, 2026-10-16).
-- The widget alone may show a Uniswap pool's 30-minute average where no
-  Chainlink feed is pinned (proposed, 2026-10-29, #205; open).
 - An account's history comes from the engine's verified log index (owner
   rulings, 2026-10-20, #85).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a
   swap the user sends to CoW (owner ruling, 2026-10-22).
-- Open, recorded here before its code lands: the dApp connection protocol.
+- Open, recorded here before its code lands: the dApp connection protocol;
+  the widget's fallback to a Uniswap pool's average where no Chainlink feed
+  is pinned (proposed, 2026-10-29, #205).
