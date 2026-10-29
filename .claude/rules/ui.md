@@ -82,7 +82,8 @@ The trust and data-source rules decide this. The short form:
   as possibly changed since, left out of totals, and never acted on.
 - A network-upgrade warning says that peers report it.
 - Fiat values are display-only. On Sepolia every fiat value says "testnet
-  prices". A token without a feed shows "no price".
+  prices". A token without a feed shows "no price", unless a pool's average
+  prices it, labelled (proposed, 2026-10-29, #205; open).
 - Sepolia keeps every testnet warning and is never added to a total with real
   funds.
 - A screen takes its network from the account it shows. There is no current

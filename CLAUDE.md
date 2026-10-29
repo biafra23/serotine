@@ -245,5 +245,5 @@ rulings to the screens.
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a
   swap the user sends to CoW (owner ruling, 2026-10-22).
 - Open, recorded here before its code lands: the dApp connection protocol;
-  the widget's fallback to a Uniswap pool's average where no Chainlink feed
-  is pinned (proposed, 2026-10-29, #205).
+  a Uniswap pool's average pricing a token where no Chainlink feed is
+  pinned (proposed, 2026-10-29, #205).

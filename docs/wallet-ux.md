@@ -867,6 +867,11 @@ read through the light client. Applied:
   the source of truth. On Sepolia the table has ETH, BTC, LINK, USDC, EUR,
   GBP and JPY, each against USD; UNI has no Sepolia feed, so it has no price,
   and neither has a token the user adds.
+- **Where no feed is pinned, a pool's average** may price a token (proposed,
+  2026-10-29, #205; open; .claude/rules/data-sources.md): a pinned Uniswap
+  pool's 30-minute average, today for COW and SAFE on Ethereum. Its value
+  reads "≈ $123.45 · Uniswap 30-min average", it counts in totals, and a
+  total that includes one says "includes Uniswap averages" under it.
 - **A price is a verified call** of `latestRoundData()` and `decimals()`,
   each at the verified head it is made at (two calls for now; one Multicall3
   call once its code hash is pinned, as for balances). The feed address is a
@@ -920,7 +925,7 @@ is placed (issue #178) in three steps:
    built-in tokens are priced by, each once and named with what it prices
    ("ETH — Ether · WETH", "USDC — USDC · USDC.e" on Gnosis Chain, "EUR —
    EURe"). Only a price with a feed pinned on that network, or a pool
-   pinned for the widget (below), is offered: a token with no price, an
+   pinned for the fallback (*Prices*), is offered: a token with no price, an
    added one included, has no rate.
 3. **The currency**: the display currency first, which the widget then
    follows as the screens have it (screen 19; USD where that is the price
@@ -948,8 +953,7 @@ still to come.
 
 - **Only verified rates, dated.** The rate is the price the screens show
   (*Prices*, above), every check included, or, where no feed is pinned, a
-  pool's 30-minute average as .claude/rules/data-sources.md proposes
-  (proposed, 2026-10-29, #205; open); the change is the same path read
+  pool's 30-minute average (*Prices*, above); the change is the same path read
   from each feed's own round history, a day back by the head's own time:
   `getRoundData` calls of the feed's proxy at the verified head, never a
   call at a past block and never a rate the device kept, so both ends of the
