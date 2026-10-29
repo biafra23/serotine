@@ -398,5 +398,7 @@ merge.
 11. The sync line on every simple screen that reads a network, and reads
     refused while syncing said so (owner's requests, 2026-10-29; *Freshness
     and pull-to-refresh* above).
+12. Watch by name on every registry that is on, as docs/networks.md has it
+    (owner's request, 2026-10-29; docs/networks.md, *Names*).
 
 Then the final PR into `main`.

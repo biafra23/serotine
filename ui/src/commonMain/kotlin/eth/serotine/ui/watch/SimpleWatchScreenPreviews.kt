@@ -20,6 +20,7 @@ private val account = WatchUiState(
     address = SAVINGS,
     name = "Savings",
     detection = Detection.Account(SAVINGS, "Checked at block 8,412,307", null, "Checked on chain"),
+    cardNetwork = NetworkLabel(1, "Ethereum", testnet = false),
 )
 
 @Composable

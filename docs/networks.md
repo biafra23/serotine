@@ -352,6 +352,10 @@ are unchanged.
   full before Add. The Gnosis account is added by address: it has no
   `ensName` and does not follow the name, since no Gnosis registry was asked.
   The Ethereum and Sepolia accounts follow it as today (issue #67).
+  Each answer names the registry that gave it ("On Ethereum: no address",
+  "On Sepolia's test registry: resolves to 0x…"), and a testnet's registry
+  is always named as one, so a name never looks registered on mainnet. A
+  single card names the network Add adds it on.
 
 ## Screens
 

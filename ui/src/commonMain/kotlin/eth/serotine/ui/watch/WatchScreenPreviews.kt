@@ -22,6 +22,7 @@ private val account = WatchUiState(
     address = SAVINGS,
     name = "Savings",
     detection = Detection.Account(SAVINGS, CHECKED, delegate = null),
+    cardNetwork = NetworkLabel(1, "Ethereum", testnet = false),
 )
 
 @Composable
@@ -291,7 +292,6 @@ private fun WatchNoNetworkPreview() = WatchPreview(
 /** Every preview above, which WatchScreenPreviewsTest renders: a new preview goes in here too. */
 internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchEmptyPreview() },
-    { WatchNameOnOneRegistryPreview() },
     { WatchCheckingPreview() },
     { WatchAccountPreview() },
     { WatchAccountDarkPreview() },
@@ -307,6 +307,7 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchNotSavedPreview() },
     { WatchResolvingNamePreview() },
     { WatchNameResolvedPreview() },
+    { WatchNameOnOneRegistryPreview() },
     { WatchNameMovedPreview() },
     { WatchNameUnavailablePreview() },
     { WatchNameResolvedNoNamePreview() },
