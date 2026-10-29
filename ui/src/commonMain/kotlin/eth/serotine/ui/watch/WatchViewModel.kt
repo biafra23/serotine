@@ -156,10 +156,12 @@ class WatchViewModel(
      * resolved on, the first whose answer waits for its light client to sync, else the first; with
      * none, the first network that is on.
      */
-    val stripNetwork: StateFlow<Network> = combine(on, lookups) { read, lookups ->
+    val stripNetwork: StateFlow<Network> = combine(on, lookups, typed) { read, lookups, typed ->
         val registries = read?.let(::registries).orEmpty()
+        val text = typed.address.trim()
         registries.firstOrNull { registry ->
-            ((lookups[registry] as? RecipientState.Done)?.result as? RecipientLookup.Unavailable)?.reason == SYNCING
+            val state = lookups[registry]?.takeIf { it.text == text } as? RecipientState.Done
+            (state?.result as? RecipientLookup.Unavailable)?.reason == SYNCING
         } ?: registries.firstOrNull() ?: Network.entries.first()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), Network.entries.first())
 
@@ -240,8 +242,10 @@ class WatchViewModel(
         ).withCards(
             // Only the cards of what is typed now: none while a new text is still being resolved,
             // nor those of the addresses before for a moment after the text changed.
+            // Nor while a registry is still resolving it: one registry's card is not all there is to add.
             cards?.takeIf { cards ->
-                cards.map { it.network to it.address } ==
+                lookups.values.all { it.text == text && it is RecipientState.Done } &&
+                    cards.map { it.network to it.address } ==
                     on.orEmpty().mapNotNull { n -> answerOn(n, text, lookups)?.let { n to it.second.address } }
             },
             choice,
@@ -255,8 +259,9 @@ class WatchViewModel(
     )
 
     /**
-     * The cards of each network ([cards]): the one network's as [WatchUiState.detection], or, with
+     * The cards of each network ([found]): the one network's as [WatchUiState.detection], or, with
      * more, a row each, with the all-networks question for an address with no code on every one.
+     * Where the registries gave different addresses, no row is ticked until the user ticks it.
      */
     private fun WatchUiState.withCards(found: List<Card>?, choice: Choice): WatchUiState {
         if (found == null) return this
@@ -272,7 +277,8 @@ class WatchViewModel(
         val offered = cards.filter { (_, card) -> if (safeSomewhere) card is Detection.Safe else card.addable }
             .map { it.first }
             .toSet()
-        val chosen = choice.chosen ?: offered
+        // Different accounts are each the user's choice: none ticked until the user ticks it.
+        val chosen = choice.chosen ?: offered.takeIf { oneAddress }.orEmpty()
         val everyAccount = cards.isNotEmpty() && cards.all { (_, card) -> card is Detection.Account }
         // A delegated account (EIP-7702) has code: its delegation designation.
         val delegated = cards.any { (_, card) -> (card as? Detection.Account)?.delegate != null }
@@ -319,10 +325,11 @@ class WatchViewModel(
     fun onNetworkToggle(chainId: Long) {
         val network = Network.ofChainId(chainId) ?: return
         if (outcome.value.adding || outcome.value.done) return
-        val offered = uiState.value.networks.filter { it.offered }
+        // Until the user ticks one, the ticks are those shown: every network offered, or none.
+        val shown = uiState.value.networks.filter { it.chosen }
             .mapNotNull { Network.ofChainId(it.network.chainId) }
         choice.update { current ->
-            val chosen = current.chosen ?: offered.toSet()
+            val chosen = current.chosen ?: shown.toSet()
             current.copy(chosen = if (network in chosen) chosen - network else chosen + network)
         }
     }
@@ -353,7 +360,6 @@ class WatchViewModel(
             state.text == text && (state as? RecipientState.Done)?.result is RecipientLookup.Unavailable
         }.keys
         lookUpAgain(unanswered.ifEmpty { lookups.value.keys })
-        choice.value = Choice()
         outcome.value = Outcome()
     }
 

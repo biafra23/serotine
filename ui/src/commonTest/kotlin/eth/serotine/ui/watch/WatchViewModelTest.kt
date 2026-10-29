@@ -10,6 +10,7 @@ import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.NameResolution
+import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.usecase.HoldNetwork
@@ -34,6 +35,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -558,7 +560,11 @@ class WatchViewModelTest {
                 "registry: resolves to $savings, verified at finalized block 8,412,240",
             state.addressNote,
         )
+        assertTrue(state.networks.none { it.chosen }, "different accounts: none ticked until the user ticks it")
+        assertFalse(state.canAdd)
 
+        listOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA).forEach { viewModel.onNetworkToggle(it.chainId) }
+        runCurrent()
         viewModel.add()
         runCurrent()
         assertEquals(
@@ -643,6 +649,44 @@ class WatchViewModelTest {
         runCurrent()
 
         assertEquals(listOf(Network.SEPOLIA), names.networks.drop(before), "Ethereum's answer stands")
+        assertEquals("This address has no code. Watch it on Ethereum and Sepolia?", viewModel.uiState.value.question)
+    }
+
+    @Test
+    fun noCardIsShownWhileTheOtherRegistryIsStillResolving() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.SEPOLIA)
+        val sepolia = CompletableDeferred<NameResolution>()
+        val slow = object : NameResolver {
+            override suspend fun resolve(network: Network, name: String): NameResolution =
+                if (network == Network.SEPOLIA) sepolia.await() else names.resolve(network, name)
+        }
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = WatchViewModel(
+            ObserveAddressKind(kinds),
+            ObserveAccounts(accounts),
+            WatchAddress(accounts, kinds),
+            ResolveRecipient(slow),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
+            HoldNetwork(demand),
+        )
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        val waiting = viewModel.uiState.value
+        assertEquals(
+            "On Ethereum: resolves to $vitalik, verified at finalized block 9,412,040\nOn Sepolia's test registry: " +
+                "resolving the name with verified calls…",
+            waiting.addressNote,
+        )
+        assertNull(waiting.detection, "Ethereum's card is not all there is to add")
+        assertFalse(waiting.canAdd)
+
+        sepolia.complete(NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 8_412_240))
+        runCurrent()
         assertEquals("This address has no code. Watch it on Ethereum and Sepolia?", viewModel.uiState.value.question)
     }
 
