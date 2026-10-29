@@ -14,7 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** [FeedsThenPools] and [FeedHistoryThenPools]: a pinned feed always wins, a pool only where none is. */
+/** [FeedsThenPools]: a pinned feed always wins, a pool only where none is, now and a day back alike. */
 class PoolFallbackTest {
 
     private val eth = PriceId("ETH")
@@ -43,7 +43,7 @@ class PoolFallbackTest {
 
     @Test
     fun aPoolPricesOnlyWhatNoFeedQuotesAndAStaleFeedIsNeverReplaced() = runTest {
-        val prices = FeedsThenPools(feeds, pools)
+        val prices = FeedsThenPools(feeds, feeds, pools)
 
         assertEquals(setOf(eth, cow, both), prices.quotes(Network.ETHEREUM).keys)
         assertEquals(true, (prices.observe(Network.ETHEREUM, cow).first() as FeedReading.Verified).poolAverage)
@@ -58,7 +58,7 @@ class PoolFallbackTest {
 
     @Test
     fun theDayBackIsReadFromTheSameSourceAsThePriceNow() = runTest {
-        val history = FeedHistoryThenPools(feeds, feeds, pools, pools)
+        val history = FeedsThenPools(feeds, feeds, pools)
 
         assertEquals(2.0, (history.before(Network.ETHEREUM, cow, 86_400) as PastReading.Verified).price)
         assertEquals(1.0, (history.before(Network.ETHEREUM, both, 86_400) as PastReading.Verified).price)

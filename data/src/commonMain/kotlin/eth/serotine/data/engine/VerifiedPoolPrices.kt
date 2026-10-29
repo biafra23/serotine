@@ -30,31 +30,35 @@ import kotlin.time.Duration
  * [PriceFeeds] and [PriceHistory] for the price ids [pools] price, each a pinned Uniswap v3 pool's
  * time-weighted average over [UniswapPools.WINDOW_SECONDS], in WETH (CLAUDE.md, *Data sources*:
  * owner ruling, 2026-10-29, #205). Every read is a verified call at the verified head
- * ([VerifiedChain.call]), through [ProvenReads] at every head; no answer from anywhere else
- * stands in.
+ * ([VerifiedChain.call]), through [ProvenReads], made again every [KEPT_FOR_HEADS] heads (an
+ * average over thirty minutes hardly moves in a block); no answer from anywhere else stands in.
  *
  * A pool is a pool only when the pinned factory's `getPool` returns it in a verified call, as for
  * swaps (docs/swaps.md, *Pins*), and the factory only when its code, proven, hashes to its pin
- * ([uniswap]); both are checked once per adapter, since neither changes. Then, at each head, the
- * pool's average is no price ([NoPriceReason]) when any of these holds:
- * - it holds less WETH than its floor ([PinnedPool.minQuoteHeld]): [NoPriceReason.POOL_TOO_THIN];
+ * ([uniswap]); both are checked once per adapter, since neither changes. Then the pool's average
+ * is no price ([NoPriceReason]) when any of these holds:
  * - it keeps fewer than two observations, or its oldest is younger than the window: an idle
  *   pool's `observe` extrapolates its last tick, so its "average" would be its spot price
- *   ([NoPriceReason.POOL_HISTORY_SHORT]);
+ *   ([NoPriceReason.POOL_HISTORY_SHORT]); checked from `slot0` and `observations` before
+ *   `observe`, since a revert says no reason, so that one past this check is a pool that does not
+ *   answer as one ([NoPriceReason.NOT_A_POOL]);
+ * - its in-range liquidity stands for less WETH at the price now than its floor
+ *   ([PinnedPool.minQuoteDepth]): [NoPriceReason.POOL_TOO_THIN]. Not its WETH balance, which a
+ *   transfer raises and positions out of range swell;
  * - its tick now (`slot0`) is more than [UniswapPools.MAX_TICK_DIVERGENCE] from the average:
  *   it was just moved ([NoPriceReason.POOL_MOVED]).
- * A reading is dated by the head it was read at and is never stale on its own; the feeds that
- * convert it (ETH/USD, a display currency's) carry their own age and staleness.
+ * `slot0`, `liquidity()` and `observe`, which those two checks compare, must answer at one block
+ * of one hash: otherwise the read is unproven and made again, since a swap between them could
+ * pass both. A reading is dated by the head it was read at and is never stale on its own; the
+ * feeds that convert it (ETH/USD, a display currency's) carry their own age and staleness.
  *
  * The day back ([before]) is the same pool's average over the window ending that long before
  * the head, from its own observations at the head, never a call at a past block;
- * [PastReading.NoRoundThatOld] when its observations do not reach that far. Only the floor and the
- * divergence of the price now are not asked of it: they are not known for then.
- *
- * Each call is verified on its own, at the head it runs at; a head that moves between them moves
- * the window by a block, which an average over thirty minutes does not notice. A [network] other
- * than [served] is refused ([ReadUnavailable.NO_ENGINE]), and a price id with no pool pinned is
- * [NoPriceReason.NO_FEED]; so is every id on a network with no Uniswap pinned ([uniswap] null).
+ * [PastReading.NoRoundThatOld] when its observations do not reach that far. The depth and the
+ * divergence are not asked of it: they are not known for then. A negative age is refused. A
+ * [network] other than [served] is refused ([ReadUnavailable.NO_ENGINE]), and a price id with no
+ * pool pinned is [NoPriceReason.NO_FEED]; so is every id on a network with no Uniswap pinned
+ * ([uniswap] null).
  */
 class VerifiedPoolPrices internal constructor(
     private val served: Network,
@@ -80,7 +84,13 @@ class VerifiedPoolPrices internal constructor(
 
     override fun quotes(network: Network): Map<PriceId, PriceId> = if (network == served) servedQuotes else emptyMap()
 
-    private val reads = ProvenReads<PriceId, FeedReading>(chain, dispatcher, pollInterval) { verified, id ->
+    private val reads = ProvenReads<PriceId, FeedReading>(
+        chain,
+        dispatcher,
+        pollInterval,
+        // A 30-minute average hardly moves in a block: read again every few heads, not at each.
+        keptForHeads = { KEPT_FOR_HEADS },
+    ) { verified, id ->
         // The head's time before the calls: the calls block, and the head may move meanwhile.
         val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp ?: return@ProvenReads null
         when (val read = average(verified, pinned.getValue(id), secondsBefore = 0, now = true)) {
@@ -110,6 +120,8 @@ class VerifiedPoolPrices internal constructor(
     override suspend fun before(network: Network, priceId: PriceId, secondsBefore: Long): PastReading {
         if (network != served) return PastReading.Unavailable(ReadUnavailable.NO_ENGINE)
         val pool = pinned[priceId] ?: return PastReading.NoPrice(NoPriceReason.NO_FEED)
+        // A time to come has no average yet: refused, never read as one that could not be proven.
+        if (secondsBefore < 0) return PastReading.Unavailable(ReadUnavailable.REFUSED)
         val chain = chain ?: return PastReading.Unavailable(ReadUnavailable.NO_ENGINE)
         return withContext(dispatcher) {
             try {
@@ -191,27 +203,20 @@ class VerifiedPoolPrices internal constructor(
             poolsProven = poolsProven + pool.priceId
         }
 
-        if (now) {
-            val held = when (val balance = verified.call(weth, Abi.balanceOf(pool.pool))) {
-                null -> return Read.Unproven
-                CallOutcome.Refused -> return Read.Refused
-                is CallOutcome.Reverted -> return Read.NoPrice(NoPriceReason.NOT_A_POOL, balance.blockNumber)
-                is CallOutcome.Returned ->
-                    Abi.uint256(balance.hex)?.toDoubleOrNull() ?: return Read.NoPrice(NoPriceReason.NOT_A_POOL)
-            }
-            if (held / WETH_UNIT < pool.minQuoteHeld) return Read.NoPrice(NoPriceReason.POOL_TOO_THIN)
-        }
-
-        val slot0 = when (val answer = verified.call(pool.pool, SLOT0)) {
+        val slot0Call = verified.call(pool.pool, SLOT0)
+        val slot0 = when (slot0Call) {
             null -> return Read.Unproven
             CallOutcome.Refused -> return Read.Refused
-            is CallOutcome.Reverted -> return Read.NoPrice(NoPriceReason.NOT_A_POOL, answer.blockNumber)
-            is CallOutcome.Returned -> Slot0.of(answer.hex) ?: return Read.NoPrice(NoPriceReason.NOT_A_POOL)
+            is CallOutcome.Reverted -> return Read.NoPrice(NoPriceReason.NOT_A_POOL, slot0Call.blockNumber)
+            is CallOutcome.Returned ->
+                Slot0.of(slot0Call.hex) ?: return Read.NoPrice(NoPriceReason.NOT_A_POOL, slot0Call.blockNumber)
         }
-        if (slot0.cardinality < 2) return Read.NoPrice(NoPriceReason.POOL_HISTORY_SHORT)
+        if (slot0.cardinality < 2) return Read.NoPrice(NoPriceReason.POOL_HISTORY_SHORT, slot0Call.blockNumber)
 
         // The oldest observation is the one after the latest in the ring, or the first while the
-        // ring has not wrapped yet (that slot not written to so far).
+        // ring has not wrapped yet (that slot not written to so far). Checked here, before
+        // `observe`, because a revert says no reason: past this check, one is a pool that does not
+        // answer as one, not one short of history.
         val next = (slot0.observationIndex + 1) % slot0.cardinality
         var oldest = observation(verified, pool, next) ?: return Read.Unproven
         if (oldest is Observed.Slot && !oldest.initialized) {
@@ -219,11 +224,12 @@ class VerifiedPoolPrices internal constructor(
         }
         when (oldest) {
             Observed.Refused -> return Read.Refused
-            Observed.NotAPool -> return Read.NoPrice(NoPriceReason.NOT_A_POOL)
+            Observed.NotAPool -> return Read.NoPrice(NoPriceReason.NOT_A_POOL, slot0Call.blockNumber)
             is Observed.Slot -> {
                 val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp ?: return Read.Unproven
-                if (!oldest.initialized || oldest.timestamp > headTime - secondsBefore - UniswapPools.WINDOW_SECONDS) {
-                    return Read.NoPrice(NoPriceReason.POOL_HISTORY_SHORT)
+                val since = headTime - secondsBefore - UniswapPools.WINDOW_SECONDS
+                if (!oldest.initialized || oldest.timestamp > since) {
+                    return Read.NoPrice(NoPriceReason.POOL_HISTORY_SHORT, slot0Call.blockNumber)
                 }
             }
         }
@@ -232,13 +238,33 @@ class VerifiedPoolPrices internal constructor(
         val cumulatives = when (observed) {
             null -> return Read.Unproven
             CallOutcome.Refused -> return Read.Refused
-            // "OLD": the observations do not reach back that far after all.
-            is CallOutcome.Reverted -> return Read.NoPrice(NoPriceReason.POOL_HISTORY_SHORT, observed.blockNumber)
-            is CallOutcome.Returned -> tickCumulatives(observed.hex) ?: return Read.NoPrice(NoPriceReason.NOT_A_POOL)
+            is CallOutcome.Reverted -> return Read.NoPrice(NoPriceReason.NOT_A_POOL, observed.blockNumber)
+            is CallOutcome.Returned ->
+                tickCumulatives(observed.hex) ?: return Read.NoPrice(NoPriceReason.NOT_A_POOL, observed.blockNumber)
         }
         val tick = (cumulatives.second - cumulatives.first).toDouble() / UniswapPools.WINDOW_SECONDS
-        if (now && abs(tick - slot0.tick) > UniswapPools.MAX_TICK_DIVERGENCE) {
-            return Read.NoPrice(NoPriceReason.POOL_MOVED, observed.blockNumber)
+
+        if (now) {
+            // The depth and the divergence compare slot0, liquidity() and the average: all three
+            // must be the state of one block, or a swap between them could pass both checks.
+            val liquidityCall = verified.call(pool.pool, LIQUIDITY)
+            val liquidity = when (liquidityCall) {
+                null -> return Read.Unproven
+                CallOutcome.Refused -> return Read.Refused
+                is CallOutcome.Reverted -> return Read.NoPrice(NoPriceReason.NOT_A_POOL, liquidityCall.blockNumber)
+                is CallOutcome.Returned -> Abi.uint256(liquidityCall.hex)?.toDoubleOrNull()
+                    ?: return Read.NoPrice(NoPriceReason.NOT_A_POOL, liquidityCall.blockNumber)
+            }
+            if (!sameBlock(slot0Call, observed, liquidityCall)) return Read.Unproven
+            // In-range liquidity as the WETH it stands for at the price now (a "virtual reserve"):
+            // what a swap moves the price against. WETH sent to the pool, or a position out of
+            // range, does not count.
+            val sqrtPrice = slot0.sqrtPriceX96 / Q96
+            val depth = (if (tokenFirst) liquidity * sqrtPrice else liquidity / sqrtPrice) / WETH_UNIT
+            if (!(depth >= pool.minQuoteDepth)) return Read.NoPrice(NoPriceReason.POOL_TOO_THIN, observed.blockNumber)
+            if (abs(tick - slot0.tick) > UniswapPools.MAX_TICK_DIVERGENCE) {
+                return Read.NoPrice(NoPriceReason.POOL_MOVED, observed.blockNumber)
+            }
         }
         // A tick is the price of token0 in token1, in their smallest units: 1.0001^tick.
         val firstInSecond = 1.0001.pow(tick)
@@ -248,6 +274,13 @@ class VerifiedPoolPrices internal constructor(
         val price = if (tokenFirst) scaled else 1 / scaled
         if (!price.isFinite() || price <= 0) return Read.NoPrice(NoPriceReason.NOT_POSITIVE, observed.blockNumber)
         return Read.Average(price, observed.blockNumber, observed.blockHash)
+    }
+
+    /** Whether every one of [calls] ran at one named block, of one hash where the engine named it. */
+    private fun sameBlock(vararg calls: CallOutcome.Returned): Boolean {
+        val block = calls.first().blockNumber ?: return false
+        val hash = calls.first().blockHash
+        return calls.all { it.blockNumber == block && it.blockHash == hash }
     }
 
     private sealed interface Observed {
@@ -274,15 +307,16 @@ class VerifiedPoolPrices internal constructor(
             }
         }
 
-    /** What `slot0()` says that this adapter reads: the tick now, and the ring of observations. */
-    private class Slot0(val tick: Long, val observationIndex: Int, val cardinality: Int) {
+    /** What `slot0()` says that this adapter reads: the price and tick now, and the ring of observations. */
+    private class Slot0(val sqrtPriceX96: Double, val tick: Long, val observationIndex: Int, val cardinality: Int) {
         companion object {
             fun of(hex: String): Slot0? {
                 val words = hex.chunked(WORD_HEX_DIGITS).takeIf { it.size >= SLOT0_WORDS } ?: return null
+                val sqrtPrice = Abi.uint256(words[0])?.toDoubleOrNull()?.takeIf { it > 0 } ?: return null
                 val tick = signed(words[1]) ?: return null
                 val index = Abi.uint256(words[2])?.toIntOrNull() ?: return null
                 val cardinality = Abi.uint256(words[3])?.toIntOrNull() ?: return null
-                return Slot0(tick, index, cardinality).takeIf { cardinality == 0 || index < cardinality }
+                return Slot0(sqrtPrice, tick, index, cardinality).takeIf { cardinality == 0 || index < cardinality }
             }
         }
     }
@@ -300,6 +334,15 @@ class VerifiedPoolPrices internal constructor(
 
         /** `slot0()`. */
         private val SLOT0: ByteArray = "3850c7bd".fromHex()
+
+        /** `liquidity()`: the pool's liquidity in range at its price now. */
+        private val LIQUIDITY: ByteArray = "1a686502".fromHex()
+
+        /** 2^96: what `sqrtPriceX96` is scaled by. */
+        private const val Q96 = 79_228_162_514_264_337_593_543_950_336.0
+
+        /** For how many verified heads a reading stands: about a minute on Ethereum. */
+        private const val KEPT_FOR_HEADS = 5L
 
         /** `getPool(address,address,uint24)` of the factory. */
         fun getPool(first: Address, second: Address, fee: Int): ByteArray =

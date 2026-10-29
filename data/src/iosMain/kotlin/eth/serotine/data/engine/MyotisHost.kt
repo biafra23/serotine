@@ -4,7 +4,6 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.logs.LogSink
 import eth.serotine.data.prices.ChainlinkFeeds
-import eth.serotine.data.prices.FeedHistoryThenPools
 import eth.serotine.data.prices.FeedsThenPools
 import eth.serotine.data.prices.UniswapPools
 import eth.serotine.data.safe.SafeDeployments
@@ -335,6 +334,13 @@ class MyotisHost private constructor(
             UniswapDeployments.of(network),
         )
 
+        /** A feed's price where one is pinned, a pool's only where none is: now and a day back alike. */
+        private val prices = FeedsThenPools(
+            feeds,
+            VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network)),
+            pools,
+        )
+
         val ports = ChainPorts(
             nativeBalances = VerifiedNativeBalances(
                 network,
@@ -372,13 +378,8 @@ class MyotisHost private constructor(
                 override val datesFinalizedBlocks: Boolean = false
             },
             networkUpgrades = EngineNetworkUpgrades(network, chain, Dispatchers.IO, POLL_INTERVAL),
-            priceFeeds = FeedsThenPools(feeds, pools),
-            priceHistory = FeedHistoryThenPools(
-                VerifiedPriceHistory(network, chain, Dispatchers.IO, ChainlinkFeeds.of(network)),
-                feeds,
-                pools,
-                pools,
-            ),
+            priceFeeds = prices,
+            priceHistory = prices,
             transactionInputs = EngineTransactionInputs(network, chain, Dispatchers.IO),
             broadcaster = EngineBroadcaster(network, chain, Dispatchers.IO),
             receipts = EngineReceipts(network, chain, Dispatchers.IO, POLL_INTERVAL),

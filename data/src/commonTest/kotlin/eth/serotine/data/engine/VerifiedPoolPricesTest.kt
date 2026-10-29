@@ -47,7 +47,7 @@ class VerifiedPoolPricesTest {
         tokenDecimals = 18,
         fee = 10_000,
         pool = Address.of("0x" + "c0".repeat(20)),
-        minQuoteHeld = 10,
+        minQuoteDepth = 25,
     )
 
     /** A token below WETH's address, with 6 decimals: the token is token0. */
@@ -57,7 +57,7 @@ class VerifiedPoolPricesTest {
         tokenDecimals = 6,
         fee = 3_000,
         pool = Address.of("0x" + "c1".repeat(20)),
-        minQuoteHeld = 10,
+        minQuoteDepth = 25,
     )
 
     private val headTime = 2_000_000L
@@ -72,33 +72,42 @@ class VerifiedPoolPricesTest {
     private fun word(n: Long) = (if (n < 0) (n.toULong()).toString(16).padStart(64, 'f') else n.toString(16))
         .padStart(64, '0')
 
-    private fun returned(hex: String) = CallOutcome.Returned(hex, 9, "0x" + "09".repeat(32))
+    private fun returned(hex: String) = CallOutcome.Returned(hex, 9, "0x" + "9".padStart(64, '0'))
+
+    /** 2^[exponent] as an ABI word. */
+    private fun pow2(exponent: Int): String =
+        ((1 shl (exponent % 4)).toString(16) + "0".repeat(exponent / 4)).padStart(64, '0')
 
     /**
-     * [pool] as the chain has it: named by the factory, holding [wethHeld] whole WETH, its tick now
-     * [tickNow], [cardinality] observations of which the oldest was written [oldestAge] seconds
-     * before the head, and an average tick of [averageTick] over the window ending [endingAgo]
-     * seconds before the head.
+     * [pool] as the chain has it: named by the factory; at its price now, 2^[sqrtPricePow] as its
+     * `sqrtPriceX96`, and 2^[liquidityPow] liquidity in range; its tick now [tickNow]; [cardinality]
+     * observations, the oldest written [oldestAge] seconds before the head; and an average tick of
+     * [averageTick] over the window ending [endingAgo] seconds before the head. Every call answers
+     * at one block, or the `liquidity()` call at [liquidityBlock].
      */
     private fun pool(
         pool: PinnedPool,
-        wethHeld: Long = 26,
+        sqrtPricePow: Int = 103,
+        liquidityPow: Int = 72,
         tickNow: Long = 98_000,
         cardinality: Long = 76,
         oldestAge: Long = 200 * 3_600,
         averageTick: Long = 98_000,
         endingAgo: Long = 0,
         named: Address = pool.pool,
+        liquidityBlock: Long = 9,
     ) {
         val (first, second) = if (pool.token.hex < weth.hex) pool.token to weth else weth to pool.token
         chain.calls[factory to VerifiedPoolPrices.getPool(first, second, pool.fee).toHex()] =
             returned(word(0).take(24) + named.hex.removePrefix("0x"))
-        chain.calls[weth to Abi.balanceOf(pool.pool).toHex()] =
-            returned(heldWord(wethHeld))
-        val index = 5L
+        // The latest observation's place in the ring, which is never past its end.
+        val index = minOf(5L, cardinality - 1)
         chain.calls[pool.pool to SLOT0] = returned(
-            word(0) + word(tickNow) + word(index) + word(cardinality) + word(cardinality) + word(0) + word(1),
+            pow2(sqrtPricePow) + word(tickNow) + word(index) + word(cardinality) + word(cardinality) +
+                word(0) + word(1),
         )
+        val liquidityHash = "0x" + liquidityBlock.toString(16).padStart(64, '0')
+        chain.calls[pool.pool to LIQUIDITY] = CallOutcome.Returned(pow2(liquidityPow), liquidityBlock, liquidityHash)
         chain.calls[pool.pool to VerifiedPoolPrices.observations(((index + 1) % cardinality).toInt()).toHex()] =
             returned(word(headTime - oldestAge) + word(0) + word(0) + word(1))
         val older = 1_000_000_000L
@@ -106,26 +115,6 @@ class VerifiedPoolPricesTest {
             word(0x40) + word(0xa0) + word(2) + word(older) + word(older + averageTick * 1_800) +
                 word(2) + word(0) + word(0),
         )
-    }
-
-    /** [whole] WETH as the token's balance word. */
-    private fun heldWord(whole: Long): String {
-        // whole × 10^18 does not fit a Long past 9 WETH: the word is written from its decimal digits.
-        val decimal = whole.toString() + "0".repeat(18)
-        var value = decimal.map { it - '0' }
-        val hex = StringBuilder()
-        while (value.any { it != 0 }) {
-            var remainder = 0
-            val next = mutableListOf<Int>()
-            for (digit in value) {
-                val current = remainder * 10 + digit
-                next += current / 16
-                remainder = current % 16
-            }
-            hex.append("0123456789abcdef"[remainder])
-            value = next.dropWhile { it == 0 }
-        }
-        return hex.reverse().toString().padStart(64, '0')
     }
 
     private suspend fun VerifiedPoolPrices.now(id: PriceId) =
@@ -148,7 +137,7 @@ class VerifiedPoolPricesTest {
     fun aTokenBelowWethsAddressIsToken0AndItsDecimalsScaleTheTick() = runTest {
         // One LOW (6 decimals) at 2.0 WETH: 2 × 10^18 wei per 10^6 units, 2 × 10^12 a unit.
         val tick = (kotlin.math.ln(2e12) / kotlin.math.ln(1.0001)).toLong()
-        pool(low, averageTick = tick, tickNow = tick)
+        pool(low, sqrtPricePow = 96 + 20, averageTick = tick, tickNow = tick)
 
         val reading = prices().now(low.priceId) as FeedReading.Verified
         assertClose(1.0001.pow(tick.toDouble()) * 1e-12, reading.price)
@@ -170,10 +159,29 @@ class VerifiedPoolPricesTest {
     }
 
     @Test
-    fun aPoolThatHoldsLessWethThanItsFloorIsNoPrice() = runTest {
-        pool(cow, wethHeld = 9)
+    fun aPoolShallowerInRangeThanItsFloorIsNoPrice() = runTest {
+        // 2^72 liquidity at a square-root price of 2^7 stands for 2^65 wei, ≈ 36.9 WETH: deep enough.
+        pool(cow)
+        assertTrue(prices().now(cow.priceId) is FeedReading.Verified)
 
+        // 2^70 at the same price: ≈ 9.2 WETH, below the floor of 25.
+        pool(cow, liquidityPow = 70)
         assertEquals(FeedReading.NoPrice(NoPriceReason.POOL_TOO_THIN), prices().now(cow.priceId))
+    }
+
+    @Test
+    fun callsThatDidNotAnswerAtOneBlockAreNoProofOfTheChecksThatCompareThem() = runTest {
+        pool(cow, liquidityBlock = 10)
+
+        assertEquals(FeedReading.Unavailable(ReadUnavailable.UNPROVEN), prices().now(cow.priceId))
+    }
+
+    @Test
+    fun aPoolThatRevertsObservePastTheHistoryCheckDoesNotAnswerAsOne() = runTest {
+        pool(cow)
+        chain.calls[cow.pool to VerifiedPoolPrices.observe(1_800, 0).toHex()] = CallOutcome.Reverted(9)
+
+        assertEquals(FeedReading.NoPrice(NoPriceReason.NOT_A_POOL), prices().now(cow.priceId))
     }
 
     @Test
@@ -243,12 +251,13 @@ class VerifiedPoolPricesTest {
     }
 
     @Test
-    fun aDayBackThePoolRefusesToObserveIsNoRoundThatOld() = runTest {
-        pool(cow, endingAgo = 86_400)
-        chain.calls[cow.pool to VerifiedPoolPrices.observe(86_400 + 1_800, 86_400).toHex()] =
-            CallOutcome.Reverted(9)
+    fun aNegativeAgeIsRefusedNotReadAsUnproven() = runTest {
+        pool(cow)
 
-        assertEquals(PastReading.NoRoundThatOld, prices().before(Network.ETHEREUM, cow.priceId, 86_400))
+        assertEquals(
+            PastReading.Unavailable(ReadUnavailable.REFUSED),
+            prices().before(Network.ETHEREUM, cow.priceId, -60),
+        )
     }
 
     @Test
@@ -264,5 +273,6 @@ class VerifiedPoolPricesTest {
     private companion object {
         const val FACTORY_CODE = "6080"
         const val SLOT0 = "3850c7bd"
+        const val LIQUIDITY = "1a686502"
     }
 }

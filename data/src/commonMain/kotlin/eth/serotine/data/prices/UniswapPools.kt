@@ -9,8 +9,9 @@ import eth.serotine.domain.model.PriceId
  * *Data sources*: owner ruling, 2026-10-29, #205): the pool of [token] (with [tokenDecimals]) and
  * the network's WETH at [fee] (in hundredths of a basis point, as the factory names a tier), at
  * [pool], quoted in [quote]. The pin says which pool is expected; the network's pinned factory
- * proves it (`getPool` must return [pool]). [minQuoteHeld] is the floor of WETH the pool must
- * hold, in whole WETH: a thinner pool gives no price.
+ * proves it (`getPool` must return [pool]). [minQuoteDepth] is the floor of the pool's depth:
+ * its in-range liquidity as the WETH it stands for at the price now, in whole WETH. A shallower
+ * pool gives no price.
  */
 data class PinnedPool(
     val priceId: PriceId,
@@ -18,7 +19,7 @@ data class PinnedPool(
     val tokenDecimals: Int,
     val fee: Int,
     val pool: Address,
-    val minQuoteHeld: Long,
+    val minQuoteDepth: Long,
     val quote: PriceId = PriceId("ETH"),
 )
 
@@ -29,12 +30,13 @@ data class PinnedPool(
  * Chosen 2026-10-29 at mainnet block 26,298,245, read through two public nodes, which agreed (a
  * debugging source only, CLAUDE.md, *Data sources*), among the pinned factory's pools of each
  * token with WETH and USDC, every fee tier:
- * - COW: the 1 % tier (≈ 2.0 M COW and 26 WETH, 76 observations reaching back ≈ 202 h). The 0.3 %
- *   tier holds more, ≈ 74 WETH, but keeps one observation, so its "average" is its spot price.
- * - SAFE: the 0.3 % tier (≈ 1.06 M SAFE and 49 WETH, 51 observations reaching back ≈ 2.8 h, so a
- *   day back is "24h —"). The 1 % tier holds 0.4 WETH.
- * The USDC pools of both hold dust. The floor, 10 WETH, keeps both and refuses a pool drained to a
- * fraction of what it holds today.
+ * - COW: the 1 % tier (≈ 2.0 M COW and 26 WETH held, in range ≈ 77.5 WETH deep; 76 observations
+ *   reaching back ≈ 202 h). The 0.3 % tier is deeper, ≈ 209 WETH, but keeps one observation, so its
+ *   "average" is its spot price.
+ * - SAFE: the 0.3 % tier (≈ 1.06 M SAFE and 49 WETH held, ≈ 292 WETH deep; 51 observations
+ *   reaching back ≈ 2.8 h, so a day back is "24h —"). The 1 % tier is 0.3 WETH deep.
+ * The USDC pools of both hold dust. The floor, 25 WETH deep, keeps both and refuses a pool
+ * drained to a third of the shallower one's depth today.
  */
 object UniswapPools {
 
@@ -53,7 +55,7 @@ object UniswapPools {
      */
     const val MAX_TICK_DIVERGENCE = 500L
 
-    private const val MIN_WETH_HELD = 10L
+    private const val MIN_WETH_DEPTH = 25L
 
     private val ETHEREUM = listOf(
         PinnedPool(
@@ -62,7 +64,7 @@ object UniswapPools {
             tokenDecimals = 18,
             fee = 10_000,
             pool = Address.of("0xfcfdfc98062d13a11cec48c44e4613eb26a34293"),
-            minQuoteHeld = MIN_WETH_HELD,
+            minQuoteDepth = MIN_WETH_DEPTH,
         ),
         PinnedPool(
             PriceId("SAFE"),
@@ -70,7 +72,7 @@ object UniswapPools {
             tokenDecimals = 18,
             fee = 3_000,
             pool = Address.of("0x000ba527862e5b82cff0f7c66b646af023274aa1"),
-            minQuoteHeld = MIN_WETH_HELD,
+            minQuoteDepth = MIN_WETH_DEPTH,
         ),
     )
 }

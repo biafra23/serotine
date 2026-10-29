@@ -1,5 +1,6 @@
 package eth.serotine.data.prices
 
+import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
@@ -105,12 +106,15 @@ object ChainlinkFeeds {
 }
 
 /**
- * [FeedTable] of [ChainlinkFeeds] and, for a price id no feed is pinned for, [UniswapPools]: which
- * prices are pinned where, read from the tables alone, no engine. A feed always wins over a pool
- * (owner ruling, 2026-10-29, #205).
+ * [FeedTable] of [ChainlinkFeeds] and, for a price id no feed is pinned for, [UniswapPools] on a
+ * network that pins Uniswap (as the engine's pool adapter reads them): which prices are pinned
+ * where, read from the tables alone, no engine. A feed always wins over a pool (owner ruling,
+ * 2026-10-29, #205).
  */
 class PinnedFeedTable : FeedTable {
-    override fun quotes(network: Network): Map<PriceId, PriceId> =
-        UniswapPools.of(network).associate { it.priceId to it.quote } +
+    override fun quotes(network: Network): Map<PriceId, PriceId> {
+        val pools = if (UniswapDeployments.of(network) == null) emptyList() else UniswapPools.of(network)
+        return pools.associate { it.priceId to it.quote } +
             ChainlinkFeeds.of(network).associate { it.priceId to it.quote }
+    }
 }

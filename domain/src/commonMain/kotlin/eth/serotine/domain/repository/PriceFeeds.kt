@@ -76,7 +76,7 @@ enum class NoPriceReason {
     /** The pool's observations do not reach back over the averaging window. */
     POOL_HISTORY_SHORT,
 
-    /** The pool holds less of the quote token than its pinned floor. */
+    /** The pool's liquidity in range stands for less of the quote token than its pinned floor. */
     POOL_TOO_THIN,
 
     /** The pool's price now differs from its average by more than the pinned band. */
