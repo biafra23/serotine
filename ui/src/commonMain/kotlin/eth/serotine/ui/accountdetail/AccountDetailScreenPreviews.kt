@@ -614,7 +614,7 @@ private fun AccountDetailEthereumPreview() = AccountDetailPreview(
                 "cow",
                 verified = true,
                 verifiedAt = "block 23,618,401",
-                value = "€110.00 · $POOL_AVERAGE",
+                value = "≈ €110.00 · $POOL_AVERAGE",
                 contract = "0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab",
             ),
         ),

@@ -4,15 +4,20 @@ import eth.serotine.data.keys.fromHex
 import eth.serotine.data.prices.PinnedPool
 import eth.serotine.data.prices.UniswapPools
 import eth.serotine.data.swaps.PinnedUniswapV3
-import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.PriceId
+import eth.serotine.domain.model.UniswapV3Factory
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.NoPriceReason
 import eth.serotine.domain.repository.PastReading
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReadUnavailable
+import kotlin.concurrent.Volatile
+import kotlin.math.abs
+import kotlin.math.pow
+import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -21,10 +26,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import kotlin.concurrent.Volatile
-import kotlin.math.abs
-import kotlin.math.pow
-import kotlin.time.Duration
 
 /**
  * [PriceFeeds] and [PriceHistory] for the price ids [pools] price, each a pinned Uniswap v3 pool's
@@ -190,13 +191,13 @@ class VerifiedPoolPrices internal constructor(
         val weth = deployment.weth9
         val tokenFirst = pool.token.hex < weth.hex
         if (pool.priceId !in poolsProven) {
-            val (first, second) = if (tokenFirst) pool.token to weth else weth to pool.token
-            when (val named = verified.call(deployment.factory, getPool(first, second, pool.fee))) {
+            val key = PoolKey.of(pool.token, weth, pool.fee)
+            when (val named = verified.call(deployment.factory, UniswapV3Factory.getPool(key))) {
                 null -> return Read.Unproven
                 CallOutcome.Refused -> return Read.Refused
                 is CallOutcome.Reverted -> return Read.NoPrice(NoPriceReason.NOT_A_POOL, named.blockNumber)
                 is CallOutcome.Returned ->
-                    if (Abi.address(named.hex) != pool.pool) {
+                    if (UniswapV3Factory.poolOf(named.hex) != pool.pool) {
                         return Read.NoPrice(NoPriceReason.NOT_A_POOL, named.blockNumber)
                     }
             }
@@ -344,10 +345,6 @@ class VerifiedPoolPrices internal constructor(
         /** For how many verified heads a reading stands: about a minute on Ethereum. */
         private const val KEPT_FOR_HEADS = 5L
 
-        /** `getPool(address,address,uint24)` of the factory. */
-        fun getPool(first: Address, second: Address, fee: Int): ByteArray =
-            ("1698ee82" + word(first) + fee.toLong().toString(16).padStart(WORD_HEX_DIGITS, '0')).fromHex()
-
         /** `observations(uint256)`. */
         fun observations(index: Int): ByteArray =
             ("252c09d7" + index.toLong().toString(16).padStart(WORD_HEX_DIGITS, '0')).fromHex()
@@ -356,8 +353,6 @@ class VerifiedPoolPrices internal constructor(
         fun observe(older: Long, newer: Long): ByteArray = (
             "883bdbfd" + hexWord(0x20) + hexWord(2) + hexWord(older) + hexWord(newer)
             ).fromHex()
-
-        private fun word(address: Address) = address.hex.removePrefix("0x").padStart(WORD_HEX_DIGITS, '0')
 
         private fun hexWord(n: Long) = n.toString(16).padStart(WORD_HEX_DIGITS, '0')
 

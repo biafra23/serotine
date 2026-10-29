@@ -56,8 +56,9 @@ import kotlinx.coroutines.flow.flowOf
  * token, the same as GNO's "Gnosis Token on xDai" and COW's "CoW Protocol Token from Mainnet").
  * None of the three has a Chainlink feed on Ethereum or on Gnosis Chain beyond the GNO / USD one
  * already pinned on Gnosis Chain (checked against `reference-data-directory.vercel.app`'s
- * `feeds-mainnet.json` and `feeds-xdai-mainnet.json`), so GNO has no price on Ethereum and COW
- * and SAFE have none on either network. None of the three has a Sepolia deployment, so none is
+ * `feeds-mainnet.json` and `feeds-xdai-mainnet.json`), so GNO has no price on Ethereum; COW and
+ * SAFE are priced there by their pinned Uniswap pools since #205 (`UniswapPools`), and have no
+ * price on Gnosis Chain. None of the three has a Sepolia deployment, so none is
  * added there. Read on 2026-10-28 at mainnet blocks 26,289,553 to 26,289,569 and at Gnosis
  * blocks 48,982,469 to 48,982,471, each through two public nodes, which agreed, a debugging
  * source only: `symbol()`, `name()` and `decimals()`, each as listed here.

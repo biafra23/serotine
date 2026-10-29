@@ -287,7 +287,9 @@ internal fun amountHint(amount: UInt256?, option: AssetOption?, currency: Displa
     val valued = option?.valuation as? Valuation.Valued ?: return null
     val balance = option.balance?.takeUnless { it.isZero } ?: return null
     val share = amount.toDecimal().toDouble() / balance.toDecimal().toDouble()
-    return valuationText(valued.copy(amount = valued.amount * share), currency, network)?.let { "≈ $it" }
+    // A hint, so "≈" leads it; a value at a pool's average already starts with one.
+    return valuationText(valued.copy(amount = valued.amount * share), currency, network)
+        ?.let { if (it.startsWith("≈")) it else "≈ $it" }
 }
 
 /** Why a name could not be resolved with verified calls, display-ready. */

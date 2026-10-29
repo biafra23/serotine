@@ -5,23 +5,26 @@ import eth.serotine.data.prices.PinnedPool
 import eth.serotine.data.prices.UniswapPools
 import eth.serotine.data.swaps.PinnedUniswapV3
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.UniswapV3Deployment
+import eth.serotine.domain.model.UniswapV3Factory
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.NoPriceReason
 import eth.serotine.domain.repository.PastReading
 import eth.serotine.domain.repository.ReadUnavailable
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.runTest
 import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class VerifiedPoolPricesTest {
@@ -45,7 +48,7 @@ class VerifiedPoolPricesTest {
         PriceId("COW"),
         Address.of("0x" + "de".repeat(20)),
         tokenDecimals = 18,
-        fee = 10_000,
+        fee = FeeTier.HIGH,
         pool = Address.of("0x" + "c0".repeat(20)),
         minQuoteDepth = 25,
     )
@@ -55,7 +58,7 @@ class VerifiedPoolPricesTest {
         PriceId("LOW"),
         Address.of("0x" + "11".repeat(20)),
         tokenDecimals = 6,
-        fee = 3_000,
+        fee = FeeTier.MEDIUM,
         pool = Address.of("0x" + "c1".repeat(20)),
         minQuoteDepth = 25,
     )
@@ -97,8 +100,7 @@ class VerifiedPoolPricesTest {
         named: Address = pool.pool,
         liquidityBlock: Long = 9,
     ) {
-        val (first, second) = if (pool.token.hex < weth.hex) pool.token to weth else weth to pool.token
-        chain.calls[factory to VerifiedPoolPrices.getPool(first, second, pool.fee).toHex()] =
+        chain.calls[factory to UniswapV3Factory.getPool(PoolKey.of(pool.token, weth, pool.fee)).toHex()] =
             returned(word(0).take(24) + named.hex.removePrefix("0x"))
         // The latest observation's place in the ring, which is never past its end.
         val index = minOf(5L, cardinality - 1)
@@ -258,6 +260,37 @@ class VerifiedPoolPricesTest {
             PastReading.Unavailable(ReadUnavailable.REFUSED),
             prices().before(Network.ETHEREUM, cow.priceId, -60),
         )
+    }
+
+    @Test
+    fun thePoolCallsAreTheExactCalldataTheContractsTake() {
+        // cast calldata 'getPool(address,address,uint24)' <WETH> <COW> 10000: Ethereum's COW pin,
+        // whose answer on mainnet is the pinned pool (read 2026-10-29).
+        val pin = UniswapPools.of(Network.ETHEREUM).single { it.priceId == PriceId("COW") }
+        val mainnetWeth = Address.of("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
+        assertEquals(
+            "1698ee82" +
+                "000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2" +
+                "000000000000000000000000def1ca1fb7fbcdc777520aa7f396b4e015f497ab" +
+                "0000000000000000000000000000000000000000000000000000000000002710",
+            UniswapV3Factory.getPool(PoolKey.of(pin.token, mainnetWeth, pin.fee)).toHex(),
+        )
+        // cast calldata 'observations(uint256)' 6
+        assertEquals(
+            "252c09d7" + "0000000000000000000000000000000000000000000000000000000000000006",
+            VerifiedPoolPrices.observations(6).toHex(),
+        )
+        // cast calldata 'observe(uint32[])' '[1800,0]'
+        assertEquals(
+            "883bdbfd" +
+                "0000000000000000000000000000000000000000000000000000000000000020" +
+                "0000000000000000000000000000000000000000000000000000000000000002" +
+                "0000000000000000000000000000000000000000000000000000000000000708" +
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            VerifiedPoolPrices.observe(1_800, 0).toHex(),
+        )
+        assertEquals("3850c7bd", SLOT0)
+        assertEquals("1a686502", LIQUIDITY)
     }
 
     @Test

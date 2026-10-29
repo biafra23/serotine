@@ -1,13 +1,14 @@
 package eth.serotine.data.prices
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 
 /**
  * A Uniswap v3 pool pinned to price [priceId] where no Chainlink feed is pinned for it (CLAUDE.md,
  * *Data sources*: owner ruling, 2026-10-29, #205): the pool of [token] (with [tokenDecimals]) and
- * the network's WETH at [fee] (in hundredths of a basis point, as the factory names a tier), at
+ * the network's WETH in the [fee] tier, at
  * [pool], quoted in [quote]. The pin says which pool is expected; the network's pinned factory
  * proves it (`getPool` must return [pool]). [minQuoteDepth] is the floor of the pool's depth:
  * its in-range liquidity as the WETH it stands for at the price now, in whole WETH. A shallower
@@ -17,7 +18,7 @@ data class PinnedPool(
     val priceId: PriceId,
     val token: Address,
     val tokenDecimals: Int,
-    val fee: Int,
+    val fee: FeeTier,
     val pool: Address,
     val minQuoteDepth: Long,
     val quote: PriceId = PriceId("ETH"),
@@ -62,7 +63,7 @@ object UniswapPools {
             PriceId("COW"),
             Address.of("0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab"),
             tokenDecimals = 18,
-            fee = 10_000,
+            fee = FeeTier.HIGH,
             pool = Address.of("0xfcfdfc98062d13a11cec48c44e4613eb26a34293"),
             minQuoteDepth = MIN_WETH_DEPTH,
         ),
@@ -70,7 +71,7 @@ object UniswapPools {
             PriceId("SAFE"),
             Address.of("0x5afe3855358e112b5647b952709e6165e1c1eeee"),
             tokenDecimals = 18,
-            fee = 3_000,
+            fee = FeeTier.MEDIUM,
             pool = Address.of("0x000ba527862e5b82cff0f7c66b646af023274aa1"),
             minQuoteDepth = MIN_WETH_DEPTH,
         ),

@@ -54,7 +54,8 @@ internal fun valuationText(value: Valuation?, currency: DisplayCurrency, network
     null -> null
     Valuation.Checking -> "Checking price…"
     is Valuation.Valued -> listOfNotNull(
-        formatFiat(value.amount, currency),
+        // An average is an estimate, and reads as one (docs/wallet-ux.md, *Prices*).
+        (if (value.poolAverage) "≈ " else "") + formatFiat(value.amount, currency),
         POOL_AVERAGE.takeIf { value.poolAverage },
         "price ${age(value.ageSeconds)} old".takeIf { value.stale },
         "testnet prices".takeIf { network.testnet },
