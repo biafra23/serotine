@@ -72,16 +72,23 @@ def add_paths(block):
         if 'Brush.linearGradient' in rest:
             grad_m = re.search(r'Brush\.linearGradient\(', rest)
             grad = balanced(rest, grad_m.end() - 1)
-            colors = re.findall(r'Color\((0x[0-9A-Fa-f]+)\)', grad)
-            if len(colors) != 2:
-                # The VectorDrawable <gradient> this writes takes one startColor/endColor pair;
-                # a third stop would be silently dropped instead of failing loud.
-                raise ValueError('expected exactly 2 gradient stops, got %d: %r' % (len(colors), grad[:120]))
+            # Either `0.52f to Color(...)` stops with their offsets, or a plain list of colours spread
+            # evenly from 0 to 1, as Compose spreads them.
+            stops = re.findall(r'([\d.]+)f to Color\((0x[0-9A-Fa-f]+)\)', grad)
+            if stops:
+                colors = [c for _, c in stops]
+                offsets = [o for o, _ in stops]
+            else:
+                colors = re.findall(r'Color\((0x[0-9A-Fa-f]+)\)', grad)
+                offsets = ['%g' % (i / (len(colors) - 1)) for i in range(len(colors))] if len(colors) > 1 else []
+            if len(colors) < 2:
+                raise ValueError('expected at least 2 gradient stops, got %d: %r' % (len(colors), grad[:120]))
             start = re.search(r'start = Offset\(([\d.]+)f,\s*([\d.]+)f\)', grad)
             end = re.search(r'end = Offset\(([\d.]+)f,\s*([\d.]+)f\)', grad)
             fill = {
                 'gradient': True,
                 'colors': [c.replace('0x', '#') for c in colors],
+                'offsets': ['%g' % float(o) for o in offsets],
                 'start': (start.group(1), start.group(2)),
                 'end': (end.group(1), end.group(2)),
             }
@@ -177,17 +184,25 @@ def vector_xml(key, spec):
             # literal fillColor and an <aapt:attr> override of the same attribute.
             body = '\n'.join(attrs)
             start, end = p['fill']['start'], p['fill']['end']
-            colors = p['fill']['colors']
+            colors, offsets = p['fill']['colors'], p['fill']['offsets']
+            if offsets == ['0', '1']:
+                # Two stops at the ends: the startColor/endColor pair.
+                stops = '\n                    android:startColor="%s" android:endColor="%s" />\n' % (colors[0], colors[1])
+            else:
+                # More stops, or stops not at the ends: one <item> each, at its offset (API 24+).
+                stops = '>\n%s                </gradient>\n' % ''.join(
+                    '                    <item android:offset="%s" android:color="%s" />\n' % (o, c)
+                    for o, c in zip(offsets, colors)
+                )
             paths_xml.append(
                 '        <path\n%s>\n'
                 '            <aapt:attr name="android:fillColor">\n'
                 '                <gradient\n'
                 '                    android:type="linear"\n'
                 '                    android:startX="%s" android:startY="%s"\n'
-                '                    android:endX="%s" android:endY="%s"\n'
-                '                    android:startColor="%s" android:endColor="%s" />\n'
+                '                    android:endX="%s" android:endY="%s"%s'
                 '            </aapt:attr>\n'
-                '        </path>' % (body, start[0], start[1], end[0], end[1], colors[0], colors[1])
+                '        </path>' % (body, start[0], start[1], end[0], end[1], stops)
             )
         else:
             attrs.insert(0, '            android:fillColor="%s"' % p['fill']['color'])
