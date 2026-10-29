@@ -573,7 +573,7 @@ class WatchViewModel(
         if (results.values.any { it == RecipientLookup.ZeroAddress }) return ZERO_ADDRESS to true
         val resolving = results.size < states.size
         val isError = !resolving && results.values.none { it is RecipientLookup.Found }
-        val sameMiss = !resolving && results.values.distinct().size == 1 &&
+        val sameMiss = !resolving && results.size > 1 && results.values.distinct().size == 1 &&
             results.values.first() !is RecipientLookup.Found
         // An address typed, one registry asked, or every registry's same miss: one answer, said once.
         if ('.' !in text || states.size == 1 || sameMiss) {
