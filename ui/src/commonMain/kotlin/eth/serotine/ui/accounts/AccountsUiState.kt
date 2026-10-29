@@ -64,7 +64,9 @@ sealed interface AccountsUiState {
      * [freshness], how fresh the values shown are ("Updated 2 min ago · pull down to refresh",
      * "Live", "Checking Ethereum and Gnosis Chain…"; null while nothing is proven yet);
      * [unreachable], a banner per network that cannot be checked right now while it shows balances
-     * from before; and [refreshing], while a pull-to-refresh is being answered.
+     * from before; [refreshing], while a pull-to-refresh is being answered; and [simpleTotalNote],
+     * [totalNote] with the accounts it leaves out of those networks ("1 Ethereum account not
+     * counted"), null where it is [totalNote] itself.
      */
     data class Ready(
         val sections: List<NetworkSection>,
@@ -77,6 +79,7 @@ sealed interface AccountsUiState {
         val freshness: String? = null,
         val unreachable: List<UnreachableNetwork> = emptyList(),
         val refreshing: Boolean = false,
+        val simpleTotalNote: String? = null,
     ) : AccountsUiState {
         init {
             require(accounts.distinctBy { it.chainId to it.address }.size == accounts.size) {

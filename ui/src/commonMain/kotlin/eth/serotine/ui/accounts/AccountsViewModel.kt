@@ -253,27 +253,36 @@ class AccountsViewModel(
                 ).joinToString(" "),
             )
         }
-        // What the total leaves out of the networks that cannot be checked, said instead of "still checking".
-        val notCounted = held.mapNotNull { network ->
+        // What the total leaves out of the networks that cannot be checked; "still checking" only while
+        // something else in it is still being read, since those balances from before explain the rest.
+        val counted = countedIn(portfolio, on)
+        val notCounted = counted.mapNotNull { network ->
             when (val n = before.getValue(network).size) {
                 0 -> null
                 1 -> "1 ${network.displayName} account not counted"
                 else -> "$n ${network.displayName} accounts not counted"
             }
         }
-        val totalNote = if (notCounted.isEmpty()) {
-            state.totalNote
+        val stillChecking = accounts.any { account ->
+            val value = portfolio.values[account.id]
+            account.network in counted && readings[account] !is BalanceReading.LastKnown &&
+                (value == null || value.currency != portfolio.currency || !value.total.complete)
+        }
+        val simpleTotalNote = if (notCounted.isEmpty()) {
+            null
         } else {
-            (notCounted + state.totalNote.orEmpty().split(" · ").filterNot { it.equals("still checking", true) })
-                .filter { it.isNotEmpty() }
-                .joinToString(" · ")
-                .replaceFirstChar { it.uppercase() }
+            // The detailed note's first part, capitalised as its start, is no longer the start; a network's
+            // name keeps its capital.
+            val rest = state.totalNote.orEmpty().split(" · ")
+                .map { if (it == "Still checking" || it == "Testnet prices") it.lowercase() else it }
+                .filter { it.isNotEmpty() && (stillChecking || it != "still checking") }
+            (notCounted + rest).joinToString(" · ").replaceFirstChar { it.uppercase() }
         }
         return state.copy(
             freshness = freshness,
             unreachable = unreachable,
             refreshing = refreshing,
-            totalNote = totalNote,
+            simpleTotalNote = simpleTotalNote,
         )
     }
 
@@ -368,8 +377,7 @@ class AccountsViewModel(
                 // The top total adds the real networks that are on; a testnet only when the wallet has
                 // no account on a real network at all, on or off (docs/networks.md, N1).
                 val held = Network.entries.filter { network -> list.accounts.any { it.network == network } }
-                val counted = held.filterNot { it.testnet }.ifEmpty { held }
-                    .filter { it in on && it !in portfolio.unpricedOn }
+                val counted = countedIn(portfolio, on)
                 val total = counted.fold(Total.NONE) { sum, network -> sum + portfolio.totalOn(network) }
                 // A testnet left out of the total, said so; one that is off says it in its own section.
                 val leftOut = sections.filter { it.testnet && it.on && counted.none { n -> n.testnet } }.map { it.name }
@@ -391,6 +399,17 @@ class AccountsViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * The networks the top total adds: the real ones that are on and can price the display
+     * currency; a testnet only when the wallet has no account on a real network at all, on or off
+     * (docs/networks.md, N1).
+     */
+    private fun countedIn(portfolio: Portfolio, on: Set<Network>): List<Network> {
+        val accounts = (portfolio.accounts as? AccountList.Loaded)?.accounts.orEmpty()
+        val held = Network.entries.filter { network -> accounts.any { it.network == network } }
+        return held.filterNot { it.testnet }.ifEmpty { held }.filter { it in on && it !in portfolio.unpricedOn }
     }
 
     /**

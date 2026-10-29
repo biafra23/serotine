@@ -182,8 +182,9 @@ private fun SimpleAccountList(
             NetworkAlarm(it, onCatchUp)
         }
         state.notice?.let { notice -> item(key = "notice") { Notice(notice) } }
-        if (state.total != null || state.freshness != null || state.totalNote != null) {
-            item(key = "total") { SimpleTotal(state.total, state.freshness, state.totalNote) }
+        val totalNote = state.simpleTotalNote ?: state.totalNote
+        if (state.total != null || state.freshness != null || totalNote != null) {
+            item(key = "total") { SimpleTotal(state.total, state.freshness, totalNote) }
         }
         items(state.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
             WithActionMenu(

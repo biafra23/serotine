@@ -775,7 +775,36 @@ class AccountsViewModelTest {
             ready.unreachable,
         )
         assertEquals("3 h ago · may have changed", ready.accounts.single().ageNote)
-        assertEquals("1 Ethereum account not counted", ready.totalNote, "said instead of still checking")
+        assertEquals("1 Ethereum account not counted", ready.simpleTotalNote, "said instead of still checking")
+        assertEquals("Still checking", ready.totalNote, "Detailed view's note as before")
+    }
+
+    @Test
+    fun theTotalStillSaysItIsCheckingWhileAnotherNetworkIsReadBesideOneFromBefore() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        networks.on.value = Network.entries.toSet()
+        val gnosisSpare = Account(
+            Network.GNOSIS,
+            Address.of("0x" + "e2".repeat(20)),
+            AccountKind.EOA,
+            "Spare",
+            AccountCustody.InKeyStore,
+        )
+        repository.accounts = listOf(ethereumMain, gnosisSpare)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        balances.of(ethereumMain.address).value =
+            BalanceReading.LastKnown(Wei.of("1000000000000000000"), 9, asOf = now - 3 * 3_600)
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountsUiState.Ready
+        assertEquals("1 Ethereum account not counted · still checking", ready.simpleTotalNote)
+
+        balances.of(gnosisSpare.address).value = BalanceReading.Verified(Wei.of("0"), 12, provenAt = now)
+        runCurrent()
+
+        val read = viewModel.uiState.value as AccountsUiState.Ready
+        assertEquals("1 Ethereum account not counted", read.simpleTotalNote, "nothing else is being read")
     }
 
     @Test

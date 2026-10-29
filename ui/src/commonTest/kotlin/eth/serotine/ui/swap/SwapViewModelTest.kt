@@ -14,6 +14,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.QuoterV2
+import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SlippageTolerance
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.SwapVenue
@@ -455,6 +456,39 @@ class SwapViewModelTest {
         assertEquals("Step 2 of 2", swap.step)
         assertEquals(WalletPassword.EMPTY, swap.unlock.password, "nothing typed for the approval signs the swap")
         assertEquals(1, signer.passwords.size, "nothing signed for step 2 before the user confirms it")
+    }
+
+    @Test
+    fun anEarlierSwapStillPendingOnceTheApprovalIsInABlockIsSaidNotWaitedOutAsTheApproval() = runTest {
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("made-up test password")
+        viewModel.sign()
+        runCurrent()
+        assertIs<SwapUiState.ApprovalPending>(viewModel.uiState.value)
+        val approval = sent.transfers.value.single()
+
+        // The approval is in a block, but a swap of the same token, sent since, is not.
+        inputs.mined = approval.nonce + 1
+        allow(fortyUsdc)
+        val approved = approval.action as SentAction.TokenApproval
+        val earlier = approval.copy(
+            nonce = approval.nonce + 1,
+            signed = SignedTransfer(byteArrayOf(0x02, 0x01)),
+            action = SentAction.Swap(
+                router = approved.spender,
+                sell = TransferAsset.Erc20Token(approved.token),
+                amountIn = fortyUsdc,
+                buy = TransferAsset.Native,
+                minimumOut = UInt256.of(1),
+            ),
+        )
+        sent.transfers.value = listOf(approval, earlier)
+        advanceTimeBy(5.seconds)
+        runCurrent()
+
+        val compose = assertIs<SwapUiState.Compose>(viewModel.uiState.value)
+        assertEquals(earlier.hash, compose.earlier?.hash, "the earlier swap, not the approval, is waited for")
     }
 
     @Test

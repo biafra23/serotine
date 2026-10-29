@@ -648,8 +648,9 @@ class SwapViewModel(
                 val next = quoted(awaiting.request, unlock = null, awaiting.sender)
                 if (step.value != awaiting) return@launch
                 when {
-                    // Still not in a block: the quote says the approval is pending.
-                    next is Step.Composing && next.earlier?.waiting == true && next.error == null -> failed = 0
+                    // Still not in a block: the quote says the approval is pending. Another transaction
+                    // pending (an earlier swap of the token) is not waited out here: the compose step says it.
+                    next is Step.Composing && next.info == APPROVAL_PENDING && next.error == null -> failed = 0
                     next is Step.Reviewing -> {
                         step.value = positioned(next, awaiting.sent, awaiting.hash).copy(hidden = !shown)
                         requoteIfHidden()
