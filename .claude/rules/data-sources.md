@@ -83,15 +83,15 @@ only" of 2026-10-15.)
   token units, never derived from a price. The light client proves what the
   aggregator says, not that the oracles are right. That is why a price never
   reaches a signature.
-- One exception is proposed and open (#205): the fallback to a pool's
-  average, below. It excepts Chainlink-only prices, not display-only.
+- One exception: the fallback to a pool's average, below (owner ruling,
+  2026-10-29, #205). It excepts Chainlink-only prices, not display-only.
 
 ## A Uniswap pool's average prices a token where no feed is pinned
 
-(Proposed ruling, 2026-10-29, #205. Open until the owner accepts it. It narrows
-*Prices come from Chainlink aggregators*. Its scope, the screens, the totals
-and the home-screen widget, and that such values count in totals, labelled,
-are the owner's direction of 2026-10-29 on #205.)
+(Owner ruling, 2026-10-29, #205. It narrows *Prices come from Chainlink
+aggregators*: on the screens, in the totals and on the home-screen widget,
+labelled and counted in totals, over a 30-minute window, and never in place
+of a stale feed.)
 
 - A pinned Chainlink feed always wins. Where a price id has one on the
   network, it prices the token everywhere. A feed that is stale is shown as
@@ -127,6 +127,8 @@ are the owner's direction of 2026-10-29 on #205.)
   on the path from its own round history. It is "24h —" when the pool's
   history does not reach a day back, or when a feed on the path has no
   verified, fresh round there.
+- The pools, their liquidity floor and the divergence band are pinned by
+  the PR that codes this, each proven on chain.
 - One price id shows one source at a time. A feed pinned later replaces the
   average with no prompt.
 - The average is display-only, like every price: it never reaches a
@@ -212,7 +214,3 @@ Each is recorded here before its code lands. Today: the dApp connection
 protocol. WalletConnect's relay is an off-chain service, and a request that
 arrives through it is untrusted input, decoded and shown as such. Until
 decided, it is not wired in.
-
-Open, the owner decides: the Uniswap pool fallback for prices (above). The pools,
-their liquidity floor and the divergence band are pinned by the PR that
-codes it, each proven on chain.

@@ -867,8 +867,8 @@ read through the light client. Applied:
   the source of truth. On Sepolia the table has ETH, BTC, LINK, USDC, EUR,
   GBP and JPY, each against USD; UNI has no Sepolia feed, so it has no price,
   and neither has a token the user adds.
-- **Where no feed is pinned, a pool's average** may price a token (proposed,
-  2026-10-29, #205; open; .claude/rules/data-sources.md): a pinned Uniswap
+- **Where no feed is pinned, a pool's average** prices a token (owner
+  ruling, 2026-10-29, #205; .claude/rules/data-sources.md): a pinned Uniswap
   pool's 30-minute average, today for COW and SAFE on Ethereum. Its value
   reads "≈ $123.45 · Uniswap 30-min average", it counts in totals, and a
   total that includes one says "includes Uniswap averages" under it.
