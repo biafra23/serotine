@@ -14,6 +14,7 @@ import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
+import eth.serotine.ui.components.POOL_AVERAGE
 import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.staleStripSample
 import eth.serotine.ui.components.verifiedStripSample
@@ -613,7 +614,7 @@ private fun AccountDetailEthereumPreview() = AccountDetailPreview(
                 "cow",
                 verified = true,
                 verifiedAt = "block 23,618,401",
-                value = "€110.00 · Uniswap 30-min average",
+                value = "€110.00 · $POOL_AVERAGE",
                 contract = "0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab",
             ),
         ),

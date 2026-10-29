@@ -104,8 +104,11 @@ internal fun totalNote(total: Total, network: Network, currency: DisplayCurrency
     "still checking".takeIf { !total.complete },
 ).joinToString(" · ").replaceFirstChar { it.uppercase() }
 
-/** What a value at a pool's average says beside it (owner ruling, 2026-10-29, #205). */
-internal const val POOL_AVERAGE = "Uniswap 30-min average"
+/**
+ * What a value at a pool's average says beside it (owner ruling, 2026-10-29, #205), its spaces
+ * no-break ones, so a value too wide for its place wraps before it, never inside it.
+ */
+internal const val POOL_AVERAGE = "Uniswap\u00a030-min\u00a0average"
 
 /** 90 → "2 min", 7_200 → "2 h", 172_800 → "2 d": how old a price is. */
 internal fun age(seconds: Long): String = when {
