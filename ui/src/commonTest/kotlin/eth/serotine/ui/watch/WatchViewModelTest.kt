@@ -55,6 +55,7 @@ class WatchViewModelTest {
     private val demand = NetworkDemand()
 
     private val vitalik = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+    private val savings = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
     private val daily = Account(
         Network.SEPOLIA,
         Address.of("0x" + "11".repeat(20)),
@@ -364,7 +365,7 @@ class WatchViewModelTest {
 
         val resolved = viewModel.uiState.value
         assertNull(resolved.addressError)
-        assertEquals("Resolves to $vitalik, checked on chain", resolved.simpleAddressNote)
+        assertEquals("Resolves to $vitalik on Sepolia's test registry, checked on chain", resolved.simpleAddressNote)
         assertNull(resolved.retryLookupWaits)
         advanceTimeBy(SYNC_RETRY_MS * 3)
         runCurrent()
@@ -399,10 +400,14 @@ class WatchViewModelTest {
         advanceTimeBy(1_000)
         runCurrent()
         assertEquals(
-            "Resolves to $vitalik, verified at finalized block 9,412,040",
+            "Resolves to $vitalik on Sepolia's test registry, verified at finalized block 9,412,040",
             viewModel.uiState.value.addressNote,
         )
-        assertEquals("Resolves to $vitalik, checked on chain", viewModel.uiState.value.simpleAddressNote, "no block")
+        assertEquals(
+            "Resolves to $vitalik on Sepolia's test registry, checked on chain",
+            viewModel.uiState.value.simpleAddressNote,
+            "no block, and a testnet's registry named as one",
+        )
         assertNull(viewModel.uiState.value.addressError)
         assertEquals(
             Detection.Account(vitalik, "Checked at block 9,412,118", null, simpleCheckedAt = "Checked on chain"),
@@ -476,6 +481,89 @@ class WatchViewModelTest {
     }
 
     @Test
+    fun aNameRegisteredOnSepoliasRegistryAloneIsSaidSoAndWatchedThereAlone() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA)
+        names.on[Network.SEPOLIA to "myotis2.eth"] =
+            NameResolution.Resolved("myotis2.eth", Address.of(vitalik), 8_412_240)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("myotis2.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertTrue(Network.ETHEREUM in names.networks && Network.SEPOLIA in names.networks, "both registries asked")
+        assertFalse(Network.GNOSIS in names.networks, "never on Gnosis Chain")
+        assertNull(state.addressError)
+        assertEquals(
+            "On Ethereum: no address\nOn Sepolia's test registry: resolves to $vitalik, verified at finalized " +
+                "block 8,412,240",
+            state.addressNote,
+            "never as if it were registered on Ethereum",
+        )
+        assertEquals(
+            "On Ethereum: no address\nOn Sepolia's test registry: resolves to $vitalik, checked on chain",
+            state.simpleAddressNote,
+        )
+        assertEquals(NetworkLabel.of(Network.SEPOLIA), state.cardNetwork, "the one network its answer is for")
+        assertNull(state.question)
+
+        viewModel.add()
+        runCurrent()
+        assertEquals(listOf(Network.SEPOLIA), accounts.accounts.value.drop(1).map { it.network })
+    }
+
+    @Test
+    fun oneAddressOnBothRegistriesIsOfferedOnAllThreeNetworks() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA)
+        names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals("This address has no code. Watch it on all three networks?", viewModel.uiState.value.question)
+        viewModel.add()
+        runCurrent()
+        assertEquals(
+            listOf(Network.ETHEREUM to vitalik, Network.GNOSIS to vitalik, Network.SEPOLIA to vitalik),
+            accounts.accounts.value.drop(1).map { it.network to Eip55.format(it.address) },
+        )
+    }
+
+    @Test
+    fun twoAddressesFromTheTwoRegistriesAreTwoAccountsEachAtItsOwnAddress() = runTest {
+        networks.on.value = setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA)
+        names.on[Network.ETHEREUM to "vitalik.eth"] =
+            NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
+        names.on[Network.SEPOLIA to "vitalik.eth"] =
+            NameResolution.Resolved("vitalik.eth", Address.of(savings), 8_412_240)
+        val viewModel = viewModel()
+        viewModel.onAddressChange("vitalik.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertNull(state.question, "different accounts: no question for all of them")
+        assertEquals(
+            listOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA).map(NetworkLabel::of),
+            state.networks.map { it.network },
+        )
+        assertEquals(
+            "On Ethereum: resolves to $vitalik, verified at finalized block 9,412,040\nOn Sepolia's test " +
+                "registry: resolves to $savings, verified at finalized block 8,412,240",
+            state.addressNote,
+        )
+
+        viewModel.add()
+        runCurrent()
+        assertEquals(
+            listOf(Network.ETHEREUM to vitalik, Network.GNOSIS to vitalik, Network.SEPOLIA to savings),
+            accounts.accounts.value.drop(1).map { it.network to Eip55.format(it.address) },
+            "Gnosis Chain at Ethereum's address, never Sepolia's",
+        )
+    }
+
+    @Test
     fun aNameResolvedOnSepoliaIsNeverWatchedOnGnosisChain() = runTest {
         networks.on.value = setOf(Network.GNOSIS, Network.SEPOLIA)
         names.names["vitalik.eth"] = NameResolution.Resolved("vitalik.eth", Address.of(vitalik), 9_412_040)
@@ -508,7 +596,7 @@ class WatchViewModelTest {
         advanceTimeBy(1_000)
         runCurrent()
 
-        assertEquals(listOf(Network.SEPOLIA, Network.ETHEREUM), names.networks, "asked again, on Ethereum")
+        assertTrue(Network.ETHEREUM in names.networks.drop(1), "asked again, on Ethereum's registry too")
         assertEquals(
             "This address has no code. Watch it on all three networks?",
             viewModel.uiState.value.question,

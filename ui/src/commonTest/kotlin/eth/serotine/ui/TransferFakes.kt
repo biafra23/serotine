@@ -197,9 +197,15 @@ internal class MemorySentTransfers : SentTransfers {
     }
 }
 
-/** A [NameResolver] answering from [names], [NameResolution.NoAddress] otherwise; each name asked in [asked]. */
+/**
+ * A [NameResolver] answering from [on] for a name on one registry, else from [names], and
+ * [NameResolution.NoAddress] otherwise; each name asked in [asked].
+ */
 internal class FakeNames : NameResolver {
     val names = mutableMapOf<String, NameResolution>()
+
+    /** A registry's own answers, by its network and the name: where two registries differ. */
+    val on = mutableMapOf<Pair<Network, String>, NameResolution>()
     val asked = mutableListOf<String>()
 
     /** The network of each name asked, in order. */
@@ -208,7 +214,7 @@ internal class FakeNames : NameResolver {
     override suspend fun resolve(network: Network, name: String): NameResolution {
         asked += name
         networks += network
-        return names[name] ?: NameResolution.NoAddress
+        return on[network to name] ?: names[name] ?: NameResolution.NoAddress
     }
 }
 

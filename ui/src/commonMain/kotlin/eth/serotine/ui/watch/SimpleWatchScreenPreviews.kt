@@ -98,6 +98,22 @@ private fun SimpleWatchNameResolvedPreview() = SimpleWatchPreview(
     ),
 )
 
+/** A name on Sepolia's registry alone: each registry's answer named, checked on chain, Sepolia's card. */
+@Preview
+@Composable
+private fun SimpleWatchNameOnOneRegistryPreview() = SimpleWatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        name = "",
+        addressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $SAVINGS, verified at " +
+            "finalized block 8,412,240",
+        simpleAddressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $SAVINGS, checked " +
+            "on chain",
+        nameDefault = "savings-example.eth",
+        cardNetwork = NetworkLabel(11_155_111, "Sepolia", testnet = true),
+    ),
+)
+
 /** Two networks on: each card checked on chain. */
 @Preview
 @Composable
@@ -140,6 +156,7 @@ internal val simpleWatchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleWatchAccountDarkPreview() },
     { SimpleWatchSafePreview() },
     { SimpleWatchNameResolvedPreview() },
+    { SimpleWatchNameOnOneRegistryPreview() },
     { SimpleWatchEveryNetworkPreview() },
     { SimpleWatchSyncingPreview() },
     { SimpleWatchSyncingDarkPreview() },

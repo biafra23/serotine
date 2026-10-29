@@ -162,6 +162,18 @@ private fun WatchResolvingNamePreview() =
         WatchUiState(address = "savings-example.eth", addressNote = "Resolving the name with verified calls…"),
     )
 
+/** A name on Sepolia's registry alone: each registry's answer named, the card on Sepolia alone. */
+@Preview
+@Composable
+private fun WatchNameOnOneRegistryPreview() = WatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        addressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $SAVINGS, verified at " +
+            "finalized block 8,412,240",
+        cardNetwork = NetworkLabel(11_155_111, "Sepolia", testnet = true),
+    ),
+)
+
 @Preview
 @Composable
 private fun WatchNameResolvedPreview() = WatchPreview(
@@ -279,6 +291,7 @@ private fun WatchNoNetworkPreview() = WatchPreview(
 /** Every preview above, which WatchScreenPreviewsTest renders: a new preview goes in here too. */
 internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchEmptyPreview() },
+    { WatchNameOnOneRegistryPreview() },
     { WatchCheckingPreview() },
     { WatchAccountPreview() },
     { WatchAccountDarkPreview() },
