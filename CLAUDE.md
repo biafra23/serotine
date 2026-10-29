@@ -240,7 +240,7 @@ rulings to the screens.
   (owner ruling, 2026-10-16). Safe co-signing uses no off-chain service
   (owner ruling, 2026-10-16).
 - The widget alone may show a Uniswap pool's 30-minute average where no
-  Chainlink feed is pinned (proposed, 2026-10-29, #___; open).
+  Chainlink feed is pinned (proposed, 2026-10-29, #205; open).
 - An account's history comes from the engine's verified log index (owner
   rulings, 2026-10-20, #85).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's

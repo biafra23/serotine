@@ -949,7 +949,7 @@ still to come.
 - **Only verified rates, dated.** The rate is the price the screens show
   (*Prices*, above), every check included, or, where no feed is pinned, a
   pool's 30-minute average as .claude/rules/data-sources.md proposes
-  (proposed, 2026-10-29, #___; open); the change is the same path read
+  (proposed, 2026-10-29, #205; open); the change is the same path read
   from each feed's own round history, a day back by the head's own time:
   `getRoundData` calls of the feed's proxy at the verified head, never a
   call at a past block and never a rate the device kept, so both ends of the

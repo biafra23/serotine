@@ -86,7 +86,7 @@ only" of 2026-10-15.)
 
 ## A widget may show a Uniswap pool's average where no feed is pinned
 
-(Proposed ruling, 2026-10-29, #___. Open until the owner accepts it. It narrows
+(Proposed ruling, 2026-10-29, #205. Open until the owner accepts it. It narrows
 *Prices come from Chainlink aggregators* for the home-screen widget alone.)
 
 - A pinned Chainlink feed always wins. Where a price id has one on the
