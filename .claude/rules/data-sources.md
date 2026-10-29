@@ -82,7 +82,8 @@ only" of 2026-10-15.)
   token units, never derived from a price. The light client proves what the
   aggregator says, not that the oracles are right. That is why a price never
   reaches a signature.
-- The one exception is the widget's fallback to a pool's average, below.
+- One exception is proposed and open (#205): the widget's fallback to a
+  pool's average, below. It excepts Chainlink-only prices, not display-only.
 
 ## A widget may show a Uniswap pool's average where no feed is pinned
 
