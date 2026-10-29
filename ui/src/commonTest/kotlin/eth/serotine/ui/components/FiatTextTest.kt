@@ -47,7 +47,7 @@ class FiatTextTest {
     @Test
     fun aValueAtAPoolsAverageSaysSoAndSoDoesATotalThatIncludesOne() {
         assertEquals(
-            "$0.12 · Uniswap\u00a030-min\u00a0average",
+            "$0.12 · Uniswap\u00a030-\u2060min\u00a0average",
             valuationText(
                 Valuation.Valued(0.12, 0, stale = false, poolAverage = true),
                 DisplayCurrency.USD,
