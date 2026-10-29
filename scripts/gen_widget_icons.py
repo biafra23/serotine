@@ -75,10 +75,11 @@ def add_paths(block):
             # Either `0.52f to Color(...)` stops with their offsets, or a plain list of colours spread
             # evenly from 0 to 1, as Compose spreads them.
             stops = re.findall(r'([\d.]+)f to Color\((0x[0-9A-Fa-f]+)\)', grad)
+            # Every `to` is a stop this parser must read: one it misses (a colour that is not a literal
+            # Color(0x...), an `F`, a line break after `to`) fails here, never spread evenly or dropped.
+            if len(stops) != len(re.findall(r'\sto\s', grad)):
+                raise ValueError('a gradient stop the stop parser missed: %r' % grad[:120])
             if stops:
-                # A stop whose colour is not a literal Color(0x...) would be dropped without a word.
-                if len(stops) != grad.count(' to '):
-                    raise ValueError('a gradient stop that is not a literal colour: %r' % grad[:120])
                 colors = [c for _, c in stops]
                 offsets = [o for o, _ in stops]
             else:
