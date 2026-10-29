@@ -139,7 +139,7 @@ internal sealed interface RecipientState {
 
 /**
  * The recipient as [typed] (the text, trimmed, and what asks to resolve it again when it changes:
- * how often the user asked, and on Watch the network a name is resolved on), resolved by
+ * how often the user asked; on Watch, how often its registry was asked again), resolved by
  * [lookUp]: an address at once, a name once the typing paused, so that a name is not resolved for
  * every letter of it. While the light client is still syncing, it is looked up again by itself
  * every [SYNC_RETRY_MS] until it can be answered (docs/simple-ui.md, *A read refused while syncing

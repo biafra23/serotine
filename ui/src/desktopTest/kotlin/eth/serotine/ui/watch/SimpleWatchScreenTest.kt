@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performScrollTo
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.SYNC_LINE_TAG
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
@@ -45,6 +46,26 @@ class SimpleWatchScreenTest {
 
         rule.onNodeWithTag(WATCH_DETAILS_TAG).performScrollTo().performClick()
         rule.onNodeWithText("Checked at block 8,412,307").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun aNameOnOneRegistryNamesEachRegistryAndTheCardsNetwork() {
+        show(
+            WatchUiState(
+                address = "savings-example.eth",
+                addressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $savings, verified " +
+                    "at finalized block 8,412,240",
+                simpleAddressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $savings, " +
+                    "checked on chain",
+                detection = Detection.Account(savings, "Checked at block 8,412,307", null, "Checked on chain"),
+                cardNetwork = NetworkLabel(11_155_111, "Sepolia", testnet = true),
+            ),
+        )
+
+        rule.onNodeWithText("On Sepolia's test registry", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("Sepolia · Testnet").assertIsDisplayed()
+        rule.onNodeWithTag(WATCH_CARD_NETWORK_TAG, useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("block", substring = true).assertDoesNotExist()
     }
 
     @Test

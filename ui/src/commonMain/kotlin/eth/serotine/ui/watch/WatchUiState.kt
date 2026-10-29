@@ -13,11 +13,12 @@ import eth.serotine.ui.components.NetworkLabel
  * name typed, which the account's name then follows; null: "Account N"), what the light client
  * says is at the address ([detection], null until the text names one), and how adding went.
  *
- * With two or more networks on (docs/networks.md, N10 and N11), [detection] stays null and each
- * network says its own ([networks]); an address with no code on every one of them is offered on
- * all of them by [question] ("Watch it on Ethereum and Gnosis Chain?"), [choosing] once the user
+ * Where two or more networks have an answer (docs/networks.md, N10 and N11), [detection] stays null
+ * and each network says its own ([networks]); an address with no code on every one of them is
+ * offered on all of them by [question] ("Watch it on Ethereum and Gnosis Chain?"), [choosing] once the user
  * asked to tick the networks instead. A Safe or another contract is offered only where it is.
- * [cardNetwork] is the network [detection] was read on, which Add adds it on. [noNetwork] says
+ * [cardNetwork] is the network [detection] was read on, which Add adds it on, named above the card:
+ * with two registries on, a name may have an address on one of them alone. [noNetwork] says
  * that no network is on, so nothing can be checked. The networks that are off are
  * listed greyed out ([offNetworks]), each with Turn on as the way to check the address there too.
  *

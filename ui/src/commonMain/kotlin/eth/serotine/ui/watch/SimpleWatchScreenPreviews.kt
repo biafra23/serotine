@@ -20,6 +20,7 @@ private val account = WatchUiState(
     address = SAVINGS,
     name = "Savings",
     detection = Detection.Account(SAVINGS, "Checked at block 8,412,307", null, "Checked on chain"),
+    cardNetwork = NetworkLabel(1, "Ethereum", testnet = false),
 )
 
 @Composable
@@ -98,6 +99,38 @@ private fun SimpleWatchNameResolvedPreview() = SimpleWatchPreview(
     ),
 )
 
+/** A name on Sepolia's registry alone: each registry's answer named, checked on chain, Sepolia's card. */
+@Preview
+@Composable
+private fun SimpleWatchNameOnOneRegistryPreview() = SimpleWatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        name = "",
+        addressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $SAVINGS, verified at " +
+            "finalized block 8,412,240",
+        simpleAddressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $SAVINGS, checked " +
+            "on chain",
+        nameDefault = "savings-example.eth",
+        cardNetwork = NetworkLabel(11_155_111, "Sepolia", testnet = true),
+    ),
+)
+
+/** A name found on Ethereum's registry and not verified on Sepolia's: each said with no block, Try again. */
+@Preview
+@Composable
+private fun SimpleWatchNameUnverifiedOnOneRegistryPreview() = SimpleWatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        name = "",
+        addressNote = "On Ethereum: resolves to $SAVINGS, verified at finalized block 8,412,240\nOn Sepolia's test " +
+            "registry: the name could not be resolved with verified calls this time.",
+        simpleAddressNote = "On Ethereum: resolves to $SAVINGS, checked on chain\nOn Sepolia's test registry: the " +
+            "name could not be resolved with verified calls this time.",
+        canRetryLookup = true,
+        nameDefault = "savings-example.eth",
+    ),
+)
+
 /** Two networks on: each card checked on chain. */
 @Preview
 @Composable
@@ -140,6 +173,8 @@ internal val simpleWatchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { SimpleWatchAccountDarkPreview() },
     { SimpleWatchSafePreview() },
     { SimpleWatchNameResolvedPreview() },
+    { SimpleWatchNameOnOneRegistryPreview() },
+    { SimpleWatchNameUnverifiedOnOneRegistryPreview() },
     { SimpleWatchEveryNetworkPreview() },
     { SimpleWatchSyncingPreview() },
     { SimpleWatchSyncingDarkPreview() },

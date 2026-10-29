@@ -75,6 +75,9 @@ const val WATCH_DETAILS_TAG = "watch-details"
 /** Test tag of the checksummed address on the detection card, for UI tests. */
 const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
 
+/** Test tag of the network named above the one detection card, for UI tests. */
+const val WATCH_CARD_NETWORK_TAG = "watch-card-network"
+
 /** What the address field says while nothing else is to be said of it. */
 
 /** What the name field says while an empty name leaves the account named by the ENS name typed. */
@@ -130,10 +133,10 @@ fun WatchRoute(
 /**
  * Watch address (docs/wallet-ux.md, screen 10) as a pure function of [state]: the address or
  * ENS name and a name, the detection card built from verified code, and Add, enabled only for
- * a verified account. [onRetryLookup] resolves a name again that could not be verified. With two or
- * more networks on, a card per network (docs/networks.md, N10 and N11): an address with no code on
- * all of them is offered on all of them, with [onChooseNetworks] to tick them instead
- * ([onNetworkToggle]); a Safe only where it is one, ticked. A network that is off is listed greyed
+ * a verified account, under the network it was read on. [onRetryLookup] resolves a name again that
+ * could not be verified. With two or more networks on, a card per network (docs/networks.md, N10 and
+ * N11): an address with no code on all of them is offered on all of them, with [onChooseNetworks] to
+ * tick them instead ([onNetworkToggle]); a Safe only where it is one, ticked. A network that is off is listed greyed
  * out, turned on through [onTurnOnNetwork]. [lightClient] is the strip above it, Detailed view's;
  * simple mode ([SimpleWatchScreen]) has none, and keeps the blocks behind *Details* ([details]).
  */
@@ -206,7 +209,13 @@ fun WatchScreen(
                     keyboardActions = submitOnDone(state.canAdd, onAdd),
                 )
                 state.noNetwork?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                state.detection?.let { DetectionCard(it) }
+                // The one card names its network, the one Add adds it on: a name may answer on one registry alone.
+                state.detection?.let { detection ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.cardNetwork?.let { NetworkMark(it, Modifier.testTag(WATCH_CARD_NETWORK_TAG)) }
+                        DetectionCard(detection)
+                    }
+                }
                 // With two or more networks on: what each says, ticked where the user chooses (N10, N11).
                 val ticking = state.question == null || state.choosing
                 state.networks.forEach { row ->
