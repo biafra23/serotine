@@ -94,34 +94,38 @@ private fun SimpleAccountAssetsPreview() = SimpleAccountDetailPreview(main)
 @Composable
 private fun SimpleAccountAssetsDarkPreview() = SimpleAccountDetailPreview(main, darkTheme = true)
 
+/** Ethereum's amounts from before: each says how old it is, out of the total. */
+private val fromBefore = main.copy(
+    total = "Checking…",
+    freshness = null,
+    assets = listOf(
+        ether.copy(
+            verified = false,
+            verifiedAt = null,
+            value = null,
+            lastKnown = "Last verified Oct 27, 2026, 9:12 AM · may have changed since",
+            ageNote = "3 h ago · may have changed",
+        ),
+        usdc.copy(
+            verified = false,
+            verifiedAt = null,
+            value = null,
+            lastKnown = "Last verified Oct 27, 2026, 9:12 AM · may have changed since",
+            ageNote = "3 h ago · may have changed",
+        ),
+    ),
+)
+
 /** Ethereum cannot be checked: a banner, and each amount says how old it is. */
 @Preview
 @Composable
 private fun SimpleAccountLastVerifiedPreview() = SimpleAccountDetailPreview(
-    main.copy(
-        total = "Checking…",
-        freshness = null,
+    fromBefore.copy(
         cantCheck = UnreachableNetwork(
             1,
             "Can't check Ethereum right now",
             "Its amounts were last confirmed 3 h ago and may have changed. Sending from it waits until it can be " +
                 "checked. The app keeps trying.",
-        ),
-        assets = listOf(
-            ether.copy(
-                verified = false,
-                verifiedAt = null,
-                value = null,
-                lastKnown = "Last verified Oct 27, 2026, 9:12 AM · may have changed since",
-                ageNote = "3 h ago · may have changed",
-            ),
-            usdc.copy(
-                verified = false,
-                verifiedAt = null,
-                value = null,
-                lastKnown = "Last verified Oct 27, 2026, 9:12 AM · may have changed since",
-                ageNote = "3 h ago · may have changed",
-            ),
         ),
     ),
 )
@@ -130,8 +134,7 @@ private fun SimpleAccountLastVerifiedPreview() = SimpleAccountDetailPreview(
 @Preview
 @Composable
 private fun SimpleAccountSyncingPreview() = SimpleAccountDetailPreview(
-    main.copy(
-        total = "Checking…",
+    fromBefore.copy(
         freshness = "Syncing Ethereum · 2 of 6 periods",
         cantCheck = UnreachableNetwork(
             1,

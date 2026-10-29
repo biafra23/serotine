@@ -161,7 +161,23 @@ private fun SimpleAccountsUnreachablePreview() = SimpleAccountsPreview(
 @Composable
 private fun SimpleAccountsSyncingPreview() = SimpleAccountsPreview(
     everyday.copy(
-        freshness = "Syncing Ethereum · 2 of 6 periods",
+        sections = listOf(
+            NetworkSection(
+                ethereum.chainId,
+                "Ethereum",
+                false,
+                true,
+                strip,
+                listOf(
+                    main.copy(balanceVerified = false, accountTotal = null, ageNote = "3 h ago · may have changed"),
+                    savings.copy(balanceVerified = false, accountTotal = null, ageNote = "3 h ago · may have changed"),
+                ),
+            ),
+            NetworkSection(gnosis.chainId, "Gnosis Chain", false, true, strip, listOf(familySafe)),
+            NetworkSection(sepolia.chainId, "Sepolia", true, true, strip, listOf(test)),
+        ),
+        total = "€4,500.00",
+        freshness = "Syncing Ethereum · 2 of 6 periods · updated 40 s ago",
         totalNote = "2 Ethereum accounts not counted · Sepolia not included",
         unreachable = listOf(
             UnreachableNetwork(
