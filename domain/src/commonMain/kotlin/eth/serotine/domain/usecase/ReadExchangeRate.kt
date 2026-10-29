@@ -53,6 +53,7 @@ class ReadExchangeRate(private val feeds: PriceFeeds, private val history: Price
                 // A leg's oldest update and its age add up to the time of the head it was read at.
                 readAt = max(basePrice.headTime(), quotePrice.headTime()),
                 stale = now.stale,
+                poolAverage = now.poolAverage,
             ),
         )
     }

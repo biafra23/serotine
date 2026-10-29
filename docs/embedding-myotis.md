@@ -184,6 +184,21 @@ consumer developed against an unreleased engine, Myotis's
   is stale, and one dated more than two minutes after the head is no feed's
   answer. (`ChainHandle.getBlockVerified`, which would give a block's
   timestamp, is not available on the Rust engine.)
+- **Verified pool averages** (owner ruling, 2026-10-29, #205). Where no feed
+  is pinned for a price id, `VerifiedPoolPrices` reads a pinned Uniswap v3
+  pool (`UniswapPools`, per network; Ethereum's COW and SAFE today) through
+  `ProvenReads` at every verified head, quoted in ETH, and `FeedsThenPools`
+  routes each price id to its feed or, only where none is, its pool. Once per
+  adapter, the factory's proven code is checked against its pin and its
+  `getPool` against the pool's address. At each head, a verified
+  `balanceOf` of WETH below the pool's floor, fewer than two observations or
+  an oldest one younger than the 30-minute window (`slot0`,
+  `observations`), and an average (`observe`) more than 500 ticks from the
+  tick now are each no price, with their own reason. A reading is dated by
+  the head and never stale on its own; ETH/USD and the display currency's
+  feed carry theirs. The day back is the same pool's `observe` over the
+  window ending a day before the head, at the head, and is "no round that
+  old" past its observations.
 - **One fetch per key and head.** `ProvenReads` keeps the last proof per key,
   and a subscriber that arrives while that key's proof for its head is being
   fetched waits for that fetch rather than making the same blocking calls:

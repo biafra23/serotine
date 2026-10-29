@@ -104,8 +104,13 @@ object ChainlinkFeeds {
         PinnedFeed(PriceId(id), Address.of(address), PriceId.USD, decimals = 8, heartbeatSeconds)
 }
 
-/** [FeedTable] of [ChainlinkFeeds]: which prices are pinned where, read from the table alone, no engine. */
+/**
+ * [FeedTable] of [ChainlinkFeeds] and, for a price id no feed is pinned for, [UniswapPools]: which
+ * prices are pinned where, read from the tables alone, no engine. A feed always wins over a pool
+ * (owner ruling, 2026-10-29, #205).
+ */
 class PinnedFeedTable : FeedTable {
     override fun quotes(network: Network): Map<PriceId, PriceId> =
-        ChainlinkFeeds.of(network).associate { it.priceId to it.quote }
+        UniswapPools.of(network).associate { it.priceId to it.quote } +
+            ChainlinkFeeds.of(network).associate { it.priceId to it.quote }
 }

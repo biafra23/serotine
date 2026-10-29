@@ -75,6 +75,18 @@ class ExchangeRateTest {
     }
 
     @Test
+    fun aRateWithAPoolsAverageOnItsPathSaysSo() = runTest {
+        feeds.answer(LINK_ID, 0.005, pool = true)
+        feeds.answer(ETH, 2_400.0)
+        noDayBack()
+        history.answers[LINK_ID] = PastReading.NoRoundThatOld
+
+        val snapshot = (read(Network.SEPOLIA, LINK_ID, DisplayCurrency.USD) as RateResult.Read).snapshot
+        assertTrue(snapshot.poolAverage)
+        assertFalse((read(Network.SEPOLIA, ETH, DisplayCurrency.USD) as RateResult.Read).snapshot.poolAverage)
+    }
+
+    @Test
     fun noVerifiedFreshRoundADayBackOnThePathMeansNoChangeButStillARate() = runTest {
         feeds.answer(ETH, 2_400.0)
         feeds.answer(EUR, 1.2)

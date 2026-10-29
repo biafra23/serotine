@@ -238,7 +238,8 @@ class AccountDetailViewModel(
                     pendingAssets = value.tokens.count { awaitingFirst(it.holding.reading) },
                     sort = view.sort,
                     tokensNote = tokensNote(value),
-                    pricesNote = PRICES + if (network.testnet) ", testnet prices" else "",
+                    pricesNote = (if (value.pooled()) PRICES_WITH_POOLS else PRICES) +
+                        if (network.testnet) ", testnet prices" else "",
                     message = view.message,
                     safe = safe?.let(::safeDetails),
                     segment = view.segment,
@@ -506,6 +507,10 @@ class AccountDetailViewModel(
 
     private companion object {
         const val PRICES = "Prices: Chainlink feeds, read through the light client"
+
+        /** The footnote while a value is a pool's average (owner ruling, 2026-10-29, #205). */
+        const val PRICES_WITH_POOLS =
+            "Prices: Chainlink feeds and Uniswap 30-min averages, read through the light client"
         const val LIST_UNAVAILABLE = "Your account list cannot be read right now. Serotine keeps trying."
         const val QUEUE_UNREADABLE =
             "This device's queue of Safe transactions cannot be read right now. Serotine keeps trying."
@@ -515,3 +520,8 @@ class AccountDetailViewModel(
             "your token settings cannot be read right now: hidden tokens show, added ones are missing"
     }
 }
+
+/** Whether a value shown of this account is a pool's average: the native currency's or a token's. */
+private fun AccountValue.pooled(): Boolean =
+    (nativeValue as? Valuation.Valued)?.poolAverage == true ||
+        tokens.any { (it.value as? Valuation.Valued)?.poolAverage == true }

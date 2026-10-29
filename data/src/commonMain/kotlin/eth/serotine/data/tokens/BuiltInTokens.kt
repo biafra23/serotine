@@ -86,16 +86,10 @@ object BuiltInTokens {
         priced("0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9", "AAVE", "Aave Token", 18, "aave"),
         // Gnosis's GNO, also listed on Gnosis Chain (priced there); no GNO / USD feed on Ethereum.
         Token(Address.of("0x6810e776880c02933d47db1b9fc05908e5386b96"), "GNO", "Gnosis Token", 18, icon = "gno"),
-        // CoW Protocol's governance token; no COW feed, so it has no price.
-        Token(
-            Address.of("0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab"),
-            "COW",
-            "CoW Protocol Token",
-            18,
-            icon = "cow",
-        ),
-        // Safe's governance token; no SAFE feed, so it has no price.
-        Token(Address.of("0x5afe3855358e112b5647b952709e6165e1c1eeee"), "SAFE", "Safe Token", 18, icon = "safe"),
+        // CoW Protocol's governance token; no COW feed, so its pinned Uniswap pool prices it (UniswapPools).
+        priced("0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab", "COW", "CoW Protocol Token", 18, "cow"),
+        // Safe's governance token; no SAFE feed, so its pinned Uniswap pool prices it (UniswapPools).
+        priced("0x5afe3855358e112b5647b952709e6165e1c1eeee", "SAFE", "Safe Token", 18, "safe"),
     )
 
     private val GNOSIS = listOf(

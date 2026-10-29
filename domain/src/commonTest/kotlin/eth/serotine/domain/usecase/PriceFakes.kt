@@ -29,9 +29,16 @@ internal class FakeFeeds(
 
     fun of(id: PriceId) = readings.getOrPut(id) { MutableStateFlow(FeedReading.Syncing) }
 
-    /** Sets the feed of [id] to a fresh [price], updated at [updatedAt], [ageSeconds] old. */
-    fun answer(id: PriceId, price: Double, updatedAt: Long = 1_000, ageSeconds: Long = 60, stale: Boolean = false) {
-        of(id).value = FeedReading.Verified(price, updatedAt, ageSeconds, stale)
+    /** Sets the feed of [id] to a fresh [price], [ageSeconds] old; a pool's average if [pool]. */
+    fun answer(
+        id: PriceId,
+        price: Double,
+        updatedAt: Long = 1_000,
+        ageSeconds: Long = 60,
+        stale: Boolean = false,
+        pool: Boolean = false,
+    ) {
+        of(id).value = FeedReading.Verified(price, updatedAt, ageSeconds, stale, poolAverage = pool)
     }
 
     override fun observe(network: Network, priceId: PriceId): Flow<FeedReading> =
