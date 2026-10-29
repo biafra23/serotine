@@ -82,6 +82,41 @@ only" of 2026-10-15.)
   token units, never derived from a price. The light client proves what the
   aggregator says, not that the oracles are right. That is why a price never
   reaches a signature.
+- The one exception is the widget's fallback to a pool's average, below.
+
+## A widget may show a Uniswap pool's average where no feed is pinned
+
+(Proposed ruling, 2026-10-29, #___. Open until the owner accepts it. It narrows
+*Prices come from Chainlink aggregators* for the home-screen widget alone.)
+
+- A pinned Chainlink feed always wins. Where a price id has one on the
+  network, the widget shows it, as the screens do. A feed that is stale is
+  shown as stale. It is never replaced by a pool's average.
+- Only where the network pins no feed for a price id, the widget may show a
+  Uniswap v3 time-weighted average price (TWAP) of a pinned pool. Today that
+  is Ethereum, for COW and SAFE. Gnosis Chain pins no Uniswap, and Sepolia has
+  no market.
+- The average is a verified call: `observe` of a pinned pool, its address
+  proven by the pool's code like Uniswap's other pinned contracts. There is no
+  HTTP price API.
+- It is quoted in WETH. USD is the pool average times Chainlink's ETH/USD.
+  Another display currency divides by that currency's pinned USD feed.
+- The window is 30 minutes. The reading is no price when any of these holds:
+  the pool's observations do not cover the window, its liquidity is below a
+  pinned floor, or the average and the pool's current tick differ by more
+  than a pinned band.
+- The widget says where the number comes from: "Uniswap 30-min average". Its
+  24-hour change is read from the same pool a day back, and is "24h —" when
+  the pool's history does not reach that far.
+- One price id shows one source at a time. A feed pinned later replaces the
+  average with no prompt.
+- The average is display-only, on the widget alone. No screen, total or token
+  row shows it, and it never reaches a signature. A tap on the widget opens
+  the app, where the token still reads "no price".
+- Why: Chainlink has no feed for these tokens on Ethereum. A pool is one
+  venue and can be moved at a cost, so it is the fallback and is labelled as
+  one. The light client proves what the pool says, not that its price is
+  right.
 
 ## The token list is built in
 
@@ -158,3 +193,7 @@ Each is recorded here before its code lands. Today: the dApp connection
 protocol. WalletConnect's relay is an off-chain service, and a request that
 arrives through it is untrusted input, decoded and shown as such. Until
 decided, it is not wired in.
+
+Open, the owner decides: the widget's Uniswap fallback (above). The pools,
+their liquidity floor and the divergence band are pinned by the PR that
+codes it, each proven on chain.
