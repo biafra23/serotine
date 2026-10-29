@@ -355,7 +355,8 @@ are unchanged.
   Each answer names the registry that gave it ("On Ethereum: no address",
   "On Sepolia's test registry: resolves to 0x…"), and a testnet's registry
   is always named as one, so a name never looks registered on mainnet. A
-  single card names the network Add adds it on.
+  single card names the network Add adds it on (owner's request,
+  2026-10-29).
 
 ## Screens
 
