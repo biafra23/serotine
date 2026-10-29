@@ -38,7 +38,7 @@ class ObserveUsdPrice(private val feeds: PriceFeeds) {
 
     private fun FeedReading.asPrice(): Price = when (this) {
         FeedReading.Syncing -> Price.Checking
-        is FeedReading.Verified -> Price.Priced(price, updatedAt, ageSeconds, stale)
+        is FeedReading.Verified -> Price.Priced(price, updatedAt, ageSeconds, stale, poolAverage)
         is FeedReading.NoPrice -> Price.NoPrice(reason)
         is FeedReading.Unavailable -> Price.Unavailable(reason)
     }
@@ -53,9 +53,17 @@ sealed interface Price {
     /**
      * [perUnit], as of [updatedAt] (unix seconds; the oldest update its feeds made),
      * [ageSeconds] before the verified head; [stale] when a feed on its path is older than its
-     * heartbeat, in which case it is shown with its age and left out of every total.
+     * heartbeat, in which case it is shown with its age and left out of every total;
+     * [poolAverage] when a pool's average is on its path ([FeedReading.Verified.poolAverage]),
+     * which every value it gives says.
      */
-    data class Priced(val perUnit: Double, val updatedAt: Long, val ageSeconds: Long, val stale: Boolean) : Price
+    data class Priced(
+        val perUnit: Double,
+        val updatedAt: Long,
+        val ageSeconds: Long,
+        val stale: Boolean,
+        val poolAverage: Boolean = false,
+    ) : Price
 
     /** There is no price, for [reason]. */
     data class NoPrice(val reason: NoPriceReason) : Price
@@ -80,6 +88,7 @@ sealed interface Price {
             min(updatedAt, other.updatedAt),
             max(ageSeconds, other.ageSeconds),
             stale || other.stale,
+            poolAverage || other.poolAverage,
         )
     }
 

@@ -1,6 +1,7 @@
 package eth.serotine.data.engine
 
 import eth.serotine.data.prices.ChainlinkFeeds
+import eth.serotine.data.prices.UniswapPools
 import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
@@ -33,7 +34,8 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Ethereum's pins on the real engine and the real mainnet (docs/networks.md, part 4c): boots a
  * [MyotisHost] with Ethereum's light client, then proves through it a balance, every pinned
- * Chainlink feed (a verified price, at the pinned decimals), every built-in token (its contract's
+ * Chainlink feed (a verified price, at the pinned decimals), every pinned pool's average (a
+ * verified price, marked as one), every built-in token (its contract's
  * own symbol and decimals, as listed), the Uniswap v3 deployment (each contract's code, against
  * its pin) with a route for 100 USDC, a Safe 1.4.1 proxy recognised as one (its proxy and
  * singleton against the pinned hashes), and an ENS name on mainnet's registry. Needs the
@@ -77,6 +79,19 @@ class MyotisHostEthereumTest {
                 }
                 println("[${at()}] ${feed.priceId.id} / ${feed.quote.id}: $reading")
                 assertIs<FeedReading.Verified>(reading, "${feed.priceId.id}'s feed")
+            }
+
+            // Each pinned pool's average, through the same port: a verified price, marked as an average.
+            for (pool in UniswapPools.of(ethereum)) {
+                val reading = withTimeout(5.minutes) {
+                    node.priceFeeds.observe(ethereum, pool.priceId).first {
+                        it !is FeedReading.Syncing &&
+                            !(it is FeedReading.Unavailable && it.reason == ReadUnavailable.UNPROVEN)
+                    }
+                }
+                println("[${at()}] ${pool.priceId.id} / ${pool.quote.id} (pool): $reading")
+                val price = assertIs<FeedReading.Verified>(reading, "${pool.priceId.id}'s pool")
+                assertEquals(true, price.poolAverage, "${pool.priceId.id} is priced by its pool")
             }
 
             for (token in BuiltInTokens.of(ethereum)) {

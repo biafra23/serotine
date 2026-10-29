@@ -2,6 +2,7 @@ package eth.serotine.ui.ratewidget
 
 import eth.serotine.domain.model.RatePair
 import eth.serotine.domain.model.RateSnapshot
+import eth.serotine.ui.components.POOL_AVERAGE
 import eth.serotine.ui.components.age
 import eth.serotine.ui.components.formatFiat
 import kotlin.math.abs
@@ -37,7 +38,8 @@ enum class Trend { UP, DOWN, FLAT, UNKNOWN }
  * widget*). Being a rate kept and shown later, it says it may have changed since it was verified,
  * or, while the network is not [on] in this wallet, that it is off (nothing reads it then); one
  * whose feeds were stale says how old its price is. On a testnet every rate says "testnet
- * prices" (CLAUDE.md, *Data sources*). [icon] is the bundled icon key of [pair]'s base
+ * prices" (CLAUDE.md, *Data sources*), and one with a pool's average on its path says so
+ * (owner ruling, 2026-10-29, #205). [icon] is the bundled icon key of [pair]'s base
  * ([eth.serotine.domain.usecase.RateWidgetChoices.icon]; the host resolves it, since this
  * function stays a pure, display-ready mapping), passed straight through.
  */
@@ -76,6 +78,7 @@ fun rateWidgetContent(
         note = listOfNotNull(
             network.displayName,
             "Verified $readAt",
+            POOL_AVERAGE.takeIf { snapshot.poolAverage },
             // Kept and shown later: an older answer, labelled as one (CLAUDE.md, *Trust*).
             off ?: "may have changed since",
             "price ${age(snapshot.readAt - snapshot.updatedAt)} old".takeIf { snapshot.stale },

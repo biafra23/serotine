@@ -66,6 +66,16 @@ class FileLastExchangeRateTest {
     }
 
     @Test
+    fun aRateAtAPoolsAverageSurvivesARestartAsOneAndAnOlderRateIsNone() = runTest {
+        val pair = RatePair(Network.ETHEREUM, PriceId("COW"), DisplayCurrency.EUR)
+        assertTrue(store().save(pair, snapshot.copy(base = PriceId("COW"), rate = 0.11, poolAverage = true)))
+        assertTrue(store().save(sepolia, snapshot))
+
+        assertEquals(true, store().load(pair)?.poolAverage)
+        assertEquals(false, store().load(sepolia)?.poolAverage, "a rate saved without one, as every older file's")
+    }
+
+    @Test
     fun aCurrencyThisBuildDoesNotKnowOrNoRateIsNoneKept() = runTest {
         write(
             """{"version":1,"base":"ETH","quote":"XAU","rate":1.0,"dayAgoRate":null,""" +
