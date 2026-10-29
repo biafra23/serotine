@@ -13,6 +13,7 @@ object WidgetAssetIcons {
     /** The drawable resource of [key] ([eth.serotine.ui.components.TokenIcons.of]'s keys), or null for none. */
     fun of(key: String): Int? = when (key) {
         "aave" -> R.drawable.ic_widget_asset_aave
+        "cow" -> R.drawable.ic_widget_asset_cow
         "dai" -> R.drawable.ic_widget_asset_dai
         "eth" -> R.drawable.ic_widget_asset_eth
         "eurc" -> R.drawable.ic_widget_asset_eurc
@@ -21,6 +22,7 @@ object WidgetAssetIcons {
         "gno" -> R.drawable.ic_widget_asset_gno
         "link" -> R.drawable.ic_widget_asset_link
         "pyusd" -> R.drawable.ic_widget_asset_pyusd
+        "safe" -> R.drawable.ic_widget_asset_safe
         "sdai" -> R.drawable.ic_widget_asset_sdai
         "uni" -> R.drawable.ic_widget_asset_uni
         "usdc" -> R.drawable.ic_widget_asset_usdc
