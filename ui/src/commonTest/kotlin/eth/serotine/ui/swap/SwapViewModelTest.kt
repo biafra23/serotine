@@ -546,6 +546,23 @@ class SwapViewModelTest {
     }
 
     @Test
+    fun aContinuedSwapThatBecameAnApprovalOnARefreshIsNumberedAnew() = runTest {
+        val approval = "0x" + "a1".repeat(32)
+        waitingSwaps.swaps.value = listOf(waiting(approval))
+        val viewModel = viewModel(sell = usdc.address, continuing = true)
+        runCurrent()
+        assertEquals("Step 2 of 2", assertIs<SwapUiState.SwapReview>(viewModel.uiState.value).step)
+
+        // The allowance moved from elsewhere meanwhile: Refresh shows an approval again.
+        allow(UInt256.of(5_000_000))
+        viewModel.refresh()
+        runCurrent()
+
+        val again = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
+        assertEquals("Step 1 of 2", again.step, "numbered as a first quote, never as the swap's step 2")
+    }
+
+    @Test
     fun continueWhereTheApprovalLeftTheAllowanceShortSaysItMayHaveFailed() = runTest {
         allow(UInt256.of(5_000_000))
         val approval = "0x" + "a1".repeat(32)

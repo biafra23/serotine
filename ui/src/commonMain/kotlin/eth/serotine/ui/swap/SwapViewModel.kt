@@ -549,18 +549,27 @@ class SwapViewModel(
                     latest !is Step.Reviewing || !latest.refreshing -> latest
                     // The password typed meanwhile stays when it is the same review: not when the
                     // approval became the swap (mined meanwhile) or the other way round, which the
-                    // user has not read yet.
-                    next is Step.Reviewing -> latest.copy(
-                        request = next.request,
-                        quoted = next.quoted,
-                        quotedAt = next.quotedAt,
-                        refreshing = false,
-                        unlock = if (next.quoted::class == latest.quoted::class) {
-                            latest.unlock.copy(error = note)
-                        } else {
-                            latest.unlock.copy(password = WalletPassword.EMPTY, error = note)
-                        },
-                    )
+                    // user has not read yet. Nor does its step number, which was the old quote's:
+                    // the new one is numbered as a first quote is.
+                    next is Step.Reviewing -> if (next.quoted::class == latest.quoted::class) {
+                        latest.copy(
+                            request = next.request,
+                            quoted = next.quoted,
+                            quotedAt = next.quotedAt,
+                            refreshing = false,
+                            unlock = latest.unlock.copy(error = note),
+                        )
+                    } else {
+                        latest.copy(
+                            request = next.request,
+                            quoted = next.quoted,
+                            quotedAt = next.quotedAt,
+                            refreshing = false,
+                            unlock = latest.unlock.copy(password = WalletPassword.EMPTY, error = note),
+                            position = null,
+                            earlierFailed = null,
+                        )
+                    }
                     else -> next
                 }
             }

@@ -104,8 +104,10 @@ internal class ProvenReads<K, T>(
     /**
      * A kept proof's value as of a later verified head produced at `headTimestamp` (unix
      * seconds; null when unknown), for a fact whose reading also depends on the head's time
-     * — a price's age. Asked only when [unchangedSince] vouched for the proof; null proves the
-     * fact again. The value as it is by default.
+     * — a price's age. Asked when [unchangedSince] vouched for the proof up to that head, and
+     * when [schedule] holds the proof across heads on demand, where the proof was NOT checked
+     * against that head: the value then stays as old as its proof, and only what depends on the
+     * head's time may change. Null proves the fact again. The value as it is by default.
      */
     private val atHead: (key: K, value: T, headTimestamp: Long?) -> T? = { _, value, _ -> value },
     /**
