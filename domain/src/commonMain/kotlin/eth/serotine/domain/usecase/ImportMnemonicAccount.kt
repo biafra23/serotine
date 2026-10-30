@@ -1,23 +1,17 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
-import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
-import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.WalletPassword
-import eth.serotine.domain.repository.AccountAdd
-import eth.serotine.domain.repository.AccountChange
-import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.MemoryStep
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -59,70 +53,14 @@ class ImportMnemonicAccount(
             is KeyImport.Stored -> addOn(networks, stored)
         }
 
-    /**
-     * The words' address held on each of [networks], and wherever else it is watched: one outcome
-     * for them all, the most telling one. A list that cannot be saved is said first, as importing
-     * again adds the rest; then a new account; then a watched one now held; then that every one
-     * was there already.
-     */
-    private suspend fun addOn(networks: List<Network>, stored: KeyImport.Stored): MnemonicImport {
-        val watchedElsewhere = when (val list = accounts.observeAccounts().first()) {
-            is AccountList.Loaded -> list.accounts
-                .filter { it.address == stored.address && it.custody == AccountCustody.Watched }
-                .map { it.network }
-            is AccountList.Unreadable -> return MnemonicImport.ListNotSaved
+    /** The words' address held on each of [networks], and wherever else it is watched ([addHeld]). */
+    private suspend fun addOn(networks: List<Network>, stored: KeyImport.Stored): MnemonicImport =
+        when (val added = accounts.addHeld(stored.address, networks)) {
+            is HeldAdd.Added -> MnemonicImport.Added(added.account, stored.protection, stored.steppedDown)
+            is HeldAdd.AlreadyHeld -> MnemonicImport.AlreadyAdded(added.account, stored.steppedDown)
+            is HeldAdd.NowHeld -> MnemonicImport.KeyAdded(added.account, stored.steppedDown)
+            HeldAdd.ListNotSaved -> MnemonicImport.ListNotSaved
         }
-        // One name for every account added, taken from the list as the first add reads it.
-        var label: String? = null
-        val name = { current: List<Account> -> label ?: nextFreeLabel(current).also { label = it } }
-        val outcomes = (networks + watchedElsewhere).distinct().map { network ->
-            addOrFind(AccountId(network, stored.address), name, stored.protection, stored.steppedDown)
-        }
-        return outcomes.firstOrNull { it == MnemonicImport.ListNotSaved }
-            ?: outcomes.firstOrNull { it is MnemonicImport.Added }
-            ?: outcomes.firstOrNull { it is MnemonicImport.KeyAdded }
-            ?: outcomes.first()
-    }
-
-    /**
-     * The entry [id]: the existing one (a watched one now held in the key store),
-     * or a new one this call adds. Read and add are two steps, so another writer can get in
-     * between; then the next round reads again rather than assume what that writer left — an
-     * entry, or one already removed again.
-     */
-    private suspend fun addOrFind(
-        id: AccountId,
-        label: (List<Account>) -> String,
-        protection: KeyProtection,
-        steppedDown: Boolean,
-    ): MnemonicImport {
-        while (true) {
-            val current = when (val list = accounts.observeAccounts().first()) {
-                is AccountList.Loaded -> list.accounts
-                is AccountList.Unreadable -> return MnemonicImport.ListNotSaved
-            }
-            val existing = current.firstOrNull { it.id == id }
-            if (existing != null) {
-                if (existing.custody == AccountCustody.InKeyStore) {
-                    return MnemonicImport.AlreadyAdded(existing, steppedDown)
-                }
-                // A watched address whose key the user has now: it is held, not watched, from here on.
-                when (accounts.setCustody(id, AccountCustody.InKeyStore)) {
-                    AccountChange.Changed ->
-                        return MnemonicImport.KeyAdded(existing.copy(custody = AccountCustody.InKeyStore), steppedDown)
-                    AccountChange.NotSaved -> return MnemonicImport.ListNotSaved
-                    AccountChange.NotFound -> continue // removed by another writer meanwhile: read again
-                }
-            }
-            val account = Account(id.network, id.address, AccountKind.EOA, label(current), AccountCustody.InKeyStore)
-            when (accounts.add(account)) {
-                AccountAdd.Added -> return MnemonicImport.Added(account, protection, steppedDown)
-                AccountAdd.NotSaved -> return MnemonicImport.ListNotSaved
-                AccountAdd.AlreadyPresent -> Unit // lost a race: read again
-            }
-        }
-    }
-
 }
 
 /** The outcome of [ImportMnemonicAccount]. */

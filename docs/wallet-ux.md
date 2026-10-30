@@ -186,13 +186,21 @@ upgrades*).
    as the ways to get one (owner ruling, 2026-10-18, #55).
 3. **Account menu**: Send (greyed out when watch-only, a tap saying why;
    for a Safe, usable once an owner of it is held here, and it opens the
-   proposal of a Safe transaction, 16) · Receive · Copy address · Rename · Remove. Removing an account the user
+   proposal of a Safe transaction, 16) · Receive · Copy address · Rename · New
+   account from the same phrase (an EOA's; greyed out when watch-only, a tap
+   saying why) · Remove. Removing an account the user
    holds a key for says that only its recovery phrase brings it back, and
    asks for a confirmation, not the wallet password (owner ruling,
    2026-10-18, #17). The key store keeps one envelope per account, under its
    address, so the removal deletes that account's envelope and its biometric
    wrap; with the last envelope the wallet password and the biometric path go
-   too (`EnvelopeKeyStore.delete`).
+   too (`EnvelopeKeyStore.delete`). New account from the same phrase is a
+   screen of its own, protected from screen capture while it takes the wallet
+   password: it adds an account of the recovery phrase the account comes from,
+   on the account's network (the first of the phrase's accounts not in the
+   wallet there), from the seed stored here, without the words (docs/keys-and-signing.md, *Further accounts of a phrase*); then
+   it shows the account added, its name, address and number in the phrase.
+   The account detail's top-bar menu (4) offers it too.
 4. **Account detail**
    - Header: a large blockie, the account's total, the full address with
      Copy, the control badge.

@@ -195,6 +195,26 @@ class AccountsScreenTest {
     }
 
     @Test
+    fun aNewAccountFromTheSamePhraseComesFromAKeyHeldHereAndElseSaysWhy() {
+        show(ready(listOf(daily, savings)))
+
+        rule.onNodeWithText("Savings").performTouchInput { longClick() }
+        // Owner ruling, 2026-10-18, #55: greyed out, and a tap says what is missing.
+        rule.onNodeWithText("New account from the same phrase…")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "This account is watch-only: its key is not on this device, so no account of its recovery phrase can " +
+                "be added from it. Import its recovery phrase to add its accounts.",
+        )
+        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithText("Daily").performTouchInput { longClick() }
+        rule.onNodeWithText("New account from the same phrase…").performClick()
+
+        assertEquals(listOf<AccountAction>(AccountAction.Derive(Network.SEPOLIA.chainId, daily.address)), actions)
+    }
+
+    @Test
     fun createSafeIsAlwaysOfferedAndGreyedOutUntilAKeyIsHeldHere() {
         val calls = mutableListOf<String>()
         rule.setContent {

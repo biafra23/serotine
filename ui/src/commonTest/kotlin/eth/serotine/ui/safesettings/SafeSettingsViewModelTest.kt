@@ -10,6 +10,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.BiometricUnlock
 import eth.serotine.domain.repository.KeyDeletion
+import eth.serotine.domain.repository.KeyDerivation
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
@@ -63,6 +64,9 @@ class SafeSettingsViewModelTest {
 
         override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
             error("not used by these tests")
+
+        override suspend fun deriveAccount(from: Address, password: WalletPassword, held: Set<Address>) =
+            KeyDerivation.Unavailable
 
         override suspend fun disableBiometrics(): BiometricChange = error("not used by these tests")
 

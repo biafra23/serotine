@@ -61,6 +61,7 @@ import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.debug.DebugRoute
 import eth.serotine.ui.debug.DebugViewModel
+import eth.serotine.ui.deriveaccount.DeriveAccountRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
@@ -285,6 +286,7 @@ private fun Destinations(
                     onRename = { navController.open(AccountAction.Rename(chainId, account.address.hex)) },
                     onRemove = { navController.open(AccountAction.Remove(chainId, account.address.hex)) },
                     onAddOnNetwork = { navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex)) },
+                    onDerive = { navController.open(AccountAction.Derive(chainId, account.address.hex)) },
                     onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
                     onImportRequest = { navController.importRequest(account) },
                     onSafeSettings = { navController.safeSettings(account) },
@@ -327,6 +329,13 @@ private fun Destinations(
                     lightClient,
                     onBack = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
                     onAdded = { navController.leave(Destination.ACTIVITY_ADD_TOKEN) },
+                )
+            }
+            // A screen, not a dialog: it takes the wallet password, under the window's capture protection.
+            withAccount(Destination.DERIVE, navController) { account ->
+                DeriveAccountRoute(
+                    viewModel = viewModel { graph.deriveAccountViewModel(account) },
+                    onBack = { navController.leave(Destination.DERIVE) },
                 )
             }
             withAccount(Destination.RECEIVE, navController) { account ->
@@ -674,6 +683,7 @@ private fun NavController.open(action: AccountAction) {
         is AccountAction.Rename -> Destination.RENAME
         is AccountAction.Remove -> Destination.REMOVE
         is AccountAction.AddOnNetwork -> Destination.ADD_ON_NETWORK
+        is AccountAction.Derive -> Destination.DERIVE
         is AccountAction.Copy -> return
     }
     // A second tap while the first one's screen is opening: one screen, the first one asked
@@ -905,6 +915,7 @@ private object Destination {
     const val RENAME = "rename"
     const val REMOVE = "remove"
     const val ADD_ON_NETWORK = "add-on-network"
+    const val DERIVE = "derive"
     const val SETTINGS = "settings"
     const val DEBUG = "debug"
     const val CURRENCY = "currency"

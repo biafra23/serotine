@@ -422,6 +422,16 @@ private fun accountMenu(
                 )
             }
         }.takeIf { account.kind == AccountKind.EOA },
+        // The next account of its phrase, from the seed stored here; greyed out while its key is not.
+        deriveBlockedReason(account.control).let { reason ->
+            MenuAction("$DERIVE_ACTION…", SerotineIcons.Key, unavailable = reason != null) {
+                if (reason == null) {
+                    act(AccountAction.Derive(chainId, address))
+                } else {
+                    onUnavailable(UnavailableNotice(DERIVE_ACTION, reason))
+                }
+            }
+        }.takeIf { account.kind == AccountKind.EOA },
         MenuAction("Remove", Icons.Filled.Delete, destructive = true) { act(AccountAction.Remove(chainId, address)) },
     )
 }

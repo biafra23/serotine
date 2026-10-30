@@ -63,6 +63,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.ui.accounts.DERIVE_ACTION
+import eth.serotine.ui.accounts.deriveBlockedReason
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.activity.activityItems
@@ -142,6 +144,7 @@ fun AccountDetailRoute(
     modifier: Modifier = Modifier,
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onDerive: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val strip by lightClient.collectAsStateWithLifecycle()
@@ -175,6 +178,7 @@ fun AccountDetailRoute(
         onTurnOnNetwork = viewModel::turnOnNetwork,
         onAddOnNetwork = onAddOnNetwork,
         onSafeSettings = onSafeSettings,
+        onDerive = onDerive,
     )
 }
 
@@ -190,7 +194,8 @@ fun AccountDetailRoute(
  * its Owners tab opens its settings through [onSafeSettings].
  * The account's network is named beside its control (docs/networks.md, N3 and N4); while it is off,
  * Send and Swap say so and offer to turn it on through [onTurnOnNetwork] (N19). An externally owned
- * account's menu adds it on another network through [onAddOnNetwork] (N5).
+ * account's menu adds it on another network through [onAddOnNetwork] (N5), and the next account of
+ * its recovery phrase through [onDerive], greyed out while its key is not on this device.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -215,6 +220,7 @@ fun AccountDetailScreen(
     onTurnOnNetwork: () -> Unit = {},
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onDerive: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -302,6 +308,16 @@ fun AccountDetailScreen(
                                             network,
                                             onTurnOnNetwork,
                                         )
+                                    }
+                                }.takeIf { state.kind == AccountKind.EOA },
+                                // The next account of its phrase; greyed out while its key is not here.
+                                deriveBlockedReason(state.control).let { reason ->
+                                    MenuAction("$DERIVE_ACTION…", SerotineIcons.Key, unavailable = reason != null) {
+                                        if (reason == null) {
+                                            onDerive()
+                                        } else {
+                                            unavailable = UnavailableNotice(DERIVE_ACTION, reason)
+                                        }
                                     }
                                 }.takeIf { state.kind == AccountKind.EOA },
                                 MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove),
