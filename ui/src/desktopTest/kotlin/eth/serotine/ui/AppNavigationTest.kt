@@ -80,17 +80,18 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
-import eth.serotine.domain.repository.KnownUpgrade
-import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.KnownUpgrade
+import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LogCoverage
+import eth.serotine.domain.repository.NewHardwareP256Key
+import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.LogCoverageReading
 import eth.serotine.domain.repository.LogWatchKey
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
-import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SafeState
@@ -294,6 +295,8 @@ class AppNavigationTest {
                 deletedKeys += address
                 return if (failKeyDeletes) KeyDeletion.Failed else KeyDeletion.Deleted
             }
+
+            override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
         },
         nativeBalances = object : NativeBalances {
             override fun observeBalance(network: Network, address: Address): Flow<BalanceReading> = nativeBalance

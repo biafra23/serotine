@@ -2,14 +2,19 @@ package eth.serotine.ui.createaccount
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.MnemonicImport
+import eth.serotine.domain.usecase.NewHardwareP256Address
+import eth.serotine.domain.usecase.NewHardwareP256AddressResult
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.SetNetworkEnabled
@@ -46,8 +51,27 @@ class CreateAccountViewModel(
     private val describeKeyStore: DescribeKeyStore,
     observeEnabledNetworks: ObserveEnabledNetworks,
     private val setNetworkEnabled: SetNetworkEnabled,
+    private val keyStore: eth.serotine.domain.repository.KeyStore,
+    private val accountRepository: eth.serotine.domain.repository.AccountRepository,
+    private val walletChanges: eth.serotine.domain.usecase.WalletChanges,
+    private val newHardwareP256Address: NewHardwareP256Address,
     private val random: Random = Random.Default,
+    initialAccountType: AccountType? = null,
 ) : ViewModel() {
+
+    /**
+     * The type of account being created.
+     */
+    public sealed interface AccountType {
+        /** A standard EOA account created from a BIP-39 recovery phrase. */
+        data object Eoa : AccountType
+
+        /**
+         * A Safe{Wallet} account owned by a P-256 hardware-bound key via WebAuthn.
+         * The key is generated in the device's Secure Enclave/StrongBox.
+         */
+        data object HardwareP256 : AccountType
+    }
 
     private val state = MutableStateFlow<CreateAccountUiState>(CreateAccountUiState.Preparing)
 
@@ -60,17 +84,35 @@ class CreateAccountViewModel(
     /** Whether the screen is shown: a phrase made while it is not is not kept. */
     private var shown = true
 
+    /** The type of account being created. */
+    private var accountType: AccountType = initialAccountType ?: AccountType.Eoa
+
     private var making: Job? = null
 
     val uiState: StateFlow<CreateAccountUiState> = state.asStateFlow()
 
     init {
-        startOver()
+        // Only start EOA creation if no specific type was requested
+        if (initialAccountType == null) {
+            startOver()
+        }
         viewModelScope.launch {
             observeEnabledNetworks().collect { networks ->
                 on = networks.toSet()
                 refreshNetworks()
             }
+        }
+    }
+
+    /**
+     * Start creating an account based on the configured [accountType].
+     * This should be called when the screen is first displayed to begin
+     * the appropriate flow (EOA or HardwareP256).
+     */
+    fun initiateCreation() {
+        when (accountType) {
+            AccountType.Eoa -> startOver()
+            AccountType.HardwareP256 -> startHardwareAccount()
         }
     }
 
@@ -106,6 +148,7 @@ class CreateAccountViewModel(
     fun startOver() {
         if (making?.isActive == true) return
         shown = true
+        accountType = AccountType.Eoa
         chosen = emptySet()
         state.value = CreateAccountUiState.Preparing
         making = viewModelScope.launch {
@@ -121,6 +164,35 @@ class CreateAccountViewModel(
                 is NewMnemonic.Created ->
                     if (shown) Showing(made.mnemonic) else CreateAccountUiState.Restart(NEVER_SHOWN)
                 NewMnemonic.Unavailable -> CreateAccountUiState.Unavailable
+            }
+        }
+    }
+
+    /**
+     * Start creating a P-256 hardware key address instead of an EOA.
+     * This generates a new P-256 key in the device's Secure Enclave/StrongBox and shows
+     * the derived Ethereum address. The user can then add this address as an owner to
+     * their existing Safe{Wallet}.
+     */
+    fun startHardwareAccount() {
+        if (making?.isActive == true) return
+        shown = true
+        accountType = AccountType.HardwareP256
+        chosen = emptySet()
+        state.value = CreateAccountUiState.Preparing
+        making = viewModelScope.launch {
+            val result = try {
+                newHardwareP256Address()
+            } catch (e: Exception) {
+                println("NewHardwareP256Address exception: ${e.message}")
+                NewHardwareP256AddressResult.KeyGenerationFailed
+            }
+            state.value = when (result) {
+                is NewHardwareP256AddressResult.Created -> createdP256(result.address.hex)
+                is NewHardwareP256AddressResult.KeyGenerationFailed ->
+                    CreateAccountUiState.Restart(
+                        "The hardware key could not be generated on this device. P-256 support may not be available."
+                    )
             }
         }
     }
@@ -278,6 +350,13 @@ class CreateAccountViewModel(
     private fun created(label: String, steppedDown: Boolean) =
         CreateAccountUiState.Created(label, STEPPED_DOWN_TEXT.takeIf { steppedDown })
 
+    /**
+     * The P-256 address was generated successfully. Shows the address with a QR code
+     * so the user can add it as an owner to their Safe.
+     */
+    private fun createdP256(address: String) =
+        CreateAccountUiState.Created("P-256 hardware address", p256Address = address)
+
     /** How an attempt that finished after the screen was left went, said without its phrase. */
     private fun outcomeWithoutPhrase(result: MnemonicImport): CreateAccountUiState = when (result) {
         is MnemonicImport.Added -> created(result.account.label, result.steppedDown)
@@ -288,7 +367,7 @@ class CreateAccountViewModel(
         )
     }
 
-    private companion object {
+    companion object {
         const val CHECKED_WORDS = 3
         const val HIDDEN = "The phrase was cleared when the screen was left, before it was stored, and it will " +
             "never be used. Cross out every word of it you wrote down, then start again with a new phrase."

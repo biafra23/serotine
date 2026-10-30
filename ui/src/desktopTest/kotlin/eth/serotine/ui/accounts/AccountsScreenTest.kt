@@ -95,6 +95,7 @@ class AccountsScreenTest {
                     onImportPhrase = { adds += "import" },
                     onCreateAccount = { adds += "create" },
                     onCreateSafe = { adds += "safe" },
+                    onCreateHardwareP256 = { adds += "hardware-p256" },
                     onAccountAction = { actions += it },
                     onTurnOnNetwork = { turnedOn += it },
                     onSyncPastStaleAnchor = { caughtUp += it },
@@ -205,6 +206,7 @@ class AccountsScreenTest {
                     onImportPhrase = { calls += "import" },
                     onCreateAccount = { calls += "create account" },
                     onCreateSafe = { calls += "create safe" },
+                    onCreateHardwareP256 = { calls += "hardware-p256" },
                     onAccountAction = {},
                 )
             }
@@ -231,6 +233,7 @@ class AccountsScreenTest {
                     onImportPhrase = { calls += "import" },
                     onCreateAccount = { calls += "create account" },
                     onCreateSafe = { calls += "create safe" },
+                    onCreateHardwareP256 = { calls += "hardware-p256" },
                     onAccountAction = {},
                 )
             }

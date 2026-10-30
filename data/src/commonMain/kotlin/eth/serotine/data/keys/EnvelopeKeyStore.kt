@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
@@ -162,6 +163,20 @@ class EnvelopeKeyStore internal constructor(
             NewMnemonic.Unavailable
         } finally {
             entropy.fill(0)
+        }
+    }
+
+    override suspend fun newHardwareP256Key(): NewHardwareP256Key = withContext(dispatcher) {
+        if (!EnvelopeCrypto.available()) return@withContext NewHardwareP256Key.Unavailable
+        try {
+            val (x, y) = generateP256HardwareKey()
+            NewHardwareP256Key.Generated(x.toHex(), y.toHex())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            report("a new P-256 hardware key could not be generated (${e::class.simpleName})")
+            e.printStackTrace()
+            NewHardwareP256Key.Unavailable
         }
     }
 
@@ -734,3 +749,9 @@ class EnvelopeKeyStore internal constructor(
         fun report(what: String) = println("Serotine: $what")
     }
 }
+
+/**
+ * A new P-256 hardware key generated in Secure Enclave (iOS/macOS) or StrongBox (Android).
+ * Returns the public key's x and y coordinates as 32-byte arrays each.
+ */
+internal expect fun generateP256HardwareKey(): Pair<ByteArray, ByteArray>

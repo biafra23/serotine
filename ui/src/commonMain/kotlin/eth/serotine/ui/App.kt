@@ -39,12 +39,21 @@ import androidx.navigation.compose.dialog
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
+import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.usecase.NewRecoveryPhrase
+import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
+import eth.serotine.domain.usecase.SetNetworkEnabled
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
@@ -57,6 +66,7 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.coworder.CowOrderRoute
 import eth.serotine.ui.coworder.SwapAgain
 import eth.serotine.ui.createaccount.CreateAccountRoute
+import eth.serotine.ui.createaccount.CreateAccountViewModel
 import eth.serotine.ui.createsafe.CreateSafeRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.debug.DebugRoute
@@ -253,12 +263,16 @@ private fun Destinations(
     NavHost(navController, startDestination = Tab.ACCOUNTS.graph, modifier = modifier) {
         navigation(startDestination = Destination.ACCOUNTS, route = Tab.ACCOUNTS.graph) {
             composable(Destination.ACCOUNTS) {
+                val hardwareP256ViewModel = viewModel { graph.createHardwareP256AccountViewModel() }
                 AccountsRoute(
                     viewModel = viewModel { graph.accountsViewModel() },
                     onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
                     onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
                     onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
                     onCreateSafe = { navController.navigate(Destination.CREATE_SAFE) { launchSingleTop = true } },
+                    onCreateHardwareP256 = {
+                        navController.navigate(Destination.CREATE_HARDWARE_P256) { launchSingleTop = true }
+                    },
                     onAccountAction = { action -> navController.open(action) },
                 )
             }
@@ -400,7 +414,10 @@ private fun Destinations(
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
-        composable(Destination.CREATE_ACCOUNT) {
+        composable(
+            route = Destination.CREATE_ACCOUNT,
+            deepLinks = listOf(navDeepLink { uriPattern = "serotine://create-account" }),
+        ) {
             CreateAccountRoute(
                 viewModel = viewModel { graph.createAccountViewModel() },
                 onBack = { navController.leave(Destination.CREATE_ACCOUNT) },
@@ -418,6 +435,18 @@ private fun Destinations(
                         popUpTo(Destination.CREATE_SAFE) { inclusive = true }
                     }
                 },
+            )
+        }
+        // A P-256 hardware account's creation: creates a new key in the device's Secure Enclave/StrongBox.
+        composable(
+            route = Destination.CREATE_HARDWARE_P256,
+            deepLinks = listOf(navDeepLink { uriPattern = "serotine://create-hardware-p256" }),
+        ) {
+            val viewModel = viewModel { graph.createHardwareP256AccountViewModel() }
+            CreateAccountRoute(
+                viewModel = viewModel,
+                onBack = { navController.leave(Destination.CREATE_HARDWARE_P256) },
+                onCreated = { navController.leave(Destination.CREATE_HARDWARE_P256) },
             )
         }
         composable(Destination.MNEMONIC_IMPORT) {
@@ -914,6 +943,7 @@ private object Destination {
     const val ACTIVITY_ADD_TOKEN = "activity-add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
     const val CREATE_ACCOUNT = "create-account"
+    const val CREATE_HARDWARE_P256 = "create-hardware-p256"
     const val CREATE_SAFE = "create-safe"
     const val SEND = "send"
     const val SWAP = "swap"

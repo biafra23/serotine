@@ -170,20 +170,33 @@ class CreateSafeViewModel(
             .groupBy { it.address }
             .map { (_, entries) -> entries.firstOrNull { it.custody == AccountCustody.InKeyStore } ?: entries.first() }
 
-        /** Those whose key is held here on [network]: what can pay for the deployment there. */
+        /**
+         * The wallet's P-256 Safe accounts, on any network: what can be chosen as an owner.
+         */
+        val p256Accounts: List<Account> = accounts.filter { it.kind == AccountKind.SAFE_P256 }
+            .groupBy { it.address }
+            .map { (_, entries) -> entries.firstOrNull { it.custody == AccountCustody.HardwareBound } ?: entries.first() }
+
+        /**
+         * Those whose key is held here on [network]: what can pay for the deployment there.
+         * EOA accounts use InKeyStore; P-256 accounts use HardwareBound.
+         */
         val held: List<Account> = accounts.filter {
-            it.network == network && it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore
+            it.network == network && ((it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore) ||
+                (it.kind == AccountKind.SAFE_P256 && it.custody == AccountCustody.HardwareBound))
         }
 
         val selected: Set<Address> = inputs.selected ?: setOfNotNull(held.firstOrNull()?.address)
 
-        private val chosen: List<Address> = eoas.filter { it.address in selected }.map { it.address }
+        private val chosenEoas: List<Address> = eoas.filter { it.address in selected }.map { it.address }
+
+        private val chosenP256: List<Address> = p256Accounts.filter { it.address in selected }.map { it.address }
 
         /** The owners typed and added, but for one that is a wallet's account chosen already. */
-        val typed: List<Typed> = inputs.typed.filter { it.address !in chosen }
+        val typed: List<Typed> = inputs.typed.filter { it.address !in chosenEoas && it.address !in chosenP256 }
 
         /** The owners chosen, in order: the wallet's accounts as listed, then those typed as added. */
-        val owners: List<Address> = chosen + typed.map { it.address }
+        val owners: List<Address> = chosenEoas + chosenP256 + typed.map { it.address }
 
         val threshold: Int = (inputs.threshold ?: defaultThreshold(owners.size)).coerceIn(1, maxOf(1, owners.size))
     }
@@ -309,7 +322,7 @@ class CreateSafeViewModel(
     fun onToggleOwner(address: String) {
         val owner = Address.parse(address) ?: return
         val model = model.value ?: return
-        if (model.eoas.none { it.address == owner }) return
+        if (model.eoas.none { it.address == owner } && model.p256Accounts.none { it.address == owner }) return
         val selected = model.selected
         val next = if (owner in selected) selected - owner else selected + owner
         changeOwners { it.copy(selected = next, threshold = null) }
@@ -327,7 +340,7 @@ class CreateSafeViewModel(
         val found = foundInput(model) ?: return
         if (found.address in model.owners) return
         changeOwners { current ->
-            if (model.eoas.any { it.address == found.address }) {
+            if (model.eoas.any { it.address == found.address } || model.p256Accounts.any { it.address == found.address }) {
                 current.copy(selected = model.selected + found.address, input = "", threshold = null)
             } else {
                 val typed = Typed(found.address, found.name, found.blockNumber)
@@ -733,11 +746,15 @@ class CreateSafeViewModel(
             network = model.network.displayName,
             networks = chips(model),
             name = inputs.name,
-            accounts = model.eoas.map { account ->
+            accounts = (model.eoas + model.p256Accounts).map { account ->
                 OwnerChoice(
                     address = Eip55.format(account.address),
                     label = account.label,
-                    note = if (account.custody == AccountCustody.InKeyStore) KEY_HERE else WATCHED,
+                    note = when {
+                        account.custody == AccountCustody.InKeyStore -> KEY_HERE
+                        account.custody == AccountCustody.HardwareBound -> "Hardware-bound P-256 key"
+                        else -> WATCHED
+                    },
                     selected = account.address in model.selected,
                 )
             },
@@ -860,6 +877,7 @@ class CreateSafeViewModel(
             label = account?.label ?: typed?.name,
             note = when {
                 account?.custody == AccountCustody.InKeyStore -> KEY_HERE
+                account?.custody == AccountCustody.HardwareBound -> "Hardware-bound P-256 key"
                 account != null -> WATCHED
                 typed != null -> typedNote(typed, model)
                 else -> TYPED
@@ -946,19 +964,22 @@ class CreateSafeViewModel(
     private fun defaultNetwork(list: AccountList, on: Set<Network>): Network {
         val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty()
         val payable = Network.entries.filter { network ->
-            network in on && accounts.any { it.network == network && it.isHeldEoa() }
+            network in on && accounts.any { it.network == network && (it.isHeldEoa() || it.isHeldP256()) }
         }
         return payable.firstOrNull() ?: Network.entries.firstOrNull { it in on } ?: Network.entries.first()
     }
 
     private fun Account.isHeldEoa() = kind == AccountKind.EOA && custody == AccountCustody.InKeyStore
 
+    /** Whether this account is a P-256 Safe whose key is held here. */
+    private fun Account.isHeldP256() = kind == AccountKind.SAFE_P256 && custody == AccountCustody.HardwareBound
+
     /** Each network as the first choice (N12), greyed out with the reason where a Safe cannot be created. */
     private fun chips(model: Model): List<NetworkChip> = Network.entries.map { network ->
         val reason = when {
             network !in model.on -> offText(network)
             !planSafe.hasRelease(network) -> NO_RELEASE
-            model.accounts.none { it.network == network && it.isHeldEoa() } -> noPayerText(model, network)
+            model.accounts.none { it.network == network && (it.isHeldEoa() || it.isHeldP256()) } -> noPayerText(model, network)
             else -> null
         }
         NetworkChip(NetworkLabel.of(network), network == model.network, reason, off = network !in model.on)
@@ -972,7 +993,7 @@ class CreateSafeViewModel(
      * the wallet's held accounts on other networks, added there from their menu.
      */
     private fun noPayerText(model: Model, network: Network = model.network): String {
-        val elsewhere = model.accounts.filter { it.network != network && it.isHeldEoa() }
+        val elsewhere = model.accounts.filter { it.network != network && (it.isHeldEoa() || it.isHeldP256()) }
             .map { it.label }
             .distinct()
         val name = network.displayName

@@ -60,6 +60,7 @@ internal class MacSecurity private constructor() {
         ): Pointer?
         fun SecKeyCreateRandomKey(parameters: Pointer, error: PointerByReference): Pointer?
         fun SecKeyCopyAttributes(key: Pointer): Pointer?
+        fun SecKeyCopyExternalRepresentation(key: Pointer, error: PointerByReference): Pointer?
         fun SecKeyCreateWithData(keyData: Pointer, attributes: Pointer, error: PointerByReference): Pointer?
         fun SecKeyCopyPublicKey(key: Pointer): Pointer?
         fun SecKeyCreateEncryptedData(
@@ -150,6 +151,40 @@ internal class MacSecurity private constructor() {
             ),
         )
         call("SecKeyCreateRandomKey") { error -> sec.SecKeyCreateRandomKey(parameters, error) }
+    }
+
+    /**
+     * A new P-256 key inside the Secure Enclave for [newHardwareP256Key]:
+     * returns the public key's x and y coordinates as 32-byte arrays each.
+     * The key itself is not stored anywhere; only its coordinates are returned.
+     *
+     * On macOS, we create a temporary key in the Secure Enclave with
+     * kSecAttrIsPermanent=false. Since keys in the Secure Enclave cannot be
+     * exported via SecKeyCopyExternalRepresentation, we instead use the key
+     * directly for operations and extract its coordinates using the key's
+     * attributes.
+     */
+    fun generateP256PublicKeyPair(): Pair<ByteArray, ByteArray> = owning { own ->
+        val bits = own(number(256))
+
+        // Create a temporary key (isPermanent=false) in the Secure Enclave
+        // The key exists only in memory and is not written to the keychain
+        val privateKeyAttrs = own(dictionary(isPermanent to falseValue))
+
+        val parameters = own(
+            dictionary(
+                keyType to ecKeyType,
+                keySizeInBits to bits,
+                tokenId to secureEnclave,
+                privateKeyAttributes to privateKeyAttrs,
+            ),
+        )
+        val key = call("SecKeyCreateRandomKey") { error -> sec.SecKeyCreateRandomKey(parameters, error) }
+        try {
+            publicKeyCoordinates(key)
+        } finally {
+            release(key)
+        }
     }
 
     /** The enclave's encrypted handle to [key]: useless anywhere but in this Mac's Secure Enclave. */
@@ -325,6 +360,138 @@ internal class MacSecurity private constructor() {
      */
     private fun zero(data: Pointer) {
         cf.CFDataGetBytePtr(data)?.clear(cf.CFDataGetLength(data))
+    }
+
+    /**
+     * The x and y coordinates of the public key for P-256 [key], as 32-byte arrays each.
+     * The key must be a P-256 private key from the Secure Enclave; its public half is
+     * extracted to get the coordinates.
+     *
+     * On macOS, we use SecKeyCopyExternalRepresentation which returns the DER-encoded
+     * SubjectPublicKeyInfo for EC keys. We parse this to extract the x and y coordinates.
+     */
+    private fun publicKeyCoordinates(key: Pointer): Pair<ByteArray, ByteArray> = owning { own ->
+        val publicKey = own(checkNotNull(sec.SecKeyCopyPublicKey(key)) { "SecKeyCopyPublicKey failed" })
+
+        // First try SecKeyCopyExternalRepresentation - but for Secure Enclave keys,
+        // this will likely return null because the key material cannot be exported.
+        val error = PointerByReference()
+        val externalRep = sec.SecKeyCopyExternalRepresentation(publicKey, error)
+
+        if (externalRep == null) {
+            println("Serotine: SecKeyCopyExternalRepresentation returned null (expected for Secure Enclave keys)")
+            // Fall back to trying SecKeyCopyAttributes with kSecAttrPublicKey
+            return@owning publicKeyCoordinatesFromAttributes(publicKey)
+        }
+
+        try {
+            check(cf.CFGetTypeID(externalRep) == cf.CFDataGetTypeID()) {
+                "external representation should be a CFData"
+            }
+
+            val keyDataBytes = bytesOf(externalRep)
+
+            // Debug: print the full bytes as hex for analysis
+            println("Serotine: externalRep length=${keyDataBytes.size}")
+            println("Serotine: externalRep first 64 bytes: ${keyDataBytes.take(64).joinToString("") { "%02x".format(it) }}")
+
+            // For P-256, the external representation is a DER-encoded SubjectPublicKeyInfo
+            // which is a SEQUENCE containing AlgorithmIdentifier and BIT STRING
+            // The BIT STRING contains: 0x04 || x || y (uncompressed point)
+
+            var offset = 0
+
+            fun readLength(): Int {
+                val firstByte = keyDataBytes[offset++].toInt() and 0xFF
+                return if (firstByte < 0x80) {
+                    firstByte
+                } else if (firstByte == 0x80) {
+                    error("Indefinite length not supported")
+                } else {
+                    val numLengthBytes = firstByte and 0x7F
+                    var length = 0
+                    for (i in 0 until numLengthBytes) {
+                        length = (length shl 8) or (keyDataBytes[offset++].toInt() and 0xFF)
+                    }
+                    length
+                }
+            }
+
+            // Skip SEQUENCE header
+            check(keyDataBytes[offset].toInt() and 0xFF == 0x30) { "Expected SEQUENCE, got 0x${"%02x".format(keyDataBytes[offset].toInt() and 0xFF)}" }
+            offset++
+            val sequenceLength = readLength()
+            val sequenceEnd = offset + sequenceLength
+
+            // Skip AlgorithmIdentifier (SEQUENCE with OID and parameters)
+            check(keyDataBytes[offset].toInt() and 0xFF == 0x30) { "Expected AlgorithmIdentifier SEQUENCE" }
+            offset++
+            val algoLength = readLength()
+            offset += algoLength
+
+            // Now at BIT STRING
+            check(keyDataBytes[offset].toInt() and 0xFF == 0x03) { "Expected BIT STRING" }
+            offset++
+            val bitStringLength = readLength()
+
+            // Skip unused bits byte (usually 0)
+            check(bitStringLength >= 66) { "BIT STRING too short, expected at least 66 bytes" }
+            val dataOffset = offset + 1
+
+            // Verify uncompressed point marker
+            check(keyDataBytes[dataOffset].toInt() and 0xFF == 0x04) {
+                "Expected uncompressed point marker 0x04, got ${keyDataBytes[dataOffset].toInt().and(0xFF)}"
+            }
+
+            val x = keyDataBytes.copyOfRange(dataOffset + 1, dataOffset + 33)
+            val y = keyDataBytes.copyOfRange(dataOffset + 33, dataOffset + 65)
+            return@owning x to y
+        } finally {
+            cf.CFRelease(externalRep)
+        }
+    }
+
+    /**
+     * Fallback method: extract public key coordinates from the public key's attributes.
+     * This is used when SecKeyCopyExternalRepresentation returns null (which happens for
+     * Secure Enclave keys that cannot be exported).
+     */
+    private fun publicKeyCoordinatesFromAttributes(publicKey: Pointer): Pair<ByteArray, ByteArray> = owning { own ->
+        val attributes = own(checkNotNull(sec.SecKeyCopyAttributes(publicKey)) { "SecKeyCopyAttributes failed" })
+
+        // Get kSecAttrPublicKey attribute which contains the raw public key bytes
+        val secAttrPublicKey = checkNotNull(cf.CFStringCreateWithCString(null, "kSecAttrPublicKey", UTF8)) {
+            "CFStringCreateWithCString for kSecAttrPublicKey failed"
+        }
+
+        try {
+            val keyDataRef = checkNotNull(cf.CFDictionaryGetValue(attributes, secAttrPublicKey)) {
+                "public key has no kSecAttrPublicKey attribute"
+            }
+            check(cf.CFGetTypeID(keyDataRef) == cf.CFDataGetTypeID()) {
+                "kSecAttrPublicKey should be a CFData"
+            }
+
+            val keyDataBytes = bytesOf(keyDataRef)
+            println("Serotine: kSecAttrPublicKey length=${keyDataBytes.size}, first 64 bytes: ${keyDataBytes.take(64).joinToString("") { "%02x".format(it) }}")
+
+            // The kSecAttrPublicKey for EC keys is the raw uncompressed point:
+            // 0x04 || x || y (where 0x04 indicates uncompressed format)
+
+            // Verify uncompressed point marker
+            check(keyDataBytes[0].toInt() and 0xFF == 0x04) {
+                "Expected uncompressed point marker 0x04, got ${keyDataBytes[0].toInt().and(0xFF)}"
+            }
+
+            // For P-256, the key should be 65 bytes: 1 byte prefix + 32 bytes x + 32 bytes y
+            check(keyDataBytes.size == 65) { "Expected 65 bytes for P-256 uncompressed point, got ${keyDataBytes.size}" }
+
+            val x = keyDataBytes.copyOfRange(1, 33)
+            val y = keyDataBytes.copyOfRange(33, 65)
+            return@owning x to y
+        } finally {
+            cf.CFRelease(secAttrPublicKey)
+        }
     }
 
     companion object {

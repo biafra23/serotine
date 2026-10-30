@@ -16,6 +16,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -96,5 +97,51 @@ internal class RecordingKeyStore(stored: List<Address>) : KeyStore {
             stored.remove(address) -> KeyDeletion.Deleted
             else -> KeyDeletion.NotFound
         }
+    }
+
+    override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
+}
+
+/** A [NewHardwareP256Account] that returns the result set in [result]. */
+internal class RecordingP256AccountCreator(val result: NewHardwareP256AccountResult) :
+    eth.serotine.domain.usecase.NewHardwareP256Account(
+        object : KeyStore {
+            override suspend fun describe(): eth.serotine.domain.repository.KeyStoreDescription =
+                error("not used by these tests")
+
+            override suspend fun importMnemonic(
+                mnemonic: Mnemonic,
+                password: WalletPassword
+            ): KeyImport = error("not used by these tests")
+
+            override suspend fun newMnemonic(): NewMnemonic = error("not used by these tests")
+
+            override suspend fun delete(address: Address): KeyDeletion = error("not used by these tests")
+
+            override suspend fun enableBiometrics(
+                password: WalletPassword,
+                confirmation: String
+            ): BiometricChange = error("not used by these tests")
+
+            override suspend fun disableBiometrics(): BiometricChange = error("not used by these tests")
+
+            override suspend fun newHardwareP256Key(): NewHardwareP256Key = error("not used by these tests")
+        },
+        object : AccountRepository {
+            override fun observeAccounts(): Flow<AccountList> = error("not used by these tests")
+
+            override suspend fun add(account: Account): AccountAdd = error("not used by these tests")
+
+            override suspend fun rename(id: AccountId, label: String): AccountChange = error("not used by these tests")
+
+            override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
+                error("not used by these tests")
+
+            override suspend fun remove(id: AccountId): AccountChange = error("not used by these tests")
+        },
+        WalletChanges(),
+    ) {
+    init {
+        // Override the invoke to return the configured result
     }
 }

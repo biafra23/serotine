@@ -11,6 +11,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.MemoryStep
+import eth.serotine.domain.repository.NewHardwareP256Key
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
@@ -59,6 +60,10 @@ class CreateAccountViewModelTest {
             DescribeKeyStore(keys),
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
+            keys,
+            accounts,
+            WalletChanges(),
+            eth.serotine.domain.usecase.NewHardwareP256Address(keys),
             Random(7),
         )
     }
@@ -301,5 +306,7 @@ class CreateAccountViewModelTest {
             BiometricChange.NotOnThisDevice
 
         override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
+
+        override suspend fun newHardwareP256Key(): NewHardwareP256Key = NewHardwareP256Key.Unavailable
     }
 }

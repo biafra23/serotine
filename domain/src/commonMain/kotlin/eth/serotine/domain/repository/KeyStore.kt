@@ -41,6 +41,13 @@ interface KeyStore {
     suspend fun newMnemonic(): NewMnemonic
 
     /**
+     * A new P-256 hardware key generated in Secure Enclave (iOS/macOS) or StrongBox (Android),
+     * for Safe owner management (docs/P256_IMPLEMENTATION_PLAN.md, Phase 2): the public key's
+     * x and y coordinates as 64-hex-char strings. Never throws.
+     */
+    suspend fun newHardwareP256Key(): NewHardwareP256Key
+
+    /**
      * Deletes the key of [address], the envelope its seed is sealed in, so that nothing on
      * this device can sign for it any more ([KeyDeletion.Deleted]); [KeyDeletion.NotFound]
      * when there is none. Once the last one is gone no wallet password is set: the next
@@ -269,6 +276,15 @@ sealed interface NewMnemonic {
 
     /** The key store cannot run on this device. */
     data object Unavailable : NewMnemonic
+}
+
+/** The outcome of [KeyStore.newHardwareP256Key]. */
+sealed interface NewHardwareP256Key {
+    /** A P-256 hardware key was generated; the public key's x and y coordinates as 64-hex-char strings. */
+    data class Generated(val x: String, val y: String) : NewHardwareP256Key
+
+    /** The key store cannot generate a P-256 key on this device. */
+    data object Unavailable : NewHardwareP256Key
 }
 
 /** The outcome of [KeyStore.delete]. */

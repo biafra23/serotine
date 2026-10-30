@@ -17,7 +17,10 @@ sealed interface CreateAccountUiState {
     /** The key adapter is making the phrase. */
     data object Preparing : CreateAccountUiState
 
-    /** The new [phrase], to be written down: shown on this screen alone, until it is stored. */
+    /**
+     * The new [phrase], to be written down: shown on this screen alone, until it is stored.
+     * This is for EOA accounts created from a recovery phrase.
+     */
     data class Showing(val phrase: Mnemonic) : CreateAccountUiState {
         /** The words, numbered on screen in this order. */
         val words: List<String> = phrase.words
@@ -93,8 +96,15 @@ sealed interface CreateAccountUiState {
      * The account named [label] was created; the words and the password are gone. The screen
      * closes, unless there is a [note] to read first (its key protected at a lighter cost than
      * this device's own), which stays until the user is done.
+     *
+     * For P-256 hardware address generation, [label] is "P-256 hardware address" and [p256Address]
+     * contains the derived Ethereum address. The screen shows this address with a QR code.
      */
-    data class Created(val label: String, val note: String? = null) : CreateAccountUiState
+    data class Created(
+        val label: String,
+        val note: String? = null,
+        val p256Address: String? = null,
+    ) : CreateAccountUiState
 
     /**
      * The phrase is gone, for the reason [message] gives (the screen was left; an attempt

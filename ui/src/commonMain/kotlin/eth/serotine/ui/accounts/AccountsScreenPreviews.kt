@@ -94,6 +94,7 @@ private fun AccountsPreview(state: AccountsUiState, darkTheme: Boolean = false, 
             onImportPhrase = {},
             onCreateAccount = {},
             onCreateSafe = {},
+            onCreateHardwareP256 = {},
             onAccountAction = {},
             fabExpandedAtStart = fabExpanded,
         )
