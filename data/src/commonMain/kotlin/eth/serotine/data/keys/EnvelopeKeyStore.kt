@@ -211,11 +211,14 @@ class EnvelopeKeyStore internal constructor(
             // already, if it opens under the password. One that does not is sealed again, as an
             // import does: the seed is at hand.
             val existing = Path(directory, "$address$SEED_SUFFIX")
-            val kept = SystemFileSystem.exists(existing) && read(existing)?.let {
-                Envelope.canOpen(it, hardware, address) && it.index == index &&
-                    Envelope.verify(it, password, hardware, stretch) == Envelope.Opened.Verified
-            } == true
-            if (kept) return KeyDerivation.Stored(account, index, protection)
+            val kept = if (SystemFileSystem.exists(existing)) read(existing) else null
+            if (kept != null && Envelope.canOpen(kept, hardware, address) && kept.index == index &&
+                Envelope.verify(kept, password, hardware, stretch) == Envelope.Opened.Verified
+            ) {
+                // Its seal may have stepped down a tier, unsaid when its account did not reach the list.
+                val steppedDown = kept.opsLimit != costs(protection).first().opsLimit
+                return KeyDerivation.Stored(account, index, protection, steppedDown)
+            }
             return when (val stored = store(seed, address, index, password, protection)) {
                 is Storing.Stored -> KeyDerivation.Stored(account, index, protection, stored.steppedDown)
                 Storing.NotSaved -> KeyDerivation.NotSaved

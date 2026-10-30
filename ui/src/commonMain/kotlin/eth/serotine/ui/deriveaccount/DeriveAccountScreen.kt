@@ -121,8 +121,9 @@ private fun AskContent(state: DeriveAccountUiState.Ask, onPasswordChange: (Strin
     AccountLine(state.label, state.address)
     Text(
         "Adds an account of the recovery phrase ${state.label} comes from, on ${state.network}: the first of the " +
-            "phrase's accounts, in the order wallets list them, that is not in this wallet there yet. Its key comes " +
-            "from the phrase's seed stored on this device, so the words are not needed.",
+            "phrase's accounts, in the order wallets list them, whose key this wallet does not hold there yet. An " +
+            "account you already watch becomes one you hold. Its key comes from the phrase's seed stored on this " +
+            "device, so the words are not needed.",
     )
     OutlinedTextField(
         value = state.password.text,

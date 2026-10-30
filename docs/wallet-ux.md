@@ -197,8 +197,9 @@ upgrades*).
    too (`EnvelopeKeyStore.delete`). New account from the same phrase is a
    screen of its own, protected from screen capture while it takes the wallet
    password: it adds an account of the recovery phrase the account comes from,
-   on the account's network (the first of the phrase's accounts not in the
-   wallet there), from the seed stored here, without the words (docs/keys-and-signing.md, *Further accounts of a phrase*); then
+   on the account's network (the first of the phrase's accounts whose key the
+   wallet does not hold there; one watched there becomes held), from the seed
+   stored here, without the words (docs/keys-and-signing.md, *Further accounts of a phrase*); then
    it shows the account added, its name, address and number in the phrase.
    The account detail's top-bar menu (4) offers it too.
 4. **Account detail**
