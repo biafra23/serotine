@@ -17,7 +17,8 @@ Sepolia testnet only.
 
 ## Status
 
-Early, with no release tagged yet (the version is `0.1.0-SNAPSHOT`).
+Early, with pre-releases only (the version is `0.2.0-SNAPSHOT`; every `v*` tag
+publishes a pre-release).
 What the app does today:
 
 - **Accounts.** Create an account from a new recovery phrase, import one from
