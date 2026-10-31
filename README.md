@@ -12,16 +12,24 @@ A Compose Multiplatform wallet for Ethereum accounts (EOAs) and
 [Myotis](https://github.com/biafra23/myotis) engine: every chain read is
 verified against Ethereum's sync committee by a light client running inside
 the app, with no RPC provider in the loop. Android, desktop (Linux, macOS,
-Windows) and iOS (a development build for now). For now the app works on the
-Sepolia testnet only.
+Windows) and iOS (a development build for now). It works on Ethereum and
+Gnosis Chain, with real funds, and on the Sepolia testnet; each account lives
+on one chain. A release build starts with Ethereum and Gnosis Chain on and
+Sepolia off, a debug build with Sepolia alone, and each network can be turned
+on or off in Settings.
 
 ## Status
 
-Early, with no release tagged yet (the version is `0.1.0-SNAPSHOT`).
+Early, with pre-releases only (the version is `0.2.0-SNAPSHOT`; every `v*` tag
+publishes a pre-release).
 What the app does today:
 
+- **Simple mode** is the default view in both builds; Settings → Advanced →
+  *Detailed view* shows the screens that say how the wallet checks the chain
+  (docs/simple-ui.md).
 - **Accounts.** Create an account from a new recovery phrase, import one from
-  a phrase, or watch any address, which is told apart from verified code and
+  a phrase, add further accounts from a phrase already held, or watch any
+  address, which is told apart from verified code and
   storage as an EOA (delegated or not), a Safe or another contract. Accounts
   are kept across restarts and can be renamed and removed.
 - **Keys.** An imported or created seed is held in an envelope that opens only
@@ -35,7 +43,10 @@ What the app does today:
   proven at; while no fresh verified head exists, the last proven balance stays
   on screen, dated and marked as possibly changed. A built-in token list with
   bundled icons, tokens added by address, and a display currency priced by
-  Chainlink feeds read on chain ("testnet prices").
+  Chainlink feeds read on chain; where no feed is pinned, a pinned Uniswap
+  pool's 30-minute average, labelled as such. Sepolia's prices are labelled
+  "testnet prices", and its balances never count in a total with real funds. An Android
+  home-screen widget shows one verified exchange rate.
 - **Send and receive.** ETH and ERC-20 transfers with a verified nonce, fee and
   gas estimate, a review step, and a status screen that follows the verified
   receipt to finalization; a recipient may be an ENS name, resolved with a
@@ -53,19 +64,20 @@ What the app does today:
 - **Swaps on Uniswap v3** from an account or a Safe: verified quotes from the
   pinned contracts, an exact-amount approval, a slippage tolerance (0.5 % by
   default) and the price impact, with the amount received read from the
-  verified receipt (docs/swaps.md).
+  verified receipt. Or through **CoW Protocol**, when the user chooses it: its
+  order API is used only for an order sent to CoW (docs/swaps.md).
 - **Activity.** Every transaction this device sent, kept for good with how it
-  ended as the device saw it.
+  ended as the device saw it, and, from the engine's verified log index, an
+  account's token transfers and a Safe's own events on chain, CoW orders
+  among them.
 - **Network upgrades.** When peers announce a network upgrade this version
   does not support, the app warns ahead of it, notifies (on Android also while
   it is closed), and once the upgrade has cut it off shows nothing but the way
   to the update.
 
-Not built yet: swaps through CoW Protocol (waiting on the owner's ruling on
-its order API), transactions received or sent from elsewhere in Activity,
-a Safe owned by a device's hardware P-256 key, recovery modules, dApp
-connections, an iOS build for the App Store, and any network other than
-Sepolia.
+Not built yet: ETH an EOA received and transactions sent from it elsewhere
+in Activity, a Safe owned by a device's hardware P-256 key, recovery modules,
+dApp connections, and an iOS build for the App Store.
 docs/wallet-ux.md describes every screen, with what is built and what is not.
 
 ## Build & run
