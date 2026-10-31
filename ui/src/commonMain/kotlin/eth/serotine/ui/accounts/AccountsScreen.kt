@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.LightClientHealthDot
 import eth.serotine.ui.components.MenuAction
@@ -63,6 +64,7 @@ import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.components.addOnNetworkOffReason
 import eth.serotine.ui.components.networkOffNotice
+import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
@@ -80,9 +82,9 @@ const val ACCOUNTS_SECTION_TAG = "accounts-section-"
 const val ACCOUNTS_TOTAL_TAG = "accounts-total"
 
 /**
- * Binds [AccountsScreen] to its ViewModel: the only composable that knows the ViewModel
- * exists. Copy is done here, on the platform's clipboard; every other action is
- * [onAccountAction]'s, which navigates.
+ * Binds [AccountsScreen], or in simple mode [SimpleAccountsScreen], to its ViewModel: the only
+ * composable that knows the ViewModel exists. Copy is done here, on the platform's clipboard;
+ * every other action is [onAccountAction]'s, which navigates.
  */
 @Composable
 fun AccountsRoute(
@@ -96,20 +98,37 @@ fun AccountsRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val copy = rememberCopyText()
-    AccountsScreen(
-        state = state,
-        onWatchAddress = onWatchAddress,
-        onImportPhrase = onImportPhrase,
-        onCreateAccount = onCreateAccount,
-        onCreateSafe = onCreateSafe,
-        onAccountAction = { action ->
-            if (action is AccountAction.Copy) copy(action.address) else onAccountAction(action)
-        },
-        modifier = modifier,
-        onTurnOnNetwork = viewModel::turnOnNetwork,
-        onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
-        onMessageShown = viewModel::messageShown,
-    )
+    val act: (AccountAction) -> Unit = { action ->
+        if (action is AccountAction.Copy) copy(action.address) else onAccountAction(action)
+    }
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleAccountsScreen(
+            state = state,
+            onWatchAddress = onWatchAddress,
+            onImportPhrase = onImportPhrase,
+            onCreateAccount = onCreateAccount,
+            onCreateSafe = onCreateSafe,
+            onAccountAction = act,
+            onRefresh = viewModel::refresh,
+            modifier = modifier,
+            onTurnOnNetwork = viewModel::turnOnNetwork,
+            onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onMessageShown = viewModel::messageShown,
+        )
+        InterfaceMode.DETAILED -> AccountsScreen(
+            state = state,
+            onWatchAddress = onWatchAddress,
+            onImportPhrase = onImportPhrase,
+            onCreateAccount = onCreateAccount,
+            onCreateSafe = onCreateSafe,
+            onAccountAction = act,
+            modifier = modifier,
+            onTurnOnNetwork = viewModel::turnOnNetwork,
+            onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onMessageShown = viewModel::messageShown,
+        )
+    }
 }
 
 /**
@@ -173,36 +192,8 @@ fun AccountsScreen(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            // No add to offer while the stored list cannot be read: it would be refused.
-            if (state !is AccountsUiState.ListUnavailable) {
-                // An account held here pays for the deployment (docs/wallet-ux.md, screen 2): until one
-                // is known to be, Create Safe is greyed out, and says so; the ways to get one only once
-                // the list is read and has none.
-                val createSafeReason = state.createSafeReason
-                val createSafeFixes = if (state is AccountsUiState.Ready) {
-                    listOf(
-                        UnavailableFix("Import recovery phrase", onImportPhrase),
-                        UnavailableFix("Create account", onCreateAccount),
-                    )
-                } else {
-                    emptyList()
-                }
-                SpeedDialFab(
-                    actions = listOf(
-                        SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress),
-                        SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onClick = onImportPhrase),
-                        SpeedDialAction("Create account", Icons.Filled.Add, onClick = onCreateAccount),
-                        SpeedDialAction("Create Safe", Icons.Filled.Lock, unavailable = createSafeReason != null) {
-                            if (createSafeReason == null) {
-                                onCreateSafe()
-                            } else {
-                                unavailable = UnavailableNotice("Create Safe", createSafeReason, createSafeFixes)
-                            }
-                        },
-                    ),
-                    description = "Add account",
-                    expandedAtStart = fabExpandedAtStart,
-                )
+            AddAccountButton(state, onWatchAddress, onImportPhrase, onCreateAccount, onCreateSafe, fabExpandedAtStart) {
+                unavailable = it
             }
         },
         // No network in the top bar: each section names its own (docs/networks.md, N1).
@@ -226,6 +217,54 @@ fun AccountsScreen(
             }
         }
     }
+}
+
+/**
+ * The + button of the Accounts screen, in either view: Watch address ([onWatchAddress]), Import
+ * recovery phrase ([onImportPhrase]), Create account ([onCreateAccount]) and Create Safe
+ * ([onCreateSafe]), greyed out until an account's key is known to be held here to pay for its
+ * deployment, a tap then saying why through [onUnavailable] (owner ruling, 2026-10-18, #55). None
+ * while the stored list cannot be read: an add would be refused.
+ */
+@Composable
+internal fun AddAccountButton(
+    state: AccountsUiState,
+    onWatchAddress: () -> Unit,
+    onImportPhrase: () -> Unit,
+    onCreateAccount: () -> Unit,
+    onCreateSafe: () -> Unit,
+    expandedAtStart: Boolean,
+    onUnavailable: (UnavailableNotice) -> Unit,
+) {
+    if (state is AccountsUiState.ListUnavailable) return
+    // An account held here pays for the deployment (docs/wallet-ux.md, screen 2): until one is known
+    // to be, Create Safe is greyed out, and says so; the ways to get one only once the list is read
+    // and has none.
+    val createSafeReason = state.createSafeReason
+    val createSafeFixes = if (state is AccountsUiState.Ready) {
+        listOf(
+            UnavailableFix("Import recovery phrase", onImportPhrase),
+            UnavailableFix("Create account", onCreateAccount),
+        )
+    } else {
+        emptyList()
+    }
+    SpeedDialFab(
+        actions = listOf(
+            SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress),
+            SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onClick = onImportPhrase),
+            SpeedDialAction("Create account", Icons.Filled.Add, onClick = onCreateAccount),
+            SpeedDialAction("Create Safe", Icons.Filled.Lock, unavailable = createSafeReason != null) {
+                if (createSafeReason == null) {
+                    onCreateSafe()
+                } else {
+                    onUnavailable(UnavailableNotice("Create Safe", createSafeReason, createSafeFixes))
+                }
+            },
+        ),
+        description = "Add account",
+        expandedAtStart = expandedAtStart,
+    )
 }
 
 /**
@@ -281,7 +320,7 @@ internal const val NO_ACCOUNTS_HINT = "Add an account with the + button: watch a
     "device, because that account pays for the Safe's deployment."
 
 @Composable
-private fun NoAccounts(modifier: Modifier = Modifier) {
+internal fun NoAccounts(modifier: Modifier = Modifier) {
     Column(modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("No accounts yet", style = MaterialTheme.typography.titleMedium)
         Text(
@@ -382,7 +421,7 @@ private fun SectionHeader(section: NetworkSection, onCatchUp: (StaleAnchorWarnin
  * account cannot send, a tap saying why ([AccountItem.sendReason]); its detail screen has the
  * same as buttons.
  */
-private fun accountMenu(
+internal fun accountMenu(
     account: AccountItem,
     act: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,

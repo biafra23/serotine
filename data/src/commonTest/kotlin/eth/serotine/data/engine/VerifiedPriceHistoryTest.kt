@@ -212,6 +212,12 @@ class VerifiedPriceHistoryTest {
         chain.snapshot = running(head = 9, headTimestamp = null)
         assertEquals(PastReading.Syncing, history().before(Network.SEPOLIA, eth.priceId, 86_400))
 
+        // Still starting, or catching up: checking, so the 24-hour change waits for it.
+        chain.snapshot = EngineSnapshot.Booting
+        assertEquals(PastReading.Syncing, history().before(Network.SEPOLIA, eth.priceId, 86_400))
+        chain.snapshot = running(phase = EngineSnapshot.Phase.CATCHING_UP, head = 9, headTimestamp = head)
+        assertEquals(PastReading.Syncing, history().before(Network.SEPOLIA, eth.priceId, 86_400))
+
         chain.snapshot = running(phase = EngineSnapshot.Phase.STALE_ANCHOR, head = 9, headTimestamp = head)
         assertEquals(
             PastReading.Unavailable(ReadUnavailable.STALE_ANCHOR),

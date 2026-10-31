@@ -38,7 +38,9 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileInterfaceMode
 import eth.serotine.data.settings.FileSwapVenue
+import eth.serotine.data.swaps.FileWaitingSwaps
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -51,6 +53,7 @@ import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowExchangeRate
+import eth.serotine.domain.usecase.FollowInterfaceMode
 import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
@@ -59,6 +62,7 @@ import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.ReadExchangeRate
@@ -131,7 +135,22 @@ class SerotineApplication : Application() {
             lastBalances = filesDir.resolve("last-balances.json").path,
             debugLog = if (debuggable) { line -> Log.d(LOG_TAG, line) } else null,
             apiLog = debugLog,
-        ).also { host -> scope.launch { followNetworks(host) } }
+        ).also { host ->
+            scope.launch { followNetworks(host) }
+            // Values proven on demand in simple mode, at every head in Detailed view (docs/simple-ui.md).
+            scope.launch { followInterfaceMode(host) }
+        }
+    }
+
+    /** Keeps the proving of values to the view the user chose, for the life of the process. */
+    private suspend fun followInterfaceMode(host: MyotisHost) {
+        try {
+            FollowInterfaceMode(interfaceMode, host)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Serotine: following the view stopped: ${e::class.simpleName}")
+        }
     }
 
     /**
@@ -156,6 +175,9 @@ class SerotineApplication : Application() {
 
     /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
     private val debugScreen by lazy { FileDebugScreen(filesDir.resolve("debug-screen.json").path) }
+
+    /** The view the user chose, simple mode or Detailed view (docs/simple-ui.md), beside the other settings. */
+    private val interfaceMode by lazy { FileInterfaceMode(filesDir.resolve("ui-mode.json").path) }
 
     /** eth.serotine.debug is debuggable, the release app is not: what the debug app's extras hang on. */
     private val debuggable by lazy { applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
@@ -227,6 +249,7 @@ class SerotineApplication : Application() {
 
     /** The venue last chosen on Swap, compose, which the next swap starts at. */
     private val swapVenue by lazy { FileSwapVenue(filesDir.resolve("swap-venue.json").path) }
+    private val waitingSwaps by lazy { FileWaitingSwaps(filesDir.resolve("waiting-swaps.json").path) }
 
     /**
      * The exchange rate last verified, for the widget, beside the other files: a price and its
@@ -343,6 +366,7 @@ class SerotineApplication : Application() {
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             staleAnchorConsent = node,
+            networkFreshness = node,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
             transactionInputs = node.transactionInputs,
@@ -370,8 +394,10 @@ class SerotineApplication : Application() {
             cowApi = HttpCowApi.create(),
             cowOrders = cowOrders,
             swapVenue = swapVenue,
+            waitingSwaps = waitingSwaps,
             debugLog = debugLog,
             debugScreen = debugScreen,
+            interfaceMode = interfaceMode,
             // The debug app only: Settings may lift FLAG_SECURE for a screen recording, until the
             // process ends. The release app has no switch (docs/keys-and-signing.md, rule 8).
             screenCaptureDebugSwitch = if (debuggable) ScreenCaptureDebugSwitch() else null,
@@ -445,7 +471,7 @@ class SerotineApplication : Application() {
         scope.launch { UpgradeCheckJob.schedule(this@SerotineApplication) }
         // The debug log records while the Debug tab is on, for the life of the process: it needs
         // no engine, and a request made while the app is in the background is one too.
-        scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
+        scope.launch { FollowDebugScreen(ObserveDebugTab(debugScreen, interfaceMode), debugLog)() }
         // Records each network's default the first time it is found unrecorded, before any engine starts.
         scope.launch { networkSettings.observe().first() }
         // Kept scheduled while a widget is placed, whatever cancelled it (a widget restored by a

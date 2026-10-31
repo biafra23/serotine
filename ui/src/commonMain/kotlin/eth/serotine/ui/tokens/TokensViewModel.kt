@@ -83,6 +83,8 @@ class TokensViewModel(
         icon = known.token.icon,
         builtIn = known.origin == TokenOrigin.BUILT_IN,
         status = status(known),
+        simpleStatus = (known.check as? BuiltInCheck.Agrees)?.blockNumber
+            ?.let { "Built in · checked against its contract" },
         problem = known.check is BuiltInCheck.Disagrees,
         hidden = known.hidden,
         warning = if (known.sharesBuiltInSymbol) {

@@ -51,13 +51,13 @@ target is what resolves the engine's AAR. One package per area,
 | `tokens` | The built-in token list and the user's token settings. |
 | `prices` | The Chainlink feed table, the Uniswap pools that price what no feed does, and the feed-first routing between them. |
 | `safe` | The pinned Safe deployments, the queue of Safe transactions and the signing-request codec. |
-| `swaps` | The pinned Uniswap v3 and CoW Protocol deployments. |
+| `swaps` | The pinned Uniswap v3 and CoW Protocol deployments, and the swaps whose next step waits for the user. |
 | `cow` | CoW's order API, over Ktor, and the record of the CoW orders signed here. |
 | `transfers` | The record of sent transactions and the history of them, kept for good. |
 | `history` | Where each account's history starts. |
 | `rates` | The exchange rate last verified, for the home-screen widget. |
 | `logs` | The Debug tab's log, in memory only. The engine adapter writes each request into it. |
-| `settings` | The display currency and the swap venue last chosen. |
+| `settings` | The display currency, the swap venue last chosen, the Debug tab's switch and the view chosen (simple mode or Detailed view). |
 
 ### `ui`
 

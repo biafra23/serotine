@@ -15,12 +15,14 @@ import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.HistoryStarts
+import eth.serotine.domain.repository.InterfaceModeSetting
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
+import eth.serotine.domain.repository.NetworkFreshness
 import eth.serotine.domain.repository.NetworkSettings
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.PriceFeeds
@@ -34,6 +36,7 @@ import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.SwapVenueSetting
+import eth.serotine.domain.repository.WaitingSwaps
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TokenMetadata
@@ -52,14 +55,17 @@ import eth.serotine.domain.usecase.DeploySafe
 import eth.serotine.domain.usecase.DeriveAccount
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
+import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.FindUniswapRoute
+import eth.serotine.domain.usecase.FindWaitingSwap
 import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
+import eth.serotine.domain.usecase.KeepWaitingSwap
 import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
@@ -72,12 +78,15 @@ import eth.serotine.domain.usecase.ObserveCowOrder
 import eth.serotine.domain.usecase.ObserveCowOrderLife
 import eth.serotine.domain.usecase.ObserveDebugLog
 import eth.serotine.domain.usecase.ObserveDebugScreen
+import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
+import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
+import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
@@ -92,6 +101,7 @@ import eth.serotine.domain.usecase.ObserveTokenMetadata
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUpgradeWarnings
 import eth.serotine.domain.usecase.ObserveUsdPrice
+import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.domain.usecase.PlaceCowOrder
 import eth.serotine.domain.usecase.PlanSafe
 import eth.serotine.domain.usecase.ProposeSafeSettingsChange
@@ -107,6 +117,7 @@ import eth.serotine.domain.usecase.QuoteTokenApproval
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.ReadSafeTxOwners
 import eth.serotine.domain.usecase.RebroadcastTransfer
+import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.RemoveToken
@@ -119,6 +130,7 @@ import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.SetDebugLogLevel
 import eth.serotine.domain.usecase.SetDebugScreen
 import eth.serotine.domain.usecase.SetDisplayCurrency
+import eth.serotine.domain.usecase.SetInterfaceMode
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.SignSafeTx
@@ -142,6 +154,7 @@ import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.deriveaccount.DeriveAccountViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
+import eth.serotine.ui.mode.InterfaceModeViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
@@ -250,6 +263,8 @@ class AppGraph(
     private val cowOrders: CowOrders,
     /** The venue the user last chose on Swap, compose, which the next swap starts at. */
     private val swapVenue: SwapVenueSetting,
+    /** The swaps whose next step waits for the user, which the account's Activity offers with Continue. */
+    private val waitingSwaps: WaitingSwaps,
     /**
      * The app's debug log, which the Debug tab shows: the host's one instance, which the engine's
      * node writes each request into.
@@ -260,6 +275,10 @@ class AppGraph(
      * `FollowDebugScreen` keeps [debugLog] to.
      */
     private val debugScreen: DebugScreenSetting,
+    /** The view the user chose in Settings, simple mode or Detailed view (docs/simple-ui.md). */
+    private val interfaceMode: InterfaceModeSetting,
+    /** How fresh each network's values are kept: live, or proven on demand in simple mode (docs/simple-ui.md). */
+    private val networkFreshness: NetworkFreshness,
     /**
      * The debug build's switch that allows screen recordings of the protected screens; null in a
      * release build, and on a host whose screens block nothing (docs/keys-and-signing.md, rule 8).
@@ -290,6 +309,8 @@ class AppGraph(
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            RefreshNetworkData(networkFreshness),
+            ObserveNetworkLive(networkFreshness),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -310,6 +331,10 @@ class AppGraph(
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
             HasSwapVenue(uniswap),
+            RefreshNetworkData(networkFreshness),
+            ObserveNetworkLive(networkFreshness),
+            ObserveLightClient(lightClient),
+            DropWaitingSwap(waitingSwaps),
         )
 
     /**
@@ -442,9 +467,15 @@ class AppGraph(
 
     /**
      * Swap from the account at [from], selling the token at [sell] (null: the network's currency),
-     * opened with [fill] filled in when given: the same swap again.
+     * opened with [fill] filled in when given: the same swap again; [continuing] the swap of it whose
+     * next step waits, quoted again.
      */
-    fun swapViewModel(from: AccountId, sell: Address?, fill: SwapFill? = null): SwapViewModel = SwapViewModel(
+    fun swapViewModel(
+        from: AccountId,
+        sell: Address?,
+        fill: SwapFill? = null,
+        continuing: Boolean = false,
+    ): SwapViewModel = SwapViewModel(
         from,
         sell,
         ObserveAccounts(accounts),
@@ -482,7 +513,11 @@ class AppGraph(
             from.network,
         ),
         PlaceCowOrder(FindUniswapRoute(uniswap, transactionInputs), signer, cowOrders, cowApi, lightClient),
+        KeepWaitingSwap(waitingSwaps),
+        DropWaitingSwap(waitingSwaps),
+        FindWaitingSwap(waitingSwaps),
         fill = fill,
+        continuing = continuing,
     )
 
     /**
@@ -522,6 +557,7 @@ class AppGraph(
         knownTokens(),
         ObserveSentToAddresses(transactionHistory),
         ObserveAccountCowOrders(cowOrders),
+        ObserveWaitingSwaps(waitingSwaps),
     )
 
     /**
@@ -603,10 +639,16 @@ class AppGraph(
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            ObserveInterfaceMode(interfaceMode),
+            SetInterfaceMode(interfaceMode),
+            ObserveNetworkLive(networkFreshness),
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
-    fun debugTabViewModel(): DebugTabViewModel = DebugTabViewModel(ObserveDebugScreen(debugScreen))
+    fun debugTabViewModel(): DebugTabViewModel = DebugTabViewModel(ObserveDebugTab(debugScreen, interfaceMode))
+
+    /** The view the screens are drawn in: one for the app, in the host's scope. */
+    fun interfaceModeViewModel(): InterfaceModeViewModel = InterfaceModeViewModel(ObserveInterfaceMode(interfaceMode))
 
     /** The Debug tab: the debug log. */
     fun debugViewModel(): DebugViewModel =

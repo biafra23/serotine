@@ -55,6 +55,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -73,6 +75,7 @@ class SafeSwapViewModelTest {
 
     private val world = SafeWorld()
     private val clock = TestTimeSource()
+    private var wallClock = 1_800_000_000L
     private val feeds = FakeFeeds()
     private val router = world.uniswapDeployment.swapRouter02
     private val weth = world.uniswapDeployment.weth9
@@ -159,6 +162,7 @@ class SafeSwapViewModelTest {
             SignSafeTx(signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
             clock,
             formatTime = { "at $it" },
+            now = { wallClock },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -268,6 +272,9 @@ class SafeSwapViewModelTest {
         )
         assertTrue(review.approvalNote.orEmpty().contains("sets it to zero"), review.approvalNote)
         assertTrue(review.simulation.startsWith("The allowance set to zero, run as a verified call"), review.simulation)
+        // Simple mode's words for the same: no block (docs/simple-ui.md).
+        val simple = listOfNotNull(review.simpleSimulation, review.simpleQuotedAt)
+        assertTrue(simple.size == 2 && simple.none { "block" in it }, simple.toString())
 
         viewModel.onPasswordChange("made-up test password")
         viewModel.sign()
@@ -452,6 +459,53 @@ class SafeSwapViewModelTest {
                 "there is nothing to put in its place.",
             assertIs<SafeSwapUiState.CannotSwap>(viewModel.uiState.value).message,
         )
+    }
+
+    @Test
+    fun aSwapThatRevertsIsRefusedOnTheFormAndSimpleModeSaysSoWithNoBlock() = runTest {
+        allowance = UInt256.of(100_000_000)
+        world.inputs.runs[router] = Simulation.Reverted(100)
+        val viewModel = reviewed()
+
+        val form = viewModel.form
+        assertTrue("block 100" in form.error.orEmpty(), form.error)
+        assertEquals(
+            "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was proposed.",
+            form.simpleError,
+        )
+    }
+
+    @Test
+    fun anApprovalThatRevertsAtAZeroAllowanceIsRefusedOnTheFormAndSimpleModeSaysSoWithNoBlock() = runTest {
+        world.inputs.runOf = { to, data ->
+            Simulation.Reverted(100).takeIf {
+                to == world.usdc.address && data.contentEquals(Erc20.approveData(router, UInt256.of(100_000_000)))
+            }
+        }
+        val viewModel = reviewed()
+
+        val form = viewModel.form
+        assertTrue("block 100" in form.error.orEmpty(), form.error)
+        assertEquals(
+            "USDC's contract refuses the approval with its allowance at zero, as checked on chain. Nothing was " +
+                "proposed.",
+            form.simpleError,
+        )
+    }
+
+    @Test
+    fun eachBalanceSaysHowLongAgoItWasProvedAndIsDatedAnew() = runTest {
+        holding()
+        world.tokenBalances.of(world.safe, world.usdc.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("250000000"), 99, provenAt = wallClock - 120)
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals("updated 2 min ago", viewModel.form.sell?.age)
+
+        wallClock += 60
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertEquals("updated 3 min ago", viewModel.form.sell?.age, "the age is dated anew every second")
     }
 
     @Test

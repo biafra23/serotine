@@ -157,6 +157,7 @@ class ActivityDetailViewModel(
         headline = row.title,
         about = row.about,
         status = row.status,
+        simpleStatus = row.simpleStatus,
         state = row.state,
         fields = fields,
         // A row cautioned about its sender says why, here where the sender can be copied.
@@ -203,7 +204,7 @@ class ActivityDetailViewModel(
         fields += DetailField("Transaction hash", transfer.hash, DetailKind.HASH)
         fields += DetailField("Nonce", transfer.nonce.toString())
         fields += DetailField("Sent", formatTime(transfer.sentAt))
-        entry.outcome.blockNumberOrNull?.let { fields += DetailField("Block", grouped(it)) }
+        entry.outcome.blockNumberOrNull?.let { fields += DetailField("Block", grouped(it), DetailKind.BLOCK) }
         return fields
     }
 
@@ -303,7 +304,7 @@ class ActivityDetailViewModel(
     /** Where an event is on chain: the transaction that logged it, and its block. */
     private fun loggedAt(event: IndexedEvent): List<DetailField> = listOf(
         DetailField("Transaction hash", event.transactionHash, DetailKind.HASH),
-        DetailField("Block", grouped(event.blockNumber)),
+        DetailField("Block", grouped(event.blockNumber), DetailKind.BLOCK),
     )
 
     /**

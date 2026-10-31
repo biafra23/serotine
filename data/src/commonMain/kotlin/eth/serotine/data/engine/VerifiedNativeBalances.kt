@@ -31,6 +31,8 @@ class VerifiedNativeBalances internal constructor(
     lastBalances: LastBalancesFile? = null,
     /** What vouches for an unchanged account between heads; none: a proof at every head. */
     activity: AddressActivity? = null,
+    /** When its balances are proven again: at every head when null; on demand in simple mode ([ProofSchedule]). */
+    schedule: ProofSchedule? = null,
 ) : NativeBalances {
 
     private val reads = ProvenReads<Address, Wei>(
@@ -44,6 +46,7 @@ class VerifiedNativeBalances internal constructor(
         )
             ?: KeptProofs.none(),
         offersLastKnownWhenStopped = true,
+        schedule = schedule,
         unchangedSince = { address, provenAt, provenHash, head ->
             activity?.unchangedSince(address, AddressActivity.Kind.ACCOUNT, provenAt, provenHash, head) == true
         },
@@ -58,7 +61,7 @@ class VerifiedNativeBalances internal constructor(
         return reads.observe(address).map { reading ->
         when (reading) {
             EngineReading.Syncing -> BalanceReading.Syncing
-            is EngineReading.Proven -> BalanceReading.Verified(reading.value, reading.blockNumber)
+            is EngineReading.Proven -> BalanceReading.Verified(reading.value, reading.blockNumber, reading.provenAt)
             is EngineReading.LastKnown -> BalanceReading.LastKnown(reading.value, reading.blockNumber, reading.asOf)
             is EngineReading.Unavailable -> BalanceReading.Unavailable(reading.reason)
         }

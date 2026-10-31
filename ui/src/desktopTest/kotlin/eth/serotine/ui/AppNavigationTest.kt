@@ -39,6 +39,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
@@ -116,9 +117,11 @@ import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_ASSET_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_QUEUE_ROW_TAG
+import eth.serotine.ui.accountdetail.ACCOUNT_REFRESH_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
+import eth.serotine.ui.accounts.ACCOUNTS_REFRESH_TAG
 import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.activitydetail.ACTIVITY_DETAIL_FIELD_TAG
@@ -157,6 +160,7 @@ import eth.serotine.ui.send.SEND_AMOUNT_REVIEWED_TAG
 import eth.serotine.ui.send.SEND_PASSWORD_TAG
 import eth.serotine.ui.send.SEND_SIGN_TAG
 import eth.serotine.ui.settings.SETTINGS_DEBUG_SCREEN_TAG
+import eth.serotine.ui.settings.SETTINGS_DETAILED_VIEW_TAG
 import eth.serotine.ui.settings.SETTINGS_NETWORK_TAG
 import eth.serotine.ui.settings.SETTINGS_VERSION_TAG
 import eth.serotine.ui.tokens.TOKENS_ROW_TAG
@@ -166,6 +170,7 @@ import eth.serotine.ui.update.UPDATE_REQUIRED_TAG
 import eth.serotine.ui.watch.WATCH_ADDRESS_TAG
 import eth.serotine.ui.watch.WATCH_NAME_TAG
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -275,6 +280,8 @@ class AppNavigationTest {
 
     private val debugLog = FakeDebugLog()
     private val debugScreen = MemoryDebugScreen()
+    // These tests were written for the detailed screens; simple mode's are tested on their own.
+    private val interfaceMode = MemoryInterfaceMode(InterfaceMode.DETAILED)
 
     private val graph = AppGraph(
         accounts = accountRepository,
@@ -382,8 +389,11 @@ class AppNavigationTest {
 
             override suspend fun choose(venue: SwapVenue): Boolean = true
         },
+        waitingSwaps = MemoryWaitingSwaps(),
         debugLog = debugLog,
         debugScreen = debugScreen,
+        interfaceMode = interfaceMode,
+        networkFreshness = FakeFreshness(),
         screenCaptureDebugSwitch = null,
         networkDemand = NetworkDemand(),
         networkSettings = MemoryNetworkSettings(),
@@ -557,11 +567,16 @@ class AppNavigationTest {
     fun theDebugTabShowsOnceTurnedOnInSettingsAndOpensOverTheAccountsTabAsSettingsDoes() {
         accounts.value = listOf(daily)
         debugLog.records.value = listOf(debugLog.record(1, message = "requestAccount: ok, 34 ms"))
+        interfaceMode.mode.value = InterfaceMode.SIMPLE
         showApp()
         rule.onNodeWithText("Debug").assertDoesNotExist()
         rule.onNodeWithText("Daily").performClick()
 
+        // The Debug tab is Detailed view's alone: its switch shows once that is on.
         rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(SETTINGS_DETAILED_VIEW_TAG).performScrollTo().performClick()
+        rule.waitUntil { interfaceMode.mode.value == InterfaceMode.DETAILED }
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().performClick()
         rule.waitUntil { debugScreen.enabled.value }
         rule.onNodeWithText("Debug").performClick()
@@ -583,11 +598,34 @@ class AppNavigationTest {
         rule.onNodeWithText("Accounts").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
 
-        // Turned off again, the tab goes.
+        // Back in simple mode the tab goes, its switch kept for Detailed view.
         rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithTag(SETTINGS_DETAILED_VIEW_TAG).performScrollTo().performClick()
+        rule.waitUntil { interfaceMode.mode.value == InterfaceMode.SIMPLE }
+        rule.onNodeWithText("Debug").assertDoesNotExist()
+        assertTrue(debugScreen.enabled.value)
+
+        // Detailed view again: the tab is back, its switch kept.
+        rule.onNodeWithTag(SETTINGS_DETAILED_VIEW_TAG).performScrollTo().performClick()
+        rule.waitUntil { interfaceMode.mode.value == InterfaceMode.DETAILED }
+        rule.onNodeWithText("Debug").assertIsDisplayed()
+
+        // Turned off again, the tab goes.
         rule.onNodeWithTag(SETTINGS_DEBUG_SCREEN_TAG).performScrollTo().performClick()
         rule.waitUntil { !debugScreen.enabled.value }
         rule.onNodeWithText("Debug").assertDoesNotExist()
+    }
+
+    @Test
+    fun inSimpleModeAnAccountShowsNoStripAndOffersARefresh() {
+        interfaceMode.mode.value = InterfaceMode.SIMPLE
+        accounts.value = listOf(daily)
+        showApp()
+
+        rule.onNodeWithTag(ACCOUNTS_REFRESH_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_REFRESH_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(LIGHT_CLIENT_STRIP_TAG).assertDoesNotExist()
     }
 
     @Test
@@ -777,7 +815,7 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
@@ -884,7 +922,7 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(COW_ORDER_UNISWAP_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithText("Slippage tolerance").fetchSemanticsNodes().isNotEmpty() }
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens(), "in the order's place")
 
         rule.onNodeWithContentDescription("Back").performClick()

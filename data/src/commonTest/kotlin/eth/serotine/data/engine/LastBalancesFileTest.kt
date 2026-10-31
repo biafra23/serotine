@@ -59,7 +59,10 @@ class LastBalancesFileTest {
             POLL,
             lastBalances(),
         )
-        assertEquals(BalanceReading.Verified(Wei.of("5"), 9), before.observeBalance(Network.SEPOLIA, address).first())
+        assertEquals(
+            BalanceReading.Verified(Wei.of("5"), 9, provenAt = 1_792_100_000),
+            before.observeBalance(Network.SEPOLIA, address).first(),
+        )
 
         // A new process: nothing proven in it yet, and the light client still catching up.
         chain.snapshot = running(phase = EngineSnapshot.Phase.CATCHING_UP)

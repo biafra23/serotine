@@ -76,6 +76,7 @@ import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.SYNC_RETRY_MS
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import kotlin.test.AfterTest
@@ -84,6 +85,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -164,6 +166,9 @@ class SendViewModelTest {
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
     private val clock = TestTimeSource()
+
+    /** Now, in unix seconds, as the compose step dates a balance's age against it. */
+    private var wallClock = 1_800_000_000L
     private val receipts = FakeReceipts()
 
     private fun TestScope.viewModel(from: Address = daily.address, asset: Address? = null): SendViewModel {
@@ -189,6 +194,7 @@ class SendViewModelTest {
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
             clock,
+            now = { wallClock },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -224,6 +230,20 @@ class SendViewModelTest {
         // The light client builds its fee history on a first request: asked now, warm by Review.
         assertEquals(1, inputs.feeReads)
         assertEquals(0, inputs.estimated.size, "nothing quoted")
+    }
+
+    @Test
+    fun eachBalanceSaysHowLongAgoItWasProvedAndIsDatedAnew() = runTest {
+        balances.of(daily.address).value =
+            BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118, provenAt = wallClock - 120)
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals("updated 2 min ago", viewModel.compose.asset?.age)
+
+        wallClock += 60
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertEquals("updated 3 min ago", viewModel.compose.asset?.age, "the age is dated anew every second")
     }
 
     @Test
@@ -422,6 +442,7 @@ class SendViewModelTest {
                     "1.5 ETH",
                     "at least 1.498827 ETH",
                     "verified at block 9,412,118",
+                    short = "ETH balance",
                 ),
             ),
             review.balances,
@@ -855,6 +876,24 @@ class SendViewModelTest {
         assertEquals("0.2 ETH", viewModel.review.amount)
         assertEquals("", viewModel.review.unlock.password.text, "a new review, a new password")
         assertEquals(2, inputs.estimated.size)
+    }
+
+    @Test
+    fun aRecipientsNameAskedWhileTheLightClientSyncsGreysOutTryAgainAndIsLookedUpAgainByItself() = runTest {
+        holding()
+        names.names["friend.eth"] = NameResolution.Unavailable(ReadUnavailable.SYNCING)
+        val viewModel = viewModel()
+        viewModel.onToChange("friend.eth")
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertTrue(viewModel.compose.canRetryLookup)
+        assertNotNull(viewModel.compose.retryLookupWaits, "Try again greyed out, with its reason")
+
+        names.names["friend.eth"] = NameResolution.Resolved("friend.eth", friend, 9_411_900)
+        advanceTimeBy(SYNC_RETRY_MS)
+        runCurrent()
+        assertEquals("friend.eth", viewModel.compose.recipient?.name, "resolved by itself once it has caught up")
+        assertNull(viewModel.compose.retryLookupWaits)
     }
 
     @Test

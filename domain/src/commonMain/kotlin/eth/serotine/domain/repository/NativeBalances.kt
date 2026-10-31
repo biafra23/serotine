@@ -38,8 +38,13 @@ sealed interface BalanceReading {
      */
     data class LastKnown(val wei: Wei, val blockNumber: Long, val asOf: Long?) : BalanceReading
 
-    /** [wei] is the balance at block [blockNumber], verified by the light client. */
-    data class Verified(val wei: Wei, val blockNumber: Long) : BalanceReading
+    /**
+     * [wei] is the balance at block [blockNumber], verified by the light client at a verified
+     * head produced at [provenAt] (unix seconds; null when unknown). In simple mode a proof may
+     * stand across heads on a network without block access lists, for up to an hour
+     * (docs/simple-ui.md): [provenAt] says how old it is.
+     */
+    data class Verified(val wei: Wei, val blockNumber: Long, val provenAt: Long? = null) : BalanceReading
 
     /** No verified balance can be had right now, for the reason [reason] gives. */
     data class Unavailable(val reason: ReadUnavailable) : BalanceReading
@@ -65,6 +70,14 @@ enum class ReadUnavailable {
      * served the proof, or the engine's state could not be read at all.
      */
     UNPROVEN,
+
+    /**
+     * The light client is still syncing (starting, bootstrapping from its checkpoint, catching
+     * up on sync committees): no head is verified yet, and one will be once it has caught up.
+     * Asking again before then changes nothing (docs/simple-ui.md, *A read refused while syncing
+     * says so*).
+     */
+    SYNCING,
 
     /**
      * The engine will not answer this read on this build, and asking again changes nothing

@@ -63,6 +63,8 @@ import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
 import eth.serotine.ui.components.resolveAgain
+import eth.serotine.ui.components.retryLookupWaits
+import eth.serotine.ui.components.simpleCallRefusalText
 import eth.serotine.ui.components.unavailableText
 import eth.serotine.ui.components.verifiedAt
 import kotlin.concurrent.Volatile
@@ -226,6 +228,8 @@ class CreateSafeViewModel(
             val signing: Boolean = false,
             val notSent: NotSent? = null,
             val hidden: Boolean = false,
+            /** [error] with no block, for simple mode; null where it is [error] itself. */
+            val simpleError: String? = null,
         ) : Step {
             val idle: Boolean
                 get() = !quoting && !signing && notSent == null
@@ -554,7 +558,7 @@ class CreateSafeViewModel(
         // A quote in flight is of another payer or fee, or as good as this one: for nothing now.
         job?.cancel()
         val cleared = current.unlock.copy(error = null)
-        val asked = current.copy(quoting = true, hidden = false, error = null, unlock = cleared)
+        val asked = current.copy(quoting = true, hidden = false, error = null, simpleError = null, unlock = cleared)
         step.value = asked
         job = viewModelScope.launch { quote(asked, note) }
     }
@@ -601,6 +605,8 @@ class CreateSafeViewModel(
                     quotedAt = null,
                     quoting = false,
                     error = refusalText(quoting.refusal),
+                    simpleError = (quoting.refusal as? SafeDeploymentRefusal.NotQuoted)
+                        ?.let { simpleCallRefusalText(it.refusal) },
                 )
             }
         }
@@ -747,6 +753,7 @@ class CreateSafeViewModel(
                         label = typed.name ?: model.accounts.firstOrNull { it.address == typed.address }?.label,
                         note = typedNote(typed, model),
                         selected = true,
+                        simpleNote = simpleTypedNote(typed, model),
                     )
                 },
             input = inputs.input,
@@ -763,12 +770,14 @@ class CreateSafeViewModel(
                     label = it.name ?: model.accounts.firstOrNull { account -> account.address == it.address }?.label,
                     note = it.blockNumber?.let { block -> "Resolved at finalized block ${grouped(block)}" } ?: TYPED,
                     selected = it.address in owners,
+                    simpleNote = it.blockNumber?.let { RESOLVED_ON_CHAIN },
                 )
             },
             inputNote = note,
             inputError = isError,
             inputLabel = addressFieldLabel(model.network),
             canRetryLookup = (lookup as? RecipientState.Done)?.result is RecipientLookup.Unavailable,
+            retryLookupWaits = retryLookupWaits((lookup as? RecipientState.Done)?.result),
             canAdd = found != null && found.address !in owners,
             error = error ?: if (owners.isEmpty()) null else ownersRefusal(model)?.let(::planRefusalText),
             canContinue = owners.isNotEmpty() && ownersRefusal(model) == null && nameError(inputs.name) == null,
@@ -808,6 +817,10 @@ class CreateSafeViewModel(
             address = Eip55.format(plan.address),
             signers = "${plan.threshold}/${plan.owners.size}",
             version = "Safe ${plan.release.version}",
+            simplePrediction = quote?.let {
+                "$computed The factory's run, checked on chain, returns this address, which held no code when " +
+                    "it was checked."
+            },
             prediction = when {
                 quote != null -> {
                     val ran = quote.call.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head"
@@ -837,6 +850,8 @@ class CreateSafeViewModel(
                     ),
                     simulation = "Run as a verified call from this account $ran, the factory deploys the Safe at " +
                         "this address and sets it up with these owners and this threshold.",
+                    simpleSimulation = "Checked on chain: the factory should deploy the Safe at this address and " +
+                        "set it up with these owners and this threshold.",
                     pending = call.pendingCost.takeUnless { cost -> cost.isZero }?.let { cost ->
                         "Earlier transactions from this account, not mined yet, may still take up to " +
                             exactAmount(cost, NATIVE_DECIMALS, native) + ": the balance after counts it."
@@ -844,6 +859,7 @@ class CreateSafeViewModel(
                 )
             },
             error = step.error,
+            simpleError = step.simpleError,
             quoting = step.quoting,
             signing = step.signing,
             notSent = step.notSent?.let {
@@ -864,6 +880,7 @@ class CreateSafeViewModel(
                 typed != null -> typedNote(typed, model)
                 else -> TYPED
             },
+            simpleNote = typed?.takeIf { account == null }?.let { simpleTypedNote(it, model) },
         )
     }
 
@@ -873,6 +890,11 @@ class CreateSafeViewModel(
         model.accounts.any { it.address == typed.address } -> "In your wallet"
         else -> TYPED
     }
+
+    /** [typedNote] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
+    private fun simpleTypedNote(typed: Typed, model: Model): String? =
+        typed.takeIf { it.name != null && it.resolvedAt != null && typedNote(it, model) != TYPED }
+            ?.let { "Resolved from ${it.name}, checked on chain" }
 
     private fun nameError(name: String): String? =
         if (name.trim().length > RenameAccount.MAX_LABEL_LENGTH) {
@@ -1024,6 +1046,9 @@ class CreateSafeViewModel(
         const val KEY_HERE = "Key on this device"
         const val WATCHED = "Watch-only: its key is elsewhere"
         const val TYPED = "Typed"
+
+        /** A name's resolution in simple mode's words: no block (docs/simple-ui.md). */
+        const val RESOLVED_ON_CHAIN = "Resolved, checked on chain"
         const val DEVICE_KEY =
             "This device's hardware key (Secure Enclave or StrongBox) as an owner comes later: Serotine does not " +
                 "build its passkey signer yet."

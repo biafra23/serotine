@@ -32,7 +32,7 @@ private val sent = ActivityDetailUiState.Shown(
         DetailField("Transaction hash", "0x" + "1".repeat(64), DetailKind.HASH),
         DetailField("Nonce", "7"),
         DetailField("Sent", "Oct 19, 2026, 2:02 PM"),
-        DetailField("Block", "9,412,118"),
+        DetailField("Block", "9,412,118", DetailKind.BLOCK),
     ),
     opensStatus = "0x" + "1".repeat(64),
 )
@@ -61,7 +61,7 @@ private val unlisted = ActivityDetailUiState.Shown(
     fields = listOf(
         DetailField("Token contract", UNLISTED, DetailKind.ADDRESS),
         DetailField("Transaction hash", "0x" + "e".repeat(64), DetailKind.HASH),
-        DetailField("Block", "9,402,000"),
+        DetailField("Block", "9,402,000", DetailKind.BLOCK),
     ),
     note = "A contract the wallet does not show can log any transfer it likes, between any addresses, so only " +
         "the contract is named here: an address it names could be a look-alike planted for you to copy. Add it " +
@@ -81,7 +81,7 @@ private val unfamiliarSender = ActivityDetailUiState.Shown(
         DetailField("Amount", "0.01 USDC"),
         DetailField("Token contract", USDC, DetailKind.ADDRESS, "USDC"),
         DetailField("Transaction hash", "0x" + "f".repeat(64), DetailKind.HASH),
-        DetailField("Block", "9,418,200"),
+        DetailField("Block", "9,418,200", DetailKind.BLOCK),
     ),
     note = "You have not sent to the sender's address from this device, and it is not one of your accounts. " +
         "Anyone can send you a little from an address made to look like one you use, so that you copy it from " +
@@ -98,7 +98,7 @@ private val safeEvent = ActivityDetailUiState.Shown(
         DetailField("Module", BOB, DetailKind.ADDRESS, "Bob"),
         DetailField("Safe", TREASURY, DetailKind.ADDRESS, "Treasury"),
         DetailField("Transaction hash", "0x" + "a".repeat(64), DetailKind.HASH),
-        DetailField("Block", "9,415,302"),
+        DetailField("Block", "9,415,302", DetailKind.BLOCK),
     ),
 )
 

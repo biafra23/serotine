@@ -45,6 +45,7 @@ internal fun balanceText(reading: BalanceReading, network: Network): String = wh
         ReadUnavailable.NO_ENGINE -> "No light client"
         ReadUnavailable.NETWORK_OFF -> "Network off"
         ReadUnavailable.STALE_ANCHOR -> "Sync refused"
+        ReadUnavailable.SYNCING -> "Syncing"
         ReadUnavailable.UNPROVEN -> "Not verified"
         ReadUnavailable.REFUSED -> "Not readable here"
     }

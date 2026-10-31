@@ -39,21 +39,26 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.AddressLine
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.ControlBadge
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NETWORK_CHOICE_TAG
 import eth.serotine.ui.components.NetworkMark
-import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.RetryLookupButton
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.next
 import eth.serotine.ui.components.nextTo
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.submitOnDone
 import eth.serotine.ui.lightclient.LightClientViewModel
+import eth.serotine.ui.mode.LocalInterfaceMode
 
 /** Test tag of the address field, for UI tests. */
 const val WATCH_ADDRESS_TAG = "watch-address"
@@ -64,8 +69,14 @@ const val WATCH_NAME_TAG = "watch-name"
 /** Test tag of the detection card, for UI tests. */
 const val WATCH_DETECTION_TAG = "watch-detection"
 
+/** Test tag of the *Details* that keep the blocks in simple mode, for UI tests. */
+const val WATCH_DETAILS_TAG = "watch-details"
+
 /** Test tag of the checksummed address on the detection card, for UI tests. */
 const val WATCH_CHECKSUMMED_TAG = "watch-checksummed"
+
+/** Test tag of the network named above the one detection card, for UI tests. */
+const val WATCH_CARD_NETWORK_TAG = "watch-card-network"
 
 /** What the address field says while nothing else is to be said of it. */
 
@@ -83,40 +94,57 @@ fun WatchRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
-    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     val added by rememberUpdatedState(onAdded)
     LaunchedEffect(state.done) {
         if (state.done) added()
     }
-    WatchScreen(
-        state,
-        strip,
-        viewModel::onAddressChange,
-        viewModel::onNameChange,
-        viewModel::add,
-        onBack,
-        modifier,
-        onRetryLookup = viewModel::onRetryLookup,
-        onChooseNetworks = viewModel::onChooseNetworks,
-        onNetworkToggle = viewModel::onNetworkToggle,
-        onTurnOnNetwork = viewModel::onTurnOnNetwork,
-    )
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleWatchScreen(
+            state,
+            viewModel::onAddressChange,
+            viewModel::onNameChange,
+            viewModel::add,
+            onBack,
+            modifier,
+            onRetryLookup = viewModel::onRetryLookup,
+            onChooseNetworks = viewModel::onChooseNetworks,
+            onNetworkToggle = viewModel::onNetworkToggle,
+            onTurnOnNetwork = viewModel::onTurnOnNetwork,
+            syncLine = lightClient.item(network).collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
+        InterfaceMode.DETAILED -> WatchScreen(
+            state,
+            lightClient.item(network).collectAsStateWithLifecycle().value,
+            viewModel::onAddressChange,
+            viewModel::onNameChange,
+            viewModel::add,
+            onBack,
+            modifier,
+            onRetryLookup = viewModel::onRetryLookup,
+            onChooseNetworks = viewModel::onChooseNetworks,
+            onNetworkToggle = viewModel::onNetworkToggle,
+            onTurnOnNetwork = viewModel::onTurnOnNetwork,
+        )
+    }
 }
 
 /**
  * Watch address (docs/wallet-ux.md, screen 10) as a pure function of [state]: the address or
  * ENS name and a name, the detection card built from verified code, and Add, enabled only for
- * a verified account. [onRetryLookup] resolves a name again that could not be verified. With two or
- * more networks on, a card per network (docs/networks.md, N10 and N11): an address with no code on
- * all of them is offered on all of them, with [onChooseNetworks] to tick them instead
- * ([onNetworkToggle]); a Safe only where it is one, ticked. A network that is off is listed greyed
- * out, turned on through [onTurnOnNetwork].
+ * a verified account, under the network it was read on. [onRetryLookup] resolves a name again that
+ * could not be verified. With two or more networks on, a card per network (docs/networks.md, N10 and
+ * N11): an address with no code on all of them is offered on all of them, with [onChooseNetworks] to
+ * tick them instead ([onNetworkToggle]); a Safe only where it is one, ticked. A network that is off is listed greyed
+ * out, turned on through [onTurnOnNetwork]. [lightClient] is the strip above it, Detailed view's;
+ * simple mode ([SimpleWatchScreen]) has none, and keeps the blocks behind *Details* ([details]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchScreen(
     state: WatchUiState,
-    lightClient: LightClientItem,
+    lightClient: LightClientItem?,
     onAddressChange: (String) -> Unit,
     onNameChange: (String) -> Unit,
     onAdd: () -> Unit,
@@ -126,6 +154,8 @@ fun WatchScreen(
     onChooseNetworks: () -> Unit = {},
     onNetworkToggle: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val nameField = remember { FocusRequester() }
     Scaffold(
@@ -141,7 +171,7 @@ fun WatchScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -163,7 +193,7 @@ fun WatchScreen(
                     ).next(),
                     keyboardActions = nextTo(nameField),
                 )
-                if (state.canRetryLookup) TextButton(onClick = onRetryLookup) { Text("Try again") }
+                if (state.canRetryLookup) RetryLookupButton(state.retryLookupWaits, onRetryLookup)
                 OutlinedTextField(
                     value = state.name,
                     onValueChange = onNameChange,
@@ -179,7 +209,13 @@ fun WatchScreen(
                     keyboardActions = submitOnDone(state.canAdd, onAdd),
                 )
                 state.noNetwork?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                state.detection?.let { DetectionCard(it) }
+                // The one card names its network, the one Add adds it on: a name may answer on one registry alone.
+                state.detection?.let { detection ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.cardNetwork?.let { NetworkMark(it, Modifier.testTag(WATCH_CARD_NETWORK_TAG)) }
+                        DetectionCard(detection)
+                    }
+                }
                 // With two or more networks on: what each says, ticked where the user chooses (N10, N11).
                 val ticking = state.question == null || state.choosing
                 state.networks.forEach { row ->
@@ -215,6 +251,7 @@ fun WatchScreen(
                 state.question?.takeIf { !state.choosing }
                     ?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (details.isNotEmpty()) HiddenDetails(WATCH_DETAILS_TAG) { details.forEach { Note(it) } }
                 Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.question != null && !state.choosing) {
                         TextButton(onClick = onChooseNetworks, enabled = !state.adding) { Text("Choose networks") }

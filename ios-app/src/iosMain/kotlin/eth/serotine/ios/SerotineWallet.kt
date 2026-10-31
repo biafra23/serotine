@@ -17,7 +17,9 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileInterfaceMode
 import eth.serotine.data.settings.FileSwapVenue
+import eth.serotine.data.swaps.FileWaitingSwaps
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -26,6 +28,7 @@ import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
+import eth.serotine.domain.usecase.FollowInterfaceMode
 import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
@@ -34,6 +37,7 @@ import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -111,6 +115,9 @@ class SerotineWallet {
 
     /** Whether the user turned the Debug tab on, beside the other settings: [debugLog] records only then. */
     private val debugScreen = FileDebugScreen("$dataDir/debug-screen.json")
+
+    /** The view the user chose, simple mode or Detailed view (docs/simple-ui.md), beside the other settings. */
+    private val interfaceMode = FileInterfaceMode("$dataDir/ui-mode.json")
 
     // One engine, one light client per network that is on and needed: FollowNetworks starts with
     // the wallet and runs for the life of the process (docs/networks.md, *The engine host*). The
@@ -197,6 +204,7 @@ class SerotineWallet {
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             staleAnchorConsent = node,
+            networkFreshness = node,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
             transactionInputs = node.transactionInputs,
@@ -225,8 +233,10 @@ class SerotineWallet {
             cowApi = HttpCowApi.create(),
             cowOrders = cowOrders,
             swapVenue = FileSwapVenue("$dataDir/swap-venue.json"),
+            waitingSwaps = FileWaitingSwaps("$dataDir/waiting-swaps.json"),
             debugLog = debugLog,
             debugScreen = debugScreen,
+            interfaceMode = interfaceMode,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.
             screenCaptureDebugSwitch = null,
             networkDemand = networkDemand,
@@ -251,7 +261,7 @@ class SerotineWallet {
         // At launch the app is in the foreground: the work starts with the wallet.
         startForegroundWork()
         // The debug log records while the Debug tab is on, for the life of the process.
-        scope.launch { FollowDebugScreen(debugScreen, debugLog)() }
+        scope.launch { FollowDebugScreen(ObserveDebugTab(debugScreen, interfaceMode), debugLog)() }
         // Each network's light client runs while it is on and needed (docs/networks.md, *The engine
         // host*); following the setting also records each network's default. A failure ends it,
         // never the wallet: the light clients keep their last state.
@@ -259,6 +269,10 @@ class SerotineWallet {
             reportingFailure("following the networks") {
                 FollowNetworks(networkSettings, accounts, networkDemand, node)()
             }
+        }
+        // Values proven on demand in simple mode, at every head in Detailed view (docs/simple-ui.md).
+        scope.launch {
+            reportingFailure("following the view") { FollowInterfaceMode(interfaceMode, node)() }
         }
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {

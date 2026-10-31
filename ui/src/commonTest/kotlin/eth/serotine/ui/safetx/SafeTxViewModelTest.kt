@@ -206,6 +206,7 @@ class SafeTxViewModelTest {
                     heldHere = false,
                     OwnerState.APPROVED,
                     "Approved on chain, verified at block 99",
+                    simpleDetail = "Approved on chain",
                 ),
                 OwnerStateRow(Eip55.format(world.carol), null, heldHere = false, OwnerState.SIGNED, "Signed"),
             ),
@@ -213,6 +214,7 @@ class SafeTxViewModelTest {
         )
         assertEquals("2 of 3 owners must confirm", owners.threshold)
         assertEquals("2 of 2 confirmations", owners.confirmations)
+        assertEquals("Owners checked on chain", owners.simpleVerifiedAt, "simple mode's words, no block")
         assertTrue(state.canSign, "Alice is held here and has not confirmed it")
         assertFalse(state.canApprove, "the confirmations reach the threshold already")
         assertTrue(state.canExecute)
@@ -239,6 +241,12 @@ class SafeTxViewModelTest {
                 listOf(
                     "Through Uniswap's SwapRouter02, its code proven by the light client.",
                     "Returns 0.0402 ETH now, by a verified QuoterV2 quote at block 100: it meets its minimum.",
+                    "Refused by the router after at ${HEAD_TIME + DAY}.",
+                ),
+                // Simple mode's words for the same: no block (docs/simple-ui.md).
+                simpleLines = listOf(
+                    "Through Uniswap's SwapRouter02, its code proven by the light client.",
+                    "Returns 0.0402 ETH now, as checked on chain: it meets its minimum.",
                     "Refused by the router after at ${HEAD_TIME + DAY}.",
                 ),
             ),
@@ -587,6 +595,10 @@ class SafeTxViewModelTest {
         runCurrent()
         val review = viewModel.review
         assertEquals(ReviewKind.APPROVAL, review.kind)
+        assertEquals(
+            "Checked on chain: the Safe's approveHash of this transaction should go through.",
+            review.simpleSimulation,
+        )
         assertEquals(Eip55.format(world.alice.address), review.account)
         assertEquals(FeeLevel.NORMAL, review.fee)
         assertEquals("ETH balance of Alice, which pays the fee", review.balance.what)
@@ -612,6 +624,8 @@ class SafeTxViewModelTest {
         runCurrent()
         val review = viewModel.review
         assertEquals(ReviewKind.EXECUTION, review.kind)
+        assertTrue(review.simpleSimulation.orEmpty().startsWith("Checked on chain: the whole execution"))
+        assertTrue("block" !in review.simpleSimulation.orEmpty())
         assertEquals(Eip55.format(world.alice.address), review.account, "a held owner first")
         // Dave is no owner: from him, Carol's signature alone falls short.
         assertEquals(listOf(Eip55.format(world.alice.address)), review.accounts.map { it.address })
@@ -844,6 +858,29 @@ class SafeTxViewModelTest {
             "Not enough ETH in this account for the most the fee can be. Transactions not mined yet count too.",
             state.message,
         )
+    }
+
+    @Test
+    fun aQuoteThatRevertsIsSaidInSimpleModeWithNoBlockAndOnlyWhileItsMessageStands() = runTest {
+        funded()
+        world.inputs.simulation = Simulation.Reverted(100)
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+
+        viewModel.startApproval()
+        runCurrent()
+        val refused = viewModel.overview
+        assertTrue("block 100" in refused.message.orEmpty(), refused.message)
+        assertEquals("It reverts, checked on chain. Nothing was signed.", refused.simpleMessage)
+
+        // Quoted again, it goes through: the message is cleared, and its simple words with it.
+        world.inputs.simulation = Simulation.Succeeded("", 100)
+        viewModel.startApproval()
+        runCurrent()
+        viewModel.back()
+        runCurrent()
+        val back = viewModel.overview
+        assertEquals(null, back.message)
+        assertEquals(null, back.simpleMessage, "no simple words for a message no longer shown")
     }
 
     @Test
