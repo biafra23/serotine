@@ -952,7 +952,13 @@ is placed (issue #178) in three steps:
    ("ETH — Ether · WETH", "USDC — USDC · USDC.e" on Gnosis Chain, "EUR —
    EURe"). Only a price with a feed pinned on that network, or a pool
    pinned for the fallback (*Prices*), is offered: a token with no price, an
-   added one included, has no rate.
+   added one included, has no rate. A filter above the list narrows it as it
+   is typed into (owner's request, 2026-10-29, #207): a price stays when its
+   symbol or one of the names it prices holds the text, ignoring case ("usdc.e"
+   keeps "USDC — USDC · USDC.e"); a greyed-out token matches by its symbol and
+   stays greyed out. Nothing matched says "No price matches “…”". The filter
+   reads only the list on screen, so it starts no light client, and it empties
+   when another network is chosen.
 3. **The currency**: the display currency first, which the widget then
    follows as the screens have it (screen 19; USD where that is the price
    itself, none is chosen, or the network does not offer the one stored),

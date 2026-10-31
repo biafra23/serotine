@@ -31,7 +31,8 @@ import kotlinx.coroutines.launch
  * The exchange-rate widget's configuration (docs/wallet-ux.md, *Home-screen widget*): when a widget
  * is placed, the launcher opens this to ask what it shows, one step at a time
  * ([SerotineApplication.widgetPairStep]): the network, among those that are on and have accounts,
- * then a price on it (its native currency's, or one its tokens are priced by), then the currency it
+ * then a price on it (its native currency's, or one its tokens are priced by; a filter above them
+ * narrows them as it is typed into), then the currency it
  * is shown in, or the display currency. The steps chosen so far outlive a rotation. The choice is
  * kept for that widget alone ([RateWidgetPairs]); another one means placing another widget.
  * Cancelled, or with nothing to choose, the widget is not placed. Exported, as the launcher, another
@@ -58,6 +59,8 @@ class RateWidgetConfigureActivity : ComponentActivity() {
             // What is chosen so far, by chain id and price id: null until it is.
             var chainId by rememberSaveable { mutableStateOf<Long?>(null) }
             var baseId by rememberSaveable { mutableStateOf<String?>(null) }
+            // The prices' filter, as typed; emptied with each network chosen or left.
+            var query by rememberSaveable { mutableStateOf("") }
             val network = chainId?.let(Network::ofChainId)
             val base = baseId?.let { runCatching { PriceId(it) }.getOrNull() }
             // The step restored after a rotation shows at once, with nothing to choose until it is read.
@@ -72,18 +75,27 @@ class RateWidgetConfigureActivity : ComponentActivity() {
             }
             SerotineTheme {
                 WidgetPairScreen(
-                    state,
+                    (state as? WidgetPairUiState.Bases)?.copy(query = query) ?: state,
                     onNetwork = {
                         if (current) {
                             chainId = it
                             baseId = null
+                            query = ""
                         }
                     },
                     onBase = { if (current) baseId = it },
                     onQuote = { code ->
                         if (current && network != null && base != null) choose(app, id, network, base, code)
                     },
-                    onBack = { if (baseId != null) baseId = null else chainId = null },
+                    onFilter = { query = it },
+                    onBack = {
+                        if (baseId != null) {
+                            baseId = null
+                        } else {
+                            chainId = null
+                            query = ""
+                        }
+                    },
                     onCancel = ::finish,
                 )
             }

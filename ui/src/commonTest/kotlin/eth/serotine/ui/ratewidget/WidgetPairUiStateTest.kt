@@ -101,6 +101,31 @@ class WidgetPairUiStateTest {
     }
 
     @Test
+    fun theFilterKeepsThePricesWhoseSymbolOrANameHoldsItAndSaysSoWhenNoneDoes() {
+        val bases = WidgetPairUiState.Bases(
+            ethereum,
+            listOf(
+                WidgetBaseChoice("ETH", "Ether · WETH"),
+                WidgetBaseChoice("USDC", "USDC · USDC.e"),
+                WidgetBaseChoice("COW", "COW"),
+                WidgetBaseChoice("GNO", "No price", noPriceReason("GNO", "Ethereum")),
+            ),
+        )
+
+        assertEquals(bases.choices, bases.shown, "nothing typed: every one")
+        assertEquals(bases.choices, bases.copy(query = "  ").shown, "only spaces: every one")
+        assertEquals(listOf("ETH"), bases.copy(query = "weth").shown.map { it.id }, "a name, any case")
+        assertEquals(listOf("USDC"), bases.copy(query = " usdc.e ").shown.map { it.id }, "trimmed")
+        // A greyed-out one matches by its symbol, and stays greyed out; never by its "No price".
+        assertEquals(listOf("GNO"), bases.copy(query = "gn").shown.map { it.id })
+        assertEquals(emptyList(), bases.copy(query = "price").shown)
+        assertEquals(null, bases.copy(query = "c").noMatch)
+        assertEquals("No price matches “xyz”", bases.copy(query = " xyz").noMatch)
+        // Nothing read yet is no match of anything: the step is still loading.
+        assertEquals(null, WidgetPairUiState.Bases(ethereum, emptyList(), query = "xyz").noMatch)
+    }
+
+    @Test
     fun whileAStepIsReadItIsShownWithNothingToChoose() {
         assertEquals(WidgetPairUiState.Networks(emptyList()), widgetPairLoading(null, null))
         assertEquals(WidgetPairUiState.Bases(ethereum, emptyList()), widgetPairLoading(Network.ETHEREUM, null))
