@@ -206,7 +206,9 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - One older answer is shown, labelled as one (owner's request, 2026-10-19):
   a balance proved earlier stays on screen, dated, out of totals, never acted
   on. Past the weak-subjectivity window only on the user's word (owner's
-  request, 2026-10-24).
+  request, 2026-10-24). In simple mode, on a network without block access
+  lists, a balance is read on demand and counts in totals with its age for
+  up to an hour (owner's decisions, 2026-10-26).
 - A Safe transaction that sets a fallback handler other than the pinned one,
   or none (owner ruling, 2026-10-18, #63), or enables a module (owner ruling,
   2026-10-18, on #54), is shown and never signed, approved or executed.

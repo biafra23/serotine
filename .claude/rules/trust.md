@@ -30,6 +30,15 @@ the contract for keys.
   read at, a balance the light client proved earlier (in this run, or kept
   across a restart) stays on screen: dated, marked as possibly changed since,
   left out of totals and never acted on.
+- **In simple mode a value may be read a while ago, and says how long**
+  (owner's decisions, 2026-10-26; docs/simple-ui.md). On a network without
+  block access lists (EIP-7928), simple mode proves a balance, and the price
+  it is valued at, when its screen opens and on pull-to-refresh, not at every
+  head. While the light client verifies, such a balance is shown with its age
+  and counts in totals, at the price read with it, for up to an hour. Older,
+  it is dimmed and left out of totals, as above.
+  Detailed view reads at every head, as before. A quote, a review and a
+  signature always read fresh state, in either view.
 
 ## Past the weak-subjectivity window only on the user's word
 

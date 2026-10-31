@@ -10,6 +10,7 @@ import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityRow
 import eth.serotine.ui.activity.ActivityState
 import eth.serotine.ui.activity.ActivityUiState
+import eth.serotine.ui.activity.WaitingStep
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
@@ -124,6 +125,13 @@ private val treasury = AccountDetailUiState.Ready(
             ),
         ),
     ),
+)
+
+/** A swap of 100 USDC for LINK whose step 2 waits, as its card in the Activity says it. */
+internal val WAITING_SWAP = WaitingStep(
+    title = "Swap 100 USDC → LINK",
+    message = "Step 1 done. Step 2 is waiting for you.",
+    sell = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
 )
 
 private const val ACTIVITY_COVERAGE = "Transactions sent from this device. Transactions received, and those sent " +
@@ -327,7 +335,7 @@ private fun AccountDetailPreview(
     SerotineTheme(darkTheme = darkTheme) {
         AccountDetailScreen(
             state = state,
-            lightClient = lightClient,
+            chrome = AccountChrome.Strip(lightClient),
             onBack = {},
             onSend = {},
             onSwap = {},
@@ -510,6 +518,27 @@ private fun AccountDetailActivityPreview() = AccountDetailPreview(
     daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
 )
 
+/** A swap whose step 2 waits: its card above the Activity, the same in both views. */
+@Preview
+@Composable
+private fun AccountDetailWaitingSwapPreview() = AccountDetailPreview(
+    daily.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE, waiting = listOf(WAITING_SWAP)),
+    ),
+)
+
+/** The same card, in the dark theme. */
+@Preview
+@Composable
+private fun AccountDetailWaitingSwapDarkPreview() = AccountDetailPreview(
+    daily.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE, waiting = listOf(WAITING_SWAP)),
+    ),
+    darkTheme = true,
+)
+
 @Preview
 @Composable
 private fun AccountDetailActivityDarkPreview() = AccountDetailPreview(
@@ -665,6 +694,8 @@ internal val accountDetailScreenPreviews: List<@Composable () -> Unit> = listOf(
     { AccountDetailEnsNameMovedPreview() },
     { AccountDetailActivityPreview() },
     { AccountDetailActivityDarkPreview() },
+    { AccountDetailWaitingSwapPreview() },
+    { AccountDetailWaitingSwapDarkPreview() },
     { AccountDetailActivityEmptyPreview() },
     { AccountDetailActivityLoadingPreview() },
     { AccountDetailActivityUnavailablePreview() },

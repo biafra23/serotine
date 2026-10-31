@@ -81,7 +81,7 @@ class VerifiedSafeApprovalsTest {
         answer(CallOutcome.Returned("0".repeat(63) + "1", 120))
         chain.snapshot = running(phase = EngineSnapshot.Phase.SYNCING)
         assertEquals(
-            ApprovalReading.Unavailable(ReadUnavailable.UNPROVEN),
+            ApprovalReading.Unavailable(ReadUnavailable.SYNCING),
             approvals().approval(Network.SEPOLIA, safe, owner, hash),
         )
 

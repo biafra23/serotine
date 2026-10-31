@@ -212,6 +212,7 @@ class AddTokenViewModel(
                     ReadUnavailable.NETWORK_OFF ->
                         "The network's light client is not running, so the contract cannot be read."
                     ReadUnavailable.STALE_ANCHOR -> "The light client refuses to sync, so the contract cannot be read."
+                    ReadUnavailable.SYNCING -> "The light client is still syncing, so the contract cannot be read yet."
                     ReadUnavailable.UNPROVEN -> "The contract's answers could not be verified this time. Serotine keeps trying."
                     ReadUnavailable.REFUSED -> "The light client on this device cannot read this contract."
                 },
@@ -222,6 +223,8 @@ class AddTokenViewModel(
                 name = displayName(reading.name),
                 decimals = reading.decimals,
                 checkedAt = reading.blockNumber?.let { "Read from the contract at block ${grouped(it)}" }
+                    ?: "Read from the contract",
+                simpleCheckedAt = reading.blockNumber?.let { "Read from the contract, checked on chain" }
                     ?: "Read from the contract",
                 warning = known.tokens.firstOrNull { it.token.symbol.equals(reading.symbol, ignoreCase = true) }
                     ?.let {

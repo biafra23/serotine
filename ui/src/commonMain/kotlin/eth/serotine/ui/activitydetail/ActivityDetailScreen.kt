@@ -35,17 +35,23 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.activity.statusColor
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.SerotineIcons
-import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.UnderLightClientStripIfAny
+import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of each field of the detail, for UI tests. */
 const val ACTIVITY_DETAIL_FIELD_TAG = "activity-detail-field"
+
+/** Test tag of the *Details* that keep the block in simple mode, for UI tests. */
+const val ACTIVITY_DETAIL_DETAILS_TAG = "activity-detail-details"
 
 /**
  * Binds [ActivityDetailScreen] to its ViewModel; Copy is done here, on the platform's clipboard.
@@ -63,16 +69,29 @@ fun ActivityDetailRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strip by lightClient.collectAsStateWithLifecycle()
-    ActivityDetailScreen(
-        state,
-        strip,
-        onBack = onBack,
-        onCopy = rememberCopyText(),
-        onStatus = onStatus,
-        onAddToken = onAddToken,
-        modifier = modifier,
-    )
+    val copy = rememberCopyText()
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleActivityDetailScreen(
+            state,
+            onBack,
+            copy,
+            onStatus,
+            onAddToken,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
+        InterfaceMode.DETAILED -> ActivityDetailScreen(
+            state,
+            lightClient.collectAsStateWithLifecycle().value,
+            onBack = onBack,
+            onCopy = copy,
+            onStatus = onStatus,
+            onAddToken = onAddToken,
+            modifier = modifier,
+        )
+    }
 }
 
 /**
@@ -80,17 +99,21 @@ fun ActivityDetailRoute(
  * of [state]: what it did and how it ended, as its row says, then every address and hash it
  * concerns in full, each with Copy ([onCopy]); Status ([onStatus]) for a transaction sent from
  * here, and Add token ([onAddToken]) for an ERC-20 contract the wallet does not list.
+ * [lightClient] is the strip above it, Detailed view's; simple mode ([SimpleActivityDetailScreen])
+ * has none, and keeps the block behind *Details* ([details]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityDetailScreen(
     state: ActivityDetailUiState,
-    lightClient: LightClientItem,
+    lightClient: LightClientItem?,
     onBack: () -> Unit,
     onCopy: (String) -> Unit,
     onStatus: (String) -> Unit,
     onAddToken: (String) -> Unit,
     modifier: Modifier = Modifier,
+    details: List<DetailField> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     Scaffold(
         modifier = modifier,
@@ -110,8 +133,8 @@ fun ActivityDetailScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
-            DetailContent(state, onCopy, onStatus, onAddToken)
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
+            DetailContent(state, onCopy, onStatus, onAddToken, details)
         }
     }
 }
@@ -123,6 +146,7 @@ private fun BoxScope.DetailContent(
     onCopy: (String) -> Unit,
     onStatus: (String) -> Unit,
     onAddToken: (String) -> Unit,
+    details: List<DetailField>,
 ) {
     when (state) {
         is ActivityDetailUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -165,6 +189,9 @@ private fun BoxScope.DetailContent(
             }
             HorizontalDivider()
             state.fields.forEach { DetailLine(it, onCopy) }
+            if (details.isNotEmpty()) {
+                HiddenDetails(ACTIVITY_DETAIL_DETAILS_TAG) { details.forEach { DetailLine(it, onCopy) } }
+            }
         }
     }
 }
@@ -178,7 +205,7 @@ private fun DetailLine(field: DetailField, onCopy: (String) -> Unit) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (field.kind == DetailKind.TEXT) {
+        if (field.kind == DetailKind.TEXT || field.kind == DetailKind.BLOCK) {
             Text(field.value, style = MaterialTheme.typography.bodyMedium)
             return@Column
         }

@@ -29,10 +29,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.LightClientHealthDot
 import eth.serotine.ui.components.StaleAnchorBanner
 import eth.serotine.ui.components.StaleAnchorDialog
 import eth.serotine.ui.components.StaleAnchorWarning
+import eth.serotine.ui.mode.LocalInterfaceMode
 
 /** Test tag of the app's version line, for UI tests. */
 const val SETTINGS_VERSION_TAG = "settings-version"
@@ -40,13 +42,16 @@ const val SETTINGS_VERSION_TAG = "settings-version"
 /** Test tag of the debug build's screen-recording row, for UI tests. */
 const val SETTINGS_SCREEN_CAPTURE_TAG = "settings-screen-capture"
 
+/** Test tag of Detailed view's row, for UI tests. */
+const val SETTINGS_DETAILED_VIEW_TAG = "settings-detailed-view"
+
 /** Test tag of the Debug tab's row, for UI tests. */
 const val SETTINGS_DEBUG_SCREEN_TAG = "settings-debug-screen"
 
 /** Test tag of a network's row, followed by its chain id, for UI tests. */
 const val SETTINGS_NETWORK_TAG = "settings-network-"
 
-/** Binds [SettingsScreen] to its ViewModel. */
+/** Binds [SettingsScreen], or in simple mode [SimpleSettingsScreen], to its ViewModel. */
 @Composable
 fun SettingsRoute(
     viewModel: SettingsViewModel,
@@ -56,25 +61,45 @@ fun SettingsRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    SettingsScreen(
-        state,
-        onCurrency,
-        onTokens,
-        onSecurity,
-        viewModel::allowScreenCapture,
-        viewModel::showDebugScreen,
-        modifier,
-        onNetworkChange = viewModel::switchNetwork,
-        onConfirmTurnOff = viewModel::confirmTurnOff,
-        onCancelTurnOff = viewModel::cancelTurnOff,
-        onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
-    )
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleSettingsScreen(
+            state,
+            onCurrency,
+            onTokens,
+            onSecurity,
+            viewModel::allowScreenCapture,
+            viewModel::showDebugScreen,
+            modifier,
+            onNetworkChange = viewModel::switchNetwork,
+            onConfirmTurnOff = viewModel::confirmTurnOff,
+            onCancelTurnOff = viewModel::cancelTurnOff,
+            onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onDetailedViewChange = viewModel::showDetailedView,
+        )
+        InterfaceMode.DETAILED -> SettingsScreen(
+            state,
+            onCurrency,
+            onTokens,
+            onSecurity,
+            viewModel::allowScreenCapture,
+            viewModel::showDebugScreen,
+            modifier,
+            onNetworkChange = viewModel::switchNetwork,
+            onConfirmTurnOff = viewModel::confirmTurnOff,
+            onCancelTurnOff = viewModel::cancelTurnOff,
+            onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onDetailedViewChange = viewModel::showDetailedView,
+        )
+    }
 }
 
 /**
  * The Settings tab as a pure function of [state]; the display currency opens through
  * [onCurrency], Tokens through [onTokens], and Security (the wallet password, biometric unlock)
- * through [onSecurity]. A switch shows the Debug tab through [onDebugScreenChange]. In a debug
+ * through [onSecurity]. A switch draws the screens in Detailed view through
+ * [onDetailedViewChange] (docs/simple-ui.md, T1), and, where the state offers it (Detailed view),
+ * another shows the Debug tab through [onDebugScreenChange]. In a debug
  * build, a switch allows screen recordings of the protected screens through [onScreenCaptureChange].
  * Each network's switch turns it on or off through [onNetworkChange] (its chain id, and whether
  * on); the confirmation before a network with accounts is turned off answers through
@@ -94,6 +119,7 @@ fun SettingsScreen(
     onConfirmTurnOff: () -> Unit = {},
     onCancelTurnOff: () -> Unit = {},
     onSyncPastStaleAnchor: (chainId: Long) -> Unit = {},
+    onDetailedViewChange: (Boolean) -> Unit = {},
 ) {
     var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
     asking?.let { warning ->
@@ -175,26 +201,45 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Section("Developer")
+            Section("Advanced")
             ListItem(
                 modifier = Modifier
-                    .toggleable(value = state.debugScreen, role = Role.Switch, onValueChange = onDebugScreenChange)
-                    .testTag(SETTINGS_DEBUG_SCREEN_TAG),
-                headlineContent = { Text("Debug tab") },
+                    .toggleable(value = state.detailedView, role = Role.Switch, onValueChange = onDetailedViewChange)
+                    .testTag(SETTINGS_DETAILED_VIEW_TAG),
+                headlineContent = { Text("Detailed view") },
                 supportingContent = {
                     Column {
-                        Text(
-                            "Adds a tab with a log of the light client's requests, kept in memory on this device " +
-                                "only. Turning it off empties the log.",
-                        )
-                        if (state.debugScreenNotSaved) {
+                        Text("Show the light client's state, blocks and proofs on every screen.")
+                        state.detailedViewNote?.let { Text(it) }
+                        if (state.detailedViewNotSaved) {
                             Text("The change could not be saved.", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 },
                 // The row is the toggle: the switch only shows its state.
-                trailingContent = { Switch(checked = state.debugScreen, onCheckedChange = null) },
+                trailingContent = { Switch(checked = state.detailedView, onCheckedChange = null) },
             )
+            state.debugScreen?.let { debugScreen ->
+                ListItem(
+                    modifier = Modifier
+                        .toggleable(value = debugScreen, role = Role.Switch, onValueChange = onDebugScreenChange)
+                        .testTag(SETTINGS_DEBUG_SCREEN_TAG),
+                    headlineContent = { Text("Debug tab") },
+                    supportingContent = {
+                        Column {
+                            Text(
+                                "Adds a tab with a log of the light client's requests, kept in memory on this " +
+                                    "device only. Turning it off empties the log.",
+                            )
+                            if (state.debugScreenNotSaved) {
+                                Text("The change could not be saved.", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    },
+                    // The row is the toggle: the switch only shows its state.
+                    trailingContent = { Switch(checked = debugScreen, onCheckedChange = null) },
+                )
+            }
             state.screenCaptureAllowed?.let { allowed ->
                 Section("Debug build")
                 ListItem(

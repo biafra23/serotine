@@ -22,6 +22,7 @@ private val account = WatchUiState(
     address = SAVINGS,
     name = "Savings",
     detection = Detection.Account(SAVINGS, CHECKED, delegate = null),
+    cardNetwork = NetworkLabel(1, "Ethereum", testnet = false),
 )
 
 @Composable
@@ -162,6 +163,32 @@ private fun WatchResolvingNamePreview() =
         WatchUiState(address = "savings-example.eth", addressNote = "Resolving the name with verified calls…"),
     )
 
+/** A name on Sepolia's registry alone: each registry's answer named, the card on Sepolia alone. */
+@Preview
+@Composable
+private fun WatchNameOnOneRegistryPreview() = WatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        addressNote = "On Ethereum: no address\nOn Sepolia's test registry: resolves to $SAVINGS, verified at " +
+            "finalized block 8,412,240",
+        cardNetwork = NetworkLabel(11_155_111, "Sepolia", testnet = true),
+    ),
+)
+
+/** A name found on Ethereum's registry and not verified on Sepolia's: each said, Try again for Sepolia's. */
+@Preview
+@Composable
+private fun WatchNameUnverifiedOnOneRegistryPreview() = WatchPreview(
+    account.copy(
+        address = "savings-example.eth",
+        name = "",
+        addressNote = "On Ethereum: resolves to $SAVINGS, verified at finalized block 8,412,240\nOn Sepolia's test " +
+            "registry: the name could not be resolved with verified calls this time.",
+        canRetryLookup = true,
+        nameDefault = "savings-example.eth",
+    ),
+)
+
 @Preview
 @Composable
 private fun WatchNameResolvedPreview() = WatchPreview(
@@ -294,6 +321,8 @@ internal val watchScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WatchNotSavedPreview() },
     { WatchResolvingNamePreview() },
     { WatchNameResolvedPreview() },
+    { WatchNameOnOneRegistryPreview() },
+    { WatchNameUnverifiedOnOneRegistryPreview() },
     { WatchNameMovedPreview() },
     { WatchNameUnavailablePreview() },
     { WatchNameResolvedNoNamePreview() },

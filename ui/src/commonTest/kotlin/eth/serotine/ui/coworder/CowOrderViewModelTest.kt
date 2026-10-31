@@ -196,6 +196,7 @@ class CowOrderViewModelTest {
         assertEquals(OrderState.FILLED, shown.state)
         assertEquals("0.0161 ETH", shown.bought)
         assertTrue(shown.end.startsWith("Filled in block 9,412,100: it bought 0.0161 ETH"), shown.end)
+        assertEquals("Filled: it bought 0.0161 ETH, as this account's verified logs say.", shown.simpleEnd, "no block")
         assertNull(shown.cow)
         assertTrue(cowApi.lives.isEmpty(), "CoW is not asked of an order whose end is proven")
         assertTrue(!shown.canCancel)

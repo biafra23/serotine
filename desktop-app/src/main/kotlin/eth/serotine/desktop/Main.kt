@@ -25,7 +25,9 @@ import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
+import eth.serotine.data.settings.FileInterfaceMode
 import eth.serotine.data.settings.FileSwapVenue
+import eth.serotine.data.swaps.FileWaitingSwaps
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -34,6 +36,7 @@ import eth.serotine.data.upgrade.FileKnownUpgradeStore
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.FollowAccountLogs
 import eth.serotine.domain.usecase.FollowDebugScreen
+import eth.serotine.domain.usecase.FollowInterfaceMode
 import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
@@ -42,6 +45,7 @@ import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ProveCowOrderEnds
 import eth.serotine.domain.usecase.UpgradeNotices
 import eth.serotine.domain.usecase.WatchAddress
@@ -145,6 +149,8 @@ private fun openWallet(dataDir: File) {
     // user has that tab turned on (debugScreen, followed below).
     val apiLog = MemoryDebugLog()
     val debugScreen = FileDebugScreen(dataDir.resolve("debug-screen.json").path)
+    // The view the user chose, simple mode or Detailed view (docs/simple-ui.md); the Debug tab is the latter's.
+    val interfaceMode = FileInterfaceMode(dataDir.resolve("ui-mode.json").path)
     // One engine, one light client per network that is on and needed (FollowNetworks, below).
     val node = MyotisHost.start(
         dataDir.resolve("myotis"),
@@ -189,6 +195,16 @@ private fun openWallet(dataDir: File) {
                 System.err.println("Serotine: following the networks stopped: ${e::class.simpleName}")
             }
         }
+        LaunchedEffect(Unit) {
+            // Values proven on demand in simple mode, at every head in Detailed view (docs/simple-ui.md).
+            try {
+                FollowInterfaceMode(interfaceMode, node)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Serotine: following the view stopped: ${e::class.simpleName}")
+            }
+        }
         // Each network's upgrade reports, while its light client runs (a network that is off or
         // idle reports none).
         Network.entries.forEach { network ->
@@ -207,7 +223,7 @@ private fun openWallet(dataDir: File) {
         LaunchedEffect(Unit) {
             // The debug log records while the Debug tab is on. A failure ends it, never the wallet.
             try {
-                FollowDebugScreen(debugScreen, apiLog)()
+                FollowDebugScreen(ObserveDebugTab(debugScreen, interfaceMode), apiLog)()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -307,6 +323,7 @@ private fun openWallet(dataDir: File) {
                 addressKinds = node.addressKinds,
                 lightClient = node.lightClient,
                 staleAnchorConsent = node,
+                networkFreshness = node,
                 networkUpgrades = node.networkUpgrades,
                 knownUpgrades = knownUpgrades,
                 transactionInputs = node.transactionInputs,
@@ -333,8 +350,10 @@ private fun openWallet(dataDir: File) {
                 cowApi = HttpCowApi.create(),
                 cowOrders = cowOrders,
                 swapVenue = FileSwapVenue(dataDir.resolve("swap-venue.json").path),
+                waitingSwaps = FileWaitingSwaps(dataDir.resolve("waiting-swaps.json").path),
                 debugLog = apiLog,
                 debugScreen = debugScreen,
+                interfaceMode = interfaceMode,
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.
                 screenCaptureDebugSwitch = null,
                 networkDemand = networkDemand,

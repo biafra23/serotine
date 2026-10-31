@@ -27,7 +27,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -89,9 +92,7 @@ internal fun TransferFormFields(
     Heading("To")
     RecipientField(form, onToChange, amountField)
     form.recipient?.let { RecipientCard(it) }
-    if (form.canRetryLookup) {
-        TextButton(onClick = onRetryLookup) { Text("Try again") }
-    }
+    if (form.canRetryLookup) RetryLookupButton(form.retryLookupWaits, onRetryLookup)
     if (form.accounts.isNotEmpty()) {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -157,7 +158,9 @@ internal fun AssetChoiceRow(
 @Composable
 internal fun AssetBalanceLines(asset: AssetChoice) {
     Text(
-        asset.verifiedAt?.let { "${asset.balance} · verified at $it" } ?: asset.balance,
+        asset.verifiedAt?.let { "${asset.balance} · verified at $it" }
+            ?: asset.age?.let { "${asset.balance} · $it" }
+            ?: asset.balance,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -290,4 +293,23 @@ internal fun FeeChoice(fee: FeeLevel, enabled: Boolean, onFeeChange: (FeeLevel) 
             )
         }
     }
+}
+
+/**
+ * Try again for a name that could not be resolved: [onRetry], or, while [waits] says why asking by
+ * hand changes nothing (the light client is still syncing), greyed out, and a tap says so (owner
+ * ruling, 2026-10-18, #55).
+ */
+@Composable
+internal fun RetryLookupButton(waits: String?, onRetry: () -> Unit) {
+    // Asked about this reason alone: once it is gone, a later one is never shown unasked.
+    var asking by remember(waits) { mutableStateOf(false) }
+    if (waits == null) {
+        TextButton(onClick = onRetry) { Text("Try again") }
+        return
+    }
+    TextButton(onClick = { asking = true }, modifier = Modifier.unavailable(true)) {
+        Text("Try again", color = Unavailable.contentColor())
+    }
+    if (asking) UnavailableDialog("Try again", waits, onDismiss = { asking = false })
 }

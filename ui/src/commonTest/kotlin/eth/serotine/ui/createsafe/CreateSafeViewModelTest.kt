@@ -363,6 +363,7 @@ class CreateSafeViewModelTest {
                 "friend.eth",
                 "Resolved from friend.eth at finalized block 9,411,900",
                 true,
+                simpleNote = "Resolved from friend.eth, checked on chain",
             ),
             viewModel.owners.typed.single(),
         )
@@ -450,6 +451,9 @@ class CreateSafeViewModelTest {
             quote.balance,
         )
         assertTrue("returns this address, which held no code at block 9,412,118" in review.prediction)
+        // Simple mode's words for the same: no block (docs/simple-ui.md).
+        assertTrue("block" !in review.simplePrediction.orEmpty() && review.simplePrediction != null)
+        assertTrue("block" !in quote.simpleSimulation, quote.simpleSimulation)
         assertNull(review.error)
     }
 

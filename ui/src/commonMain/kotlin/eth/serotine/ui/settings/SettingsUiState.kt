@@ -7,8 +7,11 @@ import eth.serotine.ui.components.StaleAnchorWarning
  * Everything the Settings screen renders (docs/wallet-ux.md, screen 18; docs/networks.md, N16),
  * as far as the wallet has settings yet: the display [currency] ("EUR"), the [tokens] it knows
  * ("3 built in · 1 added"), the [networks] with their switches and light clients, whether the
- * Debug tab is on ([debugScreen]; [debugScreenNotSaved] when the last switch of it could not be
- * saved), and the app's [version]. The security settings join it with the features they belong to.
+ * screens are in Detailed view ([detailedView], docs/simple-ui.md; [detailedViewNotSaved] when
+ * the last switch of it could not be saved; [detailedViewNote], what turning it off does beyond
+ * the screens, null when nothing), whether the Debug tab is on ([debugScreen], null in
+ * simple mode, where the tab and its switch are not offered; [debugScreenNotSaved] likewise),
+ * and the app's [version]. The security settings join it with the features they belong to.
  * [turningOff] is the confirmation asked before a network with accounts is turned off (N20), null
  * while none is asked.
  *
@@ -22,8 +25,11 @@ data class SettingsUiState(
     val tokens: String = "",
     val currency: String = "",
     val screenCaptureAllowed: Boolean? = null,
-    val debugScreen: Boolean = false,
+    val debugScreen: Boolean? = null,
     val debugScreenNotSaved: Boolean = false,
+    val detailedView: Boolean = false,
+    val detailedViewNotSaved: Boolean = false,
+    val detailedViewNote: String? = null,
     val turningOff: TurnOffConfirmation? = null,
 )
 
@@ -34,7 +40,9 @@ data class SettingsUiState(
  * of it could not be saved. [chainId] names the network to the switch; [testnet] marks Sepolia.
  * [staleAnchor] warns that its light client refuses a checkpoint past the weak-subjectivity
  * window, with the way to catch up anyway (owner's request, 2026-10-24), whether or not it has
- * accounts: a screen's hold (Watch, Add token) runs it too.
+ * accounts: a screen's hold (Watch, Add token) runs it too. [simpleLine] is what simple mode says
+ * instead of [line], with no block number (docs/simple-ui.md, T1): "Up to date", "Test network ·
+ * live", "Catching up…", "Can't check right now", "Off".
  */
 data class NetworkRow(
     val chainId: Long,
@@ -45,6 +53,7 @@ data class NetworkRow(
     val testnet: Boolean = false,
     val notSaved: Boolean = false,
     val staleAnchor: StaleAnchorWarning? = null,
+    val simpleLine: String = line,
 )
 
 /**

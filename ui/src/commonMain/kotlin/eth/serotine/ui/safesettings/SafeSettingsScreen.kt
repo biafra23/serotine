@@ -53,10 +53,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.CHECKING_SAFE
 import eth.serotine.ui.components.FromLine
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.Note
 import eth.serotine.ui.components.OwnerChoices
@@ -65,10 +67,11 @@ import eth.serotine.ui.components.SafeTxActionCard
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
-import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.KeepScreenOn
 import eth.serotine.ui.platform.rememberCopyText
 import eth.serotine.ui.platform.rememberShareText
@@ -96,6 +99,9 @@ const val SETTINGS_PASSWORD_TAG = "safe-settings-password"
 /** Test tag of the Sign and queue button, for UI tests. */
 const val SETTINGS_SIGN_TAG = "safe-settings-sign"
 
+/** Test tag of the *Details* that keep the blocks in simple mode, for UI tests. */
+const val SETTINGS_DETAILS_TAG = "safe-settings-details"
+
 /**
  * Binds [SafeSettingsScreen] to its ViewModel. A change signed and queued ends the screen through
  * [onProposed] with its Safe transaction hash; the screen stopping being shown becomes
@@ -113,7 +119,6 @@ fun SafeSettingsRoute(
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
-    val strip by lightClient.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val proposed = (state as? SafeSettingsUiState.Proposed)?.hash
@@ -121,10 +126,8 @@ fun SafeSettingsRoute(
     LaunchedEffect(proposed) {
         if (proposed != null) currentOnProposed(proposed)
     }
-    SafeSettingsScreen(
-        state = state,
-        lightClient = strip,
-        actions = SafeSettingsActions(
+    val actions = remember(viewModel) {
+        SafeSettingsActions(
             onAddOwner = viewModel::onAddOwner,
             onReplaceOwner = viewModel::onReplaceOwner,
             onRemoveOwner = viewModel::onRemoveOwner,
@@ -144,12 +147,32 @@ fun SafeSettingsRoute(
             onSignWithBiometrics = viewModel::signWithBiometrics,
             onDropUnsaved = viewModel::dropUnsaved,
             onKeepUnsaved = viewModel::keepUnsaved,
-        ),
-        onBack = onBack,
-        onCopy = rememberCopyText(),
-        onShareText = rememberShareText(),
-        modifier = modifier,
-    )
+        )
+    }
+    val copy = rememberCopyText()
+    val share = rememberShareText()
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleSafeSettingsScreen(
+            state,
+            actions,
+            onBack,
+            copy,
+            share,
+            modifier,
+            syncLine = lightClient.collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
+        InterfaceMode.DETAILED -> SafeSettingsScreen(
+            state = state,
+            lightClient = lightClient.collectAsStateWithLifecycle().value,
+            actions = actions,
+            onBack = onBack,
+            onCopy = copy,
+            onShareText = share,
+            modifier = modifier,
+        )
+    }
 }
 
 /**
@@ -192,17 +215,21 @@ class SafeSettingsActions(
  * review takes the wallet password the window is kept out of screen capture where the platform
  * allows. A request signed that the queue could not keep is shared from the review: [onCopy] puts
  * its text on the clipboard, [onShareText] hands it to the share sheet (null where there is none).
+ * [lightClient] is the strip above it, Detailed view's; simple mode ([SimpleSafeSettingsScreen]) has
+ * none, and keeps the blocks behind *Details* ([details]).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun SafeSettingsScreen(
     state: SafeSettingsUiState,
-    lightClient: LightClientItem,
+    lightClient: LightClientItem?,
     actions: SafeSettingsActions,
     onBack: () -> Unit,
     onCopy: (String) -> Unit = {},
     onShareText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? SafeSettingsUiState.Review
     val edit = state as? SafeSettingsUiState.Edit
@@ -263,7 +290,7 @@ fun SafeSettingsScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is SafeSettingsUiState.Loading, is SafeSettingsUiState.Proposed ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -272,16 +299,16 @@ fun SafeSettingsScreen(
                     Modifier.align(Alignment.Center).padding(24.dp),
                     textAlign = TextAlign.Center,
                 )
-                is SafeSettingsUiState.Overview -> OverviewContent(state, actions)
-                is SafeSettingsUiState.Edit -> FormContent(state, actions)
-                is SafeSettingsUiState.Review -> ReviewContent(state, actions, onCopy, onShareText)
+                is SafeSettingsUiState.Overview -> OverviewContent(state, actions, details)
+                is SafeSettingsUiState.Edit -> FormContent(state, actions, details)
+                is SafeSettingsUiState.Review -> ReviewContent(state, actions, onCopy, onShareText, details)
             }
         }
     }
 }
 
 @Composable
-private fun OverviewContent(state: SafeSettingsUiState.Overview, actions: SafeSettingsActions) {
+private fun OverviewContent(state: SafeSettingsUiState.Overview, actions: SafeSettingsActions, details: List<String>) {
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
     // A change runs when it can be proposed; otherwise the tap says why ([reason]).
@@ -398,11 +425,12 @@ private fun OverviewContent(state: SafeSettingsUiState.Overview, actions: SafeSe
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (details.isNotEmpty()) HiddenDetails(SETTINGS_DETAILS_TAG) { details.forEach { Note(it) } }
     }
 }
 
 @Composable
-private fun FormContent(state: SafeSettingsUiState.Edit, actions: SafeSettingsActions) {
+private fun FormContent(state: SafeSettingsUiState.Edit, actions: SafeSettingsActions, details: List<String>) {
     val form = state.form
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -482,6 +510,7 @@ private fun FormContent(state: SafeSettingsUiState.Edit, actions: SafeSettingsAc
         form.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         form.problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (details.isNotEmpty()) HiddenDetails(SETTINGS_DETAILS_TAG) { details.forEach { Note(it) } }
         FilledTonalButton(
             onClick = actions.onReview,
             enabled = form.canReview,
@@ -504,6 +533,7 @@ private fun ReviewContent(
     actions: SafeSettingsActions,
     onCopy: (String) -> Unit,
     onShareText: ((String) -> Unit)?,
+    details: List<String>,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -518,6 +548,7 @@ private fun ReviewContent(
         state.queued?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         state.changesQueued?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Text(state.simulation, style = MaterialTheme.typography.bodyMedium)
+        if (details.isNotEmpty()) HiddenDetails(SETTINGS_DETAILS_TAG) { details.forEach { Note(it) } }
         TextButton(onClick = actions.onRefresh, enabled = state.idle) {
             if (state.refreshing) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)

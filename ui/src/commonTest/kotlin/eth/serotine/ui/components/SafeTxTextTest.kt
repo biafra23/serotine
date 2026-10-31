@@ -32,6 +32,17 @@ class SafeTxTextTest {
         safeTxActionItem(action, nonce = 12, tokens, Network.SEPOLIA)
 
     @Test
+    fun aRevertIsSaidWithItsBlockAndInSimpleModesWordsWithout() {
+        val reverts = CallRefusal.Reverts(9_412_118)
+        assertEquals(
+            "It reverts, run as a verified call at block 9,412,118. Nothing was signed.",
+            callRefusalText(reverts, Network.SEPOLIA),
+        )
+        assertEquals("It reverts, checked on chain. Nothing was signed.", simpleCallRefusalText(reverts))
+        assertNull(simpleCallRefusalText(CallRefusal.Syncing), "it names no block: the same in both views")
+    }
+
+    @Test
     fun aSwapsDeadlineIsSaidOfTheRouterOnlyOnceItIsUniswaps() {
         val swap = RouterSwap(
             router = module,

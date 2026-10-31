@@ -90,7 +90,7 @@ class VerifiedUniswapV3Test {
         assertEquals(VenueReading.Unavailable(ReadUnavailable.UNPROVEN), venue().venue(Network.SEPOLIA))
 
         chain.snapshot = running(phase = EngineSnapshot.Phase.SYNCING)
-        assertEquals(VenueReading.Unavailable(ReadUnavailable.UNPROVEN), venue().venue(Network.SEPOLIA))
+        assertEquals(VenueReading.Unavailable(ReadUnavailable.SYNCING), venue().venue(Network.SEPOLIA))
         chain.snapshot = EngineSnapshot.Down
         assertEquals(VenueReading.Unavailable(ReadUnavailable.NO_ENGINE), venue().venue(Network.SEPOLIA))
         assertEquals(

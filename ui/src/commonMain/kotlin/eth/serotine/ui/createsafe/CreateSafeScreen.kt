@@ -62,21 +62,25 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.Heading
+import eth.serotine.ui.components.HiddenDetails
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkChips
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
-import eth.serotine.ui.components.UnderLightClientStrip
+import eth.serotine.ui.components.RetryLookupButton
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.done
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.lightclient.LightClientViewModel
+import eth.serotine.ui.mode.LocalInterfaceMode
 import kotlinx.coroutines.Dispatchers
 
 /** Test tag of the Safe's name field, for UI tests. */
@@ -99,6 +103,9 @@ const val CREATE_SAFE_THRESHOLD_TAG = "create-safe-threshold"
 
 /** Test tag of the predicted address on the review, for UI tests. */
 const val CREATE_SAFE_ADDRESS_TAG = "create-safe-address"
+
+/** Test tag of the review's *Details* in simple mode, for UI tests. */
+const val CREATE_SAFE_DETAILS_TAG = "create-safe-details"
 
 /** Test tag of the wallet password field, for UI tests. */
 const val CREATE_SAFE_PASSWORD_TAG = "create-safe-password"
@@ -123,7 +130,6 @@ fun CreateSafeRoute(
     // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
     val network by viewModel.stripNetwork.collectAsStateWithLifecycle()
-    val strip by lightClient.item(network).collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val sent = (state as? CreateSafeUiState.Sent)?.hash
@@ -132,10 +138,8 @@ fun CreateSafeRoute(
         // The network the Safe was created on is the one the screen shows: the one chosen for it.
         if (sent != null) currentOnSent(network, sent)
     }
-    CreateSafeScreen(
-        state = state,
-        lightClient = strip,
-        actions = CreateSafeActions(
+    val actions = remember(viewModel) {
+        CreateSafeActions(
             onNameChange = viewModel::onNameChange,
             onToggleOwner = viewModel::onToggleOwner,
             onInputChange = viewModel::onInputChange,
@@ -154,10 +158,26 @@ fun CreateSafeRoute(
             onRetry = viewModel::retry,
             onNetwork = viewModel::onNetwork,
             onTurnOnNetwork = viewModel::onTurnOnNetwork,
-        ),
-        onBack = onBack,
-        modifier = modifier,
-    )
+        )
+    }
+    // The same state in the view the user chose (docs/simple-ui.md).
+    when (LocalInterfaceMode.current) {
+        InterfaceMode.SIMPLE -> SimpleCreateSafeScreen(
+            state,
+            actions,
+            onBack,
+            modifier,
+            syncLine = lightClient.item(network).collectAsStateWithLifecycle().value,
+        )
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
+        InterfaceMode.DETAILED -> CreateSafeScreen(
+            state = state,
+            lightClient = lightClient.item(network).collectAsStateWithLifecycle().value,
+            actions = actions,
+            onBack = onBack,
+            modifier = modifier,
+        )
+    }
 }
 
 /**
@@ -193,16 +213,20 @@ class CreateSafeActions(
  * (1/3), the threshold under the recovery shapes (2/3), then the review of the deployment with
  * the address computed here, the account that pays and the unlock that signs it (3/3). While the
  * review takes the wallet password, the window is kept out of screen capture where the platform
- * allows; where it does not, the screen says so.
+ * allows; where it does not, the screen says so. [lightClient] is the strip above it, Detailed
+ * view's; simple mode ([SimpleCreateSafeScreen]) has none, and keeps the blocks, the review's fee
+ * make-up and the factory's verified run behind *Details* ([details]) on each step.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun CreateSafeScreen(
     state: CreateSafeUiState,
-    lightClient: LightClientItem,
+    lightClient: LightClientItem?,
     actions: CreateSafeActions,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    details: List<String> = emptyList(),
+    syncLine: LightClientItem? = null,
 ) {
     val review = state as? CreateSafeUiState.Review
     // Back is a step back, until bytes may be out there: after a broadcast no peer answered, only
@@ -249,7 +273,7 @@ fun CreateSafeScreen(
             )
         },
     ) { padding ->
-        UnderLightClientStrip(lightClient, Modifier.padding(padding)) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             when (state) {
                 is CreateSafeUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 is CreateSafeUiState.Sent -> Column(
@@ -268,16 +292,16 @@ fun CreateSafeScreen(
                     }
                     Text(state.message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 }
-                is CreateSafeUiState.Owners -> OwnersContent(state, actions)
-                is CreateSafeUiState.Threshold -> ThresholdContent(state, actions)
-                is CreateSafeUiState.Review -> ReviewContent(state, actions)
+                is CreateSafeUiState.Owners -> OwnersContent(state, actions, details)
+                is CreateSafeUiState.Threshold -> ThresholdContent(state, actions, details)
+                is CreateSafeUiState.Review -> ReviewContent(state, actions, details)
             }
         }
     }
 }
 
 @Composable
-private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeActions) {
+private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeActions, details: List<String>) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -383,15 +407,16 @@ private fun OwnersContent(state: CreateSafeUiState.Owners, actions: CreateSafeAc
                 enabled = state.canAdd,
                 modifier = Modifier.testTag(CREATE_SAFE_ADD_TAG),
             ) { Text("Add as an owner") }
-            if (state.canRetryLookup) TextButton(onClick = actions.onRetryLookup) { Text("Try again") }
+            if (state.canRetryLookup) RetryLookupButton(state.retryLookupWaits, actions.onRetryLookup)
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (details.isNotEmpty()) HiddenDetails(CREATE_SAFE_DETAILS_TAG) { details.forEach { Note(it) } }
         ContinueButton("Next: the threshold", state.canContinue, actions.onContinue, Modifier.align(Alignment.End))
     }
 }
 
 @Composable
-private fun ThresholdContent(state: CreateSafeUiState.Threshold, actions: CreateSafeActions) {
+private fun ThresholdContent(state: CreateSafeUiState.Threshold, actions: CreateSafeActions, details: List<String>) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -421,13 +446,14 @@ private fun ThresholdContent(state: CreateSafeUiState.Threshold, actions: Create
         state.rules.forEach { rule -> Text("• $rule", style = MaterialTheme.typography.bodySmall) }
         Heading("Owners")
         Column { state.owners.forEach { OwnerRow(it, full = false) } }
+        if (details.isNotEmpty()) HiddenDetails(CREATE_SAFE_DETAILS_TAG) { details.forEach { Note(it) } }
         ContinueButton("Next: review", state.canContinue, actions.onContinue, Modifier.align(Alignment.End))
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReviewContent(state: CreateSafeUiState.Review, actions: CreateSafeActions) {
+private fun ReviewContent(state: CreateSafeUiState.Review, actions: CreateSafeActions, details: List<String>) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -486,12 +512,13 @@ private fun ReviewContent(state: CreateSafeUiState.Review, actions: CreateSafeAc
         val quote = state.quote
         if (quote != null) {
             Text("At most ${quote.maxFee}")
-            Note(quote.feeDetail)
+            // Empty in simple mode, which keeps it behind Details.
+            quote.feeDetail.takeIf { it.isNotEmpty() }?.let { Note(it) }
             Heading("Verified simulation")
             Column {
                 Text(quote.balance.what, style = MaterialTheme.typography.labelLarge)
                 Text("${quote.balance.before} → ${quote.balance.after}")
-                Note(quote.balance.verifiedAt)
+                quote.balance.verifiedAt.takeIf { it.isNotEmpty() }?.let { Note(it) }
             }
             Text(quote.simulation, style = MaterialTheme.typography.bodyMedium)
             quote.pending?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -501,6 +528,7 @@ private fun ReviewContent(state: CreateSafeUiState.Review, actions: CreateSafeAc
                 Text("Checking on chain…")
             }
         }
+        if (details.isNotEmpty()) HiddenDetails(CREATE_SAFE_DETAILS_TAG) { details.forEach { Note(it) } }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         TextButton(onClick = actions.onRefresh, enabled = state.idle) {
             if (state.quoting && quote != null) {

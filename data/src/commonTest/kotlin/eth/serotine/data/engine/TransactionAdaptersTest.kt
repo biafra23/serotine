@@ -201,7 +201,7 @@ class TransactionAdaptersTest {
     fun inputsAreAskedOnlyWhileReadsCanBeVerified() = runTest {
         chain.base.snapshot = EngineSnapshot.Booting
         chain.nonce = 7
-        assertEquals(NonceReading.Unavailable(ReadUnavailable.UNPROVEN), inputs().nonce(Network.SEPOLIA, alice))
+        assertEquals(NonceReading.Unavailable(ReadUnavailable.SYNCING), inputs().nonce(Network.SEPOLIA, alice))
         assertEquals(0, chain.asked, "not asked at all before reads can be verified")
         chain.base.snapshot = EngineSnapshot.Down
         assertEquals(FeeReading.Unavailable(ReadUnavailable.NO_ENGINE), inputs().fees(Network.SEPOLIA))

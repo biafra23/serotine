@@ -74,6 +74,7 @@ import eth.serotine.ui.components.safeSwapItem
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.shareItem
+import eth.serotine.ui.components.simpleSafeTxRefusalText
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
@@ -286,7 +287,12 @@ class SafeTxViewModel(
         val unsaved: SigningRequest? = null,
         /** Just imported: where it went is said ([addedText]) until another message or a step replaces it. */
         val imported: Boolean = false,
+        /** [message] in simple mode's words, with no block, while it is the message it is of. */
+        val simple: SimpleText? = null,
     )
+
+    /** [text], simple mode's words for the message [of], which it stands for only while that is the message. */
+    private data class SimpleText(val of: String, val text: String)
 
     private val view = MutableStateFlow(View(imported = imported))
     private val step = MutableStateFlow<Step>(Step.Overview)
@@ -692,7 +698,8 @@ class SafeTxViewModel(
                     hidden = hiddenWhileQuoting,
                 )
                 is Quoted.Refused -> {
-                    view.update { it.copy(message = next.message) }
+                    val simple = next.simple?.let { SimpleText(next.message, it) }
+                    view.update { it.copy(message = next.message, simple = simple) }
                     step.value = Step.Overview
                 }
             }
@@ -721,7 +728,8 @@ class SafeTxViewModel(
                 )
                 // Nothing to sign any more: the overview says why.
                 is Quoted.Refused -> {
-                    view.update { it.copy(message = next.message) }
+                    val simple = next.simple?.let { SimpleText(next.message, it) }
+                    view.update { it.copy(message = next.message, simple = simple) }
                     step.value = Step.Overview
                 }
             }
@@ -733,7 +741,7 @@ class SafeTxViewModel(
     /** What a quote came to. */
     private sealed interface Quoted {
         data class Made(val quote: TxQuote) : Quoted
-        data class Refused(val message: String) : Quoted
+        data class Refused(val message: String, val simple: String? = null) : Quoted
     }
 
     /**
@@ -751,11 +759,11 @@ class SafeTxViewModel(
             when (kind) {
                 ReviewKind.APPROVAL -> when (val quoting = quoteSafeApproval(request, account, level, safeChecked)) {
                     is SafeApprovalQuoting.Quoted -> Quoted.Made(TxQuote.Approval(quoting.quote))
-                    is SafeApprovalQuoting.Refused -> Quoted.Refused(safeTxRefusalText(quoting.refusal, network))
+                    is SafeApprovalQuoting.Refused -> refused(quoting.refusal)
                 }
                 ReviewKind.EXECUTION -> when (val quoting = quoteSafeExecution(request, account, level, safeChecked)) {
                     is SafeExecutionQuoting.Quoted -> Quoted.Made(TxQuote.Execution(quoting.quote))
-                    is SafeExecutionQuoting.Refused -> Quoted.Refused(safeTxRefusalText(quoting.refusal, network))
+                    is SafeExecutionQuoting.Refused -> refused(quoting.refusal)
                 }
             }
         } catch (e: CancellationException) {
@@ -828,7 +836,9 @@ class SafeTxViewModel(
                     ),
                 )
                 is SafeTxSigning.Refused -> {
-                    view.update { it.copy(message = safeTxRefusalText(result.refusal, network)) }
+                    val message = safeTxRefusalText(result.refusal, network)
+                    val simple = simpleSafeTxRefusalText(result.refusal)?.let { SimpleText(message, it) }
+                    view.update { it.copy(message = message, simple = simple) }
                     step.value = Step.Overview
                 }
                 null -> step.value = latest.copy(signing = false, unlock = latest.unlock.copy(error = SIGN_FAILED))
@@ -1052,6 +1062,8 @@ class SafeTxViewModel(
                 canShare = shown.found.safeNonce != null,
                 share = if (view.sharing && shown.found.safeNonce != null) share(request) else null,
                 message = view.message ?: if (view.imported) addedText(header) else null,
+                simpleMessage = view.simple?.takeIf { it.of == view.message }?.text,
+                simpleRefusal = (tx.refusal ?: read?.refusal)?.let(::simpleSafeTxRefusalText),
             )
         }
     }
@@ -1109,9 +1121,14 @@ class SafeTxViewModel(
     private fun choice(context: Context, address: Address) =
         SignerChoice(context.labelOf(address), Eip55.format(address))
 
+    /** [refusal] as a quote refused: its text, and simple mode's words for it where they differ. */
+    private fun refused(refusal: SafeTxRefusal) =
+        Quoted.Refused(safeTxRefusalText(refusal, network), simpleSafeTxRefusalText(refusal))
+
     private fun ownersItem(context: Context): OwnersItem = when (val owners = context.owners) {
         null -> OwnersItem.Checking
-        is SafeTxOwnersReading.Refused -> OwnersItem.Unavailable(safeTxRefusalText(owners.refusal, network))
+        is SafeTxOwnersReading.Refused ->
+            OwnersItem.Unavailable(safeTxRefusalText(owners.refusal, network), simpleSafeTxRefusalText(owners.refusal))
         is SafeTxOwnersReading.Read -> OwnersItem.Shown(
             rows = owners.owners.map { owner ->
                 val (state, detail) = when (val confirmation = owner.confirmation) {
@@ -1122,11 +1139,21 @@ class SafeTxViewModel(
                     is OwnerConfirmation.Unknown -> OwnerState.UNKNOWN to
                         "No signature; whether it approved on chain cannot be verified right now"
                 }
-                OwnerStateRow(Eip55.format(owner.owner), context.labels[owner.owner], owner.held, state, detail)
+                val approved = owner.confirmation is OwnerConfirmation.ApprovedOnChain
+                val simpleDetail = "Approved on chain".takeIf { approved }
+                OwnerStateRow(
+                    Eip55.format(owner.owner),
+                    context.labels[owner.owner],
+                    owner.held,
+                    state,
+                    detail,
+                    simpleDetail = simpleDetail?.takeIf { it != detail },
+                )
             },
             threshold = "${owners.threshold} of ${owners.owners.size} owners must confirm",
             confirmations = "${owners.confirmations} of ${owners.threshold} confirmations",
             verifiedAt = "Owners verified at block ${grouped(owners.blockNumber)}",
+            simpleVerifiedAt = "Owners checked on chain",
         )
     }
 
@@ -1171,6 +1198,12 @@ class SafeTxViewModel(
                 ReviewKind.EXECUTION ->
                     "The whole execution — the Safe's checks of the confirmations and the nonce, its guard if it " +
                         "has one, and the call itself — run as a verified call from this account $ran, goes through."
+            },
+            simpleSimulation = when (step.kind) {
+                ReviewKind.APPROVAL ->
+                    "Checked on chain: the Safe's approveHash of this transaction should go through."
+                ReviewKind.EXECUTION -> "Checked on chain: the whole execution — the Safe's checks of the " +
+                    "confirmations and the nonce, its guard if it has one, and the call itself — should go through."
             },
             unlock = step.unlock,
             confirmations = (step.quote as? TxQuote.Execution)?.quote?.let { confirmationsText(context, it) },

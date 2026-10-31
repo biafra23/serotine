@@ -80,7 +80,15 @@ class AddTokenViewModelTest {
         viewModel.onAddressChange(eurc)
         runCurrent()
         assertEquals(
-            TokenCard.Claim(eurc, "EURC", "EURC", 6, "Read from the contract at block 9", warning = null),
+            TokenCard.Claim(
+                eurc,
+                "EURC",
+                "EURC",
+                6,
+                "Read from the contract at block 9",
+                warning = null,
+                simpleCheckedAt = "Read from the contract, checked on chain",
+            ),
             viewModel.uiState.value.card,
         )
 
@@ -101,7 +109,15 @@ class AddTokenViewModelTest {
 
         assertEquals(eurc, viewModel.uiState.value.address)
         assertEquals(
-            TokenCard.Claim(eurc, "EURC", "EURC", 6, "Read from the contract at block 9", warning = null),
+            TokenCard.Claim(
+                eurc,
+                "EURC",
+                "EURC",
+                6,
+                "Read from the contract at block 9",
+                warning = null,
+                simpleCheckedAt = "Read from the contract, checked on chain",
+            ),
             viewModel.uiState.value.card,
         )
     }
