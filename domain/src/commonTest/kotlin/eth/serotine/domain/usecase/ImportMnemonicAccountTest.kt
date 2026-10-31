@@ -15,6 +15,7 @@ import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
+import eth.serotine.domain.repository.KeyDerivation
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
@@ -276,6 +277,9 @@ class ImportMnemonicAccountTest {
 
         override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =
             BiometricChange.NotOnThisDevice
+
+        override suspend fun deriveAccount(from: Address, password: WalletPassword, held: Set<Address>) =
+            KeyDerivation.Unavailable
 
         override suspend fun disableBiometrics(): BiometricChange = BiometricChange.NotOnThisDevice
 

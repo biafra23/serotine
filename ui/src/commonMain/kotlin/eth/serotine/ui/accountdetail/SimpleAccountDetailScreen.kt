@@ -37,6 +37,7 @@ fun SimpleAccountDetailScreen(
     onSafeSettings: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onDismissWaiting: (sell: String) -> Unit = {},
+    onDerive: () -> Unit = {},
 ) {
     val ready = state as? AccountDetailUiState.Ready
     AccountDetailScreen(
@@ -62,6 +63,7 @@ fun SimpleAccountDetailScreen(
         onSafeSettings = onSafeSettings,
         onContinueSwap = onContinueSwap,
         onDismissWaiting = onDismissWaiting,
+        onDerive = onDerive,
     )
 }
 

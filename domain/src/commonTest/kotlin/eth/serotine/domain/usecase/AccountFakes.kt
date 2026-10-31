@@ -12,6 +12,7 @@ import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
+import eth.serotine.domain.repository.KeyDerivation
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
@@ -80,7 +81,16 @@ internal class RecordingKeyStore(stored: List<Address>) : KeyStore {
     var importing: Address? = null
     var importDelayMillis = 0L
 
+    /** What a derivation answers, given the addresses it was told are held ([heldAtDerivation]). */
+    var derivation: (Set<Address>) -> KeyDerivation = { KeyDerivation.Unavailable }
+    var heldAtDerivation: Set<Address>? = null
+
     override suspend fun describe(): KeyStoreDescription = error("not used by these tests")
+
+    override suspend fun deriveAccount(from: Address, password: WalletPassword, held: Set<Address>): KeyDerivation {
+        heldAtDerivation = held
+        return derivation(held).also { if (it is KeyDerivation.Stored) stored += it.address }
+    }
 
     override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport {
         val address = importing ?: error("no import set up")

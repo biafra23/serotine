@@ -60,8 +60,18 @@ class SimpleAccountDetailScreenTest {
                 onRefresh = { refreshes++ },
                 onContinueSwap = { events += "continue $it" },
                 onDismissWaiting = { events += "dismiss $it" },
+                onDerive = { events += "derive" },
             )
         }
+    }
+
+    @Test
+    fun theMenuAddsAnAccountFromTheSamePhrase() {
+        show(state)
+
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("New account from the same phrase…").performClick()
+        assertEquals(listOf("derive"), events)
     }
 
     @Test

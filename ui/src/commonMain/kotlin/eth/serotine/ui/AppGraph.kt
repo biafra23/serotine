@@ -52,6 +52,7 @@ import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
 import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DeploySafe
+import eth.serotine.domain.usecase.DeriveAccount
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DisableBiometricUnlock
 import eth.serotine.domain.usecase.DropWaitingSwap
@@ -150,6 +151,7 @@ import eth.serotine.ui.createsafe.CreateSafeViewModel
 import eth.serotine.ui.currency.CurrencyViewModel
 import eth.serotine.ui.debug.DebugTabViewModel
 import eth.serotine.ui.debug.DebugViewModel
+import eth.serotine.ui.deriveaccount.DeriveAccountViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.mode.InterfaceModeViewModel
@@ -599,6 +601,9 @@ class AppGraph(
             SetNetworkEnabled(networkSettings),
             AddOnNetworks(accounts, walletChanges),
         )
+
+    fun deriveAccountViewModel(account: AccountId): DeriveAccountViewModel =
+        DeriveAccountViewModel(account, ObserveAccount(accounts), DeriveAccount(keys, accounts, walletChanges))
 
     fun receiveViewModel(account: AccountId): ReceiveViewModel =
         ReceiveViewModel(account, ObserveAccount(accounts), ObserveEnabledNetworks(networkSettings))

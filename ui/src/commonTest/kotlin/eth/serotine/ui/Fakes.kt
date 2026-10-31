@@ -15,6 +15,7 @@ import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BiometricChange
 import eth.serotine.domain.repository.KeyDeletion
+import eth.serotine.domain.repository.KeyDerivation
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
@@ -23,6 +24,7 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -68,7 +70,10 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
     }
 }
 
-/** A [KeyStore] whose deletions are recorded, and fail when [failDeletes]. */
+/**
+ * A [KeyStore] whose deletions are recorded, and fail when [failDeletes]; a derivation answers
+ * [derivation], once [deriveGate] (when set) completes, and records the password it was given.
+ */
 internal class FakeKeys : KeyStore {
     override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
 
@@ -79,8 +84,17 @@ internal class FakeKeys : KeyStore {
 
     val deleted = mutableListOf<Address>()
     var failDeletes = false
+    var derivation: KeyDerivation = KeyDerivation.Unavailable
+    var deriveGate: CompletableDeferred<Unit>? = null
+    val derivedWith = mutableListOf<String>()
 
     override suspend fun describe(): KeyStoreDescription = error("not used by these tests")
+
+    override suspend fun deriveAccount(from: Address, password: WalletPassword, held: Set<Address>): KeyDerivation {
+        derivedWith += password.text
+        deriveGate?.await()
+        return derivation
+    }
 
     override suspend fun importMnemonic(mnemonic: Mnemonic, password: WalletPassword): KeyImport =
         error("not used by these tests")

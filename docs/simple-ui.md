@@ -351,8 +351,10 @@ As built in part 10, a Safe's settings follow them too (owner's request,
 reverts, or is refused, says so without its block. Every change offered or
 greyed out, and every check, is as in Detailed view.
 
-Create account, Import and Receive name no block, and draw the same in both
-views. The Debug tab is Detailed view's alone. Every other screen has a
+Create account, Import, New account from the same phrase and Receive name
+no block, and draw the same in both views. The account menu offers New
+account from the same phrase in both views, on Home's long press and in the
+account's top-bar menu. The Debug tab is Detailed view's alone. Every other screen has a
 simple version, or names no block and draws the same in both views:
 Currency, Security, Add network, the update screen and the dialogs.
 

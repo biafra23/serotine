@@ -329,6 +329,12 @@ sealed interface AccountAction {
 
     /** Add it on another network (docs/networks.md, N5); offered for an externally owned account. */
     data class AddOnNetwork(override val chainId: Long, override val address: String) : AccountAction
+
+    /**
+     * Add the next account of the recovery phrase it comes from (docs/wallet-ux.md, screen 3); offered
+     * for an externally owned account, greyed out while its key is not on this device.
+     */
+    data class Derive(override val chainId: Long, override val address: String) : AccountAction
 }
 
 /**
@@ -378,6 +384,22 @@ internal fun swapBlockedReason(kind: AccountKind, control: Control): String? = w
     AccountKind.EOA -> if (control == Control.FULL_CONTROL) null else watchOnlyReason("swapped", "swap")
     AccountKind.SAFE -> sendBlockedReason(kind, control)
 }
+
+/**
+ * Why no account of an externally owned account's recovery phrase can be added from it under
+ * [control], and how to get there, or null when one can: the reason a greyed-out New account from
+ * the same phrase says on a tap (owner ruling, 2026-10-18, #55).
+ */
+internal fun deriveBlockedReason(control: Control): String? =
+    if (control == Control.FULL_CONTROL) {
+        null
+    } else {
+        "This account is watch-only: its key is not on this device, so no account of its recovery phrase can be " +
+            "added from it. Import its recovery phrase to add its accounts."
+    }
+
+/** What the account menus call adding the next account of an account's recovery phrase. */
+internal const val DERIVE_ACTION = "New account from the same phrase"
 
 /** An account's key not on this device: nothing can be [done] from it, and how to [act] from it. */
 private fun watchOnlyReason(done: String, act: String): String =

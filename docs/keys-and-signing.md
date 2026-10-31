@@ -195,8 +195,9 @@ its KDoc and returns it as a result the UI shows as state.
 - **Sign.** `sign(account, digest, unlock)` opens the account's envelope
   (`<address>.seed`), with the password and the hardware secret
   (`Unlock.WithPassword`) or with the DEK the biometric path unwraps
-  (`Unlock.WithBiometrics`, below), derives the first account's key and refuses
-  a key that does not derive the account it is filed under. It signs the
+  (`Unlock.WithBiometrics`, below), derives the key of the account the envelope
+  names (its index on the BIP-44 path, the first for an imported phrase) and
+  refuses a key that does not derive the account it is filed under. It signs the
   32-byte digest as given, never hashed again, with libsecp256k1 (a low s, RFC
   6979's nonce) and finds the recovery id by recovering the public key. The seed, the key and the password's bytes are
   zeroed before it returns (rule 7); a wrong password, a missing key and an
@@ -327,6 +328,26 @@ its KDoc and returns it as a result the UI shows as state.
   derives the first account, `m/44'/60'/0'/0/0` with the empty passphrase, on
   libsecp256k1 (ACINQ's secp256k1-kmp). The use case stores the key and then
   adds the account as one step that a cancelled caller cannot cut in half.
+- **Further accounts of a phrase.** `deriveAccount(from, password, held)` adds
+  a further account of the phrase an account held here comes from, without the
+  words: the envelope holds the BIP-39 seed for this (owner ruling,
+  2026-10-15). It opens `from`'s envelope with the wallet password, checks
+  that its seed derives `from`, and takes `m/44'/60'/0'/0/i`, `i` the lowest
+  index whose address is not in `held`: the use case passes the addresses held
+  on the network the account is added on, so a phrase's accounts there are the
+  ones other wallets list for it, in their order, and one removed comes back
+  first. The seed is sealed again in an envelope of its own, under that
+  account's address, as an import seals one (the device's cost, stepping down
+  when the memory is short, joining the biometric path while it is on). An
+  envelope already stored under that address (its account never reached the
+  list) is kept when it opens under the password, and sealed again otherwise.
+  Each envelope names its index (`index`, left out for the first, so envelopes
+  stored before are unchanged). The index is not bound as additional data:
+  signing derives the key at that index and refuses one that is not the
+  account the envelope is filed under, so an index edited on disk signs
+  nothing. The use case (`DeriveAccount`) adds the account on the network of
+  the one it comes from, as one step under the app's `WalletChanges`; Add on
+  another network adds it elsewhere.
 - **Storage.** The BIP-39 seed goes into the envelope above, one file per
   account (`<address>.seed`, JSON) in a directory of the app's own.
   - Writes go through a temporary file readable by this user alone, an

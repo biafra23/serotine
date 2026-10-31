@@ -6,7 +6,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
 import eth.serotine.ui.components.Control
@@ -61,6 +63,16 @@ class SimpleAccountsScreenTest {
         total = "€12,025.55",
         freshness = "Updated 2 min ago · pull down to refresh",
     )
+
+    @Test
+    fun aRowsMenuAddsAnAccountFromTheSamePhrase() {
+        show(ready(main))
+
+        rule.onNodeWithText("Main").performTouchInput { longClick() }
+        rule.onNodeWithText("New account from the same phrase…").performClick()
+
+        assertEquals(listOf<AccountAction>(AccountAction.Derive(ethereum.chainId, main.address)), actions)
+    }
 
     @Test
     fun theTotalSaysHowFreshItIsAndNoBlockNumberIsShown() {
