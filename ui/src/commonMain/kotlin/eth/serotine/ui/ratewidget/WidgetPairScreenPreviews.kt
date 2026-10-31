@@ -46,7 +46,7 @@ private val quotes = WidgetPairUiState.Quotes(
 @Composable
 private fun WidgetPairPreview(state: WidgetPairUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        WidgetPairScreen(state, onNetwork = {}, onBase = {}, onQuote = {}, onBack = {}, onCancel = {})
+        WidgetPairScreen(state, onNetwork = {}, onBase = {}, onQuote = {}, onFilter = {}, onBack = {}, onCancel = {})
     }
 }
 
@@ -66,6 +66,20 @@ private fun WidgetPairNoneOnPreview() = WidgetPairPreview(WidgetPairUiState.Netw
 @Composable
 private fun WidgetPairBasesPreview() = WidgetPairPreview(bases)
 
+/** The prices narrowed by their filter: "dai" is in xDAI's names and in sDAI's symbol, greyed out still. */
+@Preview
+@Composable
+private fun WidgetPairBasesFilteredPreview() = WidgetPairPreview(bases.copy(query = "dai"))
+
+/** A filter that matches none of the prices says so. */
+@Preview
+@Composable
+private fun WidgetPairBasesNoMatchPreview() = WidgetPairPreview(bases.copy(query = "xyz"))
+
+@Preview
+@Composable
+private fun WidgetPairBasesFilteredDarkPreview() = WidgetPairPreview(bases.copy(query = "dai"), darkTheme = true)
+
 @Preview
 @Composable
 private fun WidgetPairQuotesPreview() = WidgetPairPreview(quotes)
@@ -80,6 +94,9 @@ internal val widgetPairScreenPreviews: List<@Composable () -> Unit> = listOf(
     { WidgetPairNetworksDarkPreview() },
     { WidgetPairNoneOnPreview() },
     { WidgetPairBasesPreview() },
+    { WidgetPairBasesFilteredPreview() },
+    { WidgetPairBasesNoMatchPreview() },
+    { WidgetPairBasesFilteredDarkPreview() },
     { WidgetPairQuotesPreview() },
     { WidgetPairQuotesDarkPreview() },
 )

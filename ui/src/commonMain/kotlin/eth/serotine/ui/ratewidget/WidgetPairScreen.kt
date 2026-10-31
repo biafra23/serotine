@@ -6,15 +6,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -28,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
@@ -50,6 +54,12 @@ const val WIDGET_BASE_TAG = "widget-base-"
 /** Test tag prefix of a currency's row, followed by its code ([WIDGET_FOLLOWS] for the display currency's). */
 const val WIDGET_QUOTE_TAG = "widget-quote-"
 
+/** Test tag of the prices' filter field. */
+const val WIDGET_FILTER_TAG = "widget-filter"
+
+/** Test tag of what the prices' step says when its filter matches none. */
+const val WIDGET_NO_MATCH_TAG = "widget-no-match"
+
 /** The tag suffix of the row that follows the display currency. */
 const val WIDGET_FOLLOWS = "display"
 
@@ -68,9 +78,24 @@ sealed interface WidgetPairUiState {
 
     /**
      * What a rate on [network] may be of: its native currency first, then its tokens' prices, then,
-     * greyed out, its tokens with none.
+     * greyed out, its tokens with none; [query], what the filter above them holds, narrows them to
+     * [shown] (issue #207).
      */
-    data class Bases(val network: NetworkLabel, val choices: List<WidgetBaseChoice>) : WidgetPairUiState
+    data class Bases(
+        val network: NetworkLabel,
+        val choices: List<WidgetBaseChoice>,
+        val query: String = "",
+    ) : WidgetPairUiState {
+
+        /** [choices] that [query] matches, in their order; every one while it is blank. */
+        val shown: List<WidgetBaseChoice>
+            get() = choices.filter { it.matches(query) }
+
+        /** What the step says when [query] matches none of [choices]; null while one is shown. */
+        val noMatch: String?
+            get() = "No price matches “${query.trim()}”"
+                .takeIf { choices.isNotEmpty() && choices.none { it.matches(query) } }
+    }
 
     /** The currencies the rate of [base] ("LINK") on [network] may be shown in. */
     data class Quotes(
@@ -85,7 +110,21 @@ sealed interface WidgetPairUiState {
  * price of ([names]: "Ether · WETH"); [unavailable], the reason, where it has no rate, which
  * greys it out (CLAUDE.md, *Conventions*).
  */
-data class WidgetBaseChoice(val id: String, val names: String, val unavailable: String? = null)
+data class WidgetBaseChoice(val id: String, val names: String, val unavailable: String? = null) {
+
+    /**
+     * Whether [query] is part of this choice, ignoring case and the spaces around it: of its price
+     * id or of one of the names it prices ("usdc.e" in "USDC · USDC.e"), never of the "No price" a
+     * greyed-out one says instead of names. A blank query matches every one.
+     */
+    fun matches(query: String): Boolean {
+        val wanted = query.trim()
+        if (wanted.isEmpty()) return true
+        // A greyed-out one's id is its symbols; its names only say it has no price.
+        val parts = if (unavailable == null) listOf(id) + names.split(" · ") else id.split(" · ")
+        return parts.any { it.contains(wanted, ignoreCase = true) }
+    }
+}
 
 /**
  * A currency: its [code] ("EUR"; null for the display currency, as chosen in Settings), its
@@ -102,7 +141,8 @@ data class WidgetQuoteChoice(
 /**
  * The widget's configuration as a pure function of [state]: a row per choice, [onNetwork] with
  * its chain id, [onBase] with its price id and [onQuote] with its code (null: the display
- * currency) when tapped; [onBack] steps back from a later step, and [onCancel] places no widget.
+ * currency) when tapped; [onFilter] with the text typed into the prices' filter; [onBack] steps
+ * back from a later step, and [onCancel] places no widget.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -111,6 +151,7 @@ fun WidgetPairScreen(
     onNetwork: (chainId: Long) -> Unit,
     onBase: (id: String) -> Unit,
     onQuote: (code: String?) -> Unit,
+    onFilter: (query: String) -> Unit,
     onBack: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -161,7 +202,17 @@ fun WidgetPairScreen(
                 is WidgetPairUiState.Bases -> {
                     NetworkMark(state.network, Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp))
                     Question("Which price should it show?")
-                    state.choices.forEach { base ->
+                    if (state.choices.isNotEmpty()) BaseFilter(state.query, onFilter)
+                    val shown = state.shown
+                    state.noMatch?.let {
+                        Text(
+                            it,
+                            Modifier.padding(16.dp).testTag(WIDGET_NO_MATCH_TAG),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    shown.forEach { base ->
                         Choice(base.id, base.names, WIDGET_BASE_TAG + base.id, base.unavailable != null) {
                             val reason = base.unavailable
                             if (reason == null) {
@@ -190,6 +241,33 @@ fun WidgetPairScreen(
             }
         }
     }
+}
+
+/**
+ * The field that filters the prices as it is typed into, as the Debug tab's filters its log, with
+ * a button that empties it.
+ */
+@Composable
+private fun BaseFilter(query: String, onFilter: (String) -> Unit) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onFilter,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp)
+            .testTag(WIDGET_FILTER_TAG),
+        label = { Text("Filter") },
+        placeholder = { Text("Symbol or name") },
+        singleLine = true,
+        trailingIcon = if (query.isEmpty()) {
+            null
+        } else {
+            {
+                IconButton(onClick = { onFilter("") }) {
+                    Icon(Icons.Filled.Clear, contentDescription = "Clear the filter")
+                }
+            }
+        },
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+    )
 }
 
 /** The step's question. */
