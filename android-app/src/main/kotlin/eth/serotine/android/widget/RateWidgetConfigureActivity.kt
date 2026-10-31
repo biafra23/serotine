@@ -87,7 +87,7 @@ class RateWidgetConfigureActivity : ComponentActivity() {
                     onQuote = { code ->
                         if (current && network != null && base != null) choose(app, id, network, base, code)
                     },
-                    onFilter = { query = it },
+                    onFilter = { if (current) query = it },
                     onBack = {
                         if (baseId != null) {
                             baseId = null

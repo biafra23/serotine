@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
@@ -41,7 +42,6 @@ import eth.serotine.ui.components.NetworkMark
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
-import eth.serotine.ui.components.done
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.currency.nameOf
 
@@ -93,7 +93,8 @@ sealed interface WidgetPairUiState {
 
         /** What the step says when [query] matches none of [choices]; null while one is shown. */
         val noMatch: String?
-            get() = "No price matches “${query.trim()}”".takeIf { choices.isNotEmpty() && shown.isEmpty() }
+            get() = "No price matches “${query.trim()}”"
+                .takeIf { choices.isNotEmpty() && choices.none { it.matches(query) } }
     }
 
     /** The currencies the rate of [base] ("LINK") on [network] may be shown in. */
@@ -119,8 +120,9 @@ data class WidgetBaseChoice(val id: String, val names: String, val unavailable: 
     fun matches(query: String): Boolean {
         val wanted = query.trim()
         if (wanted.isEmpty()) return true
-        val names = if (unavailable == null) names.split(" · ") else emptyList()
-        return (listOf(id) + names).any { it.contains(wanted, ignoreCase = true) }
+        // A greyed-out one's id is its symbols; its names only say it has no price.
+        val parts = if (unavailable == null) listOf(id) + names.split(" · ") else id.split(" · ")
+        return parts.any { it.contains(wanted, ignoreCase = true) }
     }
 }
 
@@ -201,6 +203,7 @@ fun WidgetPairScreen(
                     NetworkMark(state.network, Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp))
                     Question("Which price should it show?")
                     if (state.choices.isNotEmpty()) BaseFilter(state.query, onFilter)
+                    val shown = state.shown
                     state.noMatch?.let {
                         Text(
                             it,
@@ -209,7 +212,7 @@ fun WidgetPairScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    state.shown.forEach { base ->
+                    shown.forEach { base ->
                         Choice(base.id, base.names, WIDGET_BASE_TAG + base.id, base.unavailable != null) {
                             val reason = base.unavailable
                             if (reason == null) {
@@ -263,7 +266,7 @@ private fun BaseFilter(query: String, onFilter: (String) -> Unit) {
                 }
             }
         },
-        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false).done(),
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
     )
 }
 

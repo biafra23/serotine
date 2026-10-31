@@ -13,9 +13,9 @@ import androidx.compose.ui.test.performTextInput
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.theme.SerotineTheme
-import kotlin.test.assertEquals
 import org.junit.Rule
 import org.junit.Test
+import kotlin.test.assertEquals
 
 class WidgetPairScreenTest {
 
